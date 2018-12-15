@@ -172,7 +172,6 @@ class Weibull_():
 
 	Can be used to create 
 
-	N.B careful with parallelisation!
 	"""
 	def __init__(self, name):
 		self.name = name
@@ -248,6 +247,12 @@ class Weibull_():
 	def _mse(self, x, c=None, n=None,
 			heuristic='Nelson-Aalen'):
 		"""
+		MSE: Mean Square Error
+		This is simply fitting the curve to the best estimate from a non-parametric estimate.
+
+		This is slightly different in that it fits it to untransformed data.
+		The transformation is how the "Probability Plotting Method" works.
+
 		Fit a two parameter Weibull distribution from data
 		
 		Fits a Weibull model to pp points 
@@ -262,11 +267,16 @@ class Weibull_():
 		res = minimize(fun, init, bounds=bounds)
 		return res.x[0], res.x[1]
 
-	def _lsm(self, x, c=None, n=None,
+	def _ppm(self, x, c=None, n=None,
 			heuristic="Blom", rr='y'):
 		assert rr in ['x', 'y']
 		"""
-		Fit a two parameter Weibull distribution from data
+		PPM: Probability Plotting Method
+		This is the classif probability plotting paper method.
+
+		This method creates the plotting points, transforms it to Weibull scale and then fits the line of best fit.
+
+		Fit a two parameter Weibull distribution from data.
 		
 		Fits a Weibull model using cumulative probability from x values. 
 		"""
@@ -289,6 +299,13 @@ class Weibull_():
 
 	#TODO: add MSE
 	def _mom(self, x, n=None):
+		"""
+		MOM: Method of Moments.
+
+		This is one of the simplest ways to calculate the parameters of a distribution.
+
+		This method is quick but only works with uncensored data.
+		"""
 		if n is not None:
 			x = np.rep(x, n)
 		m1 = np.sum(x) / len(x)
@@ -300,6 +317,15 @@ class Weibull_():
 		return alpha, beta
 
 	def _mps(self, x, c=None, n=None):
+		"""
+		MPS: Maximum Product Spaceing
+
+		This is the method to get the largest (geometric) average distance between all points
+
+		This method works really well when all points are unique. Some complication comes in when using repeated data.
+
+		This method is exceptional for when using three parameter distributions.
+		"""
 		init = [np.mean(x), 1.]
 		bounds = ((0, None), (0, None))
 		fun = lambda t : self.neg_mean_D(x, t[0], t[1])
@@ -307,6 +333,11 @@ class Weibull_():
 		return res.x[0], res.x[1]
 
 	def _mle(self, x, c=None, n=None, model=None):
+		"""
+		MLE: Maximum Likelihood estimate
+
+		This is the MLE, the king of parameter estimation.
+		"""
 		init = [np.mean(x), 1.]
 		bounds = ((0, None), (0, None))
 		fun = lambda t : self.neg_ll(x, t[0], t[1], c, n)
@@ -320,6 +351,11 @@ class Weibull_():
 		return res.x[0], res.x[1]
 
 	def jacobian(x, alpha, beta, c=None, n=None):
+		"""
+		The jacobian for a two parameter Weibull distribution.
+
+		Please report mistakes if found!
+		"""
 		if c is None:
 			c = np.zeros_like(x)
 
@@ -371,7 +407,7 @@ class Weibull_():
 			if c is not None:
 				raise InputError('Method of moments doesn\'t support censoring')
 			params = self._mom(x, n=n)
-		elif how == 'LSM':
+		elif how == 'PPM':
 			if c is not None:
 				raise InputError('Method of moments doesn\'t support censoring')
 			if 'rr' in kwargs:
@@ -388,11 +424,7 @@ class Weibull_():
 
 class Weibull3p_():
 	"""
-	class for the generic weibull distribution.
-
-	Can be used to create 
-
-	N.B careful with parallelisation!
+	class for the three parameter weibull distribution.
 	"""
 	def __init__(self, name):
 		self.name = name

@@ -181,6 +181,10 @@ def kaplan_meier(x, c=None, n=None, return_all=False):
 		return x, r, d, h
 	return 1 - R
 
+def success_run(n, confidence=0.95, alpha=None):
+    if alpha is None: alpha = 1 - confidence
+    return np.power(alpha, 1./n)
+
 def get_x_r_d(x, c=None, n=None):
     x_ = x.copy()
     if c is None:
@@ -194,6 +198,48 @@ def get_x_r_d(x, c=None, n=None):
     d = np.bincount(idx, weights=1 - c)
     r = np.repeat(c.shape, d.shape) - np.cumsum(d) + d[0]
     return x_, r, d
+
+def rank_adjust(t, censored=None):
+	"""
+    Currently limited to only Mean Order Number
+    Room to expand to:
+    Modal Order Number, and
+    Median Order Number
+    Uses mean order statistic to conduct rank adjustment
+    For further reading see:
+    http://reliawiki.org/index.php/Parameter_Estimation
+    Above reference provides excellent explanation of how this method is derived
+    This function currently assumes good input - Use if you know how
+    15 Mar 2015
+    """
+    idx = np.argsort(t)
+    t = t[idx]
+    censored = censored[idx]
+
+    # Total items in test/population
+    n = len(t)
+    # Preallocate adjusted ranks array
+    ranks = np.zeros(n)
+    
+    if censored is None:
+        censored = np.zeros(n)
+
+    # Rank increment for [right] censored data
+    # Previous Mean Order Number
+    PMON = 0
+    
+    # Implemented in loop:
+    # "Number of Items Before Present Suspended Set"
+    # NIBPSS = n - (i - 1)
+    # Denominator of rank increment = 1 + NIBPSS = n - i + 2
+    for i in range(0, n):
+        if censored[i] == 0:
+            ranks[i] = PMON + (n + 1 - PMON)/(n - i + 2)
+            PMON = ranks[i]
+        else:
+            ranks[i] = np.nan
+    # Return adjusted ranks
+    return ranks
 
 class NonParametric(object):
 	"""
