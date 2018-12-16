@@ -318,7 +318,7 @@ class Weibull_():
 
 	def _mps(self, x, c=None, n=None):
 		"""
-		MPS: Maximum Product Spaceing
+		MPS: Maximum Product Spacing
 
 		This is the method to get the largest (geometric) average distance between all points
 
