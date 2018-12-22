@@ -132,7 +132,7 @@ def nelson_aalen(x, c=None, n=None, return_all=False):
 	"""	
 	x, r, d = get_x_r_d(x, c, n)
 
-	h = np.hstack([0, d/r])
+	h = d/r
 	H = np.cumsum(h)
 	R = np.exp(-H)
 	if return_all:
@@ -156,7 +156,6 @@ def fleming_harrington(x, c=None, n=None, return_all=False):
 	x, r, d = get_x_r_d(x, c, n)
 
 	h = [np.sum([1./(r[i]-j) for j in range(d[i])]) for i in range(len(x))]
-	h = np.hstack([0, h])
 	H = np.cumsum(h)
 	R = np.exp(-H)
 	if return_all:
@@ -173,7 +172,6 @@ def kaplan_meier(x, c=None, n=None, return_all=False):
 	x, r, d = get_x_r_d(x, c, n)
 	
 	R = np.cumprod(1 - d/r)
-	R = np.hstack([1, R])
 	H = -np.log(R)
 	h = np.diff(H)
 
@@ -277,7 +275,7 @@ class NonParametric(object):
 		elif how == 'ECDF':
 			x, r, d, h = ecdf(x, c=c, n=n, return_all=True)
 
-		out.x = np.hstack([0, x])
+		out.x = x
 		out.r = r
 		out.d = d
 		out.h = h
@@ -287,7 +285,6 @@ class NonParametric(object):
 
 		var = out.d / (out.r * (out.r - out.d))
 		var = np.cumsum(var)
-		var = np.hstack([0, var])
 		var = (1./np.log(out.R)**2) * var
 
 		Z = np.log(-np.log(out.R))
