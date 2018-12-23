@@ -1,21 +1,9 @@
 
-from __future__ import unicode_literals
-
 import numpy as np
-from scipy.stats.distributions import weibull_min
-from scipy.stats.mstats import plotting_positions as pp
-from numpy import ma
 from matplotlib import scale as mscale
 from matplotlib import transforms as mtransforms
-from matplotlib.ticker import Formatter, FixedLocator, AutoLocator, LinearLocator
+from matplotlib.ticker import FixedLocator
 from matplotlib import rcParams
-
-import numpy as np
-from matplotlib import scale as mscale
-from matplotlib import transforms as mtransforms
-from matplotlib.ticker import FormatStrFormatter, FixedLocator
-from scipy.stats import norm
-
 
 # BUG: this example fails with any other setting of axisbelow
 rcParams['axes.axisbelow'] = False
@@ -53,6 +41,7 @@ class WeibullScale(mscale.ScaleBase):
         lower: The probability below which to crop the data.
         """
         mscale.ScaleBase.__init__(self)
+        # TODO: Put some smarts into this so the lower scale isn't always far below the data.
         upper = kwargs.pop("upper", 0.999999) 
         lower = kwargs.pop("lower", 1e-5)
         
@@ -193,6 +182,8 @@ mscale.register_scale(WeibullScale)
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
+    from scipy.stats.mstats import plotting_positions as pp
+    from scipy.stats.distributions import weibull_min
 
     x = np.sort(weibull_min.rvs(10, scale=3, size=1000))
     y = np.array(pp(x))
