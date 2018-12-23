@@ -6,7 +6,7 @@ Have decided to create a new package that contains the survival statistics eleme
 The surpyval package provides methods to create models of survival type scenarios.
 
 These modes are broken into:
-- NonParametric, and
+- [NonParametric](NonParametric.ipynb), and
 - Parametric.
 
 
