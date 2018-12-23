@@ -171,7 +171,6 @@ mscale.register_scale(WeibullScale)
 # that ``matplotlib`` can find it.
 #mscale.register_scale(WeibullScale)
 
-
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from scipy.stats.mstats import plotting_positions as pp

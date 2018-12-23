@@ -1,6 +1,6 @@
 import numpy as np
-#from scipy.stats import rankdata
-#from scipy.special import ndtri as z
+from scipy.stats import rankdata
+from scipy.special import ndtri as z
 
 """
 Conventions for surpyval package
@@ -88,16 +88,14 @@ def plotting_positions(x,
 	else:
 		return None
 
-def ecdf(x, c=None, n=None, return_all=False):
+def ecdf(x, c=None, n=None):
 	"""
 	Returns the ECDF of the data.
 	"""
 	R = 1 - plotting_positions(x, c=c, n=n, heuristic="ECDF")
 	H = -np.log(R)
 	h = np.diff(H)
-	if return_all:
-		return x, r, d, h
-	return 1 - R
+	return x, r, d, R
 
 def filiben(x, ranks):
 	"""
@@ -112,7 +110,7 @@ def filiben(x, ranks):
 	out[-1] = 0.5 ** (1./N)
 	return out
 
-def nelson_aalen(x, c=None, n=None, return_all=False):
+def nelson_aalen(x, c=None, n=None):
 	"""
 	Nelson-Aalen estimation of Reliability function
     Nelson, W.: Theory and Applications of Hazard Plotting for Censored Failure Data. 
@@ -135,11 +133,9 @@ def nelson_aalen(x, c=None, n=None, return_all=False):
 	h = d/r
 	H = np.cumsum(h)
 	R = np.exp(-H)
-	if return_all:
-		return x, r, d, h
-	return 1 - R
+	return x, r, d, R
 
-def fleming_harrington(x, c=None, n=None, return_all=False):
+def fleming_harrington(x, c=None, n=None):
 	"""
 	Fleming Harrington estimation of Reliability function
    
@@ -158,11 +154,9 @@ def fleming_harrington(x, c=None, n=None, return_all=False):
 	h = [np.sum([1./(r[i]-j) for j in range(d[i])]) for i in range(len(x))]
 	H = np.cumsum(h)
 	R = np.exp(-H)
-	if return_all:
-		return x, r, d, h
-	return 1 - R
+	return x, r, d, R
 
-def kaplan_meier(x, c=None, n=None, return_all=False):
+def kaplan_meier(x, c=None, n=None):
 	"""
 	Kaplan-Meier estimate of survival
 	Good explanation of K-M reason can be found at:
@@ -175,9 +169,7 @@ def kaplan_meier(x, c=None, n=None, return_all=False):
 	H = -np.log(R)
 	h = np.diff(H)
 
-	if return_all:
-		return x, r, d, h
-	return 1 - R
+	return x, r, d, R
 
 def success_run(n, confidence=0.95, alpha=None):
     if alpha is None: alpha = 1 - confidence
@@ -186,15 +178,15 @@ def success_run(n, confidence=0.95, alpha=None):
 def get_x_r_d(x, c=None, n=None):
     x_ = x.copy()
     if c is None:
-        c = np.zeros_like(x)
+        c = np.zeros_like(x_)
     if n is not None:
         x_ = np.repeat(x_, n)
         c = np.repeat(c, n)
     else:
-        n = np.ones_like(x)
+        n = np.ones_like(x_)
     x_, idx = np.unique(x_, return_inverse=True)
     d = np.bincount(idx, weights=1 - c)
-    r = n.sum() - d.cumsum() + d[0]
+    r = n.sum() - d.cumsum() + d
     return x_, r, d
 
 def rank_adjust(t, censored=None):
@@ -257,6 +249,23 @@ class NonParametric(object):
 	def __init__(self):
 		pass
 
+	# TODO: This
+	def sf(self, x, how='interp'):
+		return 
+
+	def ff(self, x, alpha, beta):
+		return 1 - np.exp(-(x / alpha)**beta)
+
+	def hf(self, x, alpha, beta):
+		return (beta / alpha) * (x / alpha)**(beta - 1)
+
+	def Hf(self, x, alpha, beta):
+		return (x / alpha)**beta
+
+	def random(self, size, alpha, beta):
+		U = np.random.uniform(size=size)
+		return self.qf(U, alpha, beta)
+
 	@classmethod
 	def fit(cls, x, how='Nelson-Aalen', 
 			c=None, n=None, sig=0.05):
@@ -267,32 +276,33 @@ class NonParametric(object):
 		out = cls()
 		out.data = data
 		if   how == 'Nelson-Aalen':
-			x, r, d, h = nelson_aalen(x, c=c, n=n, return_all=True)
+			x_, r, d, R = nelson_aalen(x, c=c, n=n)
 		elif how == 'Kaplan-Meier':
-			x, r, d, h = kaplan_meier(x, c=c, n=n, return_all=True)
+			x_, r, d, R = kaplan_meier(x, c=c, n=n)
 		elif how == 'Fleming-Harrington':
-			x, r, d, h = fleming_harrington(x, c=c, n=n, return_all=True)
+			x_, r, d, R = fleming_harrington(x, c=c, n=n)
 		elif how == 'ECDF':
-			x, r, d, h = ecdf(x, c=c, n=n, return_all=True)
+			x_, r, d, R = ecdf(x, c=c, n=n)
 
-		out.x = x
+		out.x = x_
+		out.max_x = np.max(out.x)
 		out.r = r
 		out.d = d
-		out.h = h
-		out.H = np.cumsum(h)
-		out.R = np.exp(-out.H)
+		out.H = -np.log(R)
+		out.R = R
 		out.F = 1 - out.R
 
-		var = out.d / (out.r * (out.r - out.d))
+		# TODO: Add reference to where this comes from
+		# TODO: Also add more options
+		with np.errstate(divide='ignore'):
+			var = out.d / (out.r * (out.r - out.d))
 		var = np.cumsum(var)
-		var = (1./np.log(out.R)**2) * var
+		var = R**2 * var
 
-		Z = np.log(-np.log(out.R))
-
-		Z_u = Z + z(sig) * np.sqrt(var)
-		Z_l = Z - z(sig) * np.sqrt(var)
-		out.cb_u = np.exp(-np.exp(Z_u))
-		out.cb_l = np.exp(-np.exp(Z_l))
+		R_u = R + z(sig) * np.sqrt(var)
+		R_l = R - z(sig) * np.sqrt(var)
+		out.cb_u = R_u
+		out.cb_l = R_l
 		
 		return out
 
