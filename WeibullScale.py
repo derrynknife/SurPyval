@@ -13,22 +13,14 @@ class WeibullScale(mscale.ScaleBase):
     Scales data in range 0 to 100 using a non-standard log transform
     This scale attempts to replicate "probability paper" scaling
 
-    The scale function:
-        A piecewise combination of exponential, linear, and logarithmic scales
-
-    The inverse scale function:
-      piecewise combination of exponential, linear, and logarithmic scales
-
     Since probabilities at 0 and 100 are not represented,
     there is user-defined upper and lower limit, above and below which nothing
-    will be plotted.  This defaults to .1 and 99 for lower and upper, respectively.
-
+    will be plotted.  This defaults to 1e-5 and 99.9999 for lower and upper.
     """
 
     # The scale class must have a member ``name`` that defines the
     # string used to select the scale.  For example,
-    # ``gca().set_yscale("mercator")`` would be used to select this
-    # scale.
+    # ``gca().set_yscale("weibull")`` would be used to select this scale.
     name = 'weibull'
 
     def __init__(self, axis, **kwargs):
