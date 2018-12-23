@@ -255,21 +255,58 @@ class NonParametric(object):
 		pass
 
 	# TODO: This
-	def sf(self, x, how='interp'):
-		return 
+	def sf(self, x, how='step'):
+		x = np.atleast_1d(x)
+		# Let's not assume we can predict above the highest measurement
+		if how == 'step':
+			idx = np.searchsorted(self.x, x, side='right') - 1
+			R_out = self.R[idx]
+			R_out[np.where(x < self.x.min())] = 1
+			R_out[np.where(x > self.x.max())] = np.nan
+			R_out[np.where(x < 0)] = np.nan
+		elif how == 'interp':
+			R = np.hstack([[1], self.R])
+			x_data = np.hstack([[0], self.x])
+			R = np.interp(x, x_data, R)
+			R[np.where(x > self.x.max())] = np.nan
+			return R
+		else:
+			pass
+		return R_out
 
-	def ff(self, x, alpha, beta):
-		return 1 - np.exp(-(x / alpha)**beta)
+	def ff(self, x, how='step'):
+		return 1 - self.sf(x, how=how)
 
-	def hf(self, x, alpha, beta):
-		return (beta / alpha) * (x / alpha)**(beta - 1)
+	def hf(self, x, how='step'):
+		return np.diff(self.Hf(x, how=how))
 
-	def Hf(self, x, alpha, beta):
-		return (x / alpha)**beta
+	def Hf(self, x, how='step'):
+		H = -np.log(self.sf(x, how=how))
+		H[H == 0] = 0
+		return H
 
-	def random(self, size, alpha, beta):
-		U = np.random.uniform(size=size)
-		return self.qf(U, alpha, beta)
+	def R_cb(self, x, bound='upper', how='step'):
+		x = np.atleast_1d(x)
+		if bound == 'upper':
+			R_out = self.cb_u
+		elif bound == 'lower':
+			R_out = self.cb_l
+		# Let's not assume we can predict above the highest measurement
+		if how == 'step':
+			idx = np.searchsorted(self.x, x, side='right') - 1
+			R_out = R_out[idx]
+			R_out[np.where(x < self.x.min())] = 1
+			R_out[np.where(x > self.x.max())] = np.nan
+			R_out[np.where(x < 0)] = np.nan
+		elif how == 'interp':
+			R_out = np.hstack([[1], R_out])
+			x_data = np.hstack([[0], self.x])
+			R_out = np.interp(x, x_data, R_out)
+			R_out[np.where(x > self.x.max())] = np.nan
+		return R_out
+
+	def random(self, size):
+		return np.random.choice(self.x,size=size)
 
 	@classmethod
 	def fit(cls, x, how='Nelson-Aalen', 
@@ -310,8 +347,8 @@ class NonParametric(object):
 		with np.errstate(invalid='ignore'):
 			var = R**2 * var
 
-		R_u = R + t_stat * np.sqrt(var)
-		R_l = R - t_stat * np.sqrt(var)
+		R_l = R + t_stat * np.sqrt(var)
+		R_u = R - t_stat * np.sqrt(var)
 		out.cb_u = R_u
 		out.cb_l = R_l
 		
