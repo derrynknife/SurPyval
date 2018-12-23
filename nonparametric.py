@@ -1,6 +1,12 @@
 import numpy as np
 from scipy.stats import rankdata
 from scipy.special import ndtri as z
+from scipy.stats import t
+
+PLOTTING_METHODS = [ "Blom", "Median", "ECDF", "Modal", "Midpoint", 
+"Mean", "Weibull", "Benard", "Beard", "Hazen", "Gringorten", 
+"None", "Tukey", "DPW", "Fleming-Harrington", "Kaplan-Meier",
+"Nelson-Aalen", "Filiben"]
 
 """
 Conventions for surpyval package
@@ -166,9 +172,6 @@ def kaplan_meier(x, c=None, n=None):
 	x, r, d = get_x_r_d(x, c, n)
 	
 	R = np.cumprod(1 - d/r)
-	H = -np.log(R)
-	h = np.diff(H)
-
 	return x, r, d, R
 
 def success_run(n, confidence=0.95, alpha=None):
@@ -187,6 +190,8 @@ def get_x_r_d(x, c=None, n=None):
     x_, idx = np.unique(x_, return_inverse=True)
     d = np.bincount(idx, weights=1 - c)
     r = n.sum() - d.cumsum() + d
+    r = r.astype(np.int)
+    d = d.astype(np.int)
     return x_, r, d
 
 def rank_adjust(t, censored=None):
@@ -269,6 +274,7 @@ class NonParametric(object):
 	@classmethod
 	def fit(cls, x, how='Nelson-Aalen', 
 			c=None, n=None, sig=0.05):
+		assert how in PLOTTING_METHODS
 		data = {}
 		data['x'] = x
 		data['c'] = c
@@ -288,19 +294,24 @@ class NonParametric(object):
 		out.max_x = np.max(out.x)
 		out.r = r
 		out.d = d
-		out.H = -np.log(R)
+		with np.errstate(divide='ignore'):
+			out.H = -np.log(R)
 		out.R = R
 		out.F = 1 - out.R
 
-		# TODO: Add reference to where this comes from
-		# TODO: Also add more options
+		# TODO: Also add more options?
+		# Happy to ignore the infinite variance expected when all fail
+		# Greenwoods variance using t-stat. Ref found:
+		# http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 		with np.errstate(divide='ignore'):
 			var = out.d / (out.r * (out.r - out.d))
+			t_stat = t.ppf(sig/2, r - 1)
 		var = np.cumsum(var)
-		var = R**2 * var
+		with np.errstate(invalid='ignore'):
+			var = R**2 * var
 
-		R_u = R + z(sig) * np.sqrt(var)
-		R_l = R - z(sig) * np.sqrt(var)
+		R_u = R + t_stat * np.sqrt(var)
+		R_l = R - t_stat * np.sqrt(var)
 		out.cb_u = R_u
 		out.cb_l = R_l
 		
