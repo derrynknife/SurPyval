@@ -254,6 +254,9 @@ class NonParametric(object):
 	def __init__(self):
 		pass
 
+	def __str__(self):
+		# Used to automate print(NonParametric()) call
+		return "%s Reliability Model" % self.model
 	# TODO: This
 	def sf(self, x, how='step'):
 		x = np.atleast_1d(x)
@@ -318,6 +321,7 @@ class NonParametric(object):
 		data['n'] = n
 		out = cls()
 		out.data = data
+		out.model = how
 		if   how == 'Nelson-Aalen':
 			x_, r, d, R = nelson_aalen(x, c=c, n=n)
 		elif how == 'Kaplan-Meier':

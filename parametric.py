@@ -1,10 +1,10 @@
 import numpy as np
 from numpy import euler_gamma
-from .errors import InputError
+#from .errors import InputError
 from scipy.special import gamma
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
-from .nonparametric import plotting_positions
+#from .nonparametric import plotting_positions
 
 TINIEST = np.finfo(np.float64).tiny
 
@@ -136,7 +136,7 @@ class LFP_():
 		return self.dist.entropy(*self.params)
 
 	def _mle(self, x, c=None, n=None, 
-			 dist=dist, model=None):
+			 dist="Weibull", model=None):
 		init = [np.mean(x), 1.]
 		bounds = ((0, None), (0, None))
 		fun = lambda t : dist.neg_ll(x, t[0], t[1], c, n)
@@ -272,7 +272,7 @@ class Weibull_():
 		assert rr in ['x', 'y']
 		"""
 		PPM: Probability Plotting Method
-		This is the classif probability plotting paper method.
+		This is the classic probability plotting paper method.
 
 		This method creates the plotting points, transforms it to Weibull scale and then fits the line of best fit.
 
@@ -305,6 +305,7 @@ class Weibull_():
 		This is one of the simplest ways to calculate the parameters of a distribution.
 
 		This method is quick but only works with uncensored data.
+		# Can I add a simple sum(c) instead of length to work with censoring?
 		"""
 		if n is not None:
 			x = np.rep(x, n)
@@ -454,13 +455,13 @@ class Weibull3p_():
 	def moment(self, n, alhpa, beta, gamma):
 		return alpha**n * gamma(1 + n/beta) + gamma
 
-	def random(self, size, alpha, beta):
+	def random(self, size, alpha, beta, gamma):
 		U = np.random.uniform(size=size)
 		return self.qf(U, alpha, beta, gamma)
 
 	def neg_mean_D(self, x, alpha, beta, gamma, c=None, n=None):
 		idx = np.argsort(x)
-		F  = self.ff(x[idx], alpha, beta)
+		F  = self.ff(x[idx], alpha, beta, gamma)
 		D0 = F[0]
 		Dn = 1 - F[-1]
 		D = np.diff(F)
@@ -538,11 +539,11 @@ class Weibull3p_():
 		return alpha, beta, gamma
 
 	def _mps(self, x, c=None, n=None):
-		init = [np.mean(x), 1.]
-		bounds = ((0, None), (0, None))
-		fun = lambda t : self.neg_mean_D(x, t[0], t[1])
+		init = [np.mean(x), 1., np.min(x) - 1.]
+		bounds = ((0, None), (0, None), (None, np.min(x)))
+		fun = lambda t : self.neg_mean_D(x, t[0], t[1], t[2])
 		res = minimize(fun, init, bounds=bounds)
-		return res.x[0], res.x[1]
+		return res.x[0], res.x[1], res.x[2]
 
 	def _mle(self, x, c=None, n=None, model=None):
 		init = [np.mean(x), 1.]
@@ -620,7 +621,7 @@ class Weibull3p_():
 		elif how == 'MSE':
 			params = self._mse(x, c=c, n=n)
 		# Store params with redundancy...
-		model.alpha, model.beta  = params
+		model.alpha, model.beta, model.gamma  = params
 		model.params = params
 		return model
 
