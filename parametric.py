@@ -284,11 +284,12 @@ class Weibull_():
 		res = minimize(fun, init, bounds=bounds)
 		return res.x[0], res.x[1]
 
-	def _ppm(self, x, c=None, n=None,
+	def _mpp(self, x, c=None, n=None,
 			heuristic="Blom", rr='y'):
 		assert rr in ['x', 'y']
 		"""
-		PPM: Probability Plotting Method
+		MPP: Method of Probability Plotting
+		Yes, the order of this language was invented to keep MXX format consistent
 		This is the classic probability plotting paper method.
 
 		This method creates the plotting points, transforms it to Weibull scale and then fits the line of best fit.
@@ -356,7 +357,7 @@ class Weibull_():
 
 		This is the MLE, the king of parameter estimation.
 		"""
-		init = self.fit(x, c=c, n=n, how='MSE').params
+		init = self.fit(x, c=c, n=n, how='MPP').params
 		bounds = ((0, None), (0, None))
 		fun = lambda t : self.neg_ll(x, t[0], t[1], c, n)
 		jac = lambda t : self.jacobian(x, t[0], t[1], c, n)
@@ -425,14 +426,14 @@ class Weibull_():
 			if c is not None:
 				raise InputError('Method of moments doesn\'t support censoring')
 			params = self._mom(x, n=n)
-		elif how == 'PPM':
+		elif how == 'MPP':
 			if c is not None:
 				raise InputError('Method of moments doesn\'t support censoring')
 			if 'rr' in kwargs:
 				rr = kwargs['rr']
 			else:
 				rr = 'x'
-			params = self._lsm(x, rr=rr)
+			params = self._mpp(x, rr=rr)
 		elif how == 'MSE':
 			params = self._mse(x, c=c, n=n)
 		# Store params with redundancy...
@@ -538,7 +539,7 @@ class Weibull3p_():
 		res = minimize(fun, init, bounds=bounds)
 		return res.x[0], res.x[1], res.x[2]
 
-	def _lsm(self, x, c=None, n=None,
+	def _mpp(self, x, c=None, n=None,
 			heuristic="Blom", rr='y'):
 		assert rr in ['x', 'y']
 		"""
@@ -561,7 +562,7 @@ class Weibull3p_():
 			model = np.polyfit(y_, x_, 1)
 			beta  = 1./model[0]
 			alpha = np.exp(model[1] / (beta * model[0]))
-		return alpha, beta, gamma
+		return alpha, beta, 0
 
 	def _mps(self, x, c=None, n=None):
 		init = self.fit(x, c=c, n=n, how='MSE').params
@@ -630,14 +631,14 @@ class Weibull3p_():
 			if c is not None:
 				raise InputError('Method of moments doesn\'t support censoring')
 			params = self._mom(x, n=n)
-		elif how == 'LSM':
+		elif how == 'MPP':
 			if c is not None:
 				raise InputError('Method of moments doesn\'t support censoring')
 			if 'rr' in kwargs:
 				rr = kwargs['rr']
 			else:
 				rr = 'x'
-			params = self._lsm(x, rr=rr)
+			params = self._mpp(x, rr=rr)
 		elif how == 'MSE':
 			params = self._mse(x, c=c, n=n)
 		# Store params with redundancy...
