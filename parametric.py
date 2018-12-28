@@ -4,7 +4,10 @@ from numpy import euler_gamma
 from scipy.special import gamma
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
-#from .nonparametric import plotting_positions
+from nonparametric import plotting_positions
+from matplotlib import pyplot as plt
+
+import WeibullScale
 
 TINIEST = np.finfo(np.float64).tiny
 
@@ -42,6 +45,20 @@ class Parametric():
 
 	def entropy(self):
 		return self.dist.entropy(*self.params)
+
+	def plot(self):
+		plt.yscale('Weibull')
+		plt.xscale('log')
+		x, c, n = self.data['x'], self.data['c'], self.data['n']
+		idx = np.argsort(x)
+		x = x[idx]
+		if c is not None:
+			c = c[idx]
+		if n is not None:
+			n = n[idx]
+		F = plotting_positions(x, c=c, n=n)
+		x = np.unique(x)
+		return plt.scatter(x, F)
 
 	def cb(self, x, sig):
 		if self.method != 'MLE':
@@ -339,7 +356,7 @@ class Weibull_():
 
 		This is the MLE, the king of parameter estimation.
 		"""
-		init = [np.mean(x), 1.]
+		init = self.fit(x, c=c, n=n, how='MSE').params
 		bounds = ((0, None), (0, None))
 		fun = lambda t : self.neg_ll(x, t[0], t[1], c, n)
 		jac = lambda t : self.jacobian(x, t[0], t[1], c, n)
@@ -351,7 +368,7 @@ class Weibull_():
 			model.res = res
 		return res.x[0], res.x[1]
 
-	def jacobian(x, alpha, beta, c=None, n=None):
+	def jacobian(self, x, alpha, beta, c=None, n=None):
 		"""
 		The jacobian for a two parameter Weibull distribution.
 
@@ -397,7 +414,7 @@ class Weibull_():
 		model.dist = "Weibull"
 		model.dist = self
 		if   how == 'MLE':
-			params = self._mle(x, c, n, model=model)
+			params = self._mle(x, c=c, n=n, model=model)
 		elif how == 'MPS':
 			if c is not None:
 				raise InputError('Maximum product spacing doesn\'t support censoring')
@@ -457,15 +474,23 @@ class Weibull3p_():
 
 	def random(self, size, alpha, beta, gamma):
 		U = np.random.uniform(size=size)
-		return self.qf(U, alpha, beta, gamma)
+		return self.qf(U, alpha, beta, gamma)		
 
 	def neg_mean_D(self, x, alpha, beta, gamma, c=None, n=None):
+		#print(alpha, beta, gamma)
+		if gamma > np.min(x):
+			gamma = np.min(x) - TINIEST
 		idx = np.argsort(x)
 		F  = self.ff(x[idx], alpha, beta, gamma)
 		D0 = F[0]
 		Dn = 1 - F[-1]
 		D = np.diff(F)
 		D = np.concatenate([[D0], D, [Dn]])
+		if n is not None:
+			# For each point
+			D1 = np.repeat(D[0:-1], n[idx])
+			D2 = np.repeat(D[1::], n[idx])
+			D = np.concatenate([D1, D2])
 		if c is not None:
 			Dr = self.sf(x[c == 1],  alpha, beta, gamma)
 			Dl = self.ff(x[c == -1], alpha, beta, gamma)
@@ -475,21 +500,21 @@ class Weibull3p_():
 		M = -np.sum(M)/(M.shape[0])
 		return M
 
-	def neg_ll(self, x, alpha, beta, c=None, n=None):
+	def neg_ll(self, x, alpha, beta, gamma, c=None, n=None):
 		if n is None:
 		    n = np.ones_like(x)
 		    
 		if c is None:
-			like = n * self.df(x, alpha, beta)
+			like = n * self.df(x, alpha, beta, gamma)
 		
 		else:
 			l = c == -1
 			f = c ==  0
 			r = c ==  1
 
-			like_l = n[l] * self.ff(x[l], alpha, beta)
-			like_f = n[f] * self.df(x[f], alpha, beta)
-			like_r = n[r] * self.sf(x[r], alpha, beta)
+			like_l = n[l] * self.ff(x[l], alpha, beta, gamma)
+			like_f = n[f] * self.df(x[f], alpha, beta, gamma)
+			like_r = n[r] * self.sf(x[r], alpha, beta, gamma)
 			like = np.concatenate([like_l, like_f, like_r])
 			
 		like[like < TINIEST] = TINIEST
@@ -507,7 +532,7 @@ class Weibull3p_():
 		F = plotting_positions(x, c=c, n=n, heuristic=heuristic)
 		x = np.unique(x)
 
-		init = [np.mean(x), 1.]
+		init = [np.mean(x), 1., 0.]
 		bounds = ((0, None), (0, None), (None, np.min(x)))
 		fun = lambda t : np.sum(((self.ff(x, t[0], t[1], t[2])) - F)**2)
 		res = minimize(fun, init, bounds=bounds)
@@ -539,26 +564,23 @@ class Weibull3p_():
 		return alpha, beta, gamma
 
 	def _mps(self, x, c=None, n=None):
-		init = [np.mean(x), 1., np.min(x) - 1.]
+		init = self.fit(x, c=c, n=n, how='MSE').params
 		bounds = ((0, None), (0, None), (None, np.min(x)))
-		fun = lambda t : self.neg_mean_D(x, t[0], t[1], t[2])
+		fun = lambda t : self.neg_mean_D(x, t[0], t[1], t[2], c=c, n=n)
 		res = minimize(fun, init, bounds=bounds)
 		return res.x[0], res.x[1], res.x[2]
 
 	def _mle(self, x, c=None, n=None, model=None):
-		init = [np.mean(x), 1.]
-		bounds = ((0, None), (0, None))
-		fun = lambda t : self.neg_ll(x, t[0], t[1], c, n)
-		jac = lambda t : self.jacobian(x, t[0], t[1], c, n)
-		res = minimize(fun, 
-					   init,
-					   method='BFGS',
-					   jac=jac)
+		init = self.fit(x, c=c, n=n, how='MSE').params
+		bounds = ((0, None), (0, None), (None, np.min(x)))
+		fun = lambda t : self.neg_ll(x, t[0], t[1], t[2], c, n)
+		res = minimize(fun, init, bounds=bounds)
 		if model is not None:
 			model.res = res
-		return res.x[0], res.x[1]
+		return res.x[0], res.x[1], res.x[2]
 
-	def jacobian(x, alpha, beta, c=None, n=None):
+	def jacobian(self, x, alpha, beta, c=None, n=None):
+		# If by some chance I can solve this on paper...
 		if c is None:
 			c = np.zeros_like(x)
 
@@ -603,9 +625,7 @@ class Weibull3p_():
 		elif how == 'MPS':
 			if c is not None:
 				raise InputError('Maximum product spacing doesn\'t support censoring')
-			if n is not None:
-				raise InputError('Maximum product spacing doesn\'t support counts')
-			params = self._mps(x)
+			params = self._mps(x, c=c, n=n)
 		elif how == 'MOM':
 			if c is not None:
 				raise InputError('Method of moments doesn\'t support censoring')
