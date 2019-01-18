@@ -212,7 +212,7 @@ class Weibull_():
 		return alpha * (-np.log(1 - p))**(1/beta)
 
 	def mean(self, alpha, beta):
-		return alpha * gamma(1 + 1/beta)
+		return alpha * gamma(1 + 1./beta)
 
 	def moment(self, n, alhpa, beta):
 		return alpha**n * gamma(1 + n/beta)
@@ -285,7 +285,7 @@ class Weibull_():
 		return res.x[0], res.x[1]
 
 	def _mpp(self, x, c=None, n=None,
-			heuristic="Blom", rr='y'):
+			heuristic="Nelson-Aalen", rr='y'):
 		assert rr in ['x', 'y']
 		"""
 		MPP: Method of Probability Plotting
@@ -298,11 +298,11 @@ class Weibull_():
 		
 		Fits a Weibull model using cumulative probability from x values. 
 		"""
-		pp = plotting_positions(x, c=c, n=n,
+		x_, pp = plotting_positions(x, c=c, n=n,
 							    heuristic=heuristic)
 		
 		# Linearise
-		x_ = np.log(x)
+		x_ = np.log(x_)
 		y_ = np.log(np.log(1/(1 - pp)))
 
 		if   rr == 'y':
@@ -427,13 +427,14 @@ class Weibull_():
 				raise InputError('Method of moments doesn\'t support censoring')
 			params = self._mom(x, n=n)
 		elif how == 'MPP':
+			heuristic = 'Nelson-Aalen'
 			if c is not None:
-				raise InputError('Method of moments doesn\'t support censoring')
+				heuristic = 'Nelson-Aalen'
 			if 'rr' in kwargs:
 				rr = kwargs['rr']
 			else:
 				rr = 'x'
-			params = self._mpp(x, rr=rr)
+			params = self._mpp(x, n=n, c=c, rr=rr, heuristic=heuristic)
 		elif how == 'MSE':
 			params = self._mse(x, c=c, n=n)
 		# Store params with redundancy...
@@ -489,9 +490,7 @@ class Weibull3p_():
 		D = np.concatenate([[D0], D, [Dn]])
 		if n is not None:
 			# For each point
-			D1 = np.repeat(D[0:-1], n[idx])
-			D2 = np.repeat(D[1::], n[idx])
-			D = np.concatenate([D1, D2])
+			D = np.repeat(D[0:-1], n[idx])
 		if c is not None:
 			Dr = self.sf(x[c == 1],  alpha, beta, gamma)
 			Dl = self.ff(x[c == -1], alpha, beta, gamma)
@@ -572,7 +571,7 @@ class Weibull3p_():
 		return res.x[0], res.x[1], res.x[2]
 
 	def _mle(self, x, c=None, n=None, model=None):
-		init = self.fit(x, c=c, n=n, how='MSE').params
+		init = self.fit(x, c=c, n=n, how='MPP').params
 		bounds = ((0, None), (0, None), (None, np.min(x)))
 		fun = lambda t : self.neg_ll(x, t[0], t[1], t[2], c, n)
 		res = minimize(fun, init, bounds=bounds)

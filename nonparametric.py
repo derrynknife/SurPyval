@@ -63,18 +63,17 @@ def plotting_positions(x,
 	if heuristic == 'Filiben':
 		return filiben(x, ranks)
 	elif heuristic == 'Nelson-Aalen':
-		x_, r, d = get_x_r_d(x, c, n)
-		F = 1 - np.exp(-np.cumsum(d/r))
-		return F[d != 0]
+		x_, r, d, R = nelson_aalen(x, c, n)
+		F = 1 - R
+		return x_, F
 	elif heuristic == 'Kaplan-Meier':
-		x_, r, d = get_x_r_d(x, c, n)
-		F = 1 - np.cumprod(1 - d/r)
-		return F[d != 0]
+		x_, r, d, R = kaplan_meier(x, c, n)
+		F = 1 - R
+		return x_, F
 	elif heuristic == 'Fleming-Harrington':
-		x_, r, d = get_x_r_d(x, c, n)
-		h = [np.sum([1./(r[i]-j) for j in np.arange(d[i])]) for i in np.arange(len(x_))]
-		F = 1 - np.exp(-np.cumsum(np.array(h)))
-		return F[d != 0]
+		x_, r, d, R = fleming_harrington(x, c, n)
+		F = 1 - R
+		return x_, F
 	elif ((A is None) & (B is None)):
 		if   heuristic == "Blom":       A, B = 0.375, 0.25
 		elif heuristic == "Median":     A, B = 0.3, 0.4
@@ -98,9 +97,8 @@ def ecdf(x, c=None, n=None):
 	"""
 	Returns the ECDF of the data.
 	"""
+	x, r, d = get_x_r_d(x, c=c, n=n)
 	R = 1 - plotting_positions(x, c=c, n=n, heuristic="ECDF")
-	H = -np.log(R)
-	h = np.diff(H)
 	return x, r, d, R
 
 def filiben(x, ranks):
@@ -178,21 +176,32 @@ def success_run(n, confidence=0.95, alpha=None):
     if alpha is None: alpha = 1 - confidence
     return np.power(alpha, 1./n)
 
-def get_x_r_d(x, c=None, n=None):
-    x_ = x.copy()
-    if c is None:
-        c = np.zeros_like(x_)
+def get_x_r_d(t, c=None, n=None):
+    x = t.copy()
+    # Handle censoring
+    if c is None: c = np.zeros_like(x).astype(np.int64)
+    else: c.astype(np.int64, casting='safe')
+    assert c.shape == t.shape
+    assert not ((c != 1) & (c != 0)).any()
+    
+    # Handle counts
     if n is not None:
-        x_ = np.repeat(x_, n)
+        n = n.astype(np.int64, casting='safe')
+        x = np.repeat(x, n)
         c = np.repeat(c, n)
     else:
-        n = np.ones_like(x_)
-    x_, idx = np.unique(x_, return_inverse=True)
+        n = np.ones_like(x).astype(np.int64)
+    assert n.shape == t.shape
+
+    x, idx = np.unique(x, return_inverse=True)
+    
     d = np.bincount(idx, weights=1 - c)
-    r = n.sum() - d.cumsum() + d
-    r = r.astype(np.int)
-    d = d.astype(np.int)
-    return x_, r, d
+    # do is drop outs
+    do = np.bincount(idx, weights=c)
+    r = n.sum() + d - d.cumsum() + do - do.cumsum()
+    r = r.astype(np.int64)
+    d = d.astype(np.int64)
+    return x, r, d
 
 def rank_adjust(t, censored=None):
 	"""

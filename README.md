@@ -7,6 +7,9 @@ The surpyval package provides methods to create models of survival type scenario
 
 These modes are broken into:
 - [NonParametric](NonParametric.ipynb), and
-- Parametric.
+- [Parametric](Parametric.ipynb).
 
+The question is why is this package needed when we already have scipy?
+
+Two reasons, firstly, scipy doesn't deal with 'censoring' very well (so far as I know). And secondy, perhaps the larger driving reason, is that I wanted to see if I could make a python package.
 
