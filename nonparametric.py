@@ -41,7 +41,6 @@ def plotting_positions(x,
 					   B = None,
 					   return_x=False):
 	"""
-	This is really a parametric function....
 	Plotting positions should really only be used when estimating parameters
 
     Numbers from "Effect of Ranking Selection on the Weibull Modulus Estimation"
@@ -192,6 +191,7 @@ def get_x_r_d(t, c=None, n=None):
     else:
         n = np.ones_like(x).astype(np.int64)
     assert n.shape == t.shape
+    assert (n > 0).all()
 
     x, idx = np.unique(x, return_inverse=True)
     
