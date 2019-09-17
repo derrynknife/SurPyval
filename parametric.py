@@ -5,7 +5,10 @@ from scipy.special import gamma
 from scipy.special import factorial
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
-import SurPyval.nonparametric as nonp
+try: 
+	import SurPyval.nonparametric as nonp
+except:
+	import nonparametric as nonp
 
 
 #import WeibullScale
@@ -344,7 +347,10 @@ class Weibull_():
 
 		This is the MLE, the king of parameter estimation.
 		"""
-		init = self._mpp(x, c=c, n=n, on_d_is_0=True)
+
+		gumb = Gumbel.fit(np.log(x), c, n, how='MLE')
+		mu, sigma = gumb.params
+		init = np.exp(mu), 1 / sigma
 		bounds = ((0, None), (0, None))
 		fun = lambda t : self.neg_ll(x, t[0], t[1], c, n)
 		jac = lambda t : self.jacobian(x, t[0], t[1], c, n)
@@ -496,9 +502,9 @@ class Gumbel_():
 			f = c ==  0
 			r = c ==  1
 
-			like_l = n[l] * self.ff(x[l], alpha, beta)
-			like_f = n[f] * self.df(x[f], alpha, beta)
-			like_r = n[r] * self.sf(x[r], alpha, beta)
+			like_l = n[l] * self.ff(x[l], mu, sigma)
+			like_f = n[f] * self.df(x[f], mu, sigma)
+			like_r = n[r] * self.sf(x[r], mu, sigma)
 			like = np.concatenate([like_l, like_f, like_r])
 			
 		like[like < TINIEST] = TINIEST
@@ -547,18 +553,18 @@ class Gumbel_():
 			F = F[d > 0]
 
 		# Linearise
-		x_ = np.log(x_)
-		y_ = np.log(np.log(1/(1 - F)))
+		x_ = x_
+		y_ = np.log(-np.log(1 - F))
 
 		if   rr == 'y':
 			model = np.polyfit(x_, y_, 1)
-			beta  = model[0]
-			alpha = np.exp(model[1]/-beta)
+			sigma = 1/model[0]
+			mu    = -sigma * model[1]
 		elif rr == 'x':
 			model = np.polyfit(y_, x_, 1)
-			beta  = 1./model[0]
-			alpha = np.exp(model[1] / (beta * model[0]))
-		return alpha, beta
+			sigma  = 1./model[0]
+			mu = np.exp(model[1] / (beta * model[0]))
+		return mu, sigma
 
 	#TODO: add MSE
 	def _mom(self, x, n=None):
@@ -602,52 +608,20 @@ class Gumbel_():
 
 		This is the MLE, the king of parameter estimation.
 		"""
-		init = self._mpp(x, c=c, n=n, on_d_is_0=True)
-		bounds = ((0, None), (0, None))
-		fun = lambda t : self.neg_ll(x, t[0], t[1], c, n)
-		jac = lambda t : self.jacobian(x, t[0], t[1], c, n)
-		res = minimize(fun, 
-					   init,
-					   method='BFGS',
-					   jac=jac)
-		if model is not None:
-			model.res = res
-		return res.x[0], res.x[1]
-
-	def jacobian(self, x, mu, sigma, c=None, n=None):
-		"""
-		The jacobian for a two parameter Weibull distribution.
-
-		Please report mistakes if found!
-		"""
+		if n is None:
+			n = np.ones_like(x)
 		if c is None:
 			c = np.zeros_like(x)
 
-		if n is None:
-			n = np.ones_like(x)
-		
-		f = c == 0
-		l = c == -1
-		r = c == 1
-		dll_dbeta = (
-			1./beta * np.sum(n[f]) +
-			np.sum(n[f] * np.log(x[f]/alpha)) - 
-			np.sum(n[f] * (x[f]/alpha)**beta * np.log(x[f]/alpha)) - 
-			np.sum(n[r] * (x[r]/alpha)**beta * np.log(x[r]/alpha)) +
-			np.sum(n[l] * (x[l]/alpha)**beta * np.log(x[l]/alpha) *
-				np.exp(-(x[l]/alpha)**beta) / 
-				(1 - np.exp(-(x[l]/alpha)**beta)))
-		)
+		#init = self._mpp(x, c=c, n=n, on_d_is_0=True)
+		init = np.mean(x), 1
+		bounds = ((None, None), (0, None))
+		fun = lambda t : self.neg_ll(x, t[0], t[1], c, n)
+		res = minimize(fun, init)
 
-		dll_dalpha = ( 0 -
-			beta/alpha * np.sum(n[f]) +
-			beta/alpha * np.sum(n[f] * (x[f]/alpha)**beta) +
-			beta/alpha * np.sum(n[r] * (x[r]/alpha)**beta) -
-			beta/alpha * np.sum(n[l] * (x[l]/alpha)**beta * 
-				np.exp(-(x[l]/alpha)**beta) /
-				(1 - np.exp(-(x[l]/alpha)**beta)))
-		)
-		return -np.array([dll_dalpha, dll_dbeta])
+		if model is not None:
+			model.res = res
+		return res.x[0], res.x[1]
 
 	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
 		model = Parametric()
@@ -680,7 +654,7 @@ class Gumbel_():
 			if 'rr' in kwargs:
 				rr = kwargs['rr']
 			else:
-				rr = 'x'
+				rr = 'y'
 			params = self._mpp(x, n=n, c=c, rr=rr, heuristic=heuristic)
 		elif how == 'MSE':
 			params = self._mse(x, c=c, n=n)
@@ -1070,7 +1044,6 @@ class Weibull3p_():
 		res_a = minimize(fun, 
 					   init,
 					   method='Nelder-Mead')
-		logging.info('MLE result (a) success?: ' + str(res_a.success))
 		if res_a.success:
 			init = res_a.x
 		res_b = minimize(fun, 
@@ -1079,7 +1052,6 @@ class Weibull3p_():
 					     jac=jac,
 					     bounds=bounds,
 					     tol=1e-10)
-		logging.info('MLE result (b) success?: ' + str(res_b.success))
 		if res_a.success:
 			res = res_a
 		else:
