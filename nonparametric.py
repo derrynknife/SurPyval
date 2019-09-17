@@ -1,7 +1,11 @@
 import numpy as np
+import pandas as pd
+
+from scipy.stats import t
 from scipy.stats import rankdata
 from scipy.special import ndtri as z
-from scipy.stats import t
+
+NUM = np.float128
 
 PLOTTING_METHODS = [ "Blom", "Median", "ECDF", "Modal", "Midpoint", 
 "Mean", "Weibull", "Benard", "Beard", "Hazen", "Gringorten", 
@@ -29,90 +33,112 @@ event happened on the timeline.
 
 - Censoring vectors. Pass repeat x's not censoring counts.
 - Count doesn't assume unique x, it assumes repeats of censoring possible
-
-TODO: implement a return_x where repeated values are returned.
 """
 
-def plotting_positions(x, 
-					   c = None, 
-					   n = None, 
-					   heuristic = "Blom",
-					   A = None,
-					   B = None,
-					   return_x=False):
-	"""
-	Plotting positions should really only be used when estimating parameters
+def plotting_positions(x, c=None, n=None, heuristic="Blom", A=None, B=None):
+    # Need some error catching on the A and B thing
 
-    Numbers from "Effect of Ranking Selection on the Weibull Modulus Estimation"
-    Authors: Kirtay, S; Dispinar, D.
-    From: Gazi University Journal of Science 25(1):175-187, 2012.
+    if n is None:
+        n = np.ones_like(x).astype(np.int64)
 
-    Also see:
-    https://en.wikipedia.org/wiki/Q-Q_plot
+    if c is None:
+        c = np.zeros_like(x).astype(np.int64)
 
-    for a good summary of points
-    TODO: censoring for ranking methods - i.e. rank adjust
-    TODO: Add Turnbull
+    assert x.ndim == 1
+    assert (x.ndim == c.ndim) & (x.ndim == n.ndim)
+    assert (x.size == n.size) & (x.size == c.size)
+
+    N = n.sum()
+
+    # Some repeated models with different names (for readability...)
+
+    if heuristic == 'Filliben':
+        # Needs work
+        x_, r, d, R = filliben(x, c=c, n=n)
+        F = 1 - R 
+        return x_, r, d, F
+    elif heuristic == 'Nelson-Aalen':
+        x_, r, d, R = nelson_aalen(x, c, n)
+        F = 1 - R
+        return x_, r, d, F
+    elif heuristic == 'Kaplan-Meier':
+        x_, r, d, R = kaplan_meier(x, c, n)
+        F = 1 - R
+        return x_, r, d, F
+    elif heuristic == 'Fleming-Harrington':
+        x_, r, d, R = fleming_harrington(x, c, n)
+        F = 1 - R
+        return x_, r, d, F
+    else:
+        # Reformat for plotting point style
+        x_ = np.repeat(x, n)
+        c = np.repeat(c, n)
+        n = np.ones_like(x_)
+
+        idx = np.argsort(c, kind='stable')
+        x_ = x_[idx]
+        c  = c[idx]
+
+        idx2 = np.argsort(x_, kind='stable')
+        x_ = x_[idx2]
+        c  = c[idx2]
+
+        ranks = rank_adjust(x_, c=c)
+        d = 1 - c
+        r = np.linspace(N, 1, num=N)
+
+        if   heuristic == "Blom":       A, B = 0.375, 0.25
+        elif heuristic == "Median":     A, B = 0.3, 0.4
+        elif heuristic == "ECDF":       A, B = 0, 1
+        elif heuristic == "Modal":      A, B = 1.0, -1.0
+        elif heuristic == "Midpoint":   A, B = 0.5, 0.0
+        elif heuristic == "Mean":       A, B = 0.0, 1.0
+        elif heuristic == "Weibull":    A, B = 0.0, 1.0
+        elif heuristic == "Benard":     A, B = 0.3, 0.2
+        elif heuristic == "Beard":      A, B = 0.31, 0.38
+        elif heuristic == "Hazen":      A, B = 0.5, 0.0
+        elif heuristic == "Gringorten": A, B = 0.44, 0.12
+        elif heuristic == "None":       A, B = 0.0, 0.0
+        elif heuristic == "Tukey":      A, B = 1./3., 1./3.
+        elif heuristic == "DPW":        A, B = 1.0, 0.0
+        F = (ranks - A)/(N + B)
+        F = pd.Series(F).ffill().fillna(0).values
+        return x_, r, d, F
+def filliben(x, c=None, n=None):
     """
-	ranks = rankdata(x, method='ordinal')
-	N = len(ranks)
+    Method From:
+    Filliben, J. J. (February 1975), 
+    "The Probability Plot Correlation Coefficient Test for Normality", 
+    Technometrics, American Society for Quality, 17 (1): 111-117
+    """
+    if n is None:
+        n = np.ones_like(x)
 
-	# Some repeated models with different names (for readability)
+    if c is None:
+        c = np.zeros_like(x)
+        
+    x_ = np.repeat(x, n)
+    c = np.repeat(c, n)
+    n = np.ones_like(x_)
 
-	if heuristic == 'Filiben':
-		return filiben(x, ranks)
-	elif heuristic == 'Nelson-Aalen':
-		x_, r, d, R = nelson_aalen(x, c, n)
-		F = 1 - R
-		return x_, F
-	elif heuristic == 'Kaplan-Meier':
-		x_, r, d, R = kaplan_meier(x, c, n)
-		F = 1 - R
-		return x_, F
-	elif heuristic == 'Fleming-Harrington':
-		x_, r, d, R = fleming_harrington(x, c, n)
-		F = 1 - R
-		return x_, F
-	elif ((A is None) & (B is None)):
-		if   heuristic == "Blom":       A, B = 0.375, 0.25
-		elif heuristic == "Median":     A, B = 0.3, 0.4
-		elif heuristic == "ECDF":       A, B = 0, 1
-		elif heuristic == "Modal":      A, B = 1.0, -1.0
-		elif heuristic == "Midpoint":   A, B = 0.5, 0.0
-		elif heuristic == "Mean":       A, B = 0.0, 1.0
-		elif heuristic == "Weibull":    A, B = 0.0, 1.0
-		elif heuristic == "Benard":     A, B = 0.3, 0.2
-		elif heuristic == "Beard":      A, B = 0.31, 0.38
-		elif heuristic == "Hazen":      A, B = 0.5, 0.0
-		elif heuristic == "Gringorten": A, B = 0.44, 0.12
-		elif heuristic == "None":       A, B = 0.0, 0.0
-		elif heuristic == "Tukey":      A, B = 1./3., 1./3.
-		elif heuristic == "DPW":        A, B = 1.0, 0.0
-		return (ranks - A)/(N + B)
-	else:
-		return None
+    idx = np.argsort(c, kind='stable')
+    x_ = x_[idx]
+    c  = c[idx]
 
-def ecdf(x, c=None, n=None):
-	"""
-	Returns the ECDF of the data.
-	"""
-	x, r, d = get_x_r_d(x, c=c, n=n)
-	R = 1 - plotting_positions(x, c=c, n=n, heuristic="ECDF")
-	return x, r, d, R
-
-def filiben(x, ranks):
-	"""
-	Method From:
-	Filliben, J. J. (February 1975), 
-	"The Probability Plot Correlation Coefficient Test for Normality", 
-	Technometrics, American Society for Quality, 17 (1): 111-117
-	"""
-	N = len(x)
-	out     = (ranks - 0.3175) / (N + 0.365)
-	out[0]  = 1 - (0.5 ** (1./N))
-	out[-1] = 0.5 ** (1./N)
-	return out
-
+    idx2 = np.argsort(x_, kind='stable')
+    x_ = x_[idx2]
+    c  = c[idx2]
+    N = len(x_)
+    
+    ranks = rank_adjust(x_, c)
+    d = 1 - c
+    r = np.linspace(N, 1, num=N)
+    
+    F     = (ranks - 0.3175) / (N + 0.365)
+    F[0]  = 1 - (0.5 ** (1./N))
+    F[-1] = 0.5 ** (1./N)
+    R = 1 - F
+    return x, r, d, R
 def nelson_aalen(x, c=None, n=None):
 	"""
 	Nelson-Aalen estimation of Reliability function
@@ -137,7 +163,6 @@ def nelson_aalen(x, c=None, n=None):
 	H = np.cumsum(h)
 	R = np.exp(-H)
 	return x, r, d, R
-
 def fleming_harrington(x, c=None, n=None):
 	"""
 	Fleming Harrington estimation of Reliability function
@@ -158,7 +183,6 @@ def fleming_harrington(x, c=None, n=None):
 	H = np.cumsum(h)
 	R = np.exp(-H)
 	return x, r, d, R
-
 def kaplan_meier(x, c=None, n=None):
 	"""
 	Kaplan-Meier estimate of survival
@@ -170,11 +194,9 @@ def kaplan_meier(x, c=None, n=None):
 	
 	R = np.cumprod(1 - d/r)
 	return x, r, d, R
-
 def success_run(n, confidence=0.95, alpha=None):
     if alpha is None: alpha = 1 - confidence
     return np.power(alpha, 1./n)
-
 def get_x_r_d(t, c=None, n=None):
     x = t.copy()
     # Handle censoring
@@ -202,8 +224,19 @@ def get_x_r_d(t, c=None, n=None):
     r = r.astype(np.int64)
     d = d.astype(np.int64)
     return x, r, d
-
-def rank_adjust(t, censored=None):
+def xrd_to_tcn(x, r, d):
+	"""
+	Converts the x, r, d format to the t, c, n format
+	"""
+	df = pd.DataFrame({'x' : x, 'r' : r, 'd' : d})
+	df['sus'] = (np.abs((df['r'].diff().shift(-1).fillna(df['r'].iloc[-1] - df['d'].iloc[-1]) + df['d']))).astype(np.int64)
+	df_tcn = pd.melt(df, id_vars=['x'], value_vars=['d', 'sus']).replace(0, np.nan).dropna().sort_values('x')
+	df_tcn = df_tcn.replace('d', 0).replace('sus', 1)
+	c = df_tcn['variable'].astype(np.int64).values
+	t = df_tcn['x'].astype(NUM).values
+	n = df_tcn['value'].astype(np.int64).values
+	return t, c, n
+def rank_adjust(t, c=None):
 	"""
 	Currently limited to only Mean Order Number
 	Room to expand to:
@@ -216,38 +249,34 @@ def rank_adjust(t, censored=None):
 	This function currently assumes good input - Use if you know how
 	15 Mar 2015
 	"""
-	idx = np.argsort(t)
-	t = t[idx]
-	censored = censored[idx]
-
 	# Total items in test/population
-	n = len(t)
+	N = len(t)
 	# Preallocate adjusted ranks array
-	ranks = np.zeros(n)
+	ranks = np.zeros(N)
 
-	if censored is None:
-	    censored = np.zeros(n)
+	if c is None:
+	    c = np.zeros(N)
 
-	# Rank increment for [right] censored data
-	# Previous Mean Order Number
+	# Rank adjustment for [right] censored data
+	# PMON - "Previous Mean Order Number"
+	# NIPBSS - "Number of Items Before Present Suspended Set"
 	PMON = 0
-
-	# Implemented in loop:
-	# "Number of Items Before Present Suspended Set"
-	# NIBPSS = n - (i - 1)
-	# Denominator of rank increment = 1 + NIBPSS = n - i + 2
-	for i in range(0, n):
-	    if censored[i] == 0:
-	        ranks[i] = PMON + (n + 1 - PMON)/(n - i + 2)
+	for i in range(0, N):
+	    if c[i] == 0:
+	        NIBPSS = N - i
+	        ranks[i] = PMON + (N + 1 - PMON)/(1 + NIBPSS)
 	        PMON = ranks[i]
-	    else:
+	    elif c[i] == 1:
 	        ranks[i] = np.nan
+	    else:
+	        # ERROR
+	        pass
 	# Return adjusted ranks
 	return ranks
 
 class NonParametric(object):
 	"""
-	Class to capture all data and meta data on non-parametric sur(py)vival model
+	Class to capture all data and meta data on non-parametric sur(py)val model
 
 	Needs to have:
 	f = None - or empirical
@@ -337,8 +366,6 @@ class NonParametric(object):
 			x_, r, d, R = kaplan_meier(x, c=c, n=n)
 		elif how == 'Fleming-Harrington':
 			x_, r, d, R = fleming_harrington(x, c=c, n=n)
-		elif how == 'ECDF':
-			x_, r, d, R = ecdf(x, c=c, n=n)
 
 		out.x = x_
 		out.max_x = np.max(out.x)

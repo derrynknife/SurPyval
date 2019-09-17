@@ -32,7 +32,7 @@ class WeibullScale(mscale.ScaleBase):
         upper: The probability above which to crop the data.
         lower: The probability below which to crop the data.
         """
-        mscale.ScaleBase.__init__(self)
+        mscale.ScaleBase.__init__(self, axis)
         # TODO: Put some smarts into this so the lower scale isn't always far below the data.
         upper = kwargs.pop("upper", 0.999999) 
         lower = kwargs.pop("lower", 1e-5)
