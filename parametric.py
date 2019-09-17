@@ -5,7 +5,7 @@ from scipy.special import gamma
 from scipy.special import factorial
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
-import SurPyval.nonparametric as nonp
+import .nonparametric as nonp
 
 import matplotlib.pyplot as plt
 
