@@ -7,8 +7,6 @@ from scipy.optimize import minimize
 from scipy.special import ndtri as z
 import SurPyval.nonparametric as nonp
 
-import matplotlib.pyplot as plt
-
 
 #import WeibullScale
 
@@ -49,21 +47,6 @@ class Parametric():
 
 	def entropy(self):
 		return self.dist.entropy(*self.params)
-
-	def plot(self):
-
-		x, c, n = self.data['x'], self.data['c'], self.data['n']
-		idx = np.argsort(x)
-		x = x[idx]
-		if c is not None:
-			c = c[idx]
-		if n is not None:
-			n = n[idx]
-		x, r, d, F = nonp.plotting_positions(x, c=c, n=n)
-		out = plt.scatter(x, F)
-		out = plt.yscale('Weibull')
-		out = plt.xscale('log')
-		return out
 
 	def cb(self, x, sig):
 		if self.method != 'MLE':
