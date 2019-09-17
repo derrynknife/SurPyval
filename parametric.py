@@ -861,17 +861,11 @@ class Exponential_():
 
 		This is the MLE, the king of parameter estimation.
 		"""
-		init = self._mpp(x, c=c, n=n, on_d_is_0=True)
-		bounds = ((0, None))
-		fun = lambda t : self.neg_ll(x, t[0], c, n)
-		jac = lambda t : self.jacobian(x, t[0], c, n)
-		res = minimize(fun, 
-					   init,
-					   method='BFGS',
-					   jac=jac)
-		if model is not None:
-			model.res = res
-		return res.x
+		if n is None:
+		    n = np.ones_like(x)
+
+		res = x.sum() / n.sum()
+		return [res]
 
 	def jacobian(self, x, failure_rate, c=None, n=None):
 		"""
