@@ -864,7 +864,7 @@ class Exponential_():
 		if n is None:
 		    n = np.ones_like(x)
 
-		res = x.sum() / n.sum()
+		res = n.sum() / x.sum()
 		return [res]
 
 	def jacobian(self, x, failure_rate, c=None, n=None):
