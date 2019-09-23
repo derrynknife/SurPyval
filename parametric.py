@@ -5,6 +5,8 @@ from scipy.special import gamma
 from scipy.special import factorial
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
+from scipy.stats import norm
+from scipy.stats import lognorm
 try: 
 	import SurPyval.nonparametric as nonp
 except:
@@ -476,14 +478,14 @@ class Gumbel_():
 
 	def neg_mean_D(self, x, mu, sigma, c=None, n=None):
 		idx = np.argsort(x)
-		F  = self.ff(x[idx], alpha, beta)
+		F  = self.ff(x[idx], mu, sigma)
 		D0 = F[0]
 		Dn = 1 - F[-1]
 		D = np.diff(F)
 		D = np.concatenate([[D0], D, [Dn]])
 		if c is not None:
-			Dr = self.sf(x[c == 1],  alpha, beta)
-			Dl = self.ff(x[c == -1], alpha, beta)
+			Dr = self.sf(x[c == 1],  mu, sigma)
+			Dl = self.ff(x[c == -1], mu, sigma)
 			D = np.concatenate([Dl, D, Dr])
 		D[D < TINIEST] = TINIEST
 		M = np.log(D)
@@ -495,7 +497,7 @@ class Gumbel_():
 		    n = np.ones_like(x)
 		    
 		if c is None:
-			like = n * self.df(x, alpha, beta)
+			like = n * self.df(x, mu, sigma)
 		
 		else:
 			l = c == -1
@@ -631,7 +633,7 @@ class Gumbel_():
 			'c' : c,
 			'n' : n
 		}
-		model.dist = "Weibull"
+		model.dist = "Gumbel"
 		model.dist = self
 		if   how == 'MLE':
 			# Maximum Likelihood
@@ -659,7 +661,7 @@ class Gumbel_():
 		elif how == 'MSE':
 			params = self._mse(x, c=c, n=n)
 		# Store params with redundancy...
-		model.alpha, model.beta  = params
+		model.mu, model.sigma  = params
 		model.params = params
 		return model
 class Exponential_():
@@ -1130,7 +1132,450 @@ class Weibull3p_():
 		model.alpha, model.beta, model.gamma  = params
 		model.params = params
 		return model
+class Normal_():
+	"""
+	class for the generic weibull distribution.
 
+	Can be used to create 
+
+	"""
+	def __init__(self, name):
+		self.name = name
+
+	def sf(self, x, mu, sigma):
+		return norm.sf(x, mu, sigma)
+
+	def ff(self, x, mu, sigma):
+		return norm.cdf(x, mu, sigma)
+
+	def df(self, x, mu, sigma):
+		return norm.pdf(x, mu, sigma)
+
+	def hf(self, x, mu, sigma):
+		return norm.pdf(x, mu, sigma) / self.sf(x, mu, sigma)
+
+	def Hf(self, x, mu, sigma):
+		return -np.log(norm.sf(x, mu, sigma))
+
+	def qf(self, p, mu, sigma):
+		return norm.ppf(p, mu, sigma)
+
+	def mean(self, mu, sigma):
+		return mu
+
+	def random(self, size, mu, sigma):
+		return norm.rvs(mu, sigma, size)
+
+	def neg_mean_D(self, x, mu, sigma, c=None, n=None):
+		idx = np.argsort(x)
+		F  = self.ff(x[idx], mu, sigma)
+		D0 = F[0]
+		Dn = 1 - F[-1]
+		D = np.diff(F)
+		D = np.concatenate([[D0], D, [Dn]])
+		if c is not None:
+			Dr = self.sf(x[c == 1],  mu, sigma)
+			Dl = self.ff(x[c == -1], mu, sigma)
+			D = np.concatenate([Dl, D, Dr])
+		D[D < TINIEST] = TINIEST
+		M = np.log(D)
+		M = -np.sum(M)/(M.shape[0])
+		return M
+
+	def neg_ll(self, x, mu, sigma, c=None, n=None):
+		if n is None:
+		    n = np.ones_like(x)
+		    
+		if c is None:
+			like = n * self.df(x, mu, sigma)
+		
+		else:
+			l = c == -1
+			f = c ==  0
+			r = c ==  1
+
+			like_l = n[l] * self.ff(x[l], mu, sigma)
+			like_f = n[f] * self.df(x[f], mu, sigma)
+			like_r = n[r] * self.sf(x[r], mu, sigma)
+			like = np.concatenate([like_l, like_f, like_r])
+			
+		like[like < TINIEST] = TINIEST
+
+		return -np.sum(np.log(like))
+
+	def _mse(self, x, c=None, n=None,
+			heuristic='Nelson-Aalen'):
+		"""
+		MSE: Mean Square Error
+		This is simply fitting the curve to the best estimate from a non-parametric estimate.
+
+		This is slightly different in that it fits it to untransformed data.
+		The transformation is how the "Probability Plotting Method" works.
+
+		Fit a two parameter Weibull distribution from data
+		
+		Fits a Weibull model to pp points 
+		"""
+
+		x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+
+		init = [np.mean(x), np.std(x)]
+		bounds = ((None, None), (None, None))
+		fun = lambda t : np.sum(((self.ff(x, t[0], t[1])) - F)**2)
+		res = minimize(fun, init, bounds=bounds)
+		return res.x[0], res.x[1]
+
+	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
+		assert rr in ['x', 'y']
+		"""
+		MPP: Method of Probability Plotting
+		Yes, the order of this language was invented to keep MXX format consistent
+		This is the classic probability plotting paper method.
+
+		This method creates the plotting points, transforms it to Weibull scale and then fits the line of best fit.
+
+		Fit a two parameter Weibull distribution from data.
+		
+		Fits a Weibull model using cumulative probability from x values. 
+		"""
+		x_, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+		
+		if not on_d_is_0:
+			x_ = x_[d > 0]
+			F = F[d > 0]
+
+		# Linearise
+		x_ = x_
+		y_ = np.log(-np.log(1 - F))
+
+		if   rr == 'y':
+			model = np.polyfit(x_, y_, 1)
+			sigma = 1/model[0]
+			mu    = -sigma * model[1]
+		elif rr == 'x':
+			model = np.polyfit(y_, x_, 1)
+			sigma  = 1./model[0]
+			mu = np.exp(model[1] / (beta * model[0]))
+		return mu, sigma
+
+	#TODO: add MSE
+	def _mom(self, x, n=None):
+		"""
+		MOM: Method of Moments.
+
+		This is one of the simplest ways to calculate the parameters of a distribution.
+
+		This method is quick but only works with uncensored data.
+		# Can I add a simple sum(c) instead of length to work with censoring?
+		"""
+		if n is not None:
+			x = np.rep(x, n)
+		m1 = np.sum(x) / len(x)
+		m2 = np.sum(x**2) / len(x)
+		fun = lambda t : ((m1**2/m2) - (gamma(1 + 1./t)**2/gamma(1 + 2./t)))**2
+		res = minimize(fun, 1, bounds=((0, None),))
+		beta = res.x[0]
+		alpha = m1 / gamma(1 + 1./beta)
+		return mu, sigma
+
+	def _mps(self, x, c=None, n=None):
+		"""
+		MPS: Maximum Product Spacing
+
+		This is the method to get the largest (geometric) average distance between all points
+
+		This method works really well when all points are unique. Some complication comes in when using repeated data.
+
+		This method is exceptional for when using three parameter distributions.
+		"""
+		init = [np.mean(x), 1.]
+		bounds = ((0, None), (0, None))
+		fun = lambda t : self.neg_mean_D(x, t[0], t[1])
+		res = minimize(fun, init, bounds=bounds)
+		return res.x[0], res.x[1]
+
+	def _mle(self, x, c=None, n=None, model=None):
+		"""
+		MLE: Maximum Likelihood estimate
+
+		This is the MLE, the king of parameter estimation.
+		"""
+		if n is None:
+			n = np.ones_like(x)
+		if c is None:
+			c = np.zeros_like(x)
+
+		#init = self._mpp(x, c=c, n=n, on_d_is_0=True)
+		init = np.mean(x), np.std(x)
+		bounds = ((None, None), (0, None))
+		fun = lambda t : self.neg_ll(x, t[0], t[1], c, n)
+		res = minimize(fun, init)
+
+		if model is not None:
+			model.res = res
+		return res.x[0], res.x[1]
+
+	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
+		model = Parametric()
+		model.method = how
+		model.data = {
+			'x' : x,
+			'c' : c,
+			'n' : n
+		}
+		model.dist = "Normal"
+		model.dist = self
+		if   how == 'MLE':
+			# Maximum Likelihood
+			params = self._mle(x, c=c, n=n, model=model)
+		elif how == 'MPS':
+			# Maximum Product Spacing
+			if c is not None:
+				raise InputError('Maximum product spacing doesn\'t support censoring')
+			if n is not None:
+				raise InputError('Maximum product spacing doesn\'t support counts')
+			params = self._mps(x)
+		elif how == 'MOM':
+			if c is not None:
+				raise InputError('Method of moments doesn\'t support censoring')
+			params = self._mom(x, n=n)
+		elif how == 'MPP':
+			heuristic = 'Nelson-Aalen'
+			if c is not None:
+				heuristic = 'Nelson-Aalen'
+			if 'rr' in kwargs:
+				rr = kwargs['rr']
+			else:
+				rr = 'y'
+			params = self._mpp(x, n=n, c=c, rr=rr, heuristic=heuristic)
+		elif how == 'MSE':
+			params = self._mse(x, c=c, n=n)
+		# Store params with redundancy...
+		model.mu, model.sigma = params
+		model.params = params
+		return model
+class LogNormal_():
+	"""
+	class for the generic weibull distribution.
+
+	Can be used to create 
+
+	"""
+	def __init__(self, name):
+		self.name = name
+
+	def sf(self, x, mu, sigma):
+		return lognorm.sf(x, mu, sigma)
+
+	def ff(self, x, mu, sigma):
+		return lognorm.cdf(x, mu, sigma)
+
+	def df(self, x, mu, sigma):
+		return lognorm.pdf(x, mu, sigma)
+
+	def hf(self, x, mu, sigma):
+		return lognorm.pdf(x, mu, sigma) / self.sf(x, mu, sigma)
+
+	def Hf(self, x, mu, sigma):
+		return -np.log(lognorm.sf(x, mu, sigma))
+
+	def qf(self, p, mu, sigma):
+		return lognorm.ppf(p, mu, sigma)
+
+	def mean(self, mu, sigma):
+		return np.exp(mu + (sigma**2)/2)
+
+	def random(self, size, mu, sigma):
+		return lognorm.rvs(mu, sigma, size=size)
+
+	def neg_mean_D(self, x, mu, sigma, c=None, n=None):
+		idx = np.argsort(x)
+		F  = self.ff(x[idx], mu, sigma)
+		D0 = F[0]
+		Dn = 1 - F[-1]
+		D = np.diff(F)
+		D = np.concatenate([[D0], D, [Dn]])
+		if c is not None:
+			Dr = self.sf(x[c == 1],  mu, sigma)
+			Dl = self.ff(x[c == -1], mu, sigma)
+			D = np.concatenate([Dl, D, Dr])
+		D[D < TINIEST] = TINIEST
+		M = np.log(D)
+		M = -np.sum(M)/(M.shape[0])
+		return M
+
+	def neg_ll(self, x, mu, sigma, c=None, n=None):
+		if n is None:
+		    n = np.ones_like(x)
+		    
+		if c is None:
+			like = n * self.df(x, mu, sigma)
+		
+		else:
+			l = c == -1
+			f = c ==  0
+			r = c ==  1
+
+			like_l = n[l] * self.ff(x[l], mu, sigma)
+			like_f = n[f] * self.df(x[f], mu, sigma)
+			like_r = n[r] * self.sf(x[r], mu, sigma)
+			like = np.concatenate([like_l, like_f, like_r])
+			
+		like[like < TINIEST] = TINIEST
+
+		return -np.sum(np.log(like))
+
+	def _mse(self, x, c=None, n=None,
+			heuristic='Nelson-Aalen'):
+		"""
+		MSE: Mean Square Error
+		This is simply fitting the curve to the best estimate from a non-parametric estimate.
+
+		This is slightly different in that it fits it to untransformed data.
+		The transformation is how the "Probability Plotting Method" works.
+
+		Fit a two parameter Weibull distribution from data
+		
+		Fits a Weibull model to pp points 
+		"""
+
+		x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+
+		init = [np.mean(x), np.std(x)]
+		bounds = ((None, None), (None, None))
+		fun = lambda t : np.sum(((self.ff(x, t[0], t[1])) - F)**2)
+		res = minimize(fun, init, bounds=bounds)
+		return res.x[0], res.x[1]
+
+	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
+		assert rr in ['x', 'y']
+		"""
+		MPP: Method of Probability Plotting
+		Yes, the order of this language was invented to keep MXX format consistent
+		This is the classic probability plotting paper method.
+
+		This method creates the plotting points, transforms it to Weibull scale and then fits the line of best fit.
+
+		Fit a two parameter Weibull distribution from data.
+		
+		Fits a Weibull model using cumulative probability from x values. 
+		"""
+		x_, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+		
+		if not on_d_is_0:
+			x_ = x_[d > 0]
+			F = F[d > 0]
+
+		# Linearise
+		x_ = x_
+		y_ = np.log(-np.log(1 - F))
+
+		if   rr == 'y':
+			model = np.polyfit(x_, y_, 1)
+			sigma = 1/model[0]
+			mu    = -sigma * model[1]
+		elif rr == 'x':
+			model = np.polyfit(y_, x_, 1)
+			sigma  = 1./model[0]
+			mu = np.exp(model[1] / (beta * model[0]))
+		return mu, sigma
+
+	#TODO: add MSE
+	def _mom(self, x, n=None):
+		"""
+		MOM: Method of Moments.
+
+		This is one of the simplest ways to calculate the parameters of a distribution.
+
+		This method is quick but only works with uncensored data.
+		# Can I add a simple sum(c) instead of length to work with censoring?
+		"""
+		if n is not None:
+			x = np.rep(x, n)
+		m1 = np.sum(x) / len(x)
+		m2 = np.sum(x**2) / len(x)
+		fun = lambda t : ((m1**2/m2) - (gamma(1 + 1./t)**2/gamma(1 + 2./t)))**2
+		res = minimize(fun, 1, bounds=((0, None),))
+		beta = res.x[0]
+		alpha = m1 / gamma(1 + 1./beta)
+		return mu, sigma
+
+	def _mps(self, x, c=None, n=None):
+		"""
+		MPS: Maximum Product Spacing
+
+		This is the method to get the largest (geometric) average distance between all points
+
+		This method works really well when all points are unique. Some complication comes in when using repeated data.
+
+		This method is exceptional for when using three parameter distributions.
+		"""
+		init = [np.mean(x), 1.]
+		bounds = ((0, None), (0, None))
+		fun = lambda t : self.neg_mean_D(x, t[0], t[1])
+		res = minimize(fun, init, bounds=bounds)
+		return res.x[0], res.x[1]
+
+	def _mle(self, x, c=None, n=None, model=None):
+		"""
+		MLE: Maximum Likelihood estimate
+
+		This is the MLE, the king of parameter estimation.
+		"""
+		if n is None:
+			n = np.ones_like(x)
+		if c is None:
+			c = np.zeros_like(x)
+
+		#init = self._mpp(x, c=c, n=n, on_d_is_0=True)
+		init = np.mean(x), 1
+		bounds = ((None, None), (0, None))
+		fun = lambda t : self.neg_ll(x, t[0], t[1], c, n)
+		res = minimize(fun, init)
+
+		if model is not None:
+			model.res = res
+		return res.x[0], res.x[1]
+
+	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
+		model = Parametric()
+		model.method = how
+		model.data = {
+			'x' : x,
+			'c' : c,
+			'n' : n
+		}
+		model.dist = "LogNormal"
+		model.dist = self
+		if   how == 'MLE':
+			# Maximum Likelihood
+			params = Normal._mle(np.log(x), c=c, n=n, model=model)
+		elif how == 'MPS':
+			# Maximum Product Spacing
+			if c is not None:
+				raise InputError('Maximum product spacing doesn\'t support censoring')
+			if n is not None:
+				raise InputError('Maximum product spacing doesn\'t support counts')
+			params = self._mps(x)
+		elif how == 'MOM':
+			if c is not None:
+				raise InputError('Method of moments doesn\'t support censoring')
+			params = self._mom(x, n=n)
+		elif how == 'MPP':
+			heuristic = 'Nelson-Aalen'
+			if c is not None:
+				heuristic = 'Nelson-Aalen'
+			if 'rr' in kwargs:
+				rr = kwargs['rr']
+			else:
+				rr = 'y'
+			params = self._mpp(x, n=n, c=c, rr=rr, heuristic=heuristic)
+		elif how == 'MSE':
+			params = self._mse(x, c=c, n=n)
+		# Store params with redundancy...
+		model.mu, model.sigma = params
+		model.params = params
+		return model
 class WMM(): 
 	def Q_prime(self, params): 
 		tmp_params = params.reshape(self.n, 2) 
@@ -1194,11 +1639,11 @@ class WMM():
 		self.betas = [1.] * self.n 
 		self.w = np.ones(shape=(self.n)) / self.n 
 		self.p = np.ones(shape=(self.n, len(self.x))) / self.n 
-
-
 	
 Exponential = Exponential_('Exponential')
 Weibull = Weibull_('Weibull')
 Gumbel = Gumbel_('Gumbel')
 Weibull3p = Weibull3p_('Weibull3p')
+Normal = Normal_('Normal')
+LogNormal = LogNormal_('LogNormal')
 
