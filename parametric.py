@@ -1,7 +1,7 @@
 import numpy as np
 from numpy import euler_gamma
 #from .errors import InputError
-from scipy.special import gamma
+from scipy.special import gamma_func
 from scipy.special import factorial
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
@@ -11,7 +11,6 @@ try:
 	import SurPyval.nonparametric as nonp
 except:
 	import nonparametric as nonp
-
 
 #import WeibullScale
 
@@ -203,10 +202,10 @@ class Weibull_():
 		return alpha * (-np.log(1 - p))**(1/beta)
 
 	def mean(self, alpha, beta):
-		return alpha * gamma(1 + 1./beta)
+		return alpha * gamma_func(1 + 1./beta)
 
 	def moment(self, n, alhpa, beta):
-		return alpha**n * gamma(1 + n/beta)
+		return alpha**n * gamma_func(1 + n/beta)
 
 	def entropy(self, alhpa, beta):
 		return euler_gamma * (1 - 1/beta) + np.log(alpha / beta) + 1
@@ -936,10 +935,10 @@ class Weibull3p_():
 		return alpha * (-np.log(1 - p))**(1/beta) + gamma
 
 	def mean(self, alpha, beta, gamma):
-		return alpha * gamma(1 + 1/beta) + gamma
+		return alpha * gamma_func(1 + 1/beta) + gamma
 
 	def moment(self, n, alhpa, beta, gamma):
-		return alpha**n * gamma(1 + n/beta) + gamma
+		return alpha**n * gamma_func(1 + n/beta) + gamma
 
 	def random(self, size, alpha, beta, gamma):
 		U = np.random.uniform(size=size)
@@ -1272,10 +1271,10 @@ class Normal_():
 			x = np.rep(x, n)
 		m1 = np.sum(x) / len(x)
 		m2 = np.sum(x**2) / len(x)
-		fun = lambda t : ((m1**2/m2) - (gamma(1 + 1./t)**2/gamma(1 + 2./t)))**2
+		fun = lambda t : ((m1**2/m2) - (gamma_func(1 + 1./t)**2/gamma_func(1 + 2./t)))**2
 		res = minimize(fun, 1, bounds=((0, None),))
 		beta = res.x[0]
-		alpha = m1 / gamma(1 + 1./beta)
+		alpha = m1 / gamma_func(1 + 1./beta)
 		return mu, sigma
 
 	def _mps(self, x, c=None, n=None):
@@ -1494,10 +1493,10 @@ class LogNormal_():
 			x = np.rep(x, n)
 		m1 = np.sum(x) / len(x)
 		m2 = np.sum(x**2) / len(x)
-		fun = lambda t : ((m1**2/m2) - (gamma(1 + 1./t)**2/gamma(1 + 2./t)))**2
+		fun = lambda t : ((m1**2/m2) - (gamma_func(1 + 1./t)**2/gamma_func(1 + 2./t)))**2
 		res = minimize(fun, 1, bounds=((0, None),))
 		beta = res.x[0]
-		alpha = m1 / gamma(1 + 1./beta)
+		alpha = m1 / gamma_func(1 + 1./beta)
 		return mu, sigma
 
 	def _mps(self, x, c=None, n=None):
