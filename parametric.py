@@ -1,7 +1,7 @@
 import numpy as np
 from numpy import euler_gamma
 #from .errors import InputError
-from scipy.special import gamma_func
+from scipy.special import gamma as gamma_func
 from scipy.special import factorial
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
