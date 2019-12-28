@@ -1364,28 +1364,28 @@ class LogNormal_():
 		self.name = name
 
 	def sf(self, x, mu, sigma):
-		return lognorm.sf(x, mu, sigma)
+		return lognorm.sf(x, sigma, 0, np.exp(mu))
 
 	def ff(self, x, mu, sigma):
-		return lognorm.cdf(x, mu, sigma)
+		return lognorm.cdf(x, sigma, 0, np.exp(mu))
 
 	def df(self, x, mu, sigma):
-		return lognorm.pdf(x, mu, sigma)
+		return lognorm.pdf(x, sigma, 0, np.exp(mu))
 
 	def hf(self, x, mu, sigma):
-		return lognorm.pdf(x, mu, sigma) / self.sf(x, mu, sigma)
+		return lognorm.pdf(x, sigma, 0, np.exp(mu)) / self.sf(x, mu, sigma)
 
 	def Hf(self, x, mu, sigma):
-		return -np.log(lognorm.sf(x, mu, sigma))
+		return -np.log(lognorm.sf(x, sigma, 0, np.exp(mu)))
 
 	def qf(self, p, mu, sigma):
-		return lognorm.ppf(p, mu, sigma)
+		return lognorm.ppf(p, sigma, 0, np.exp(mu))
 
 	def mean(self, mu, sigma):
 		return np.exp(mu + (sigma**2)/2)
 
 	def random(self, size, mu, sigma):
-		return lognorm.rvs(mu, sigma, size=size)
+		return lognorm.rvs(sigma, 0, np.exp(mu), size=size)
 
 	def neg_mean_D(self, x, mu, sigma, c=None, n=None):
 		idx = np.argsort(x)
