@@ -1607,7 +1607,7 @@ class Gamma_():
 	def mean(self, alpha, beta):
 		return alpha / beta
 
-	def random(self, size, mu, sigma):
+	def random(self, size, alpha, beta):
 		U = np.random.uniform(size=size)
 		return self.qf(U, alpha, beta)
 
@@ -1768,11 +1768,11 @@ class Gamma_():
 			'c' : c,
 			'n' : n
 		}
-		model.dist = "LogNormal"
+		model.dist = "Gamma"
 		model.dist = self
 		if   how == 'MLE':
 			# Maximum Likelihood
-			params = Normal._mle(np.log(x), c=c, n=n, model=model)
+			params = self._mle(np.log(x), c=c, n=n, model=model)
 		elif how == 'MPS':
 			# Maximum Product Spacing
 			if c is not None:
