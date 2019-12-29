@@ -1888,6 +1888,7 @@ class WMM():
 Exponential = Exponential_('Exponential')
 Weibull = Weibull_('Weibull')
 Gumbel = Gumbel_('Gumbel')
+Gamma = Gamma_('Gamma')
 Weibull3p = Weibull3p_('Weibull3p')
 Normal = Normal_('Normal')
 LogNormal = LogNormal_('LogNormal')
