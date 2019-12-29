@@ -1772,7 +1772,7 @@ class Gamma_():
 		model.dist = self
 		if   how == 'MLE':
 			# Maximum Likelihood
-			params = self._mle(np.log(x), c=c, n=n, model=model)
+			params = self._mle(x, c=c, n=n, model=model)
 		elif how == 'MPS':
 			# Maximum Product Spacing
 			if c is not None:
