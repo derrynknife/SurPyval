@@ -1752,7 +1752,7 @@ class Gamma_():
 
 		#init = self._mpp(x, c=c, n=n, on_d_is_0=True)
 		init = np.mean(x), 1
-		bounds = ((None, None), (0, None))
+		bounds = ((0, None), (0, None))
 		fun = lambda t : self.neg_ll(x, t[0], t[1], c, n)
 		res = minimize(fun, init)
 
