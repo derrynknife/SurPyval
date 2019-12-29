@@ -1580,19 +1580,20 @@ class WMM():
 		tmp_params = params.reshape(self.n, 2) 
 		f = np.zeros_like(self.p) 
 		for i in range(self.n): 
-			like = np.log(Weibull.pdf(self.x, tmp_params[0, i], tmp_params[1, i])) 
+			like = np.log(Weibull.df(self.x, tmp_params[0, i], tmp_params[1, i])) 
 			mask = np.isinf(like) 
 			if any(mask): 
 				#print(np.sum(like[~np.isneginf(like)])) 
-				like[np.isneginf(like)] = MAX_LOG 
+				like[np.isneginf(like)] = np.log(TINIEST) 
 				#print('max\'d') 
 			f[i] = np.multiply(self.p[i], like) 
-			f = -np.sum(f) 
-			return f 
+		f = -np.sum(f)
+		self.ll = f
+		return f 
 
 	def expectation(self): 
 		for i in range(self.n): 
-			self.p[i] = self.w[i] * Weibull.pdf(self.x, self.alphas[i], self.betas[i]) 
+			self.p[i] = self.w[i] * Weibull.df(self.x, self.alphas[i], self.betas[i]) 
 			self.p = np.divide(self.p, np.sum(self.p, axis=0)) 
 			self.w = np.sum(self.p, axis=1) / self.N 
 
@@ -1607,9 +1608,24 @@ class WMM():
 		self.alphas = ab[0] 
 		self.betas = ab[1]
 
-	def EM(self): 
+	def EM(self):
 		self.expectation() 
-		self.maximisation() 
+		self.maximisation()
+
+	def fit(self, tol=1e-6):
+		self.EM()
+		f0 = self.ll
+		self.EM()
+		f1 = self.ll
+		while np.abs(f0 - f1) > tol:
+			f0 = f1
+			self.EM()
+			f1 = self.ll
+	def ll(self):
+		return self.ll
+
+	def mean(self):
+		return 1
 
 	def __str__(self): 
 		print(self.alphas) 
@@ -1617,17 +1633,20 @@ class WMM():
 		print(self.w) 
 		return "Done" 
 
-	def pdf(self, t): 
+	def df(self, t): 
 		f = np.zeros_like(t) 
 		for i in range(self.n): 
-			f += self.w[i] * Weibull.pdf(t, self.alphas[i], self.betas[i]) 
+			f += self.w[i] * Weibull.df(t, self.alphas[i], self.betas[i]) 
 		return f 
 
-	def cdf(self, t): 
+	def ff(self, t): 
 		F = np.zeros_like(t) 
 		for i in range(self.n): 
-			F += self.w[i] * Weibull.cdf(t, self.alphas[i], self.betas[i]) 
-		return F 
+			F += self.w[i] * Weibull.ff(t, self.alphas[i], self.betas[i]) 
+		return F
+
+	def sf(self, t): 
+		return 1 - self.ff
 
 	def __init__(self, **kwargs): 
 		assert 'data' in kwargs 
