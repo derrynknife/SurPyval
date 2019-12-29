@@ -1625,7 +1625,10 @@ class WMM():
 		return self.loglike
 
 	def mean(self):
-		return 1
+
+		mu1 = self.alphas[0] * gamma_func(1 + 1./self.betas[0])
+		mu2 = self.alphas[1] * gamma_func(1 + 1./self.betas[0])
+		return self.w[0] * mu1 + self.w[1] * mu2
 
 	def __str__(self): 
 		print(self.alphas) 
