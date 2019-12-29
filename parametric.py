@@ -1588,7 +1588,7 @@ class WMM():
 				#print('max\'d') 
 			f[i] = np.multiply(self.p[i], like) 
 		f = -np.sum(f)
-		self.ll = f
+		self.loglike = f
 		return f 
 
 	def expectation(self): 
@@ -1614,15 +1614,15 @@ class WMM():
 
 	def fit(self, tol=1e-6):
 		self.EM()
-		f0 = self.ll
+		f0 = self.loglike
 		self.EM()
-		f1 = self.ll
+		f1 = self.loglike
 		while np.abs(f0 - f1) > tol:
 			f0 = f1
 			self.EM()
-			f1 = self.ll
+			f1 = self.loglike
 	def ll(self):
-		return self.ll
+		return self.loglike
 
 	def mean(self):
 		return 1
