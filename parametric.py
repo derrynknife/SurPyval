@@ -267,7 +267,7 @@ class Parametric():
 			x = self.data['x']
 			c = self.data['c']
 			n = self.data['n']
-			self.log_like = -self.dist.neg_ll(x, *self.params, c=c, n=n)
+			self.log_like = -self.dist.neg_ll(x, c=c, n=n, *self.params)
 			return self.log_like
 
 	def aic(self):
@@ -280,7 +280,7 @@ class Parametric():
 			alpha = self.alpha
 			beta  = self.beta
 			k = len(self.params)
-			self.aic_ = 2 * k + 2 * self.dist.neg_ll(x, *self.params, c=c, n=n)
+			self.aic_ = 2 * k + 2 * self.dist.neg_ll(x, c=c, n=n, *self.params)
 			return self.aic_
 
 	def aic_c(self):
