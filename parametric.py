@@ -22,21 +22,16 @@ class SurpyvalDist():
 	def neg_ll(self, x, c=None, n=None, *params):
 		if n is None:
 		    n = np.ones_like(x)
-		    
-		if c is None:
-			like = n * self.df(x, *params)
-		
-		else:
-			l = c == -1
-			f = c ==  0
-			r = c ==  1
 
-			like_l = n[l] * self.ff(x[l], *params)
-			like_f = n[f] * self.df(x[f], *params)
-			like_r = n[r] * self.sf(x[r], *params)
-			like = np.concatenate([like_l, like_f, like_r])
-			
-		like[like < TINIEST] = TINIEST
+		if c is None:
+		    c = np.zeros_like(x)
+		    
+		like = n * (self.ff(x, *params) * c * (c - 1) / 2 +
+		            self.df(x, *params) * (1 - c**2) +
+		            self.sf(x, *params) * c * (c + 1) / 2
+		           )		
+
+		like += TINIEST
 
 		return -np.sum(np.log(like))
 
@@ -246,15 +241,6 @@ class Parametric():
 		if self.method != 'MLE':
 			raise InvalidError('Only MLE has confidence bounds')
 			
-		u_hat = self.beta * (np.log(x) - np.log(self.alpha))
-		var_alpha = self.res.hess_inv[0, 0]
-		var_beta  = self.res.hess_inv[1, 1]
-		covar_ab  = self.res.hess_inv[1, 0]
-		var_u = (
-			(u_hat/ self.beta)**2 * var_beta +
-			(self.beta/self.alpha)**2 * var_alpha - 
-			2 * u_hat / self.alpha * covar_ab
-		)
 		du = z(sig) * np.sqrt(var_u)
 		u_u = u_hat + du
 		u_l = u_hat - du
@@ -348,6 +334,17 @@ class Weibull_(SurpyvalDist):
 			beta  = 1./params[0]
 			alpha = np.exp(params[1] / (beta * params[0]))
 		return alpha, beta
+
+	def u(self, x, alpha, beta):
+		return beta * (np.log(x) - np.log(alpha))
+
+	def du(self, x, alpha, beta):
+		du_dalpha = np.log(x) - np.log(alpha)
+		du_dbeta  = -beta/alpha
+		return np.matrix([du_dalpha, du_dbeta])
+
+	def R_u(self, x, alpha, beta):
+		return np.exp(-np.exp(self.u(x, alpha, beta)))
 
 	def jacobian(self, x, alpha, beta, c=None, n=None):
 		"""
@@ -919,6 +916,7 @@ class Gamma_(SurpyvalDist):
 		self.bounds = ((0, None), (0, None),)
 
 	def parameter_initialiser(self, x, c=None, n=None):
+		# These equations are truly magical
 		s = np.log(x.sum()/len(x)) - np.log(x).sum()/len(x)
 		alpha = (3 - s + np.sqrt((s - 3)**2 + 24*s)) / (12*s)
 		beta = x.sum()/(len(x)*alpha)
