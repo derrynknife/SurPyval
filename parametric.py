@@ -1,4 +1,4 @@
-import numpy as np
+from scipy.stats import uniform
 from numpy import euler_gamma
 #from .errors import InputError
 from scipy.special import gamma as gamma_func
@@ -8,6 +8,7 @@ from scipy.optimize import minimize
 from scipy.special import ndtri as z
 from scipy.stats import norm
 from scipy.stats import lognorm
+import numpy as np
 try: 
 	import SurPyval.nonparametric as nonp
 except:
@@ -20,19 +21,10 @@ TINIEST = np.finfo(NUM).tiny
 
 class SurpyvalDist():
 	def neg_ll(self, x, c=None, n=None, *params):
-		if n is None:
-		    n = np.ones_like(x)
-
-		if c is None:
-		    c = np.zeros_like(x)
-		    
-		like = n * (self.ff(x, *params) * c * (c - 1) / 2 +
-		            self.df(x, *params) * (1 - c**2) +
-		            self.sf(x, *params) * c * (c + 1) / 2
-		           )		
-
+		like = n * (self.ff(x, *params) * c * (c - 1.) / 2. +
+					self.df(x, *params) * (1. - c**2.) +
+					self.sf(x, *params) * c * (c + 1.) / 2.)
 		like += TINIEST
-
 		return -np.sum(np.log(like))
 
 	def neg_mean_D(self, x, c=None, n=None, *params):
@@ -96,17 +88,32 @@ class SurpyvalDist():
 	def _mle(self, x, c=None, n=None):
 		"""
 		MLE: Maximum Likelihood estimate
-
 		"""
-		fun = lambda t : self.neg_ll(x, c, n, *t)
-		if self.name in ['Weibull', 'Exponential']:
-			jac = lambda t : self.jacobian(x, *t, c, n)
+		if n is None:
+			n = np.ones_like(x).astype(np.int64)
+
+		if c is None:
+			c = np.zeros_like(x).astype(np.int64)
+
+		x_ = np.repeat(x, n)
+		c_ = np.repeat(c, n).astype(np.int64)
+		n_ = np.ones_like(x_).astype(np.int64)
+
+		init = self.parameter_initialiser(x_, c_, n_)
+		print("initial MLE: ", self.name, " ", init)
+
+		if self.name in ['Weibull', 'Exponential', 'Weibull3p']:
+			fun  = lambda t : self.neg_ll(x_, c_, n_, *t)
+			jac  = lambda t : self.jacobian(x_, *t, c_, n_)
 			res = minimize(fun, 
-					   self.parameter_initialiser(x, c, n),
+					   init,
 					   method='BFGS',
 					   jac=jac)
 		else:
-			res = minimize(fun, self.parameter_initialiser(x, c, n))
+			fun  = lambda t : self.neg_ll(x_, c_, n_, *t)
+			res = minimize(fun, init)
+
+		print("Final MLE: ", self.name, " ", res.x)
 		self.res = res
 		return res
 
@@ -225,7 +232,7 @@ class Parametric():
 		return self.dist.qf(p, *self.params)
 
 	def random(self, size):
-		U = np.random.uniform(size=size)
+		U = uniform.rvs(size=size)
 		return self.qf(U, *self.params)
 
 	def mean(self):
@@ -286,7 +293,10 @@ class Weibull_(SurpyvalDist):
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		gumb = Gumbel.fit(np.log(x), c, n, how='MLE')
+		if not gumb.res.success:
+			gumb = Gumbel.fit(np.log(x), c, n, how='MPP')
 		mu, sigma = gumb.params
+		alpha, beta = np.exp(mu), 1. / sigma
 		return np.exp(mu), 1 / sigma
 
 	def sf(self, x, alpha, beta):
@@ -317,7 +327,7 @@ class Weibull_(SurpyvalDist):
 		return euler_gamma * (1 - 1/beta) + np.log(alpha / beta) + 1
 
 	def random(self, size, alpha, beta):
-		U = np.random.uniform(size=size)
+		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta)
 
 	def mpp_x_transform(self, x):
@@ -352,12 +362,6 @@ class Weibull_(SurpyvalDist):
 
 		Please report mistakes if found!
 		"""
-		if c is None:
-			c = np.zeros_like(x)
-
-		if n is None:
-			n = np.ones_like(x)
-		
 		f = c == 0
 		l = c == -1
 		r = c == 1
@@ -388,14 +392,14 @@ class Gumbel_(SurpyvalDist):
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		if n is None:
-		    n = np.ones_like(x)
+		    n = np.ones_like(x).astype(np.int32)
 
 		if c is None:
-			c = np.zeros_like(x)
+			c = np.zeros_like(x).astype(np.int32)
 
-		c = (c == 0).astype(np.int)
+		flag = (c == 0).astype(NUM)
 
-		return x.sum() / (n * c).sum(), np.std(x)
+		return x.sum() / (n * flag).sum(), np.std(x)
 
 	def sf(self, x, mu, sigma):
 		return np.exp(-np.exp((x - mu)/sigma))
@@ -421,7 +425,7 @@ class Gumbel_(SurpyvalDist):
 		return mu - sigma * euler_gamma
 
 	def random(self, size, mu, sigma):
-		U = np.random.uniform(size=size)
+		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta)
 
 	def mpp_x_transform(self, x):
@@ -482,7 +486,7 @@ class Exponential_(SurpyvalDist):
 		if c is None:
 			c = np.zeros_like(x)
 
-		c = (c == 0).astype(np.int)
+		c = (c == 0).astype(NUM)
 
 		return [(n * c).sum()/x.sum()]
 
@@ -514,7 +518,7 @@ class Exponential_(SurpyvalDist):
 		return 1 - np.log(failure_rate)
 
 	def random(self, size, failure_rate):
-		U = np.random.uniform(size=size)
+		U = uniform.rvs(size=size)
 		return self.qf(U, failure_rate)
 
 	def mpp_x_transform(self, x):
@@ -565,12 +569,29 @@ class Exponential_(SurpyvalDist):
 		)
 
 		return -np.array([dll_dlambda])
-class Weibull3p_():
+class Weibull3p_(SurpyvalDist):
 	"""
 	class for the three parameter weibull distribution.
 	"""
 	def __init__(self, name):
 		self.name = name
+		self.k = 3
+		self.bounds = ((0, None), (0, None), (None, None),)
+
+	def parameter_initialiser(self, x, c=None, n=None):
+		if n is None:
+		    n = np.ones_like(x).astype(np.int64)
+
+		if c is None:
+			c = np.zeros_like(x).astype(np.int64)
+
+		flag = (c == 0).astype(NUM)
+
+		init_mpp = Weibull.fit(x - (np.min(x) - 1), c=c, n=n, how='MPP').params
+		init = init_mpp[0], init_mpp[1], np.min(x) - 1
+		#init = x.sum() / (n * flag).sum(), 1., np.min(x) - 1
+		self.bounds = ((0, None), (0, None), (None, np.min(x)))
+		return init
 
 	def sf(self, x, alpha, beta, gamma):
 		return np.exp(-((x - gamma) / alpha)**beta)
@@ -598,10 +619,10 @@ class Weibull3p_():
 		return alpha**n * gamma_func(1 + n/beta) + gamma
 
 	def random(self, size, alpha, beta, gamma):
-		U = np.random.uniform(size=size)
+		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta, gamma)		
 
-	def neg_mean_D(self, x, alpha, beta, gamma, c=None, n=None):
+	def neg_mean_D__(self, x, alpha, beta, gamma, c=None, n=None):
 		#print(alpha, beta, gamma)
 		if gamma > np.min(x):
 			gamma = np.min(x) - TINIEST
@@ -622,43 +643,6 @@ class Weibull3p_():
 		M = np.log(D)
 		M = -np.sum(M)/(M.shape[0])
 		return M
-
-	def neg_ll(self, x, alpha, beta, gamma, c=None, n=None):
-		if n is None:
-		    n = np.ones_like(x)
-		    
-		if c is None:
-			like = n * self.df(x, alpha, beta, gamma)
-		
-		else:
-			l = c == -1
-			f = c ==  0
-			r = c ==  1
-
-			like_l = n[l] * self.ff(x[l], alpha, beta, gamma)
-			like_f = n[f] * self.df(x[f], alpha, beta, gamma)
-			like_r = n[r] * self.sf(x[r], alpha, beta, gamma)
-			like = np.concatenate([like_l, like_f, like_r])
-			
-		like[like < TINIEST] = TINIEST
-
-		return -np.sum(np.log(like))
-
-	def _mse(self, x, c=None, n=None,
-			heuristic='Nelson-Aalen'):
-		"""
-		Fit a two parameter Weibull distribution from data
-		
-		Fits a Weibull model to pp points 
-		"""
-
-		x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
-
-		init = [np.mean(x), 1., 0.]
-		bounds = ((0, None), (0, None), (None, np.min(x)))
-		fun = lambda t : np.sum(((self.ff(x, t[0], t[1], t[2])) - F)**2)
-		res = minimize(fun, init, bounds=bounds)
-		return res.x[0], res.x[1], res.x[2]
 
 	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y'):
 		assert rr in ['x', 'y']
@@ -683,20 +667,15 @@ class Weibull3p_():
 			alpha = np.exp(model[1] / (beta * model[0]))
 		return alpha, beta, 0
 
-	def _mps(self, x, c=None, n=None):
-		init = (np.mean(x), 1., np.min(x) - 1e-6)
-		bounds = ((0, None), (0, None), (None, np.min(x)))
-		fun = lambda t : self.neg_mean_D(x, t[0], t[1], t[2], c=c, n=n)
-		res = minimize(fun, init, bounds=bounds)
-		return res.x[0], res.x[1], res.x[2]
+	def _mle__(self, x, c=None, n=None, model=None):
+		if n is None:
+			n = np.ones_like(x).astype(np.int64)
 
-	def _mle(self, x, c=None, n=None, model=None):
-		init_mps = self.fit(x, c=c, n=n, how='MPS').params
-		init_mpp = Weibull.fit(x - init_mps[2], c=c, n=n, how='MPP').params
-		init = init_mpp[0], init_mpp[1], init_mps[2]
-		bounds = ((0, None), (0, None), (None, np.min(x)))
+		if c is None:
+			c = np.zeros_like(x).astype(np.int64)
 		#fun = lambda t : self.neg_ll(x, t[0], t[1], t[2], c, n)
 		#res = minimize(fun, init, bounds=bounds)
+		init = self.parameter_initialiser(x, c, n)
 		fun = lambda t : self.neg_ll(x, t[0], t[1], t[2], c, n)
 		jac = lambda t : self.jacobian(x, t[0], t[1], t[2], c, n)
 		res_a = minimize(fun, 
@@ -708,16 +687,14 @@ class Weibull3p_():
 					     init,
 					     method='TNC',
 					     jac=jac,
-					     bounds=bounds,
+					     bounds=self.bounds,
 					     tol=1e-10)
-		if res_a.success:
+		if res_b.success:
 			res = res_a
 		else:
 			res = res_b
 		
-		if model is not None:
-			model.res = res
-		return res.x[0], res.x[1], res.x[2]
+		return res
 
 	def jacobian(self, x, alpha, beta, gamma, c=None, n=None):
 		# If by some chance I can solve this on paper...
@@ -757,42 +734,12 @@ class Weibull3p_():
 		)
 
 		return -np.array([dll_dalpha, dll_dbeta, dll_dgamma])
-
-	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
-		model = Parametric()
-		model.method = how
-		model.data = {
-			'x' : x,
-			'c' : c,
-			'n' : n
-		}
-		model.dist = "Weibull"
-		model.dist = self
-		if   how == 'MLE':
-			params = self._mle(x, c, n, model=model)
-		elif how == 'MPS':
-			params = self._mps(x, c=c, n=n)
-		elif how == 'MOM':
-			if c is not None:
-				raise InputError('Method of moments doesn\'t support censoring')
-			params = self._mom(x, n=n)
-		elif how == 'MPP':
-			if 'rr' in kwargs:
-				rr = kwargs['rr']
-			else:
-				rr = 'x'
-			params = self._mpp(x, rr=rr)
-		elif how == 'MSE':
-			params = self._mse(x, c=c, n=n)
-		# Store params with redundancy...
-		model.alpha, model.beta, model.gamma  = params
-		model.params = params
-		return model
 class Normal_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
 		self.k = 2
 		self.bounds = ((None, None), (0, None),)
+		#self.dR = grad(self.sf, argnums=[1, 2])
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		if n is None:
@@ -801,7 +748,7 @@ class Normal_(SurpyvalDist):
 		if c is None:
 			c = np.zeros_like(x)
 
-		c = (c == 0).astype(np.int)
+		c = (c == 0).astype(NUM)
 
 		return x.sum() / (n * c).sum(), np.std(x)
 
@@ -853,39 +800,33 @@ class LogNormal_(SurpyvalDist):
 		self.bounds = ((0, None), (0, None),)
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		if n is None:
-		    n = np.ones_like(x)
-
-		if c is None:
-			c = np.zeros_like(x)
-
-		c = (c == 0).astype(np.int)
-
-		return x.sum() / (n * c).sum(), np.std(x)
+		res = Normal._mle(np.log(x), c=c, n=n)
+		mu, sigma = res.x
+		return mu, sigma
 
 	def sf(self, x, mu, sigma):
-		return lognorm.sf(x, sigma, 0, np.exp(mu))
+		return 1 - self.ff(x, mu, sigma)
 
 	def ff(self, x, mu, sigma):
-		return lognorm.cdf(x, sigma, 0, np.exp(mu))
+		return norm.cdf(np.log(x), mu, sigma)
 
 	def df(self, x, mu, sigma):
-		return lognorm.pdf(x, sigma, 0, np.exp(mu))
+		return 1./x * norm.pdf(np.log(x), mu, sigma)
 
 	def hf(self, x, mu, sigma):
-		return lognorm.pdf(x, sigma, 0, np.exp(mu)) / self.sf(x, mu, sigma)
+		return self.pdf(x, mu, sigma) / self.sf(x, mu, sigma)
 
 	def Hf(self, x, mu, sigma):
-		return -np.log(lognorm.sf(x, sigma, 0, np.exp(mu)))
+		return -np.log(self.sf(x, mu, sigma))
 
 	def qf(self, p, mu, sigma):
-		return lognorm.ppf(p, sigma, 0, np.exp(mu))
+		return np.exp(norm.ppf(p, mu, sigma))
 
 	def mean(self, mu, sigma):
 		return np.exp(mu + (sigma**2)/2)
 
 	def random(self, size, mu, sigma):
-		return lognorm.rvs(sigma, 0, np.exp(mu), size=size)
+		return np.exp(norm.rvs(mu, sigma, size=size))
 
 	def mpp_x_transform(self, x):
 		return np.log(x)
@@ -901,14 +842,6 @@ class LogNormal_(SurpyvalDist):
 		elif rr == 'x':
 			sigma, mu = params
 		return mu, sigma
-
-	def _mle(self, x, c=None, n=None):
-		res = Normal._mle(np.log(x), c=c, n=n)
-		mu, sigma = res.x
-		init = [mu, sigma]
-		fun = lambda t : self.neg_ll(x, c, n, *t)
-		res = minimize(fun, init)
-		return res
 class Gamma_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
@@ -947,81 +880,8 @@ class Gamma_(SurpyvalDist):
 		return gamma_func(n + alpha) / (beta**n * gamma_func(alpha))
 
 	def random(self, size, alpha, beta):
-		U = np.random.uniform(size=size)
+		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta)
-
-class LFP_():
-	"""
-	class for the generic weibull distribution.
-
-	Can be used to create 
-
-	N.B careful with parallelisation!
-	"""
-	def __init__(self, name):
-		self.name = name
-
-	def sf(self, x):
-		return self.dist.sf(x, *self.params)
-
-	def ff(self, x):
-		return self.dist.ff(x, *self.params)
-
-	def df(self, x):
-		return self.dist.df(x, *self.params)
-
-	def hf(self, x):
-		return self.dist.hf(x, *self.params)
-
-	def Hf(self, x):
-		return self.dist.Hf(x, *self.params)
-
-	def qf(self, p):
-		return self.dist.qf(p, *self.params)
-
-	def random(self, size):
-		U = np.random.uniform(size=size)
-		return self.qf(U, *self.params)
-
-	def mean(self):
-		return self.dist.mean(*self.params)
-
-	def moment(self):
-		return self.dist.moment(*self.params)
-
-	def entropy(self):
-		return self.dist.entropy(*self.params)
-
-	def _mle(self, x, c=None, n=None, 
-			 dist="Weibull", model=None):
-		init = [np.mean(x), 1.]
-		bounds = ((0, None), (0, None))
-		fun = lambda t : dist.neg_ll(x, t[0], t[1], c, n)
-		jac = lambda t : dist.jacobian(x, t[0], t[1], c, n)
-		res = minimize(fun, 
-					   init,
-					   method='BFGS',
-					   jac=jac)
-		if model is not None:
-			model.res = res
-		return res.x[0], res.x[1]
-
-	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
-		model = Parametric()
-		model.method = how
-		model.data = {
-			'x' : x,
-			'c' : c,
-			'n' : n
-		}
-		model.dist = "Weibull"
-		model.dist = self
-		if   how == 'MLE':
-			params = self._mle(x, c, n, model=model)
-		# Store params with redundancy...
-		model.alpha, model.beta  = params
-		model.params = params
-		return model
 class WMM(): 
 	def Q_prime(self, params): 
 		tmp_params = params.reshape(self.n, 2) 
