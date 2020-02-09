@@ -1,14 +1,19 @@
+
+from autograd import jacobian, hessian
+import autograd.numpy as np
+from autograd.numpy.linalg import inv
+from autograd.scipy.stats import norm
+from scipy.stats import norm as scipy_norm
 from scipy.stats import uniform
 from numpy import euler_gamma
-#from .errors import InputError
+
 from scipy.special import gamma as gamma_func
 from scipy.special import gammainc, gammaincinv
 from scipy.special import factorial
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
-from scipy.stats import norm
-from scipy.stats import lognorm
-import numpy as np
+from scipy.optimize import approx_fprime
+
 try: 
 	import SurPyval.nonparametric as nonp
 except:
@@ -16,8 +21,9 @@ except:
 
 #import WeibullScale
 
-NUM = np.float64
+NUM     = np.float64
 TINIEST = np.finfo(NUM).tiny
+EPS     = np.sqrt(np.finfo(NUM).eps)
 
 class SurpyvalDist():
 	def neg_ll(self, x, c=None, n=None, *params):
@@ -100,22 +106,21 @@ class SurpyvalDist():
 		n_ = np.ones_like(x_).astype(np.int64)
 
 		init = self.parameter_initialiser(x_, c_, n_)
-		print("initial MLE: ", self.name, " ", init)
 
-		if self.name in ['Weibull', 'Exponential', 'Weibull3p']:
+		if self.use_autograd:
 			fun  = lambda t : self.neg_ll(x_, c_, n_, *t)
-			jac  = lambda t : self.jacobian(x_, *t, c_, n_)
-			res = minimize(fun, 
-					   init,
-					   method='BFGS',
-					   jac=jac)
+			jac = jacobian(fun)
+			hess = hessian(fun)
+			res = minimize(fun, init, method='trust-exact', jac=jac, hess=hess)
+			hess_inv = inv(res.hess)
 		else:
 			fun  = lambda t : self.neg_ll(x_, c_, n_, *t)
-			res = minimize(fun, init)
+			jac = lambda t : approx_fprime(t, fun, EPS)
+			#hess = lambda t : approx_fprime(t, jac, eps)
+			res = minimize(fun, init, method='BFGS', jac=jac)
+			hess_inv = res.hess_inv
 
-		print("Final MLE: ", self.name, " ", res.x)
-		self.res = res
-		return res
+		return res, jac, hess_inv
 
 	def _mom(self, x, n=None):
 		"""
@@ -183,7 +188,7 @@ class SurpyvalDist():
 		model.dist = self
 		if   how == 'MLE':
 			# Maximum Likelihood
-			model.res = self._mle(x, c=c, n=n)
+			model.res, model.jac, model.hess_inv = self._mle(x, c=c, n=n)
 			model.params = tuple(model.res.x)
 		elif how == 'MPS':
 			# Maximum Product Spacing
@@ -211,7 +216,7 @@ class SurpyvalDist():
 		return model
 class Parametric():
 	def __init__(self):
-		pass
+		self.jac_r = np.vectorize(jacobian(lambda x : self.dist.sf(x, *self.params)))
 
 	def sf(self, x):
 		return self.dist.sf(x, *self.params)
@@ -290,6 +295,7 @@ class Weibull_(SurpyvalDist):
 		# Set 'k', the number of parameters
 		self.k = 2
 		self.bounds = ((0, None), (0, None),)
+		self.use_autograd = True
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		gumb = Gumbel.fit(np.log(x), c, n, how='MLE')
@@ -348,13 +354,24 @@ class Weibull_(SurpyvalDist):
 	def u(self, x, alpha, beta):
 		return beta * (np.log(x) - np.log(alpha))
 
+	def u_cb_(self, x, alpha, beta, cv_matrix, cb=0.05):
+		u = self.u(x, alpha, beta)
+		diff = z(cb/2) * np.sqrt(self.var_u(x, alpha, beta, cv_matrix))
+		bounds = u + np.array([1., -1.]) * diff
+		return bounds
+
 	def du(self, x, alpha, beta):
 		du_dalpha = np.log(x) - np.log(alpha)
 		du_dbeta  = -beta/alpha
 		return np.matrix([du_dalpha, du_dbeta])
 
-	def R_u(self, x, alpha, beta):
-		return np.exp(-np.exp(self.u(x, alpha, beta)))
+	def var_u(self, x, alpha, beta, cv_matrix):
+		J = self.du(x, alpha, beta)
+		J = np.matmul(J.T, J)
+		return np.matmul(cv_matrix, J).sum().item()
+
+	def R_u(self, x, alpha, beta, cv_matrix, cb=0.05):
+		return np.exp(-np.exp(self.u_cb(x, alpha, beta, cv_matrix, cb)))
 
 	def jacobian(self, x, alpha, beta, c=None, n=None):
 		"""
@@ -389,6 +406,7 @@ class Gumbel_(SurpyvalDist):
 		self.name = name
 		self.k = 2
 		self.bounds = ((None, None), (0, None),)
+		self.use_autograd = True
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		if n is None:
@@ -478,6 +496,7 @@ class Exponential_(SurpyvalDist):
 		self.name = name
 		self.k = 1
 		self.bounds = ((0, None),)
+		self.use_autograd = True
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		if n is None:
@@ -577,6 +596,7 @@ class Weibull3p_(SurpyvalDist):
 		self.name = name
 		self.k = 3
 		self.bounds = ((0, None), (0, None), (None, None),)
+		self.use_autograd = True
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		if n is None:
@@ -739,7 +759,7 @@ class Normal_(SurpyvalDist):
 		self.name = name
 		self.k = 2
 		self.bounds = ((None, None), (0, None),)
-		#self.dR = grad(self.sf, argnums=[1, 2])
+		self.use_autograd = True
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		if n is None:
@@ -768,7 +788,7 @@ class Normal_(SurpyvalDist):
 		return -np.log(norm.sf(x, mu, sigma))
 
 	def qf(self, p, mu, sigma):
-		return norm.ppf(p, mu, sigma)
+		return scipy_norm.ppf(p, mu, sigma)
 
 	def mean(self, mu, sigma):
 		return mu
@@ -777,7 +797,8 @@ class Normal_(SurpyvalDist):
 		return norm.moment(n, mu, sigma)
 
 	def random(self, size, mu, sigma):
-		return norm.rvs(mu, sigma, size)
+		U = uniform.rvs(size=size)
+		return self.qf(U, mu, sigma)
 
 	def mpp_x_transform(self, x):
 		return x
@@ -798,6 +819,7 @@ class LogNormal_(SurpyvalDist):
 		self.name = name
 		self.k = 2
 		self.bounds = ((0, None), (0, None),)
+		self.use_autograd = True
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		res = Normal._mle(np.log(x), c=c, n=n)
@@ -826,7 +848,7 @@ class LogNormal_(SurpyvalDist):
 		return np.exp(mu + (sigma**2)/2)
 
 	def random(self, size, mu, sigma):
-		return np.exp(norm.rvs(mu, sigma, size=size))
+		return np.exp(Normal.random(size, mu, sigma))
 
 	def mpp_x_transform(self, x):
 		return np.log(x)
@@ -847,6 +869,7 @@ class Gamma_(SurpyvalDist):
 		self.name = name
 		self.k = 2
 		self.bounds = ((0, None), (0, None),)
+		self.use_autograd = False
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		# These equations are truly magical
@@ -967,7 +990,6 @@ class WMM():
 		self.betas = [1.] * self.n 
 		self.w = np.ones(shape=(self.n)) / self.n 
 		self.p = np.ones(shape=(self.n, len(self.x))) / self.n 
-	
 
 Weibull = Weibull_('Weibull')
 Gumbel = Gumbel_('Gumbel')
