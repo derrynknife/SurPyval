@@ -6,8 +6,8 @@ Have decided to create a new package that contains the survival statistics eleme
 The surpyval package provides methods to create models of survival type scenarios.
 
 These modes are broken into:
-- [NonParametric](NonParametric.ipynb), and
-- [Parametric](Parametric.ipynb).
+- [NonParametric](guides/NonParametric.ipynb), and
+- [Parametric](guides/Parametric.ipynb).
 
 The question is why is this package needed when we already have scipy?
 
