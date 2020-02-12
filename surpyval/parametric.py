@@ -1,4 +1,3 @@
-
 from autograd import jacobian, hessian
 import autograd.numpy as np
 from autograd.numpy.linalg import inv
@@ -14,12 +13,8 @@ from scipy.optimize import minimize
 from scipy.special import ndtri as z
 from scipy.optimize import approx_fprime
 
-try: 
-	import SurPyval.nonparametric as nonp
-except:
-	import nonparametric as nonp
+from surpyval import nonparametric as nonp
 
-#import WeibullScale
 
 NUM     = np.float64
 TINIEST = np.finfo(NUM).tiny
@@ -289,6 +284,8 @@ class Parametric():
 			n = len(self.data['x'])
 			self.aic_c_ = self.aic() + (2*k**2 + 2*k)/(n - k - 1)
 			return self.aic_c_
+
+
 class Weibull_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
