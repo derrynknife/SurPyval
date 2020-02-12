@@ -1,3 +1,5 @@
+import re
+
 from autograd import jacobian, hessian
 import autograd.numpy as np
 from autograd.numpy.linalg import inv
@@ -15,10 +17,20 @@ from scipy.optimize import approx_fprime
 
 from surpyval import nonparametric as nonp
 
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FixedLocator
+
 
 NUM     = np.float64
 TINIEST = np.finfo(NUM).tiny
 EPS     = np.sqrt(np.finfo(NUM).eps)
+
+def round_sig(points, sig=2):
+    places = sig - np.floor(np.log10(np.abs(points))) - 1
+    output = []
+    for p, i in zip(points, places):
+        output.append(np.round(p, np.int(i)))
+    return output
 
 class SurpyvalDist():
 	def neg_ll(self, x, c=None, n=None, *params):
@@ -286,6 +298,58 @@ class Parametric():
 			return self.aic_c_
 
 
+	def plot(self, heuristic='Blom'):
+		"""
+		Oh boy this is ugly.
+		"""
+		x = self.data['x']
+		x_, r, d, F = nonp.plotting_positions(self.data['x'], 
+			c=self.data['c'], n=self.data['n'], heuristic=heuristic)
+		y_min = np.min(F)/2
+		y_max = (1 - (1 - np.max(F))/10)
+		plt.xscale('log')
+		plt.gca().set_yscale('function', 
+			functions=(self.dist.pp_y_transform, 
+				self.dist.pp_inv_y_transform))
+		plt.scatter(x_, F)
+		xx = np.linspace(np.min(x_), np.max(x_), 2)
+		plt.grid(b=True, which='major', color='g', alpha=0.4, linestyle='-')
+		plt.grid(b=True, which='minor', color='g', alpha=0.1, linestyle='-')
+		ytickvals = np.array([0.0001, 0.0002, 0.0003, 0.001, 0.002, 0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999, 0.9999])
+		ytickvals = ytickvals[np.where((ytickvals > y_min) & (ytickvals < y_max))[0]]
+		plt.yticks(ytickvals)
+		plt.gca().yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
+		y_val_labels = [str(int(y)) if (re.match('([0-9]+\.0+)', str(y)) is not None) & (y > 1) else str(y) for y in ytickvals * 100]
+		y_val_labels = [y+'%' for y in y_val_labels]
+		plt.gca().set_yticklabels(y_val_labels)
+
+		# x-axis
+		min_x = np.log10(np.min(x))
+		max_x = np.log10(np.max(x))
+		diff = np.log10(np.max(x) - np.min(x))
+
+		not_different = True
+		vals_non_sig = 10 ** np.linspace(min_x, max_x, 7)
+		i = 1
+
+		while not_different:
+		    xvals = np.array(round_sig(vals_non_sig, i))
+		    not_different = (np.diff(xvals) == 0).any()
+		    i += 1
+
+		# Find minor ticks
+		xminor = np.arange(np.floor(min_x), np.ceil(max_x))
+		xminor = (10**xminor * np.array(np.arange(1, 11)).reshape((10, 1))).flatten()
+		plt.gca().set_xticks(xvals)
+		xvals = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & (x > 1) else str(x) for x in xvals]
+		plt.gca().set_xticklabels(xvals)
+		plt.gca().set_xticks(xminor, minor=True)
+		plt.gca().set_xticklabels([], minor=True)
+		plt.title('{} Probability Plot'.format(self.dist.name))
+		plt.ylabel('CDF')
+		return plt.plot(xx, self.ff(xx), color='r', linestyle='--')
+
+
 class Weibull_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
@@ -333,11 +397,14 @@ class Weibull_(SurpyvalDist):
 		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta)
 
-	def mpp_x_transform(self, x):
+	def pp_x_transform(self, x):
 		return np.log(x)
 
-	def mpp_y_transform(self, y):
+	def pp_y_transform(self, y):
 		return np.log(-np.log((1 - y)))
+
+	def pp_inv_y_transform(self, y):
+		return 1 - np.exp(-np.exp(y))
 
 	def unpack_rr(self, params, rr):
 		if rr == 'y':
