@@ -20,7 +20,6 @@ from surpyval import nonparametric as nonp
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator
 
-
 NUM     = np.float64
 TINIEST = np.finfo(NUM).tiny
 EPS     = np.sqrt(np.finfo(NUM).eps)
@@ -121,7 +120,7 @@ class SurpyvalDist():
 			res = minimize(fun, init, method='trust-exact', jac=jac, hess=hess)
 			hess_inv = inv(res.hess)
 		else:
-			fun  = lambda t : self.neg_ll(x_, c_, n_, *t)
+			fun = lambda t : self.neg_ll(x_, c_, n_, *t)
 			jac = lambda t : approx_fprime(t, fun, EPS)
 			#hess = lambda t : approx_fprime(t, jac, eps)
 			res = minimize(fun, init, method='BFGS', jac=jac)
@@ -305,50 +304,63 @@ class Parametric():
 		x = self.data['x']
 		x_, r, d, F = nonp.plotting_positions(self.data['x'], 
 			c=self.data['c'], n=self.data['n'], heuristic=heuristic)
-		y_min = np.min(F)/2
-		y_max = (1 - (1 - np.max(F))/10)
-		plt.xscale('log')
+		if self.dist.name in ['Weibull3p']:
+			x_ = x_ - self.params[2]
+			x = x - self.params[2]
+		y_min = np.min(F[F > 0])/2
+		y_max = (1 - (1 - np.max(F[F < 1]))/10)
+		plt.xscale(self.dist.plot_x_scale)
+		
 		plt.gca().set_yscale('function', 
-			functions=(self.dist.pp_y_transform, 
-				self.dist.pp_inv_y_transform))
+			functions=(self.dist.mpp_y_transform, 
+					   self.dist.mpp_inv_y_transform))
 		plt.scatter(x_, F)
-		xx = np.linspace(np.min(x_), np.max(x_), 2)
 		plt.grid(b=True, which='major', color='g', alpha=0.4, linestyle='-')
 		plt.grid(b=True, which='minor', color='g', alpha=0.1, linestyle='-')
-		ytickvals = np.array([0.0001, 0.0002, 0.0003, 0.001, 0.002, 0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999, 0.9999])
-		ytickvals = ytickvals[np.where((ytickvals > y_min) & (ytickvals < y_max))[0]]
-		plt.yticks(ytickvals)
+		y_ticks = np.array(self.dist.y_ticks)
+		y_ticks = y_ticks[np.where((y_ticks > y_min) & 
+								   (y_ticks < y_max))[0]]
+		plt.yticks(y_ticks)
+		plt.ylim([y_min, y_max])
 		plt.gca().yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
-		y_val_labels = [str(int(y)) if (re.match('([0-9]+\.0+)', str(y)) is not None) & (y > 1) else str(y) for y in ytickvals * 100]
-		y_val_labels = [y+'%' for y in y_val_labels]
-		plt.gca().set_yticklabels(y_val_labels)
+		y_ticks_labels = [str(int(y)) if (re.match('([0-9]+\.0+)', str(y)) is not None) & (y > 1) else str(y) for y in y_ticks * 100]
+		y_ticks_labels = [y+'%' for y in y_ticks_labels]
+		plt.gca().set_yticklabels(y_ticks_labels)
 
 		# x-axis
-		min_x = np.log10(np.min(x))
-		max_x = np.log10(np.max(x))
-		diff = np.log10(np.max(x) - np.min(x))
-
+		if self.dist.plot_x_scale == 'log':
+			x_min = np.log10(np.min(x))
+			x_max = np.log10(np.max(x))
+			vals_non_sig = 10 ** np.linspace(x_min, x_max, 7)
+			xx = 10**np.linspace(x_min, x_max, 2)
+		else:
+			x_min = np.min(x)
+			x_max = np.max(x)
+			vals_non_sig = np.linspace(x_min, x_max, 7)
+			xx = np.linspace(x_min, x_max, 2)
+		
+		if self.dist.name in ['Weibull3p']:
+			cdf = self.ff(xx + self.params[2])
+		else:
+			cdf = self.ff(xx)
 		not_different = True
-		vals_non_sig = 10 ** np.linspace(min_x, max_x, 7)
 		i = 1
-
 		while not_different:
-		    xvals = np.array(round_sig(vals_non_sig, i))
-		    not_different = (np.diff(xvals) == 0).any()
+		    x_ticks = np.array(round_sig(vals_non_sig, i))
+		    not_different = (np.diff(x_ticks) == 0).any()
 		    i += 1
 
 		# Find minor ticks
-		xminor = np.arange(np.floor(min_x), np.ceil(max_x))
-		xminor = (10**xminor * np.array(np.arange(1, 11)).reshape((10, 1))).flatten()
-		plt.gca().set_xticks(xvals)
-		xvals = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & (x > 1) else str(x) for x in xvals]
-		plt.gca().set_xticklabels(xvals)
-		plt.gca().set_xticks(xminor, minor=True)
+		x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
+		x_minor_ticks = (10**x_minor_ticks * np.array(np.arange(1, 11)).reshape((10, 1))).flatten()
+		plt.gca().set_xticks(x_ticks)
+		x_ticks = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & (x > 1) else str(x) for x in x_ticks]
+		plt.gca().set_xticklabels(x_ticks)
+		plt.gca().set_xticks(x_minor_ticks, minor=True)
 		plt.gca().set_xticklabels([], minor=True)
 		plt.title('{} Probability Plot'.format(self.dist.name))
 		plt.ylabel('CDF')
-		return plt.plot(xx, self.ff(xx), color='r', linestyle='--')
-
+		return plt.plot(xx, cdf, color='r', linestyle='--')
 
 class Weibull_(SurpyvalDist):
 	def __init__(self, name):
@@ -357,6 +369,11 @@ class Weibull_(SurpyvalDist):
 		self.k = 2
 		self.bounds = ((0, None), (0, None),)
 		self.use_autograd = True
+		self.plot_x_scale = 'log'
+		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
+			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
+			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
+			0.9, 0.95, 0.99, 0.999, 0.9999]
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		gumb = Gumbel.fit(np.log(x), c, n, how='MLE')
@@ -397,13 +414,13 @@ class Weibull_(SurpyvalDist):
 		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta)
 
-	def pp_x_transform(self, x):
+	def mpp_x_transform(self, x):
 		return np.log(x)
 
-	def pp_y_transform(self, y):
+	def mpp_y_transform(self, y):
 		return np.log(-np.log((1 - y)))
 
-	def pp_inv_y_transform(self, y):
+	def mpp_inv_y_transform(self, y):
 		return 1 - np.exp(-np.exp(y))
 
 	def unpack_rr(self, params, rr):
@@ -471,6 +488,11 @@ class Gumbel_(SurpyvalDist):
 		self.k = 2
 		self.bounds = ((None, None), (0, None),)
 		self.use_autograd = True
+		self.plot_x_scale = 'linear'
+		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
+			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
+			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
+			0.9, 0.95, 0.99, 0.999, 0.9999]
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		if n is None:
@@ -508,13 +530,16 @@ class Gumbel_(SurpyvalDist):
 
 	def random(self, size, mu, sigma):
 		U = uniform.rvs(size=size)
-		return self.qf(U, alpha, beta)
+		return self.qf(U, mu, sigma)
 
 	def mpp_x_transform(self, x):
 		return x
 
 	def mpp_y_transform(self, y):
 		return np.log(-np.log((1 - y)))
+
+	def mpp_inv_y_transform(self, y):
+		return 1 - np.exp(-np.exp(y))
 
 	def unpack_rr(self, params, rr):
 		if   rr == 'y':
@@ -561,6 +586,9 @@ class Exponential_(SurpyvalDist):
 		self.k = 1
 		self.bounds = ((0, None),)
 		self.use_autograd = True
+		self.plot_x_scale = 'linear'
+		self.y_ticks = [0.05, 0.4, 0.6, 0.7, 0.8, 
+			0.9, 0.95, 0.99, 0.999, 0.9999]
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		if n is None:
@@ -609,6 +637,9 @@ class Exponential_(SurpyvalDist):
 
 	def mpp_y_transform(self, y):
 		return -np.log(1 - y)
+
+	def mpp_inv_y_transform(self, y):
+		return 1 - np.exp(y)
 
 	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
 		assert rr in ['x', 'y']
@@ -661,6 +692,11 @@ class Weibull3p_(SurpyvalDist):
 		self.k = 3
 		self.bounds = ((0, None), (0, None), (None, None),)
 		self.use_autograd = True
+		self.plot_x_scale = 'log'
+		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
+			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
+			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
+			0.9, 0.95, 0.99, 0.999, 0.9999]
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		if n is None:
@@ -704,7 +740,16 @@ class Weibull3p_(SurpyvalDist):
 
 	def random(self, size, alpha, beta, gamma):
 		U = uniform.rvs(size=size)
-		return self.qf(U, alpha, beta, gamma)		
+		return self.qf(U, alpha, beta, gamma)
+
+	def mpp_x_transform(self, x):
+		return np.log(x)
+
+	def mpp_y_transform(self, y):
+		return np.log(-np.log((1 - y)))
+
+	def mpp_inv_y_transform(self, y):
+		return 1 - np.exp(-np.exp(y))	
 
 	def neg_mean_D__(self, x, alpha, beta, gamma, c=None, n=None):
 		#print(alpha, beta, gamma)
@@ -824,6 +869,9 @@ class Normal_(SurpyvalDist):
 		self.k = 2
 		self.bounds = ((None, None), (0, None),)
 		self.use_autograd = True
+		self.plot_x_scale = 'linear'
+		self.y_ticks = [0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999]
+
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		if n is None:
@@ -868,7 +916,10 @@ class Normal_(SurpyvalDist):
 		return x
 
 	def mpp_y_transform(self, y):
-		return norm.ppf(y, 0, 1)
+		return self.qf(y, 0, 1)
+
+	def mpp_inv_y_transform(self, y):
+		return self.ff(y, 0, 1)
 
 	def unpack_rr(self, params, rr):
 		if rr == 'y':
@@ -884,10 +935,12 @@ class LogNormal_(SurpyvalDist):
 		self.k = 2
 		self.bounds = ((0, None), (0, None),)
 		self.use_autograd = True
+		self.plot_x_scale = 'log'
+		self.y_ticks = [0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999]
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		res = Normal._mle(np.log(x), c=c, n=n)
-		mu, sigma = res.x
+		norm_mod = Normal.fit(np.log(x), c=c, n=n, how='MLE')
+		mu, sigma = norm_mod.params
 		return mu, sigma
 
 	def sf(self, x, mu, sigma):
@@ -906,7 +959,7 @@ class LogNormal_(SurpyvalDist):
 		return -np.log(self.sf(x, mu, sigma))
 
 	def qf(self, p, mu, sigma):
-		return np.exp(norm.ppf(p, mu, sigma))
+		return np.exp(scipy_norm.ppf(p, mu, sigma))
 
 	def mean(self, mu, sigma):
 		return np.exp(mu + (sigma**2)/2)
@@ -918,7 +971,10 @@ class LogNormal_(SurpyvalDist):
 		return np.log(x)
 
 	def mpp_y_transform(self, y):
-		return norm.ppf(y, 0, 1)
+		return Normal.qf(y, 0, 1)
+
+	def mpp_inv_y_transform(self, y):
+		return Normal.ff(y, 0, 1)
 
 	def unpack_rr(self, params, rr):
 		if rr == 'y':
