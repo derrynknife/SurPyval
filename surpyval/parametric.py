@@ -360,7 +360,7 @@ class Parametric():
 		plt.gca().set_xticklabels([], minor=True)
 		plt.title('{} Probability Plot'.format(self.dist.name))
 		plt.ylabel('CDF')
-		return plt.plot(xx, cdf, color='r', linestyle='--')
+		return plt.plot(xx, cdf, color='k', linestyle='--')
 
 class Weibull_(SurpyvalDist):
 	def __init__(self, name):
@@ -435,21 +435,23 @@ class Weibull_(SurpyvalDist):
 	def u(self, x, alpha, beta):
 		return beta * (np.log(x) - np.log(alpha))
 
-	def u_cb_(self, x, alpha, beta, cv_matrix, cb=0.05):
+	def u_cb(self, x, alpha, beta, cv_matrix, cb=0.05):
 		u = self.u(x, alpha, beta)
-		diff = z(cb/2) * np.sqrt(self.var_u(x, alpha, beta, cv_matrix))
+		var_u = self.var_u(x, alpha, beta, cv_matrix)
+		diff = z(cb/2) * np.sqrt(var_u)
 		bounds = u + np.array([1., -1.]) * diff
 		return bounds
 
 	def du(self, x, alpha, beta):
-		du_dalpha = np.log(x) - np.log(alpha)
-		du_dbeta  = -beta/alpha
-		return np.matrix([du_dalpha, du_dbeta])
+		du_dbeta = np.log(x) - np.log(alpha)
+		du_dalpha  = -beta/alpha
+		return du_dalpha, du_dbeta
 
 	def var_u(self, x, alpha, beta, cv_matrix):
-		J = self.du(x, alpha, beta)
-		J = np.matmul(J.T, J)
-		return np.matmul(cv_matrix, J).sum().item()
+		da, db = self.du(x, alpha, beta)
+		var_u = (da**2 * cv_matrix[0, 0] + db**2 * cv_matrix[1, 1] + 
+			2 * da * db * cv_matrix[0, 1])
+		return var_u
 
 	def R_u(self, x, alpha, beta, cv_matrix, cb=0.05):
 		return np.exp(-np.exp(self.u_cb(x, alpha, beta, cv_matrix, cb)))
