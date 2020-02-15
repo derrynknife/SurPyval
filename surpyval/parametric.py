@@ -580,6 +580,21 @@ class Gumbel_(SurpyvalDist):
 			mu = np.exp(params[1] / (beta * params[0]))
 		return mu, sigma
 
+	def var_z(self, x, mu, sigma, cv_matrix):
+		z_hat = (x - mu)/sigma
+		var_z = (1./sigma)**2 * (cv_matrix[0, 0] + z_hat**2 * cv_matrix[1, 1] + 
+			2 * z_hat * cv_matrix[0, 1])
+		return var_z
+
+	def z_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
+		z_hat = (x - mu)/sigma
+		var_z = self.var_z(x, mu, sigma, cv_matrix)
+		bounds = z_hat + np.array([1., -1.]) * z(cb/2) * np.sqrt(var_z)
+		return bounds
+
+	def R_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
+		return self.sf(self.z_cb(x, mu, sigma, cv_matrix, cb=0.05), 0, 1)
+
 	def jacobian_draft(self, x, mu, sigma, c=None, n=None):
 		if c is None:
 			c = np.zeros_like(x)
