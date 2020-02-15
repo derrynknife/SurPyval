@@ -299,7 +299,7 @@ class Parametric():
 
 	def plot(self, heuristic='Blom'):
 		"""
-		Oh boy this is ugly.
+		Looking a little less ugly now.
 		"""
 		x = self.data['x']
 		x_, r, d, F = nonp.plotting_positions(self.data['x'], 
@@ -307,42 +307,35 @@ class Parametric():
 		if self.dist.name in ['Weibull3p']:
 			x_ = x_ - self.params[2]
 			x = x - self.params[2]
-		y_min = np.min(F[F > 0])/2
-		y_max = (1 - (1 - np.max(F[F < 1]))/10)
-		plt.xscale(self.dist.plot_x_scale)
-		
-		plt.gca().set_yscale('function', 
-			functions=(self.dist.mpp_y_transform, 
-					   self.dist.mpp_inv_y_transform))
-		plt.scatter(x_, F)
-		plt.grid(b=True, which='major', color='g', alpha=0.4, linestyle='-')
-		plt.grid(b=True, which='minor', color='g', alpha=0.1, linestyle='-')
-		y_ticks = np.array(self.dist.y_ticks)
-		y_ticks = y_ticks[np.where((y_ticks > y_min) & 
-								   (y_ticks < y_max))[0]]
-		plt.yticks(y_ticks)
-		plt.ylim([y_min, y_max])
-		plt.gca().yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
-		y_ticks_labels = [str(int(y)) if (re.match('([0-9]+\.0+)', str(y)) is not None) & (y > 1) else str(y) for y in y_ticks * 100]
-		y_ticks_labels = [y+'%' for y in y_ticks_labels]
-		plt.gca().set_yticklabels(y_ticks_labels)
+		y_scale_min = np.min(F[F > 0])/2
+		y_scale_max = (1 - (1 - np.max(F[F < 1]))/10)
 
 		# x-axis
+		x_min = np.min(x)
+		x_max = np.max(x)
 		if self.dist.plot_x_scale == 'log':
-			x_min = np.log10(np.min(x))
-			x_max = np.log10(np.max(x))
+			x_min = np.log10(x_min)
+			x_max = np.log10(x_max)
 			vals_non_sig = 10 ** np.linspace(x_min, x_max, 7)
-			xx = 10**np.linspace(x_min, x_max, 2)
+			x_model = 10**np.linspace(x_min, x_max, 2)
+			x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
+			x_minor_ticks = ((10**x_minor_ticks * np.array(np.arange(1, 11))
+												    .reshape((10, 1)))
+												    .flatten())
+			diff = (x_max - x_min)/10
+			x_scale_min = 10**(x_min - diff)
+			x_scale_max = 10**(x_max + diff)
 		else:
-			x_min = np.min(x)
-			x_max = np.max(x)
 			vals_non_sig = np.linspace(x_min, x_max, 7)
-			xx = np.linspace(x_min, x_max, 2)
-		
+			x_model = np.linspace(x_min, x_max, 2)
+			diff = (x_max - x_min) / 10
+			x_scale_min = x_min - diff
+			x_scale_max = x_max + diff
+
 		if self.dist.name in ['Weibull3p']:
-			cdf = self.ff(xx + self.params[2])
+			cdf = self.ff(x_model + self.params[2])
 		else:
-			cdf = self.ff(xx)
+			cdf = self.ff(x_model)
 		not_different = True
 		i = 1
 		while not_different:
@@ -350,18 +343,53 @@ class Parametric():
 		    not_different = (np.diff(x_ticks) == 0).any()
 		    i += 1
 
-		# Find minor ticks
-		x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
-		x_minor_ticks = (10**x_minor_ticks * np.array(np.arange(1, 11)).reshape((10, 1))).flatten()
-		plt.gca().set_xticks(x_ticks)
-		x_ticks = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & (x > 1) else str(x) for x in x_ticks]
-		plt.gca().set_xticklabels(x_ticks)
-		plt.gca().set_xticks(x_minor_ticks, minor=True)
-		plt.gca().set_xticklabels([], minor=True)
+		y_ticks = np.array(self.dist.y_ticks)
+		y_ticks = y_ticks[np.where((y_ticks > y_scale_min) & 
+								   (y_ticks < y_scale_max))[0]]
+		y_ticks_labels = [str(int(y))+'%' if (re.match('([0-9]+\.0+)', str(y)) is not None) & 
+							(y > 1) else str(y) for y in y_ticks * 100]
+
+		x_ticks_labels = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & 
+							(x > 1) else str(x) for x in x_ticks]
+
+		# MAKE THE PLOT
+		# Set the y limits
+		plt.gca().set_ylim([y_scale_min, y_scale_max])
+		
+		# Set the x scale
+		plt.xscale(self.dist.plot_x_scale)
+		# Set the y scale
+		if self.dist.name == 'Gamma':
+			# The y scale for the gamm distribution is dependent on the shape
+			plt.gca().set_yscale('function',
+				functions=(lambda x : self.dist.mpp_y_transform(x, self.params[0]),
+						   lambda x : self.dist.mpp_inv_y_transform(x, self.params[0])))
+		else:
+			plt.gca().set_yscale('function', 
+				functions=(self.dist.mpp_y_transform, 
+						   self.dist.mpp_inv_y_transform))
+		
+		# Set Major Y axis ticks
+		plt.yticks(y_ticks, labels=y_ticks_labels)
+		# Set Minor Y axis ticks
+		plt.gca().yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
+		# Set Major X axis ticks
+		plt.xticks(x_ticks, labels=x_ticks_labels)
+		# Set Minor X axis ticks if log scale.
+		if self.dist.plot_x_scale == 'log':
+			plt.gca().set_xticks(x_minor_ticks, minor=True)
+			plt.gca().set_xticklabels([], minor=True)
+
+		# Turn on the grid
+		plt.grid(b=True, which='major', color='g', alpha=0.4, linestyle='-')
+		plt.grid(b=True, which='minor', color='g', alpha=0.1, linestyle='-')
+
+		# Label it
 		plt.title('{} Probability Plot'.format(self.dist.name))
 		plt.ylabel('CDF')
-		return plt.plot(xx, cdf, color='k', linestyle='--')
-
+		plt.scatter(x_, F)
+		plt.gca().set_xlim([x_scale_min, x_scale_max])
+		return plt.plot(x_model, cdf, color='k', linestyle='--')
 class Weibull_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
@@ -453,7 +481,7 @@ class Weibull_(SurpyvalDist):
 			2 * da * db * cv_matrix[0, 1])
 		return var_u
 
-	def R_u(self, x, alpha, beta, cv_matrix, cb=0.05):
+	def R_cb(self, x, alpha, beta, cv_matrix, cb=0.05):
 		return np.exp(-np.exp(self.u_cb(x, alpha, beta, cv_matrix, cb)))
 
 	def jacobian(self, x, alpha, beta, c=None, n=None):
@@ -872,7 +900,8 @@ class Normal_(SurpyvalDist):
 		self.bounds = ((None, None), (0, None),)
 		self.use_autograd = True
 		self.plot_x_scale = 'linear'
-		self.y_ticks = [0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999]
+		self.y_ticks = [0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 
+				0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999]
 
 
 	def parameter_initialiser(self, x, c=None, n=None):
@@ -931,6 +960,21 @@ class Normal_(SurpyvalDist):
 		elif rr == 'x':
 			sigma, mu = params
 		return mu, sigma
+
+	def var_z(self, x, mu, sigma, cv_matrix):
+		z_hat = (x - mu)/sigma
+		var_z = (1./sigma)**2 * (cv_matrix[0, 0] + z_hat**2 * cv_matrix[1, 1] + 
+			2 * z_hat * cv_matrix[0, 1])
+		return var_z
+
+	def z_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
+		z_hat = (x - mu)/sigma
+		var_z = self.var_z(x, mu, sigma, cv_matrix)
+		bounds = z_hat + np.array([1., -1.]) * z(cb/2) * np.sqrt(var_z)
+		return bounds
+
+	def R_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
+		return self.sf(self.z_cb(x, mu, sigma, cv_matrix, cb=0.05), 0, 1)
 class LogNormal_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
@@ -992,6 +1036,11 @@ class Gamma_(SurpyvalDist):
 		self.k = 2
 		self.bounds = ((0, None), (0, None),)
 		self.use_autograd = False
+		self.plot_x_scale = 'linear'
+		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
+			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
+			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
+			0.9, 0.95, 0.99, 0.999, 0.9999]
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		# These equations are truly magical
@@ -1027,6 +1076,16 @@ class Gamma_(SurpyvalDist):
 	def random(self, size, alpha, beta):
 		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta)
+
+	def mpp_y_transform(self, y, alpha):
+		return gammaincinv(alpha, y)
+
+	def mpp_inv_y_transform(self, y, alpha):
+		return gammainc(alpha, y)
+
+	def mpp_x_transform(self, x):
+		return x
+
 class WMM(): 
 	def Q_prime(self, params): 
 		tmp_params = params.reshape(self.n, 2) 
@@ -1077,7 +1136,6 @@ class WMM():
 		return self.loglike
 
 	def mean(self):
-
 		mu1 = self.alphas[0] * gamma_func(1 + 1./self.betas[0])
 		mu2 = self.alphas[1] * gamma_func(1 + 1./self.betas[0])
 		return self.w[0] * mu1 + self.w[1] * mu2
