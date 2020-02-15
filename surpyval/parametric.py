@@ -706,6 +706,13 @@ class Exponential_(SurpyvalDist):
 			failure_rate = 1. / mttf
 		return tuple([failure_rate[0]])
 
+	def lambda_cb(self, x, failure_rate, cv_matrix, cb=0.05):
+		return failure_rate * np.exp(np.array([-1, 1]) * (z(cb/2) * 
+									np.sqrt(cv_matrix.item()) / failure_rate))
+
+	def R_cb(self, x, failure_rate, cv_matrix, cb=0.05):
+		return np.exp(-self.lambda_cb(x, failure_rate, cv_matrix, cb=0.05) * x)
+
 	def jacobian(self, x, failure_rate, c=None, n=None):
 		"""
 		The jacobian for a two parameter Weibull distribution.
