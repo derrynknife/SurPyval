@@ -1052,6 +1052,23 @@ class LogNormal_(SurpyvalDist):
 		elif rr == 'x':
 			sigma, mu = params
 		return mu, sigma
+
+	def var_z(self, x, mu, sigma, cv_matrix):
+		z_hat = (x - mu)/sigma
+		var_z = (1./sigma)**2 * (cv_matrix[0, 0] + z_hat**2 * cv_matrix[1, 1] + 
+			2 * z_hat * cv_matrix[0, 1])
+		return var_z
+
+	def z_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
+		z_hat = (x - mu)/sigma
+		var_z = self.var_z(x, mu, sigma, cv_matrix)
+		bounds = z_hat + np.array([1., -1.]) * z(cb/2) * np.sqrt(var_z)
+		return bounds
+
+	def R_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
+		t = np.log(x)
+		return Normal.sf(self.z_cb(t, mu, sigma, cv_matrix, cb=0.05), 0, 1)
+
 class Gamma_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
@@ -1107,7 +1124,6 @@ class Gamma_(SurpyvalDist):
 
 	def mpp_x_transform(self, x):
 		return x
-
 class WMM(): 
 	def Q_prime(self, params): 
 		tmp_params = params.reshape(self.n, 2) 
