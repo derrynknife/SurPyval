@@ -707,11 +707,11 @@ class Exponential_(SurpyvalDist):
 		return tuple([failure_rate[0]])
 
 	def lambda_cb(self, x, failure_rate, cv_matrix, cb=0.05):
-		return failure_rate * np.exp(np.array([-1, 1]) * (z(cb/2) * 
+		return failure_rate * np.exp(np.array([-1, 1]).reshape(2, 1) * (z(cb/2) * 
 									np.sqrt(cv_matrix.item()) / failure_rate))
 
 	def R_cb(self, x, failure_rate, cv_matrix, cb=0.05):
-		return np.exp(-self.lambda_cb(x, failure_rate, cv_matrix, cb=0.05) * x)
+		return np.exp(-self.lambda_cb(x, failure_rate, cv_matrix, cb=0.05) * x).T
 
 	def jacobian(self, x, failure_rate, c=None, n=None):
 		"""
@@ -992,11 +992,11 @@ class Normal_(SurpyvalDist):
 	def z_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
 		z_hat = (x - mu)/sigma
 		var_z = self.var_z(x, mu, sigma, cv_matrix)
-		bounds = z_hat + np.array([1., -1.]) * z(cb/2) * np.sqrt(var_z)
+		bounds = z_hat + np.array([1., -1.]).reshape(2, 1) * z(cb/2) * np.sqrt(var_z)
 		return bounds
 
 	def R_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
-		return self.sf(self.z_cb(x, mu, sigma, cv_matrix, cb=0.05), 0, 1)
+		return self.sf(self.z_cb(x, mu, sigma, cv_matrix, cb=0.05), 0, 1).T
 class LogNormal_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
@@ -1062,12 +1062,12 @@ class LogNormal_(SurpyvalDist):
 	def z_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
 		z_hat = (x - mu)/sigma
 		var_z = self.var_z(x, mu, sigma, cv_matrix)
-		bounds = z_hat + np.array([1., -1.]) * z(cb/2) * np.sqrt(var_z)
+		bounds = z_hat + np.array([1., -1.]).reshape(2, 1) * z(cb/2) * np.sqrt(var_z)
 		return bounds
 
 	def R_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
 		t = np.log(x)
-		return Normal.sf(self.z_cb(t, mu, sigma, cv_matrix, cb=0.05), 0, 1)
+		return Normal.sf(self.z_cb(t, mu, sigma, cv_matrix, cb=0.05), 0, 1).T
 class Gamma_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
