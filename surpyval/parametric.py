@@ -296,8 +296,7 @@ class Parametric():
 			self.aic_c_ = self.aic() + (2*k**2 + 2*k)/(n - k - 1)
 			return self.aic_c_
 
-
-	def plot(self, heuristic='Blom', plot_bounds=True, cb=0.05):
+	def get_plot_data(self, heuristic='Blom', plot_bounds=True, cb=0.05):
 		"""
 		Looking a little less ugly now.
 		"""
@@ -328,6 +327,7 @@ class Parametric():
 		else:
 			vals_non_sig = np.linspace(x_min, x_max, 7)
 			x_model = np.linspace(x_min, x_max, 100)
+			x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
 			diff = (x_max - x_min) / 10
 			x_scale_min = x_min - diff
 			x_scale_max = x_max + diff
@@ -352,12 +352,40 @@ class Parametric():
 		x_ticks_labels = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & 
 							(x > 1) else str(x) for x in x_ticks]
 
+		if plot_bounds:
+			if self.dist.name == 'Weibull3p':
+				cbs = 1 - self.dist.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
+			else:
+				cbs = 1 - self.dist.R_cb(x_model, *self.params, self.hess_inv, cb=cb)
+
+		plot_data = {
+			'x_scale_min' : x_scale_min,
+			'x_scale_max' : x_scale_max,
+			'y_scale_min' : y_scale_min,
+			'y_scale_max' : y_scale_max,
+			'y_ticks' : y_ticks,
+			'y_ticks_labels' : y_ticks_labels,
+			'x_ticks' : x_ticks,
+			'x_ticks_labels' : x_ticks_labels,
+			'cdf' : cdf,
+			'x_model' : x_model,
+			'x_minor_ticks' : x_minor_ticks,
+			'cbs' : cbs,
+			'x_scale' : self.dist.plot_x_scale,
+			'x_' : x_,
+			'F' : F
+		}
+		return plot_data
+
+	def plot(self, heuristic='Blom', plot_bounds=True, cb=0.05):
+		d = self.get_plot_data(heuristic=heuristic, 
+				plot_bounds=plot_bounds, cb=cb)
 		# MAKE THE PLOT
 		# Set the y limits
-		plt.gca().set_ylim([y_scale_min, y_scale_max])
+		plt.gca().set_ylim([d['y_scale_min'], d['y_scale_max']])
 		
 		# Set the x scale
-		plt.xscale(self.dist.plot_x_scale)
+		plt.xscale(d['x_scale'])
 		# Set the y scale
 		if self.dist.name == 'Gamma':
 			# The y scale for the gamm distribution is dependent on the shape
@@ -370,14 +398,14 @@ class Parametric():
 						   self.dist.mpp_inv_y_transform))
 		
 		# Set Major Y axis ticks
-		plt.yticks(y_ticks, labels=y_ticks_labels)
+		plt.yticks(d['y_ticks'], labels=d['y_ticks_labels'])
 		# Set Minor Y axis ticks
 		plt.gca().yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
 		# Set Major X axis ticks
-		plt.xticks(x_ticks, labels=x_ticks_labels)
+		plt.xticks(d['x_ticks'], labels=d['x_ticks_labels'])
 		# Set Minor X axis ticks if log scale.
-		if self.dist.plot_x_scale == 'log':
-			plt.gca().set_xticks(x_minor_ticks, minor=True)
+		if d['x_scale'] == 'log':
+			plt.gca().set_xticks(d['x_minor_ticks'], minor=True)
 			plt.gca().set_xticklabels([], minor=True)
 
 		# Turn on the grid
@@ -387,16 +415,11 @@ class Parametric():
 		# Label it
 		plt.title('{} Probability Plot'.format(self.dist.name))
 		plt.ylabel('CDF')
-		plt.scatter(x_, F)
-		plt.gca().set_xlim([x_scale_min, x_scale_max])
+		plt.scatter(d['x_'], d['F'])
+		plt.gca().set_xlim([d['x_scale_min'], d['x_scale_max']])
 		if plot_bounds:
-			if self.dist.name == 'Weibull3p':
-				cbs = 1 - self.dist.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
-				plt.plot(x_model, cbs, color='r')
-			else:
-				cbs = 1 - self.dist.R_cb(x_model, *self.params, self.hess_inv, cb=cb)
-				plt.plot(x_model, cbs, color='r')
-		return plt.plot(x_model, cdf, color='k', linestyle='--')
+			plt.plot(d['x_model'], d['cbs'], color='r')
+		return plt.plot(d['x_model'], d['cdf'], color='k', linestyle='--')
 class Weibull_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
