@@ -324,7 +324,8 @@ class NonParametric(object):
 		H[H == 0] = 0
 		return H
 
-	def R_cb(self, x, bound='upper', how='step', confidence=0.95):
+	def R_cb(self, x, bound='upper', how='step', confidence=0.95, bound_type='exp'):
+		assert bound_type in ['exp', 'normal']
 		x = np.atleast_1d(x)
 		if bound in ['upper', 'lower']:
 			t_stat = t.ppf((1 - confidence), self.r - 1)
@@ -333,7 +334,14 @@ class NonParametric(object):
 			t_stat = t.ppf((1 - confidence)/2, self.r - 1)
 			t_stat = np.array([-1, 1]).reshape(2, 1) * t_stat
 
-		R_out = self.R + self.var * t_stat
+		if bound_type == 'exp':
+			# Exponential Greenwood confidence
+			R_out = self.greenwood * 1./(np.log(self.R)**2)
+			R_out = np.log(-np.log(self.R)) - t_stat * np.sqrt(R_out)
+			R_out = np.exp(-np.exp(R_out))
+		else:
+			# Normal Greenwood confidence
+			R_out = self.R + np.sqrt(self.greenwood * self.R**2) * t_stat
 		# Let's not assume we can predict above the highest measurement
 		if how == 'step':
 			idx = np.searchsorted(self.x, x, side='right') - 1
@@ -352,7 +360,7 @@ class NonParametric(object):
 		return R_out
 
 	def random(self, size):
-		return np.random.choice(self.x,size=size)
+		return np.random.choice(self.x, size=size)
 
 	@classmethod
 	def fit(cls, x, how='Nelson-Aalen', 
@@ -387,15 +395,10 @@ class NonParametric(object):
 		# http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 		with np.errstate(divide='ignore'):
 			var = out.d / (out.r * (out.r - out.d))
-			#t_stat = t.ppf(sig/2, r - 1)
 		
 		with np.errstate(invalid='ignore'):
-			var = R**2 * np.cumsum(var)
-		out.var = np.sqrt(var)
-		#R_l = R + t_stat * np.sqrt(var)
-		#R_u = R - t_stat * np.sqrt(var)
-		#out.cb_u = R_u
-		#out.cb_l = R_l
+			greenwood = np.cumsum(var)
+		out.greenwood = greenwood
 
 		return out
 
