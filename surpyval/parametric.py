@@ -334,7 +334,6 @@ class Parametric():
 
 		if self.dist.name in ['Weibull3p']:
 			cdf = self.ff(x_model + self.params[2])
-			plot_bounds = False
 		else:
 			cdf = self.ff(x_model)
 		not_different = True
@@ -391,8 +390,12 @@ class Parametric():
 		plt.scatter(x_, F)
 		plt.gca().set_xlim([x_scale_min, x_scale_max])
 		if plot_bounds:
-			cbs = 1 - self.dist.R_cb(x_model, *self.params, self.hess_inv, cb=cb)
-			plt.plot(x_model, cbs, color='r')
+			if self.dist.name == 'Weibull3p':
+				cbs = 1 - self.dist.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
+				plt.plot(x_model, cbs, color='r')
+			else:
+				cbs = 1 - self.dist.R_cb(x_model, *self.params, self.hess_inv, cb=cb)
+				plt.plot(x_model, cbs, color='r')
 		return plt.plot(x_model, cdf, color='k', linestyle='--')
 class Weibull_(SurpyvalDist):
 	def __init__(self, name):
@@ -805,7 +808,33 @@ class Weibull3p_(SurpyvalDist):
 		return np.log(-np.log((1 - y)))
 
 	def mpp_inv_y_transform(self, y):
-		return 1 - np.exp(-np.exp(y))	
+		return 1 - np.exp(-np.exp(y))
+
+	def du(self, x, alpha, beta, gamma):
+		du_dbeta = np.log(x - gamma) - np.log(alpha)
+		du_dalpha  = -beta/alpha
+		du_dgamma = beta / (gamma - x)
+		return du_dalpha, du_dbeta, du_dgamma
+
+	def var_u(self, x, alpha, beta, gamma, cv_matrix):
+		da, db, dg = self.du(x, alpha, beta, gamma)
+		var_u = (da**2 * cv_matrix[0, 0] + db**2 * cv_matrix[1, 1] + 
+				 dg**2 * cv_matrix[2, 2] + 2 * da * db * cv_matrix[0, 1] +
+				 2 * da * dg * cv_matrix[0, 2] + 2 * db * dg * cv_matrix[1, 2])
+		return var_u
+
+	def u(self, x, alpha, beta, gamma):
+		return beta * (np.log(x - gamma) - np.log(alpha))
+
+	def u_cb(self, x, alpha, beta, gamma, cv_matrix, cb=0.05):
+		u = self.u(x, alpha, beta, gamma)
+		var_u = self.var_u(x, alpha, beta, gamma, cv_matrix)
+		diff = z(cb/2) * np.sqrt(var_u)
+		bounds = u + np.array([1., -1.]).reshape(2, 1) * diff
+		return bounds
+
+	def R_cb(self, x, alpha, beta, gamma, cv_matrix, cb=0.05):
+		return np.exp(-np.exp(self.u_cb(x, alpha, beta, gamma, cv_matrix, cb))).T
 
 	def neg_mean_D__(self, x, alpha, beta, gamma, c=None, n=None):
 		#print(alpha, beta, gamma)
