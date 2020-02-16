@@ -1068,7 +1068,6 @@ class LogNormal_(SurpyvalDist):
 	def R_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
 		t = np.log(x)
 		return Normal.sf(self.z_cb(t, mu, sigma, cv_matrix, cb=0.05), 0, 1)
-
 class Gamma_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
@@ -1124,6 +1123,35 @@ class Gamma_(SurpyvalDist):
 
 	def mpp_x_transform(self, x):
 		return x
+
+	def var_R(self, dR, cv_matrix):
+		dr_dalpha = dR[:, 0]
+		dr_dbeta  = dR[:, 1]
+		var_r = (dr_dalpha**2 * cv_matrix[0, 0] + 
+				 dr_dbeta**2  * cv_matrix[1, 1] + 
+				 2 * dr_dalpha * dr_dbeta * cv_matrix[0, 1])
+		return var_r
+
+	def R_cb(self, x, alpha, beta, cv_matrix, cb=0.05):
+		R_hat = self.sf(x, alpha, beta)
+		dR_f = lambda t : self.sf(*t)
+		jac = lambda t : approx_fprime(t, dR_f, EPS)[1::]
+		x_ = np.array(x)
+		if x_.size == 1:
+			dR = jac((x_, alpha, beta))
+			dR = dR.reshape(1, 2)
+		else:
+			out = []
+			for xx in x_:
+				out.append(jac((xx, alpha, beta)))
+			dR = np.array(out)
+		K = z(cb/2)
+		exponent = K * np.array([-1, 1]).reshape(2, 1) * np.sqrt(self.var_R(dR, cv_matrix))
+		exponent = exponent/(R_hat*(1 - R_hat))
+		R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
+		return R_cb.T
+
+
 class WMM(): 
 	def Q_prime(self, params): 
 		tmp_params = params.reshape(self.n, 2) 
