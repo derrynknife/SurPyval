@@ -467,7 +467,7 @@ class Weibull_(SurpyvalDist):
 		u = self.u(x, alpha, beta)
 		var_u = self.var_u(x, alpha, beta, cv_matrix)
 		diff = z(cb/2) * np.sqrt(var_u)
-		bounds = u + np.array([1., -1.]) * diff
+		bounds = u + np.array([1., -1.]).reshape(2, 1) * diff
 		return bounds
 
 	def du(self, x, alpha, beta):
@@ -482,7 +482,7 @@ class Weibull_(SurpyvalDist):
 		return var_u
 
 	def R_cb(self, x, alpha, beta, cv_matrix, cb=0.05):
-		return np.exp(-np.exp(self.u_cb(x, alpha, beta, cv_matrix, cb)))
+		return np.exp(-np.exp(self.u_cb(x, alpha, beta, cv_matrix, cb))).T
 
 	def jacobian(self, x, alpha, beta, c=None, n=None):
 		"""
@@ -1150,8 +1150,6 @@ class Gamma_(SurpyvalDist):
 		exponent = exponent/(R_hat*(1 - R_hat))
 		R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
 		return R_cb.T
-
-
 class WMM(): 
 	def Q_prime(self, params): 
 		tmp_params = params.reshape(self.n, 2) 
