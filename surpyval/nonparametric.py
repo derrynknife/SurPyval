@@ -301,19 +301,17 @@ class NonParametric(object):
 		# Let's not assume we can predict above the highest measurement
 		if how == 'step':
 			idx = np.searchsorted(self.x, x, side='right') - 1
-			R_out = self.R[idx]
-			R_out[np.where(x < self.x.min())] = 1
-			R_out[np.where(x > self.x.max())] = np.nan
-			R_out[np.where(x < 0)] = np.nan
+			R = self.R[idx]
+			R[np.where(x < self.x.min())] = 1
+			R[np.where(x > self.x.max())] = np.nan
+			R[np.where(x < 0)] = np.nan
+			return R
 		elif how == 'interp':
 			R = np.hstack([[1], self.R])
 			x_data = np.hstack([[0], self.x])
 			R = np.interp(x, x_data, R)
 			R[np.where(x > self.x.max())] = np.nan
 			return R
-		else:
-			pass
-		return R_out
 
 	def ff(self, x, how='step'):
 		return 1 - self.sf(x, how=how)
@@ -326,12 +324,16 @@ class NonParametric(object):
 		H[H == 0] = 0
 		return H
 
-	def R_cb(self, x, bound='upper', how='step'):
+	def R_cb(self, x, bound='upper', how='step', confidence=0.95):
 		x = np.atleast_1d(x)
-		if bound == 'upper':
-			R_out = self.cb_u
-		elif bound == 'lower':
-			R_out = self.cb_l
+		if bound in ['upper', 'lower']:
+			t_stat = t.ppf((1 - confidence), self.r - 1)
+			if bound == 'upper' : t_stat = -t_stat
+		elif bound == 'two-sided':
+			t_stat = t.ppf((1 - confidence)/2, self.r - 1)
+			t_stat = np.array([-1, 1]).reshape(2, 1) * t_stat
+
+		R_out = self.R + self.var * t_stat
 		# Let's not assume we can predict above the highest measurement
 		if how == 'step':
 			idx = np.searchsorted(self.x, x, side='right') - 1
@@ -340,9 +342,12 @@ class NonParametric(object):
 			R_out[np.where(x > self.x.max())] = np.nan
 			R_out[np.where(x < 0)] = np.nan
 		elif how == 'interp':
-			R_out = np.hstack([[1], R_out])
-			x_data = np.hstack([[0], self.x])
-			R_out = np.interp(x, x_data, R_out)
+			if bound == 'two-sided':
+				R1 = np.interp(x, self.x, R_out[0, :])
+				R2 = np.interp(x, self.x, R_out[1, :])
+				R_out = np.vstack([R1, R2]).T
+			else:
+				R_out = np.interp(x, self.x, R_out)
 			R_out[np.where(x > self.x.max())] = np.nan
 		return R_out
 
@@ -382,16 +387,16 @@ class NonParametric(object):
 		# http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 		with np.errstate(divide='ignore'):
 			var = out.d / (out.r * (out.r - out.d))
-			t_stat = t.ppf(sig/2, r - 1)
-		var = np.cumsum(var)
-		with np.errstate(invalid='ignore'):
-			var = R**2 * var
-
-		R_l = R + t_stat * np.sqrt(var)
-		R_u = R - t_stat * np.sqrt(var)
-		out.cb_u = R_u
-		out.cb_l = R_l
+			#t_stat = t.ppf(sig/2, r - 1)
 		
+		with np.errstate(invalid='ignore'):
+			var = R**2 * np.cumsum(var)
+		out.var = np.sqrt(var)
+		#R_l = R + t_stat * np.sqrt(var)
+		#R_u = R - t_stat * np.sqrt(var)
+		#out.cb_u = R_u
+		#out.cb_l = R_l
+
 		return out
 
 
