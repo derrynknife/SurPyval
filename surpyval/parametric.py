@@ -297,7 +297,7 @@ class Parametric():
 			return self.aic_c_
 
 
-	def plot(self, heuristic='Blom'):
+	def plot(self, heuristic='Blom', plot_bounds=True, cb=0.05):
 		"""
 		Looking a little less ugly now.
 		"""
@@ -317,7 +317,7 @@ class Parametric():
 			x_min = np.log10(x_min)
 			x_max = np.log10(x_max)
 			vals_non_sig = 10 ** np.linspace(x_min, x_max, 7)
-			x_model = 10**np.linspace(x_min, x_max, 2)
+			x_model = 10**np.linspace(x_min, x_max, 100)
 			x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
 			x_minor_ticks = ((10**x_minor_ticks * np.array(np.arange(1, 11))
 												    .reshape((10, 1)))
@@ -327,13 +327,14 @@ class Parametric():
 			x_scale_max = 10**(x_max + diff)
 		else:
 			vals_non_sig = np.linspace(x_min, x_max, 7)
-			x_model = np.linspace(x_min, x_max, 2)
+			x_model = np.linspace(x_min, x_max, 100)
 			diff = (x_max - x_min) / 10
 			x_scale_min = x_min - diff
 			x_scale_max = x_max + diff
 
 		if self.dist.name in ['Weibull3p']:
 			cdf = self.ff(x_model + self.params[2])
+			plot_bounds = False
 		else:
 			cdf = self.ff(x_model)
 		not_different = True
@@ -389,6 +390,9 @@ class Parametric():
 		plt.ylabel('CDF')
 		plt.scatter(x_, F)
 		plt.gca().set_xlim([x_scale_min, x_scale_max])
+		if plot_bounds:
+			cbs = 1 - self.dist.R_cb(x_model, *self.params, self.hess_inv, cb=cb)
+			plt.plot(x_model, cbs, color='r')
 		return plt.plot(x_model, cdf, color='k', linestyle='--')
 class Weibull_(SurpyvalDist):
 	def __init__(self, name):
