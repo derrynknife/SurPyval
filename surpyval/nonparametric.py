@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from scipy.stats import t
+from scipy.stats import t, norm
 from scipy.stats import rankdata
 from scipy.special import ndtri as z
 
@@ -324,31 +324,43 @@ class NonParametric(object):
 		H[H == 0] = 0
 		return H
 
-	def R_cb(self, x, bound='upper', how='step', confidence=0.95, bound_type='exp'):
+	def R_cb(self, x, bound='upper', how='step', confidence=0.95, bound_type='exp', dist='t'):
+		# Greenwoods variance using t-stat. Ref found:
+		# http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 		assert bound_type in ['exp', 'normal']
+		assert dist in ['t', 'z']
 		x = np.atleast_1d(x)
 		if bound in ['upper', 'lower']:
-			t_stat = t.ppf((1 - confidence), self.r - 1)
-			if bound == 'upper' : t_stat = -t_stat
+			if dist == 't':
+				stat = t.ppf(1 - confidence, self.r - 1)
+			else:
+				stat = norm.ppf(1 - confidence, 0, 1)
+			if bound == 'upper' : stat = -stat
 		elif bound == 'two-sided':
-			t_stat = t.ppf((1 - confidence)/2, self.r - 1)
-			t_stat = np.array([-1, 1]).reshape(2, 1) * t_stat
+			if dist == 't':
+				stat = t.ppf((1 - confidence)/2, self.r - 1)
+			else:
+				stat = norm.ppf((1 - confidence)/2, 0, 1)
+			stat = np.array([-1, 1]).reshape(2, 1) * stat
 
 		if bound_type == 'exp':
 			# Exponential Greenwood confidence
 			R_out = self.greenwood * 1./(np.log(self.R)**2)
-			R_out = np.log(-np.log(self.R)) - t_stat * np.sqrt(R_out)
+			R_out = np.log(-np.log(self.R)) - stat * np.sqrt(R_out)
 			R_out = np.exp(-np.exp(R_out))
 		else:
 			# Normal Greenwood confidence
-			R_out = self.R + np.sqrt(self.greenwood * self.R**2) * t_stat
+			R_out = self.R + np.sqrt(self.greenwood * self.R**2) * stat
 		# Let's not assume we can predict above the highest measurement
 		if how == 'step':
-			idx = np.searchsorted(self.x, x, side='right') - 1
-			R_out = R_out[idx]
 			R_out[np.where(x < self.x.min())] = 1
 			R_out[np.where(x > self.x.max())] = np.nan
 			R_out[np.where(x < 0)] = np.nan
+			idx = np.searchsorted(self.x, x, side='right') - 1
+			if bound == 'two-sided':
+				R_out = R_out[:, idx].T
+			else:
+				R_out = R_out[idx]
 		elif how == 'interp':
 			if bound == 'two-sided':
 				R1 = np.interp(x, self.x, R_out[0, :])
@@ -389,10 +401,6 @@ class NonParametric(object):
 		out.R = R
 		out.F = 1 - out.R
 
-		# TODO: Also add more options?
-		# Happy to ignore the infinite variance expected when all fail
-		# Greenwoods variance using t-stat. Ref found:
-		# http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 		with np.errstate(divide='ignore'):
 			var = out.d / (out.r * (out.r - out.d))
 		
