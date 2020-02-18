@@ -14,6 +14,7 @@ from scipy.special import factorial
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
 from scipy.optimize import approx_fprime
+from scipy.stats import pearsonr
 
 from surpyval import nonparametric as nonp
 
@@ -38,6 +39,15 @@ class SurpyvalDist():
 					self.sf(x, *params) * c * (c + 1.) / 2.)
 		like += TINIEST
 		return -np.sum(np.log(like))
+
+	def neg_ll_2(self, x, c=None, n=None, *params):
+		like = n * (self.ff(x, *params) * c * (c - 1.) / 2. +
+					self.df(x, *params) * (1. - c**2.) +
+					self.sf(x, *params) * c * (c + 1.) / 2.)
+		like += TINIEST
+		like = -np.sum(np.log(like))
+		like = np.sign(like) * np.abs(like)**3
+		return like
 
 	def neg_mean_D(self, x, c=None, n=None, *params):
 		idx = np.argsort(x)
@@ -107,18 +117,26 @@ class SurpyvalDist():
 		if c is None:
 			c = np.zeros_like(x).astype(np.int64)
 
-		x_ = np.repeat(x, n)
-		c_ = np.repeat(c, n).astype(np.int64)
-		n_ = np.ones_like(x_).astype(np.int64)
+		x_ = np.copy(x)
+		c_ = np.copy(c).astype(np.int64)
+		n_ = np.copy(n).astype(np.int64)
 
 		init = self.parameter_initialiser(x_, c_, n_)
 
 		if self.use_autograd:
-			fun  = lambda t : self.neg_ll(x_, c_, n_, *t)
-			jac = jacobian(fun)
-			hess = hessian(fun)
-			res = minimize(fun, init, method='trust-exact', jac=jac, hess=hess)
-			hess_inv = inv(res.hess)
+			try:
+				fun  = lambda t : self.neg_ll(x_, c_, n_, *t)
+				jac = jacobian(fun)
+				hess = hessian(fun)
+				res = minimize(fun, init, method='trust-exact', jac=jac, hess=hess, tol=1e-10)
+				hess_inv = inv(res.hess)
+			except:
+				with np.errstate(all='ignore'):
+					fun = lambda t : self.neg_ll(x_, c_, n_, *t)
+					jac = lambda t : approx_fprime(t, fun, EPS)
+					res = minimize(fun, init, method='BFGS', jac=jac)
+					hess_inv = res.hess_inv
+
 		else:
 			fun = lambda t : self.neg_ll(x_, c_, n_, *t)
 			jac = lambda t : approx_fprime(t, fun, EPS)
@@ -215,7 +233,8 @@ class SurpyvalDist():
 
 			model.params = self._mpp(x, n=n, c=c, rr=rr, heuristic=heuristic)
 		elif how == 'MSE':
-			model.res = self._mse(x, c=c, n=n)
+			heuristic = kwargs.get('heuristic', 'Nelson-Aalen')
+			model.res = self._mse(x, c=c, n=n, heuristic=heuristic)
 			model.params = tuple(model.res.x)
 		
 		# Store params with redundancy...
@@ -357,6 +376,8 @@ class Parametric():
 				cbs = 1 - self.dist.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
 			else:
 				cbs = 1 - self.dist.R_cb(x_model, *self.params, self.hess_inv, cb=cb)
+		else:
+			cbs = []
 
 		plot_data = {
 			'x_scale_min' : x_scale_min,
@@ -789,8 +810,14 @@ class Weibull3p_(SurpyvalDist):
 
 		flag = (c == 0).astype(NUM)
 
-		init_mpp = Weibull.fit(x - (np.min(x) - 1), c=c, n=n, how='MPP').params
-		init = init_mpp[0], init_mpp[1], np.min(x) - 1
+		xx = np.copy(x)
+		nn = np.copy(n)
+		cc = np.copy(c)
+
+		diff = (np.max(x) - np.min(x))/20
+
+		init_mpp = Weibull.fit(x - (np.min(x) - diff), c=c, n=n, how='MPP').params
+		init = init_mpp[0], init_mpp[1], np.min(x) - diff
 		#init = x.sum() / (n * flag).sum(), 1., np.min(x) - 1
 		self.bounds = ((0, None), (0, None), (None, np.min(x)))
 		return init
@@ -891,50 +918,26 @@ class Weibull3p_(SurpyvalDist):
 		x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
 		
 		# Linearise
-		x_ = np.log(x)
 		y_ = np.log(np.log(1/(1 - F)))
 
+		# Find gamma with maximum correlation
+		gamma = np.min(x) - (np.max(x) - np.min(x))/10
+		fun = lambda gamma : -pearsonr(np.log(x - gamma), y_)[0]
+		res = minimize(fun, gamma, bounds=[(None, np.min(x))])
+		gamma = res.x[0]
+
 		if   rr == 'y':
-			model = np.polyfit(x_, y_, 1)
+			model = np.polyfit(np.log(x - gamma), y_, 1)
 			beta  = model[0]
 			alpha = np.exp(model[1]/-beta)
 		elif rr == 'x':
-			model = np.polyfit(y_, x_, 1)
+			model = np.polyfit(y_, np.log(x - gamma), 1)
 			beta  = 1./model[0]
 			alpha = np.exp(model[1] / (beta * model[0]))
-		return alpha, beta, 0
-
-	def _mle__(self, x, c=None, n=None, model=None):
-		if n is None:
-			n = np.ones_like(x).astype(np.int64)
-
-		if c is None:
-			c = np.zeros_like(x).astype(np.int64)
-		#fun = lambda t : self.neg_ll(x, t[0], t[1], t[2], c, n)
-		#res = minimize(fun, init, bounds=bounds)
-		init = self.parameter_initialiser(x, c, n)
-		fun = lambda t : self.neg_ll(x, t[0], t[1], t[2], c, n)
-		jac = lambda t : self.jacobian(x, t[0], t[1], t[2], c, n)
-		res_a = minimize(fun, 
-					   init,
-					   method='Nelder-Mead')
-		if res_a.success:
-			init = res_a.x
-		res_b = minimize(fun, 
-					     init,
-					     method='TNC',
-					     jac=jac,
-					     bounds=self.bounds,
-					     tol=1e-10)
-		if res_b.success:
-			res = res_a
-		else:
-			res = res_b
-		
-		return res
+		return alpha, beta, gamma
 
 	def jacobian(self, x, alpha, beta, gamma, c=None, n=None):
-		# If by some chance I can solve this on paper...
+		# Done in a past iteration, and now don't have the heart to delete
 		if c is None:
 			c = np.zeros_like(x)
 
