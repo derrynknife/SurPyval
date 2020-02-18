@@ -40,15 +40,6 @@ class SurpyvalDist():
 		like += TINIEST
 		return -np.sum(np.log(like))
 
-	def neg_ll_2(self, x, c=None, n=None, *params):
-		like = n * (self.ff(x, *params) * c * (c - 1.) / 2. +
-					self.df(x, *params) * (1. - c**2.) +
-					self.sf(x, *params) * c * (c + 1.) / 2.)
-		like += TINIEST
-		like = -np.sum(np.log(like))
-		like = np.sign(like) * np.abs(like)**3
-		return like
-
 	def neg_mean_D(self, x, c=None, n=None, *params):
 		idx = np.argsort(x)
 		F  = self.ff(x[idx], *params)
@@ -814,9 +805,9 @@ class Weibull3p_(SurpyvalDist):
 		nn = np.copy(n)
 		cc = np.copy(c)
 
-		diff = (np.max(x) - np.min(x))/20
+		diff = (np.max(x) - np.min(x))/10
 
-		init_mpp = Weibull.fit(x - (np.min(x) - diff), c=c, n=n, how='MPP').params
+		init_mpp = Weibull3p.fit(x, c=c, n=n, how='MPP').params
 		init = init_mpp[0], init_mpp[1], np.min(x) - diff
 		#init = x.sum() / (n * flag).sum(), 1., np.min(x) - 1
 		self.bounds = ((0, None), (0, None), (None, np.min(x)))
@@ -885,28 +876,6 @@ class Weibull3p_(SurpyvalDist):
 
 	def R_cb(self, x, alpha, beta, gamma, cv_matrix, cb=0.05):
 		return np.exp(-np.exp(self.u_cb(x, alpha, beta, gamma, cv_matrix, cb))).T
-
-	def neg_mean_D__(self, x, alpha, beta, gamma, c=None, n=None):
-		#print(alpha, beta, gamma)
-		if gamma > np.min(x):
-			gamma = np.min(x) - TINIEST
-		idx = np.argsort(x)
-		F  = self.ff(x[idx], alpha, beta, gamma)
-		D0 = F[0]
-		Dn = 1 - F[-1]
-		D = np.diff(F)
-		D = np.concatenate([[D0], D, [Dn]])
-		if n is not None:
-			# For each point
-			D = np.repeat(D[0:-1], n[idx])
-		if c is not None:
-			Dr = self.sf(x[c == 1],  alpha, beta, gamma)
-			Dl = self.ff(x[c == -1], alpha, beta, gamma)
-			D = np.concatenate([Dl, D, Dr])
-		D[D < TINIEST] = TINIEST
-		M = np.log(D)
-		M = -np.sum(M)/(M.shape[0])
-		return M
 
 	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y'):
 		assert rr in ['x', 'y']
