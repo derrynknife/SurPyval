@@ -1,5 +1,4 @@
 import re
-
 from autograd import jacobian, hessian
 import autograd.numpy as np
 from autograd.numpy.linalg import inv
@@ -636,37 +635,6 @@ class Gumbel_(SurpyvalDist):
 
 	def R_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
 		return self.sf(self.z_cb(x, mu, sigma, cv_matrix, cb=0.05), 0, 1).T
-
-	def jacobian_draft(self, x, mu, sigma, c=None, n=None):
-		if c is None:
-			c = np.zeros_like(x)
-
-		if n is None:
-			n = np.ones_like(x)
-		
-		f = c == 0
-		l = c == -1
-		r = c == 1
-
-		dll_dmu = 1./sigma * ( 0 -
-			np.sum(n[f]) +
-			np.sum(n[f] * np.exp((x[f] - mu)/sigma)) -
-			np.sum(n[r] * np.exp((x[r] - mu)/sigma)) + 
-			np.sum(n[l] * (
-					-np.exp((x[l] - mu)/sigma - np.exp((x[l] - mu)/sigma))
-				) / (1 - np.exp(-np.exp((x[l] - mu)/sigma))))
-		)
-
-		## Don't think the reliawiki website is correct here.
-		dll_dsigma = 1./sigma * ( 0 -
-			1./sigma * np.sum(n[f] * (x[f] - mu)) -
-			np.sum(n[f] * np.exp((x[f] - mu)/sigma)) -
-			np.sum(n[r] * np.exp((x[r] - mu)/sigma)) + 
-			np.sum(n[l] * (
-					-np.exp((x[l] - mu)/sigma - np.exp((x[l] - mu)/sigma))
-				) / (1 - np.exp(-np.exp((x[l] - mu)/sigma))))
-		)
-		return -np.array([dll_dmu, dll_dsigma])
 class Exponential_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
