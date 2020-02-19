@@ -5,7 +5,7 @@ from scipy.stats import t, norm
 from scipy.stats import rankdata
 from scipy.special import ndtri as z
 
-NUM = np.float128
+NUM = np.float64
 
 PLOTTING_METHODS = [ "Blom", "Median", "ECDF", "Modal", "Midpoint", 
 "Mean", "Weibull", "Benard", "Beard", "Hazen", "Gringorten", 

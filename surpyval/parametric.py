@@ -20,7 +20,18 @@ from surpyval import nonparametric as nonp
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator
 
-NUM     = np.float64
+# Different imports based on OS
+try:
+	# Works on macOS
+	NUM = np.float128
+except:
+	try:
+		# Suggested fix for Windows
+		NUM = np.longdouble
+	except:
+		# If all else fails
+		NUM = np.float64
+
 TINIEST = np.finfo(NUM).tiny
 EPS     = np.sqrt(np.finfo(NUM).eps)
 
@@ -192,7 +203,18 @@ class SurpyvalDist():
 	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
 		model = Parametric()
 		model.method = how
+		model.raw_data = {
+			'x' : x,
+			'c' : c,
+			'n' : n
+		}
+
 		x = np.array(x, dtype=NUM)
+		if c is None:
+			c = np.zeros_like(x).astype(np.int64)
+		if n is None:
+			n = np.ones_like(x).astype(np.int64)
+
 		model.data = {
 			'x' : x,
 			'c' : c,
