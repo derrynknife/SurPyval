@@ -209,7 +209,7 @@ class SurpyvalDist():
 			'c' : c,
 			'n' : n
 		}
-		model.dist = self.name
+
 		model.dist = self
 		if   how == 'MLE':
 			# Maximum Likelihood
@@ -238,7 +238,6 @@ class SurpyvalDist():
 			model.res = self._mse(x, c=c, n=n, heuristic=heuristic)
 			model.params = tuple(model.res.x)
 		
-		# Store params with redundancy...
 		return model
 class Parametric():
 	def __init__(self):
