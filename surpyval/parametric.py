@@ -20,18 +20,7 @@ from surpyval import nonparametric as nonp
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator
 
-# Different imports based on OS
-try:
-	# Works on macOS
-	NUM = np.float128
-except:
-	try:
-		# Suggested fix for Windows
-		NUM = np.longdouble
-	except:
-		# If all else fails
-		NUM = np.float64
-
+NUM     = np.float64
 TINIEST = np.finfo(NUM).tiny
 EPS     = np.sqrt(np.finfo(NUM).eps)
 
