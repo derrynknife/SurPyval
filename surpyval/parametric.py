@@ -218,14 +218,14 @@ class SurpyvalDist():
 		elif how == 'MPS':
 			# Maximum Product Spacing
 			if c is not None:
-				raise InputError('Maximum product spacing doesn\'t support censoring')
+				raise Exception('Maximum product spacing doesn\'t support censoring')
 			if n is not None:
-				raise InputError('Maximum product spacing doesn\'t support counts')
+				raise Exception('Maximum product spacing doesn\'t support counts')
 			model.res = self._mps(x)
 			model.params = tuple(model.res.x)
 		elif how == 'MOM':
 			if c is not None:
-				raise InputError('Method of moments doesn\'t support censoring')
+				raise Exception('Method of moments doesn\'t support censoring')
 			model.res = self._mom(x, n=n)
 			model.params = tuple(model.res.x)
 		elif how == 'MPP':
@@ -277,7 +277,7 @@ class Parametric():
 
 	def cb(self, x, sig):
 		if self.method != 'MLE':
-			raise InvalidError('Only MLE has confidence bounds')
+			raise Exception('Only MLE has confidence bounds')
 			
 		du = z(sig) * np.sqrt(var_u)
 		u_u = u_hat + du
