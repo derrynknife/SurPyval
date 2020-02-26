@@ -335,7 +335,6 @@ class Parametric():
 			x_min = np.log10(x_min)
 			x_max = np.log10(x_max)
 			vals_non_sig = 10 ** np.linspace(x_min, x_max, 7)
-			x_model = 10**np.linspace(x_min, x_max, 100)
 			x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
 			x_minor_ticks = ((10**x_minor_ticks * np.array(np.arange(1, 11))
 												    .reshape((10, 1)))
@@ -343,13 +342,14 @@ class Parametric():
 			diff = (x_max - x_min)/10
 			x_scale_min = 10**(x_min - diff)
 			x_scale_max = 10**(x_max + diff)
+			x_model = 10**np.linspace(x_min - diff, x_max + diff, 100)
 		else:
 			vals_non_sig = np.linspace(x_min, x_max, 7)
-			x_model = np.linspace(x_min, x_max, 100)
 			x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
 			diff = (x_max - x_min) / 10
 			x_scale_min = x_min - diff
 			x_scale_max = x_max + diff
+			x_model = np.linspace(x_scale_min, x_scale_max, 100)
 
 		if self.dist.name in ['Weibull3p']:
 			cdf = self.ff(x_model + self.params[2])
