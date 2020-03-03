@@ -37,6 +37,7 @@ class SurpyvalDist():
 					self.df(x, *params) * (1. - c**2.) +
 					self.sf(x, *params) * c * (c + 1.) / 2.)
 		like += TINIEST
+		like = np.where(like < 1, like, 1)
 		return -np.sum(np.log(like))
 
 	def neg_mean_D(self, x, c=None, n=None, *params):
