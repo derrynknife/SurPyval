@@ -32,10 +32,19 @@ def round_sig(points, sig=2):
     return output
 
 class SurpyvalDist():
-	def neg_ll(self, x, c=None, n=None, *params):
+	def neg_ll_1(self, x, c=None, n=None, *params):
 		like = n * (self.ff(x, *params) * c * (c - 1.) / 2. +
 					self.df(x, *params) * (1. - c**2.) +
 					self.sf(x, *params) * c * (c + 1.) / 2.)
+		like += TINIEST
+		like = np.where(like < 1, like, 1)
+		return -np.sum(np.log(like))
+
+	def neg_ll(self, x, c=None, n=None, *params):
+		like = np.zeros_like(x).astype(NUM)
+		like = np.where(c == 0, self.df(x, *params), like)
+		like = np.where(c == -1, self.ff(x, *params), like)
+		like = np.where(c == 1, self.sf(x, *params), like)
 		like += TINIEST
 		like = np.where(like < 1, like, 1)
 		return -np.sum(np.log(like))
