@@ -157,7 +157,7 @@ class SurpyvalDist():
 		# Can I add a simple sum(c) instead of length to work with censoring?
 		"""
 		if n is not None:
-			x = np.rep(x, n)
+			x = np.repeat(x, n)
 
 		moments = np.zeros(self.k)
 		for i in range(0, self.k):
@@ -1210,14 +1210,17 @@ class Uniform_(SurpyvalDist):
 		return 0.5 * (a + b)
 
 	def moment(self, n, a, b):
-		return alpha**n * gamma_func(1 + n/beta)
+		if n == 0:
+			return 1
+		else:
+			out = np.zeros(n)
+			for i in range(n):
+				out[i] = a**i * b**(n-i)
+			return np.sum(out)/(n + 1)
 
-	def entropy(self, alhpa, beta):
-		return euler_gamma * (1 - 1/beta) + np.log(alpha / beta) + 1
-
-	def random(self, size, alpha, beta):
+	def random(self, size, a, b):
 		U = uniform.rvs(size=size)
-		return self.qf(U, alpha, beta)
+		return self.qf(U, a, b)
 
 	def mpp_x_transform(self, x):
 		return x
