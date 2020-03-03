@@ -41,6 +41,7 @@ class SurpyvalDist():
 		return -np.sum(np.log(like))
 
 	def neg_ll(self, x, c=None, n=None, *params):
+		# Use this neg_ll, will make it much easier to implement interval cens
 		like = np.zeros_like(x).astype(NUM)
 		like = np.where(c == 0, self.df(x, *params), like)
 		like = np.where(c == -1, self.ff(x, *params), like)
@@ -227,14 +228,14 @@ class SurpyvalDist():
 			model.params = tuple(model.res.x)
 		elif how == 'MPS':
 			# Maximum Product Spacing
-			if c is not None:
+			if model.raw_data['c'] is not None:
 				raise Exception('Maximum product spacing doesn\'t support censoring')
-			if n is not None:
+			if model.raw_data['c'] is not None:
 				raise Exception('Maximum product spacing doesn\'t support counts')
 			model.res = self._mps(x)
 			model.params = tuple(model.res.x)
 		elif how == 'MOM':
-			if c is not None:
+			if model.raw_data['c'] is not None:
 				raise Exception('Method of moments doesn\'t support censoring')
 			model.res = self._mom(x, n=n)
 			model.params = tuple(model.res.x)
@@ -1166,6 +1167,67 @@ class Gamma_(SurpyvalDist):
 		exponent = exponent/(R_hat*(1 - R_hat))
 		R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
 		return R_cb.T
+class Uniform_(SurpyvalDist):
+	def __init__(self, name):
+		self.name = name
+		# Set 'k', the number of parameters
+		self.k = 2
+		self.bounds = ((None, None), (None, None),)
+		self.use_autograd = True
+		self.plot_x_scale = 'linear'
+		self.y_ticks = np.linspace(0, 1, 17)
+
+	def parameter_initialiser(self, x, c=None, n=None):
+		return np.min(x), np.max(x)
+
+	def sf(self, x, a, b):
+		return 1 - self.ff(x, a, b)
+
+	def ff(self, x, a, b):
+		f = np.zeros_like(x)
+		f = np.where(x < a, 0, f)
+		f = np.where(x > b, 1, f)
+		f = np.where(((x <= b) & (x >= a)), (x - a)/(b - a), f)
+		return f
+
+	def df(self, x, a, b):
+		d = np.zeros_like(x)
+		d = np.where(x < a, 0, d)
+		d = np.where(x > b, 0, d)
+		d = np.where(((x <= b) & (x >= a)), 1./(b - a), d)
+		return d
+
+	def hf(self, x, a, b):
+		return self.df(x, a, b) / self.sf(x, a, b)
+
+	def Hf(self, x, a, b):
+		return np.log(self.sf(x, a, b))
+
+	def qf(self, p, a, b):
+		return a + p*(b - a)
+
+	def mean(self, a, b):
+		return 0.5 * (a + b)
+
+	def moment(self, n, a, b):
+		return alpha**n * gamma_func(1 + n/beta)
+
+	def entropy(self, alhpa, beta):
+		return euler_gamma * (1 - 1/beta) + np.log(alpha / beta) + 1
+
+	def random(self, size, alpha, beta):
+		U = uniform.rvs(size=size)
+		return self.qf(U, alpha, beta)
+
+	def mpp_x_transform(self, x):
+		return x
+
+	def mpp_y_transform(self, y):
+		return y
+
+	def mpp_inv_y_transform(self, y):
+		return y
+
 class WMM(): 
 	def Q_prime(self, params): 
 		tmp_params = params.reshape(self.n, 2) 
@@ -1258,4 +1320,5 @@ Gamma = Gamma_('Gamma')
 Weibull3p = Weibull3p_('Weibull3p')
 Normal = Normal_('Normal')
 LogNormal = LogNormal_('LogNormal')
+Uniform = Uniform_('Uniform')
 
