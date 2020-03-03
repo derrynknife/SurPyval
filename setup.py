@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="reliafy_surpyval", # Replace with your own username
-    version="0.4",
+    version="0.4.1",
     author="Derryn Knife",
     author_email="derryn@reliafy.com",
     description="A survival analysis python package",
