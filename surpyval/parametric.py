@@ -233,7 +233,7 @@ class SurpyvalDist():
 			'c' : c,
 			'n' : n
 		}
-		
+
 		heuristic = kwargs.get('heuristic', 'Nelson-Aalen')
 		model.heuristic = heuristic
 		model.dist = self
@@ -339,7 +339,7 @@ class Parametric():
 			self.aic_c_ = self.aic() + (2*k**2 + 2*k)/(n - k - 1)
 			return self.aic_c_
 
-	def get_plot_data(self, plot_bounds=True, cb=0.05):
+	def get_plot_data(self, heuristic, plot_bounds=True, cb=0.05):
 		"""
 		Looking a little less ugly now.
 		"""
@@ -348,7 +348,7 @@ class Parametric():
 			self.data['x'], 
 			c=self.data['c'], 
 			n=self.data['n'], 
-			heuristic=self.data['heuristic'])
+			heuristic=heuristic)
 
 		if self.dist.name in ['Weibull3p']:
 			x_ = x_ - self.params[2]
@@ -426,8 +426,8 @@ class Parametric():
 		}
 		return plot_data
 
-	def plot(self, plot_bounds=True, cb=0.05):
-		d = self.get_plot_data(plot_bounds=plot_bounds, cb=cb)
+	def plot(self, heuristic, plot_bounds=True, cb=0.05):
+		d = self.get_plot_data(heuristic, plot_bounds=plot_bounds, cb=cb)
 		# MAKE THE PLOT
 		# Set the y limits
 		plt.gca().set_ylim([d['y_scale_min'], d['y_scale_max']])
