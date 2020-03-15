@@ -1430,5 +1430,5 @@ Weibull3p = Weibull3p_('Weibull3p')
 Normal = Normal_('Normal')
 LogNormal = LogNormal_('LogNormal')
 Uniform = Uniform_('Uniform')
-WMM2 = Weibull_Mix_Two_('Weibull_Mix_Two')
+Weibull_Mix_Two = Weibull_Mix_Two_('Weibull_Mix_Two')
 
