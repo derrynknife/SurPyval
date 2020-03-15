@@ -1191,7 +1191,7 @@ class Uniform_(SurpyvalDist):
 		self.bounds = ((None, None), (None, None),)
 		self.use_autograd = True
 		self.plot_x_scale = 'linear'
-		self.y_ticks = np.linspace(0, 1, 17)
+		self.y_ticks = np.linspace(0, 1, 21)[1:-1]
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		return np.min(x), np.max(x)
