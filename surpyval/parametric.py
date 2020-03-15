@@ -32,14 +32,6 @@ def round_sig(points, sig=2):
     return output
 
 class SurpyvalDist():
-	def neg_ll_1(self, x, c=None, n=None, *params):
-		like = n * (self.ff(x, *params) * c * (c - 1.) / 2. +
-					self.df(x, *params) * (1. - c**2.) +
-					self.sf(x, *params) * c * (c + 1.) / 2.)
-		like += TINIEST
-		like = np.where(like < 1, like, 1)
-		return -np.sum(np.log(like))
-
 	def neg_ll(self, x, c=None, n=None, *params):
 		# Use this neg_ll, will make it much easier to implement interval cens
 		like = np.zeros_like(x).astype(NUM)
