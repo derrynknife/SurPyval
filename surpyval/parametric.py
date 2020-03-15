@@ -1246,8 +1246,105 @@ class Uniform_(SurpyvalDist):
 
 	def mpp_inv_y_transform(self, y):
 		return y
+class Weibull_Mix_Two_(SurpyvalDist):
+	def __init__(self, name):
+		self.name = name
+		self.n = 2
+		# Set 'k', the number of parameters
+		self.k = 4
+		self.bounds = ((0, None), (0, None), (0, None), (0, None),)
+		self.use_autograd = False
+		self.plot_x_scale = 'log'
+		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
+			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
+			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
+			0.9, 0.95, 0.99, 0.999, 0.9999]
+
+	def parameter_initialiser(self, x, c=None, n=None):
+		return np.mean(x), 1.
+
+	def df(self, x, n, w, alphas, betas): 
+		f = np.zeros_like(x) 
+		for i in range(self.n): 
+			f += w[i] * Weibull.df(x, alphas[i], betas[i]) 
+		return f 
+
+	def ff(self, x, n, w, alphas, betas): 
+		F = np.zeros_like(x) 
+		for i in range(self.n): 
+			F += w[i] * Weibull.ff(x, alphas[i], betas[i]) 
+		return F
+
+	def sf(self, x, n, w, alphas, betas):
+		return 1 - self.ff(x, n, w, alphas, betas)
+
+	def mean(self, n, w, alphas, betas):
+		mean = 0
+		for i in range(n):
+			mean += w[i] * alphas[i] * gamma_func(1 + 1./betas[i])
+		return mean
+
+	def mpp_x_transform(self, x):
+		return np.log(x)
+
+	def mpp_y_transform(self, y):
+		return np.log(-np.log((1 - y)))
+
+	def mpp_inv_y_transform(self, y):
+		return 1 - np.exp(-np.exp(y))
+
+	def fit(self, x):
+		x = np.array(x, dtype=NUM)
+		assert x.ndim == 1
+		model = Parametric()
+
+		model.method = 'EM'
+		model.dist = self
+		model.raw_data = {
+			'x' : x,
+			'c' : None,
+			'n' : None
+		}
+
+		c = np.zeros_like(x).astype(np.int64)
+		n = np.ones_like(x, dtype=np.int64)
+
+		model.data = {
+			'x' : x,
+			'c' : c,
+			'n' : n
+		}
+
+		wmm = WMM(data=x)
+		wmm.fit()
+		model.log_like = wmm.ll()
+
+		model.params = tuple((self.n, wmm.w, wmm.alphas, wmm.betas))
+
+		return model
 
 class WMM(): 
+	def __init__(self, **kwargs): 
+		assert 'data' in kwargs 
+		self.n = kwargs.pop('n', 2) 
+		self.x = np.sort(kwargs.pop('data')) 
+		self.N = len(self.x) 
+		self.alphas = [np.mean(x) for x in np.array_split(self.x, self.n)] 
+		self.betas = [1.] * self.n 
+		self.w = np.ones(shape=(self.n)) / self.n 
+		self.p = np.ones(shape=(self.n, len(self.x))) / self.n 
+		# Set 'k', the number of parameters
+		self.k = 2
+		self.bounds = ((0, None), (0, None),)
+		self.use_autograd = False
+		self.plot_x_scale = 'log'
+		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
+			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
+			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
+			0.9, 0.95, 0.99, 0.999, 0.9999]
+		self.method = 'EM'
+		self.dist = Weibull
+
 	def Q_prime(self, params): 
 		tmp_params = params.reshape(self.n, 2) 
 		f = np.zeros_like(self.p) 
@@ -1297,9 +1394,10 @@ class WMM():
 		return self.loglike
 
 	def mean(self):
-		mu1 = self.alphas[0] * gamma_func(1 + 1./self.betas[0])
-		mu2 = self.alphas[1] * gamma_func(1 + 1./self.betas[0])
-		return self.w[0] * mu1 + self.w[1] * mu2
+		mean = 0
+		for i in range(self.n):
+			mean += self.w[i] * self.alphas[i] * gamma_func(1 + 1./self.betas[i])
+		return mean
 
 	def __str__(self): 
 		print(self.alphas) 
@@ -1322,15 +1420,7 @@ class WMM():
 	def sf(self, t): 
 		return 1 - self.ff
 
-	def __init__(self, **kwargs): 
-		assert 'data' in kwargs 
-		self.n = kwargs.pop('n', 2) 
-		self.x = np.sort(kwargs.pop('data')) 
-		self.N = len(self.x) 
-		self.alphas = [np.mean(x) for x in np.array_split(self.x, self.n)] 
-		self.betas = [1.] * self.n 
-		self.w = np.ones(shape=(self.n)) / self.n 
-		self.p = np.ones(shape=(self.n, len(self.x))) / self.n 
+
 
 Weibull = Weibull_('Weibull')
 Gumbel = Gumbel_('Gumbel')
@@ -1340,4 +1430,5 @@ Weibull3p = Weibull3p_('Weibull3p')
 Normal = Normal_('Normal')
 LogNormal = LogNormal_('LogNormal')
 Uniform = Uniform_('Uniform')
+WMM2 = Weibull_Mix_Two_('Weibull_Mix_Two')
 
