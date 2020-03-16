@@ -201,6 +201,11 @@ class SurpyvalDist():
 		assert n.ndim == 1
 		assert n.shape == x.shape
 
+		idx = np.argsort(x)
+		x = x[idx]
+		n = n[idx]
+		c = c[idx]
+
 		model.data = {
 			'x' : x,
 			'c' : c,
