@@ -20,7 +20,8 @@ from matplotlib.ticker import FixedLocator
 from surpyval import nonparametric as nonp
 from surpyval.parametric.surpyval_dist import SurpyvalDist
 from surpyval.parametric.parametric_dist import Parametric
-from surpyval.parametric.weibull_dist import Weibull
+from surpyval.parametric.weibull import Weibull
+from surpyval.parametric.gumbel import Gumbel
 
 NUM     = np.float64
 TINIEST = np.finfo(NUM).tiny
@@ -33,88 +34,6 @@ def round_sig(points, sig=2):
         output.append(np.round(p, np.int(i)))
     return output
 
-class Gumbel_(SurpyvalDist):
-	def __init__(self, name):
-		self.name = name
-		self.k = 2
-		self.bounds = ((None, None), (0, None),)
-		self.use_autograd = True
-		self.plot_x_scale = 'linear'
-		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
-			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
-			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
-			0.9, 0.95, 0.99, 0.999, 0.9999]
-
-	def parameter_initialiser(self, x, c=None, n=None):
-		if n is None:
-		    n = np.ones_like(x).astype(np.int32)
-
-		if c is None:
-			c = np.zeros_like(x).astype(np.int32)
-
-		flag = (c == 0).astype(NUM)
-
-		return x.sum() / (n * flag).sum(), np.std(x)
-
-	def sf(self, x, mu, sigma):
-		return np.exp(-np.exp((x - mu)/sigma))
-
-	def ff(self, x, mu, sigma):
-		return 1 - np.exp(-np.exp((x - mu)/sigma))
-
-	def df(self, x, mu, sigma):
-		z = (x - mu) / sigma
-		return (1/sigma) * np.exp(z - np.exp(z))
-
-	def hf(self, x, mu, sigma):
-		z = (x - mu) / sigma
-		return (1/sigma) * np.exp(z)
-
-	def Hf(self, x, mu, sigma):
-		return np.exp((x - mu)/sigma)
-
-	def qf(self, p, mu, sigma):
-		return mu + sigma * (np.log(-np.log(1 - p)))
-
-	def mean(self, mu, sigma):
-		return mu - sigma * euler_gamma
-
-	def random(self, size, mu, sigma):
-		U = uniform.rvs(size=size)
-		return self.qf(U, mu, sigma)
-
-	def mpp_x_transform(self, x):
-		return x
-
-	def mpp_y_transform(self, y):
-		return np.log(-np.log((1 - y)))
-
-	def mpp_inv_y_transform(self, y):
-		return 1 - np.exp(-np.exp(y))
-
-	def unpack_rr(self, params, rr):
-		if   rr == 'y':
-			sigma = 1/params[0]
-			mu    = -sigma * params[1]
-		elif rr == 'x':
-			sigma  = 1./params[0]
-			mu = np.exp(params[1] / (beta * params[0]))
-		return mu, sigma
-
-	def var_z(self, x, mu, sigma, cv_matrix):
-		z_hat = (x - mu)/sigma
-		var_z = (1./sigma)**2 * (cv_matrix[0, 0] + z_hat**2 * cv_matrix[1, 1] + 
-			2 * z_hat * cv_matrix[0, 1])
-		return var_z
-
-	def z_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
-		z_hat = (x - mu)/sigma
-		var_z = self.var_z(x, mu, sigma, cv_matrix)
-		bounds = z_hat + np.array([1., -1.]).reshape(2, 1) * z(cb/2) * np.sqrt(var_z)
-		return bounds
-
-	def R_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
-		return self.sf(self.z_cb(x, mu, sigma, cv_matrix, cb=0.05), 0, 1).T
 class Exponential_(SurpyvalDist):
 	def __init__(self, name):
 		self.name = name
@@ -996,8 +915,6 @@ class WMM():
 	def sf(self, t): 
 		return 1 - self.ff
 
-
-Gumbel = Gumbel_('Gumbel')
 Exponential = Exponential_('Exponential')
 Gamma = Gamma_('Gamma')
 Weibull3p = Weibull3p_('Weibull3p')
