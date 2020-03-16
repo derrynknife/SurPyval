@@ -5,21 +5,21 @@ TINIEST = np.finfo(NUM).tiny
 EPS     = np.sqrt(np.finfo(NUM).eps)
 
 from surpyval import nonparametric as nonp
-from surpyval.parametric.surpyval_dist import SurpyvalDist
-from surpyval.parametric.parametric_dist import Parametric
+from .surpyval_dist import SurpyvalDist
+from .parametric_dist import Parametric
 
-from surpyval.parametric.weibull import Weibull
-from surpyval.parametric.weibull3p import Weibull3p
-from surpyval.parametric.gumbel import Gumbel
-from surpyval.parametric.exponential import Exponential
-from surpyval.parametric.normal import Normal
-from surpyval.parametric.lognormal import LogNormal
-from surpyval.parametric.gamma import Gamma
-from surpyval.parametric.uniform import Uniform
-from surpyval.parametric.weibull_mix2 import Weibull_Mix_Two
-from surpyval.parametric.wmm import WMM
-from surpyval.parametric.logistic import Logistic
-from surpyval.parametric.loglogistic import LogLogistic
+from .weibull import Weibull
+from .weibull3p import Weibull3p
+from .gumbel import Gumbel
+from .exponential import Exponential
+from .normal import Normal
+from .lognormal import LogNormal
+from .gamma import Gamma
+from .uniform import Uniform
+from .weibull_mix2 import Weibull_Mix_Two
+from .wmm import WMM
+from .logistic import Logistic
+from .loglogistic import LogLogistic
 
 def round_sig(points, sig=2):
     places = sig - np.floor(np.log10(np.abs(points))) - 1
