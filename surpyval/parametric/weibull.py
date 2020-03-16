@@ -7,7 +7,6 @@ from scipy.special import ndtri as z
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 from surpyval.parametric.surpyval_dist import SurpyvalDist
-from surpyval.parametric.parametric_dist import Parametric
 
 class Weibull_(SurpyvalDist):
 	def __init__(self, name):
