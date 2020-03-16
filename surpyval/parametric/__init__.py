@@ -1,20 +1,4 @@
-import re
-from autograd import jacobian, hessian
 import autograd.numpy as np
-from autograd.numpy.linalg import inv
-from autograd.scipy.stats import norm
-from scipy.stats import norm as scipy_norm
-from scipy.stats import uniform
-from numpy import euler_gamma
-
-from scipy.special import gamma as gamma_func
-from scipy.special import gammainc, gammaincinv
-from scipy.special import factorial
-from scipy.special import ndtri as z
-from scipy.optimize import approx_fprime
-from scipy.stats import pearsonr
-import matplotlib.pyplot as plt
-from matplotlib.ticker import FixedLocator
 
 NUM     = np.float64
 TINIEST = np.finfo(NUM).tiny
