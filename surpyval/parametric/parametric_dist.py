@@ -179,7 +179,7 @@ class Parametric():
 		}
 		return plot_data
 
-	def plot(self, heuristic, plot_bounds=True, cb=0.05):
+	def plot(self, heuristic='Nelson-Aalen', plot_bounds=True, cb=0.05):
 		d = self.get_plot_data(heuristic, plot_bounds=plot_bounds, cb=cb)
 		# MAKE THE PLOT
 		# Set the y limits

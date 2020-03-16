@@ -8,6 +8,8 @@ from scipy.optimize import approx_fprime
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 
+import pandas as pd
+
 NUM     = np.float64
 TINIEST = np.finfo(NUM).tiny
 EPS     = np.sqrt(np.finfo(NUM).eps)
@@ -241,3 +243,37 @@ class SurpyvalDist():
 			model.params = tuple(model.res.x)
 		
 		return model
+
+	def fit_from_df(self, df, **kwargs):
+		assert type(df) == pd.DataFrame
+
+		heuristic = kwargs.get('heuristic', 'Nelson-Aalen')
+		how = kwargs.get('how', 'MLE')
+		x_col = kwargs.pop('x', 'x')
+		c_col = kwargs.pop('c', 'c')
+		n_col = kwargs.pop('n', 'n')
+
+		x = df[x_col].astype(NUM)
+		assert x.ndim == 1
+
+		if c_col in df:
+			c = df[c_col]
+		else:
+			c = None
+
+		if n_col in df:
+			n = df[n_col]
+		else:
+			n = None
+
+		return self.fit(x, c, n, how, **kwargs)
+
+
+
+
+
+
+
+
+
+
