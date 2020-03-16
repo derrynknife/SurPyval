@@ -64,6 +64,11 @@ def find_turnbull_bounds(left, right):
     return bounds
 
 def turnbull(left, right):
+    """
+    WARNING: I DON NOT KNOW IF THIS IS CORRECT
+    Using this I do get a survival curve looking output. But I am not confident
+    it is accurate
+    """
     max_iter = 1000
     intervals = find_turnbull_bounds(left, right)
     
