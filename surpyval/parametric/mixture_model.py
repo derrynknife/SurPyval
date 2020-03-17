@@ -130,9 +130,7 @@ class MixtureModel():
 		What I've learned from this is that EM is way better. Like way better.
 		So do not use.
 		"""
-		def fun(*x):
-			return self.neg_ll(self.x, self.c, self.n, *x)
-		#fun = lambda x : self.neg_ll(self.x, self.c, self.n, *x)
+		fun = lambda x : self.neg_ll(self.x, self.c, self.n, *x)
 		bounds = tuple(((0, 1), *self.dist.bounds)) * self.m
 		init = np.hstack([np.atleast_2d(self.w).T, self.params])
 		def w_sums_to_1(x):
