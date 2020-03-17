@@ -12,7 +12,7 @@ def get_x_r_d(t, c=None, n=None):
     
     # Handle counts
     if n is not None:
-        n = n.astype(np.int64, casting='safe')
+        n = n.astype(np.int64)
         x = np.repeat(x, n)
         c = np.repeat(c, n)
     else:

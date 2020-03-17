@@ -15,15 +15,21 @@ TINIEST = np.finfo(NUM).tiny
 EPS     = np.sqrt(np.finfo(NUM).eps)
 
 class SurpyvalDist():
+	def like(self, x, c=None, n=None, *params):
+		like = np.zeros_like(x).astype(NUM)
+		like = np.where(c ==  0, self.df(x, *params), like)
+		like = np.where(c == -1, self.ff(x, *params), like)
+		like = np.where(c ==  1, self.sf(x, *params), like)
+		return like
+
 	def neg_ll(self, x, c=None, n=None, *params):
 		# Use this neg_ll, will make it much easier to implement interval cens
-		like = np.zeros_like(x).astype(NUM)
-		like = np.where(c == 0, self.df(x, *params), like)
-		like = np.where(c == -1, self.ff(x, *params), like)
-		like = np.where(c == 1, self.sf(x, *params), like)
+		like = self.like(x, c, n, *params)
 		like += TINIEST
 		like = np.where(like < 1, like, 1)
-		return -np.sum(np.log(like))
+		like = np.log(like)
+		like = np.multiply(n, like)
+		return -np.sum(like)
 
 	def neg_mean_D(self, x, c=None, n=None, *params):
 		idx = np.argsort(x)
@@ -93,6 +99,14 @@ class SurpyvalDist():
 		if c is None:
 			c = np.zeros_like(x).astype(np.int64)
 
+		# Uncomment if recent multiply in ll fails
+		#x_ = np.repeat(x, n)
+		#c_ = np.repeat(c, n)
+		#n_ = np.ones_like(x_).astype(np.int64)
+
+		# This should work....
+		# Now seems to be working given recent change to ll function being
+		# AFTER the log (no der, it should have been power otherwise)
 		x_ = np.copy(x)
 		c_ = np.copy(c).astype(np.int64)
 		n_ = np.copy(n).astype(np.int64)
@@ -104,7 +118,8 @@ class SurpyvalDist():
 				fun  = lambda t : self.neg_ll(x_, c_, n_, *t)
 				jac = jacobian(fun)
 				hess = hessian(fun)
-				res = minimize(fun, init, method='trust-exact', jac=jac, hess=hess, tol=1e-10)
+				res = minimize(fun, init, method='trust-exact', 
+							   jac=jac, hess=hess, tol=1e-10)
 				hess_inv = inv(res.hess)
 			except:
 				with np.errstate(all='ignore'):
@@ -187,6 +202,8 @@ class SurpyvalDist():
 			'n' : n
 		}
 
+		x = np.copy(x)
+
 		if c is None:
 			c = np.zeros_like(x).astype(np.int64)
 		else:
@@ -205,9 +222,9 @@ class SurpyvalDist():
 
 		idx = np.argsort(x)
 		x = x[idx]
-		n = n[idx]
 		c = c[idx]
-
+		n = n[idx]
+		
 		model.data = {
 			'x' : x,
 			'c' : c,
