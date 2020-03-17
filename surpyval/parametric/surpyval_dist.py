@@ -270,6 +270,8 @@ class SurpyvalDist():
 		c_col = kwargs.pop('c', 'c')
 		n_col = kwargs.pop('n', 'n')
 
+		#raise TypeError('Unepxected kwargs provided: %s' % list(kwargs.keys()))
+
 		x = df[x_col].astype(NUM)
 		assert x.ndim == 1
 

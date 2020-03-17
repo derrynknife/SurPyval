@@ -20,6 +20,7 @@ from .weibull_mix2 import Weibull_Mix_Two
 from .wmm import WMM
 from .logistic import Logistic
 from .loglogistic import LogLogistic
+
 from .mixture_model import MixtureModel
 
 def round_sig(points, sig=2):
@@ -28,3 +29,4 @@ def round_sig(points, sig=2):
     for p, i in zip(points, places):
         output.append(np.round(p, np.int(i)))
     return output
+
