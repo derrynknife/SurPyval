@@ -20,6 +20,7 @@ from .weibull_mix2 import Weibull_Mix_Two
 from .wmm import WMM
 from .logistic import Logistic
 from .loglogistic import LogLogistic
+from .mixture_model import MixtureModel
 
 def round_sig(points, sig=2):
     places = sig - np.floor(np.log10(np.abs(points))) - 1
