@@ -118,9 +118,10 @@ class MixtureModel():
 			like = np.multiply(params[i, 0], like)
 			like += TINIEST
 			like = np.where(like < 1, like, 1)
-			like = np.log(like)
-			like = np.multiply(n, like)
 			f[i] = like
+		f = np.sum(f, axis=0)
+		f = np.log(f)
+		f = np.multiply(n, f)
 		f = -np.sum(f)
 		return f
 
