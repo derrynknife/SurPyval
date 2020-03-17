@@ -47,8 +47,8 @@ class WMM():
 	def expectation(self): 
 		for i in range(self.n): 
 			self.p[i] = self.w[i] * para.Weibull.df(self.x, self.alphas[i], self.betas[i]) 
-			self.p = np.divide(self.p, np.sum(self.p, axis=0)) 
-			self.w = np.sum(self.p, axis=1) / self.N 
+		self.p = np.divide(self.p, np.sum(self.p, axis=0)) 
+		self.w = np.sum(self.p, axis=1) / self.N 
 
 	def maximisation(self): 
 		params = np.concatenate((self.alphas, self.betas)) 
