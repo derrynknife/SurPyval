@@ -8,7 +8,11 @@ from surpyval import parametric as para
 
 TINIEST = np.finfo(np.float64).tiny
 
-class MixtureModel(): 
+class MixtureModel():
+	"""
+	Generalised from algorithm found here
+	https://www.sciencedirect.com/science/article/pii/S0307904X12002545
+	"""
 	def __init__(self, **kwargs): 
 		assert 'x' in kwargs
 		assert 'dist' in kwargs
@@ -59,7 +63,7 @@ class MixtureModel():
 
 		self.method = 'EM'
 
-	def Q_prime(self, params):
+	def Q(self, params):
 		params = params.reshape(self.m, self.dist.k)
 		f = np.zeros_like(self.p)
 		for i in range(self.m):
@@ -85,7 +89,7 @@ class MixtureModel():
 
 	def maximisation(self): 
 		bounds = self.dist.bounds * self.m
-		res = minimize(self.Q_prime, self.params, bounds=bounds)
+		res = minimize(self.Q, self.params, bounds=bounds)
 		#if not res.success: 
 		#	print(res) 
 		#	raise Exception('Max failed') 
