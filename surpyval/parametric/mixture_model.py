@@ -60,8 +60,8 @@ class MixtureModel():
 		self.method = 'EM'
 
 	def Q_prime(self, params):
-		params = params.reshape(self.m, self.dist.k) 
-		f = np.zeros_like(self.p) 
+		params = params.reshape(self.m, self.dist.k)
+		f = np.zeros_like(self.p)
 		for i in range(self.m):
 			like = self.dist.like(self.x, self.c, self.n, *params[i])
 			
@@ -85,7 +85,7 @@ class MixtureModel():
 
 	def maximisation(self): 
 		bounds = self.dist.bounds * self.m
-		res = minimize(self.Q_prime, self.params, bounds=bounds) 
+		res = minimize(self.Q_prime, self.params, bounds=bounds)
 		#if not res.success: 
 		#	print(res) 
 		#	raise Exception('Max failed') 
@@ -108,6 +108,39 @@ class MixtureModel():
 			i += 1
 		if i >= 1000:
 			print('Max iterations reached')
+
+	def neg_ll(self, x, c, n, *params):
+		f = np.zeros_like(self.p)
+		params = np.reshape(params, (self.m, self.dist.k + 1))
+		#params = params.reshape(self.m, self.dist.k + 1)
+		for i in range(self.m):
+			like = self.dist.like(x, c, n, *params[i, 1::])
+			like = np.multiply(params[i, 0], like)
+			like += TINIEST
+			like = np.where(like < 1, like, 1)
+			like = np.log(like)
+			like = np.multiply(n, like)
+			f[i] = like
+		f = -np.sum(f)
+		return f
+
+
+	def _mle(self):
+		"""
+		What I've learned from this is that EM is way better. Like way better.
+		So do not use.
+		"""
+		def fun(*x):
+			return self.neg_ll(self.x, self.c, self.n, *x)
+		#fun = lambda x : self.neg_ll(self.x, self.c, self.n, *x)
+		bounds = tuple(((0, 1), *self.dist.bounds)) * self.m
+		init = np.hstack([np.atleast_2d(self.w).T, self.params])
+		def w_sums_to_1(x):
+			xx = np.reshape(x, (self.m, self.dist.k + 1))
+			return xx[:, 0].sum() - 1
+		cons = {'type':'eq', 'fun': w_sums_to_1}
+		res = minimize(fun, init.flatten(), bounds=bounds, constraints=[cons])
+		self.res = res
 
 	def fit(self, how='EM'):
 		if how == 'EM':
