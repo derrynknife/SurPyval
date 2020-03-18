@@ -90,15 +90,15 @@ class SurpyvalDist():
 		res = minimize(fun, init, bounds=bounds)
 		return res
 
-	def _mle(self, x, c=None, n=None):
+	def _mle(self, x, c, n):
 		"""
 		MLE: Maximum Likelihood estimate
 		"""
-		if n is None:
-			n = np.ones_like(x).astype(np.int64)
+		#if n is None:
+		#	n = np.ones_like(x).astype(np.int64)
 
-		if c is None:
-			c = np.zeros_like(x).astype(np.int64)
+		#if c is None:
+		#	c = np.zeros_like(x).astype(np.int64)
 
 		# Uncomment if recent multiply in ll fails
 		#x_ = np.repeat(x, n)
@@ -108,15 +108,15 @@ class SurpyvalDist():
 		# This should work....
 		# Now seems to be working given recent change to ll function being
 		# AFTER the log (no der, it should have been power otherwise)
-		x_ = np.copy(x)
-		c_ = np.copy(c).astype(np.int64)
-		n_ = np.copy(n).astype(np.int64)
+		#x_ = np.copy(x)
+		#c_ = np.copy(c).astype(np.int64)
+		#n_ = np.copy(n).astype(np.int64)
 
-		init = self.parameter_initialiser(x_, c_, n_)
+		init = self.parameter_initialiser(x, c, n)
 
 		if self.use_autograd:
 			try:
-				fun  = lambda t : self.neg_ll(x_, c_, n_, *t)
+				fun  = lambda t : self.neg_ll(x, c, n, *t)
 				jac = jacobian(fun)
 				hess = hessian(fun)
 				res = minimize(fun, init, method='trust-exact', 
@@ -124,13 +124,13 @@ class SurpyvalDist():
 				hess_inv = inv(res.hess)
 			except:
 				with np.errstate(all='ignore'):
-					fun = lambda t : self.neg_ll(x_, c_, n_, *t)
+					fun = lambda t : self.neg_ll(x, c, n, *t)
 					jac = lambda t : approx_fprime(t, fun, EPS)
 					res = minimize(fun, init, method='BFGS', jac=jac)
 					hess_inv = res.hess_inv
 
 		else:
-			fun = lambda t : self.neg_ll(x_, c_, n_, *t)
+			fun = lambda t : self.neg_ll(x, c, n, *t)
 			jac = lambda t : approx_fprime(t, fun, EPS)
 			#hess = lambda t : approx_fprime(t, jac, eps)
 			res = minimize(fun, init, method='BFGS', jac=jac)

@@ -16,6 +16,7 @@ def fleming_harrington(x, c=None, n=None):
 	Reliability Function
 	R = exp(-H)
 	"""
+	x, c, n = surpyval.xcn_handler(x, c, n)
 	x, r, d = surpyval.xcn_to_xrd(x, c, n)
 
 	h = [np.sum([1./(r[i]-j) for j in range(d[i])]) for i in range(len(x))]

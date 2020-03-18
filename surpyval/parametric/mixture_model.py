@@ -27,22 +27,8 @@ class MixtureModel():
 		raw_data['n'] = n
 		self.raw_data = raw_data
 
-		x = np.array(x)
-		assert x.ndim == 1
+		x, c, n = surpyval.xcn_handler(x, c, n)
 		assert len(x) > self.m * (self.dist.k + 1)
-		if c is not None:
-			c = np.array(c)
-			assert c.ndim == 1
-			assert c.shape == x.shape
-		else:
-			c = np.zeros_like(x)
-
-		if n is not None:
-			n = np.array(n)
-			assert n.ndim == 1
-			assert n.shape == x.shape
-		else:
-			n = np.ones_like(x)
 
 		self.x = x
 		self.c = c

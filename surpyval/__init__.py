@@ -26,6 +26,12 @@ def xcn_handler(x, c=None, n=None):
 		c = np.array(c)
 		assert c.ndim == 1
 		assert c.shape == x.shape
+		assert not any(
+				(c !=  0) &
+				(c !=  1) &
+				(c != -1) &
+				(c !=  2)
+			)
 	else:
 		c = np.zeros_like(x)
 
@@ -35,6 +41,9 @@ def xcn_handler(x, c=None, n=None):
 		assert n.shape == x.shape
 	else:
 		n = np.ones_like(x)
+
+	n = n.astype(np.int64)
+	c = c.astype(np.int64)
 
 	x, c, n = xcn_sort(x, c, n)
 

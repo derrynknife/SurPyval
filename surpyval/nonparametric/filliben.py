@@ -1,5 +1,6 @@
 import numpy as np
 import surpyval.nonparametric as nonp
+import surpyval
 
 def filliben(x, c=None, n=None):
     """
@@ -8,26 +9,22 @@ def filliben(x, c=None, n=None):
     "The Probability Plot Correlation Coefficient Test for Normality", 
     Technometrics, American Society for Quality, 17 (1): 111-117
     """
-    if n is None:
-        n = np.ones_like(x)
-
-    if c is None:
-        c = np.zeros_like(x)
+    x, c, n = surpyval.xcn_handler(x, c, n)
         
-    x_ = np.repeat(x, n)
+    x = np.repeat(x, n)
     c = np.repeat(c, n)
-    n = np.ones_like(x_)
+    n = np.ones_like(x)
 
     idx = np.argsort(c, kind='stable')
-    x_ = x_[idx]
-    c  = c[idx]
+    x = x[idx]
+    c = c[idx]
 
-    idx2 = np.argsort(x_, kind='stable')
-    x_ = x_[idx2]
+    idx2 = np.argsort(x, kind='stable')
+    x = x[idx2]
     c  = c[idx2]
-    N = len(x_)
+    N = len(x)
     
-    ranks = nonp.rank_adjust(x_, c)
+    ranks = nonp.rank_adjust(x, c)
     d = 1 - c
     r = np.linspace(N, 1, num=N)
     
