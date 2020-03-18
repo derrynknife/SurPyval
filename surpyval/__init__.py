@@ -6,7 +6,19 @@ import surpyval.nonparametric
 
 NUM = np.float64
 
-def xcn_handler(x, c, n):
+def xcn_sort(x, c, n):
+	idx_c = np.argsort(c, kind='stable')
+	x = x[idx_c]
+	c = c[idx_c]
+	n = n[idx_c]
+
+	idx = np.argsort(x, kind='stable')
+	x = x[idx]
+	c = c[idx]
+	n = n[idx]
+	return x, c n
+
+def xcn_handler(x, c=None, n=None):
 	x = np.array(x)
 	assert x.ndim == 1
 
@@ -23,15 +35,16 @@ def xcn_handler(x, c, n):
 		assert n.shape == x.shape
 	else:
 		n = np.ones_like(x)
-	
+
+	x, c, n = xcn_sort(x, c, n)
+
 	return x, c, n
+
 def xcn_to_xrd(x, c=None, n=None):
     x = x.copy()
     # Handle censoring
-    if c is None: c = np.zeros_like(x).astype(np.int64)
-    else: c.astype(np.int64, casting='safe')
-    assert c.shape == x.shape
-    # xrd format can't be done with left censoring
+    x, c, n = surpyval.xcn_handler(x, c, n)
+
     assert not ((c != 1) & (c != 0)).any()
     
     # Handle counts
@@ -89,15 +102,7 @@ def fsl_to_xcn(f, s, l):
 	c = np.hstack([c_f, c_s, c_l])
 	n = np.hstack([n_f, n_s, n_l])
 
-	idx_c = np.argsort(c, kind='stable')
-	x = x[idx_c]
-	c = c[idx_c]
-	n = n[idx_c]
-
-	idx = np.argsort(x, kind='stable')
-	x = x[idx]
-	c = c[idx]
-	n = n[idx]
+	x, c, n = xcn_sort(x, c, n)
 
 	return x, c, n
 
@@ -113,15 +118,7 @@ def fs_to_xcn(f, s):
 	c = np.hstack([c_f, c_s])
 	n = np.hstack([n_f, n_s])
 
-	idx_c = np.argsort(c, kind='stable')
-	x = x[idx_c]
-	c = c[idx_c]
-	n = n[idx_c]
-
-	idx = np.argsort(x, kind='stable')
-	x = x[idx]
-	c = c[idx]
-	n = n[idx]
+	x, c, n = xcn_sort(x, c, n)
 
 	return x, c, n
 

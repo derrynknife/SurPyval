@@ -191,9 +191,6 @@ class SurpyvalDist():
 		return params
 
 	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
-		x = np.array(x, dtype=NUM)
-		assert x.ndim == 1
-
 		model = para.Parametric()
 		model.method = how
 		model.raw_data = {
@@ -202,28 +199,7 @@ class SurpyvalDist():
 			'n' : n
 		}
 
-		x = np.copy(x)
-
-		if c is None:
-			c = np.zeros_like(x).astype(np.int64)
-		else:
-			c = np.array(c, dtype=np.int64)
-
-		assert c.ndim == 1
-		assert c.shape == x.shape
-
-		if n is None:
-			n = np.ones_like(x).astype(np.int64)
-		if n is None:
-			n = np.array(n, dtype=np.int64)
-
-		assert n.ndim == 1
-		assert n.shape == x.shape
-
-		idx = np.argsort(x)
-		x = x[idx]
-		c = c[idx]
-		n = n[idx]
+		x, c, n = surpyval.xcn_handler(x, c, n)
 		
 		model.data = {
 			'x' : x,

@@ -19,18 +19,6 @@ class LFP(SurpyvalDist):
 		self.bounds = tuple(((0, 1), *self.dist.bounds))
 		self.use_autograd = True
 
-	def neg_ll__(self, x, c, n, *params):
-		params = np.array(params)
-		like = np.zeros_like(x)
-		like = np.where(c ==  0, self.df(x, *params), like)
-		like = np.where(c == -1, self.ff(x, *params), like)
-		like = np.where(c ==  1, self.sf(x, *params), like)
-		like += TINIEST
-		like = np.where(like < 1, like, 1)
-		like = np.log(like)
-		like = np.multiply(n, like)
-		return -like.sum()
-
 	def parameter_initialiser(self, x, c=None, n=None):
 		return tuple((1, *self.dist.parameter_initialiser(x, c, n)))
 
@@ -48,17 +36,3 @@ class LFP(SurpyvalDist):
 
 	def Hf(self, x, w, *params):
 		return -np.log(self.sf(x, w, *params))
-
-	def _mle__(self, x, c, n):
-		fun = lambda t : self.neg_ll(x, c, n, *t)
-		jac = jacobian(fun)
-		hess = hessian(fun)
-		init = (1., *self.parameter_initialiser(x, c, n))
-		res = minimize(fun, init, method='trust-exact', 
-			jac=jac, hess=hess, tol=1e-10, bounds=self.bounds)
-		#res = minimize(fun, init, bounds=bounds, tol=1e-20)
-		self.res = res
-
-	def fit__(self, x, c=None, n=None):
-		x, c, n = surpyval.xcn_handler(x, c, n)
-		self._mle(x, c, n)
