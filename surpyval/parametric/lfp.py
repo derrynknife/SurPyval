@@ -20,7 +20,7 @@ class LFP(SurpyvalDist):
 		self.use_autograd = True
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		return tuple((1, *self.dist.parameter_initialiser(x, c, n)))
+		return tuple((1., *self.dist.parameter_initialiser(x, c, n)))
 
 	def sf(self, x, w, *params):
 		return 1 - self.ff(x, w, *params)

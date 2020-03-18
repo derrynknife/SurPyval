@@ -107,6 +107,7 @@ class Parametric():
 			x_ = x_ - self.params[2]
 			x = x - self.params[2]
 		y_scale_min = np.min(F[F > 0])/2
+		#y_scale_max = np.max(F[F < 1]) + (1 - np.max(F[F < 1]))/2
 		y_scale_max = (1 - (1 - np.max(F[F < 1]))/10)
 
 		# x-axis

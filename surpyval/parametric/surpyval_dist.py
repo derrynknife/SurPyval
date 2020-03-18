@@ -5,6 +5,7 @@ from autograd.numpy.linalg import inv
 from scipy.optimize import minimize
 from scipy.optimize import approx_fprime
 
+import surpyval
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 

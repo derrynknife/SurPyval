@@ -16,7 +16,7 @@ def xcn_sort(x, c, n):
 	x = x[idx]
 	c = c[idx]
 	n = n[idx]
-	return x, c n
+	return x, c, n
 
 def xcn_handler(x, c=None, n=None):
 	x = np.array(x)
