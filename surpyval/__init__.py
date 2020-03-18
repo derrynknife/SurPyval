@@ -8,6 +8,36 @@ NUM = np.float64
 TINIEST = np.finfo(np.float64).tiny
 EPS = np.sqrt(np.finfo(NUM).eps)
 
+"""
+Conventions for surpyval package
+- c = censoring
+- x = random variable (time, stress etc.)
+- n = counts
+- r = risk set
+- d = deaths
+
+usual format for data:
+xcn = x variables, with c as the censoring schemed and n as the counts
+xrd = x variables, with the risk set, r,  at x and the deaths, d, also at x
+
+wranglers for formats:
+fs = failure times, f, and right censored times, s
+fsl = fs format plus a vector for left censored times
+
+- df = Density Function
+- ff / F = Failure Function
+- sf / R = Survival Function
+- h = hazard rate
+- H = Cumulative hazard function
+
+- Censoring: -1 = left
+              0 = failure / event
+              1 = right
+              2 = interval censoring. Must have left and right coord
+This is done to give an intuitive feel for when the 
+event happened on the timeline.
+"""
+
 def xcn_sort(x, c, n):
 	idx_c = np.argsort(c, kind='stable')
 	x = x[idx_c]
@@ -41,6 +71,7 @@ def xcn_handler(x, c=None, n=None):
 		n = np.array(n)
 		assert n.ndim == 1
 		assert n.shape == x.shape
+		assert (n > 0).all()
 	else:
 		n = np.ones_like(x)
 
@@ -52,21 +83,14 @@ def xcn_handler(x, c=None, n=None):
 	return x, c, n
 
 def xcn_to_xrd(x, c=None, n=None):
-    x = x.copy()
-    # Handle censoring
     x, c, n = surpyval.xcn_handler(x, c, n)
-
+    # xrd format can't have left or interval censoring
     assert not ((c != 1) & (c != 0)).any()
     
-    # Handle counts
-    if n is not None:
-        n = n.astype(np.int64)
-        x = np.repeat(x, n)
-        c = np.repeat(c, n)
+    x = np.repeat(x, n)
+    c = np.repeat(c, n)
     n = np.ones_like(x).astype(np.int64)
-    assert n.shape == x.shape
-    assert (n > 0).all()
-
+    
     x, idx = np.unique(x, return_inverse=True)
     
     d = np.bincount(idx, weights=1 - c)
@@ -116,7 +140,6 @@ def fsl_to_xcn(f, s, l):
 	x, c, n = xcn_sort(x, c, n)
 
 	return x, c, n
-
 
 def fs_to_xcn(f, s):
 	x_f, n_f = np.unique(f, return_counts=True)
