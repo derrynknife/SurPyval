@@ -1,3 +1,4 @@
+import surpyval
 import numpy as np
 import surpyval.nonparametric as nonp
 
@@ -19,7 +20,7 @@ def nelson_aalen(x, c=None, n=None):
 	Reliability Function
 	R = exp(-H)
 	"""	
-	x, r, d = nonp.get_x_r_d(x, c, n)
+	x, r, d = surpyval.xcn_to_xrd(x, c, n)
 
 	h = d/r
 	H = np.cumsum(h)

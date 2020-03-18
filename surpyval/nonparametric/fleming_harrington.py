@@ -1,4 +1,5 @@
 import numpy as np
+import surpyval
 import surpyval.nonparametric as nonp
 
 def fleming_harrington(x, c=None, n=None):
@@ -15,7 +16,7 @@ def fleming_harrington(x, c=None, n=None):
 	Reliability Function
 	R = exp(-H)
 	"""
-	x, r, d = nonp.get_x_r_d(x, c, n)
+	x, r, d = surpyval.xcn_to_xrd(x, c, n)
 
 	h = [np.sum([1./(r[i]-j) for j in range(d[i])]) for i in range(len(x))]
 	H = np.cumsum(h)
