@@ -4,7 +4,6 @@ import surpyval.datasets
 import surpyval.parametric
 import surpyval.nonparametric
 
-import pandas as pd
 NUM = np.float64
 
 def xcn_to_xrd(x, c=None, n=None):
@@ -53,7 +52,7 @@ def xrd_to_xcn(x, r, d):
 
 	x_f = np.repeat(x_f, n_f)
 	x_s = np.repeat(x_s, n_s)
-	
+
 	return fs_to_xcn(x_f, x_s)
 
 
