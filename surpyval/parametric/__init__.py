@@ -1,9 +1,5 @@
 import autograd.numpy as np
 
-NUM     = np.float64
-TINIEST = np.finfo(NUM).tiny
-EPS     = np.sqrt(np.finfo(NUM).eps)
-
 from surpyval import nonparametric as nonp
 from .surpyval_dist import SurpyvalDist
 from .parametric_dist import Parametric
@@ -23,11 +19,4 @@ from .loglogistic import LogLogistic
 
 from .mixture_model import MixtureModel
 from .lfp import LFP
-
-def round_sig(points, sig=2):
-    places = sig - np.floor(np.log10(np.abs(points))) - 1
-    output = []
-    for p, i in zip(points, places):
-        output.append(np.round(p, np.int(i)))
-    return output
 

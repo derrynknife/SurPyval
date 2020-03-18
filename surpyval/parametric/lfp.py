@@ -1,17 +1,6 @@
 import autograd.numpy as np
-from autograd import jacobian, hessian
 from scipy.stats import uniform
-from numpy import euler_gamma
-from scipy.special import gamma as gamma_func
-from scipy.special import ndtri as z
-
-from scipy.optimize import minimize
-
-import surpyval
-from surpyval import parametric as para
 from surpyval.parametric.surpyval_dist import SurpyvalDist
-
-TINIEST = np.finfo(np.float64).tiny
 
 class LFP(SurpyvalDist):
 	def __init__(self, dist):

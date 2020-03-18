@@ -5,6 +5,8 @@ import surpyval.parametric
 import surpyval.nonparametric
 
 NUM = np.float64
+TINIEST = np.finfo(np.float64).tiny
+EPS = np.sqrt(np.finfo(NUM).eps)
 
 def xcn_sort(x, c, n):
 	idx_c = np.argsort(c, kind='stable')
@@ -134,3 +136,10 @@ def fs_to_xcn(f, s):
 def fs_to_xrd(f, s):
 	x, c, n = fs_to_xcn(f, s)
 	return xcn_to_xrd(x, c, n)
+
+def round_sig(points, sig=2):
+    places = sig - np.floor(np.log10(np.abs(points))) - 1
+    output = []
+    for p, i in zip(points, places):
+        output.append(np.round(p, np.int(i)))
+    return output

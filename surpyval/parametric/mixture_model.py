@@ -1,12 +1,9 @@
 import autograd.numpy as np
 from scipy.stats import uniform
-from scipy.special import gamma as gamma_func
-from scipy.special import ndtri as z
 from scipy.optimize import minimize
 
+import surpyval
 from surpyval import parametric as para
-
-TINIEST = np.finfo(np.float64).tiny
 
 class MixtureModel():
 	"""
@@ -52,8 +49,7 @@ class MixtureModel():
 		f = np.zeros_like(self.p)
 		for i in range(self.m):
 			like = self.dist.like(self.x, self.c, self.n, *params[i])
-			
-			like += TINIEST
+			like += surpyval.TINIEST
 			like = np.where(like < 1, like, 1)
 			like = np.log(like)
 			like = np.multiply(self.n, like)
@@ -104,7 +100,7 @@ class MixtureModel():
 		for i in range(self.m):
 			like = self.dist.like(x, c, n, *params[i, 1::])
 			like = np.multiply(params[i, 0], like)
-			like += TINIEST
+			like += surpyval.TINIEST
 			like = np.where(like < 1, like, 1)
 			f[i] = like
 		f = np.sum(f, axis=0)

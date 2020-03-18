@@ -3,18 +3,12 @@ from autograd import jacobian
 import autograd.numpy as np
 from scipy.stats import uniform
 
+import surpyval
 from scipy.special import ndtri as z
 from surpyval import nonparametric as nonp
-from surpyval import parametric as para
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator
-
-NUM     = np.float64
-TINIEST = np.finfo(NUM).tiny
-EPS     = np.sqrt(np.finfo(NUM).eps)
-
-from surpyval.parametric.surpyval_dist import SurpyvalDist
 
 class Parametric():
 	def __init__(self):
@@ -140,7 +134,7 @@ class Parametric():
 		not_different = True
 		i = 1
 		while not_different:
-		    x_ticks = np.array(para.round_sig(vals_non_sig, i))
+		    x_ticks = np.array(surpyval.round_sig(vals_non_sig, i))
 		    not_different = (np.diff(x_ticks) == 0).any()
 		    i += 1
 

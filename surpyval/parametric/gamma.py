@@ -1,4 +1,5 @@
 import autograd.numpy as np
+from autograd import jacobian
 from scipy.stats import uniform
 from scipy.optimize import approx_fprime
 from scipy.special import gamma as gamma_func
@@ -6,6 +7,7 @@ from scipy.special import gammainc, gammaincinv
 from autograd_gamma import gammainc as agammainc
 from scipy.special import ndtri as z
 
+import surpyval
 from surpyval import parametric as para
 from surpyval.parametric.surpyval_dist import SurpyvalDist
 
@@ -76,7 +78,8 @@ class Gamma_(SurpyvalDist):
 	def R_cb(self, x, alpha, beta, cv_matrix, cb=0.05):
 		R_hat = self.sf(x, alpha, beta)
 		dR_f = lambda t : self.sf(*t)
-		jac = lambda t : approx_fprime(t, dR_f, para.EPS)[1::]
+		#jac = jacobian(dR_f)
+		jac = lambda t : approx_fprime(t, dR_f, surpyval.EPS)[1::]
 		x_ = np.array(x)
 		if x_.size == 1:
 			dR = jac((x_, alpha, beta))

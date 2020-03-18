@@ -1,7 +1,5 @@
 import numpy as np
 
-NUM = np.float64
-
 PLOTTING_METHODS = [ "Blom", "Median", "ECDF", "Modal", "Midpoint", 
 "Mean", "Weibull", "Benard", "Beard", "Hazen", "Gringorten", 
 "None", "Tukey", "DPW", "Fleming-Harrington", "Kaplan-Meier",

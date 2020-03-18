@@ -4,6 +4,7 @@ from scipy.special import ndtri as z
 from scipy.special import gamma as gamma_func
 from scipy.optimize import minimize
 from scipy.stats import pearsonr
+import surpyval
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 from surpyval.parametric.surpyval_dist import SurpyvalDist
@@ -24,23 +25,11 @@ class Weibull3p_(SurpyvalDist):
 			0.9, 0.95, 0.99, 0.999, 0.9999]
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		if n is None:
-		    n = np.ones_like(x).astype(np.int64)
-
-		if c is None:
-			c = np.zeros_like(x).astype(np.int64)
-
-		flag = (c == 0).astype(para.NUM)
-
-		xx = np.copy(x)
-		nn = np.copy(n)
-		cc = np.copy(c)
-
+		x, c, n = surpyval.xcn_handler(x, c, n)
 		diff = (np.max(x) - np.min(x))/10
 
 		init_mpp = Weibull3p.fit(x, c=c, n=n, how='MPP').params
 		init = init_mpp[0], init_mpp[1], np.min(x) - diff
-		#init = x.sum() / (n * flag).sum(), 1., np.min(x) - 1
 		self.bounds = ((0, None), (0, None), (None, np.min(x)))
 		return init
 

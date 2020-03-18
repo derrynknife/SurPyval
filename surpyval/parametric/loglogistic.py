@@ -4,6 +4,7 @@ from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
 from scipy.special import ndtri as z
 
+import surpyval
 from surpyval import parametric as para
 from surpyval.parametric.surpyval_dist import SurpyvalDist
 
@@ -20,12 +21,7 @@ class LogLogistic_(SurpyvalDist):
 			0.9, 0.95, 0.99, 0.999, 0.9999]
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		if n is None:
-			n = np.ones_like(x)
-
-		if c is None:
-			c = np.zeros_like(x)
-
+		x, c, n = surpyval.xcn_handler(x, c, n)
 		flag = (c == 0).astype(np.int)
 		return x.sum() / (n * flag).sum(), 2.
 

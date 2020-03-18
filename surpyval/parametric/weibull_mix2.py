@@ -3,8 +3,8 @@ from scipy.stats import uniform
 from scipy.special import gamma as gamma_func
 from scipy.special import ndtri as z
 
+import surpyval
 from surpyval import parametric as para
-
 from surpyval.parametric.surpyval_dist import SurpyvalDist
 from surpyval.parametric.parametric_dist import Parametric
 
@@ -55,9 +55,7 @@ class Weibull_Mix_Two_(SurpyvalDist):
 	def mpp_inv_y_transform(self, y):
 		return 1 - np.exp(-np.exp(y))
 
-	def fit(self, x):
-		x = np.array(x, dtype=para.NUM)
-		assert x.ndim == 1
+	def fit(self, x, c=None, n=None):
 		model = Parametric()
 
 		model.method = 'EM'
@@ -68,8 +66,7 @@ class Weibull_Mix_Two_(SurpyvalDist):
 			'n' : None
 		}
 
-		c = np.zeros_like(x).astype(np.int64)
-		n = np.ones_like(x, dtype=np.int64)
+		x, c, n = surpyval.xcn_handler(x, c, n)
 
 		model.data = {
 			'x' : x,

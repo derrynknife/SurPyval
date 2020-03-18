@@ -3,6 +3,7 @@ from scipy.stats import uniform
 from scipy.special import ndtri as z
 from autograd.scipy.stats import norm
 from scipy.stats import norm as scipy_norm
+import surpyval
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 from surpyval.parametric.surpyval_dist import SurpyvalDist
@@ -19,15 +20,9 @@ class Normal_(SurpyvalDist):
 
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		if n is None:
-		    n = np.ones_like(x)
-
-		if c is None:
-			c = np.zeros_like(x)
-
-		c = (c == 0).astype(para.NUM)
-
-		return x.sum() / (n * c).sum(), np.std(x)
+		x, c, n = surpyval.xcn_handler(x, c, n)
+		flag = (c == 0).astype(np.int)
+		return x.sum() / (n * flag).sum(), np.std(x)
 
 	def sf(self, x, mu, sigma):
 		return norm.sf(x, mu, sigma)

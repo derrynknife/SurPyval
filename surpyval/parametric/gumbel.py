@@ -3,6 +3,7 @@ from scipy.stats import uniform
 from numpy import euler_gamma
 from scipy.special import ndtri as z
 
+import surpyval
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 from surpyval.parametric.surpyval_dist import SurpyvalDist
@@ -20,14 +21,8 @@ class Gumbel_(SurpyvalDist):
 			0.9, 0.95, 0.99, 0.999, 0.9999]
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		if n is None:
-		    n = np.ones_like(x).astype(np.int32)
-
-		if c is None:
-			c = np.zeros_like(x).astype(np.int32)
-
-		flag = (c == 0).astype(para.NUM)
-
+		x, c, n = surpyval.xcn_handler(x, c, n)
+		flag = (c == 0)
 		return x.sum() / (n * flag).sum(), np.std(x)
 
 	def sf(self, x, mu, sigma):
