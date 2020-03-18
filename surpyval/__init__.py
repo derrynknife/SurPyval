@@ -105,3 +105,7 @@ def fs_to_xcn(f, s):
 	n = n[idx]
 
 	return x, c, n
+
+def fs_to_xrd(f, s):
+	x, c, n = fs_to_xcn(f, s)
+	return xcn_to_xrd(x, c, n)
