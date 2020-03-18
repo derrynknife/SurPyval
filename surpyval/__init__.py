@@ -1,14 +1,9 @@
-import numpy as np
-import surpyval.datasets
-
-import surpyval.parametric
-import surpyval.nonparametric
-
-NUM = np.float64
-TINIEST = np.finfo(np.float64).tiny
-EPS = np.sqrt(np.finfo(NUM).eps)
-
 """
+.. module:: surpyval
+    :synopsis: module illustrating how to document python source code
+ 
+.. moduleauthor:: Derryn Knife <derryn@reliafy.com>
+
 Conventions for surpyval package
 - c = censoring
 - x = random variable (time, stress etc.)
@@ -37,6 +32,16 @@ fsl = fs format plus a vector for left censored times
 This is done to give an intuitive feel for when the 
 event happened on the timeline.
 """
+
+import numpy as np
+import surpyval.datasets
+
+import surpyval.parametric
+import surpyval.nonparametric
+
+NUM = np.float64
+TINIEST = np.finfo(np.float64).tiny
+EPS = np.sqrt(np.finfo(NUM).eps)
 
 def xcn_sort(x, c, n):
 	idx_c = np.argsort(c, kind='stable')
