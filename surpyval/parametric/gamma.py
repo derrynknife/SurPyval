@@ -3,6 +3,7 @@ from scipy.stats import uniform
 from scipy.optimize import approx_fprime
 from scipy.special import gamma as gamma_func
 from scipy.special import gammainc, gammaincinv
+from autograd_gamma import gammainc as agammainc
 from scipy.special import ndtri as z
 
 from surpyval import parametric as para
@@ -13,7 +14,7 @@ class Gamma_(SurpyvalDist):
 		self.name = name
 		self.k = 2
 		self.bounds = ((0, None), (0, None),)
-		self.use_autograd = False
+		self.use_autograd = True
 		self.plot_x_scale = 'linear'
 		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
 			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
@@ -31,7 +32,7 @@ class Gamma_(SurpyvalDist):
 		return 1 - self.ff(x, alpha, beta)
 
 	def ff(self, x, alpha, beta):
-		return gammainc(alpha, beta * x)
+		return agammainc(alpha, beta * x)
 
 	def df(self, x, alpha, beta):
 		return ((beta ** alpha) * x ** (alpha - 1) * np.exp(-(x * beta)) / (gamma_func(alpha)))
@@ -59,7 +60,7 @@ class Gamma_(SurpyvalDist):
 		return gammaincinv(alpha, y)
 
 	def mpp_inv_y_transform(self, y, alpha):
-		return gammainc(alpha, y)
+		return agammainc(alpha, y)
 
 	def mpp_x_transform(self, x):
 		return x
