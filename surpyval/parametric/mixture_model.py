@@ -61,8 +61,6 @@ class MixtureModel():
 		self.w = np.ones(shape=(self.m)) / self.m
 		self.p = np.ones(shape=(self.m, len(self.x))) / self.m
 
-		self.method = 'EM'
-
 	def Q(self, params):
 		params = params.reshape(self.m, self.dist.k)
 		f = np.zeros_like(self.p)
@@ -131,10 +129,6 @@ class MixtureModel():
 
 
 	def _mle(self):
-		"""
-		What I've learned from this is that EM is way better. Like way better.
-		So do not use.
-		"""
 		fun = lambda x : self.neg_ll(self.x, self.c, self.n, *x)
 		bounds = tuple(((0, 1), *self.dist.bounds)) * self.m
 		init = np.hstack([np.atleast_2d(self.w).T, self.params])
@@ -148,8 +142,10 @@ class MixtureModel():
 	def fit(self, how='EM'):
 		if how == 'EM':
 			self._em()
-		else:
-			print('Only EM available now')
+			self.method = 'EM'
+		elif how == 'MLE':
+			self._mle()
+			self.method = 'MLE'
 
 	def ll(self):
 		return self.loglike

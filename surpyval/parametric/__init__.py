@@ -22,6 +22,7 @@ from .logistic import Logistic
 from .loglogistic import LogLogistic
 
 from .mixture_model import MixtureModel
+from .lfp import LFP
 
 def round_sig(points, sig=2):
     places = sig - np.floor(np.log10(np.abs(points))) - 1

@@ -6,6 +6,25 @@ import surpyval.nonparametric
 
 NUM = np.float64
 
+def xcn_handler(x, c, n):
+	x = np.array(x)
+	assert x.ndim == 1
+
+	if c is not None:
+		c = np.array(c)
+		assert c.ndim == 1
+		assert c.shape == x.shape
+	else:
+		c = np.zeros_like(x)
+
+	if n is not None:
+		n = np.array(n)
+		assert n.ndim == 1
+		assert n.shape == x.shape
+	else:
+		n = np.ones_like(x)
+	
+	return x, c, n
 def xcn_to_xrd(x, c=None, n=None):
     x = x.copy()
     # Handle censoring
