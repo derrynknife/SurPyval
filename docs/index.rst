@@ -18,12 +18,13 @@ surpyval
 
 Specifically, surpyval was designed to be used for the front end statistical analysis for the repyability package. The repyability package is a reliability engineering software package for engineers.
 
-Conventions for surpyval package
--c = censoring
--x = random variable (time, stress etc.)
--n = counts
--r = risk set
--d = deaths
+Conventions for surpyval package:
+
+- c = censoring
+- x = random variable (time, stress etc.)
+- n = counts
+- r = risk set
+- d = deaths
 
 usual format for data:
 xcn = x variables, with c as the censoring schemed and n as the counts
