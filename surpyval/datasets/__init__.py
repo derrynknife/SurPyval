@@ -1,8 +1,10 @@
 import pandas as pd
+from pkg_resources import resource_filename
 
 class BoforsSteel_():
 	def __init__(self):
-		self.df = pd.read_csv('surpyval/datasets/bofors_steel.csv')
+		#self.df = pd.read_csv('surpyval/datasets/bofors_steel.csv')
+		self.df = pd.read_csv(resource_filename("surpyval", "datasets/bofors_steel.csv"), engine="python")
 
 class Bearing_():
 	def __init__(self):

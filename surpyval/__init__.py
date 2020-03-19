@@ -1,8 +1,10 @@
 """
+
 .. module:: surpyval
-    :synopsis: module illustrating how to document python source code
+    :synopsis: survival analysis in Python
  
 .. moduleauthor:: Derryn Knife <derryn@reliafy.com>
+
 
 Conventions for surpyval package
 - c = censoring
@@ -19,16 +21,16 @@ wranglers for formats:
 fs = failure times, f, and right censored times, s
 fsl = fs format plus a vector for left censored times
 
-- df = Density Function
-- ff / F = Failure Function
-- sf / R = Survival Function
-- h = hazard rate
-- H = Cumulative hazard function
+df = Density Function
+ff / F = Failure Function
+sf / R = Survival Function
+h = hazard rate
+H = Cumulative hazard function
 
-- Censoring: -1 = left
-              0 = failure / event
-              1 = right
-              2 = interval censoring. Must have left and right coord
+Censoring: -1 = left
+0 = failure / event
+1 = right
+2 = interval censoring. Must have left and right coord
 This is done to give an intuitive feel for when the 
 event happened on the timeline.
 """
@@ -68,7 +70,7 @@ def xcn_handler(x, c=None, n=None):
 				(c !=  1) &
 				(c != -1) &
 				(c !=  2)
-			)
+			), "Censoring value must only be one of -1, 0, 1, or 2"
 	else:
 		c = np.zeros_like(x)
 
@@ -90,7 +92,7 @@ def xcn_handler(x, c=None, n=None):
 def xcn_to_xrd(x, c=None, n=None):
     x, c, n = surpyval.xcn_handler(x, c, n)
     # xrd format can't have left or interval censoring
-    assert not ((c != 1) & (c != 0)).any()
+    assert not ((c != 1) & (c != 0)).any(), "xrd format can't handle left (c=-1) or interval (c=2) censoring"
     
     x = np.repeat(x, n)
     c = np.repeat(c, n)
