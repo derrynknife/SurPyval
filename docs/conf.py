@@ -51,7 +51,15 @@ html_theme = 'default'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
-import os
+autoclass_content = "both"  # include both class docstring and __init__
+autodoc_default_flags = [
+    # Make sure that any autodoc declarations show the right members
+    "members",
+    "inherited-members",
+    "show-inheritance",
+]
+autosummary_generate = True  # Make _autosummary files and include them
+
 
 on_rtd = os.environ.get("READTHEDOCS", None) == "True"
 
