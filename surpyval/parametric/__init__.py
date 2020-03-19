@@ -1,3 +1,15 @@
+"""
+
+Hello world
+
+.. code:: python
+
+	import surpyval.parametric as para
+
+	model = para.Weibull.fit(x)
+
+"""
+
 import autograd.numpy as np
 
 from surpyval import nonparametric as nonp
