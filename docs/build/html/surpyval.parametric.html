@@ -1,0 +1,1349 @@
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>surpyval.parametric package &#8212; surpyval  documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="surpyval-parametric-package">
+<h1>surpyval.parametric package<a class="headerlink" href="#surpyval-parametric-package" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="module-surpyval.parametric.exponential">
+<span id="surpyval-parametric-exponential-module"></span><h2>surpyval.parametric.exponential module<a class="headerlink" href="#module-surpyval.parametric.exponential" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.exponential.Exponential_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.exponential.</code><code class="sig-name descname">Exponential_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">failure_rate</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.R_cb">
+<code class="sig-name descname">R_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">failure_rate</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.R_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">failure_rate</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.entropy">
+<code class="sig-name descname">entropy</code><span class="sig-paren">(</span><em class="sig-param">failure_rate</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.entropy" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">failure_rate</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">failure_rate</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.jacobian">
+<code class="sig-name descname">jacobian</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">failure_rate</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.jacobian" title="Permalink to this definition">¶</a></dt>
+<dd><p>The jacobian for a two parameter Weibull distribution.
+Not used, but will need for cb</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.lambda_cb">
+<code class="sig-name descname">lambda_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">failure_rate</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.lambda_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">failure_rate</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.moment">
+<code class="sig-name descname">moment</code><span class="sig-paren">(</span><em class="sig-param">n</em>, <em class="sig-param">failure_rate</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.moment" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em>, <em class="sig-param">failure_rate</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em>, <em class="sig-param">failure_rate</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.exponential.Exponential_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">failure_rate</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.exponential.Exponential_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.gamma">
+<span id="surpyval-parametric-gamma-module"></span><h2>surpyval.parametric.gamma module<a class="headerlink" href="#module-surpyval.parametric.gamma" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.gamma.Gamma_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.gamma.</code><code class="sig-name descname">Gamma_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">ahlpa</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.R_cb">
+<code class="sig-name descname">R_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.R_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.moment">
+<code class="sig-name descname">moment</code><span class="sig-paren">(</span><em class="sig-param">n</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.moment" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em>, <em class="sig-param">alpha</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em>, <em class="sig-param">alpha</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gamma.Gamma_.var_R">
+<code class="sig-name descname">var_R</code><span class="sig-paren">(</span><em class="sig-param">dR</em>, <em class="sig-param">cv_matrix</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gamma.Gamma_.var_R" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.gumbel">
+<span id="surpyval-parametric-gumbel-module"></span><h2>surpyval.parametric.gumbel module<a class="headerlink" href="#module-surpyval.parametric.gumbel" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.gumbel.Gumbel_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.gumbel.</code><code class="sig-name descname">Gumbel_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.R_cb">
+<code class="sig-name descname">R_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.R_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.unpack_rr">
+<code class="sig-name descname">unpack_rr</code><span class="sig-paren">(</span><em class="sig-param">params</em>, <em class="sig-param">rr</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.unpack_rr" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.var_z">
+<code class="sig-name descname">var_z</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em>, <em class="sig-param">cv_matrix</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.var_z" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.gumbel.Gumbel_.z_cb">
+<code class="sig-name descname">z_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.gumbel.Gumbel_.z_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.lfp">
+<span id="surpyval-parametric-lfp-module"></span><h2>surpyval.parametric.lfp module<a class="headerlink" href="#module-surpyval.parametric.lfp" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.lfp.LFP">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.lfp.</code><code class="sig-name descname">LFP</code><span class="sig-paren">(</span><em class="sig-param">dist</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lfp.LFP" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.lfp.LFP.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">w</em>, <em class="sig-param">*params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lfp.LFP.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lfp.LFP.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">w</em>, <em class="sig-param">*params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lfp.LFP.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lfp.LFP.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">w</em>, <em class="sig-param">*params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lfp.LFP.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lfp.LFP.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">w</em>, <em class="sig-param">*params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lfp.LFP.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lfp.LFP.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lfp.LFP.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lfp.LFP.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">w</em>, <em class="sig-param">*params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lfp.LFP.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.logistic">
+<span id="surpyval-parametric-logistic-module"></span><h2>surpyval.parametric.logistic module<a class="headerlink" href="#module-surpyval.parametric.logistic" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.logistic.Logistic_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.logistic.</code><code class="sig-name descname">Logistic_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.logistic.Logistic_.unpack_rr">
+<code class="sig-name descname">unpack_rr</code><span class="sig-paren">(</span><em class="sig-param">params</em>, <em class="sig-param">rr</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.logistic.Logistic_.unpack_rr" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.loglogistic">
+<span id="surpyval-parametric-loglogistic-module"></span><h2>surpyval.parametric.loglogistic module<a class="headerlink" href="#module-surpyval.parametric.loglogistic" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.loglogistic.</code><code class="sig-name descname">LogLogistic_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.loglogistic.LogLogistic_.unpack_rr">
+<code class="sig-name descname">unpack_rr</code><span class="sig-paren">(</span><em class="sig-param">params</em>, <em class="sig-param">rr</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.loglogistic.LogLogistic_.unpack_rr" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.lognormal">
+<span id="surpyval-parametric-lognormal-module"></span><h2>surpyval.parametric.lognormal module<a class="headerlink" href="#module-surpyval.parametric.lognormal" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.lognormal.LogNormal_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.lognormal.</code><code class="sig-name descname">LogNormal_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.R_cb">
+<code class="sig-name descname">R_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.R_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.unpack_rr">
+<code class="sig-name descname">unpack_rr</code><span class="sig-paren">(</span><em class="sig-param">params</em>, <em class="sig-param">rr</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.unpack_rr" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.var_z">
+<code class="sig-name descname">var_z</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em>, <em class="sig-param">cv_matrix</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.var_z" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.lognormal.LogNormal_.z_cb">
+<code class="sig-name descname">z_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.lognormal.LogNormal_.z_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.mixture_model">
+<span id="surpyval-parametric-mixture-model-module"></span><h2>surpyval.parametric.mixture_model module<a class="headerlink" href="#module-surpyval.parametric.mixture_model" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.mixture_model.MixtureModel">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.mixture_model.</code><code class="sig-name descname">MixtureModel</code><span class="sig-paren">(</span><em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Generalised from algorithm found here
+<a class="reference external" href="https://www.sciencedirect.com/science/article/pii/S0307904X12002545">https://www.sciencedirect.com/science/article/pii/S0307904X12002545</a></p>
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.EM">
+<code class="sig-name descname">EM</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.EM" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.Q">
+<code class="sig-name descname">Q</code><span class="sig-paren">(</span><em class="sig-param">params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.Q" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">t</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.expectation">
+<code class="sig-name descname">expectation</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.expectation" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">t</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.fit">
+<code class="sig-name descname">fit</code><span class="sig-paren">(</span><em class="sig-param">how='EM'</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.fit" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.ll">
+<code class="sig-name descname">ll</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.ll" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.maximisation">
+<code class="sig-name descname">maximisation</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.maximisation" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.neg_ll">
+<code class="sig-name descname">neg_ll</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c</em>, <em class="sig-param">n</em>, <em class="sig-param">*params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.neg_ll" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.mixture_model.MixtureModel.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">t</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.mixture_model.MixtureModel.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.normal">
+<span id="surpyval-parametric-normal-module"></span><h2>surpyval.parametric.normal module<a class="headerlink" href="#module-surpyval.parametric.normal" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.normal.Normal_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.normal.</code><code class="sig-name descname">Normal_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.R_cb">
+<code class="sig-name descname">R_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.R_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.moment">
+<code class="sig-name descname">moment</code><span class="sig-paren">(</span><em class="sig-param">n</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.moment" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.unpack_rr">
+<code class="sig-name descname">unpack_rr</code><span class="sig-paren">(</span><em class="sig-param">params</em>, <em class="sig-param">rr</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.unpack_rr" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.var_z">
+<code class="sig-name descname">var_z</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em>, <em class="sig-param">cv_matrix</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.var_z" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.normal.Normal_.z_cb">
+<code class="sig-name descname">z_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">mu</em>, <em class="sig-param">sigma</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.normal.Normal_.z_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.parametric_dist">
+<span id="surpyval-parametric-parametric-dist-module"></span><h2>surpyval.parametric.parametric_dist module<a class="headerlink" href="#module-surpyval.parametric.parametric_dist" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.parametric_dist.Parametric">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.parametric_dist.</code><code class="sig-name descname">Parametric</code><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.aic">
+<code class="sig-name descname">aic</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.aic" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.aic_c">
+<code class="sig-name descname">aic_c</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.aic_c" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.cb">
+<code class="sig-name descname">cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">sig</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.entropy">
+<code class="sig-name descname">entropy</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.entropy" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.get_plot_data">
+<code class="sig-name descname">get_plot_data</code><span class="sig-paren">(</span><em class="sig-param">heuristic</em>, <em class="sig-param">plot_bounds=True</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.get_plot_data" title="Permalink to this definition">¶</a></dt>
+<dd><p>Looking a little less ugly now.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.ll">
+<code class="sig-name descname">ll</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.ll" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.moment">
+<code class="sig-name descname">moment</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.moment" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.plot">
+<code class="sig-name descname">plot</code><span class="sig-paren">(</span><em class="sig-param">heuristic='Nelson-Aalen'</em>, <em class="sig-param">plot_bounds=True</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.plot" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.parametric_dist.Parametric.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.parametric_dist.Parametric.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.surpyval_dist">
+<span id="surpyval-parametric-surpyval-dist-module"></span><h2>surpyval.parametric.surpyval_dist module<a class="headerlink" href="#module-surpyval.parametric.surpyval_dist" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.surpyval_dist.SurpyvalDist">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.surpyval_dist.</code><code class="sig-name descname">SurpyvalDist</code><a class="headerlink" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="method">
+<dt id="surpyval.parametric.surpyval_dist.SurpyvalDist.fit">
+<code class="sig-name descname">fit</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em>, <em class="sig-param">how='MLE'</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.surpyval_dist.SurpyvalDist.fit" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.surpyval_dist.SurpyvalDist.fit_from_df">
+<code class="sig-name descname">fit_from_df</code><span class="sig-paren">(</span><em class="sig-param">df</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.surpyval_dist.SurpyvalDist.fit_from_df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.surpyval_dist.SurpyvalDist.like">
+<code class="sig-name descname">like</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em>, <em class="sig-param">*params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.surpyval_dist.SurpyvalDist.like" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.surpyval_dist.SurpyvalDist.mom_moment_gen">
+<code class="sig-name descname">mom_moment_gen</code><span class="sig-paren">(</span><em class="sig-param">*params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.surpyval_dist.SurpyvalDist.mom_moment_gen" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.surpyval_dist.SurpyvalDist.neg_ll">
+<code class="sig-name descname">neg_ll</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em>, <em class="sig-param">*params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.surpyval_dist.SurpyvalDist.neg_ll" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.surpyval_dist.SurpyvalDist.neg_mean_D">
+<code class="sig-name descname">neg_mean_D</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em>, <em class="sig-param">*params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.surpyval_dist.SurpyvalDist.neg_mean_D" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.uniform">
+<span id="surpyval-parametric-uniform-module"></span><h2>surpyval.parametric.uniform module<a class="headerlink" href="#module-surpyval.parametric.uniform" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.uniform.Uniform_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.uniform.</code><code class="sig-name descname">Uniform_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">a</em>, <em class="sig-param">b</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">a</em>, <em class="sig-param">b</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">a</em>, <em class="sig-param">b</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">a</em>, <em class="sig-param">b</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">a</em>, <em class="sig-param">b</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.moment">
+<code class="sig-name descname">moment</code><span class="sig-paren">(</span><em class="sig-param">n</em>, <em class="sig-param">a</em>, <em class="sig-param">b</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.moment" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em>, <em class="sig-param">a</em>, <em class="sig-param">b</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em>, <em class="sig-param">a</em>, <em class="sig-param">b</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.uniform.Uniform_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">a</em>, <em class="sig-param">b</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.uniform.Uniform_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.weibull">
+<span id="surpyval-parametric-weibull-module"></span><h2>surpyval.parametric.weibull module<a class="headerlink" href="#module-surpyval.parametric.weibull" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.weibull.Weibull_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.weibull.</code><code class="sig-name descname">Weibull_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.R_cb">
+<code class="sig-name descname">R_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.R_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.du">
+<code class="sig-name descname">du</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.du" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.entropy">
+<code class="sig-name descname">entropy</code><span class="sig-paren">(</span><em class="sig-param">alhpa</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.entropy" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.jacobian">
+<code class="sig-name descname">jacobian</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.jacobian" title="Permalink to this definition">¶</a></dt>
+<dd><p>The jacobian for a two parameter Weibull distribution.</p>
+<p>Please report mistakes if found!</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.moment">
+<code class="sig-name descname">moment</code><span class="sig-paren">(</span><em class="sig-param">n</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.moment" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.u">
+<code class="sig-name descname">u</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.u" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.u_cb">
+<code class="sig-name descname">u_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.u_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.unpack_rr">
+<code class="sig-name descname">unpack_rr</code><span class="sig-paren">(</span><em class="sig-param">params</em>, <em class="sig-param">rr</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.unpack_rr" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull.Weibull_.var_u">
+<code class="sig-name descname">var_u</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">cv_matrix</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull.Weibull_.var_u" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.weibull3p">
+<span id="surpyval-parametric-weibull3p-module"></span><h2>surpyval.parametric.weibull3p module<a class="headerlink" href="#module-surpyval.parametric.weibull3p" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.weibull3p.</code><code class="sig-name descname">Weibull3p_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<p>class for the three parameter weibull distribution.</p>
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.Hf">
+<code class="sig-name descname">Hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.Hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.R_cb">
+<code class="sig-name descname">R_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.R_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.du">
+<code class="sig-name descname">du</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.du" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.hf">
+<code class="sig-name descname">hf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.hf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.jacobian">
+<code class="sig-name descname">jacobian</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.jacobian" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.moment">
+<code class="sig-name descname">moment</code><span class="sig-paren">(</span><em class="sig-param">n</em>, <em class="sig-param">alhpa</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.moment" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.qf">
+<code class="sig-name descname">qf</code><span class="sig-paren">(</span><em class="sig-param">p</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.qf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.random">
+<code class="sig-name descname">random</code><span class="sig-paren">(</span><em class="sig-param">size</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.random" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.u">
+<code class="sig-name descname">u</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.u" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.u_cb">
+<code class="sig-name descname">u_cb</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em>, <em class="sig-param">cv_matrix</em>, <em class="sig-param">cb=0.05</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.u_cb" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull3p.Weibull3p_.var_u">
+<code class="sig-name descname">var_u</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">alpha</em>, <em class="sig-param">beta</em>, <em class="sig-param">gamma</em>, <em class="sig-param">cv_matrix</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull3p.Weibull3p_.var_u" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.weibull_mix2">
+<span id="surpyval-parametric-weibull-mix2-module"></span><h2>surpyval.parametric.weibull_mix2 module<a class="headerlink" href="#module-surpyval.parametric.weibull_mix2" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.weibull_mix2.Weibull_Mix_Two_">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.weibull_mix2.</code><code class="sig-name descname">Weibull_Mix_Two_</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull_mix2.Weibull_Mix_Two_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#surpyval.parametric.surpyval_dist.SurpyvalDist" title="surpyval.parametric.surpyval_dist.SurpyvalDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.parametric.surpyval_dist.SurpyvalDist</span></code></a></p>
+<dl class="method">
+<dt id="surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">n</em>, <em class="sig-param">w</em>, <em class="sig-param">alphas</em>, <em class="sig-param">betas</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">n</em>, <em class="sig-param">w</em>, <em class="sig-param">alphas</em>, <em class="sig-param">betas</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.fit">
+<code class="sig-name descname">fit</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.fit" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><em class="sig-param">n</em>, <em class="sig-param">w</em>, <em class="sig-param">alphas</em>, <em class="sig-param">betas</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.mpp_inv_y_transform">
+<code class="sig-name descname">mpp_inv_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.mpp_inv_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.mpp_x_transform">
+<code class="sig-name descname">mpp_x_transform</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.mpp_x_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.mpp_y_transform">
+<code class="sig-name descname">mpp_y_transform</code><span class="sig-paren">(</span><em class="sig-param">y</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.mpp_y_transform" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.parameter_initialiser">
+<code class="sig-name descname">parameter_initialiser</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">c=None</em>, <em class="sig-param">n=None</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.parameter_initialiser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">n</em>, <em class="sig-param">w</em>, <em class="sig-param">alphas</em>, <em class="sig-param">betas</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.weibull_mix2.Weibull_Mix_Two_.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric.wmm">
+<span id="surpyval-parametric-wmm-module"></span><h2>surpyval.parametric.wmm module<a class="headerlink" href="#module-surpyval.parametric.wmm" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="surpyval.parametric.wmm.WMM">
+<em class="property">class </em><code class="sig-prename descclassname">surpyval.parametric.wmm.</code><code class="sig-name descname">WMM</code><span class="sig-paren">(</span><em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="method">
+<dt id="surpyval.parametric.wmm.WMM.EM">
+<code class="sig-name descname">EM</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM.EM" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.wmm.WMM.Q_prime">
+<code class="sig-name descname">Q_prime</code><span class="sig-paren">(</span><em class="sig-param">params</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM.Q_prime" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.wmm.WMM.df">
+<code class="sig-name descname">df</code><span class="sig-paren">(</span><em class="sig-param">t</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM.df" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.wmm.WMM.expectation">
+<code class="sig-name descname">expectation</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM.expectation" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.wmm.WMM.ff">
+<code class="sig-name descname">ff</code><span class="sig-paren">(</span><em class="sig-param">t</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM.ff" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.wmm.WMM.fit">
+<code class="sig-name descname">fit</code><span class="sig-paren">(</span><em class="sig-param">tol=1e-06</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM.fit" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.wmm.WMM.ll">
+<code class="sig-name descname">ll</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM.ll" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.wmm.WMM.maximisation">
+<code class="sig-name descname">maximisation</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM.maximisation" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.wmm.WMM.mean">
+<code class="sig-name descname">mean</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM.mean" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="surpyval.parametric.wmm.WMM.sf">
+<code class="sig-name descname">sf</code><span class="sig-paren">(</span><em class="sig-param">t</em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.parametric.wmm.WMM.sf" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-surpyval.parametric">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-surpyval.parametric" title="Permalink to this headline">¶</a></h2>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">surpyval</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2020, Derryn Knife.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.4.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/surpyval.parametric.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
