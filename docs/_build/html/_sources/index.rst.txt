@@ -10,6 +10,15 @@ Welcome to surpyval's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+Installation
+------------------------------
+
+
+.. code-block:: console
+
+    pip install reliafy-surpyval
+
+
 
 
 Indices and tables

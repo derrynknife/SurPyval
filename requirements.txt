@@ -1,0 +1,6 @@
+numpy
+scipy
+requests
+pandas
+autograd
+matplotlib
