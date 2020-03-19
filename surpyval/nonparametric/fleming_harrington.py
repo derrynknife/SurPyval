@@ -3,18 +3,28 @@ import surpyval
 import surpyval.nonparametric as nonp
 
 def fleming_harrington(x, c=None, n=None):
-	"""
-	Fleming Harrington estimation of Reliability function
-   
-    return_all is called by the fit method to ensure h, x, c, d are all saved
+	r"""
 
-    Hazard Rate:
-    at each x, for each d:
-	h = 1/r + 1/(r-1) + ... + 1/(r-d)
-	Cumulative Hazard Function
-	H = cumsum(h)
-	Reliability Function
-	R = exp(-H)
+	Fleming-Harrington estimation of Reliability function.
+
+	Ref:
+	Fleming, T. R., and Harrington, D. P. (1984). “Nonparametric Estimation of the Survival Distribution in Censored Data.” Communications in Statistics—Theory and Methods 13:2469–2486.
+
+	The Fleming-Harrington method estimates, like the Nelson-Aalen estimator the instantaneous hazard rate. With the instantaneous rate, the cumulative hazard is then computed, then the reliability function.
+
+	Hazard Rate:
+	at each x, for each d:
+
+	.. math:: h = 1/r + 1/(r-1) + ... + 1/(r-d)
+	
+	Cumulative Hazard Function:
+
+	.. math:: H = cumsum(h)
+
+	Reliability Function:
+
+	.. math:: R = e^{-H}
+
 	"""
 	x, c, n = surpyval.xcn_handler(x, c, n)
 	x, r, d = surpyval.xcn_to_xrd(x, c, n)

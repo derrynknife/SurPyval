@@ -141,8 +141,8 @@ def fsl_to_xcn(f, s, l):
 	c_l = -np.ones_like(x_l)
 
 	x = np.hstack([x_f, x_s, x_l])
-	c = np.hstack([c_f, c_s, c_l])
-	n = np.hstack([n_f, n_s, n_l])
+	c = np.hstack([c_f, c_s, c_l]).astype(np.int64)
+	n = np.hstack([n_f, n_s, n_l]).astype(np.int64)
 
 	x, c, n = xcn_sort(x, c, n)
 
@@ -156,8 +156,8 @@ def fs_to_xcn(f, s):
 	c_s = np.ones_like(x_s)
 
 	x = np.hstack([x_f, x_s])
-	c = np.hstack([c_f, c_s])
-	n = np.hstack([n_f, n_s])
+	c = np.hstack([c_f, c_s]).astype(np.int64)
+	n = np.hstack([n_f, n_s]).astype(np.int64)
 
 	x, c, n = xcn_sort(x, c, n)
 
