@@ -109,9 +109,6 @@ def xcn_to_xrd(x, c=None, n=None):
     return x, r, d
 
 def xrd_to_xcn(x, r, d):
-	"""
-	Converts the x, r, d format to the x, c, n format
-	"""
 	n_f = np.copy(d)
 	x_f = np.copy(x)
 	mask = n_f != 0
