@@ -18,5 +18,11 @@ from .kaplan_meier import KaplanMeier
 from .nelson_aalen import NelsonAalen
 from .fleming_harrington import FlemingHarrington
 
+FIT_FUNCS = {
+	'Nelson-Aalen'       : nelson_aalen,
+	'Kaplan-Meier'       : kaplan_meier,
+	'Fleming-Harrington' : fleming_harrington
+}
+
 
 

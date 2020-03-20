@@ -52,6 +52,7 @@ Contents:
 
    Parametric Modelling
    Estimating Parameters
+   Distributions
 
 
 

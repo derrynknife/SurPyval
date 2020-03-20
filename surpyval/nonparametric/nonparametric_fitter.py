@@ -14,20 +14,15 @@ class NonParametricFitter():
 	"""
 
 	def fit(self, x, c=None, n=None, sig=0.05):
-		how = self.how
 		data = {}
 		data['x'] = x
 		data['c'] = c
 		data['n'] = n
 		out = nonp.NonParametric()
 		out.data = data
-		out.model = how
-		if   how == 'Nelson-Aalen':
-			x_, r, d, R = nonp.nelson_aalen(x, c=c, n=n)
-		elif how == 'Kaplan-Meier':
-			x_, r, d, R = nonp.kaplan_meier(x, c=c, n=n)
-		elif how == 'Fleming-Harrington':
-			x_, r, d, R = nonp.fleming_harrington(x, c=c, n=n)
+		out.model = self.how
+		
+		x_, r, d, R = nonp.FIT_FUNCS[self.how](x, c=c, n=n)
 
 		out.x = x_
 		out.max_x = np.max(out.x)
