@@ -34,6 +34,9 @@ class Weibull_(ParametricFitter):
 	def ff(self, x, alpha, beta):
 		return 1 - np.exp(-(x / alpha)**beta)
 
+	def cs(self, x, X, alpha, beta):
+		return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
+
 	def df(self, x, alpha, beta):
 		return (beta / alpha) * (x / alpha)**(beta-1) * np.exp(-(x / alpha)**beta)
 

@@ -25,6 +25,9 @@ class Logistic_(ParametricFitter):
 	def sf(self, x, mu, sigma):
 		return 1 - self.ff(x, mu, sigma)
 
+	def cs(self, x, X, mu, sigma):
+		return self.sf(x + X, mu, sigma) / self.sf(X, mu, sigma)
+
 	def ff(self, x, mu, sigma):
 		z = (x - mu) / sigma
 		return 1. / (1 + np.exp(-z))

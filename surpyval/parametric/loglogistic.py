@@ -28,6 +28,9 @@ class LogLogistic_(ParametricFitter):
 	def sf(self, x, alpha, beta):
 		return 1 - self.ff(x, alpha, beta)
 
+	def cs(self, x, X, alpha, beta):
+		return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
+
 	def ff(self, x, alpha, beta):
 		return 1. / (1 + (x/alpha)**-beta)
 

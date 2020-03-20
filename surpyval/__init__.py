@@ -31,8 +31,6 @@ from surpyval.nonparametric import KaplanMeier
 from surpyval.nonparametric import NelsonAalen
 from surpyval.nonparametric import FlemingHarrington
 
-
-
 NUM = np.float64
 TINIEST = np.finfo(np.float64).tiny
 EPS = np.sqrt(np.finfo(NUM).eps)

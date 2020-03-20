@@ -36,6 +36,9 @@ class Weibull3p_(ParametricFitter):
 	def sf(self, x, alpha, beta, gamma):
 		return np.exp(-((x - gamma) / alpha)**beta)
 
+	def cs(self, x, X, alpha, beta, gamma):
+		return self.sf(x + X, alpha, beta, gamma) / self.sf(X, alpha, beta, gamma)
+
 	def ff(self, x, alpha, beta, gamma):
 		return 1 - np.exp(-((x - gamma) / alpha)**beta)
 

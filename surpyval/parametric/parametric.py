@@ -32,6 +32,9 @@ class Parametric():
 	def qf(self, p):
 		return self.dist.qf(p, *self.params)
 
+	def cs(self, x, X):
+		return self.dist.cs(x, X, *self.params)
+
 	def random(self, size):
 		U = uniform.rvs(size=size)
 		return self.qf(U, *self.params)

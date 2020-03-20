@@ -25,6 +25,10 @@ class Exponential_(ParametricFitter):
 	def sf(self, x, failure_rate):
 		return np.exp(-failure_rate * x)
 
+	def cs(self, x, X, failure_rate):
+		# The exponential distribution is memoryless so of course it is the same as the survival function
+		return self.sf(x, failure_rate)
+
 	def ff(self, x, failure_rate):
 		return 1 - np.exp(-failure_rate * x)
 

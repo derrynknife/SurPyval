@@ -249,12 +249,12 @@ class ParametricFitter():
 		assert x.ndim == 1
 
 		if c_col in df:
-			c = df[c_col]
+			c = df[c_col].values.astype(np.int64)
 		else:
 			c = None
 
 		if n_col in df:
-			n = df[n_col]
+			n = df[n_col].values.astype(np.int64)
 		else:
 			n = None
 

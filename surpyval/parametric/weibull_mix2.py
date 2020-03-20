@@ -6,7 +6,7 @@ from scipy.special import ndtri as z
 import surpyval
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter
-from surpyval.parametric.parametric_dist import Parametric
+from surpyval.parametric.parametric import Parametric
 
 class Weibull_Mix_Two_(ParametricFitter):
 	def __init__(self, name):
@@ -39,6 +39,9 @@ class Weibull_Mix_Two_(ParametricFitter):
 
 	def sf(self, x, n, w, alphas, betas):
 		return 1 - self.ff(x, n, w, alphas, betas)
+
+	def cs(self, x, X, n, w, alphas, betas):
+		return self.sf(x + X, n, w, alphas, betas) / self.sf(X, n, w, alphas, betas)
 
 	def mean(self, n, w, alphas, betas):
 		mean = 0

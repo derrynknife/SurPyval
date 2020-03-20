@@ -21,6 +21,9 @@ class Uniform_(ParametricFitter):
 	def sf(self, x, a, b):
 		return 1 - self.ff(x, a, b)
 
+	def cs(self, x, X, a, b):
+		return self.sf(x + X, a, b) / self.sf(X, a, b)
+
 	def ff(self, x, a, b):
 		f = np.zeros_like(x)
 		f = np.where(x < a, 0, f)

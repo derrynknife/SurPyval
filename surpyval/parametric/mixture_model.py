@@ -153,4 +153,7 @@ class MixtureModel():
 	def sf(self, t): 
 		return 1 - self.ff(t)
 
+	def cs(self, t, T): 
+		return self.sf(t + T) / self.sf(T)
+
 

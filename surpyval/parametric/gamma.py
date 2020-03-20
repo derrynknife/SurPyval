@@ -33,6 +33,9 @@ class Gamma_(ParametricFitter):
 	def sf(self, x, alpha, beta):
 		return 1 - self.ff(x, alpha, beta)
 
+	def cs(self, x, X, alpha, beta):
+		return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
+
 	def ff(self, x, alpha, beta):
 		return agammainc(alpha, beta * x)
 
@@ -78,16 +81,16 @@ class Gamma_(ParametricFitter):
 	def R_cb(self, x, alpha, beta, cv_matrix, cb=0.05):
 		R_hat = self.sf(x, alpha, beta)
 		dR_f = lambda t : self.sf(*t)
-		#jac = jacobian(dR_f)
-		jac = lambda t : approx_fprime(t, dR_f, surpyval.EPS)[1::]
+		jac = jacobian(dR_f)
+		#jac = lambda t : approx_fprime(t, dR_f, surpyval.EPS)[1::]
 		x_ = np.array(x)
 		if x_.size == 1:
-			dR = jac((x_, alpha, beta))
+			dR = jac(np.array((x_, alpha, beta))[1::])
 			dR = dR.reshape(1, 2)
 		else:
 			out = []
 			for xx in x_:
-				out.append(jac((xx, alpha, beta)))
+				out.append(jac(np.array((xx, alpha, beta)))[1::])
 			dR = np.array(out)
 		K = z(cb/2)
 		exponent = K * np.array([-1, 1]).reshape(2, 1) * np.sqrt(self.var_R(dR, cv_matrix))
