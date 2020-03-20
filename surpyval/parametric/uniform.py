@@ -3,9 +3,9 @@ from scipy.stats import uniform
 from scipy.special import ndtri as z
 
 from surpyval import parametric as para
-from surpyval.parametric.surpyval_dist import SurpyvalDist
+from surpyval.parametric.parametric_fitter import ParametricFitter
 
-class Uniform_(SurpyvalDist):
+class Uniform_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
 		# Set 'k', the number of parameters

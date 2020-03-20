@@ -1,8 +1,11 @@
 import numpy as np
 import surpyval.nonparametric as nonp
 from scipy.stats import t, norm
+from .kaplan_meier import KaplanMeier
+from .nelson_aalen import NelsonAalen
+from .fleming_harrington import FlemingHarrington_
 
-class NonParametric(object):
+class NonParametric():
 	"""
 	Class to capture all data and meta data on non-parametric sur(py)val model
 
@@ -14,13 +17,9 @@ class NonParametric(object):
 	standard: h_u, H_u or Ru, Rl
 
 	"""
-	def __init__(self):
-		pass
-
 	def __str__(self):
-		# Used to automate print(NonParametric()) call
-		return "%s Reliability Model" % self.model
-	# TODO: This
+		return "{model} survival model".format(model=self.model)
+
 	def sf(self, x, how='step'):
 		x = np.atleast_1d(x)
 		# Let's not assume we can predict above the highest measurement
@@ -98,39 +97,3 @@ class NonParametric(object):
 
 	def random(self, size):
 		return np.random.choice(self.x, size=size)
-
-	@classmethod
-	def fit(cls, x, how='Nelson-Aalen', 
-			c=None, n=None, sig=0.05):
-		assert how in nonp.PLOTTING_METHODS
-		data = {}
-		data['x'] = x
-		data['c'] = c
-		data['n'] = n
-		out = cls()
-		out.data = data
-		out.model = how
-		if   how == 'Nelson-Aalen':
-			x_, r, d, R = nonp.nelson_aalen(x, c=c, n=n)
-		elif how == 'Kaplan-Meier':
-			x_, r, d, R = nonp.kaplan_meier(x, c=c, n=n)
-		elif how == 'Fleming-Harrington':
-			x_, r, d, R = nonp.fleming_harrington(x, c=c, n=n)
-
-		out.x = x_
-		out.max_x = np.max(out.x)
-		out.r = r
-		out.d = d
-		with np.errstate(divide='ignore'):
-			out.H = -np.log(R)
-		out.R = R
-		out.F = 1 - out.R
-
-		with np.errstate(divide='ignore'):
-			var = out.d / (out.r * (out.r - out.d))
-		
-		with np.errstate(invalid='ignore'):
-			greenwood = np.cumsum(var)
-		out.greenwood = greenwood
-
-		return out

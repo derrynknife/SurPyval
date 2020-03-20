@@ -1,14 +1,64 @@
+"""
+
+Surpyval Again
+===============
+
+More stuff about the surpyval package
+
+"""
+
 import numpy as np
 import surpyval.datasets
 
 import surpyval.parametric
 import surpyval.nonparametric
 
+from surpyval.parametric import Weibull
+from surpyval.parametric import Gumbel
+from surpyval.parametric import LogLogistic
+from surpyval.parametric import Logistic
+from surpyval.parametric import Exponential
+from surpyval.parametric import Gamma
+from surpyval.parametric import LFP
+from surpyval.parametric import MixtureModel
+from surpyval.parametric import Weibull3p
+from surpyval.parametric import LogNormal
+from surpyval.parametric import Normal
+from surpyval.parametric import Uniform
+from surpyval.parametric import Weibull_Mix_Two
+
+from surpyval.nonparametric import KaplanMeier
+from surpyval.nonparametric import NelsonAalen
+from surpyval.nonparametric import FlemingHarrington
+
+
+
 NUM = np.float64
 TINIEST = np.finfo(np.float64).tiny
 EPS = np.sqrt(np.finfo(NUM).eps)
 
 def xcn_sort(x, c, n):
+	"""
+	Sorts the x, c, and n arrays so that x is increasing, and where there are ties they are ordered as left censored, failure, right censored, then intervally censored.
+
+	Parameters
+	----------
+	x: array
+		array of values of variable for which observations were made.
+	c: array
+		array of censoring values (-1, 0, 1, 2) corrseponding to x
+	n: array
+		array of count of observations at each x and with censoring c
+
+	Returns
+	----------
+	x: array
+		sorted array of values of variable for which observations were made.
+	c: array
+		sorted array of censoring values (-1, 0, 1, 2) corrseponding to rearranged x
+	n: array
+		array of count of observations at each rearranged x and with censoring c
+	"""
 	idx_c = np.argsort(c, kind='stable')
 	x = x[idx_c]
 	c = c[idx_c]
@@ -21,13 +71,35 @@ def xcn_sort(x, c, n):
 	return x, c, n
 
 def xcn_handler(x, c=None, n=None):
+	"""
+	Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
+
+	Parameters
+	----------
+	x: array
+		array of values of variable for which observations were made.
+	c: array, optional (default: None)
+		array of censoring values (-1, 0, 1, 2) corrseponding to x
+	n: array, optional (default: None)
+		array of count of observations at each x and with censoring c
+
+	Returns
+	----------
+
+	x: array
+		sorted array of values of variable for which observations were made.
+	c: array
+		array of censoring values (-1, 0, 1, 2) corrseponding to output array x. If c was None, defaults to creating array of zeros the length of x.
+	n: array
+		array of count of observations at to output array x and with censoring c. If n was None, count array assumed to be all one observation.
+	"""
 	x = np.array(x)
-	assert x.ndim == 1
+	assert x.ndim == 1, "variable array must be one dimensional"
 
 	if c is not None:
 		c = np.array(c)
-		assert c.ndim == 1
-		assert c.shape == x.shape
+		assert c.ndim == 1, "censoring array must be one dimensional"
+		assert c.shape == x.shape, "censoring array must be same length as variable array"
 		assert not any(
 				(c !=  0) &
 				(c !=  1) &
@@ -39,9 +111,9 @@ def xcn_handler(x, c=None, n=None):
 
 	if n is not None:
 		n = np.array(n)
-		assert n.ndim == 1
-		assert n.shape == x.shape
-		assert (n > 0).all()
+		assert n.ndim == 1, "count array must be one dimensional"
+		assert n.shape == x.shape, "count array must be same length as variable array."
+		assert (n > 0).all(), "count array can't be 0"
 	else:
 		n = np.ones_like(x)
 
@@ -53,25 +125,48 @@ def xcn_handler(x, c=None, n=None):
 	return x, c, n
 
 def xcn_to_xrd(x, c=None, n=None):
-    x, c, n = surpyval.xcn_handler(x, c, n)
-    # xrd format can't have left or interval censoring
-    assert not ((c != 1) & (c != 0)).any(), "xrd format can't handle left (c=-1) or interval (c=2) censoring"
-    
-    x = np.repeat(x, n)
-    c = np.repeat(c, n)
-    n = np.ones_like(x).astype(np.int64)
-    
-    x, idx = np.unique(x, return_inverse=True)
-    
-    d = np.bincount(idx, weights=1 - c)
-    # do is drop outs
-    do = np.bincount(idx, weights=c)
-    r = n.sum() + d - d.cumsum() + do - do.cumsum()
-    r = r.astype(np.int64)
-    d = d.astype(np.int64)
-    return x, r, d
+	"""
+	Converts the xcn format to the xrd format.
+
+	Parameters
+	----------
+	x: array
+		array of values of variable for which observations were made.
+	c: array, optional (default: None)
+		array of censoring values (-1, 0, 1, 2) corrseponding to x. If None, an array of 0s is created corresponding to each x.
+	n: array, optional (default: None)
+		array of count of observations at each x and with censoring c. If None, an array of ones is created.
+
+	Returns
+	----------
+	x: array
+		sorted array of values of variable for which observations were made.
+	r: array
+		array of count of units/people at risk at time x.
+	d: array
+		array of the count of failures/deaths at each time x.
+	"""
+	x, c, n = surpyval.xcn_handler(x, c, n)
+	assert not ((c != 1) & (c != 0)).any(), "xrd format can't handle left (c=-1) or interval (c=2) censoring"
+
+	x = np.repeat(x, n)
+	c = np.repeat(c, n)
+	n = np.ones_like(x).astype(np.int64)
+
+	x, idx = np.unique(x, return_inverse=True)
+
+	d = np.bincount(idx, weights=1 - c)
+	# do is drop outs
+	do = np.bincount(idx, weights=c)
+	r = n.sum() + d - d.cumsum() + do - do.cumsum()
+	r = r.astype(np.int64)
+	d = d.astype(np.int64)
+	return x, r, d
 
 def xrd_to_xcn(x, r, d):
+	"""
+	Exact inverse of the xcn_to_xrd function.
+	"""
 	n_f = np.copy(d)
 	x_f = np.copy(x)
 	mask = n_f != 0
@@ -91,6 +186,27 @@ def xrd_to_xcn(x, r, d):
 
 
 def fsl_to_xcn(f, s, l):
+	"""
+	Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
+
+	Parameters
+	----------
+	f: array
+		array of values for which the failure/death was observed
+	s: array
+		array right censored observation values
+	l: array
+		array left censored observation values
+
+	Returns
+	----------
+	x: array
+		sorted array of values of variable for which observations were made.
+	c: array
+		array of censoring values (-1, 0, 1, 2) corrseponding to output array x.
+	n: array
+		array of count of observations at to output array x and with censoring c.
+	"""
 	x_f, n_f = np.unique(f, return_counts=True)
 	c_f = np.zeros_like(x_f)
 
@@ -109,6 +225,25 @@ def fsl_to_xcn(f, s, l):
 	return x, c, n
 
 def fs_to_xcn(f, s):
+	"""
+	Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
+
+	Parameters
+	----------
+	f: array
+		array of values for which the failure/death was observed
+	s: array
+		array right censored observation values
+
+	Returns
+	----------
+	x: array
+		sorted array of values of variable for which observations were made.
+	c: array
+		array of censoring values (-1, 0, 1, 2) corrseponding to output array x.
+	n: array
+		array of count of observations at to output array x and with censoring c.
+	"""
 	x_f, n_f = np.unique(f, return_counts=True)
 	c_f = np.zeros_like(x_f)
 
@@ -124,12 +259,18 @@ def fs_to_xcn(f, s):
 	return x, c, n
 
 def fs_to_xrd(f, s):
+	"""
+	Chain of the fs_to_xrd and xrd_to_xcn functions.
+	"""
 	x, c, n = fs_to_xcn(f, s)
 	return xcn_to_xrd(x, c, n)
 
 def round_sig(points, sig=2):
-    places = sig - np.floor(np.log10(np.abs(points))) - 1
-    output = []
-    for p, i in zip(points, places):
-        output.append(np.round(p, np.int(i)))
-    return output
+	"""
+	Used to round to sig significant figures.
+	"""
+	places = sig - np.floor(np.log10(np.abs(points))) - 1
+	output = []
+	for p, i in zip(points, places):
+		output.append(np.round(p, np.int(i)))
+	return output

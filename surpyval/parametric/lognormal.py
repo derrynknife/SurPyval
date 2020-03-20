@@ -5,9 +5,9 @@ from autograd.scipy.stats import norm
 from scipy.stats import norm as scipy_norm
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
-from surpyval.parametric.surpyval_dist import SurpyvalDist
+from surpyval.parametric.parametric_fitter import ParametricFitter
 
-class LogNormal_(SurpyvalDist):
+class LogNormal_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
 		self.k = 2

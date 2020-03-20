@@ -7,9 +7,9 @@ from scipy.stats import pearsonr
 import surpyval
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
-from surpyval.parametric.surpyval_dist import SurpyvalDist
+from surpyval.parametric.parametric_fitter import ParametricFitter
 
-class Weibull3p_(SurpyvalDist):
+class Weibull3p_(ParametricFitter):
 	"""
 	class for the three parameter weibull distribution.
 	"""

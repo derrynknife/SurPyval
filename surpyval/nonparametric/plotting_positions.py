@@ -6,25 +6,18 @@ from scipy.stats import rankdata
 from scipy.special import ndtri as z
 from itertools import tee
 
+import surpyval
 import surpyval.nonparametric as nonp
 
 def plotting_positions(x, c=None, n=None, heuristic="Blom", A=None, B=None):
-    # Need some error catching on the A and B thing
-
-    if n is None:
-        n = np.ones_like(x).astype(np.int64)
-
-    if c is None:
-        c = np.zeros_like(x).astype(np.int64)
-
-    assert x.ndim == 1
-    assert (x.ndim == c.ndim) & (x.ndim == n.ndim)
-    assert (x.size == n.size) & (x.size == c.size)
-    assert heuristic in nonp.PLOTTING_METHODS
+    """
+    Good reference for heuristics:
+    https://en.wikipedia.org/wiki/Q–Q_plot
+    """
+    x, c, n = surpyval.xcn_handler(x, c, n)
+    assert heuristic in nonp.PLOTTING_METHODS, "Must use available heuristic"
 
     N = n.sum()
-
-    # Some repeated models with different names (for readability...)
 
     if heuristic == 'Filliben':
         # Needs work
@@ -73,6 +66,7 @@ def plotting_positions(x, c=None, n=None, heuristic="Blom", A=None, B=None):
         elif heuristic == "Hazen":      A, B = 0.5, 0.0
         elif heuristic == "Gringorten": A, B = 0.44, 0.12
         elif heuristic == "None":       A, B = 0.0, 0.0
+        elif heuristic == "Larsen":     A, B = 0.567, -0.134
         elif heuristic == "Tukey":      A, B = 1./3., 1./3.
         elif heuristic == "DPW":        A, B = 1.0, 0.0
         F = (ranks - A)/(N + B)

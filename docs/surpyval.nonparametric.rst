@@ -1,6 +1,11 @@
 surpyval.nonparametric package
 ==============================
 
+.. automodule:: surpyval.nonparametric
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Submodules
 ----------
 
@@ -76,11 +81,3 @@ surpyval.nonparametric.turnbull module
    :undoc-members:
    :show-inheritance:
 
-
-Module contents
----------------
-
-.. automodule:: surpyval.nonparametric
-   :members:
-   :undoc-members:
-   :show-inheritance:

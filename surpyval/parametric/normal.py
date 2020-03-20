@@ -6,9 +6,9 @@ from scipy.stats import norm as scipy_norm
 import surpyval
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
-from surpyval.parametric.surpyval_dist import SurpyvalDist
+from surpyval.parametric.parametric_fitter import ParametricFitter
 
-class Normal_(SurpyvalDist):
+class Normal_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
 		self.k = 2

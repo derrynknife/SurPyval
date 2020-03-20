@@ -1,6 +1,7 @@
 import surpyval
 import numpy as np
 import surpyval.nonparametric as nonp
+from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 def kaplan_meier(x, c=None, n=None):
 	"""
@@ -13,3 +14,11 @@ def kaplan_meier(x, c=None, n=None):
 	
 	R = np.cumprod(1 - d/r)
 	return x, r, d, R
+
+class KaplanMeier_(NonParametricFitter):
+	def __init__(self):
+		self.how = 'Kaplan-Meier'
+
+KaplanMeier = KaplanMeier_()
+
+

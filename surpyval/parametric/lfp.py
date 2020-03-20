@@ -1,8 +1,8 @@
 import autograd.numpy as np
 from scipy.stats import uniform
-from surpyval.parametric.surpyval_dist import SurpyvalDist
+from surpyval.parametric.parametric_fitter import ParametricFitter
 
-class LFP(SurpyvalDist):
+class LFP(ParametricFitter):
 	def __init__(self, dist):
 		self.dist = dist
 		self.bounds = tuple(((0, 1), *self.dist.bounds))

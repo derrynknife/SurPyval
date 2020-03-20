@@ -3,9 +3,9 @@ from scipy.stats import uniform
 from scipy.special import ndtri as z
 
 import surpyval
-from surpyval.parametric.surpyval_dist import SurpyvalDist
+from surpyval.parametric.parametric_fitter import ParametricFitter
 
-class Logistic_(SurpyvalDist):
+class Logistic_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
 		self.k = 2

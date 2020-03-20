@@ -1,6 +1,11 @@
 surpyval.parametric package
 ===========================
 
+.. automodule:: surpyval.parametric
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Submodules
 ----------
 
@@ -132,11 +137,3 @@ surpyval.parametric.wmm module
    :undoc-members:
    :show-inheritance:
 
-
-Module contents
----------------
-
-.. automodule:: surpyval.parametric
-   :members:
-   :undoc-members:
-   :show-inheritance:

@@ -5,7 +5,6 @@ from scipy.special import ndtri as z
 from scipy.optimize import minimize
 
 from surpyval import parametric as para
-from surpyval.parametric.surpyval_dist import SurpyvalDist
 
 class WMM(): 
 	def __init__(self, **kwargs): 

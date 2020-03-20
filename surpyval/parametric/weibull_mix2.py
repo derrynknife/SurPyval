@@ -5,10 +5,10 @@ from scipy.special import ndtri as z
 
 import surpyval
 from surpyval import parametric as para
-from surpyval.parametric.surpyval_dist import SurpyvalDist
+from surpyval.parametric.parametric_fitter import ParametricFitter
 from surpyval.parametric.parametric_dist import Parametric
 
-class Weibull_Mix_Two_(SurpyvalDist):
+class Weibull_Mix_Two_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
 		self.n = 2

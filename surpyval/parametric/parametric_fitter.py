@@ -11,13 +11,9 @@ from surpyval import parametric as para
 
 import pandas as pd
 
-NUM     = np.float64
-TINIEST = np.finfo(NUM).tiny
-EPS     = np.sqrt(np.finfo(NUM).eps)
-
-class SurpyvalDist():
+class ParametricFitter():
 	def like(self, x, c=None, n=None, *params):
-		like = np.zeros_like(x).astype(NUM)
+		like = np.zeros_like(x).astype(surpyval.NUM)
 		like = np.where(c ==  0, self.df(x, *params), like)
 		like = np.where(c == -1, self.ff(x, *params), like)
 		like = np.where(c ==  1, self.sf(x, *params), like)
@@ -26,7 +22,7 @@ class SurpyvalDist():
 	def neg_ll(self, x, c=None, n=None, *params):
 		# Use this neg_ll, will make it much easier to implement interval cens
 		like = self.like(x, c, n, *params)
-		like += TINIEST
+		like += surpyval.TINIEST
 		like = np.where(like < 1, like, 1)
 		like = np.log(like)
 		like = np.multiply(n, like)
@@ -43,7 +39,7 @@ class SurpyvalDist():
 			Dr = self.sf(x[c == 1], *params)
 			Dl = self.ff(x[c == -1], *params)
 			D = np.concatenate([Dl, D, Dr])
-		D[D < TINIEST] = TINIEST
+		D[D < surpyval.TINIEST] = surpyval.TINIEST
 		M = np.log(D)
 		M = -np.sum(M)/(M.shape[0])
 		return M
@@ -125,13 +121,13 @@ class SurpyvalDist():
 			except:
 				with np.errstate(all='ignore'):
 					fun = lambda t : self.neg_ll(x, c, n, *t)
-					jac = lambda t : approx_fprime(t, fun, EPS)
+					jac = lambda t : approx_fprime(t, fun, surpyval.EPS)
 					res = minimize(fun, init, method='BFGS', jac=jac)
 					hess_inv = res.hess_inv
 
 		else:
 			fun = lambda t : self.neg_ll(x, c, n, *t)
-			jac = lambda t : approx_fprime(t, fun, EPS)
+			jac = lambda t : approx_fprime(t, fun, surpyval.EPS)
 			#hess = lambda t : approx_fprime(t, jac, eps)
 			res = minimize(fun, init, method='BFGS', jac=jac)
 			hess_inv = res.hess_inv
@@ -249,7 +245,7 @@ class SurpyvalDist():
 
 		#raise TypeError('Unepxected kwargs provided: %s' % list(kwargs.keys()))
 
-		x = df[x_col].astype(NUM)
+		x = df[x_col].astype(surpyval.NUM)
 		assert x.ndim == 1
 
 		if c_col in df:

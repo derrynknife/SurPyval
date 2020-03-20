@@ -1,6 +1,7 @@
 """
 
-Hello world
+Parametric Analysis
+===================
 
 .. code:: python
 
@@ -13,7 +14,7 @@ Hello world
 import autograd.numpy as np
 
 from surpyval import nonparametric as nonp
-from .surpyval_dist import SurpyvalDist
+from .parametric_fitter import ParametricFitter
 from .parametric_dist import Parametric
 
 from .weibull import Weibull

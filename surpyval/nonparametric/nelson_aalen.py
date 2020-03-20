@@ -1,6 +1,7 @@
 import surpyval
 import numpy as np
 import surpyval.nonparametric as nonp
+from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 def nelson_aalen(x, c=None, n=None):
 	r"""
@@ -15,7 +16,6 @@ def nelson_aalen(x, c=None, n=None):
 	Reliability Function
 	R = exp(-H)
 
-
 	"""	
 	x, r, d = surpyval.xcn_to_xrd(x, c, n)
 
@@ -23,3 +23,9 @@ def nelson_aalen(x, c=None, n=None):
 	H = np.cumsum(h)
 	R = np.exp(-H)
 	return x, r, d, R
+
+class NelsonAalen_(NonParametricFitter):
+	def __init__(self):
+		self.how = 'Nelson-Aalen'
+
+NelsonAalen = NelsonAalen_()

@@ -1,6 +1,11 @@
 surpyval package
 ================
 
+.. automodule:: surpyval
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Subpackages
 -----------
 
@@ -9,11 +14,3 @@ Subpackages
    surpyval.datasets
    surpyval.nonparametric
    surpyval.parametric
-
-Module contents
----------------
-
-.. automodule:: surpyval
-   :members:
-   :undoc-members:
-   :show-inheritance:
