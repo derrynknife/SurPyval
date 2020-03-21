@@ -21,5 +21,5 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=['autograd', 'numpy', 'scipy', 'pandas'],
     include_package_data=True,
-    package_data={'': ['data/*.csv']},
+    package_data={'': ['datasets/*.csv']},
 )
