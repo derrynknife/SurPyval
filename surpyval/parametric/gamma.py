@@ -7,8 +7,12 @@ from scipy.special import gammainc, gammaincinv
 from autograd_gamma import gammainc as agammainc
 from scipy.special import ndtri as z
 
+from scipy.optimize import minimize
+from scipy.stats import pearsonr
+
 import surpyval
 from surpyval import parametric as para
+from surpyval import nonparametric as nonp
 from surpyval.parametric.parametric_fitter import ParametricFitter
 
 class Gamma_(ParametricFitter):
@@ -69,6 +73,41 @@ class Gamma_(ParametricFitter):
 
 	def mpp_x_transform(self, x):
 		return x
+
+	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
+		x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+
+		if on_d_is_0:
+			pass
+		else:
+			F = F[d > 0]
+			x = x[x > 0]
+
+		# Really useful for 3 parameter gamma, but surprisingly, not for two k
+		#fun = lambda a : -pearsonr(x, self.mpp_y_transform(F, a))[0]
+		#res = minimize(fun, [1.], bounds=((0, None),))
+		#alpha = res.x[0]
+
+		init = self.parameter_initialiser(x, c, n)[0]
+
+		if rr == 'y':
+			# Three parameter
+			#beta = np.polyfit(x, self.mpp_y_transform(F, alpha), deg=1)[0]
+			x = x[:,np.newaxis]
+			fun = lambda a : np.linalg.lstsq(x, self.mpp_y_transform(F, a))[1]
+			res = minimize(fun, init, bounds=((0, None),))
+			alpha = res.x[0]
+			beta, residuals, _, _ = np.linalg.lstsq(x, self.mpp_y_transform(F, alpha))
+			beta = beta[0]
+		else:
+			# Three parameter
+			#beta = 1./np.polyfit(self.mpp_y_transform(F, alpha), x, deg=1)[0]
+			fun = lambda a : np.linalg.lstsq(self.mpp_y_transform(F, a)[:, np.newaxis], x)[1]
+			res = minimize(fun, init, bounds=((0, None),))
+			alpha = res.x[0]
+			beta = np.linalg.lstsq(self.mpp_y_transform(F, alpha)[:, np.newaxis], x)[0]
+			beta = 1./beta
+		return alpha, beta
 
 	def var_R(self, dR, cv_matrix):
 		dr_dalpha = dR[:, 0]
