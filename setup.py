@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="reliafy_surpyval", # Replace with your own username
-    version="0.7.2",
+    version="0.7.3",
     author="Derryn Knife",
     author_email="derryn@reliafy.com",
     description="A survival analysis python package",
@@ -19,5 +19,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
-    install_requires=['autograd', 'numpy', 'scipy', 'pandas']
+    install_requires=['autograd', 'numpy', 'scipy', 'pandas'],
+    include_package_data=True,
+    package_data={'': ['data/*.csv']},
 )
