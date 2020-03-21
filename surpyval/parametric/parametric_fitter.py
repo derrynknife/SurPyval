@@ -12,6 +12,26 @@ from surpyval import parametric as para
 import pandas as pd
 
 class ParametricFitter():
+	def like_with_interval(self, x, c=None, n=None, *params):
+		xl = x[0, :]
+		xr = x[1, :]
+		like = np.zeros_like(xl).astype(surpyval.NUM)
+		like_i = np.zeros_like(xr).astype(surpyval.NUM)
+		like = np.where(c ==  0, self.df(xl, *params), like)
+		like = np.where(c == -1, self.ff(xl, *params), like)
+		like = np.where(c ==  1, self.sf(xl, *params), like)
+		like_i = np.where(c ==  2, self.ff(xr, *params) - self.ff(xl, *params), like_i)
+		return like + like_i
+
+	def neg_ll_with_interval(self, x, c=None, n=None, *params):
+		# Use this neg_ll, will make it much easier to implement interval cens
+		like = self.like_with_interval(x, c, n, *params)
+		like += surpyval.TINIEST
+		like = np.where(like < 1, like, 1)
+		like = np.log(like)
+		like = np.multiply(n, like)
+		return -np.sum(like)
+
 	def like(self, x, c=None, n=None, *params):
 		like = np.zeros_like(x).astype(surpyval.NUM)
 		like = np.where(c ==  0, self.df(x, *params), like)
@@ -111,15 +131,15 @@ class ParametricFitter():
 		init = self.parameter_initialiser(x, c, n)
 
 		if self.use_autograd:
-			try:
-				fun  = lambda t : self.neg_ll(x, c, n, *t)
-				jac = jacobian(fun)
-				hess = hessian(fun)
-				res = minimize(fun, init, method='trust-exact', 
-							   jac=jac, hess=hess, tol=1e-10)
-				hess_inv = inv(res.hess)
-			except:
-				with np.errstate(all='ignore'):
+			with np.errstate(all='ignore'):
+				try:
+					fun  = lambda t : self.neg_ll(x, c, n, *t)
+					jac = jacobian(fun)
+					hess = hessian(fun)
+					res = minimize(fun, init, method='trust-exact', 
+								   jac=jac, hess=hess, tol=1e-10)
+					hess_inv = inv(res.hess)
+				except:
 					fun = lambda t : self.neg_ll(x, c, n, *t)
 					jac = lambda t : approx_fprime(t, fun, surpyval.EPS)
 					res = minimize(fun, init, method='BFGS', jac=jac)
