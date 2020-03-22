@@ -24,7 +24,6 @@ class ParametricFitter():
 		return like + like_i
 
 	def neg_ll_with_interval(self, x, c=None, n=None, *params):
-		# Use this neg_ll, will make it much easier to implement interval cens
 		like = self.like_with_interval(x, c, n, *params)
 		like = np.where(like <= 0, surpyval.TINIEST, like)
 		like = np.where(like < 1, like, 1)

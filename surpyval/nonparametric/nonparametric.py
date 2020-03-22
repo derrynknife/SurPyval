@@ -5,6 +5,8 @@ from .kaplan_meier import KaplanMeier
 from .nelson_aalen import NelsonAalen
 from .fleming_harrington import FlemingHarrington_
 
+import matplotlib.pyplot as plt
+
 class NonParametric():
 	"""
 	Class to capture all data and meta data on non-parametric sur(py)val model
@@ -97,3 +99,58 @@ class NonParametric():
 
 	def random(self, size):
 		return np.random.choice(self.x, size=size)
+
+	def get_plot_data(self, **kwargs):
+		"""
+		Looking a little less ugly now.
+		"""
+
+		y_scale_min = 0
+		y_scale_max = 1
+
+		# x-axis
+		x_min = 0
+		x_max = np.max(self.x)
+
+		diff = (x_max - x_min) / 10
+		x_scale_min = x_min
+		x_scale_max = x_max + diff
+
+		plot_bounds = kwargs.pop('plot_bounds', True)
+
+		if plot_bounds:
+			cbs = self.R_cb(self.x, **kwargs)
+		else:
+			cbs = []
+
+		plot_data = {
+			'x_scale_min' : x_scale_min,
+			'x_scale_max' : x_scale_max,
+			'y_scale_min' : y_scale_min,
+			'y_scale_max' : y_scale_max,
+			'cbs' : cbs,
+			'x_' : self.x,
+			'R' : self.R
+		}
+		return plot_data
+
+	def plot(self, **kwargs):
+		plot_bounds = kwargs['plot_bounds']
+		d = self.get_plot_data(**kwargs)
+		# MAKE THE PLOT
+		# Set the y limits
+		plt.gca().set_ylim([d['y_scale_min'], d['y_scale_max']])
+
+		# Label it
+		plt.title('Model Survival Plot')
+		plt.ylabel('R')
+		if kwargs['how'] == 'interp':
+			if plot_bounds:
+				plt.plot(d['x_'], d['cbs'], color='r')
+			return plt.plot(d['x_'], d['R'])
+		else:
+			if plot_bounds:
+				plt.step(d['x_'], d['cbs'], color='r')
+			return plt.step(d['x_'], d['R'])
+
+
