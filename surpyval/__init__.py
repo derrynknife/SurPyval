@@ -57,12 +57,17 @@ def xcn_sort(x, c, n):
 	n: array
 		array of count of observations at each rearranged x and with censoring c
 	"""
+	
 	idx_c = np.argsort(c, kind='stable')
 	x = x[idx_c]
 	c = c[idx_c]
 	n = n[idx_c]
 
-	idx = np.argsort(x, kind='stable')
+	if x.ndim == 1:
+		idx = np.argsort(x, kind='stable')
+	else:
+		idx = np.argsort(x[:, 0], kind='stable')
+
 	x = x[idx]
 	c = c[idx]
 	n = n[idx]
@@ -92,12 +97,15 @@ def xcn_handler(x, c=None, n=None):
 		array of count of observations at to output array x and with censoring c. If n was None, count array assumed to be all one observation.
 	"""
 	x = np.array(x)
-	assert x.ndim == 1, "variable array must be one dimensional"
+	assert x.ndim < 3, "variable array must be one or two dimensional"
+
+	if x.ndim == 2:
+		assert x.shape[1] == 2, "Dim 1 must be 2, try transposing data"
 
 	if c is not None:
 		c = np.array(c)
 		assert c.ndim == 1, "censoring array must be one dimensional"
-		assert c.shape == x.shape, "censoring array must be same length as variable array"
+		assert c.shape[0] == x.shape[0], "censoring array must be same length as variable array"
 		assert not any(
 				(c !=  0) &
 				(c !=  1) &
@@ -110,7 +118,7 @@ def xcn_handler(x, c=None, n=None):
 	if n is not None:
 		n = np.array(n)
 		assert n.ndim == 1, "count array must be one dimensional"
-		assert n.shape == x.shape, "count array must be same length as variable array."
+		assert n.shape[0] == x.shape[0], "count array must be same length as variable array."
 		assert (n > 0).all(), "count array can't be 0"
 	else:
 		n = np.ones_like(x)
@@ -118,7 +126,7 @@ def xcn_handler(x, c=None, n=None):
 	n = n.astype(np.int64)
 	c = c.astype(np.int64)
 
-	x, c, n = xcn_sort(x, c, n)
+	#x, c, n = xcn_sort(x, c, n)
 
 	return x, c, n
 
