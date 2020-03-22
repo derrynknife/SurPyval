@@ -13,8 +13,8 @@ import pandas as pd
 
 class ParametricFitter():
 	def like_with_interval(self, x, c=None, n=None, *params):
-		xl = x[0, :]
-		xr = x[1, :]
+		xl = x[:, 0]
+		xr = x[:, 1]
 		like = np.zeros_like(xl).astype(surpyval.NUM)
 		like_i = np.zeros_like(xr).astype(surpyval.NUM)
 		like = np.where(c ==  0, self.df(xl, *params), like)

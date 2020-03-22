@@ -126,7 +126,7 @@ def xcn_handler(x, c=None, n=None):
 	n = n.astype(np.int64)
 	c = c.astype(np.int64)
 
-	#x, c, n = xcn_sort(x, c, n)
+	x, c, n = xcn_sort(x, c, n)
 
 	return x, c, n
 
