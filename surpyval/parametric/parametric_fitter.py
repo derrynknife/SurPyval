@@ -26,7 +26,7 @@ class ParametricFitter():
 	def neg_ll_with_interval(self, x, c=None, n=None, *params):
 		# Use this neg_ll, will make it much easier to implement interval cens
 		like = self.like_with_interval(x, c, n, *params)
-		like += surpyval.TINIEST
+		like = np.where(like <= 0, surpyval.TINIEST, like)
 		like = np.where(like < 1, like, 1)
 		like = np.log(like)
 		like = np.multiply(n, like)
@@ -42,7 +42,7 @@ class ParametricFitter():
 	def neg_ll(self, x, c=None, n=None, *params):
 		# Use this neg_ll, will make it much easier to implement interval cens
 		like = self.like(x, c, n, *params)
-		like += surpyval.TINIEST
+		like = np.where(like <= 0, surpyval.TINIEST, like)
 		like = np.where(like < 1, like, 1)
 		like = np.log(like)
 		like = np.multiply(n, like)
@@ -140,6 +140,7 @@ class ParametricFitter():
 								   jac=jac, hess=hess, tol=1e-10)
 					hess_inv = inv(res.hess)
 				except:
+					print("Autograd attempt failed, using without hessian")
 					fun = lambda t : self.neg_ll(x, c, n, *t)
 					jac = lambda t : approx_fprime(t, fun, surpyval.EPS)
 					res = minimize(fun, init, method='BFGS', jac=jac)
