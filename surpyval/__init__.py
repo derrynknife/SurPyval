@@ -100,7 +100,7 @@ def xcn_handler(x, c=None, n=None):
 	assert x.ndim < 3, "variable array must be one or two dimensional"
 
 	if x.ndim == 2:
-		assert x.shape[1] == 2, "Dim 1 must be 2, try transposing data"
+		assert x.shape[1] == 2, "Dim 1 must be 2, try transposing data, or do you have a 1d array in a 2d array?"
 
 	if c is not None:
 		c = np.array(c)
