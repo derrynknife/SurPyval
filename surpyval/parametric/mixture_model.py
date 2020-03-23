@@ -127,6 +127,8 @@ class MixtureModel():
 		res = minimize(fun, init.flatten(), jac=jac, bounds=bounds, constraints=[cons])
 		self.hess_inv = inv(hess(res.x))
 		self.res = res
+		self.params = np.reshape(res.x, (self.m, self.dist.k + 1))[:, 1::]
+		self.w = np.reshape(res.x, (self.m, self.dist.k + 1))[:, 0]
 
 	def fit(self, how='EM'):
 		if how == 'EM':
@@ -170,6 +172,16 @@ class MixtureModel():
 		for i in range(self.m):
 			mean += self.w[i] * self.dist.mean(*self.params[i])
 		return mean
+
+	def random(self, size):
+		sizes = np.random.multinomial(size, self.w)
+		rvs = np.zeros(size)
+		s_last = 0
+		for i, s in enumerate(sizes):
+			rvs[s_last:s+s_last] = self.dist.random(s, *self.params[i, :])
+			s_last = s
+		np.random.shuffle(rvs)
+		return rvs
 
 	def df(self, t): 
 		f = np.zeros_like(t) 

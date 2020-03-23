@@ -15,6 +15,7 @@ class Exponential_(ParametricFitter):
 		self.use_autograd = True
 		self.plot_x_scale = 'linear'
 		self.y_ticks = [0.05, 0.4, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999, 0.9999]
+		self.param_names = ['lambda']
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		x, c, n = surpyval.xcn_handler(x, c, n)

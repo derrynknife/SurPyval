@@ -11,8 +11,6 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator
 
 class Parametric():
-	def __init__(self):
-		self.jac_r = np.vectorize(jacobian(lambda x : self.dist.sf(x, *self.params)))
 
 	def sf(self, x):
 		return self.dist.sf(x, *self.params)
@@ -37,7 +35,7 @@ class Parametric():
 
 	def random(self, size):
 		U = uniform.rvs(size=size)
-		return self.qf(U, *self.params)
+		return self.dist.qf(U, *self.params)
 
 	def mean(self):
 		return self.dist.mean(*self.params)
