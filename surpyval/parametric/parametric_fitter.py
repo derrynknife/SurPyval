@@ -280,6 +280,24 @@ class ParametricFitter():
 
 		return self.fit(x, c, n, how, **kwargs)
 
+	def from_params(self, params):
+		model = para.Parametric()
+		assert self.k == len(params), "Must have {k} params for {dist} distribution".format(k=self.k, dist=self.dist.name)
+		model.params = params
+		for i, (low, upp) in enumerate(self.bounds):
+			if low is None:
+				l = -np.inf
+			else:
+				l = low
+			if upp is None:
+				u = np.inf
+			else:
+				u = upp
+
+			assert (l < params[i]) & (params[i] < u), "Params must be in bounds {}".format(self.bounds)
+		model.dist = self
+		return model
+
 
 
 
