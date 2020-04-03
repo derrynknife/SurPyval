@@ -217,3 +217,4 @@ class Parametric():
 		if plot_bounds:
 			plt.plot(d['x_model'], d['cbs'], color='r')
 		return plt.plot(d['x_model'], d['cdf'], color='k', linestyle='--')
+
