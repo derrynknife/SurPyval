@@ -4,8 +4,8 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="reliafy_surpyval",
-    version="0.7.9",
+    name="surpyval",
+    version="0.1.0",
     author="Derryn Knife",
     author_email="derryn@reliafy.com",
     description="A survival analysis python package",
