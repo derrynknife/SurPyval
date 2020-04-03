@@ -10,7 +10,7 @@ More stuff about the surpyval package
 import numpy as np
 import surpyval.datasets
 
-from surpyval.utils import xcn_sort, xcn_handler, xcn_to_xrd, xrd_to_xcn, 
+from surpyval.utils import xcn_sort, xcn_handler, xcn_to_xrd, xrd_to_xcn
 from surpyval.utils import fsl_to_xcn, fs_to_xcn, fs_to_xrd, round_sig
 
 import surpyval.parametric
