@@ -7,7 +7,7 @@ from scipy.special import ndtri as z
 from itertools import tee
 
 import surpyval
-import surpyval.nonparametric as nonp
+from surpyval import nonparametric as nonp
 
 def plotting_positions(x, c=None, n=None, heuristic="Blom", A=None, B=None):
     """
