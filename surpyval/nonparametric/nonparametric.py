@@ -1,5 +1,5 @@
 import numpy as np
-import surpyval.nonparametric as nonp
+from surpyval import nonparametric as nonp
 from scipy.stats import t, norm
 from .kaplan_meier import KaplanMeier
 from .nelson_aalen import NelsonAalen

@@ -1,6 +1,6 @@
 import numpy as np
 import surpyval
-import surpyval.nonparametric as nonp
+from surpyval import nonparametric as nonp
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 def fleming_harrington(x, c=None, n=None):

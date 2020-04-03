@@ -1,6 +1,6 @@
 import surpyval
 import numpy as np
-import surpyval.nonparametric as nonp
+from surpyval import nonparametric as nonp
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 def nelson_aalen(x, c=None, n=None):

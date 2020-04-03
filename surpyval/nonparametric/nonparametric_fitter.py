@@ -1,5 +1,5 @@
 import numpy as np
-import surpyval.nonparametric as nonp
+from surpyval import nonparametric as nonp
 
 class NonParametricFitter():
 	"""
