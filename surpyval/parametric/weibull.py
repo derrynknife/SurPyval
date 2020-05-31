@@ -27,7 +27,11 @@ class Weibull_(ParametricFitter):
 			gumb = para.Gumbel.fit(np.log(x), c, n, how='MPP')
 		mu, sigma = gumb.params
 		alpha, beta = np.exp(mu), 1. / sigma
-		return np.exp(mu), 1 / sigma
+		if (np.isinf(alpha) | np.isnan(alpha)):
+			alpha = np.median(x)
+		if (np.isinf(beta) | np.isnan(beta)):
+			beta = 1.
+		return alpha, beta
 
 	def sf(self, x, alpha, beta):
 		return np.exp(-(x / alpha)**beta)

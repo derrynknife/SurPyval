@@ -21,15 +21,8 @@ class ParametricFitter():
 		like = np.where(c == -1, self.ff(xl, *params), like)
 		like = np.where(c ==  1, self.sf(xl, *params), like)
 		like_i = np.where(c ==  2, self.ff(xr, *params) - self.ff(xl, *params), like_i)
+		print(like + like_i)
 		return like + like_i
-
-	def neg_ll_with_interval(self, x, c=None, n=None, *params):
-		like = self.like_with_interval(x, c, n, *params)
-		like = np.where(like <= 0, surpyval.TINIEST, like)
-		like = np.where(like < 1, like, 1)
-		like = np.log(like)
-		like = np.multiply(n, like)
-		return -np.sum(like)
 
 	def like(self, x, c=None, n=None, *params):
 		like = np.zeros_like(x).astype(surpyval.NUM)
@@ -39,8 +32,11 @@ class ParametricFitter():
 		return like
 
 	def neg_ll(self, x, c=None, n=None, *params):
-		# Use this neg_ll, will make it much easier to implement interval cens
-		like = self.like(x, c, n, *params)
+		# Where the magic happens
+		if 2 in c:
+			like = self.like_with_interval(x, c, n, *params)
+		else:
+			like = self.like(x, c, n, *params)
 		like = np.where(like <= 0, surpyval.TINIEST, like)
 		like = np.where(like < 1, like, 1)
 		like = np.log(like)
@@ -109,24 +105,6 @@ class ParametricFitter():
 		"""
 		MLE: Maximum Likelihood estimate
 		"""
-		#if n is None:
-		#	n = np.ones_like(x).astype(np.int64)
-
-		#if c is None:
-		#	c = np.zeros_like(x).astype(np.int64)
-
-		# Uncomment if recent multiply in ll fails
-		#x_ = np.repeat(x, n)
-		#c_ = np.repeat(c, n)
-		#n_ = np.ones_like(x_).astype(np.int64)
-
-		# This should work....
-		# Now seems to be working given recent change to ll function being
-		# AFTER the log (no der, it should have been power otherwise)
-		#x_ = np.copy(x)
-		#c_ = np.copy(c).astype(np.int64)
-		#n_ = np.copy(n).astype(np.int64)
-
 		init = self.parameter_initialiser(x, c, n)
 
 		if self.use_autograd:

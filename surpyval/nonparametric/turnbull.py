@@ -42,12 +42,16 @@ def turnbull(left, right):
     p = np.ones(m)/m
     alphas = np.zeros((n, m))
     for j, (l, r) in enumerate(intervals):
-        alphas[:, j] = (((left  < r) & (left  > l)) |
-                        ((right < r) & (right > l)) |
-                        ((right > r) & (left  < r)) |
-                        ((left  < l) & (right > l)) |
+        #alphas[:, j] = (((left  < r) & (left  > l)) |
+        #                ((right < r) & (right > l)) |
+        #                ((right > r) & (left  < r)) |
+        #                ((left  < l) & (right > l)) |
                         #((l == left)) |
-                        ((r == right))).astype(int)
+        #                ((r == right))).astype(int)
+        alphas[:, j] = (((left <  r) & (right >= r)) |
+                        ((left <  l) & (right >  l)) |
+                        ((left >= l) & (right <= r))
+                        ).astype(int)
     d = np.zeros(m)
     iters = 0
     p_1 = np.zeros_like(p)

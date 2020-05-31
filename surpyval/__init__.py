@@ -16,18 +16,19 @@ from surpyval.utils import fsl_to_xcn, fs_to_xcn, fs_to_xrd, round_sig
 import surpyval.parametric
 import surpyval.nonparametric
 
-from surpyval.parametric import Weibull
 from surpyval.parametric import Gumbel
-from surpyval.parametric import LogLogistic
-from surpyval.parametric import Logistic
+from surpyval.parametric import Uniform
 from surpyval.parametric import Exponential
+from surpyval.parametric import Weibull
+from surpyval.parametric import Weibull3p
+from surpyval.parametric import Normal
+from surpyval.parametric import LogNormal
+from surpyval.parametric import Logistic
+from surpyval.parametric import LogLogistic
 from surpyval.parametric import Gamma
+
 from surpyval.parametric import LFP
 from surpyval.parametric import MixtureModel
-from surpyval.parametric import Weibull3p
-from surpyval.parametric import LogNormal
-from surpyval.parametric import Normal
-from surpyval.parametric import Uniform
 from surpyval.parametric import Weibull_Mix_Two
 
 from surpyval.nonparametric import KaplanMeier
