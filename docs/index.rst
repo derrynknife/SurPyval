@@ -63,7 +63,7 @@ Because someone beat me to putting 'surpyval' on pypi, i've settled with:
 
 .. code-block:: console
 
-    pip install reliafy-surpyval
+    pip install surpyval
 
 
 

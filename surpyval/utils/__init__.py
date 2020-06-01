@@ -86,6 +86,7 @@ def xcn_handler(x, c=None, n=None):
 		assert n.shape[0] == x.shape[0], "count array must be same length as variable array."
 		assert (n > 0).all(), "count array can't be 0"
 	else:
+		# Do check here for groupby and binning
 		n = np.ones_like(x)
 
 	n = n.astype(np.int64)
