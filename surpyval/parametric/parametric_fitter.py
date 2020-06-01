@@ -21,7 +21,6 @@ class ParametricFitter():
 		like = np.where(c == -1, self.ff(xl, *params), like)
 		like = np.where(c ==  1, self.sf(xl, *params), like)
 		like_i = np.where(c ==  2, self.ff(xr, *params) - self.ff(xl, *params), like_i)
-		print(like + like_i)
 		return like + like_i
 
 	def like(self, x, c=None, n=None, *params):
@@ -30,6 +29,30 @@ class ParametricFitter():
 		like = np.where(c == -1, self.ff(x, *params), like)
 		like = np.where(c ==  1, self.sf(x, *params), like)
 		return like
+
+	def like_t(self, t, *params):
+		tl = t[:, 0]
+		tr = t[:, 1]
+		
+		t_denom = self.ff(tr, *params) - self.ff(tl, *params)
+
+		return t_denom
+
+	def neg_ll_trunc(self, x, c=None, n=None, t=None, *params):
+		# This is going to get difficult
+		if 2 in c:
+			like = self.like_with_interval(x, c, n, *params)
+		else:
+			like = self.like(x, c, n, *params)
+
+		like = np.where(like <= 0, surpyval.TINIEST, like)
+		like = np.where(like < 1, like, 1)
+		if t is not None:
+			like = np.log(like) - np.log(self.like_t(t, *params))
+		else:
+			like = np.log(like)
+		like = np.multiply(n, like)
+		return -np.sum(like)
 
 	def neg_ll(self, x, c=None, n=None, *params):
 		# Where the magic happens
@@ -105,12 +128,21 @@ class ParametricFitter():
 		"""
 		MLE: Maximum Likelihood estimate
 		"""
+		# This might help to be able to hold a parameter constant:
+		# https://stackoverflow.com/questions/24185589/minimizing-a-function-while-keeping-some-of-the-variables-constant
+
+		def constraints(t):
+			# Add constraint handling here
+			# i.e. in comes [1, 0] and it needs to make [1, 2.3, 0] for the func
+			# assumes 2.3 is provided as the constant
+			return t
+
 		init = self.parameter_initialiser(x, c, n)
 
 		if self.use_autograd:
 			with np.errstate(all='ignore'):
 				try:
-					fun  = lambda t : self.neg_ll(x, c, n, *t)
+					fun  = lambda t : self.neg_ll(x, c, n, *constraints(t))
 					jac = jacobian(fun)
 					hess = hessian(fun)
 					res = minimize(fun, init, method='trust-exact', 
@@ -118,13 +150,13 @@ class ParametricFitter():
 					hess_inv = inv(res.hess)
 				except:
 					print("Autograd attempt failed, using without hessian")
-					fun = lambda t : self.neg_ll(x, c, n, *t)
+					fun = lambda t : self.neg_ll(x, c, n, *constraints(t))
 					jac = lambda t : approx_fprime(t, fun, surpyval.EPS)
 					res = minimize(fun, init, method='BFGS', jac=jac)
 					hess_inv = res.hess_inv
 
 		else:
-			fun = lambda t : self.neg_ll(x, c, n, *t)
+			fun = lambda t : self.neg_ll(x, c, n, *constraints(t))
 			jac = lambda t : approx_fprime(t, fun, surpyval.EPS)
 			#hess = lambda t : approx_fprime(t, jac, eps)
 			res = minimize(fun, init, method='BFGS', jac=jac)
