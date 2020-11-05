@@ -82,7 +82,7 @@ class Gamma_(ParametricFitter):
 			pass
 		else:
 			F = F[d > 0]
-			x = x[x > 0]
+			x = x[d > 0]
 
 		# Really useful for 3 parameter gamma, but surprisingly, not for two k
 		#fun = lambda a : -pearsonr(x, self.mpp_y_transform(F, a))[0]

@@ -20,6 +20,7 @@ from surpyval.parametric import Gumbel
 from surpyval.parametric import Uniform
 from surpyval.parametric import Exponential
 from surpyval.parametric import Weibull
+from surpyval.parametric import ExpoWeibull
 from surpyval.parametric import Weibull3p
 from surpyval.parametric import Normal
 from surpyval.parametric import LogNormal

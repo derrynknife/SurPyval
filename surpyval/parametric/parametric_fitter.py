@@ -33,9 +33,7 @@ class ParametricFitter():
 	def like_t(self, t, *params):
 		tl = t[:, 0]
 		tr = t[:, 1]
-
 		t_denom = self.ff(tr, *params) - self.ff(tl, *params)
-
 		return t_denom
 
 	def neg_ll_trunc(self, x, c=None, n=None, t=None, *params):
@@ -45,7 +43,7 @@ class ParametricFitter():
 		else:
 			like = self.like(x, c, n, *params)
 
-		like = np.where(like <= 0, surpyval.TINIEST, like)
+		like = np.where(like <= surpyval.TINIEST, surpyval.TINIEST, like)
 		like = np.where(like < 1, like, 1)
 		if t is not None:
 			like = np.log(like) - np.log(self.like_t(t, *params))
@@ -142,6 +140,9 @@ class ParametricFitter():
 
 		init = self.parameter_initialiser(x, c, n)
 
+		# Change logic here for selecting the neg_ll function.
+		# if 2 in c: func = self.neg_ll_with_int
+
 		if self.use_autograd:
 			with np.errstate(all='ignore'):
 				try:
@@ -223,26 +224,31 @@ class ParametricFitter():
 	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
 		model = para.Parametric()
 		model.method = how
+		#Truncated data
+		t = kwargs.get('t', None)
+
 		model.raw_data = {
 			'x' : x,
 			'c' : c,
-			'n' : n
+			'n' : n,
+			't' : t
 		}
 
 		x, c, n = surpyval.xcn_handler(x, c, n)
+		if t is not None:
+			assert t.shape[0] == n.shape[0]
+			assert t.shape[1] == 2
 		
 		model.data = {
 			'x' : x,
 			'c' : c,
-			'n' : n
+			'n' : n,
+			't' : t
 		}
 
 		heuristic = kwargs.get('heuristic', 'Nelson-Aalen')
 		model.heuristic = heuristic
 		model.dist = self
-
-		#Truncated data
-		t = kwargs.get('t', None)
 
 		if   how == 'MLE':
 			# Maximum Likelihood
@@ -252,19 +258,27 @@ class ParametricFitter():
 			# Maximum Product Spacing
 			if model.raw_data['c'] is not None:
 				raise Exception('Maximum product spacing doesn\'t support censoring')
-			if model.raw_data['c'] is not None:
+			if model.raw_data['n'] is not None:
 				raise Exception('Maximum product spacing doesn\'t support counts')
+			if model.raw_data['t'] is not None:
+				raise Exception('Maximum product spacing doesn\'t support tuncation')
 			model.res = self._mps(x)
 			model.params = tuple(model.res.x)
 		elif how == 'MOM':
 			if model.raw_data['c'] is not None:
 				raise Exception('Method of moments doesn\'t support censoring')
+			if model.raw_data['t'] is not None:
+				raise Exception('Maximum product spacing doesn\'t support tuncation')
 			model.res = self._mom(x, n=n)
 			model.params = tuple(model.res.x)
 		elif how == 'MPP':
 			rr = kwargs.get('rr', 'y')
+			if model.raw_data['t'] is not None:
+				raise Exception('Method of probability plotting doesn\'t support tuncation')
 			model.params = self._mpp(x, n=n, c=c, rr=rr, heuristic=heuristic)
 		elif how == 'MSE':
+			if model.raw_data['t'] is not None:
+				raise Exception('Maximum product spacing doesn\'t support tuncation')
 			model.res = self._mse(x, c=c, n=n, heuristic=heuristic)
 			model.params = tuple(model.res.x)
 		

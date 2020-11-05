@@ -15,9 +15,9 @@ class Bearing_():
 
 	def __str__(self):
 		return """
-Data from:
-Lieblein, J. and Zelen, M. (1956) Statistical Investigation of the Fatigue Life of Deep-Groove Ball Bearings. Journal of Research of the National Bureau of Standards, 57, 273-315. 
-http://dx.doi.org/10.6028/jres.057.033
+		Data from:
+		Lieblein, J. and Zelen, M. (1956) Statistical Investigation of the Fatigue Life of Deep-Groove Ball Bearings. Journal of Research of the National Bureau of Standards, 57, 273-315. 
+		http://dx.doi.org/10.6028/jres.057.033
 		"""
 
 BoforsSteel = BoforsSteel_()

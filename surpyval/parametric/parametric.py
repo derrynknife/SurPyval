@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator
 
 class Parametric():
-
 	def __str__(self):
 		return 'Parametric Surpyval model with {dist} distribution and parameters {params}'.format(dist=self.dist.name, params=self.params)
 
@@ -65,7 +64,8 @@ class Parametric():
 			x = self.data['x']
 			c = self.data['c']
 			n = self.data['n']
-			self.log_like = -self.dist.neg_ll(x, c, n, *self.params)
+			t = self.data['t']
+			self.log_like = -self.dist.neg_ll(x, c, n, t, *self.params)
 			return self.log_like
 
 	def aic(self):
@@ -75,10 +75,9 @@ class Parametric():
 			x = self.data['x']
 			c = self.data['c']
 			n = self.data['n']
-			alpha = self.alpha
-			beta  = self.beta
+			t = self.data['t']
 			k = len(self.params)
-			self.aic_ = 2 * k + 2 * self.dist.neg_ll(x, c, n, *self.params)
+			self.aic_ = 2 * k + 2 * self.dist.neg_ll(x, c, n, t, *self.params)
 			return self.aic_
 
 	def aic_c(self):
@@ -86,13 +85,13 @@ class Parametric():
 			return self.aic_c_
 		else:
 			k = len(self.params)
-			n = len(self.data['x'])
+			n = self.data['n'].sum()
 			self.aic_c_ = self.aic() + (2*k**2 + 2*k)/(n - k - 1)
 			return self.aic_c_
 
 	def get_plot_data(self, heuristic, plot_bounds=True, cb=0.05):
 		"""
-		Looking a little less ugly now.
+		Looking a little less ugly now. But not great
 		"""
 		x = self.data['x']
 		x_, r, d, F = nonp.plotting_positions(
@@ -100,6 +99,11 @@ class Parametric():
 			c=self.data['c'], 
 			n=self.data['n'], 
 			heuristic=heuristic)
+
+		if self.data['t'] is not None:
+			Ftl = self.ff(np.min(self.data['t'][:, 0]))
+			Ftr = self.ff(np.max(self.data['t'][:, 1]))
+			F = Ftl + F * (Ftr - Ftl)
 
 		if self.dist.name in ['Weibull3p']:
 			x_ = x_ - self.params[2]

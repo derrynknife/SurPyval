@@ -21,6 +21,7 @@ from .weibull import Weibull
 from .weibull3p import Weibull3p
 from .gumbel import Gumbel
 from .exponential import Exponential
+from .expo_weibull import ExpoWeibull
 from .normal import Normal
 from .lognormal import LogNormal
 from .gamma import Gamma
