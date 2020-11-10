@@ -35,6 +35,7 @@ from surpyval.parametric import Weibull_Mix_Two
 from surpyval.nonparametric import KaplanMeier
 from surpyval.nonparametric import NelsonAalen
 from surpyval.nonparametric import FlemingHarrington
+from surpyval.nonparametric import Turnbull
 
 NUM     = np.float64
 TINIEST = np.finfo(np.float64).tiny

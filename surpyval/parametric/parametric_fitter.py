@@ -190,7 +190,7 @@ class ParametricFitter():
 					   bounds=self.bounds)
 		return res
 
-	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
+	def _mpp(self, x, c=None, n=None, heuristic="Turnbull", rr='y', on_d_is_0=False):
 		assert rr in ['x', 'y']
 		"""
 		MPP: Method of Probability Plotting
@@ -246,7 +246,7 @@ class ParametricFitter():
 			't' : t
 		}
 
-		heuristic = kwargs.get('heuristic', 'Nelson-Aalen')
+		heuristic = kwargs.get('heuristic', 'Turnbull')
 		model.heuristic = heuristic
 		model.dist = self
 

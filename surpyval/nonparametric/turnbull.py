@@ -1,74 +1,88 @@
 import numpy as np
-from itertools import tee
+from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
-def pairwise(iterable):
-    """
-    s -> (s0, s1), (s1, s2), (s2, s3), ...
-    """
-    a, b = tee(iterable, 2)
-    next(b, None)
-    return zip(a, b)
+def na(d, r):
+	H = np.cumsum(d/r)
+	H[np.isnan(H)] = np.inf
+	R = np.exp(-H)
+	p = np.abs(np.diff(np.hstack([[1], R])))
+	return R
+	
+def km(d, r):
+	R = 1 - d/r
+	R[np.isnan(R)] = 0
+	R = np.cumprod(R)
+	return R
 
-def find_turnbull_bounds(left, right):
-    left = np.unique(left[left > 0])
-    right = np.unique(right)
-    left.sort()
-    right.sort()
-    flag = np.hstack([np.zeros_like(left), np.ones_like(right)]).astype(int)
-    tau = np.hstack([left, right])
-    idx = np.argsort(flag, kind='stable')[::-1]
-    flag = flag[idx]
-    tau = tau[idx]
-    idx = np.argsort(tau, kind='stable')
-    flag = flag[idx]
-    tau = tau[idx]
-    bounds = []
-    for i, (l, r) in enumerate(pairwise(flag)):
-        if ((l == 0) and (r == 1)):
-            bounds.append((tau[i], tau[i+1]))
-    return bounds
+def turnbull(x, c, n, estimator='Kaplan-Meier'):
+	bounds = np.unique(x)
+	N = n.sum()
+	# Unpack x array
+	xl = x[:, 0]
+	xr = x[:, 1]
+	
+	# Separate observed
+	xl[c == -1] = -np.inf
+	xr[c ==  1] =  np.inf
+	
+	mask = c == 0
+	
+	x_obs = xl[mask]
+	n_obs =  n[mask]
+	
+	d_obs = np.zeros_like(bounds)
+	for xv, nv in zip(x_obs, n_obs):
+		idx, = np.where(bounds == np.array(xv))
+		d_obs[idx] = nv
+	
+	xl = xl[~mask]
+	xr = xr[~mask]
+	ni =  n[~mask]
+	
+	mask_obs = np.isin(bounds, x_obs)
+	
+	m = bounds.size
+	n = xl.size
+	
+	alpha = np.zeros(shape=(n, m))
+	for i in range(0, n):
+		l = xl[i]
+		u = xr[i]
+		alpha[i, :] = ((bounds >= l) & (bounds < u)).astype(int) * ni[i]
+		
+	d = np.zeros(m)
+	p = np.ones(m)/m
+	
+	iters = 0
+	p_1 = np.zeros_like(p)
+		
+	if estimator == 'Kaplan-Meier':
+		func = km
+	else:
+		func = na
 
-def turnbull(left, right):
-    """
-    WARNING: I DO NOT KNOW IF THIS IS CORRECT
-    Using this I do get a survival curve looking output. But I am not confident
-    it is accurate
-    """
-    max_iter = 1000
-    intervals = find_turnbull_bounds(left, right)
-    
-    m = len(intervals)
-    n = len(left)
-    p = np.ones(m)/m
-    alphas = np.zeros((n, m))
-    for j, (l, r) in enumerate(intervals):
-        #alphas[:, j] = (((left  < r) & (left  > l)) |
-        #                ((right < r) & (right > l)) |
-        #                ((right > r) & (left  < r)) |
-        #                ((left  < l) & (right > l)) |
-                        #((l == left)) |
-        #                ((r == right))).astype(int)
-        alphas[:, j] = (((left <  r) & (right >= r)) |
-                        ((left <  l) & (right >  l)) |
-                        ((left >= l) & (right <= r))
-                        ).astype(int)
-    d = np.zeros(m)
-    iters = 0
-    p_1 = np.zeros_like(p)
-    while (not np.isclose(p, p_1).all()) and (iters < max_iter):
-        p_1 = p
-        iters += 1
-        conditional_p = np.zeros_like(alphas)
-        denom = np.zeros(n)
-        for i in range(n):
-            denom[i] = (alphas[i, :] * p).sum()
-        for j in range(m):
-            conditional_p[:, j] = alphas[:, j] * p[j]
-        d = (conditional_p / np.atleast_2d(denom).T).sum(axis=0)
-        
-        r = np.ones_like(d) * n + d
-        r = r - d.cumsum()
-        R = np.cumprod(1 - d/r)
-        p = np.abs(np.diff(np.hstack([[1], R])))
-    
-    return intervals, p, d, r
+	while (not np.isclose(p, p_1, atol=1e-30).all()) and (iters < 10000):
+			p_1 = p
+			iters += 1
+			conditional_p = np.zeros_like(alpha)
+			denom = np.zeros(n)
+			for i in range(n):
+				denom[i] = (alpha[i, :] * p).sum()
+			for j in range(m):
+				conditional_p[:, j] = alpha[:, j] * p[j]
+
+			d = (conditional_p / np.atleast_2d(denom).T).sum(axis=0)
+			d += d_obs
+
+			r = np.ones_like(d) * N + d
+			r = r - d.cumsum()
+			R = func(d, r)
+			p = np.abs(np.diff(np.hstack([[1], R])))
+	
+	return bounds, r, d, R
+
+class Turnbull_(NonParametricFitter):
+	def __init__(self):
+		self.how = 'Turnbull'
+
+Turnbull = Turnbull_()

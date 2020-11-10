@@ -1,5 +1,6 @@
 import numpy as np
 from surpyval import nonparametric as nonp
+from surpyval.utils import xcn_handler
 
 class NonParametricFitter():
 	"""
@@ -14,6 +15,8 @@ class NonParametricFitter():
 	"""
 
 	def fit(self, x, c=None, n=None, sig=0.05):
+		x, c, n = xcn_handler(x, c, n)
+
 		data = {}
 		data['x'] = x
 		data['c'] = c

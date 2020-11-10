@@ -36,6 +36,10 @@ def plotting_positions(x, c=None, n=None, heuristic="Blom", A=None, B=None):
         x_, r, d, R = nonp.fleming_harrington(x, c, n)
         F = 1 - R
         return x_, r, d, F
+    elif heuristic == 'Turnbull':
+        x_, r, d, R = nonp.turnbull(x, c, n)
+        F = 1 - R
+        return x_, r, d, F
     else:
         # Reformat for plotting point style
         x_ = np.repeat(x, n)

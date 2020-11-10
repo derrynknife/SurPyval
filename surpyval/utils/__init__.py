@@ -1,6 +1,18 @@
 import numpy as np
 from collections import defaultdict
 
+def surv_tolist(x):
+	"""
+	supplement to the .tolist() function where there is mixed scalars and arrays.
+
+	Survival data can be confusing sometimes. I'm probably not helping by trying
+	to make it fit with one input.
+	"""
+	if x.ndim == 2:        
+		return [v[0] if v[0] == v[1] else v.tolist() for v in x]
+	else:
+		return x.tolist()
+
 def group_xcn(x, c, n):
 	"""
 	Ensures that all unique combinations of x and x are grouped. This should 
@@ -24,18 +36,6 @@ def group_xcn(x, c, n):
 			c_out.append(cv)
 			n_out.append(nv)
 	return np.array(x_out), np.array(c_out), np.array(n_out)
-
-def surv_tolist(x):
-	"""
-	supplement to the .tolist() function where there is mixed scalars and arrays.
-
-	Survival data can be confusing sometimes. I'm probably not helping by trying
-	to make it fit with one input.
-	"""
-	if x.ndim == 2:        
-		return [v[0] if v[0] == v[1] else v.tolist() for v in x]
-	else:
-		return x.tolist()
 
 def xcn_sort(x, c, n):
 	"""
