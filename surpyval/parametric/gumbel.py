@@ -22,9 +22,7 @@ class Gumbel_(ParametricFitter):
 		self.param_names = ['mu', 'sigma']
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		x, c, n = surpyval.xcn_handler(x, c, n)
-		flag = (c == 0)
-		return x.sum() / (n * flag).sum(), np.std(x)
+		return np.mean(x), 1.
 
 	def sf(self, x, mu, sigma):
 		return np.exp(-np.exp((x - mu)/sigma))

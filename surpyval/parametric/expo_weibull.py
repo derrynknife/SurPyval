@@ -25,9 +25,11 @@ class ExpoWeibull_(ParametricFitter):
 		self.param_names = ['alpha', 'beta', 'mu']
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		gumb = para.Gumbel.fit(np.log(x), c, n, how='MLE')
+		log_x = np.log(x)
+		log_x[np.isnan(log_x)] = 0
+		gumb = para.Gumbel.fit(log_x, c, n, how='MLE')
 		if not gumb.res.success:
-			gumb = para.Gumbel.fit(np.log(x), c, n, how='MPP')
+			gumb = para.Gumbel.fit(log_x, c, n, how='MPP')
 		mu, sigma = gumb.params
 		alpha, beta = np.exp(mu), 1. / sigma
 		if (np.isinf(alpha) | np.isnan(alpha)):

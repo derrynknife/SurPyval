@@ -12,11 +12,22 @@ from surpyval import parametric as para
 import pandas as pd
 
 class ParametricFitter():
+	def parameter_initialiser_(self, x, c=None, n=None):
+		x, c, n, R = nonp.turnbull(x, c, n, estimator='Nelson-Aalen')
+		F = 1 - R
+		F = F[~np.isinf(x)]
+		x = x[~np.isinf(x)]
+		init = np.ones(self.k)
+		fun = lambda params : np.sum(((self.ff(x, *params)) - F)**2)
+		res = minimize(fun, init, bounds=self.bounds)
+
+		return res.x
+
 	def like_with_interval(self, x, c=None, n=None, *params):
 		xl = x[:, 0]
 		xr = x[:, 1]
 		like = np.zeros_like(xl).astype(surpyval.NUM)
-		like_i = np.zeros_like(xr).astype(surpyval.NUM)
+		like_i = np.zeros_like(xl).astype(surpyval.NUM)
 		like = np.where(c ==  0, self.df(xl, *params), like)
 		like = np.where(c == -1, self.ff(xl, *params), like)
 		like = np.where(c ==  1, self.sf(xl, *params), like)
@@ -102,11 +113,21 @@ class ParametricFitter():
 		
 		Fits a Weibull model to pp points 
 		"""
-		x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+		# What the fuck is this...
+		x_, r, d, R = nonp.turnbull(x, c, n, estimator='Nelson-Aalen')
+		F = 1 - R
+		mask = np.isfinite(x_)
+		F = F[mask]
+		x = x[mask]
 		init = self.parameter_initialiser(x, c=c, n=n)
-		fun = lambda t : np.sum(((self.ff(x, *t)) - F)**2)
+		fun = lambda params : np.sum(((self.ff(x_, *params)) - F)**2)
 		res = minimize(fun, init, bounds=self.bounds)
-		self.res = res
+		# OLD MSE - changed to Turnbull for better use
+		# x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+		# init = self.parameter_initialiser(x, c=c, n=n)
+		# fun = lambda t : np.sum(((self.ff(x, *t)) - F)**2)
+		# res = minimize(fun, init, bounds=self.bounds)
+		# self.res = res
 		return res
 
 	def _mps(self, x, c=None, n=None):
@@ -144,13 +165,15 @@ class ParametricFitter():
 		# if 2 in c: func = self.neg_ll_with_int
 
 		if self.use_autograd:
-			with np.errstate(all='ignore'):
 				try:
 					fun  = lambda xx : self.neg_ll(x, c, n, t, *constraints(xx))
 					jac = jacobian(fun)
 					hess = hessian(fun)
-					res = minimize(fun, init, method='trust-exact', 
-								   jac=jac, hess=hess, tol=1e-10)
+					res = minimize(fun, init, 
+									method='trust-exact', 
+									jac=jac, 
+									hess=hess, 
+									tol=1e-10)
 					hess_inv = inv(res.hess)
 				except:
 					print("Autograd attempt failed, using without hessian")
@@ -235,6 +258,7 @@ class ParametricFitter():
 		}
 
 		x, c, n = surpyval.xcn_handler(x, c, n)
+
 		if t is not None:
 			assert t.shape[0] == n.shape[0]
 			assert t.shape[1] == 2
@@ -252,8 +276,9 @@ class ParametricFitter():
 
 		if   how == 'MLE':
 			# Maximum Likelihood
-			model.res, model.jac, model.hess_inv = self._mle(x, c=c, n=n, t=t)
-			model.params = tuple(model.res.x)
+			with np.errstate(all='ignore'):
+				model.res, model.jac, model.hess_inv = self._mle(x, c=c, n=n, t=t)
+				model.params = tuple(model.res.x)
 		elif how == 'MPS':
 			# Maximum Product Spacing
 			if model.raw_data['c'] is not None:

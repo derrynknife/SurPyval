@@ -17,6 +17,12 @@ def km(d, r):
 def turnbull(x, c, n, estimator='Kaplan-Meier'):
 	bounds = np.unique(x)
 	N = n.sum()
+
+	if x.ndim == 1:
+		x_new = np.empty(shape=(x.shape[0], 2))
+		x_new[:, 0] = x
+		x_new[:, 1] = x
+		x = x_new
 	# Unpack x array
 	xl = x[:, 0]
 	xr = x[:, 1]

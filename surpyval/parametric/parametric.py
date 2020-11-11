@@ -10,6 +10,15 @@ from surpyval import nonparametric as nonp
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator
 
+def round_vals(x):
+	not_different = True
+	i = 1
+	while not_different:
+		x_ticks = np.array(surpyval.round_sig(x, i))
+		not_different = (np.diff(x_ticks) == 0).any()
+		i += 1
+	return x_ticks
+
 class Parametric():
 	def __str__(self):
 		return 'Parametric Surpyval model with {dist} distribution and parameters {params}'.format(dist=self.dist.name, params=self.params)
@@ -36,8 +45,7 @@ class Parametric():
 		return self.dist.cs(x, X, *self.params)
 
 	def random(self, size):
-		U = uniform.rvs(size=size)
-		return self.dist.qf(U, *self.params)
+		return self.dist.qf(uniform.rvs(size=size), *self.params)
 
 	def mean(self):
 		return self.dist.mean(*self.params)
@@ -100,6 +108,13 @@ class Parametric():
 			n=self.data['n'], 
 			heuristic=heuristic)
 
+		mask = np.isfinite(x_)
+		x_ = x_[mask]
+		r  =  r[mask]
+		d  =  d[mask]
+		F  =  F[mask]
+
+		# This needs to be changed to find the F at lowest and highest x (not t)
 		if self.data['t'] is not None:
 			Ftl = self.ff(np.min(self.data['t'][:, 0]))
 			Ftr = self.ff(np.max(self.data['t'][:, 1]))
@@ -107,27 +122,29 @@ class Parametric():
 
 		if self.dist.name in ['Weibull3p']:
 			x_ = x_ - self.params[2]
-			x = x - self.params[2]
+			x  = x  - self.params[2]
+
 		y_scale_min = np.min(F[F > 0])/2
 		#y_scale_max = np.max(F[F < 1]) + (1 - np.max(F[F < 1]))/2
 		y_scale_max = (1 - (1 - np.max(F[F < 1]))/10)
 
 		# x-axis
-		x_min = np.min(x)
-		x_max = np.max(x)
 		if self.dist.plot_x_scale == 'log':
-			x_min = np.log10(x_min)
-			x_max = np.log10(x_max)
+			log_x = np.log10(x_[x_ > 0])
+			x_min = np.min(log_x)
+			x_max = np.max(log_x)
 			vals_non_sig = 10 ** np.linspace(x_min, x_max, 7)
 			x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
 			x_minor_ticks = ((10**x_minor_ticks * np.array(np.arange(1, 11))
-												    .reshape((10, 1)))
-												    .flatten())
+													.reshape((10, 1)))
+													.flatten())
 			diff = (x_max - x_min)/10
 			x_scale_min = 10**(x_min - diff)
 			x_scale_max = 10**(x_max + diff)
 			x_model = 10**np.linspace(x_min - diff, x_max + diff, 100)
 		else:
+			x_min = np.min(x_)
+			x_max = np.max(x_)
 			vals_non_sig = np.linspace(x_min, x_max, 7)
 			x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
 			diff = (x_max - x_min) / 10
@@ -139,12 +156,15 @@ class Parametric():
 			cdf = self.ff(x_model + self.params[2])
 		else:
 			cdf = self.ff(x_model)
-		not_different = True
-		i = 1
-		while not_different:
-		    x_ticks = np.array(surpyval.round_sig(vals_non_sig, i))
-		    not_different = (np.diff(x_ticks) == 0).any()
-		    i += 1
+
+		# not_different = True
+		# i = 1
+		# while not_different:
+		# 	x_ticks = np.array(surpyval.round_sig(vals_non_sig, i))
+		# 	not_different = (np.diff(x_ticks) == 0).any()
+		# 	i += 1
+
+		x_ticks = round_vals(vals_non_sig)
 
 		y_ticks = np.array(self.dist.y_ticks)
 		y_ticks = y_ticks[np.where((y_ticks > y_scale_min) & 
@@ -152,7 +172,11 @@ class Parametric():
 		y_ticks_labels = [str(int(y))+'%' if (re.match('([0-9]+\.0+)', str(y)) is not None) & 
 							(y > 1) else str(y) for y in y_ticks * 100]
 
-		x_ticks_labels = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & 
+		if self.dist.name in ['Weibull3p']:		
+			x_ticks_labels = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & 
+							(x > 1) else str(x) for x in round_vals(x_ticks + self.params[2])]
+		else:
+			x_ticks_labels = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & 
 							(x > 1) else str(x) for x in x_ticks]
 
 		if plot_bounds:

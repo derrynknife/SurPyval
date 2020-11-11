@@ -106,7 +106,6 @@ def xcn_handler(x, c=None, n=None):
 			x = x_ndarray
 		else:
 			x = np.array(x).astype(np.float)
-			
 	assert x.ndim < 3, "variable array must be one or two dimensional"
 
 	if x.ndim == 2:

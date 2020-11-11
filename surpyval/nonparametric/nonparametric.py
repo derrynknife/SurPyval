@@ -104,7 +104,6 @@ class NonParametric():
 		"""
 		Looking a little less ugly now.
 		"""
-
 		y_scale_min = 0
 		y_scale_max = 1
 
@@ -116,7 +115,7 @@ class NonParametric():
 		x_scale_min = x_min
 		x_scale_max = x_max + diff
 
-		plot_bounds = kwargs.pop('plot_bounds', True)
+		plot_bounds = kwargs.get('plot_bounds', True)
 
 		if plot_bounds:
 			cbs = self.R_cb(self.x, **kwargs)
@@ -135,7 +134,7 @@ class NonParametric():
 		return plot_data
 
 	def plot(self, **kwargs):
-		plot_bounds = kwargs['plot_bounds']
+		plot_bounds = kwargs.pop('plot_bounds', True)
 		d = self.get_plot_data(**kwargs)
 		# MAKE THE PLOT
 		# Set the y limits

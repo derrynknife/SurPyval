@@ -28,8 +28,7 @@ class Weibull3p_(ParametricFitter):
 	def parameter_initialiser(self, x, c=None, n=None):
 		x, c, n = surpyval.xcn_handler(x, c, n)
 		diff = (np.max(x) - np.min(x))/10
-
-		init_mpp = Weibull3p.fit(x, c=c, n=n, how='MPP').params
+		init_mpp = Weibull3p.fit(x, c=c, n=n, how='MPP', heuristic='Turnbull').params
 		init = init_mpp[0], init_mpp[1], np.min(x) - diff
 		self.bounds = ((0, None), (0, None), (None, np.min(x)))
 		return init
@@ -113,8 +112,13 @@ class Weibull3p_(ParametricFitter):
 		# Linearise
 		y_ = np.log(np.log(1/(1 - F)))
 
+		mask = ((~np.isnan(y_)) & (~np.isinf(y_)))
+		y_ = y_[mask]
+		x  = x[mask]
+
 		# Find gamma with maximum correlation
 		gamma = np.min(x) - (np.max(x) - np.min(x))/10
+
 		fun = lambda gamma : -pearsonr(np.log(x - gamma), y_)[0]
 		res = minimize(fun, gamma, bounds=[(None, np.min(x))])
 		gamma = res.x[0]
