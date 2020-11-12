@@ -50,7 +50,7 @@ class NonParametric():
 		H[H == 0] = 0
 		return H
 
-	def R_cb(self, x, bound='upper', how='step', confidence=0.95, bound_type='exp', dist='t'):
+	def R_cb(self, x, bound='upper', how='step', confidence=0.95, bound_type='exp', dist='z'):
 		# Greenwoods variance using t-stat. Ref found:
 		# http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 		assert bound_type in ['exp', 'normal']
@@ -115,12 +115,8 @@ class NonParametric():
 		x_scale_min = x_min
 		x_scale_max = x_max + diff
 
-		plot_bounds = kwargs.get('plot_bounds', True)
-
-		if plot_bounds:
-			cbs = self.R_cb(self.x, **kwargs)
-		else:
-			cbs = []
+		
+		cbs = self.R_cb(self.x, **kwargs)
 
 		plot_data = {
 			'x_scale_min' : x_scale_min,
@@ -135,7 +131,17 @@ class NonParametric():
 
 	def plot(self, **kwargs):
 		plot_bounds = kwargs.pop('plot_bounds', True)
-		d = self.get_plot_data(**kwargs)
+		how = kwargs.pop('how', 'step')
+		bound = kwargs.pop('how', 'two-sided')
+		confidence = kwargs.pop('confidence', 0.95)
+		bound_type = kwargs.pop('bound_type', 'exp')
+		dist = kwargs.pop('dist', 'z')
+
+		d = self.get_plot_data( how=how,
+								bound=bound,
+								confidence=confidence,
+								bound_type=bound_type,
+								dist=dist)
 		# MAKE THE PLOT
 		# Set the y limits
 		plt.gca().set_ylim([d['y_scale_min'], d['y_scale_max']])
@@ -143,7 +149,7 @@ class NonParametric():
 		# Label it
 		plt.title('Model Survival Plot')
 		plt.ylabel('R')
-		if kwargs['how'] == 'interp':
+		if how == 'interp':
 			if plot_bounds:
 				plt.plot(d['x_'], d['cbs'], color='r')
 			return plt.plot(d['x_'], d['R'])

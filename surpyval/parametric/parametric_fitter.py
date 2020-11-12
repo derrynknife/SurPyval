@@ -49,10 +49,10 @@ class ParametricFitter():
 
 	def neg_ll_trunc(self, x, c=None, n=None, t=None, *params):
 		# This is going to get difficult
-		if 2 in c:
-			like = self.like_with_interval(x, c, n, *params)
-		else:
-			like = self.like(x, c, n, *params)
+		# if 2 in c:
+		like = self.like_with_interval(x, c, n, *params)
+		# else:
+			# like = self.like(x, c, n, *params)
 
 		like = np.where(like <= surpyval.TINIEST, surpyval.TINIEST, like)
 		like = np.where(like < 1, like, 1)
@@ -94,6 +94,42 @@ class ParametricFitter():
 		M = -np.sum(M)/(M.shape[0])
 		return M
 
+	def neg_mean_D_(self, x, c, n, *params):
+		mask = c == 0
+		x_obs = x[mask]
+		n_obs = n[mask]
+
+		# Assumes already ordered
+		F  = self.ff(x_obs, *params)
+		D0 = F[0]
+		Dn = 1 - F[-1]
+		D = np.diff(F)
+		D = np.concatenate([[D0], D, [Dn]])
+
+		Dr = self.sf(x[c ==  1], *params)
+		Dl = self.ff(x[c == -1], *params)
+
+		if (n_obs > 1).any():
+			n_ties = (n_obs - 1).sum()
+			Df = self.df(x_obs, *params)
+			Df = Df[Df != 0]
+			LL = np.concatenate([Dl, Df, Dr])
+			ll_n = np.concatenate([n[c == -1], (n_obs - 1), n[c == 1]])
+		else:
+			Df = []
+			n_ties = n_obs.sum()
+			LL = np.concatenate([Dl, Dr])
+			ll_n = np.concatenate([n[c == -1], n[c == 1]])
+		
+		# D = np.concatenate([Dl, D, Dr, Df])
+		D[D < surpyval.TINIEST] = surpyval.TINIEST
+		M = np.log(D)
+		M = -np.sum(M)/(M.shape[0])
+		
+		LL[LL < surpyval.TINIEST] = surpyval.TINIEST
+		LL = -(np.log(LL) * ll_n).sum()/(n.sum() - n_obs.sum() + n_ties)
+		return M + LL
+
 	def mom_moment_gen(self, *params):
 		moments = np.zeros(self.k)
 		for i in range(0, self.k):
@@ -101,24 +137,21 @@ class ParametricFitter():
 			moments[i] = self.moment(n, *params)
 		return moments
 
-	def _mse(self, x, c=None, n=None, heuristic='Nelson-Aalen'):
+	def _mse(self, x, c=None, n=None):
 		"""
 		MSE: Mean Square Error
 		This is simply fitting the curve to the best estimate from a non-parametric estimate.
 
-		This is slightly different in that it fits it to untransformed data.
-		The transformation is how the "Probability Plotting Method" works.
-
-		Fit a two parameter Weibull distribution from data
-		
-		Fits a Weibull model to pp points 
+		This is slightly different in that it fits it to untransformed data on the x and 
+		y axis. The MPP method fits the curve to the transformed data. This is simply fitting
+		a the CDF sigmoid to the nonparametric estimate.
 		"""
-		# What the fuck is this...
+
 		x_, r, d, R = nonp.turnbull(x, c, n, estimator='Nelson-Aalen')
 		F = 1 - R
 		mask = np.isfinite(x_)
-		F = F[mask]
-		x = x[mask]
+		F  = F[mask]
+		x_ = x_[mask]
 		init = self.parameter_initialiser(x, c=c, n=n)
 		fun = lambda params : np.sum(((self.ff(x_, *params)) - F)**2)
 		res = minimize(fun, init, bounds=self.bounds)
@@ -140,9 +173,9 @@ class ParametricFitter():
 
 		This method is exceptional for when using three parameter distributions.
 		"""
-		init = self.parameter_initialiser(x, c=c, n=n)
+		init   = self.parameter_initialiser(x, c=c, n=n)
 		bounds = self.bounds
-		fun = lambda t : self.neg_mean_D(x, c, n, *t)
+		fun = lambda params : self.neg_mean_D_(x, c, n, *params)
 		res = minimize(fun, init, bounds=bounds)
 		return res
 
@@ -166,7 +199,8 @@ class ParametricFitter():
 
 		if self.use_autograd:
 				try:
-					fun  = lambda xx : self.neg_ll(x, c, n, t, *constraints(xx))
+					# fun  = lambda xx : self.neg_ll(x, c, n, t, *constraints(xx))
+					fun  = lambda params : self.neg_ll(x, c, n, t, *params)
 					jac = jacobian(fun)
 					hess = hessian(fun)
 					res = minimize(fun, init, 
@@ -281,13 +315,13 @@ class ParametricFitter():
 				model.params = tuple(model.res.x)
 		elif how == 'MPS':
 			# Maximum Product Spacing
-			if model.raw_data['c'] is not None:
-				raise Exception('Maximum product spacing doesn\'t support censoring')
-			if model.raw_data['n'] is not None:
-				raise Exception('Maximum product spacing doesn\'t support counts')
+			# if model.raw_data['c'] is not None:
+			# 	raise Exception('Maximum product spacing doesn\'t support censoring')
+			# if model.raw_data['n'] is not None:
+			# 	raise Exception('Maximum product spacing doesn\'t support counts')
 			if model.raw_data['t'] is not None:
 				raise Exception('Maximum product spacing doesn\'t support tuncation')
-			model.res = self._mps(x)
+			model.res = self._mps(x, c, n)
 			model.params = tuple(model.res.x)
 		elif how == 'MOM':
 			if model.raw_data['c'] is not None:
@@ -304,7 +338,7 @@ class ParametricFitter():
 		elif how == 'MSE':
 			if model.raw_data['t'] is not None:
 				raise Exception('Maximum product spacing doesn\'t support tuncation')
-			model.res = self._mse(x, c=c, n=n, heuristic=heuristic)
+			model.res = self._mse(x, c=c, n=n)
 			model.params = tuple(model.res.x)
 		
 		return model

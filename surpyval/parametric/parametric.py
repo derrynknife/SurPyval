@@ -97,13 +97,13 @@ class Parametric():
 			self.aic_c_ = self.aic() + (2*k**2 + 2*k)/(n - k - 1)
 			return self.aic_c_
 
-	def get_plot_data(self, heuristic, plot_bounds=True, cb=0.05):
+	def get_plot_data(self, heuristic='Turnbull', cb=0.05):
 		"""
 		Looking a little less ugly now. But not great
 		"""
 		x = self.data['x']
 		x_, r, d, F = nonp.plotting_positions(
-			self.data['x'], 
+			x=self.data['x'], 
 			c=self.data['c'], 
 			n=self.data['n'], 
 			heuristic=heuristic)
@@ -157,13 +157,6 @@ class Parametric():
 		else:
 			cdf = self.ff(x_model)
 
-		# not_different = True
-		# i = 1
-		# while not_different:
-		# 	x_ticks = np.array(surpyval.round_sig(vals_non_sig, i))
-		# 	not_different = (np.diff(x_ticks) == 0).any()
-		# 	i += 1
-
 		x_ticks = round_vals(vals_non_sig)
 
 		y_ticks = np.array(self.dist.y_ticks)
@@ -179,7 +172,7 @@ class Parametric():
 			x_ticks_labels = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & 
 							(x > 1) else str(x) for x in x_ticks]
 
-		if plot_bounds:
+		if hasattr(self.dist, 'R_cb') & hasattr(self, 'hess_inv'):
 			if self.dist.name == 'Weibull3p':
 				cbs = 1 - self.dist.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
 			else:
@@ -206,8 +199,8 @@ class Parametric():
 		}
 		return plot_data
 
-	def plot(self, heuristic='Nelson-Aalen', plot_bounds=True, cb=0.05):
-		d = self.get_plot_data(heuristic, plot_bounds=plot_bounds, cb=cb)
+	def plot(self, heuristic='Turnbull', plot_bounds=True, cb=0.05):
+		d = self.get_plot_data(heuristic=heuristic, cb=cb)
 		# MAKE THE PLOT
 		# Set the y limits
 		plt.gca().set_ylim([d['y_scale_min'], d['y_scale_max']])
@@ -245,7 +238,7 @@ class Parametric():
 		plt.ylabel('CDF')
 		plt.scatter(d['x_'], d['F'])
 		plt.gca().set_xlim([d['x_scale_min'], d['x_scale_max']])
-		if plot_bounds:
+		if plot_bounds & (len(d['cbs']) != 0):
 			plt.plot(d['x_model'], d['cbs'], color='r')
 		return plt.plot(d['x_model'], d['cdf'], color='k', linestyle='--')
 

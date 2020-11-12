@@ -8,6 +8,7 @@ import surpyval
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter
+from autograd import grad
 
 class Weibull3p_(ParametricFitter):
 	"""
@@ -112,16 +113,23 @@ class Weibull3p_(ParametricFitter):
 		# Linearise
 		y_ = np.log(np.log(1/(1 - F)))
 
-		mask = ((~np.isnan(y_)) & (~np.isinf(y_)))
+		mask = np.isfinite(y_)
 		y_ = y_[mask]
 		x  = x[mask]
+		x_min = np.min(x)
 
 		# Find gamma with maximum correlation
-		gamma = np.min(x) - (np.max(x) - np.min(x))/10
+		gamma = np.exp(-(np.min(x) - (np.max(x) - np.min(x))/10))
 
-		fun = lambda gamma : -pearsonr(np.log(x - gamma), y_)[0]
-		res = minimize(fun, gamma, bounds=[(None, np.min(x))])
-		gamma = res.x[0]
+
+		# fun = lambda gamma : -pearsonr(np.log(x - gamma), y_)[0]
+		def fun(gamma):
+			g =  x_min - np.exp(-gamma)
+			out = -pearsonr(np.log(x - g), y_)[0]
+			return out
+
+		res = minimize(fun, 0., bounds=((None, None),))
+		gamma = x_min - np.exp(-res.x[0])
 
 		if   rr == 'y':
 			model = np.polyfit(np.log(x - gamma), y_, 1)
