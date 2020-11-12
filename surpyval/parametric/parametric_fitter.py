@@ -11,8 +11,10 @@ from surpyval import parametric as para
 
 import pandas as pd
 
+PARA_METHODS = ['MPP', 'MLE', 'MPS', 'MSE', 'MOM']
+
 class ParametricFitter():
-	def parameter_initialiser_(self, x, c=None, n=None):
+	def parameter_initialiser_(self, x, c, n):
 		x, c, n, R = nonp.turnbull(x, c, n, estimator='Nelson-Aalen')
 		F = 1 - R
 		F = F[~np.isinf(x)]
@@ -23,7 +25,7 @@ class ParametricFitter():
 
 		return res.x
 
-	def like_with_interval(self, x, c=None, n=None, *params):
+	def like_with_interval(self, x, c, n, *params):
 		xl = x[:, 0]
 		xr = x[:, 1]
 		like = np.zeros_like(xl).astype(surpyval.NUM)
@@ -34,7 +36,7 @@ class ParametricFitter():
 		like_i = np.where(c ==  2, self.ff(xr, *params) - self.ff(xl, *params), like_i)
 		return like + like_i
 
-	def like(self, x, c=None, n=None, *params):
+	def like(self, x, c, n, *params):
 		like = np.zeros_like(x).astype(surpyval.NUM)
 		like = np.where(c ==  0, self.df(x, *params), like)
 		like = np.where(c == -1, self.ff(x, *params), like)
@@ -47,7 +49,7 @@ class ParametricFitter():
 		t_denom = self.ff(tr, *params) - self.ff(tl, *params)
 		return t_denom
 
-	def neg_ll_trunc(self, x, c=None, n=None, t=None, *params):
+	def neg_ll_trunc(self, x, c, n, t, *params):
 		# This is going to get difficult
 		# if 2 in c:
 		like = self.like_with_interval(x, c, n, *params)
@@ -63,7 +65,7 @@ class ParametricFitter():
 		like = np.multiply(n, like)
 		return -np.sum(like)
 
-	def neg_ll(self, x, c=None, n=None, t=None, *params):
+	def neg_ll(self, x, c, n, t, *params):
 		# Where the magic happens
 		if 2 in c:
 			like = self.like_with_interval(x, c, n, *params)
@@ -78,23 +80,23 @@ class ParametricFitter():
 		like = np.multiply(n, like)
 		return -np.sum(like)
 
-	def neg_mean_D(self, x, c=None, n=None, *params):
-		idx = np.argsort(x)
-		F  = self.ff(x[idx], *params)
-		D0 = F[0]
-		Dn = 1 - F[-1]
-		D = np.diff(F)
-		D = np.concatenate([[D0], D, [Dn]])
-		if c is not None:
-			Dr = self.sf(x[c == 1], *params)
-			Dl = self.ff(x[c == -1], *params)
-			D = np.concatenate([Dl, D, Dr])
-		D[D < surpyval.TINIEST] = surpyval.TINIEST
-		M = np.log(D)
-		M = -np.sum(M)/(M.shape[0])
-		return M
+	# def neg_mean_D(self, x, c, n, *params):
+	# 	idx = np.argsort(x)
+	# 	F  = self.ff(x[idx], *params)
+	# 	D0 = F[0]
+	# 	Dn = 1 - F[-1]
+	# 	D = np.diff(F)
+	# 	D = np.concatenate([[D0], D, [Dn]])
+	# 	if c is not None:
+	# 		Dr = self.sf(x[c == 1], *params)
+	# 		Dl = self.ff(x[c == -1], *params)
+	# 		D = np.concatenate([Dl, D, Dr])
+	# 	D[D < surpyval.TINIEST] = surpyval.TINIEST
+	# 	M = np.log(D)
+	# 	M = -np.sum(M)/(M.shape[0])
+	# 	return M
 
-	def neg_mean_D_(self, x, c, n, *params):
+	def neg_mean_D(self, x, c, n, *params):
 		mask = c == 0
 		x_obs = x[mask]
 		n_obs = n[mask]
@@ -137,7 +139,7 @@ class ParametricFitter():
 			moments[i] = self.moment(n, *params)
 		return moments
 
-	def _mse(self, x, c=None, n=None):
+	def _mse(self, x, c, n):
 		"""
 		MSE: Mean Square Error
 		This is simply fitting the curve to the best estimate from a non-parametric estimate.
@@ -163,7 +165,7 @@ class ParametricFitter():
 		# self.res = res
 		return res
 
-	def _mps(self, x, c=None, n=None):
+	def _mps(self, x, c, n):
 		"""
 		MPS: Maximum Product Spacing
 
@@ -175,7 +177,7 @@ class ParametricFitter():
 		"""
 		init   = self.parameter_initialiser(x, c=c, n=n)
 		bounds = self.bounds
-		fun = lambda params : self.neg_mean_D_(x, c, n, *params)
+		fun = lambda params : self.neg_mean_D(x, c, n, *params)
 		res = minimize(fun, init, bounds=bounds)
 		return res
 
@@ -193,6 +195,7 @@ class ParametricFitter():
 			return p
 
 		init = self.parameter_initialiser(x, c, n)
+		fail = False
 
 		# Change logic here for selecting the neg_ll function.
 		# if 2 in c: func = self.neg_ll_with_int
@@ -211,15 +214,11 @@ class ParametricFitter():
 					hess_inv = inv(res.hess)
 				except:
 					print("Autograd attempt failed, using without hessian")
-					fun = lambda xx : self.neg_ll(x, c, n, t, *constraints(xx))
-					jac = lambda xx : approx_fprime(xx, fun, surpyval.EPS)
-					res = minimize(fun, init, method='BFGS', jac=jac)
-					hess_inv = res.hess_inv
+					fail = True
 
-		else:
+		if (fail) | (not self.use_autograd):
 			fun = lambda xx : self.neg_ll(x, c, n, t, *constraints(xx))
 			jac = lambda xx : approx_fprime(xx, fun, surpyval.EPS)
-			#hess = lambda t : approx_fprime(t, jac, eps)
 			res = minimize(fun, init, method='BFGS', jac=jac)
 			hess_inv = res.hess_inv
 
@@ -247,7 +246,7 @@ class ParametricFitter():
 					   bounds=self.bounds)
 		return res
 
-	def _mpp(self, x, c=None, n=None, heuristic="Turnbull", rr='y', on_d_is_0=False):
+	def _mpp(self, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False):
 		assert rr in ['x', 'y']
 		"""
 		MPP: Method of Probability Plotting
@@ -281,6 +280,7 @@ class ParametricFitter():
 	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
 		model = para.Parametric()
 		model.method = how
+		assert how in PARA_METHODS, '"how" must be one of: ' + str(PARA_METHODS)
 		#Truncated data
 		t = kwargs.get('t', None)
 
@@ -311,34 +311,33 @@ class ParametricFitter():
 		if   how == 'MLE':
 			# Maximum Likelihood
 			with np.errstate(all='ignore'):
-				model.res, model.jac, model.hess_inv = self._mle(x, c=c, n=n, t=t)
+				model.res, model.jac, model.hess_inv = self._mle(x=x, c=c, n=n, t=t)
 				model.params = tuple(model.res.x)
 		elif how == 'MPS':
 			# Maximum Product Spacing
-			# if model.raw_data['c'] is not None:
-			# 	raise Exception('Maximum product spacing doesn\'t support censoring')
-			# if model.raw_data['n'] is not None:
-			# 	raise Exception('Maximum product spacing doesn\'t support counts')
 			if model.raw_data['t'] is not None:
 				raise Exception('Maximum product spacing doesn\'t support tuncation')
-			model.res = self._mps(x, c, n)
+			model.res = self._mps(x=x, c=c, n=n)
 			model.params = tuple(model.res.x)
 		elif how == 'MOM':
+			# Method of Moments
 			if model.raw_data['c'] is not None:
 				raise Exception('Method of moments doesn\'t support censoring')
 			if model.raw_data['t'] is not None:
 				raise Exception('Maximum product spacing doesn\'t support tuncation')
-			model.res = self._mom(x, n=n)
+			model.res = self._mom(x=x, n=n)
 			model.params = tuple(model.res.x)
 		elif how == 'MPP':
+			# Method of Probability Plotting
 			rr = kwargs.get('rr', 'y')
 			if model.raw_data['t'] is not None:
-				raise Exception('Method of probability plotting doesn\'t support tuncation')
-			model.params = self._mpp(x, n=n, c=c, rr=rr, heuristic=heuristic)
+				raise Exception('Method of probability plotting doesn\'t (yet) support tuncation')
+			model.params = self._mpp(x=x, n=n, c=c, rr=rr, heuristic=heuristic)
 		elif how == 'MSE':
+			# Mean Square Error
 			if model.raw_data['t'] is not None:
-				raise Exception('Maximum product spacing doesn\'t support tuncation')
-			model.res = self._mse(x, c=c, n=n)
+				raise Exception('Mean square error doesn\'t (yet) support tuncation')
+			model.res = self._mse(x=x, c=c, n=n)
 			model.params = tuple(model.res.x)
 		
 		return model
