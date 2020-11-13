@@ -4,6 +4,7 @@ from autograd.numpy.linalg import inv
 
 from scipy.optimize import minimize
 from scipy.optimize import approx_fprime
+from scipy.stats import pearsonr
 
 import surpyval
 from surpyval import nonparametric as nonp
@@ -246,7 +247,7 @@ class ParametricFitter():
 					   bounds=self.bounds)
 		return res
 
-	def _mpp(self, x, c, n, heuristic="Turnbull", rr='y', thresh=False, on_d_is_0=False):
+	def _mpp(self, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False):
 		assert rr in ['x', 'y']
 		"""
 		MPP: Method of Probability Plotting
@@ -263,18 +264,23 @@ class ParametricFitter():
 		
 		if not on_d_is_0:
 			x_ = x_[d > 0]
-			F = F[d > 0]
+			y_ = F[d > 0]
 
 		# Linearise
-		x_ = self.mpp_x_transform(x_)
-		y_ = self.mpp_y_transform(F)
+		x_pp = self.mpp_x_transform(x_)
+		y_pp = self.mpp_y_transform(y_)
 
-		if rr == 'y':
-			params = np.polyfit(x_, y_, 1)
+		mask = np.isfinite(y_pp)
+		y_pp = y_pp[mask]
+		x_pp = x_pp[mask]
+
+		if   rr == 'y':
+			params = np.polyfit(x_pp, y_pp, 1)
 		elif rr == 'x':
-			params = np.polyfit(y_, x_, 1)
+			params = np.polyfit(y_pp, x_pp, 1)
 
 		params = self.unpack_rr(params, rr)
+
 		return params
 
 	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
@@ -292,8 +298,6 @@ class ParametricFitter():
 		}
 
 		x, c, n = surpyval.xcn_handler(x, c, n)
-
-		thresh = kwargs.pop('thresh', False)
 
 		if t is not None:
 			assert t.shape[0] == n.shape[0]
@@ -334,7 +338,7 @@ class ParametricFitter():
 			rr = kwargs.get('rr', 'y')
 			if model.raw_data['t'] is not None:
 				raise Exception('Method of probability plotting doesn\'t (yet) support tuncation')
-			model.params = self._mpp(x=x, n=n, c=c, rr=rr, heuristic=heuristic, thresh=thresh)
+			model.params = self._mpp(x=x, n=n, c=c, rr=rr, heuristic=heuristic)
 		elif how == 'MSE':
 			# Mean Square Error
 			if model.raw_data['t'] is not None:
