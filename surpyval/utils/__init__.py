@@ -214,7 +214,53 @@ def xrd_to_xcn(x, r, d):
 
 	return fs_to_xcn(x_f, x_s)
 
+def fsli_to_xcn(f, s, l, i):
+	"""
+	Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
 
+	Parameters
+	----------
+	f: array
+		array of values for which the failure/death was observed
+	s: array
+		array of right censored observation values
+	l: array
+		array of left censored observation values
+	i: array
+		array of interval censored data
+
+	Returns
+	----------
+	x: array
+		sorted array of values of variable for which observations were made.
+	c: array
+		array of censoring values (-1, 0, 1, 2) corrseponding to output array x.
+	n: array
+		array of count of observations at to output array x and with censoring c.
+	"""
+	x_f, n_f = np.unique(f, return_counts=True)
+	x_f = np.array([x_f, x_f]).T
+	c_f = np.zeros_like(x_f)
+
+	x_s, n_s = np.unique(s, return_counts=True)
+	x_s = np.array([x_s, x_s]).T
+	c_s = np.ones_like(x_s)
+
+	x_l, n_l = np.unique(l, return_counts=True)
+	x_l = np.array([x_l, x_l]).T
+	c_l = -np.ones_like(x_l)
+
+	x_i, n_i = np.unique(i, axis=0, return_counts=True)
+	c_i = -np.ones_like(x_i)
+
+	x = np.concatenate([x_f, x_s, x_l, x_i])
+	c = np.hstack([c_f, c_s, c_l]).astype(np.int64)
+	n = np.hstack([n_f, n_s, n_l]).astype(np.int64)
+
+	x, c, n = xcn_sort(x, c, n)
+
+	return x, c, n
+	
 def fsl_to_xcn(f, s, l):
 	"""
 	Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.

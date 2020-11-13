@@ -246,7 +246,7 @@ class ParametricFitter():
 					   bounds=self.bounds)
 		return res
 
-	def _mpp(self, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False):
+	def _mpp(self, x, c, n, heuristic="Turnbull", rr='y', thresh=False, on_d_is_0=False):
 		assert rr in ['x', 'y']
 		"""
 		MPP: Method of Probability Plotting
@@ -293,6 +293,8 @@ class ParametricFitter():
 
 		x, c, n = surpyval.xcn_handler(x, c, n)
 
+		thresh = kwargs.pop('thresh', False)
+
 		if t is not None:
 			assert t.shape[0] == n.shape[0]
 			assert t.shape[1] == 2
@@ -332,7 +334,7 @@ class ParametricFitter():
 			rr = kwargs.get('rr', 'y')
 			if model.raw_data['t'] is not None:
 				raise Exception('Method of probability plotting doesn\'t (yet) support tuncation')
-			model.params = self._mpp(x=x, n=n, c=c, rr=rr, heuristic=heuristic)
+			model.params = self._mpp(x=x, n=n, c=c, rr=rr, heuristic=heuristic, thresh=thresh)
 		elif how == 'MSE':
 			# Mean Square Error
 			if model.raw_data['t'] is not None:
