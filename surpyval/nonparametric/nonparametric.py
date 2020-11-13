@@ -50,7 +50,7 @@ class NonParametric():
 		H[H == 0] = 0
 		return H
 
-	def R_cb(self, x, bound='upper', how='step', confidence=0.95, bound_type='exp', dist='z'):
+	def R_cb(self, x, bound='two-sided', how='step', confidence=0.95, bound_type='exp', dist='z'):
 		# Greenwoods variance using t-stat. Ref found:
 		# http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 		assert bound_type in ['exp', 'normal']
@@ -115,7 +115,6 @@ class NonParametric():
 		x_scale_min = x_min
 		x_scale_max = x_max + diff
 
-		
 		cbs = self.R_cb(self.x, **kwargs)
 
 		plot_data = {
@@ -125,7 +124,8 @@ class NonParametric():
 			'y_scale_max' : y_scale_max,
 			'cbs' : cbs,
 			'x_' : self.x,
-			'R' : self.R
+			'R' : self.R,
+			'F' :F
 		}
 		return plot_data
 
