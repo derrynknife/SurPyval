@@ -16,10 +16,10 @@ PARA_METHODS = ['MPP', 'MLE', 'MPS', 'MSE', 'MOM']
 
 class ParametricFitter():
 	def parameter_initialiser_(self, x, c, n):
-		x, c, n, R = nonp.turnbull(x, c, n, estimator='Nelson-Aalen')
+		x, c, n, R = nonp.turnbull(x, c, n, estimator='Turnbull')
 		F = 1 - R
-		F = F[~np.isinf(x)]
-		x = x[~np.isinf(x)]
+		F = F[np.isfinite(x)]
+		x = x[np.isfinite(x)]
 		init = np.ones(self.k)
 		fun = lambda params : np.sum(((self.ff(x, *params)) - F)**2)
 		res = minimize(fun, init, bounds=self.bounds)
@@ -140,7 +140,7 @@ class ParametricFitter():
 			moments[i] = self.moment(n, *params)
 		return moments
 
-	def _mse(self, x, c, n):
+	def _mse(self, x, c, n, init):
 		"""
 		MSE: Mean Square Error
 		This is simply fitting the curve to the best estimate from a non-parametric estimate.
@@ -155,7 +155,6 @@ class ParametricFitter():
 		mask = np.isfinite(x_)
 		F  = F[mask]
 		x_ = x_[mask]
-		init = self.parameter_initialiser(x, c=c, n=n)
 		fun = lambda params : np.sum(((self.ff(x_, *params)) - F)**2)
 		res = minimize(fun, init, bounds=self.bounds)
 		# OLD MSE - changed to Turnbull for better use
@@ -166,7 +165,7 @@ class ParametricFitter():
 		# self.res = res
 		return res
 
-	def _mps(self, x, c, n):
+	def _mps(self, x, c, n, init):
 		"""
 		MPS: Maximum Product Spacing
 
@@ -176,38 +175,42 @@ class ParametricFitter():
 
 		This method is exceptional for when using three parameter distributions.
 		"""
-		init   = self.parameter_initialiser(x, c=c, n=n)
 		bounds = self.bounds
 		fun = lambda params : self.neg_mean_D(x, c, n, *params)
 		res = minimize(fun, init, bounds=bounds)
 		return res
 
-	def _mle(self, x, c, n, t):
+	def _mle(self, x, c, n, t, init, fixed=None):
 		"""
 		MLE: Maximum Likelihood estimate
 		"""
 		# This might help to be able to hold a parameter constant:
 		# https://stackoverflow.com/questions/24185589/minimizing-a-function-while-keeping-some-of-the-variables-constant
 
-		def constraints(p):
-			# Add constraint handling here
-			# i.e. in comes [1, 0] and it needs to make [1, 2.3, 0] for the func
-			# assumes 2.3 is provided as the constant
-			return p
+		def constraints(p, not_fixed):
+			params = np.empty(self.k)
+			for k, v in fixed.items():
+				params[self.param_map[k]] = v
+			for i, v in zip(not_fixed, p):
+				params[i] = v
+			return params
 
-		init = self.parameter_initialiser(x, c, n)
 		fail = False
 
-		# Change logic here for selecting the neg_ll function.
-		# if 2 in c: func = self.neg_ll_with_int
+		if fixed is not None:
+			fixed_idx = [self.param_map[x] for x in fixed.keys()]
+			not_fixed = np.array([x for x in range(self.k) if x not in fixed_idx])
+			fun = lambda params: self.neg_ll(x, c, n, t, *constraints(params, not_fixed))
+			init = init[not_fixed]
+		else:
+			fun = lambda params: self.neg_ll(x, c, n, t, *params)
+
 
 		if self.use_autograd:
 				try:
-					# fun  = lambda xx : self.neg_ll(x, c, n, t, *constraints(xx))
-					fun  = lambda params : self.neg_ll(x, c, n, t, *params)
-					jac = jacobian(fun)
+					jac  = jacobian(fun)
 					hess = hessian(fun)
-					res = minimize(fun, init, 
+					res  = minimize(fun, init, 
 									method='trust-exact', 
 									jac=jac, 
 									hess=hess, 
@@ -218,14 +221,19 @@ class ParametricFitter():
 					fail = True
 
 		if (fail) | (not self.use_autograd):
-			fun = lambda xx : self.neg_ll(x, c, n, t, *constraints(xx))
 			jac = lambda xx : approx_fprime(xx, fun, surpyval.EPS)
 			res = minimize(fun, init, method='BFGS', jac=jac)
 			hess_inv = res.hess_inv
 
-		return res, jac, hess_inv
+		# It's working!! 
+		# unpack the constraints
+		if fixed is not None:
+			np.matrix(np.empty(shape=(self.k, self.k)))
+			return res, jac, None, constraints(res.x, not_fixed)
+		else:
+			return res, jac, hess_inv, tuple(res.x)
 
-	def _mom(self, x, n=None):
+	def _mom(self, x, n, init):
 		"""
 		MOM: Method of Moments.
 
@@ -234,17 +242,14 @@ class ParametricFitter():
 		This method is quick but only works with uncensored data.
 		# Can I add a simple sum(c) instead of length to work with censoring?
 		"""
-		if n is not None:
-			x = np.repeat(x, n)
+		x = np.repeat(x, n)
 
 		moments = np.zeros(self.k)
 		for i in range(0, self.k):
 			moments[i] = np.sum(x**(i+1)) / len(x)
 
-		fun = lambda t : np.sum((moments - self.mom_moment_gen(*t))**2)
-		res = minimize(fun, 
-					   self.parameter_initialiser(x), 
-					   bounds=self.bounds)
+		fun = lambda params : np.sum((moments - self.mom_moment_gen(*params))**2)
+		res = minimize(fun, init, bounds=self.bounds)
 		return res
 
 	def _mpp(self, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False):
@@ -313,17 +318,20 @@ class ParametricFitter():
 		heuristic = kwargs.get('heuristic', 'Turnbull')
 		model.heuristic = heuristic
 		model.dist = self
+		if how != 'MPP':
+			init = np.array(self.parameter_initialiser(x, c, n))
 
 		if   how == 'MLE':
 			# Maximum Likelihood
+			fixed = kwargs.pop('fixed', None)
 			with np.errstate(all='ignore'):
-				model.res, model.jac, model.hess_inv = self._mle(x=x, c=c, n=n, t=t)
-				model.params = tuple(model.res.x)
+				model.res, model.jac, model.hess_inv, params = self._mle(x=x, c=c, n=n, t=t, fixed=fixed, init=init)
+				model.params = tuple(params)
 		elif how == 'MPS':
 			# Maximum Product Spacing
 			if model.raw_data['t'] is not None:
 				raise Exception('Maximum product spacing doesn\'t support tuncation')
-			model.res = self._mps(x=x, c=c, n=n)
+			model.res = self._mps(x=x, c=c, n=n, init=init)
 			model.params = tuple(model.res.x)
 		elif how == 'MOM':
 			# Method of Moments
@@ -331,21 +339,20 @@ class ParametricFitter():
 				raise Exception('Method of moments doesn\'t support censoring')
 			if model.raw_data['t'] is not None:
 				raise Exception('Maximum product spacing doesn\'t support tuncation')
-			model.res = self._mom(x=x, n=n)
+			model.res = self._mom(x=x, n=n, init=init)
 			model.params = tuple(model.res.x)
 		elif how == 'MPP':
 			# Method of Probability Plotting
 			rr = kwargs.get('rr', 'y')
 			if model.raw_data['t'] is not None:
 				raise Exception('Method of probability plotting doesn\'t (yet) support tuncation')
-			model.params = self._mpp(x=x, n=n, c=c, rr=rr, heuristic=heuristic)
+			model.params = tuple(self._mpp(x=x, n=n, c=c, rr=rr, heuristic=heuristic))
 		elif how == 'MSE':
 			# Mean Square Error
 			if model.raw_data['t'] is not None:
 				raise Exception('Mean square error doesn\'t (yet) support tuncation')
-			model.res = self._mse(x=x, c=c, n=n)
+			model.res = self._mse(x=x, c=c, n=n, init=init)
 			model.params = tuple(model.res.x)
-		
 		return model
 
 	def fit_from_df(self, df, **kwargs):

@@ -173,10 +173,13 @@ class Parametric():
 							(x > 1) else str(x) for x in x_ticks]
 
 		if hasattr(self.dist, 'R_cb') & hasattr(self, 'hess_inv'):
-			if self.dist.name == 'Weibull3p':
-				cbs = 1 - self.dist.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
+			if self.hess_inv is not None:
+				if self.dist.name == 'Weibull3p':
+					cbs = 1 - self.dist.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
+				else:
+					cbs = 1 - self.dist.R_cb(x_model, *self.params, self.hess_inv, cb=cb)
 			else:
-				cbs = 1 - self.dist.R_cb(x_model, *self.params, self.hess_inv, cb=cb)
+				cbs = []
 		else:
 			cbs = []
 

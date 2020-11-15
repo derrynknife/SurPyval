@@ -125,7 +125,7 @@ class NonParametric():
 			'cbs' : cbs,
 			'x_' : self.x,
 			'R' : self.R,
-			'F' :F
+			'F' : self.F
 		}
 		return plot_data
 
