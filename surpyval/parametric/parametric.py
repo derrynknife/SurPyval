@@ -21,7 +21,7 @@ def round_vals(x):
 
 class Parametric():
 	def __str__(self):
-		return 'Parametric Surpyval model with {dist} distribution and parameters {params}'.format(dist=self.dist.name, params=self.params)
+		return 'Parametric Surpyval model with {dist} distribution fitted by {method} yielding parameters {params}'.format(dist=self.dist.name, method=self.method, params=self.params)
 
 	def sf(self, x):
 		return self.dist.sf(x, *self.params)

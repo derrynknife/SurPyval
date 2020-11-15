@@ -242,11 +242,11 @@ class ParametricFitter():
 		This method is quick but only works with uncensored data.
 		# Can I add a simple sum(c) instead of length to work with censoring?
 		"""
-		x = np.repeat(x, n)
+		x_ = np.repeat(x, n)
 
 		moments = np.zeros(self.k)
 		for i in range(0, self.k):
-			moments[i] = np.sum(x**(i+1)) / len(x)
+			moments[i] = np.sum(x_**(i+1)) / len(x_)
 
 		fun = lambda params : np.sum((moments - self.mom_moment_gen(*params))**2)
 		res = minimize(fun, init, bounds=self.bounds)
@@ -289,25 +289,34 @@ class ParametricFitter():
 		return params
 
 	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
-		model = para.Parametric()
-		model.method = how
-		assert how in PARA_METHODS, '"how" must be one of: ' + str(PARA_METHODS)
 		#Truncated data
-		t = kwargs.get('t', None)
+		t = kwargs.pop('t', None)
 
-		model.raw_data = {
-			'x' : x,
-			'c' : c,
-			'n' : n,
-			't' : t
-		}
+		if how not in PARA_METHODS:
+			raise ValueError('"how" must be one of: ' + str(PARA_METHODS))
+
+		if t is not None and how == 'MPS':
+			raise ValueError('Maximum product spacing doesn\'t support tuncation')
+		if t is not None and how == 'MSE':
+			raise NotImplementedError('Mean square error doesn\'t yet support tuncation')
+		if t is not None and how == 'MPP':
+			raise NotImplementedError('Method of probability plotting doesn\'t yet support tuncation')
+		if t is not None and how == 'MOM':
+			raise ValueError('Maximum product spacing doesn\'t support tuncation')
 
 		x, c, n = surpyval.xcn_handler(x, c, n)
+		# TODO: Add xcnt_handler
 
-		if t is not None:
-			assert t.shape[0] == n.shape[0]
-			assert t.shape[1] == 2
-		
+		if surpyval.utils.check_no_censoring(c) and (how == 'MOM'):
+			raise ValueError('Method of moments doesn\'t support censoring')
+
+		heuristic = kwargs.pop('heuristic', 'Turnbull')
+		if (surpyval.utils.no_left_or_int(c)) and (how == 'MPP') and (not heuristic == 'Turnbull'):
+			raise ValueError('Probability plotting estimation with left or interval censoring only works with Turnbull heuristic')
+
+		# Passed checks
+		model = para.Parametric()
+		model.method = how
 		model.data = {
 			'x' : x,
 			'c' : c,
@@ -315,42 +324,35 @@ class ParametricFitter():
 			't' : t
 		}
 
-		heuristic = kwargs.get('heuristic', 'Turnbull')
 		model.heuristic = heuristic
 		model.dist = self
 		if how != 'MPP':
 			init = np.array(self.parameter_initialiser(x, c, n))
 
-		if   how == 'MLE':
+		if how == 'MLE':
 			# Maximum Likelihood
 			fixed = kwargs.pop('fixed', None)
 			with np.errstate(all='ignore'):
 				model.res, model.jac, model.hess_inv, params = self._mle(x=x, c=c, n=n, t=t, fixed=fixed, init=init)
 				model.params = tuple(params)
+
 		elif how == 'MPS':
 			# Maximum Product Spacing
-			if model.raw_data['t'] is not None:
-				raise Exception('Maximum product spacing doesn\'t support tuncation')
 			model.res = self._mps(x=x, c=c, n=n, init=init)
 			model.params = tuple(model.res.x)
+
 		elif how == 'MOM':
 			# Method of Moments
-			if model.raw_data['c'] is not None:
-				raise Exception('Method of moments doesn\'t support censoring')
-			if model.raw_data['t'] is not None:
-				raise Exception('Maximum product spacing doesn\'t support tuncation')
 			model.res = self._mom(x=x, n=n, init=init)
 			model.params = tuple(model.res.x)
+
 		elif how == 'MPP':
 			# Method of Probability Plotting
 			rr = kwargs.get('rr', 'y')
-			if model.raw_data['t'] is not None:
-				raise Exception('Method of probability plotting doesn\'t (yet) support tuncation')
 			model.params = tuple(self._mpp(x=x, n=n, c=c, rr=rr, heuristic=heuristic))
+
 		elif how == 'MSE':
 			# Mean Square Error
-			if model.raw_data['t'] is not None:
-				raise Exception('Mean square error doesn\'t (yet) support tuncation')
 			model.res = self._mse(x=x, c=c, n=n, init=init)
 			model.params = tuple(model.res.x)
 		return model

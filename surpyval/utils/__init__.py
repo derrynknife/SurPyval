@@ -1,6 +1,12 @@
 import numpy as np
 from collections import defaultdict
 
+def check_no_censoring(c):
+	return any(c != 0)
+
+def no_left_or_int(c):
+	return any((c == -1) | (c == 2))
+
 def surv_tolist(x):
 	"""
 	supplement to the .tolist() function where there is mixed scalars and arrays.
