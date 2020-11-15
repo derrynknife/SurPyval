@@ -112,32 +112,37 @@ def xcn_handler(x, c=None, n=None):
 			x = x_ndarray
 		else:
 			x = np.array(x).astype(np.float)
-	assert x.ndim < 3, "variable array must be one or two dimensional"
+	if not x.ndim < 3:
+		raise ValueError("Variable (x) array must be one or two dimensional")
 
 	if x.ndim == 2:
-		assert x.shape[1] == 2, "Dim 1 must be 2, try transposing data, or do you have a 1d array in a 2d array?"
-		assert (x[:, 0] <= x[:, 1]).all(), "All left intervals must be less than right intervals"
+		if x.shape[1] != 2:
+			raise ValueError("Dimension 1 must be equalt to 2, try transposing data, or do you have a 1d array in a 2d array?")
+
+		if not (x[:, 0] <= x[:, 1]).all():
+			raise ValueError("All left intervals must be less than right intervals")
 
 	if c is not None:
 		c = np.array(c)
-		assert c.ndim == 1, "censoring array must be one dimensional"
-		assert c.shape[0] == x.shape[0], "censoring array must be same length as variable array"
+		if c.ndim != 1:
+			raise ValueError("censoring array must be one dimensional")
+
+		if c.shape[0] != x.shape[0]:
+			raise ValueError("censoring array must be same length as variable array")
 
 		if x.ndim == 2:
-			assert not any(c[x[:, 0] == x[:, 1]] == 2), "Censor flag indicates interval censored but only has one failure time"
-			assert all(c[x[:, 0] != x[:, 1]] == 2), "Censor flag provided, but case where interval flagged as non interval censoring"
-			assert not any(
-					(c !=  0) &
-					(c !=  1) &
-					(c != -1) &
-					(c !=  2)
-				), "Censoring value must only be one of -1, 0, 1, or 2"
+			if any(c[x[:, 0] == x[:, 1]] == 2):
+				raise ValueError("Censor flag indicates interval censored but only has one failure time")
+
+			if not all(c[x[:, 0] != x[:, 1]] == 2):
+				raise ValueError("Censor flag provided, but case where interval flagged as non interval censoring")
+
+			if any((c !=  0) & (c !=  1) & (c != -1) & (c !=  2)):
+				raise ValueError("Censoring value must only be one of -1, 0, 1, or 2")
+
 		else:
-			assert not any(
-				(c !=  0) &
-				(c !=  1) &
-				(c != -1)
-			), "Censoring value must only be one of -1, 0, 1 for single dimension input"
+			if any((c !=  0) & (c !=  1) & (c != -1)):
+				raise ValueError("Censoring value must only be one of -1, 0, 1 for single dimension input")
 	else:
 		c = np.zeros(x.shape[0])
 		if x.ndim != 1:
@@ -145,9 +150,12 @@ def xcn_handler(x, c=None, n=None):
 
 	if n is not None:
 		n = np.array(n)
-		assert n.ndim == 1, "count array must be one dimensional"
-		assert n.shape[0] == x.shape[0], "count array must be same length as variable array."
-		assert (n > 0).all(), "count array can't be 0"
+		if n.ndim != 1:
+			raise ValueError("Count array must be one dimensional")
+		if n.shape[0] != x.shape[0]:
+			raise ValueError("count array must be same length as variable array.")
+		if not (n > 0).all():
+			raise ValueError("count array can't be 0")
 	else:
 		# Do check here for groupby and binning
 		n = np.ones(x.shape[0])
@@ -183,7 +191,9 @@ def xcn_to_xrd(x, c=None, n=None):
 		array of the count of failures/deaths at each time x.
 	"""
 	x, c, n = xcn_handler(x, c, n)
-	assert not ((c != 1) & (c != 0)).any(), "xrd format can't handle left (c=-1) or interval (c=2) censoring"
+
+	if ((c != 1) & (c != 0)).any():
+		raise ValueError("xrd format can't handle left (c=-1) or interval (c=2) censoring")
 
 	x = np.repeat(x, n)
 	c = np.repeat(c, n)
@@ -222,7 +232,8 @@ def xrd_to_xcn(x, r, d):
 
 def fsli_to_xcn(f, s, l, i):
 	"""
-	Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
+	Main handler that ensures any input to a surpyval fitter meets the requirements to be used in
+	 one of the parametric or nonparametric fitters.
 
 	Parameters
 	----------
