@@ -23,6 +23,11 @@ class ExpoWeibull_(ParametricFitter):
 			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
 			0.9, 0.95, 0.99, 0.999, 0.9999]
 		self.param_names = ['alpha', 'beta', 'mu']
+		self.param_map = {
+			'alpha' : 0,
+			'beta'  : 1,
+			'mu'    : 2
+		}
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		log_x = np.log(x)

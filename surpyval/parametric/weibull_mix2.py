@@ -21,6 +21,13 @@ class Weibull_Mix_Two_(ParametricFitter):
 			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
 			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
 			0.9, 0.95, 0.99, 0.999, 0.9999]
+		self.param_names = ['alpha1', 'beta1', 'alpha2', 'beta2']
+		self.param_map = {
+			'alpha1' : 0,
+			'beta1'  : 1,
+			'alpha2' : 2,
+			'beta2'  : 3
+		}
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		return np.mean(x), 1.

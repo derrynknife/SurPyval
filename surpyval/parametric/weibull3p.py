@@ -25,6 +25,11 @@ class Weibull3p_(ParametricFitter):
 			0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
 			0.9, 0.95, 0.99, 0.999, 0.9999]
 		self.param_names = ['alpha', 'beta', 'gamma']
+		self.param_map = {
+			'alpha' : 0,
+			'beta'  : 1,
+			'gamma' : 2
+		}
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		x, c, n = surpyval.xcn_handler(x, c, n)

@@ -18,6 +18,10 @@ class Normal_(ParametricFitter):
 		self.y_ticks = [0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 
 				0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999]
 		self.param_names = ['mu', 'sigma']
+		self.param_map = {
+			'mu'    : 0,
+			'sigma' : 1
+		}
 
 
 	def parameter_initialiser(self, x, c=None, n=None):

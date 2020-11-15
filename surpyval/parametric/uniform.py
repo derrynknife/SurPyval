@@ -15,6 +15,10 @@ class Uniform_(ParametricFitter):
 		self.plot_x_scale = 'linear'
 		self.y_ticks = np.linspace(0, 1, 21)[1:-1]
 		self.param_names = ['a', 'b']
+		self.param_map = {
+			'a' : 0,
+			'b' : 1
+		}
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		return np.min(x), np.max(x)
