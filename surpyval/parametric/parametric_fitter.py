@@ -253,7 +253,8 @@ class ParametricFitter():
 		return res
 
 	def _mpp(self, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False):
-		assert rr in ['x', 'y']
+		if rr not in ['x', 'y']:
+			raise ValueError("rr must be either 'x' or 'y'")
 		"""
 		MPP: Method of Probability Plotting
 		Yes, the order of this language was invented to keep MXX format consistent
@@ -358,7 +359,8 @@ class ParametricFitter():
 		return model
 
 	def fit_from_df(self, df, **kwargs):
-		assert type(df) == pd.DataFrame
+		if not type(df) == pd.DataFrame:
+			raise ValueError("df must be a pandas DataFrame")
 
 		heuristic = kwargs.get('heuristic', 'Nelson-Aalen')
 		how = kwargs.get('how', 'MLE')
@@ -369,7 +371,6 @@ class ParametricFitter():
 		#raise TypeError('Unepxected kwargs provided: %s' % list(kwargs.keys()))
 
 		x = df[x_col].astype(surpyval.NUM)
-		assert x.ndim == 1
 
 		if c_col in df:
 			c = df[c_col].values.astype(np.int64)
@@ -385,7 +386,8 @@ class ParametricFitter():
 
 	def from_params(self, params):
 		model = para.Parametric()
-		assert self.k == len(params), "Must have {k} params for {dist} distribution".format(k=self.k, dist=self.dist.name)
+		if self.k != len(params):
+			raise ValueError("Must have {k} params for {dist} distribution".format(k=self.k, dist=self.name))
 		model.params = params
 		for i, (low, upp) in enumerate(self.bounds):
 			if low is None:
@@ -397,7 +399,8 @@ class ParametricFitter():
 			else:
 				u = upp
 
-			assert (l < params[i]) & (params[i] < u), "Params must be in bounds {}".format(self.bounds)
+			if not ((l < params[i]) & (params[i] < u)):
+				raise ValueError("Params {params} must be in bounds {bounds}".format(params=', '.join(self.param_names), bounds=self.bounds))
 		model.dist = self
 		return model
 
