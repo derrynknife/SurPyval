@@ -79,7 +79,8 @@ class ParametricFitter():
 		else:
 			like = np.log(like)
 		like = np.multiply(n, like)
-		return -np.sum(like)
+		like = -np.sum(like)
+		return like
 
 	# def neg_mean_D(self, x, c, n, *params):
 	# 	idx = np.argsort(x)
@@ -184,9 +185,6 @@ class ParametricFitter():
 		"""
 		MLE: Maximum Likelihood estimate
 		"""
-		# This might help to be able to hold a parameter constant:
-		# https://stackoverflow.com/questions/24185589/minimizing-a-function-while-keeping-some-of-the-variables-constant
-
 		def constraints(p, not_fixed):
 			params = np.empty(self.k)
 			for k, v in fixed.items():
@@ -232,6 +230,35 @@ class ParametricFitter():
 			return res, jac, None, constraints(res.x, not_fixed)
 		else:
 			return res, jac, hess_inv, tuple(res.x)
+
+	def _mle__(self, x, c, n, t, const, trans, inv_fs, init):
+		"""
+		MLE: Maximum Likelihood estimate
+		"""
+		fail = False
+		fun = lambda params: self.neg_ll(x, c, n, t, *inv_fs(const(params)))
+		if self.use_autograd:
+				try:
+					jac  = jacobian(fun)
+					hess = hessian(fun)
+					res  = minimize(fun, init, 
+									method='trust-exact', 
+									jac=jac, 
+									hess=hess, 
+									tol=1e-10)
+					hess_inv = inv(res.hess)
+				except:
+					print("Autograd attempt failed, using without hessian")
+					fail = True
+
+		if (fail) | (not self.use_autograd):
+			jac = lambda xx : approx_fprime(xx, fun, surpyval.EPS)
+			res = minimize(fun, init, method='BFGS', jac=jac)
+			hess_inv = res.hess_inv
+
+		# It's working!! 
+		# unpack the constraints
+		return res, jac, hess_inv, inv_fs(const(res.x))
 
 	def _mom(self, x, n, init):
 		"""
@@ -304,7 +331,7 @@ class ParametricFitter():
 
 		if t is not None and how == 'MPP':
 			raise NotImplementedError('Method of probability plotting doesn\'t yet support tuncation')
-			
+
 		if t is not None and how == 'MOM':
 			raise ValueError('Maximum product spacing doesn\'t support tuncation')
 
@@ -315,12 +342,15 @@ class ParametricFitter():
 			raise ValueError('Method of moments doesn\'t support censoring')
 
 		heuristic = kwargs.pop('heuristic', 'Turnbull')
+
 		if (surpyval.utils.no_left_or_int(c)) and (how == 'MPP') and (not heuristic == 'Turnbull'):
 			raise ValueError('Probability plotting estimation with left or interval censoring only works with Turnbull heuristic')
 
 		# Passed checks
 		model = para.Parametric()
 		model.method = how
+		model.heuristic = heuristic
+		model.dist = self
 		model.data = {
 			'x' : x,
 			'c' : c,
@@ -328,17 +358,76 @@ class ParametricFitter():
 			't' : t
 		}
 
-		model.heuristic = heuristic
-		model.dist = self
+		fixed = kwargs.pop('fixed', None)
+
 		if how != 'MPP':
 			init = np.array(self.parameter_initialiser(x, c, n))
+			# init = np.array([1., 1.])
+
+			def pass_through(x):
+				return x
+
+			def rev_adj_relu(x):
+				return -np.where(x >= 0, x + 1, np.exp(x))
+
+			def adj_relu(x):
+				return np.where(x >= 0, x + 1, np.exp(x))
+
+			def inv_adj_relu(x):
+				return np.where(x >= 1, x - 1, np.log(x))
+
+			def inv_rev_adj_relu(x):
+				return np.where(x <= -1, -x - 1, np.log(x))
+
+			funcs = []
+			inv_f = []
+			for l, u in self.bounds:
+				if (l is None) and (u is None):
+					funcs.append(lambda x : pass_through(x))
+					inv_f.append(lambda x : pass_through(x))
+				elif (u is None):
+					funcs.append(lambda x : adj_relu(x))
+					inv_f.append(lambda x : inv_adj_relu(x))
+				elif (l is None):
+					if u != 0:
+						upper = np.min(x)
+					else:
+						upper = 0
+					funcs.append(lambda x : upper + rev_adj_relu(x))
+					inv_f.append(lambda x : inv_rev_adj_relu(x - upper))
+
+			transform = lambda params : np.array([f(p) for p, f in zip(params, funcs)])
+			inv_trans = lambda params : np.array([f(p) for p, f in zip(params, inv_f)])
+
+		if fixed is not None:
+			fixed_idx = [self.param_map[x] for x in fixed.keys()]
+			not_fixed = np.array([x for x in range(self.k) if x not in fixed_idx])
+
+			def constraints(p):
+				params = np.empty(self.k)
+				for k, v in fixed.items():
+					params[self.param_map[k]] = funcs[self.param_map[k]](v)
+				for i, v in zip(not_fixed, p):
+					params[i] = v
+				return params
+
+			const = constraints
+		else:
+			const = lambda x : x
 
 		if how == 'MLE':
 			# Maximum Likelihood
-			fixed = kwargs.pop('fixed', None)
 			with np.errstate(all='ignore'):
-				model.res, model.jac, model.hess_inv, params = self._mle(x=x, c=c, n=n, t=t, fixed=fixed, init=init)
+				init = transform(init)
+				if fixed is not None:
+					init = init[not_fixed]
+				model.res, model.jac, model.hess_inv, params = self._mle__(x=x, c=c, n=n, t=t, const=const, trans=transform, inv_fs=inv_trans, init=init)
 				model.params = tuple(params)
+
+			# with np.errstate(all='ignore'):
+			# 	init = init[not_fixed]
+			# 	model.res, model.jac, model.hess_inv, params = self._mle(x=x, c=c, n=n, t=t, init=init)
+			# 	model.params = tuple(params)
 
 		elif how == 'MPS':
 			# Maximum Product Spacing
@@ -359,6 +448,7 @@ class ParametricFitter():
 			# Mean Square Error
 			model.res = self._mse(x=x, c=c, n=n, init=init)
 			model.params = tuple(model.res.x)
+
 		return model
 
 	def fit_from_df(self, df, **kwargs):
@@ -388,9 +478,10 @@ class ParametricFitter():
 		return self.fit(x, c, n, how, **kwargs)
 
 	def from_params(self, params):
-		model = para.Parametric()
 		if self.k != len(params):
 			raise ValueError("Must have {k} params for {dist} distribution".format(k=self.k, dist=self.name))
+
+		model = para.Parametric()
 		model.params = params
 		for i, (low, upp) in enumerate(self.bounds):
 			if low is None:

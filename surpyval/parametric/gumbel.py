@@ -26,7 +26,7 @@ class Gumbel_(ParametricFitter):
 		}
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		return np.mean(x), 1.
+		return para.Gumbel.fit(x, c, n, how='MPP').params
 
 	def sf(self, x, mu, sigma):
 		return np.exp(-np.exp((x - mu)/sigma))

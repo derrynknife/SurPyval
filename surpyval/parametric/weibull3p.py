@@ -65,7 +65,8 @@ class Weibull3p_(ParametricFitter):
 		return alpha * gamma_func(1 + 1/beta) + gamma
 
 	def moment(self, n, alpha, beta, gamma):
-		return alpha**n * gamma_func(1 + n/beta) + gamma**n
+		# This is wrong.
+		return (alpha - gamma)**n * gamma_func(1 + n/beta)
 
 	def random(self, size, alpha, beta, gamma):
 		U = uniform.rvs(size=size)
