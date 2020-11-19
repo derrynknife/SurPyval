@@ -27,6 +27,7 @@ from surpyval.parametric import LogNormal
 from surpyval.parametric import Logistic
 from surpyval.parametric import LogLogistic
 from surpyval.parametric import Gamma
+from surpyval.parametric import Beta
 
 from surpyval.parametric import LFP
 from surpyval.parametric import MixtureModel

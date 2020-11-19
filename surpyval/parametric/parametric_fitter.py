@@ -72,12 +72,13 @@ class ParametricFitter():
 			like = self.like_with_interval(x, c, n, *params)
 		else:
 			like = self.like(x, c, n, *params)
-		like = np.where(like <= 0, surpyval.TINIEST, like)
-		like = np.where(like < 1, like, 1)
-		if t is not None:
-			like = np.log(like) - np.log(self.like_t(t, *params))
-		else:
-			like = np.log(like)
+		# like = np.where(like <= 0, surpyval.TINIEST, like)
+		# like = np.where(like < 1, like, 1)
+		# if t is not None:
+		# 	like = np.log(like) - np.log(self.like_t(t, *params))
+		# else:
+		# 	like = np.log(like)
+		like = np.log(like)
 		like = np.multiply(n, like)
 		like = -np.sum(like)
 		return like

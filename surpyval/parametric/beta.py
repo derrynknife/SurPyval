@@ -1,12 +1,16 @@
+import types
 import autograd.numpy as np
 from autograd import jacobian
 from scipy.stats import uniform
 from scipy.optimize import approx_fprime
+from scipy.special import betainc, betaincinv
 from scipy.special import gamma as gamma_func
-from autograd.scipy.special import gamma as agamma
 from scipy.special import gammainc, gammaincinv
 from autograd_gamma import gammainc as agammainc
+from autograd.scipy.special import beta as abeta
+from autograd_gamma import betainc as abetainc
 from scipy.special import ndtri as z
+
 
 from scipy.optimize import minimize
 from scipy.stats import pearsonr
@@ -16,7 +20,7 @@ from surpyval import parametric as para
 from surpyval import nonparametric as nonp
 from surpyval.parametric.parametric_fitter import ParametricFitter
 
-class Gamma_(ParametricFitter):
+class Beta_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
 		self.k = 2
@@ -34,11 +38,11 @@ class Gamma_(ParametricFitter):
 		}
 
 	def parameter_initialiser(self, x, c=None, n=None):
-		# These equations are truly magical
-		s = np.log(x.sum()/len(x)) - np.log(x).sum()/len(x)
-		alpha = (3 - s + np.sqrt((s - 3)**2 + 24*s)) / (12*s)
-		beta = x.sum()/(len(x)*alpha)
-		return alpha, 1./beta
+		if (c is not None) & ((c == 0).all()):
+			p = tuple(self._mom(x, n, [1., 1.]).x)
+		else:
+			p = 1., 1.
+		return p
 
 	def sf(self, x, alpha, beta):
 		return 1 - self.ff(x, alpha, beta)
@@ -47,10 +51,12 @@ class Gamma_(ParametricFitter):
 		return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
 
 	def ff(self, x, alpha, beta):
-		return agammainc(alpha, beta * x)
+		return abetainc(alpha, beta, x)
 
 	def df(self, x, alpha, beta):
-		return ((beta ** alpha) * x ** (alpha - 1) * np.exp(-(x * beta)) / (agamma(alpha)))
+		denom = abeta(alpha, beta)
+		out = (x**(alpha - 1) * (1 - x)**(beta - 1)) / denom
+		return out
 
 	def hf(self, x, alpha, beta):
 		return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
@@ -59,61 +65,35 @@ class Gamma_(ParametricFitter):
 		return -np.log(self.sf(x, alpha, beta))
 
 	def qf(self, p, alpha, beta):
-		return gammaincinv(alpha, p) / beta
+		return betaincinv(alpha, beta, p)
 
 	def mean(self, alpha, beta):
-		return alpha / beta
+		return alpha / (alpha + beta)
 
 	def moment(self, n, alpha, beta):
-		return agamma(n + alpha) / (beta**n * agamma(alpha))
+		return gamma_func(n + alpha) / (beta**n * gamma_func(alpha))
 
 	def random(self, size, alpha, beta):
 		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta)
 
-	def mpp_y_transform(self, y, alpha):
-		return gammaincinv(alpha, y)
-
-	def mpp_inv_y_transform(self, y, alpha):
-		return agammainc(alpha, y)
-
-	def mpp_x_transform(self, x):
-		return x
-
 	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
-		x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+		raise NotImplementedError("Probability Plotting Method for Beta distribution")
 
-		if on_d_is_0:
-			pass
-		else:
-			F = F[d > 0]
-			x = x[d > 0]
+	def _mom(self, x, n, init):
+		"""
+		MOM: Method of Moments for the beta distribution has an analytic answer.
+		"""
+		mean = np.repeat(x, n).mean()
+		var = np.repeat(x, n).var()
+		term1 = ((mean*(1 - mean)/var) - 1)
+		alpha =  term1 * mean
+		beta = term1 * (1 - mean)
 
-		# Really useful for 3 parameter gamma, but surprisingly, not for two k
-		#fun = lambda a : -pearsonr(x, self.mpp_y_transform(F, a))[0]
-		#res = minimize(fun, [1.], bounds=((0, None),))
-		#alpha = res.x[0]
-
-		init = self.parameter_initialiser(x, c, n)[0]
-
-		if rr == 'y':
-			# Three parameter
-			#beta = np.polyfit(x, self.mpp_y_transform(F, alpha), deg=1)[0]
-			x = x[:,np.newaxis]
-			fun = lambda a : np.linalg.lstsq(x, self.mpp_y_transform(F, a))[1]
-			res = minimize(fun, init, bounds=((0, None),))
-			alpha = res.x[0]
-			beta, residuals, _, _ = np.linalg.lstsq(x, self.mpp_y_transform(F, alpha))
-			beta = beta[0]
-		else:
-			# Three parameter
-			#beta = 1./np.polyfit(self.mpp_y_transform(F, alpha), x, deg=1)[0]
-			fun = lambda a : np.linalg.lstsq(self.mpp_y_transform(F, a)[:, np.newaxis], x)[1]
-			res = minimize(fun, init, bounds=((0, None),))
-			alpha = res.x[0]
-			beta = np.linalg.lstsq(self.mpp_y_transform(F, alpha)[:, np.newaxis], x)[0]
-			beta = 1./beta
-		return alpha, beta
+		# Need to keep fitter constant
+		res = types.SimpleNamespace()
+		res.x = [alpha, beta]
+		return res
 
 	def var_R(self, dR, cv_matrix):
 		dr_dalpha = dR[:, 0]
@@ -143,4 +123,4 @@ class Gamma_(ParametricFitter):
 		R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
 		return R_cb.T
 
-Gamma = Gamma_('Gamma')
+Beta = Beta_('Beta')

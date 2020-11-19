@@ -25,6 +25,7 @@ from .expo_weibull import ExpoWeibull
 from .normal import Normal
 from .lognormal import LogNormal
 from .gamma import Gamma
+from .beta import Beta
 from .uniform import Uniform
 from .weibull_mix2 import Weibull_Mix_Two
 from .wmm import WMM
