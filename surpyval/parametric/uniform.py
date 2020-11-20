@@ -68,6 +68,11 @@ class Uniform_(ParametricFitter):
 		U = uniform.rvs(size=size)
 		return self.qf(U, a, b)
 
+	def _mle__(self, x, c, n, t, const, trans, inv_fs, init, fixed_idx):
+		x_ = x[c == 0]
+		params = np.min(x_), np.max(x_)
+		return None, None, None, params
+
 	def mpp_x_transform(self, x):
 		return x
 

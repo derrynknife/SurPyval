@@ -83,7 +83,7 @@ class Weibull3p_(ParametricFitter):
 
 	def du(self, x, alpha, beta, gamma):
 		du_dbeta = np.log(x - gamma) - np.log(alpha)
-		du_dalpha  = -beta/alpha
+		du_dalpha  = np.array(-beta/alpha)
 		du_dgamma = beta / (gamma - x)
 		return du_dalpha, du_dbeta, du_dgamma
 

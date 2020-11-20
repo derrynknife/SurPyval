@@ -54,9 +54,7 @@ class Beta_(ParametricFitter):
 		return abetainc(alpha, beta, x)
 
 	def df(self, x, alpha, beta):
-		denom = abeta(alpha, beta)
-		out = (x**(alpha - 1) * (1 - x)**(beta - 1)) / denom
-		return out
+		return (x**(alpha - 1) * (1 - x)**(beta - 1)) / abeta(alpha, beta)
 
 	def hf(self, x, alpha, beta):
 		return self.df(x, alpha, beta) / self.sf(x, alpha, beta)

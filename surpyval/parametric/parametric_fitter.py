@@ -232,7 +232,7 @@ class ParametricFitter():
 		else:
 			return res, jac, hess_inv, tuple(res.x)
 
-	def _mle__(self, x, c, n, t, const, trans, inv_fs, init):
+	def _mle__(self, x, c, n, t, const, trans, inv_fs, init, fixed_idx):
 		"""
 		MLE: Maximum Likelihood estimate
 		"""
@@ -257,8 +257,10 @@ class ParametricFitter():
 			res = minimize(fun, init, method='BFGS', jac=jac)
 			hess_inv = res.hess_inv
 
-		# It's working!! 
-		# unpack the constraints
+		fun_hess = lambda params: self.neg_ll(x, c, n, t, *params)
+		hess_inv = inv(hessian(fun_hess)(inv_fs(const(res.x))))
+
+		# TODO: Set constrained variable columns and rows to 0
 		return res, jac, hess_inv, inv_fs(const(res.x))
 
 	def _mom(self, x, n, init):
@@ -415,6 +417,7 @@ class ParametricFitter():
 			const = constraints
 		else:
 			const = lambda x : x
+			fixed_idx = []
 
 		if how == 'MLE':
 			# Maximum Likelihood
@@ -422,7 +425,8 @@ class ParametricFitter():
 				init = transform(init)
 				if fixed is not None:
 					init = init[not_fixed]
-				model.res, model.jac, model.hess_inv, params = self._mle__(x=x, c=c, n=n, t=t, const=const, trans=transform, inv_fs=inv_trans, init=init)
+				model.res, model.jac, model.hess_inv, params = self._mle__(x=x, c=c, n=n, t=t, 
+					const=const, trans=transform, inv_fs=inv_trans, init=init, fixed_idx=fixed_idx)
 				model.params = tuple(params)
 
 			# with np.errstate(all='ignore'):
@@ -498,13 +502,3 @@ class ParametricFitter():
 				raise ValueError("Params {params} must be in bounds {bounds}".format(params=', '.join(self.param_names), bounds=self.bounds))
 		model.dist = self
 		return model
-
-
-
-
-
-
-
-
-
-
