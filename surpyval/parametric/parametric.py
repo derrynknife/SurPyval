@@ -216,6 +216,11 @@ class Parametric():
 			plt.gca().set_yscale('function',
 				functions=(lambda x : self.dist.mpp_y_transform(x, self.params[0]),
 						   lambda x : self.dist.mpp_inv_y_transform(x, self.params[0])))
+		elif self.dist.name == 'Beta':
+			# The y scale for the gamm distribution is dependent on the shape
+			plt.gca().set_yscale('function',
+				functions=(lambda x : self.dist.mpp_y_transform(x, *self.params),
+						   lambda x : self.dist.mpp_inv_y_transform(x, *self.params)))
 		else:
 			plt.gca().set_yscale('function', 
 				functions=(self.dist.mpp_y_transform, 

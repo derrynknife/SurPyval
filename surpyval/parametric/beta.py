@@ -75,6 +75,15 @@ class Beta_(ParametricFitter):
 		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta)
 
+	def mpp_y_transform(self, y, alpha, beta):
+		return self.qf(y, alpha, beta)
+
+	def mpp_inv_y_transform(self, y, alpha, beta):
+		return abetainc(y, alpha, beta)
+
+	def mpp_x_transform(self, x):
+		return x
+
 	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
 		raise NotImplementedError("Probability Plotting Method for Beta distribution")
 
