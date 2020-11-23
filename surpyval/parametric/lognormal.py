@@ -12,7 +12,7 @@ class LogNormal_(ParametricFitter):
 		self.name = name
 		self.k = 2
 		self.bounds = ((0, None), (0, None),)
-		self.use_autograd = True
+		# self.use_autograd = True
 		self.plot_x_scale = 'log'
 		self.y_ticks = [0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999]
 		self.param_names = ['mu', 'sigma']
