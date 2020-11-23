@@ -51,22 +51,15 @@ class ParametricFitter():
 		return t_denom
 
 	def neg_ll_trunc(self, x, c, n, t, *params):
-		# This is going to get difficult
-		# if 2 in c:
-		like = self.like_with_interval(x, c, n, *params)
-		# else:
-			# like = self.like(x, c, n, *params)
-
-		like = np.where(like <= surpyval.TINIEST, surpyval.TINIEST, like)
-		like = np.where(like < 1, like, 1)
-		if t is not None:
-			like = np.log(like) - np.log(self.like_t(t, *params))
+		if 2 in c:
+			like = self.like_with_interval(x, c, n, *params)
 		else:
-			like = np.log(like)
+			like = self.like(x, c, n, *params)
+		like = np.log(like) - np.log(self.like_t(t, *params))
 		like = np.multiply(n, like)
 		return -np.sum(like)
 
-	def neg_ll(self, x, c, n, t, *params):
+	def neg_ll(self, x, c, n, *params):
 		# Where the magic happens
 		if 2 in c:
 			like = self.like_with_interval(x, c, n, *params)
@@ -74,10 +67,6 @@ class ParametricFitter():
 			like = self.like(x, c, n, *params)
 		# like = np.where(like <= 0, surpyval.TINIEST, like)
 		# like = np.where(like < 1, like, 1)
-		# if t is not None:
-		# 	like = np.log(like) - np.log(self.like_t(t, *params))
-		# else:
-		# 	like = np.log(like)
 		like = np.log(like)
 		like = np.multiply(n, like)
 		like = -np.sum(like)
@@ -237,7 +226,12 @@ class ParametricFitter():
 		MLE: Maximum Likelihood estimate
 		"""
 		# fail = False
-		fun = lambda params: self.neg_ll(x, c, n, t, *inv_fs(const(params)))
+		if t is None:
+			fun = lambda params: self.neg_ll(x, c, n, *inv_fs(const(params)))
+			fun_hess = lambda params: self.neg_ll(x, c, n, *params)
+		else:
+			fun = lambda params: self.neg_ll_trunc(x, c, n, t, *inv_fs(const(params)))
+			fun_hess = lambda params: self.neg_ll(x, c, n, t, *params)
 		# if self.use_autograd:
 		try:
 			jac  = jacobian(fun)
@@ -257,7 +251,6 @@ class ParametricFitter():
 			res = minimize(fun, init, method='BFGS', jac=jac)
 			hess_inv = res.hess_inv
 
-		fun_hess = lambda params: self.neg_ll(x, c, n, t, *params)
 		p_hat = inv_fs(const(res.x))
 		hess_inv = inv(hessian(fun_hess)(p_hat))
 
