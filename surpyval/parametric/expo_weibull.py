@@ -1,5 +1,6 @@
 import autograd.numpy as np
 from scipy.stats import uniform
+from autograd import jacobian
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
 from scipy.special import ndtri as z
@@ -117,5 +118,5 @@ class ExpoWeibull_(ParametricFitter):
 			beta  = 1./params[0]
 			alpha = np.exp(params[1] / (beta * params[0]))
 		return alpha, beta, 1.
-
+		
 ExpoWeibull = ExpoWeibull_('ExpoWeibull')

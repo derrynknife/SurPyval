@@ -182,7 +182,7 @@ class ParametricFitter():
 		res = minimize(fun, init, bounds=bounds)
 		return res
 
-	def _mle(self, x, c, n, t, init, fixed=None):
+	def _mle__(self, x, c, n, t, init, fixed=None):
 		"""
 		MLE: Maximum Likelihood estimate
 		"""
@@ -232,36 +232,37 @@ class ParametricFitter():
 		else:
 			return res, jac, hess_inv, tuple(res.x)
 
-	def _mle__(self, x, c, n, t, const, trans, inv_fs, init, fixed_idx):
+	def _mle(self, x, c, n, t, const, trans, inv_fs, init, fixed_idx):
 		"""
 		MLE: Maximum Likelihood estimate
 		"""
-		fail = False
+		# fail = False
 		fun = lambda params: self.neg_ll(x, c, n, t, *inv_fs(const(params)))
-		if self.use_autograd:
-				try:
-					jac  = jacobian(fun)
-					hess = hessian(fun)
-					res  = minimize(fun, init, 
-									method='trust-exact', 
-									jac=jac, 
-									hess=hess, 
-									tol=1e-10)
-					hess_inv = inv(res.hess)
-				except:
-					print("Autograd attempt failed, using without hessian")
-					fail = True
+		# if self.use_autograd:
+		try:
+			jac  = jacobian(fun)
+			hess = hessian(fun)
+			res  = minimize(fun, init, 
+							method='trust-exact', 
+							jac=jac, 
+							hess=hess, 
+							tol=1e-10)
+			hess_inv = inv(res.hess)
+		except:
+			print("Autograd attempt failed, using without hessian")
+			# fail = True
 
-		if (fail) | (not self.use_autograd):
+		# if (fail) | (not self.use_autograd):
 			jac = lambda xx : approx_fprime(xx, fun, surpyval.EPS)
 			res = minimize(fun, init, method='BFGS', jac=jac)
 			hess_inv = res.hess_inv
 
 		fun_hess = lambda params: self.neg_ll(x, c, n, t, *params)
-		hess_inv = inv(hessian(fun_hess)(inv_fs(const(res.x))))
+		p_hat = inv_fs(const(res.x))
+		hess_inv = inv(hessian(fun_hess)(p_hat))
 
-		# TODO: Set constrained variable columns and rows to 0
-		return res, jac, hess_inv, inv_fs(const(res.x))
+
+		return res, jac, hess_inv, p_hat
 
 	def _mom(self, x, n, init):
 		"""
@@ -365,8 +366,8 @@ class ParametricFitter():
 
 		if how != 'MPP':
 			init = np.array(self.parameter_initialiser(x, c, n))
-			# init = np.array([1., 1.])
 
+			# TODO: Refactor!
 			def pass_through(x):
 				return x
 
@@ -425,14 +426,9 @@ class ParametricFitter():
 				init = transform(init)
 				if fixed is not None:
 					init = init[not_fixed]
-				model.res, model.jac, model.hess_inv, params = self._mle__(x=x, c=c, n=n, t=t, 
+				model.res, model.jac, model.hess_inv, params = self._mle(x=x, c=c, n=n, t=t, 
 					const=const, trans=transform, inv_fs=inv_trans, init=init, fixed_idx=fixed_idx)
 				model.params = tuple(params)
-
-			# with np.errstate(all='ignore'):
-			# 	init = init[not_fixed]
-			# 	model.res, model.jac, model.hess_inv, params = self._mle(x=x, c=c, n=n, t=t, init=init)
-			# 	model.params = tuple(params)
 
 		elif how == 'MPS':
 			# Maximum Product Spacing

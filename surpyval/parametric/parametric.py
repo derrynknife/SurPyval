@@ -56,14 +56,43 @@ class Parametric():
 	def entropy(self):
 		return self.dist.entropy(*self.params)
 
-	def cb(self, x, sig):
-		if self.method != 'MLE':
-			raise Exception('Only MLE has confidence bounds')
+	# def cb(self, x, sig):
+	# 	if self.method != 'MLE':
+	# 		raise Exception('Only MLE has confidence bounds')
 			
-		du = z(sig) * np.sqrt(var_u)
-		u_u = u_hat + du
-		u_l = u_hat - du
-		return np.vstack([np.exp(-np.exp(u_u)), np.exp(-np.exp(u_l))])
+	# 	du = z(sig) * np.sqrt(var_u)
+	# 	u_u = u_hat + du
+	# 	u_l = u_hat - du
+	# 	return np.vstack([np.exp(-np.exp(u_u)), np.exp(-np.exp(u_l))])
+
+	# def R_cb(self, x, cb=0.05):
+	# 	return self.dist.R_cb(x, *self.params, self.hess_inv, cb=cb)
+
+	def R_cb(self, t, cb=0.05):
+		"""
+		Nailed this. Can be used elsewhere if needed
+		"""
+		if hasattr(self.dist, 'R_cb'):
+			return self.dist.R_cb(t, *self.params, self.hess_inv, cb=cb)
+
+		sf_func = lambda params : self.dist.sf(t, *params)
+
+		pvars = self.hess_inv[np.triu_indices(self.hess_inv.shape[0])]
+		with np.errstate(all='ignore'):
+			jac = jacobian(sf_func)(np.array(self.params))
+
+
+			
+		var_u = []
+		for i, j in enumerate(jac):
+			j = np.atleast_2d(j).T * j
+			j = j[np.triu_indices(j.shape[0])] 
+			var_u.append(np.sum(j * pvars))
+		diff = z(cb/2) * np.sqrt(np.array(var_u)) * np.array([1., -1.]).reshape(2, 1)
+		R_hat = self.sf(t)
+		exponent = diff/(R_hat*(1 - R_hat))
+		R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
+		return R_cb.T
 
 	def ll(self):
 		if hasattr(self, 'log_like'):
@@ -172,14 +201,23 @@ class Parametric():
 			x_ticks_labels = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & 
 							(x > 1) else str(x) for x in x_ticks]
 
-		if hasattr(self.dist, 'R_cb') & hasattr(self, 'hess_inv'):
-			if self.hess_inv is not None:
-				if self.dist.name == 'Weibull3p':
-					cbs = 1 - self.dist.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
-				else:
-					cbs = 1 - self.dist.R_cb(x_model, *self.params, self.hess_inv, cb=cb)
+		# if hasattr(self.dist, 'R_cb') & hasattr(self, 'hess_inv'):
+		# 	if self.hess_inv is not None:
+		# 		if self.dist.name == 'Weibull3p':
+		# 			cbs = 1 - self.dist.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
+		# 		else:
+		# 			cbs = 1 - self.dist.R_cb(x_model, *self.params, self.hess_inv, cb=cb)
+		# 	else:
+		# 		cbs = []
+		# else:
+		# 	cbs = []
+
+		if hasattr(self, 'hess_inv'):
+			if self.dist.name == 'Weibull3p':
+				# cbs = 1 - self.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
+				cbs = 1 - self.R_cb(x_model + self.params[2], cb=cb)
 			else:
-				cbs = []
+				cbs = 1 - self.R_cb(x_model, cb=cb)
 		else:
 			cbs = []
 
