@@ -13,6 +13,7 @@ class Gumbel_(ParametricFitter):
 		self.name = name
 		self.k = 2
 		self.bounds = ((None, None), (0, None),)
+		self.support = (-np.inf, np.inf)
 		# self.use_autograd = True
 		self.plot_x_scale = 'linear'
 		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
@@ -25,7 +26,7 @@ class Gumbel_(ParametricFitter):
 			'sigma' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def parameter_initialiser(self, x, c=None, n=None, offset=None):
 		return para.Gumbel.fit(x, c, n, how='MPP').params
 
 	def sf(self, x, mu, sigma):
@@ -58,13 +59,13 @@ class Gumbel_(ParametricFitter):
 		U = uniform.rvs(size=size)
 		return self.qf(U, mu, sigma)
 
-	def mpp_x_transform(self, x):
-		return x
+	def mpp_x_transform(self, x, gamma=0):
+		return x - gamma
 
-	def mpp_y_transform(self, y):
+	def mpp_y_transform(self, y, *params):
 		return np.log(-np.log((1 - y)))
 
-	def mpp_inv_y_transform(self, y):
+	def mpp_inv_y_transform(self, y, *params):
 		return 1 - np.exp(-np.exp(y))
 
 	def unpack_rr(self, params, rr):

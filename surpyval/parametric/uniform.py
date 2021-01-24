@@ -20,8 +20,8 @@ class Uniform_(ParametricFitter):
 			'b' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
-		return np.min(x), np.max(x)
+	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+		return np.min(x) - 1., np.max(x) + 1.
 
 	def sf(self, x, a, b):
 		return 1 - self.ff(x, a, b)
@@ -76,10 +76,10 @@ class Uniform_(ParametricFitter):
 	def mpp_x_transform(self, x):
 		return x
 
-	def mpp_y_transform(self, y):
+	def mpp_y_transform(self, y, *params):
 		return y
 
-	def mpp_inv_y_transform(self, y):
+	def mpp_inv_y_transform(self, y, *params):
 		return y
 
 Uniform = Uniform_('Uniform')

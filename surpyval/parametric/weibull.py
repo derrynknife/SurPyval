@@ -7,12 +7,15 @@ from scipy.special import ndtri as z
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter
 
+from .fitters.mpp import mpp
+
 class Weibull_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
 		# Set 'k', the number of parameters
 		self.k = 2
 		self.bounds = ((0, None), (0, None),)
+		self.support = (0, np.inf)
 		# self.use_autograd = True
 		self.plot_x_scale = 'log'
 		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
@@ -25,19 +28,22 @@ class Weibull_(ParametricFitter):
 			'beta' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def parameter_initialiser(self, x, c=None, n=None, offset=False):
 		log_x = np.log(x)
 		log_x[np.isnan(log_x)] = -np.inf
-		gumb = para.Gumbel.fit(log_x, c, n, how='MLE')
-		if not gumb.res.success:
-			gumb = para.Gumbel.fit(log_x, c, n, how='MPP')
-		mu, sigma = gumb.params
-		alpha, beta = np.exp(mu), 1. / sigma
-		if (np.isinf(alpha) | np.isnan(alpha)):
-			alpha = np.median(x)
-		if (np.isinf(beta) | np.isnan(beta)):
-			beta = 1.
-		return alpha, beta
+		if offset:
+			return mpp(dist=self, x=x, c=c, n=n, on_d_is_0=True, offset=True)
+		else:
+			gumb = para.Gumbel.fit(log_x, c, n, how='MLE')
+			if not gumb.res.success:
+				gumb = para.Gumbel.fit(log_x, c, n, how='MPP')
+			mu, sigma = gumb.params
+			alpha, beta = np.exp(mu), 1. / sigma
+			if (np.isinf(alpha) | np.isnan(alpha)):
+				alpha = np.median(x)
+			if (np.isinf(beta) | np.isnan(beta)):
+				beta = 1.
+			return alpha, beta
 
 	def sf(self, x, alpha, beta):
 		return np.exp(-(x / alpha)**beta)
@@ -76,10 +82,13 @@ class Weibull_(ParametricFitter):
 	def mpp_x_transform(self, x):
 		return np.log(x)
 
-	def mpp_y_transform(self, y):
+	def mpp_inv_x_transform(self, x, gamma=0):
+		return np.exp(x - gamma)
+
+	def mpp_y_transform(self, y, *params):
 		return np.log(-np.log((1 - y)))
 
-	def mpp_inv_y_transform(self, y):
+	def mpp_inv_y_transform(self, y, *params):
 		return 1 - np.exp(-np.exp(y))
 
 	def unpack_rr(self, params, rr):

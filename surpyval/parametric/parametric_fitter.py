@@ -5,25 +5,34 @@ from autograd.numpy.linalg import inv
 from scipy.optimize import minimize
 from scipy.optimize import approx_fprime
 from scipy.stats import pearsonr
+from scipy.integrate import quad
 
 import surpyval
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 
 import pandas as pd
+from copy import deepcopy
+
+from .fitters.mom import mom
+from .fitters.mle import mle
+from .fitters.mps import mps
+from .fitters.mse import mse
+from .fitters.mpp import mpp
 
 PARA_METHODS = ['MPP', 'MLE', 'MPS', 'MSE', 'MOM']
 
 class ParametricFitter():
-	def parameter_initialiser_(self, x, c, n):
+	def parameter_initialiser_(self, x, c, n, offset=False):
+		# Change this to simply invoke MPP
 		x, c, n, R = nonp.turnbull(x, c, n, estimator='Turnbull')
 		F = 1 - R
 		F = F[np.isfinite(x)]
 		x = x[np.isfinite(x)]
+		# Need to add offset step.
 		init = np.ones(self.k)
 		fun = lambda params : np.sum(((self.ff(x, *params)) - F)**2)
 		res = minimize(fun, init, bounds=self.bounds)
-
 		return res.x
 
 	def like_with_interval(self, x, c, n, *params):
@@ -72,40 +81,30 @@ class ParametricFitter():
 		like = -np.sum(like)
 		return like
 
-	# def neg_mean_D(self, x, c, n, *params):
-	# 	idx = np.argsort(x)
-	# 	F  = self.ff(x[idx], *params)
-	# 	D0 = F[0]
-	# 	Dn = 1 - F[-1]
-	# 	D = np.diff(F)
-	# 	D = np.concatenate([[D0], D, [Dn]])
-	# 	if c is not None:
-	# 		Dr = self.sf(x[c == 1], *params)
-	# 		Dl = self.ff(x[c == -1], *params)
-	# 		D = np.concatenate([Dl, D, Dr])
-	# 	D[D < surpyval.TINIEST] = surpyval.TINIEST
-	# 	M = np.log(D)
-	# 	M = -np.sum(M)/(M.shape[0])
-	# 	return M
-
-	def neg_mean_D(self, x, c, n, *params):
+	def neg_mean_D(self, x, c, n, *params, offset=False):
 		mask = c == 0
 		x_obs = x[mask]
 		n_obs = n[mask]
 
+		if offset:
+			gamma = params[0]
+			params = params[1::]
+		else:
+			gamma = 0
+
 		# Assumes already ordered
-		F  = self.ff(x_obs, *params)
+		F  = self.ff(x_obs - gamma, *params)
 		D0 = F[0]
 		Dn = 1 - F[-1]
 		D = np.diff(F)
 		D = np.concatenate([[D0], D, [Dn]])
 
-		Dr = self.sf(x[c ==  1], *params)
-		Dl = self.ff(x[c == -1], *params)
+		Dr = self.sf(x[c ==  1]  - gamma, *params)
+		Dl = self.ff(x[c == -1]  - gamma, *params)
 
 		if (n_obs > 1).any():
 			n_ties = (n_obs - 1).sum()
-			Df = self.df(x_obs, *params)
+			Df = self.df(x_obs  - gamma, *params)
 			Df = Df[Df != 0]
 			LL = np.concatenate([Dl, Df, Dr])
 			ll_n = np.concatenate([n[c == -1], (n_obs - 1), n[c == 1]])
@@ -124,198 +123,40 @@ class ParametricFitter():
 		LL = -(np.log(LL) * ll_n).sum()/(n.sum() - n_obs.sum() + n_ties)
 		return M + LL
 
-	def mom_moment_gen(self, *params):
-		moments = np.zeros(self.k)
-		for i in range(0, self.k):
+	def _moment(self, n, *params, offset=False):
+		## Worth doing an analytic offset moment?
+		if offset:
+			gamma = params[0]
+			params = params[1::]
+			fun = lambda x : x**n * self.df((x - gamma), *params)
+			m = quad(fun, gamma, np.inf)[0]
+		else:
+			if hasattr(self, 'moment'):
+				m = self.moment(n, *params)
+			else:
+				fun = lambda x : x**n * self.df(x, *params)
+				m = quad(fun, *self.support)[0]
+		return m
+		
+
+	def mom_moment_gen(self, *params, offset=False):
+		if offset:
+			k = self.k + 1
+		else:
+			k = self.k
+		moments = np.zeros(k)
+		for i in range(0, k):
 			n = i + 1
-			moments[i] = self.moment(n, *params)
+			moments[i] = self._moment(n, *params, offset=offset)
 		return moments
-
-	def _mse(self, x, c, n, init):
-		"""
-		MSE: Mean Square Error
-		This is simply fitting the curve to the best estimate from a non-parametric estimate.
-
-		This is slightly different in that it fits it to untransformed data on the x and 
-		y axis. The MPP method fits the curve to the transformed data. This is simply fitting
-		a the CDF sigmoid to the nonparametric estimate.
-		"""
-
-		x_, r, d, R = nonp.turnbull(x, c, n, estimator='Nelson-Aalen')
-		F = 1 - R
-		mask = np.isfinite(x_)
-		F  = F[mask]
-		x_ = x_[mask]
-		fun = lambda params : np.sum(((self.ff(x_, *params)) - F)**2)
-		res = minimize(fun, init, bounds=self.bounds)
-		# OLD MSE - changed to Turnbull for better use
-		# x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
-		# init = self.parameter_initialiser(x, c=c, n=n)
-		# fun = lambda t : np.sum(((self.ff(x, *t)) - F)**2)
-		# res = minimize(fun, init, bounds=self.bounds)
-		# self.res = res
-		return res
-
-	def _mps(self, x, c, n, init):
-		"""
-		MPS: Maximum Product Spacing
-
-		This is the method to get the largest (geometric) average distance between all points
-
-		This method works really well when all points are unique. Some complication comes in when using repeated data.
-
-		This method is exceptional for when using three parameter distributions.
-		"""
-		bounds = self.bounds
-		fun = lambda params : self.neg_mean_D(x, c, n, *params)
-		res = minimize(fun, init, bounds=bounds)
-		return res
-
-	def _mle__(self, x, c, n, t, init, fixed=None):
-		"""
-		MLE: Maximum Likelihood estimate
-		"""
-		def constraints(p, not_fixed):
-			params = np.empty(self.k)
-			for k, v in fixed.items():
-				params[self.param_map[k]] = v
-			for i, v in zip(not_fixed, p):
-				params[i] = v
-			return params
-
-		fail = False
-
-		if fixed is not None:
-			fixed_idx = [self.param_map[x] for x in fixed.keys()]
-			not_fixed = np.array([x for x in range(self.k) if x not in fixed_idx])
-			fun = lambda params: self.neg_ll(x, c, n, t, *constraints(params, not_fixed))
-			init = init[not_fixed]
-		else:
-			fun = lambda params: self.neg_ll(x, c, n, t, *params)
-
-
-		if self.use_autograd:
-				try:
-					jac  = jacobian(fun)
-					hess = hessian(fun)
-					res  = minimize(fun, init, 
-									method='trust-exact', 
-									jac=jac, 
-									hess=hess, 
-									tol=1e-10)
-					hess_inv = inv(res.hess)
-				except:
-					print("Autograd attempt failed, using without hessian")
-					fail = True
-
-		if (fail) | (not self.use_autograd):
-			jac = lambda xx : approx_fprime(xx, fun, surpyval.EPS)
-			res = minimize(fun, init, method='BFGS', jac=jac)
-			hess_inv = res.hess_inv
-
-		# It's working!! 
-		# unpack the constraints
-		if fixed is not None:
-			np.matrix(np.empty(shape=(self.k, self.k)))
-			return res, jac, None, constraints(res.x, not_fixed)
-		else:
-			return res, jac, hess_inv, tuple(res.x)
-
-	def _mle(self, x, c, n, t, const, trans, inv_fs, init, fixed_idx):
-		"""
-		MLE: Maximum Likelihood estimate
-		"""
-		# fail = False
-		if t is None:
-			fun = lambda params: self.neg_ll(x, c, n, *inv_fs(const(params)))
-			fun_hess = lambda params: self.neg_ll(x, c, n, *params)
-		else:
-			fun = lambda params: self.neg_ll_trunc(x, c, n, t, *inv_fs(const(params)))
-			fun_hess = lambda params: self.neg_ll(x, c, n, t, *params)
-		# if self.use_autograd:
-		try:
-			jac  = jacobian(fun)
-			hess = hessian(fun)
-			res  = minimize(fun, init, 
-							method='trust-exact', 
-							jac=jac, 
-							hess=hess, 
-							tol=1e-10)
-			hess_inv = inv(res.hess)
-		except:
-			print("Autograd attempt failed, using without hessian")
-			# fail = True
-
-		# if (fail) | (not self.use_autograd):
-			jac = lambda xx : approx_fprime(xx, fun, surpyval.EPS)
-			res = minimize(fun, init, method='BFGS', jac=jac)
-			hess_inv = res.hess_inv
-
-		p_hat = inv_fs(const(res.x))
-		hess_inv = inv(hessian(fun_hess)(p_hat))
-
-
-		return res, jac, hess_inv, p_hat
-
-	def _mom(self, x, n, init):
-		"""
-		MOM: Method of Moments.
-
-		This is one of the simplest ways to calculate the parameters of a distribution.
-
-		This method is quick but only works with uncensored data.
-		# Can I add a simple sum(c) instead of length to work with censoring?
-		"""
-		x_ = np.repeat(x, n)
-
-		moments = np.zeros(self.k)
-		for i in range(0, self.k):
-			moments[i] = np.sum(x_**(i+1)) / len(x_)
-
-		fun = lambda params : np.sum((moments - self.mom_moment_gen(*params))**2)
-		res = minimize(fun, init, bounds=self.bounds)
-		return res
-
-	def _mpp(self, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False):
-		if rr not in ['x', 'y']:
-			raise ValueError("rr must be either 'x' or 'y'")
-		"""
-		MPP: Method of Probability Plotting
-		Yes, the order of this language was invented to keep MXX format consistent
-		This is the classic probability plotting paper method.
-
-		This method creates the plotting points, transforms it to Weibull scale and then fits the line of best fit.
-
-		Fit a two parameter Weibull distribution from data.
-		
-		Fits a Weibull model using cumulative probability from x values. 
-		"""
-		x_, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
-		
-		if not on_d_is_0:
-			x_ = x_[d > 0]
-			y_ = F[d > 0]
-
-		# Linearise
-		x_pp = self.mpp_x_transform(x_)
-		y_pp = self.mpp_y_transform(y_)
-
-		mask = np.isfinite(y_pp)
-		y_pp = y_pp[mask]
-		x_pp = x_pp[mask]
-
-		if   rr == 'y':
-			params = np.polyfit(x_pp, y_pp, 1)
-		elif rr == 'x':
-			params = np.polyfit(y_pp, x_pp, 1)
-
-		params = self.unpack_rr(params, rr)
-
-		return params
 
 	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
 		#Truncated data
 		t = kwargs.pop('t', None)
+		offset = kwargs.pop('offset', False)
+
+		if offset and self.name in ['Normal', 'Beta', 'Uniform']:
+			raise ValueError('{dist} distribution cannot be offset'.format(dist=self.name))
 
 		if how not in PARA_METHODS:
 			raise ValueError('"how" must be one of: ' + str(PARA_METHODS))
@@ -344,7 +185,11 @@ class ParametricFitter():
 			raise ValueError('Probability plotting estimation with left or interval censoring only works with Turnbull heuristic')
 
 		# Passed checks
-		model = para.Parametric()
+		if offset:
+			model = para.OffsetParametric()
+		else:
+			model = para.Parametric()
+
 		model.method = how
 		model.heuristic = heuristic
 		model.dist = self
@@ -357,8 +202,17 @@ class ParametricFitter():
 
 		fixed = kwargs.pop('fixed', None)
 
+		bounds = deepcopy(self.bounds)
+		if offset:
+			bounds = ((None, np.min(x)), *bounds)
+			offset_index_inc = 1
+		else:
+			offset_index_inc = 0
+		model.bounds = bounds
+
 		if how != 'MPP':
-			init = np.array(self.parameter_initialiser(x, c, n))
+			# Need a better general fitter to include offset
+			init = np.array(self.parameter_initialiser(x, c, n, offset=offset))
 
 			# TODO: Refactor!
 			def pass_through(x):
@@ -378,7 +232,7 @@ class ParametricFitter():
 
 			funcs = []
 			inv_f = []
-			for l, u in self.bounds:
+			for l, u in bounds:
 				if (l is None) and (u is None):
 					funcs.append(lambda x : pass_through(x))
 					inv_f.append(lambda x : pass_through(x))
@@ -396,17 +250,27 @@ class ParametricFitter():
 			transform = lambda params : np.array([f(p) for p, f in zip(params, funcs)])
 			inv_trans = lambda params : np.array([f(p) for p, f in zip(params, inv_f)])
 
+
+		param_map = self.param_map.copy()
+		if offset:
+			gamma_map = {'gamma' : -1}
+			param_map.update(gamma_map)
+
 		if fixed is not None:
-			fixed_idx = [self.param_map[x] for x in fixed.keys()]
-			not_fixed = np.array([x for x in range(self.k) if x not in fixed_idx])
+			"""
+			Record to the model that parameters were fixed
+			"""
+			fixed_idx = [param_map[x] + offset_index_inc for x in fixed.keys()]
+			not_fixed = np.array([x for x in range(self.k + offset_index_inc) if x not in fixed_idx])
 
 			def constraints(p):
-				params = np.empty(self.k)
+				params = [0] * (self.k + offset_index_inc)
+				# params = np.empty(self.k + offset_index_inc)
 				for k, v in fixed.items():
-					params[self.param_map[k]] = funcs[self.param_map[k]](v)
+					params[param_map[k] + offset_index_inc] = funcs[param_map[k] + offset_index_inc](v)
 				for i, v in zip(not_fixed, p):
 					params[i] = v
-				return params
+				return np.array(params)
 
 			const = constraints
 		else:
@@ -419,33 +283,62 @@ class ParametricFitter():
 				init = transform(init)
 				if fixed is not None:
 					init = init[not_fixed]
-				model.res, model.jac, model.hess_inv, params = self._mle(x=x, c=c, n=n, t=t, 
-					const=const, trans=transform, inv_fs=inv_trans, init=init, fixed_idx=fixed_idx)
-				model.params = tuple(params)
+				model.res, model.jac, model.hess_inv, params = mle(dist=self, x=x, c=c, n=n, t=t, 
+					const=const, trans=transform, inv_fs=inv_trans, init=init, 
+					fixed_idx=fixed_idx, offset=offset)
+				if offset:
+					model.gamma = params[0]
+					model.params = tuple(params[1::])
+				else:
+					model.params = tuple(params)
 
 		elif how == 'MPS':
 			# Maximum Product Spacing
-			model.res = self._mps(x=x, c=c, n=n, init=init)
-			model.params = tuple(model.res.x)
+			model.res = mps(dist=self, x=x, c=c, n=n, init=init, offset=offset)
+			params = model.res.x
+			if offset:
+				model.gamma = params[0]
+				model.params = tuple(params[1::])
+			else:
+				model.params = tuple(params)
 
 		elif how == 'MOM':
 			# Method of Moments
-			model.res = self._mom(x=x, n=n, init=init)
-			model.params = tuple(model.res.x)
+			model.res = mom(dist=self, x=x, n=n, init=init, offset=offset)
+			params = tuple(model.res.x)
+			if offset:
+				model.gamma = params[0]
+				model.params = tuple(params[1::])
+			else:
+				model.params = tuple(params)
 
 		elif how == 'MPP':
 			# Method of Probability Plotting
 			rr = kwargs.get('rr', 'y')
-			model.params = tuple(self._mpp(x=x, n=n, c=c, rr=rr, heuristic=heuristic))
+			params = mpp(dist=self, x=x, n=n, c=c, rr=rr, heuristic=heuristic, offset=offset)
+			if offset:
+				model.gamma = params[0]
+				model.params = tuple(params[1::])
+			else:
+				model.params = tuple(params)
 
 		elif how == 'MSE':
 			# Mean Square Error
-			model.res = self._mse(x=x, c=c, n=n, init=init)
+			model.res = mse(dist=self, x=x, c=c, n=n, init=init)
 			model.params = tuple(model.res.x)
 
 		return model
 
 	def fit_from_df(self, df, **kwargs):
+		"""
+		For x, need to allow either:
+			- x for single, OR
+			- xl and xr for left and right interval
+		For t, need to have (for left and right interval):
+			- tl, and
+			- tr
+
+		"""
 		if not type(df) == pd.DataFrame:
 			raise ValueError("df must be a pandas DataFrame")
 

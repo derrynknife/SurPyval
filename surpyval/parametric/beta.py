@@ -37,7 +37,7 @@ class Beta_(ParametricFitter):
 			'beta'  : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def parameter_initialiser(self, x, c=None, n=None, offset=False):
 		if (c is not None) & ((c == 0).all()):
 			p = tuple(self._mom(x, n, [1., 1.]).x)
 		else:
@@ -81,8 +81,8 @@ class Beta_(ParametricFitter):
 	def mpp_inv_y_transform(self, y, alpha, beta):
 		return abetainc(y, alpha, beta)
 
-	def mpp_x_transform(self, x):
-		return x
+	def mpp_x_transform(self, x, gamma=0):
+		return x - gamma
 
 	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
 		raise NotImplementedError("Probability Plotting Method for Beta distribution")

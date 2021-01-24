@@ -11,12 +11,15 @@ from surpyval import parametric as para
 from surpyval import nonparametric as nonp
 from surpyval.parametric.parametric_fitter import ParametricFitter
 
+from .fitters.mpp import mpp
+
 class ExpoWeibull_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
 		# Set 'k', the number of parameters
 		self.k = 3
 		self.bounds = ((0, None), (0, None), (0, None),)
+		self.support = (0, np.inf)
 		# self.use_autograd = True
 		self.plot_x_scale = 'log'
 		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
@@ -30,7 +33,9 @@ class ExpoWeibull_(ParametricFitter):
 			'mu'    : 2
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+		if offset:
+			return self._mpp(dist=self, x=x, c=c, n=n, on_d_is_0=True, offset=True)
 		log_x = np.log(x)
 		log_x[np.isnan(log_x)] = 0
 		gumb = para.Gumbel.fit(log_x, c, n, how='MLE')
@@ -88,29 +93,31 @@ class ExpoWeibull_(ParametricFitter):
 		init = self.parameter_initialiser(x, c, n)
 		init = np.array(init)
 
+		y = self.mpp_y_transform(F)
+		fun = lambda a : np.linalg.lstsq(x, self.mpp_y_transform(F, x))[1]
+		res = minimize(fun, 1., bounds=((0, None),))
+		mu = res.x[0]
+
 		if rr == 'y':
-			# Three parameter
-			#beta = np.polyfit(x, self.mpp_y_transform(F, alpha), deg=1)[0]
-			y = self.mpp_y_transform(F)
-			fun = lambda params : np.sum((y - self.mpp_y_transform(self.ff(x, *params))) ** 2)
-			res = minimize(fun, init, bounds=self.bounds)
+			fun = lambda params : np.sum((y - self.mpp_y_transform(self.ff(x, *params[0:-1]), mu)) ** 2)
+			res = minimize(fun, init[0:2], bounds=self.bounds)
 		else:
-			# Three parameter
-			#beta = 1./np.polyfit(self.mpp_y_transform(F, alpha), x, deg=1)[0]
-			fun = lambda params : np.sum((np.log(x) - np.log(self.qf(F, *params))) ** 2)
-			res = minimize(fun, init, bounds=self.bounds)
-		return res.x
+			pass
+		return np.array(*res.x, mu)
 
-	def mpp_x_transform(self, x):
-		return np.log(x)
+	def mpp_x_transform(self, x, gamma=0):
+		return np.log(x - gamma)
 
-	def mpp_y_transform(self, y):
-		return np.log(-np.log((1 - y)))
+	def mpp_y_transform(self, y, *params):
+		mu = params[self.param_map['mu']]
+		return np.log(-np.log((1 - y**(1./mu))))
 
-	def mpp_inv_y_transform(self, y):
-		return 1 - np.exp(-np.exp(y))
+	def mpp_inv_y_transform(self, y, *params):
+		mu = params[self.param_map['mu']]
+		return (1 - np.exp(-np.exp(y)))**mu
 
 	def unpack_rr(self, params, rr):
+		#UPDATE ME
 		if rr == 'y':
 			beta  = params[0]
 			alpha = np.exp(params[1]/-beta)

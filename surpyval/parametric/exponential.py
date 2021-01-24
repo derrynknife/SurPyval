@@ -6,18 +6,26 @@ import surpyval
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter
+from scipy.special import factorial
+from .fitters.mpp import mpp
 
 class Exponential_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
 		self.k = 1
 		self.bounds = ((0, None),)
+		self.suport = (0, np.inf)
 		# self.use_autograd = True
 		self.plot_x_scale = 'linear'
 		self.y_ticks = [0.05, 0.4, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999, 0.9999]
 		self.param_names = ['lambda']
+		self.param_map = {
+			'lambda' : 0,
+		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+		if offset:
+			return 1., 1.
 		x, c, n = surpyval.xcn_handler(x, c, n)
 		c = (c == 0).astype(np.int64)
 		return [(n * c).sum()/x.sum()]
@@ -57,13 +65,13 @@ class Exponential_(ParametricFitter):
 		U = uniform.rvs(size=size)
 		return self.qf(U, failure_rate)
 
-	def mpp_x_transform(self, x):
-		return x
+	def mpp_x_transform(self, x, gamma=0):
+		return x - gamma
 
-	def mpp_y_transform(self, y):
+	def mpp_y_transform(self, y, *params):
 		return -np.log(1 - y)
 
-	def mpp_inv_y_transform(self, y):
+	def mpp_inv_y_transform(self, y, *params):
 		return 1 - np.exp(y)
 
 	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):

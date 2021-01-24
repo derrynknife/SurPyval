@@ -71,14 +71,16 @@ class Gamma_(ParametricFitter):
 		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta)
 
-	def mpp_y_transform(self, y, alpha):
+	def mpp_y_transform(self, y, *params):
+		alpha = params[0]
 		return gammaincinv(alpha, y)
 
-	def mpp_inv_y_transform(self, y, alpha):
+	def mpp_inv_y_transform(self, y, *params):
+		alpha = params[0]
 		return agammainc(alpha, y)
 
-	def mpp_x_transform(self, x):
-		return x
+	def mpp_x_transform(self, x, gamma=0):
+		return x - gamma
 
 	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
 		x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)

@@ -61,13 +61,13 @@ class LogLogistic_(ParametricFitter):
 		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta)
 
-	def mpp_x_transform(self, x):
-		return np.log(x)
+	def mpp_x_transform(self, x, gamma=0):
+		return np.log(x - gamma)
 
-	def mpp_y_transform(self, y):
+	def mpp_y_transform(self, y, *params):
 		return -np.log(1./y - 1)
 
-	def mpp_inv_y_transform(self, y):
+	def mpp_inv_y_transform(self, y, *params):
 		return 1./(np.exp(-y) + 1)
 
 	def unpack_rr(self, params, rr):

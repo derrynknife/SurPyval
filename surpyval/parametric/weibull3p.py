@@ -125,7 +125,7 @@ class Weibull3p_(ParametricFitter):
 		x_min = np.min(x)
 
 		# Find gamma with maximum correlation
-		gamma = np.exp(-(np.min(x) - (np.max(x) - np.min(x))/10))
+		gamma_init = np.exp(-(np.min(x) - (np.max(x) - np.min(x))/10))
 
 
 		# fun = lambda gamma : -pearsonr(np.log(x - gamma), y_)[0]
