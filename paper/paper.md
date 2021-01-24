@@ -34,8 +34,6 @@ Survival analysis is a tool that increasing numbers of scientist, data scientist
 
 Throughout this paper I use the Weibull distribution as an example. This distribution is used widely in survival analysis, in particular reliability engineering, all methods work with the other ditributions available in *SurPyval*.
 
-## Simple Surival Analysis
-
 An example:
 
 ```
