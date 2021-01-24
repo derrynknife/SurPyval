@@ -19,6 +19,7 @@ affiliations:
  - name: Independent researcher
    index: 1
 date: 23 Jan 2021
+bibliography: paper.bib
 ---
 
 # Summary
