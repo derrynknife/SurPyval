@@ -34,7 +34,7 @@ Survival analysis is a tool that increasing numbers of scientist, data scientist
 
 # Methods
 
-*SurPyval* is grouped into two sections, these are parametric and non-parametric. For the parametric capability *SurPyval* offers several methods to estimate parameters; these are Maximum Likelihood, Mean Square Error, Probability Plotting, Minimum Product Spacing, Method of Moments, and Expectation-Maximisation. The EM is only used for mixture models. For the Non-Parametric estimation *SurPyval* can estimate the survival distribution using either the Kaplan-Meier [@kaplan1958nonparametric], Nelson-Aalen [@nelson1969hazard @aalen1978nonparametric], Fleming-Harrington [@fleming2011counting], or the Turnbull [@turnbull1976empirical] estimators. Support for data types and estimation methods can be seen in Table 1.
+*SurPyval* is grouped into two sections, these are parametric and non-parametric. For the parametric capability *SurPyval* offers several methods to estimate parameters; these are Maximum Likelihood, Mean Square Error, Probability Plotting, Minimum Product Spacing, Method of Moments, and Expectation-Maximisation. The EM is only used for mixture models. For the Non-Parametric estimation *SurPyval* can estimate the survival distribution using either the Kaplan-Meier [@kaplan1958nonparametric], Nelson-Aalen [@nelson1969hazard]; [@aalen1978nonparametric], Fleming-Harrington [@fleming2011counting], or the Turnbull [@turnbull1976empirical] estimators. Support for data types and estimation methods can be seen in Table 1.
 
 | Method | Para/Non-Para | Observed | Censored | Truncated |
 | ------ | ---- |-----|------|------|
