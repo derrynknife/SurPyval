@@ -34,9 +34,25 @@ Survival analysis is a tool that increasing numbers of scientist, data scientist
 
 # Methods
 
-*SurPyval* is grouped into two sections, these are parametric and non-parametric. For the parametric capability *SurPyval* offers several methods to estimate parameters; these are Maximum Likelihood, Mean Square Error, Probability Plotting, Minimum Product Spacing, Method of Moments, and Expectation-Maximisation.
+*SurPyval* is grouped into two sections, these are parametric and non-parametric. For the parametric capability *SurPyval* offers several methods to estimate parameters; these are Maximum Likelihood, Mean Square Error, Probability Plotting, Minimum Product Spacing, Method of Moments, and Expectation-Maximisation. The EM is only used for mixture models. Support for data types and estimation methods can be seen in Table 1.
 
-Maximum Likelihood Estimation can be used for any arbitrary combination of censoring and truncation. Plotting and Mean Square Error can be used with arbitrarily censored data and limited truncation. The Minimum Spacing Estimator can be used with censored observations. The Method of Moment estimation can be used with just observed data. *SurPyval* also uses optimisations that enables fixing parameters and for 'offsets' to be calculated robustly. Fixing parameters is made clear and easy with the 'fixed' argument. Offsets are found robustly because *SurPyval* converts the bounds of an offset value from (-Inf, min(x)) to (-Inf, Inf) using a modified Exponential Linear Unit (ELU). This is inspired by the deep learning activation function, it enables the optimiser search values without there being a risk of 'nan' gradients and values. This is especially important as *SurPyval* uses autodifferentiation in the optimisation. Finally, *SurPyval* has robust nonparametric surpyval estimators that can be used to make visual comparisons between the parametric fit and nonparametric distributions. This has been used to create the plotting method that can create linearised probability plots for each distribution. *SurPyval* is an extremely powerful package with broad appeal for analysts using python in need of survival analysis tools.
+| Method | Observed | Censored | Truncated |
+| ------ |-----|------|------|
+| **MLE** | Yes | Yes | Yes |
+| **MPP** | Yes | Yes | Limited |
+| **MSE** | Yes | Yes | Limited |
+| **MOM** | Yes | No | No |
+| **MPS** | Yes | Yes | No |
+
+
+Maximum Likelihood Estimation can be used for any arbitrary combination of censoring and truncation. Plotting and Mean Square Error can be used with arbitrarily censored data and limited truncation. Specifically, these methods are limited if the maximum and minimum of the observed data are truncated obserations. This is because the Turnbull NPMLE cannot assume the shape of the distribution and therefore cannot be used to estimate by how much the highest and lowest values are truncated. The Minimum Spacing Estimator can be used with censored observations. The Method of Moment estimation can be used with just observed data.
+
+The central format used in *SurPyval* is the 'xcnt' format. This format is the variable (x), the censoring flag (c), the counts (n), and the truncation values (t). Using this format any arbitrary combination on the input can be used. The variable/failure time/time of death, x, is the measured variable that is being measured against the event.
+
+
+*SurPyval*, inspired by lifelines, uses autodifferentiation to calculate the jacobians and hessians needed for optimisations in parametric analysis. SurPyval uses lessons from deep learning to improve the stability of estimation. Concretely, SurPyval uses the ELU function [@clevert2015fast] to transform bounded parameters to be unbounded. For example, the alpha parameter for a Weibull distribution is supported on the half-real line, (0, Inf). Using the ELU function this support is then the full real line (-Inf, Inf), this reduces the risk of optimisations failing because the numeric gradient might 'overshoot' and produce undefined gradients. The ELU is also useful for autodifferentiation because it is continuously differentiable making the transform stable. This transform works sufficiently well to allow *SurPyval* to robustly estimate offsets, i.e. the 'gamma' parameter, for half real-line supported distribtuions. This substantially improves the stability of optimisation and greatly expands the possible use in research and industry.
+
+Finally, *SurPyval* has robust nonparametric surpyval estimators that can be used to make visual comparisons between the parametric fit and nonparametric distributions. This has been used to create the plotting method that can create linearised probability plots for each distribution. *SurPyval* is an extremely powerful package with broad appeal for analysts using python in need of survival analysis tools.
 
 An example:
 
@@ -53,37 +69,12 @@ N = 30
 x = Weibull.random(N, alpha, beta)
 
 model = Weibull.fit(x)
-
-print(model)
 ```
 
 Unlike other survival analysis packages *SurPyval* allows users to fix parameters. This is similar to *scipy* which allows the location, shape, and scale parameters to be fixed, in *SurPyval* this is done using the fixed keyword argument. For example:
 
-```python
-from surpyval import Weibull
-
-# Weibull parameters
-alpha = 10
-beta  = 2
-
-# Random samples
-N = 30
-
-x = Weibull.random(N, alpha, beta)
-
-model = Weibull.fit(x, fixed={'beta' : 2.})
-
-print(model)
-```
-
-Second, SurPyval, inspired by lifelines, uses autograd to calculate the jacobians and hessians needed for optimisations to do parameter estimations. SurPyval uses lessons from deep learning to improve the stability of estimation. Concretely, SurPyval uses the elu function to do isomorphic transformations on bounded parameters to allow the optimisation process to be unrestricted during search. This substantially improves the stability of optimisation. This improvement enbales the ability to stably estimate 'offset' parameters for shifted distributions. 
-
-Third, SurPyval allows a user to estimate parameters using several different parameter estimation methods, Maximum Likelihood Estimation, Method Of Moments, Method of Probability Plotting, Mean Square Error, and Minimum Product Spacing. This allows users to change the method they use to estimate the parameters of the distribution, this is useful depending on the needs of the analyst or if other methods do not work. For example, the three parameter Weibull has no solution for beta < 1, therefore another method is needed to estimate
 
 Fourth, *SurPyval* provides extensive Non-Parametric estimation methods for arbitrarily censored or truncated data. Using these methods parametric methods can have their probability plots created to allow analysts to judge fits. This is an extraordinarily powerful feature of *SurPyval* as it allows a user to call plot 
-
-
-The central format used in *SurPyval* is the 'xcnt' format. This format is the variable (x), the censoring flag (c), the counts (n), and the truncation values (t). Using this format any arbitrary combination on the input can be used. The variable/failure time/time of death, x, is the measured variable that is being measured against the event.
 
 *SurPyal* also provides utilities that assist users in wrangling their data to the 'xcnt' format.
 
