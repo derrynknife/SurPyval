@@ -1,5 +1,5 @@
 ---
-title: 'surpyval: Survival Analysis with Python'
+title: 'SurPyval: Survival Analysis with Python'
 tags:
   - survival analysis
   - parameter estimation
@@ -24,20 +24,24 @@ bibliography: paper.bib
 
 # Summary
 
-Survival analysis is a tool that increasing numbers of scientist, data scientists, engineers, econometricians, and many more professions are using to solve their problems. *SurPyval* offers analysts several methods to estiamte parameters using either Maximum Likelihood, Mean Square Error, Probability Plotting, Minimum Product Spacing, and Method of Moments. Maximum Likelihood Estimation can be used for any arbitrary combination of censoring and truncation. Plotting and Mean Square Error can be used with arbitrarily censored data and limited truncation. The Minimum Spacing Estimator can be used with censored observations. The Method of Moment estimation can be used with just observed data. *SurPyval* also uses optimisations that enables fixing parameters and for 'offsets' to be calculated robustly. Fixing parameters is made clear and easy with the 'fixed' argument. Offsets are found robustly because *SurPyval* converts the bounds of an offset value from (-Inf, min(x)) to (-Inf, Inf) using a modified Exponential Linear Unit (ELU). This is inspired by the deep learning activation function, it enables the optimiser search values without there being a risk of 'nan' gradients and values. This is especially important as *SurPyval* uses autodifferentiation in the optimisation. Finally, *SurPyval* has robust nonparametric surpyval estimators that can be used to make visual comparisons between the parametric fit and nonparametric distributions. This has been used to create the plotting method that can create linearised probability plots for each distribution. *SurPyval* is an extremely powerful package with broad appeal for analysts using python in need of survival analysis tools.
+Survival analysis is a tool that increasing numbers of scientist, data scientists, engineers, econometricians, and many more professions are using to solve their problems. Survival analysis is a unique set of tools that are used to estimate either the time to an event or the chance of an event happening. That is, survival analysis allows you to estimate how long something is likely to last or what risk there is of some event happening in future. This is vital for fields such as the medical sciences where we need to know how long someone with a particular diagnosis might live or if a treatment or intervention is successful at prolonging life. In engineering it is useful to understand the risk that fielded equipment might fail. In insurance it is necessary to help price policies and in economics it is useful for estimating the durations of recessions or the time to the next recession. Each of these applications are bugged with unique problems with data. In engineering components might not fail during the observation period, or it might fail between two inspections. In this case the data is said to be censored. In medical trials you might have subjects enter an experiment later than other subjects while for insurance claims are only lodged above the excess value on the policy. In these cases the data is said to be truncated. These considerations are unique to survival analysis and are critical to handle correctly to make appropriate predictions or find significant differences.
+
+*SurPyval* is designed to be pure Python to make installation and maintenance simple. Further, *SurPyval* is a flexible and robust survival analysis package that can take as input an arbitrary combination of observed, censored, and truncated events over a wide number of distributions and their variations. For this reason *SurPyval* is likely to be of interest to a wide field of analysts in broad industries including finance, insurance, engineering, medical science, agricultural science, economics, and many others.
 
 # Statement of need
 
-*SurPyval* fills a gap in the Python ecosystem of survival analysis. Other survival analysis packages, e.g. lifelines and reliability, offer excellent methods for most applications, but are limited many applications, for example, using offset values, fixing parameters, and arbitrary combinations of censoring and truncation. Further, *scipy* has yet to implement some basic features of survival analysis, i.e censoring. Therefore, there is a gap in the Python ecosystem for an api that is flexible to accomodate any arbitrary combination of observed failures (or deaths); left, right, or interval censored; and left or right truncated data with a single format. Commercial packages are well developed but can be expensive. R is excellent for survival analysis but many analysts now use python. Therefore there is a need to have an open source package available with flexibility to do survival analysis.
+*SurPyval* fills a gap in the Python ecosystem of survival analysis. Other survival analysis packages, e.g. *lifelines* and *reliability*, offer excellent methods for most applications, but are limited many applications, for example, using offset values, fixing parameters, and arbitrary combinations of censoring and truncation. Further, *scipy* has yet to implement some basic features of survival analysis; concretely, it does not offer censored data as an input. Therefore, there is a gap in the Python ecosystem for an API that is flexible to accomodate any arbitrary combination of observed failures (or deaths); left, right, or interval censored; and left or right truncated data with a single format. Further, *SurPyval* allows users to select an appropriate estimation method for their circumstances. MLE is used in most other applications, but the *SurPyval* implementation of Minimal Product Spacing, Method of Moments, Probability Plotting, Mean Square Error, and Expectation-Maximisation makes it a much more capable package than is currently available. Commercial packages are well developed but can be expensive. R is excellent for survival analysis but many analysts now use python as is explained in the *lifelines* paper. Therefore there is a need to have a flexible and open source python package to do survival analysis.
 
 # Methods
 
-Throughout this paper I use the Weibull distribution as an example. This distribution is used widely in survival analysis, in particular reliability engineering, all methods work with the other ditributions available in *SurPyval*.
+*SurPyval* is grouped into two sections, these are parametric and non-parametric. For the parametric capability *SurPyval* offers several methods to estimate parameters; these are Maximum Likelihood, Mean Square Error, Probability Plotting, Minimum Product Spacing, Method of Moments, and Expectation-Maximisation.
+
+Maximum Likelihood Estimation can be used for any arbitrary combination of censoring and truncation. Plotting and Mean Square Error can be used with arbitrarily censored data and limited truncation. The Minimum Spacing Estimator can be used with censored observations. The Method of Moment estimation can be used with just observed data. *SurPyval* also uses optimisations that enables fixing parameters and for 'offsets' to be calculated robustly. Fixing parameters is made clear and easy with the 'fixed' argument. Offsets are found robustly because *SurPyval* converts the bounds of an offset value from (-Inf, min(x)) to (-Inf, Inf) using a modified Exponential Linear Unit (ELU). This is inspired by the deep learning activation function, it enables the optimiser search values without there being a risk of 'nan' gradients and values. This is especially important as *SurPyval* uses autodifferentiation in the optimisation. Finally, *SurPyval* has robust nonparametric surpyval estimators that can be used to make visual comparisons between the parametric fit and nonparametric distributions. This has been used to create the plotting method that can create linearised probability plots for each distribution. *SurPyval* is an extremely powerful package with broad appeal for analysts using python in need of survival analysis tools.
 
 An example:
 
-```
-from from surpyval import Weibull
+```python
+from surpyval import Weibull
 
 # Weibull parameters
 alpha = 10
@@ -55,8 +59,8 @@ print(model)
 
 Unlike other survival analysis packages *SurPyval* allows users to fix parameters. This is similar to *scipy* which allows the location, shape, and scale parameters to be fixed, in *SurPyval* this is done using the fixed keyword argument. For example:
 
-```
-from from surpyval import Weibull
+```python
+from surpyval import Weibull
 
 # Weibull parameters
 alpha = 10
@@ -77,9 +81,6 @@ Second, SurPyval, inspired by lifelines, uses autograd to calculate the jacobian
 Third, SurPyval allows a user to estimate parameters using several different parameter estimation methods, Maximum Likelihood Estimation, Method Of Moments, Method of Probability Plotting, Mean Square Error, and Minimum Product Spacing. This allows users to change the method they use to estimate the parameters of the distribution, this is useful depending on the needs of the analyst or if other methods do not work. For example, the three parameter Weibull has no solution for beta < 1, therefore another method is needed to estimate
 
 Fourth, *SurPyval* provides extensive Non-Parametric estimation methods for arbitrarily censored or truncated data. Using these methods parametric methods can have their probability plots created to allow analysts to judge fits. This is an extraordinarily powerful feature of *SurPyval* as it allows a user to call plot 
-
-*SurPyval* aims to be pure Python to make installation and maintenance simple. 
-
 
 
 The central format used in *SurPyval* is the 'xcnt' format. This format is the variable (x), the censoring flag (c), the counts (n), and the truncation values (t). Using this format any arbitrary combination on the input can be used. The variable/failure time/time of death, x, is the measured variable that is being measured against the event.
