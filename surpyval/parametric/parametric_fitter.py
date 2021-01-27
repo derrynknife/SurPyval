@@ -222,21 +222,23 @@ class ParametricFitter():
 		if how != 'MPP':
 			# Need a better general fitter to include offset
 			init = np.array(self.parameter_initialiser(x, c, n, offset=offset))
+			init = transform(init)
+			init = init[not_fixed]
 		else:
 			# Probability plotting method does not need an initial estimate
 			pass
 
-		fix_and_const_kwargs = {}
+		fix_and_const_kwargs = {
+			'const' : const,
+			'trans' : transform,
+			'inv_fs' : inv_trans,
+			'fixed_idx' : fixed_idx,
+			'offset' : offset
+		}
 
 		if how == 'MLE':
 			# Maximum Likelihood Estimation
-			with np.errstate(all='ignore'):
-				init = transform(init)
-				if fixed is not None:
-					init = init[not_fixed]
-				model.res, model.jac, model.hess_inv, params = mle(dist=self, x=x, c=c, n=n, t=t, 
-					const=const, trans=transform, inv_fs=inv_trans, init=init, 
-					fixed_idx=fixed_idx, offset=offset)
+			model.res, model.jac, model.hess_inv, params = mle(dist=self, x=x, c=c, n=n, t=t, init=init, **fix_and_const_kwargs)
 
 		elif how == 'MPS':
 			# Maximum Product Spacing
