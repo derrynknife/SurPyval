@@ -20,6 +20,8 @@ from .fitters.mps import mps
 from .fitters.mse import mse
 from .fitters.mpp import mpp
 
+from .fitters import bounds_convert, fix_idx_and_function
+
 PARA_METHODS = ['MPP', 'MLE', 'MPS', 'MSE', 'MOM']
 
 class ParametricFitter():
@@ -203,82 +205,31 @@ class ParametricFitter():
 		fixed = kwargs.pop('fixed', None)
 
 		bounds = deepcopy(self.bounds)
+		param_map = self.param_map.copy()
 		if offset:
 			bounds = ((None, np.min(x)), *bounds)
 			offset_index_inc = 1
+			gamma_map = {'gamma' : -1}
+			param_map.update(gamma_map)
 		else:
 			offset_index_inc = 0
+
 		model.bounds = bounds
+
+		transform, inv_trans, funcs, inv_f = bounds_convert(x, bounds)
+		const, fixed_idx, not_fixed = fix_idx_and_function(self, fixed, param_map, offset_index_inc, funcs)
 
 		if how != 'MPP':
 			# Need a better general fitter to include offset
 			init = np.array(self.parameter_initialiser(x, c, n, offset=offset))
-
-			# TODO: Refactor!
-			def pass_through(x):
-				return x
-
-			def rev_adj_relu(x):
-				return -np.where(x >= 0, x + 1, np.exp(x))
-
-			def adj_relu(x):
-				return np.where(x >= 0, x + 1, np.exp(x))
-
-			def inv_adj_relu(x):
-				return np.where(x >= 1, x - 1, np.log(x))
-
-			def inv_rev_adj_relu(x):
-				return np.where(x <= -1, -x - 1, np.log(x))
-
-			funcs = []
-			inv_f = []
-			for l, u in bounds:
-				if (l is None) and (u is None):
-					funcs.append(lambda x : pass_through(x))
-					inv_f.append(lambda x : pass_through(x))
-				elif (u is None):
-					funcs.append(lambda x : adj_relu(x))
-					inv_f.append(lambda x : inv_adj_relu(x))
-				elif (l is None):
-					if u != 0:
-						upper = np.min(x)
-					else:
-						upper = 0
-					funcs.append(lambda x : upper + rev_adj_relu(x))
-					inv_f.append(lambda x : inv_rev_adj_relu(x - upper))
-
-			transform = lambda params : np.array([f(p) for p, f in zip(params, funcs)])
-			inv_trans = lambda params : np.array([f(p) for p, f in zip(params, inv_f)])
-
-
-		param_map = self.param_map.copy()
-		if offset:
-			gamma_map = {'gamma' : -1}
-			param_map.update(gamma_map)
-
-		if fixed is not None:
-			"""
-			Record to the model that parameters were fixed
-			"""
-			fixed_idx = [param_map[x] + offset_index_inc for x in fixed.keys()]
-			not_fixed = np.array([x for x in range(self.k + offset_index_inc) if x not in fixed_idx])
-
-			def constraints(p):
-				params = [0] * (self.k + offset_index_inc)
-				# params = np.empty(self.k + offset_index_inc)
-				for k, v in fixed.items():
-					params[param_map[k] + offset_index_inc] = funcs[param_map[k] + offset_index_inc](v)
-				for i, v in zip(not_fixed, p):
-					params[i] = v
-				return np.array(params)
-
-			const = constraints
 		else:
-			const = lambda x : x
-			fixed_idx = []
+			# Probability plotting method does not need an initial estimate
+			pass
+
+		fix_and_const_kwargs = {}
 
 		if how == 'MLE':
-			# Maximum Likelihood
+			# Maximum Likelihood Estimation
 			with np.errstate(all='ignore'):
 				init = transform(init)
 				if fixed is not None:
@@ -286,46 +237,33 @@ class ParametricFitter():
 				model.res, model.jac, model.hess_inv, params = mle(dist=self, x=x, c=c, n=n, t=t, 
 					const=const, trans=transform, inv_fs=inv_trans, init=init, 
 					fixed_idx=fixed_idx, offset=offset)
-				if offset:
-					model.gamma = params[0]
-					model.params = tuple(params[1::])
-				else:
-					model.params = tuple(params)
 
 		elif how == 'MPS':
 			# Maximum Product Spacing
 			model.res = mps(dist=self, x=x, c=c, n=n, init=init, offset=offset)
 			params = model.res.x
-			if offset:
-				model.gamma = params[0]
-				model.params = tuple(params[1::])
-			else:
-				model.params = tuple(params)
 
 		elif how == 'MOM':
 			# Method of Moments
 			model.res = mom(dist=self, x=x, n=n, init=init, offset=offset)
 			params = tuple(model.res.x)
-			if offset:
-				model.gamma = params[0]
-				model.params = tuple(params[1::])
-			else:
-				model.params = tuple(params)
 
 		elif how == 'MPP':
 			# Method of Probability Plotting
 			rr = kwargs.get('rr', 'y')
 			params = mpp(dist=self, x=x, n=n, c=c, rr=rr, heuristic=heuristic, offset=offset)
-			if offset:
-				model.gamma = params[0]
-				model.params = tuple(params[1::])
-			else:
-				model.params = tuple(params)
 
 		elif how == 'MSE':
 			# Mean Square Error
 			model.res = mse(dist=self, x=x, c=c, n=n, init=init)
-			model.params = tuple(model.res.x)
+			params = tuple(model.res.x)
+
+		# Unpack params and offset
+		if offset:
+			model.gamma = params[0]
+			model.params = tuple(params[1::])
+		else:
+			model.params = tuple(params)
 
 		return model
 
