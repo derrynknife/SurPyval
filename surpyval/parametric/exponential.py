@@ -24,11 +24,14 @@ class Exponential_(ParametricFitter):
 		}
 
 	def parameter_initialiser(self, x, c=None, n=None, offset=False):
-		if offset:
-			return 1., 1.
 		x, c, n = surpyval.xcn_handler(x, c, n)
 		c = (c == 0).astype(np.int64)
-		return [(n * c).sum()/x.sum()]
+		rate = (n * c).sum()/x.sum()
+		print(np.min(x) - ((np.max(x) - np.min(x))/10))
+		if offset:
+			return np.min(x) - 1., rate
+		else:
+			return np.array([rate])
 
 	def sf(self, x, failure_rate):
 		return np.exp(-failure_rate * x)
@@ -100,28 +103,5 @@ class Exponential_(ParametricFitter):
 
 	def R_cb(self, x, failure_rate, cv_matrix, cb=0.05):
 		return np.exp(-self.lambda_cb(x, failure_rate, cv_matrix, cb=0.05) * x).T
-
-	def jacobian(self, x, failure_rate, c=None, n=None):
-		"""
-		The jacobian for a two parameter Weibull distribution.
-		Not used, but will need for cb
-		"""
-		if c is None:
-			c = np.zeros_like(x)
-
-		if n is None:
-			n = np.ones_like(x)
-		
-		f = c == 0
-		l = c == -1
-		r = c == 1
-
-		dll_dlambda = (
-			np.sum(n[f] * (1./failure_rate - x[f])) -
-			np.sum(n[r] * x[r]) -
-			np.sum(n[l] * ((-x[l] * np.exp(-failure_rate * x[l]))/(1 - np.exp(-failure_rate*x[l]))))
-		)
-
-		return -np.array([dll_dlambda])
 
 Exponential = Exponential_('Exponential')

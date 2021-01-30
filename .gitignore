@@ -1,1 +1,12 @@
 *.pyc
+*.pdf
+*.ipynb
+*.png
+*.jpg
+*.DS_Store
+*.ipynb_checkpoints
+*.egg-info
+build
+dist
+docs/_build
+

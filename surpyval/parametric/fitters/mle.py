@@ -49,7 +49,7 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 			hess_inv = res.hess_inv
 
 		p_hat = inv_fs(const(res.x))
-		hess_inv = inv(hessian(fun_hess)(p_hat))
+		# hess_inv = inv(hessian(fun_hess)(p_hat))
 
 
 		return res, jac, hess_inv, p_hat
