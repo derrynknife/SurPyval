@@ -24,11 +24,8 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 			fun = lambda params: dist.neg_ll_trunc(x, c, n, t, *inv_fs(const(params)))
 			fun_hess = lambda params: dist.neg_ll(x, c, n, t, *params)
 
-		if dist.name == 'Uniform':
-			p_hat = np.array([np.min(x), np.max(x)])
-			jac  = jacobian(fun)
-			hess_inv = pinv(hessian(fun_hess)(p_hat))
-			return None, jac, hess_inv, p_hat
+		if hasattr(dist, 'mle'):
+			return dist.mle(x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset)
 
 		try:
 			jac  = jacobian(fun)
