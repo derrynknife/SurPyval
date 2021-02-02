@@ -4,8 +4,6 @@ from surpyval import nonparametric as nonp
 from scipy.optimize import minimize
 
 def mpp(dist, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False, offset=False):
-	if rr not in ['x', 'y']:
-		raise ValueError("rr must be either 'x' or 'y'")
 	"""
 	MPP: Method of Probability Plotting
 	Yes, the order of this language was invented to keep MXX format consistent
@@ -17,6 +15,14 @@ def mpp(dist, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False, offset=Fal
 	
 	Fits a Weibull model using cumulative probability from x values. 
 	"""
+	
+	if rr not in ['x', 'y']:
+		raise ValueError("rr must be either 'x' or 'y'")
+
+	if hasattr(dist, 'mpp'):
+		return dist.mpp(x, c, n, heuristic=heuristic, rr=rr, on_d_is_0=on_d_is_0, offset=offset)
+	
+	
 	x_, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
 	
 	if not on_d_is_0:

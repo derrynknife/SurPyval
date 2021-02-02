@@ -23,7 +23,7 @@ class Normal_(ParametricFitter):
 			'sigma' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+	def parameter_initialiser(self, x, c=None, n=None):
 		x, c, n = surpyval.xcn_handler(x, c, n)
 		flag = (c == 0).astype(np.int)
 		return x.sum() / (n * flag).sum(), np.std(x)

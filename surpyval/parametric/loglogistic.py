@@ -25,10 +25,17 @@ class LogLogistic_(ParametricFitter):
 			'beta' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
-		x, c, n = surpyval.xcn_handler(x, c, n)
-		flag = (c == 0).astype(np.int)
-		return x.sum() / (n * flag).sum(), 2.
+	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+		if offset:
+			x, c, n = surpyval.xcn_handler(x, c, n)
+			flag = (c == 0).astype(np.int)
+			value_range = np.max(x) - np.min(x)
+			gamma_init = np.min(x) - value_range / 10
+			return gamma_init, x.sum() / (n * flag).sum(), 2.
+		else:
+			x, c, n = surpyval.xcn_handler(x, c, n)
+			flag = (c == 0).astype(np.int)
+			return x.sum() / (n * flag).sum(), 2.
 
 	def sf(self, x, alpha, beta):
 		return 1 - self.ff(x, alpha, beta)

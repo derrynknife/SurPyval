@@ -9,6 +9,8 @@ from surpyval.parametric.parametric_fitter import ParametricFitter
 from scipy.special import factorial
 from .fitters.mpp import mpp
 
+import warnings
+
 class Exponential_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
@@ -29,7 +31,7 @@ class Exponential_(ParametricFitter):
 		rate = (n * c).sum()/x.sum()
 		print(np.min(x) - ((np.max(x) - np.min(x))/10))
 		if offset:
-			return np.min(x) - 1., rate
+			return np.min(x) - (np.max(x) - np.min(x))/10., rate
 		else:
 			return np.array([rate])
 
@@ -77,25 +79,40 @@ class Exponential_(ParametricFitter):
 	def mpp_inv_y_transform(self, y, *params):
 		return 1 - np.exp(y)
 
-	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
+	def mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False, offset=False):
 		assert rr in ['x', 'y']
-		x_, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+		x_pp, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
 
 		if not on_d_is_0:
-			x_ = x_[d > 0]
-			F = F[d > 0]
+			x_pp = x_pp[d > 0]
+			F    = F[d > 0]
 		
 		# Linearise
-		y_ = self.mpp_y_transform(F)
+		y_pp = self.mpp_y_transform(F)
 
-		if   rr == 'y':
-			x_ = x_[:,np.newaxis]
-			failure_rate = np.linalg.lstsq(x_, y_, rcond=None)[0]
-		elif rr == 'x':
-			y_ = y_[:,np.newaxis]
-			mttf = np.linalg.lstsq(y_, x_, rcond=None)[0]
-			failure_rate = 1. / mttf
-		return tuple([failure_rate[0]])
+		mask = np.isfinite(y_pp)
+		if mask.any():
+			warnings.warn("Some Infinite values encountered in plotting points and have been ignored.", stacklevel=2)
+			y_pp = y_pp[mask]
+			x_pp = x_pp[mask]
+
+		if offset:
+			if   rr == 'y':
+				params = np.polyfit(x_pp, y_pp, 1)
+			elif rr == 'x':
+				params = np.polyfit(y_pp, x_pp, 1)
+			failure_rate = params[0]
+			offset = -params[1] * (1./failure_rate)
+			return tuple([offset, failure_rate])
+		else:
+			if   rr == 'y':
+				x_pp = x_pp[:,np.newaxis]
+				failure_rate = np.linalg.lstsq(x_pp, y_pp, rcond=None)[0]
+			elif rr == 'x':
+				y_pp = y_pp[:,np.newaxis]
+				mttf = np.linalg.lstsq(y_pp, x_pp, rcond=None)[0]
+				failure_rate = 1. / mttf
+			return tuple([failure_rate[0]])
 
 	def lambda_cb(self, x, failure_rate, cv_matrix, cb=0.05):
 		return failure_rate * np.exp(np.array([-1, 1]).reshape(2, 1) * (z(cb/2) * 

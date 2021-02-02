@@ -13,16 +13,26 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 		MLE: Maximum Likelihood estimate
 		"""
 		# fail = False
+
 		if t is None:
 			if offset:
 				fun = lambda params: dist.neg_ll(x - inv_fs(const(params))[0], c, n, *inv_fs(const(params))[1::])
+				# fun_hess = lambda params: dist.neg_ll(x - const(psarams)[0], c, n, *const(params)[1::])
 				fun_hess = lambda params: dist.neg_ll(x - params[0], c, n, *params[1::])
 			else:
 				fun = lambda params: dist.neg_ll(x, c, n, *inv_fs(const(params)))
 				fun_hess = lambda params: dist.neg_ll(x, c, n, *params)
+				# fun_hess = lambda params: dist.neg_ll(x, c, n, *const(params))
 		else:
-			fun = lambda params: dist.neg_ll_trunc(x, c, n, t, *inv_fs(const(params)))
-			fun_hess = lambda params: dist.neg_ll(x, c, n, t, *params)
+			# fun = lambda params: dist.neg_ll_trunc(x, c, n, t, *inv_fs(const(params)))
+			# fun_hess = lambda params: dist.neg_ll(x, c, n, t, *params)
+			if offset:
+				fun = lambda params: dist.neg_ll_trunc(x - inv_fs(const(params))[0], c, n, t, *inv_fs(const(params))[1::])
+				# fun_hess = lambda params: dist.neg_ll(x - const(psarams)[0], c, n, *const(params)[1::])
+				fun_hess = lambda params: dist.neg_ll_trunc(x - params[0], c, n, t, *params[1::])
+			else:
+				fun = lambda params: dist.neg_ll_trunc(x, c, n, t, *inv_fs(const(params)))
+				fun_hess = lambda params: dist.neg_ll_trunc(x, c, n, t, *params)
 
 		if hasattr(dist, 'mle'):
 			return dist.mle(x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset)
@@ -43,10 +53,10 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 		# if (fail) | (not dist.use_autograd):
 			jac = lambda xx : approx_fprime(xx, fun, surpyval.EPS)
 			res = minimize(fun, init, method='BFGS', jac=jac)
-			hess_inv = res.hess_inv
+			# hess_inv = res.hess_inv
 
 		p_hat = inv_fs(const(res.x))
-		# hess_inv = inv(hessian(fun_hess)(p_hat))
+		hess_inv = inv(hessian(fun_hess)(p_hat))
 
 
 		return res, jac, hess_inv, p_hat

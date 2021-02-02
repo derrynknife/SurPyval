@@ -213,11 +213,14 @@ class Parametric():
 		# 	cbs = []
 
 		if hasattr(self, 'hess_inv'):
-			if self.dist.name == 'Weibull3p':
-				# cbs = 1 - self.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
-				cbs = 1 - self.R_cb(x_model + self.params[2], cb=cb)
+			if (self.hess_inv is not None):
+				if self.dist.name == 'Weibull3p':
+					# cbs = 1 - self.R_cb(x_model + self.params[2], *self.params, self.hess_inv, cb=cb)
+					cbs = 1 - self.R_cb(x_model + self.params[2], cb=cb)
+				else:
+					cbs = 1 - self.R_cb(x_model, cb=cb)
 			else:
-				cbs = 1 - self.R_cb(x_model, cb=cb)
+				cbs = []
 		else:
 			cbs = []
 

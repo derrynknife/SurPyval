@@ -8,5 +8,6 @@
 *.egg-info
 build
 dist
+references
 docs/_build
 

@@ -32,7 +32,7 @@ Survival analysis is a tool that increasing numbers of scientist, data scientist
 
 *SurPyval* fills a gap in the Python ecosystem of survival analysis. Other survival analysis packages, e.g. *lifelines* [@davidson2019lifelines] and [*reliability*](https://reliability.readthedocs.io/en/latest/), offer excellent methods for most applications, but are limited many applications, for example, using offset values, fixing parameters, and arbitrary combinations of censoring and truncation. Further, *scipy* [@jones2001scipy] has yet to implement some basic features of survival analysis; concretely, it does not handle censored data. Therefore, there is a gap in the Python ecosystem for a package that is flexible to accomodate any arbitrary combination of observed failures (or deaths); left, right, or interval censored; and left or right truncated data with a single format. Further, *SurPyval* allows users to select an appropriate estimation method for their circumstances. MLE is used in most other applications, but the *SurPyval* implementation of Minimal Product Spacing, Method of Moments, Probability Plotting, Mean Square Error, and Expectation-Maximisation makes it a much more capable package than is currently available. Commercial packages are well developed but can be expensive. R is excellent for survival analysis but many analysts now use python as is explained in the *lifelines* paper. Therefore there is a need to have a flexible and open source python package to do survival analysis.
 
-# Methods
+# Features
 
 *SurPyval* is grouped into two sections, these are parametric and non-parametric. For the parametric capability *SurPyval* offers several methods to estimate parameters; these are Maximum Likelihood (MLE), Mean Square Error (MSE), Probability Plotting (MPP), Minimum Product Spacing (MPS), Method of Moments (MOM), and Expectation-Maximisation (EM). The EM is only used for mixture models.
 
@@ -58,11 +58,17 @@ Maximum Likelihood Estimation can be used for any arbitrary combination of censo
 
 *SurPyval* uses *scipy* for numerical optimisation but also aims to imitate as close as possible the API for parameter estimation, specifically, the use of the `fit()` method. The main difference between *scipy* and *SurPyval* is that *SurPyval* returns an object. The intent of this is to capture the distribution in an object for subsequent use. This could be used in Monte Carlo simulations using the `random()` method or it could be used in applications like *reliability* for interval optimisations.
 
+Unlike other survival analysis packages *SurPyval* allows users to arbitrarily fix parameters. This is similar to *scipy* which allows the location, shape, and scale parameters to be fixed, in *SurPyval* this is done using the fixed keyword argument. For example:
+
+# Optimisations
+
 *SurPyval*, inspired by *lifelines*, uses *autograd* [@maclaurin2015autograd] autodifferentiation to calculate the jacobians and hessians needed for optimisations in parametric analysis. SurPyval uses lessons from deep learning to improve the stability of estimation. Concretely, SurPyval uses the ELU function [@clevert2015fast] to transform bounded parameters to be unbounded. For example, the alpha parameter for a Weibull distribution is supported on the half-real line, (0, Inf). Using the ELU function the input is transformed to be supported over the full real line (-Inf, Inf), this reduces the risk of optimisations failing because the numeric gradient might 'overshoot' and produce undefined results. The ELU is also useful for autodifferentiation because it is continuously differentiable which eliminates discrete jumps in the gradient. This transform works sufficiently well to allow *SurPyval* to robustly estimate offsets, i.e. the 'gamma' parameter, for half real-line supported distribtuions. 
 
-Another optimisation used by *SurPyval* is the use of close parameter initialisation. Probability plotting methods do not require initial estimates of the parameters unlike when using optimisers. Further, optimisation results are very sensitive to the initial guess, if the initial guess is too far from the actual result it can yield incredulous results. As such *SurPyval* uses probability plotting methods to do the initial guess of parameters for optimisation methods. Combining the use of autogradients, bound transforns, and close initial approximations, *SurPyval* substantially improves the stability of optimisation and greatly expands the possible use in research and industry.
+Another optimisation used by *SurPyval* is the use of good initial approximations for parameter initialisation. Probability plotting methods do not require initial estimates of the parameters unlike when using optimisers. Further, optimisation results are very sensitive to the initial guess, if the initial guess is too far from the actual result it can yield incredulous results. As such *SurPyval* uses probability plotting estimates or estimates from transformations of the data with another distribution, to do the initial guess of parameters for optimisation methods. Combining the use of autogradients, bound transforns, and close initial approximations, *SurPyval* substantially improves the stability of optimisation and greatly expands the possible use in research and industry.
 
-Using data from Weibull's original paper as an example:
+# Examples
+
+Some examples of the API and how flexible it can be. Firstly, a simple estimate from random data:
 
 ```python
 from surpyval import Weibull
@@ -79,6 +85,21 @@ x = Weibull.random(N, alpha, beta)
 model = Weibull.fit(x)
 ```
 
-Unlike other survival analysis packages *SurPyval* allows users to arbitrarily fix parameters. This is similar to *scipy* which allows the location, shape, and scale parameters to be fixed, in *SurPyval* this is done using the fixed keyword argument. For example:
+Using offsets with data from Weibull's paper [@weibull1951statistical] which introduced the wide applicability of the distribution to survival analysis.
+
+```python
+from surpyval import Weibull
+from surpyval.datasets import BoforsSteel
+
+data = BoforsSteel.df
+
+x = data['x']
+n = data['n']
+
+model = Weibull.fit(x=x, n=n, offset=True)
+model.plot()
+```
+
+There are more examples of the flexible API in the main documentation.
 
 # References

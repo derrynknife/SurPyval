@@ -107,7 +107,7 @@ class ParametricFitter():
 		if (n_obs > 1).any():
 			n_ties = (n_obs - 1).sum()
 			Df = self.df(x_obs  - gamma, *params)
-			Df = Df[Df != 0]
+			# Df = Df[Df != 0]
 			LL = np.concatenate([Dl, Df, Dr])
 			ll_n = np.concatenate([n[c == -1], (n_obs - 1), n[c == 1]])
 		else:
@@ -157,11 +157,14 @@ class ParametricFitter():
 		t = kwargs.pop('t', None)
 		offset = kwargs.pop('offset', False)
 
-		if offset and self.name in ['Normal', 'Beta', 'Uniform']:
+		if offset and self.name in ['Normal', 'Beta', 'Uniform', 'Gumbel', 'Logistic']:
 			raise ValueError('{dist} distribution cannot be offset'.format(dist=self.name))
 
 		if how not in PARA_METHODS:
 			raise ValueError('"how" must be one of: ' + str(PARA_METHODS))
+
+		if how == 'MPP' and self.name == 'ExpoWeibull':
+			raise ValueError('ExpoWeibull distribution does not work with probability plot fitting')			
 
 		if t is not None and how == 'MPS':
 			raise ValueError('Maximum product spacing doesn\'t support tuncation')
@@ -221,7 +224,10 @@ class ParametricFitter():
 
 		if how != 'MPP':
 			# Need a better general fitter to include offset
-			init = np.array(self.parameter_initialiser(x, c, n, offset=offset))
+			try:
+				init = np.array(self.parameter_initialiser(x, c, n, offset=offset))
+			except:
+				init = np.array(self.parameter_initialiser(x, c, n))
 			# This should happen in the optimiser
 			init = transform(init)
 			init = init[not_fixed]
@@ -283,8 +289,7 @@ class ParametricFitter():
 		if not type(df) == pd.DataFrame:
 			raise ValueError("df must be a pandas DataFrame")
 
-		heuristic = kwargs.get('heuristic', 'Nelson-Aalen')
-		how = kwargs.get('how', 'MLE')
+		how = kwargs.pop('how', 'MLE')
 		x_col = kwargs.pop('x', 'x')
 		c_col = kwargs.pop('c', 'c')
 		n_col = kwargs.pop('n', 'n')

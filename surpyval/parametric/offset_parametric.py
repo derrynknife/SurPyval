@@ -236,20 +236,24 @@ class OffsetParametric():
 		# Set the x scale
 		plt.xscale(d['x_scale'])
 		# Set the y scale
-		if self.dist.name == 'Gamma':
-			# The y scale for the gamma distribution is dependent on the shape
-			plt.gca().set_yscale('function',
-				functions=(lambda x : self.dist.mpp_y_transform(x, self.params[0]),
-						   lambda x : self.dist.mpp_inv_y_transform(x, self.params[0])))
-		elif self.dist.name == 'Beta':
-			# The y scale for the beta distribution is dependent on the shape
-			plt.gca().set_yscale('function',
-				functions=(lambda x : self.dist.mpp_y_transform(x, *self.params),
-						   lambda x : self.dist.mpp_inv_y_transform(x, *self.params)))
-		else:
-			plt.gca().set_yscale('function', 
-				functions=(self.dist.mpp_y_transform, 
-						   self.dist.mpp_inv_y_transform))
+
+		plt.gca().set_yscale('function',
+			functions=(lambda x : self.dist.mpp_y_transform(x, *self.params), 
+				lambda x : self.dist.mpp_inv_y_transform(x, *self.params)))
+		# if self.dist.name == 'Gamma':
+		# 	# The y scale for the gamma distribution is dependent on the shape
+		# 	plt.gca().set_yscale('function',
+		# 		functions=(lambda x : self.dist.mpp_y_transform(x, self.params[0]),
+		# 				   lambda x : self.dist.mpp_inv_y_transform(x, self.params[0])))
+		# elif self.dist.name == 'Beta':
+		# 	# The y scale for the beta distribution is dependent on the shape
+		# 	plt.gca().set_yscale('function',
+		# 		functions=(lambda x : self.dist.mpp_y_transform(x, *self.params),
+		# 				   lambda x : self.dist.mpp_inv_y_transform(x, *self.params)))
+		# else:
+		# 	plt.gca().set_yscale('function', 
+		# 		functions=(self.dist.mpp_y_transform, 
+		# 				   self.dist.mpp_inv_y_transform))
 		
 		# Set Major Y axis ticks
 		plt.yticks(d['y_ticks'], labels=d['y_ticks_labels'])

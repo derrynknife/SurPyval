@@ -2,6 +2,10 @@ import autograd.numpy as np
 from scipy.stats import uniform
 from scipy.special import ndtri as z
 
+from autograd import hessian
+from autograd.numpy.linalg import pinv
+from scipy.optimize import minimize
+
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter
 
@@ -64,12 +68,24 @@ class Uniform_(ParametricFitter):
 				out[i] = a**i * b**(n-i)
 			return np.sum(out)/(n + 1)
 
+	def p(self, c, N):
+		return 1 - 2 * (1 + c)**(1. - n) + (1 + 2*c)**(1. - n)
+
 	def random(self, size, a, b):
 		U = uniform.rvs(size=size)
 		return self.qf(U, a, b)
 
+	def ab_cb(self, x, a, b, N, alpha=0.05):
+		# Parameter confidence intervals from here:
+		# https://mathoverflow.net/questions/278675/confidence-intervals-for-the-endpoints-of-the-uniform-distribution
+		#
+		sample_range = np.max(x) - np.min(x)
+		fun = lambda c : self.p(c, N)
+		c_hat = minimize(fun, 1.).x
+		return a - c_hat*sample_range, b + c_hat*sample_range
+
 	def mle(self, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
-		params = np.min(x), np.max(x)
+		params = np.array([np.min(x), np.max(x)])
 		return None, None, None, params
 
 	def mpp_x_transform(self, x):

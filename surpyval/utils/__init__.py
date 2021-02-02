@@ -1,4 +1,5 @@
 import numpy as np
+from pandas import Series
 from collections import defaultdict
 
 def check_no_censoring(c):
@@ -112,6 +113,9 @@ def xcn_handler(x, c=None, n=None):
 			x = x_ndarray
 		else:
 			x = np.array(x).astype(np.float)
+	elif type(x) == Series:
+		x = np.array(x)
+
 	if not x.ndim < 3:
 		raise ValueError("Variable (x) array must be one or two dimensional")
 

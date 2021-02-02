@@ -34,8 +34,6 @@ class ExpoWeibull_(ParametricFitter):
 		}
 
 	def parameter_initialiser(self, x, c=None, n=None, offset=False):
-		if offset:
-			return self._mpp(dist=self, x=x, c=c, n=n, on_d_is_0=True, offset=True)
 		log_x = np.log(x)
 		log_x[np.isnan(log_x)] = 0
 		gumb = para.Gumbel.fit(log_x, c, n, how='MLE')
@@ -47,8 +45,11 @@ class ExpoWeibull_(ParametricFitter):
 			alpha = np.median(x)
 		if (np.isinf(beta) | np.isnan(beta)):
 			beta = 1.
-		return alpha, beta, 1.
-
+		if offset:
+			gamma = np.min(x) - (np.max(x) - np.min(x))/10.
+			return gamma, alpha, beta, 1.
+		else:
+			return alpha, beta, 1.
 	def sf(self, x, alpha, beta, mu):
 		return 1 - np.power(1 - np.exp(-(x / alpha)**beta), mu)
 
@@ -81,39 +82,17 @@ class ExpoWeibull_(ParametricFitter):
 		U = uniform.rvs(size=size)
 		return self.qf(U, alpha, beta, mu)
 
-	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
-		x, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
-
-		if on_d_is_0:
-			pass
-		else:
-			F = F[d > 0]
-			x = x[d > 0]
-
-		init = self.parameter_initialiser(x, c, n)
-		init = np.array(init)
-
-		y = self.mpp_y_transform(F)
-		fun = lambda a : np.linalg.lstsq(x, self.mpp_y_transform(F, x))[1]
-		res = minimize(fun, 1., bounds=((0, None),))
-		mu = res.x[0]
-
-		if rr == 'y':
-			fun = lambda params : np.sum((y - self.mpp_y_transform(self.ff(x, *params[0:-1]), mu)) ** 2)
-			res = minimize(fun, init[0:2], bounds=self.bounds)
-		else:
-			pass
-		return np.array(*res.x, mu)
-
 	def mpp_x_transform(self, x, gamma=0):
 		return np.log(x - gamma)
 
 	def mpp_y_transform(self, y, *params):
-		mu = params[self.param_map['mu']]
+		i = len(params)
+		mu = params[i-1]
 		return np.log(-np.log((1 - y**(1./mu))))
 
 	def mpp_inv_y_transform(self, y, *params):
-		mu = params[self.param_map['mu']]
+		i = len(params)
+		mu = params[i-1]
 		return (1 - np.exp(-np.exp(y)))**mu
 
 	def unpack_rr(self, params, rr):
