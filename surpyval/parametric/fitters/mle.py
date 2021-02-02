@@ -12,8 +12,6 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 		"""
 		MLE: Maximum Likelihood estimate
 		"""
-		# fail = False
-
 		if t is None:
 			if offset:
 				fun = lambda params: dist.neg_ll(x - inv_fs(const(params))[0], c, n, *inv_fs(const(params))[1::])

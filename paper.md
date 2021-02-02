@@ -30,7 +30,7 @@ Survival analysis is a tool that increasing numbers of scientist, data scientist
 
 # Statement of need
 
-*SurPyval* fills a gap in the Python ecosystem of survival analysis. Other survival analysis packages, e.g. *lifelines* [@davidson2019lifelines] and [*reliability*](https://reliability.readthedocs.io/en/latest/), offer excellent methods for most applications, but are limited many applications, for example, using offset values, fixing parameters, and arbitrary combinations of censoring and truncation. Further, *scipy* [@jones2001scipy] has yet to implement some basic features of survival analysis; concretely, it does not handle censored data. Therefore, there is a gap in the Python ecosystem for a package that is flexible to accomodate any arbitrary combination of observed failures (or deaths); left, right, or interval censored; and left or right truncated data with a single format. Further, *SurPyval* allows users to select an appropriate estimation method for their circumstances. MLE is used in most other applications, but the *SurPyval* implementation of Minimal Product Spacing, Method of Moments, Probability Plotting, Mean Square Error, and Expectation-Maximisation makes it a much more capable package than is currently available. Commercial packages are well developed but can be expensive. R is excellent for survival analysis but many analysts now use python as is explained in the *lifelines* paper. Therefore there is a need to have a flexible and open source python package to do survival analysis.
+*SurPyval* fills a gap in the Python ecosystem of survival analysis. Other survival analysis packages, e.g. *lifelines* [@davidson2019lifelines] and [*reliability*](https://reliability.readthedocs.io/en/latest/), offer excellent methods for most applications, but are limited many applications, for example, using offset values, fixing parameters, and arbitrary combinations of censoring and truncation. Further, *scipy* [@jones2001scipy] has yet to implement some basic features of survival analysis; concretely, it does not handle censored data. Therefore, there is a gap in the Python ecosystem for a package that is flexible to accomodate any arbitrary combination of observed failures (or deaths); left, right, or interval censored; and left or right truncated data with a single format. Another powerful feature of *SurPyval* is that it lets users select an appropriate estimation method for their circumstances. MLE is used in most other applications, but *SurPyval* also implements Minimal Product Spacing, Method of Moments, Probability Plotting, Mean Square Error, and Expectation-Maximisation. This variety of estimation methods makes *SurPyval* a much more capable package than is currently available in the Python ecosystem. Commercial packages are well developed but can be expensive. R is excellent for survival analysis but many analysts now use Python as is explained in the *lifelines* paper. Therefore there is a need to have another flexible and open source python package to do survival analysis.
 
 # Features
 
@@ -99,6 +99,8 @@ n = data['n']
 model = Weibull.fit(x=x, n=n, offset=True)
 model.plot()
 ```
+
+![Weibull Data and Distribution](docs/images/weibull_plot.png)
 
 There are more examples of the flexible API in the main documentation.
 
