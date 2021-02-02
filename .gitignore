@@ -1,7 +1,6 @@
 *.pyc
 *.pdf
 *.ipynb
-*.png
 *.jpg
 *.DS_Store
 *.ipynb_checkpoints
