@@ -24,7 +24,7 @@ class Uniform_(ParametricFitter):
 			'b' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+	def parameter_initialiser(self, x, c=None, n=None):
 		return np.min(x) - 1., np.max(x) + 1.
 
 	def sf(self, x, a, b):

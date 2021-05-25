@@ -29,7 +29,6 @@ class Exponential_(ParametricFitter):
 		x, c, n = surpyval.xcn_handler(x, c, n)
 		c = (c == 0).astype(np.int64)
 		rate = (n * c).sum()/x.sum()
-		print(np.min(x) - ((np.max(x) - np.min(x))/10))
 		if offset:
 			return np.min(x) - (np.max(x) - np.min(x))/10., rate
 		else:
@@ -74,7 +73,11 @@ class Exponential_(ParametricFitter):
 		return x - gamma
 
 	def mpp_y_transform(self, y, *params):
-		return -np.log(1 - y)
+		mask = ((y == 0) | (y == 1))
+		out = np.zeros_like(y)
+		out[~mask] = -np.log(1 - y[~mask])
+		out[mask] = np.nan
+		return out
 
 	def mpp_inv_y_transform(self, y, *params):
 		return 1 - np.exp(y)

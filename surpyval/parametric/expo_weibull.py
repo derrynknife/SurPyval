@@ -86,9 +86,12 @@ class ExpoWeibull_(ParametricFitter):
 		return np.log(x - gamma)
 
 	def mpp_y_transform(self, y, *params):
-		i = len(params)
-		mu = params[i-1]
-		return np.log(-np.log((1 - y**(1./mu))))
+		mu = params[-1]
+		mask = ((y == 0) | (y == 1))
+		out = np.zeros_like(y)
+		out[~mask] = np.log(-np.log((1 - y[~mask]**(1./mu))))
+		out[mask] = np.nan
+		return out
 
 	def mpp_inv_y_transform(self, y, *params):
 		i = len(params)

@@ -1,5 +1,0 @@
-
-
-
-Nelson-Aalen Estimate
-=====================

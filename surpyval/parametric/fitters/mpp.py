@@ -32,31 +32,33 @@ def mpp(dist, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False, offset=Fal
 		y_ = F
 
 	if offset:
-		y_pp = dist.mpp_y_transform(y_)
-		mask = np.isfinite(y_pp)
-		y_pp = y_pp[mask]
-		x_   = x_[mask]
+		mask = (y_ != 0) & (y_ != 1)
+		y_pp = y_[mask]
+		x_pp = x_[mask]
+		y_pp = dist.mpp_y_transform(y_pp)
+		
 		# I think this should be x[c != 1] and not in xl (left boundary of intervals)
-		x_min = np.min(x_)
+		x_min = np.min(x_pp)
 
 		# fun = lambda gamma : -pearsonr(np.log(x - gamma), y_)[0]
 		def fun(gamma):
 			g =  x_min - np.exp(-gamma)
-			out = -pearsonr(dist.mpp_x_transform(x_ - g), y_pp)[0]
+			out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
 			return out
 
 		res = minimize(fun, 0., bounds=((None, None),))
 		gamma = x_min - np.exp(-res.x[0])
 
-		x_pp = dist.mpp_x_transform(x_ - gamma)
+		x_pp = dist.mpp_x_transform(x_pp - gamma)
 
 	else:
-		x_pp = dist.mpp_x_transform(x_)
-		y_pp = dist.mpp_y_transform(y_)
+		mask = (y_ != 0) & (y_ != 1)
+		y_pp = y_[mask]
+		x_pp = x_[mask]
 
-		mask = np.isfinite(y_pp)
-		y_pp = y_pp[mask]
-		x_pp = x_pp[mask]
+		x_pp = dist.mpp_x_transform(x_pp)
+		y_pp = dist.mpp_y_transform(y_pp)
+		
 
 	if   rr == 'y':
 		params = np.polyfit(x_pp, y_pp, 1)

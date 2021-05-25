@@ -8,7 +8,6 @@ def mom(dist, x, n, init, offset):
 	This is one of the simplest ways to calculate the parameters of a distribution.
 
 	This method is quick but only works with uncensored data.
-	# Can I add a simple sum(c) instead of length to work with censoring?
 	"""
 	x_ = np.repeat(x, n)
 

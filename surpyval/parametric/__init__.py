@@ -10,13 +10,13 @@ Parametric Analysis
 	model = para.Weibull.fit(x)
 
 """
-
 import autograd.numpy as np
 
 from surpyval import nonparametric as nonp
 from .parametric_fitter import ParametricFitter
 from .parametric import Parametric
 from .offset_parametric import OffsetParametric
+from .offset_parametric import ParametricO
 
 from .weibull import Weibull
 from .weibull3p import Weibull3p

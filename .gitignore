@@ -2,11 +2,21 @@
 *.pdf
 *.ipynb
 *.jpg
+*.png
 *.DS_Store
 *.ipynb_checkpoints
+.ipynb_checkpoints/
 *.egg-info
 build
 dist
 references
 docs/_build
+surpyval-env
+.python-version
+surpyval/pyvenv.cfg
+surpyval/bin
+surpyval/include
+surpyval/lib
+__pycache__/
+
 

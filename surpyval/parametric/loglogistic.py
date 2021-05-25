@@ -12,7 +12,7 @@ class LogLogistic_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
 		self.k = 2
-		self.bounds = ((None, None), (0, None),)
+		self.bounds = ((0, None), (0, None),)
 		# self.use_autograd = True
 		self.plot_x_scale = 'log'
 		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
@@ -28,13 +28,13 @@ class LogLogistic_(ParametricFitter):
 	def parameter_initialiser(self, x, c=None, n=None, offset=False):
 		if offset:
 			x, c, n = surpyval.xcn_handler(x, c, n)
-			flag = (c == 0).astype(np.int)
+			flag = (c == 0).astype(int)
 			value_range = np.max(x) - np.min(x)
 			gamma_init = np.min(x) - value_range / 10
 			return gamma_init, x.sum() / (n * flag).sum(), 2.
 		else:
 			x, c, n = surpyval.xcn_handler(x, c, n)
-			flag = (c == 0).astype(np.int)
+			flag = (c == 0).astype(int)
 			return x.sum() / (n * flag).sum(), 2.
 
 	def sf(self, x, alpha, beta):
@@ -72,7 +72,11 @@ class LogLogistic_(ParametricFitter):
 		return np.log(x - gamma)
 
 	def mpp_y_transform(self, y, *params):
-		return -np.log(1./y - 1)
+		mask = ((y == 0) | (y == 1))
+		out = np.zeros_like(y)
+		out[~mask] = -np.log(1./y[~mask] - 1)
+		out[mask] = np.nan
+		return out
 
 	def mpp_inv_y_transform(self, y, *params):
 		return 1./(np.exp(-y) + 1)

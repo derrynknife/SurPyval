@@ -23,6 +23,7 @@ def turnbull(x, c, n, estimator='Kaplan-Meier'):
 		x_new[:, 0] = x
 		x_new[:, 1] = x
 		x = x_new
+		
 	# Unpack x array
 	xl = x[:, 0]
 	xr = x[:, 1]

@@ -171,6 +171,22 @@ class Parametric():
 			x_scale_min = 10**(x_min - diff)
 			x_scale_max = 10**(x_max + diff)
 			x_model = 10**np.linspace(x_min - diff, x_max + diff, 100)
+		elif self.dist.name in ('Beta'):
+			x_min = np.min(x_)
+			x_max = np.max(x_)
+			x_scale_min = 0
+			x_scale_max = 1
+			vals_non_sig = np.linspace(x_scale_min, x_scale_max, 11)[1:-1]
+			x_minor_ticks = np.linspace(x_scale_min, x_scale_max, 22)[1:-1]
+			x_model = np.linspace(x_scale_min, x_scale_max, 102)[1:-1]
+		elif self.dist.name in ('Uniform'):
+			x_min = np.min(self.params)
+			x_max = np.max(self.params)
+			x_scale_min = x_min
+			x_scale_max = x_max
+			vals_non_sig = np.linspace(x_scale_min, x_scale_max, 11)[1:-1]
+			x_minor_ticks = np.linspace(x_scale_min, x_scale_max, 22)[1:-1]
+			x_model = np.linspace(x_scale_min, x_scale_max, 102)[1:-1]
 		else:
 			x_min = np.min(x_)
 			x_max = np.max(x_)
@@ -254,7 +270,7 @@ class Parametric():
 		# Set the y scale
 		plt.gca().set_yscale('function',
 			functions=(lambda x : self.dist.mpp_y_transform(x, *self.params), 
-				lambda x : self.dist.mpp_inv_y_transform(x, *self.params)))
+					   lambda x : self.dist.mpp_inv_y_transform(x, *self.params)))
 		# if self.dist.name == 'Gamma':
 		# 	# The y scale for the gamma distribution is dependent on the shape
 		# 	plt.gca().set_yscale('function',

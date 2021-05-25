@@ -14,7 +14,7 @@ def inv_adj_relu(x):
 	return np.where(x >= 1, x - 1, np.log(x))
 
 def inv_rev_adj_relu(x):
-	return np.where(x <= -1, -x - 1, np.log(x))
+	return np.where(x <= -1, -x - 1, np.log(-x))
 
 
 def bounds_convert(x, bounds):

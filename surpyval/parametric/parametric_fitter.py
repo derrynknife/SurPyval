@@ -83,23 +83,19 @@ class ParametricFitter():
 		like = -np.sum(like)
 		return like
 
-	def neg_mean_D(self, x, c, n, *params, offset=False):
+	def neg_mean_D(self, x, c, n, *params):
 		mask = c == 0
 		x_obs = x[mask]
 		n_obs = n[mask]
 
-		if offset:
-			gamma = params[0]
-			params = params[1::]
-		else:
-			gamma = 0
+		gamma = 0
 
 		# Assumes already ordered
 		F  = self.ff(x_obs - gamma, *params)
 		D0 = F[0]
 		Dn = 1 - F[-1]
 		D = np.diff(F)
-		D = np.concatenate([[D0], D, [Dn]])
+		D = np.concatenate([np.array([D0]), D.T, np.array([Dn])]).T
 
 		Dr = self.sf(x[c ==  1]  - gamma, *params)
 		Dl = self.ff(x[c == -1]  - gamma, *params)
@@ -116,12 +112,10 @@ class ParametricFitter():
 			LL = np.concatenate([Dl, Dr])
 			ll_n = np.concatenate([n[c == -1], n[c == 1]])
 		
-		# D = np.concatenate([Dl, D, Dr, Df])
-		D[D < surpyval.TINIEST] = surpyval.TINIEST
+
 		M = np.log(D)
 		M = -np.sum(M)/(M.shape[0])
 		
-		LL[LL < surpyval.TINIEST] = surpyval.TINIEST
 		LL = -(np.log(LL) * ll_n).sum()/(n.sum() - n_obs.sum() + n_ties)
 		return M + LL
 
@@ -153,7 +147,7 @@ class ParametricFitter():
 		return moments
 
 	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
-		#Truncated data
+		# Check inputs
 		t = kwargs.pop('t', None)
 		offset = kwargs.pop('offset', False)
 
@@ -195,6 +189,9 @@ class ParametricFitter():
 		else:
 			model = para.Parametric()
 
+		# There is hope in this!
+		# model = para.ParametricO(offset)
+
 		model.method = how
 		model.heuristic = heuristic
 		model.dist = self
@@ -209,11 +206,11 @@ class ParametricFitter():
 
 		bounds = deepcopy(self.bounds)
 		param_map = self.param_map.copy()
+
 		if offset:
 			bounds = ((None, np.min(x)), *bounds)
 			offset_index_inc = 1
-			gamma_map = {'gamma' : -1}
-			param_map.update(gamma_map)
+			param_map.update({'gamma' : -1})
 		else:
 			offset_index_inc = 0
 
@@ -224,16 +221,20 @@ class ParametricFitter():
 
 		if how != 'MPP':
 			# Need a better general fitter to include offset
-			try:
-				init = np.array(self.parameter_initialiser(x, c, n, offset=offset))
-			except:
-				init = np.array(self.parameter_initialiser(x, c, n))
+			if 'init' in kwargs:
+				init = kwargs.pop('init')
+			else:
+				if self.name == 'Gumbel':
+					init = np.array(self.parameter_initialiser(x, c, n))
+				else:
+					init = np.array(self.parameter_initialiser(x, c, n, offset=offset))
+					
 			# This should happen in the optimiser
 			init = transform(init)
 			init = init[not_fixed]
 		else:
 			# Probability plotting method does not need an initial estimate
-			pass
+			init = None
 
 		fix_and_const_kwargs = {
 			'const' : const,
@@ -249,8 +250,7 @@ class ParametricFitter():
 
 		elif how == 'MPS':
 			# Maximum Product Spacing
-			model.res = mps(dist=self, x=x, c=c, n=n, init=init, offset=offset)
-			params = model.res.x
+			model.res, model.jac, model.hess_inv, params = mps(dist=self, x=x, c=c, n=n, init=init, **fix_and_const_kwargs)
 
 		elif how == 'MOM':
 			# Method of Moments
@@ -268,11 +268,14 @@ class ParametricFitter():
 			params = tuple(model.res.x)
 
 		# Unpack params and offset
-		if offset:
-			model.gamma = params[0]
-			model.params = tuple(params[1::])
+		if params is not None:
+			if offset:
+				model.gamma = params[0]
+				model.params = tuple(params[1::])
+			else:
+				model.params = tuple(params)
 		else:
-			model.params = tuple(params)
+			model.params = []
 
 		return model
 
@@ -310,11 +313,19 @@ class ParametricFitter():
 
 		return self.fit(x, c, n, how, **kwargs)
 
-	def from_params(self, params):
+	def from_params(self, params, offset=None):
 		if self.k != len(params):
 			raise ValueError("Must have {k} params for {dist} distribution".format(k=self.k, dist=self.name))
 
-		model = para.Parametric()
+		if offset is not None and self.name in ['Normal', 'Beta', 'Uniform', 'Gumbel', 'Logistic']:
+			raise ValueError('{dist} distribution cannot be offset'.format(dist=self.name))
+
+		if offset is not None:
+			model = para.OffsetParametric()
+			model.gamma = offset
+			model.bounds = ((None, offset), *deepcopy(self.bounds))
+		else:
+			model = para.Parametric()
 		model.params = params
 		for i, (low, upp) in enumerate(self.bounds):
 			if low is None:

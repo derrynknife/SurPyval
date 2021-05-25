@@ -24,7 +24,7 @@ class Logistic_(ParametricFitter):
 
 	def parameter_initialiser(self, x, c=None, n=None):
 		x, c, n = surpyval.xcn_handler(x, c, n)
-		flag = (c == 0).astype(np.int)
+		flag = (c == 0).astype(int)
 		return x.sum() / (n * flag).sum(), 1.
 
 	def sf(self, x, mu, sigma):
@@ -61,7 +61,11 @@ class Logistic_(ParametricFitter):
 		return x - gamma
 
 	def mpp_y_transform(self, y, *params):
-		return -np.log(1./y - 1)
+		mask = ((y == 0) | (y == 1))
+		out = np.zeros_like(y)
+		out[~mask] = -np.log(1./y[~mask] - 1)
+		out[mask] = np.nan
+		return out
 
 	def mpp_inv_y_transform(self, y, *params):
 		return 1./(np.exp(-y) + 1)

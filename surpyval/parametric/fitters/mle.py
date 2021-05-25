@@ -7,11 +7,15 @@ from scipy.optimize import minimize
 from scipy.optimize import approx_fprime
 
 import surpyval
+import warnings
+import sys
 
 def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 		"""
 		MLE: Maximum Likelihood estimate
 		"""
+		old_err_state = np.seterr(invalid='raise', divide='raise', over='ignore', under='ignore')
+
 		if t is None:
 			if offset:
 				fun = lambda params: dist.neg_ll(x - inv_fs(const(params))[0], c, n, *inv_fs(const(params))[1::])
@@ -38,23 +42,23 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 		try:
 			jac  = jacobian(fun)
 			hess = hessian(fun)
-			res  = minimize(fun, init, 
-							method='trust-exact', 
+			res  = minimize(fun, init,
+							method='Newton-CG', 
 							jac=jac, 
 							hess=hess, 
-							tol=1e-10)
-			hess_inv = inv(res.hess)
+							tol=1e-15)
 		except:
-			print("Autograd attempt failed, using without hessian")
-			# fail = True
-
-		# if (fail) | (not dist.use_autograd):
-			jac = lambda xx : approx_fprime(xx, fun, surpyval.EPS)
-			res = minimize(fun, init, method='BFGS', jac=jac)
-			# hess_inv = res.hess_inv
+			print("Autodifferentiation with hessian failed, trying without hessian", file=sys.stderr)
+			try:
+				jac  = jacobian(fun)
+				res = minimize(fun, init, method='BFGS', jac=jac)
+			except:
+				print("MLE FAILED: Likelihood function appears undefined; try alternate estimation method", file=sys.stderr)
+				return None, jac, None, None
 
 		p_hat = inv_fs(const(res.x))
 		hess_inv = inv(hessian(fun_hess)(p_hat))
 
+		np.seterr(**old_err_state)
 
 		return res, jac, hess_inv, p_hat
