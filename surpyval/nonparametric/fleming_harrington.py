@@ -3,7 +3,7 @@ import surpyval
 from surpyval import nonparametric as nonp
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
-def fleming_harrington(x, c=None, n=None):
+def fleming_harrington(x, c=None, n=None, **kwargs):
 	r"""
 
 	Fleming-Harrington estimation of Reliability function.
@@ -27,8 +27,7 @@ def fleming_harrington(x, c=None, n=None):
 	.. math:: R = e^{-H}
 
 	"""
-	x, c, n = surpyval.xcn_handler(x, c, n)
-	x, r, d = surpyval.xcn_to_xrd(x, c, n)
+	x, r, d = surpyval.xcnt_to_xrd(x, c, n, **kwargs)
 
 	h = [np.sum([1./(r[i]-j) for j in range(d[i])]) for i in range(len(x))]
 	H = np.cumsum(h)

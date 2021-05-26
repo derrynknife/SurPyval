@@ -1,6 +1,6 @@
 import numpy as np
 from surpyval import nonparametric as nonp
-from surpyval.utils import xcn_handler
+from surpyval.utils import xcnt_handler
 
 class NonParametricFitter():
 	"""
@@ -14,19 +14,24 @@ class NonParametricFitter():
 	standard: h_u, H_u or Ru, Rl
 	"""
 
-	def fit(self, x, c=None, n=None, sig=0.05):
-		x, c, n = xcn_handler(x, c, n)
-
+	def fit(self, x, c=None, n=None, **kwargs):
+		sig = kwargs.pop('sig', 0.05)
 		data = {}
+		if self.how == 'Turnbull': 
+			data['estimator'] = kwargs.pop('estimator', 'Kaplan-Meier')
+
+		x, c, n, t = xcnt_handler(x, c, n, **kwargs)
+
 		data['x'] = x
 		data['c'] = c
 		data['n'] = n
+		data['t'] = t
 		out = nonp.NonParametric()
+		
+		x_, r, d, R = nonp.FIT_FUNCS[self.how](**data)
+
 		out.data = data
 		out.model = self.how
-		
-		x_, r, d, R = nonp.FIT_FUNCS[self.how](x, c=c, n=n)
-
 		out.x = x_
 		out.max_x = np.max(out.x)
 		out.r = r

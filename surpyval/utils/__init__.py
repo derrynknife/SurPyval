@@ -1,6 +1,7 @@
 import numpy as np
 from pandas import Series
 from collections import defaultdict
+import sys
 
 def check_no_censoring(c):
 	return any(c != 0)
@@ -299,7 +300,7 @@ def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 			raise ValueError("Dimension 1 must be equalt to 2, try transposing data, or do you have a 1d array in a 2d array?")
 
 		if not (x[:, 0] <= x[:, 1]).all():
-			raise ValueError("All left intervals must be less than right intervals")
+			raise ValueError("All left intervals must be less than (or equal to) right intervals")
 
 	if c is not None:
 		c = np.array(c)
@@ -340,7 +341,7 @@ def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 		n = np.ones(x.shape[0])
 
 	if t is not None and ((tl is not None) or (tr is not None)):
-		raise ValueError("Cannot use 't' with 'tl' or 'tr'. Use either just 't' or any combination of 'tl' and 'tr'")
+		raise ValueError("Cannot use 't' with 'tl' or 'tr'. Use either 't' or any combination of 'tl' and 'tr'")
 
 	elif (t is None) & (tl is None) & (tr is None):
 		tl = np.ones(x.shape[0]) * -np.inf
@@ -383,9 +384,9 @@ def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 	if (t[:, 1] <= t[:, 0]).any():
 		raise ValueError("All left truncated values must be less than right truncated values")
 	if x.ndim == 2:
-		if (t[:, 0].reshape(-1, 1)  >= x).any():            
+		if ((t[:, 0].reshape(-1, 1)  < x[:, 0]) & (np.isfinite(t[:, 0]))).any():            
 			raise ValueError("All left truncated values must be less than the respective observed values")
-		elif (t[:, 1].reshape(-1, 1)  <= x).any():            
+		elif ((t[:, 1].reshape(-1, 1)  > x[:, 1]) & (np.isfinite(t[:, 1]))).any():            
 			raise ValueError("All right truncated values must be greater than the respective observed values")
 	else:
 		if (t[:, 0] >= x).any():            
@@ -432,7 +433,7 @@ def xcnt_to_xrd(x, c=None, n=None, **kwargs):
 	if np.isfinite(t[:, 1]).any():
 		raise ValueError("xrd format can't be used right truncated data")
         
-	if (t[:, 0] == t[0, 0]).all():
+	if (t[:, 0] == t[0, 0]).all() & np.isfinite(t[0, 0]):
 		print("Ignoring left truncated values as all observations truncated at same value", file=sys.stderr)
         
 	if ((c != 1) & (c != 0)).any():
@@ -440,8 +441,8 @@ def xcnt_to_xrd(x, c=None, n=None, **kwargs):
 
 	x = np.repeat(x, n)
 	c = np.repeat(c, n)
-	n = np.ones_like(x).astype(np.int64)
 	t = np.repeat(t[:, 0], n)
+	n = np.ones_like(x).astype(np.int64)
 
 	x, idx = np.unique(x, return_inverse=True)
 
