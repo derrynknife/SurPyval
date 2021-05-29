@@ -64,6 +64,7 @@ def mps(dist, x, c, n, const, trans, inv_fs, init, fixed_idx, offset):
 			res = minimize(fun, init, method='BFGS', jac=jac)
 		except:
 			print("MPS FAILED: Try alternate estimation method", file=sys.stderr)
+			np.seterr(**old_err_state)
 			return None, jac, None, None
 
 	p_hat = inv_fs(const(res.x))

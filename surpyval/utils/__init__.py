@@ -231,7 +231,7 @@ def xcnt_sort(x, c, n, t):
 	if t.ndim == 1:
 		idx = np.argsort(t, kind='stable')
 	else:
-		idx = np.argsort(t.mean(axis=1), kind='stable')
+		idx = np.argsort(t.min(axis=1), kind='stable')
 	x = x[idx]
 	c = c[idx]
 	n = n[idx]
@@ -305,16 +305,16 @@ def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 	if c is not None:
 		c = np.array(c)
 		if c.ndim != 1:
-			raise ValueError("censoring array must be one dimensional")
+			raise ValueError("Censoring flag array must be one dimensional")
 
 		if c.shape[0] != x.shape[0]:
-			raise ValueError("censoring array must be same length as variable array")
+			raise ValueError("censoring flag array must be same length as variable array")
 
 		if x.ndim == 2:
 			if any(c[x[:, 0] == x[:, 1]] == 2):
 				raise ValueError("Censor flag indicates interval censored but only has one failure time")
 
-			if not all(c[x[:, 0] != x[:, 1]] == 2):
+			if any((c == 2) & (x[:, 0] == x[:, 1])):
 				raise ValueError("Censor flag provided, but case where interval flagged as non interval censoring")
 
 			if any((c !=  0) & (c !=  1) & (c != -1) & (c !=  2)):
@@ -323,6 +323,7 @@ def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 		else:
 			if any((c !=  0) & (c !=  1) & (c != -1)):
 				raise ValueError("Censoring value must only be one of -1, 0, 1 for single dimension input")
+
 	else:
 		c = np.zeros(x.shape[0])
 		if x.ndim != 1:
@@ -426,9 +427,6 @@ def xcnt_to_xrd(x, c=None, n=None, **kwargs):
 		array of the count of failures/deaths at each time x.
 	"""
 	x, c, n, t = xcnt_handler(x, c, n, **kwargs)
-    
-	if x.ndim > 1:
-		raise ValueError("xrd format can't be used with interval censored data")
         
 	if np.isfinite(t[:, 1]).any():
 		raise ValueError("xrd format can't be used right truncated data")
@@ -437,7 +435,7 @@ def xcnt_to_xrd(x, c=None, n=None, **kwargs):
 		print("Ignoring left truncated values as all observations truncated at same value", file=sys.stderr)
         
 	if ((c != 1) & (c != 0)).any():
-		raise ValueError("xrd format can't handle left (c=-1) or interval (c=2) censoring")
+		raise ValueError("xrd format can't be used with left (c=-1) or interval (c=2) censoring")
 
 	x = np.repeat(x, n)
 	c = np.repeat(c, n)

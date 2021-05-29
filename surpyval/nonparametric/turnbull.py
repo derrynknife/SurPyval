@@ -14,8 +14,10 @@ def km(d, r):
 	R = np.cumprod(R)
 	return R
 
-def turnbull(x, c, n, t=None, estimator='Kaplan-Meier'):
-	bounds = np.unique(x)
+def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
+	x = x.astype(float)
+	t = t.astype(float)
+	bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
 	N = n.sum()
 
 	if x.ndim == 1:
@@ -27,66 +29,60 @@ def turnbull(x, c, n, t=None, estimator='Kaplan-Meier'):
 	# Unpack x array
 	xl = x[:, 0]
 	xr = x[:, 1]
+
+	# Unpack t array
+	tl = t[:, 0]
+	tr = t[:, 1]
 	
-	# Separate observed
+	# If there are left and right censored observations, convert them to interval censored observations
 	xl[c == -1] = -np.inf
 	xr[c ==  1] =  np.inf
 	
-	mask = c == 0
+	M = bounds.size
+	N = xl.size
 	
-	x_obs = xl[mask]
-	n_obs =  n[mask]
-	
-	d_obs = np.zeros_like(bounds)
-	for xv, nv in zip(x_obs, n_obs):
-		idx, = np.where(bounds == np.array(xv))
-		d_obs[idx] = nv
-	
-	xl = xl[~mask]
-	xr = xr[~mask]
-	ni =  n[~mask]
-	
-	mask_obs = np.isin(bounds, x_obs)
-	
-	m = bounds.size
-	n = xl.size
-	
-	alpha = np.zeros(shape=(n, m))
-	for i in range(0, n):
-		l = xl[i]
-		u = xr[i]
-		alpha[i, :] = ((bounds >= l) & (bounds < u)).astype(int) * ni[i]
-		
-	d = np.zeros(m)
-	p = np.ones(m)/m
+	alpha = np.zeros(shape=(N, M))
+	beta  = np.zeros(shape=(N, M))
+	for i in range(0, N):
+		x1, x2 = xl[i], xr[i]
+		t1, t2 = tl[i], tr[i]
+		if x1 == x2:
+			alpha[i, :] = (bounds == x1).astype(int) * n[i]
+		else:
+			alpha[i, :] = ((bounds >= x1) & (bounds < x2)).astype(int) * n[i]
+		beta[i, :]  = 1 - ((bounds >= t1) & (bounds <= t2)).astype(int)
+
+	d = np.zeros(M)
+	p = np.ones(M)/M
 	
 	iters = 0
-	p_1 = np.zeros_like(p)
+	p_prev = np.zeros_like(p)
 		
 	if estimator == 'Kaplan-Meier':
 		func = km
 	else:
 		func = na
-
-	while (not np.isclose(p, p_1, atol=1e-30).all()) and (iters < 10000):
-			p_1 = p
-			iters += 1
-			conditional_p = np.zeros_like(alpha)
-			denom = np.zeros(n)
-			for i in range(n):
-				denom[i] = (alpha[i, :] * p).sum()
-			for j in range(m):
-				conditional_p[:, j] = alpha[:, j] * p[j]
-
-			d = (conditional_p / np.atleast_2d(denom).T).sum(axis=0)
-			d += d_obs
-
-			r = np.ones_like(d) * N + d
-			r = r - d.cumsum()
-			R = func(d, r)
-			p = np.abs(np.diff(np.hstack([[1], R])))
 	
-	return bounds, r, d, R
+	while (not np.isclose(p, p_prev, atol=1e-100).all()) and (iters < 100000):
+		p_prev = p
+		ap = alpha * p
+		bp = beta * p
+		# Expected failures
+		mu = ap / ap.sum(axis=1).reshape(-1, 1)
+		# Expected additional failures due to truncation
+		nu = bp / (1 - bp).sum(axis=1).reshape(-1, 1)
+		d = (nu + mu).sum(axis=0)
+		r = d.sum() - d.cumsum() + d
+		R = func(d, r)
+		p = np.abs(np.diff(np.hstack([[1], R])))
+		# The 'official' way to do it. This is the Kaplan-Meier
+		# p = (nu + mu).sum(axis=0)/(nu + mu).sum()
+	mask = np.isfinite(bounds)
+	x = bounds[mask]
+	r = r[mask]
+	d = d[mask]
+	R = R[mask]
+	return x, r, d, R
 
 class Turnbull_(NonParametricFitter):
 	def __init__(self):

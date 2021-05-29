@@ -3,7 +3,7 @@ from scipy.stats import pearsonr
 from surpyval import nonparametric as nonp
 from scipy.optimize import minimize
 
-def mpp(dist, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False, offset=False):
+def mpp(dist, x, c, n, t=None, heuristic="Turnbull", rr='y', on_d_is_0=False, offset=False):
 	"""
 	MPP: Method of Probability Plotting
 	Yes, the order of this language was invented to keep MXX format consistent
@@ -23,7 +23,13 @@ def mpp(dist, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False, offset=Fal
 		return dist.mpp(x, c, n, heuristic=heuristic, rr=rr, on_d_is_0=on_d_is_0, offset=offset)
 	
 	
-	x_, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+	x_, r, d, F = nonp.plotting_positions(x, c=c, n=n, t=t, heuristic=heuristic)
+
+	x_mask = np.isfinite(x_)
+	x_ = x_[x_mask]
+	F = F[x_mask]
+	d = d[x_mask]
+	r = r[x_mask]
 	
 	if not on_d_is_0:
 		x_ = x_[d > 0]
@@ -31,12 +37,12 @@ def mpp(dist, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False, offset=Fal
 	else:
 		y_ = F
 
-	if offset:
-		mask = (y_ != 0) & (y_ != 1)
-		y_pp = y_[mask]
-		x_pp = x_[mask]
-		y_pp = dist.mpp_y_transform(y_pp)
-		
+	mask = (y_ != 0) & (y_ != 1)
+	y_pp = y_[mask]
+	x_pp = x_[mask]
+	y_pp = dist.mpp_y_transform(y_pp)
+
+	if offset:		
 		# I think this should be x[c != 1] and not in xl (left boundary of intervals)
 		x_min = np.min(x_pp)
 
@@ -46,20 +52,12 @@ def mpp(dist, x, c, n, heuristic="Turnbull", rr='y', on_d_is_0=False, offset=Fal
 			out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
 			return out
 
-		res = minimize(fun, 0., bounds=((None, None),))
+		res = minimize(fun, 0.)
 		gamma = x_min - np.exp(-res.x[0])
-
-		x_pp = dist.mpp_x_transform(x_pp - gamma)
-
-	else:
-		mask = (y_ != 0) & (y_ != 1)
-		y_pp = y_[mask]
-		x_pp = x_[mask]
-
-		x_pp = dist.mpp_x_transform(x_pp)
-		y_pp = dist.mpp_y_transform(y_pp)
+		x_pp = x_pp - gamma
+	
+	x_pp = dist.mpp_x_transform(x_pp)
 		
-
 	if   rr == 'y':
 		params = np.polyfit(x_pp, y_pp, 1)
 	elif rr == 'x':

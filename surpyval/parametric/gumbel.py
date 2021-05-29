@@ -14,7 +14,6 @@ class Gumbel_(ParametricFitter):
 		self.k = 2
 		self.bounds = ((None, None), (0, None),)
 		self.support = (-np.inf, np.inf)
-		# self.use_autograd = True
 		self.plot_x_scale = 'linear'
 		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
 			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 

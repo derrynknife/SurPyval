@@ -15,7 +15,7 @@ class Uniform_(ParametricFitter):
 		# Set 'k', the number of parameters
 		self.k = 2
 		self.bounds = ((None, None), (None, None),)
-		# self.use_autograd = True
+		self.support = (-np.inf, np.inf)
 		self.plot_x_scale = 'linear'
 		self.y_ticks = np.linspace(0, 1, 21)[1:-1]
 		self.param_names = ['a', 'b']

@@ -17,7 +17,6 @@ class Exponential_(ParametricFitter):
 		self.k = 1
 		self.bounds = ((0, None),)
 		self.suport = (0, np.inf)
-		# self.use_autograd = True
 		self.plot_x_scale = 'linear'
 		self.y_ticks = [0.05, 0.4, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999, 0.9999]
 		self.param_names = ['lambda']

@@ -9,35 +9,42 @@ from itertools import tee
 import surpyval
 from surpyval import nonparametric as nonp
 
-def plotting_positions(x, c=None, n=None, heuristic="Blom", A=None, B=None):
+def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom", **kwargs):
     """
     Good reference for heuristics:
     https://en.wikipedia.org/wiki/Q–Q_plot
     """
-    x, c, n = surpyval.xcn_handler(x, c, n)
-    assert heuristic in nonp.PLOTTING_METHODS, "Must use available heuristic"
+    x, c, n, t = surpyval.xcnt_handler(x, c, n, t)
+    if heuristic not in nonp.PLOTTING_METHODS:
+        raise ValueError("Must use available heuristic")
+
+    if (np.isfinite(t).any()) & (heuristic not in ['Nelson-Aalen', 'Kaplan-Meier', 'Fleming-Harrington', 'Turnbull']):
+        raise ValueError("Truncated data can only be used with 'Nelson-Aalen', 'Kaplan-Meier', 'Fleming-Harrington', and 'Turnbull' estimators")
+
+    if heuristic == 'Turnbull':
+        turnbull_estimator = kwargs.pop('turnbull_estimator', 'Nelson-Aalen')
 
     N = n.sum()
 
     if heuristic == 'Filliben':
         # Needs work
-        x_, r, d, R = nonp.filliben(x, c=c, n=n)
+        x_, r, d, R = nonp.filliben(x, c, n)
         F = 1 - R 
         return x_, r, d, F
     elif heuristic == 'Nelson-Aalen':
-        x_, r, d, R = nonp.nelson_aalen(x, c, n)
+        x_, r, d, R = nonp.nelson_aalen(x, c, n, t=t)
         F = 1 - R
         return x_, r, d, F
     elif heuristic == 'Kaplan-Meier':
-        x_, r, d, R = nonp.kaplan_meier(x, c, n)
+        x_, r, d, R = nonp.kaplan_meier(x, c, n, t=t)
         F = 1 - R
         return x_, r, d, F
     elif heuristic == 'Fleming-Harrington':
-        x_, r, d, R = nonp.fleming_harrington(x, c, n)
+        x_, r, d, R = nonp.fleming_harrington(x, c, n, t=t)
         F = 1 - R
         return x_, r, d, F
     elif heuristic == 'Turnbull':
-        x_, r, d, R = nonp.turnbull(x, c, n)
+        x_, r, d, R = nonp.turnbull(x, c, n, t, estimator=turnbull_estimator)
         F = 1 - R
         return x_, r, d, F
     else:
@@ -73,6 +80,7 @@ def plotting_positions(x, c=None, n=None, heuristic="Blom", A=None, B=None):
         elif heuristic == "Larsen":     A, B = 0.567, -0.134
         elif heuristic == "Tukey":      A, B = 1./3., 1./3.
         elif heuristic == "DPW":        A, B = 1.0, 0.0
+
         F = (ranks - A)/(N + B)
         F = pd.Series(F).ffill().fillna(0).values
         return x_, r, d, F

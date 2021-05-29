@@ -12,7 +12,7 @@ from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 
 import pandas as pd
-from copy import deepcopy
+from copy import deepcopy, copy
 
 from .fitters.mom import mom
 from .fitters.mle import mle
@@ -37,17 +37,6 @@ class ParametricFitter():
 		res = minimize(fun, init, bounds=self.bounds)
 		return res.x
 
-	def like_with_interval(self, x, c, n, *params):
-		xl = x[:, 0]
-		xr = x[:, 1]
-		like = np.zeros_like(xl).astype(surpyval.NUM)
-		like_i = np.zeros_like(xl).astype(surpyval.NUM)
-		like = np.where(c ==  0, self.df(xl, *params), like)
-		like = np.where(c == -1, self.ff(xl, *params), like)
-		like = np.where(c ==  1, self.sf(xl, *params), like)
-		like_i = np.where(c ==  2, self.ff(xr, *params) - self.ff(xl, *params), like_i)
-		return like + like_i
-
 	def like(self, x, c, n, *params):
 		like = np.zeros_like(x).astype(surpyval.NUM)
 		like = np.where(c ==  0, self.df(x, *params), like)
@@ -55,33 +44,34 @@ class ParametricFitter():
 		like = np.where(c ==  1, self.sf(x, *params), like)
 		return like
 
-	def like_t(self, t, *params):
-		tl = t[:, 0]
-		tr = t[:, 1]
-		t_denom = self.ff(tr, *params) - self.ff(tl, *params)
+	def like_i(self, x, c, n, inf_c_flags, *params):
+		# This makes sure that any intervals that are at the boundaries of support or
+		# are infinite will not cause the autograd functions to fail.
+		ir = np.where(inf_c_flags[:, 1] == 1, 1, self.ff(x[:, 1], *params))
+		il = np.where(inf_c_flags[:, 0] == 1, 0, self.ff(x[:, 0], *params))
+		like_i = ir - il
+		return like_i
+
+	def like_t(self, t, t_flags, *params):
+		tr_denom = np.where(t_flags[:, 1] == 1, self.ff(t[:, 1], *params), 1.)
+		tl_denom = np.where(t_flags[:, 0] == 1, self.ff(t[:, 0], *params), 0.)
+		t_denom = tr_denom - tl_denom
 		return t_denom
 
-	def neg_ll_trunc(self, x, c, n, t, *params):
+	def neg_ll(self, x, c, n, inf_c_flags, t, t_flags, *params):
 		if 2 in c:
-			like = self.like_with_interval(x, c, n, *params)
+			like_i = self.like_i(x, c, n, inf_c_flags, *params)
+			x_ = copy(x[:, 0])
+			x_[x_ == 0] = 1
 		else:
-			like = self.like(x, c, n, *params)
-		like = np.log(like) - np.log(self.like_t(t, *params))
+			like_i = 0
+			x_ = copy(x)
+			
+		like = self.like(x_, c, n, *params)
+		like = like + like_i
+		like = np.log(like) - np.log(self.like_t(t, t_flags, *params))
 		like = np.multiply(n, like)
 		return -np.sum(like)
-
-	def neg_ll(self, x, c, n, *params):
-		# Where the magic happens
-		if 2 in c:
-			like = self.like_with_interval(x, c, n, *params)
-		else:
-			like = self.like(x, c, n, *params)
-		# like = np.where(like <= 0, surpyval.TINIEST, like)
-		# like = np.where(like < 1, like, 1)
-		like = np.log(like)
-		like = np.multiply(n, like)
-		like = -np.sum(like)
-		return like
 
 	def neg_mean_D(self, x, c, n, *params):
 		mask = c == 0
@@ -146,10 +136,14 @@ class ParametricFitter():
 			moments[i] = self._moment(n, *params, offset=offset)
 		return moments
 
-	def fit(self, x, c=None, n=None, how='MLE', **kwargs):
+	def fit(self, x, c=None, n=None, t=None, how='MLE', **kwargs):
 		# Check inputs
-		t = kwargs.pop('t', None)
 		offset = kwargs.pop('offset', False)
+		heuristic = kwargs.pop('heuristic', 'Turnbull')
+		fixed = kwargs.pop('fixed', None)
+		t  = kwargs.pop('t',  None)
+		tl = kwargs.pop('tl', None)
+		tr = kwargs.pop('tr', None)
 
 		if offset and self.name in ['Normal', 'Beta', 'Uniform', 'Gumbel', 'Logistic']:
 			raise ValueError('{dist} distribution cannot be offset'.format(dist=self.name))
@@ -169,19 +163,25 @@ class ParametricFitter():
 		if t is not None and how == 'MPP':
 			raise NotImplementedError('Method of probability plotting doesn\'t yet support tuncation')
 
+		# Needs to handle tl and tr
 		if t is not None and how == 'MOM':
 			raise ValueError('Maximum product spacing doesn\'t support tuncation')
 
-		x, c, n = surpyval.xcn_handler(x, c, n)
-		# TODO: Add xcnt_handler
+		x, c, n, t = surpyval.xcnt_handler(x, c, n, t=t, tl=tl, tr=tr)
 
 		if surpyval.utils.check_no_censoring(c) and (how == 'MOM'):
 			raise ValueError('Method of moments doesn\'t support censoring')
-
-		heuristic = kwargs.pop('heuristic', 'Turnbull')
-
+		
 		if (surpyval.utils.no_left_or_int(c)) and (how == 'MPP') and (not heuristic == 'Turnbull'):
 			raise ValueError('Probability plotting estimation with left or interval censoring only works with Turnbull heuristic')
+
+		if not offset:
+			if x.ndim == 2:
+				if ((x[:, 0] <= self.support[0]) & (c == 0)).any():
+					raise ValueError("Observed values must be in support of distribution; are some of your observed values 0, -Inf, or Inf?")
+			else:
+				if ((x <= self.support[0]) & (c == 0)).any():
+					raise ValueError("Observed values must be in support of distribution; are some of your observed values 0, -Inf, or Inf?")
 
 		# Passed checks
 		if offset:
@@ -202,7 +202,6 @@ class ParametricFitter():
 			't' : t
 		}
 
-		fixed = kwargs.pop('fixed', None)
 
 		bounds = deepcopy(self.bounds)
 		param_map = self.param_map.copy()
@@ -224,7 +223,7 @@ class ParametricFitter():
 			if 'init' in kwargs:
 				init = kwargs.pop('init')
 			else:
-				if self.name == 'Gumbel':
+				if self.name in ['Gumbel', 'Beta']:
 					init = np.array(self.parameter_initialiser(x, c, n))
 				else:
 					init = np.array(self.parameter_initialiser(x, c, n, offset=offset))

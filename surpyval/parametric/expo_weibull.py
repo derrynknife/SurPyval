@@ -16,11 +16,9 @@ from .fitters.mpp import mpp
 class ExpoWeibull_(ParametricFitter):
 	def __init__(self, name):
 		self.name = name
-		# Set 'k', the number of parameters
 		self.k = 3
 		self.bounds = ((0, None), (0, None), (0, None),)
 		self.support = (0, np.inf)
-		# self.use_autograd = True
 		self.plot_x_scale = 'log'
 		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
 			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 

@@ -18,7 +18,6 @@ class Weibull3p_(ParametricFitter):
 		self.name = name
 		self.k = 3
 		self.bounds = ((0, None), (0, None), (None, None),)
-		# self.use_autograd = True
 		self.plot_x_scale = 'log'
 		self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
 			0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 

@@ -4,17 +4,17 @@ import autograd.numpy as np
 def pass_through(x):
 	return x
 
-def rev_adj_relu(x):
-	return -np.where(x >= 0, x + 1, np.exp(x))
-
 def adj_relu(x):
 	return np.where(x >= 0, x + 1, np.exp(x))
 
 def inv_adj_relu(x):
 	return np.where(x >= 1, x - 1, np.log(x))
 
+def rev_adj_relu(x):
+	return -np.where(x >= 0, x + 1, np.exp(x))
+
 def inv_rev_adj_relu(x):
-	return np.where(x <= -1, -x - 1, np.log(-x))
+	return np.where(x < -1, -x - 1, np.log(-x))
 
 
 def bounds_convert(x, bounds):
@@ -25,15 +25,15 @@ def bounds_convert(x, bounds):
 			funcs.append(lambda x : pass_through(x))
 			inv_f.append(lambda x : pass_through(x))
 		elif (u is None):
-			funcs.append(lambda x : adj_relu(x))
-			inv_f.append(lambda x : inv_adj_relu(x))
+			funcs.append(lambda x : inv_adj_relu(x))
+			inv_f.append(lambda x : adj_relu(x))
 		elif (l is None):
 			if u != 0:
 				upper = np.min(x)
 			else:
 				upper = 0
-			funcs.append(lambda x : upper + rev_adj_relu(x))
-			inv_f.append(lambda x : inv_rev_adj_relu(x - upper))
+			funcs.append(lambda x : inv_rev_adj_relu(x - upper))
+			inv_f.append(lambda x : upper + rev_adj_relu(x))
 
 	transform = lambda params : np.array([f(p) for p, f in zip(params, funcs)])
 	inv_trans = lambda params : np.array([f(p) for p, f in zip(params, inv_f)])
