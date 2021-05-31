@@ -37,10 +37,16 @@ class Gamma_(ParametricFitter):
 
 	def parameter_initialiser(self, x, c=None, n=None, offset=False):
 		# These equations are truly magical
-		s = np.log(x.sum()/len(x)) - np.log(x).sum()/len(x)
-		alpha = (3 - s + np.sqrt((s - 3)**2 + 24*s)) / (12*s)
-		beta = x.sum()/(len(x)*alpha)
-		return alpha, 1./beta
+		if offset:
+			s = np.log(x.sum()/len(x)) - np.log(x).sum()/len(x)
+			alpha = (3 - s + np.sqrt((s - 3)**2 + 24*s)) / (12*s)
+			beta = x.sum()/(len(x)*alpha)
+			return alpha, 1./beta, np.min(x) - 1
+		else:
+			s = np.log(x.sum()/len(x)) - np.log(x).sum()/len(x)
+			alpha = (3 - s + np.sqrt((s - 3)**2 + 24*s)) / (12*s)
+			beta = x.sum()/(len(x)*alpha)
+			return alpha, 1./beta
 
 	def sf(self, x, alpha, beta):
 		return 1 - self.ff(x, alpha, beta)

@@ -141,7 +141,6 @@ class ParametricFitter():
 		offset = kwargs.pop('offset', False)
 		heuristic = kwargs.pop('heuristic', 'Turnbull')
 		fixed = kwargs.pop('fixed', None)
-		t  = kwargs.pop('t',  None)
 		tl = kwargs.pop('tl', None)
 		tr = kwargs.pop('tr', None)
 
@@ -223,7 +222,7 @@ class ParametricFitter():
 			if 'init' in kwargs:
 				init = kwargs.pop('init')
 			else:
-				if self.name in ['Gumbel', 'Beta']:
+				if self.name in ['Gumbel', 'Beta', 'Normal']:
 					init = np.array(self.parameter_initialiser(x, c, n))
 				else:
 					init = np.array(self.parameter_initialiser(x, c, n, offset=offset))

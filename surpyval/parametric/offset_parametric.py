@@ -142,7 +142,7 @@ class OffsetParametric():
 		F  =  F[mask]
 
 		# This needs to be changed to find the F at lowest and highest x (not t)
-		if self.data['t'] is not None:
+		if np.isfinite(self.data['t']).any():
 			Ftl = self.ff(np.min(self.data['t'][:, 0]))
 			Ftr = self.ff(np.max(self.data['t'][:, 1]))
 			F = Ftl + F * (Ftr - Ftl)
