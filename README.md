@@ -1,6 +1,6 @@
 # SurPyval - Survival Analysis in Python
 
-[![PyPI - Version]()](https://pypi.org/project/surpyval/)
+[![PyPI - Version](https://img.shields.io/badge/pypi-0.4.0-success)](https://pypi.org/project/surpyval/)
 
 Yet another Python survival analysis tool. 
 
