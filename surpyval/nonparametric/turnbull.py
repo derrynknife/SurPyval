@@ -15,8 +15,6 @@ def km(d, r):
 	return R
 
 def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
-	x = x.astype(float)
-	t = t.astype(float)
 	bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
 	N = n.sum()
 
@@ -57,6 +55,7 @@ def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
 
 		beta[i, :]  = (((bounds >= t1) & (bounds < t2)).astype(int))
 
+
 	beta[:, M-1] = 1
 	n = n.reshape(-1, 1)
 	d = np.zeros(M)
@@ -71,7 +70,7 @@ def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
 		func = na
 
 	old_err_state = np.seterr(all='ignore')
-	while (not np.isclose(p, p_prev, atol=1e-100, rtol=1e-20).all()) and (iters < 100):
+	while (iters < 100):
 		p_prev = p
 		iters +=1
 		ap = alpha * p
@@ -84,19 +83,17 @@ def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
 		d = (nu + mu).sum(axis=0)
 		# M total observed and unobserved failures.
 		M = (nu + mu).sum()
-		
+
 		r = M - d.cumsum() + d
 		R = func(d, r)
 		p = np.abs(np.diff(np.hstack([[1], R])))
 
 		# The 'official' way to do it. This is the Kaplan-Meier
 		# p = (nu + mu).sum(axis=0)/(nu + mu).sum()
-	
-	mask = np.isfinite(bounds)
-	x = bounds[mask]
-	r = r[mask]
-	d = d[mask]
-	R = R[mask]
+	x = bounds[1:-1]
+	r = r[1:-1]
+	d = d[1:-1]
+	R = R[1:-1]
 	np.seterr(**old_err_state)
 	return x, r, d, R
 

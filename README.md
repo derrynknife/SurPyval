@@ -1,5 +1,7 @@
 # SurPyval - Survival Analysis in Python
 
+[![PyPI - Version]()](https://pypi.org/project/surpyval/)
+
 Yet another Python survival analysis tool. 
 
 This is another pure python survival analysis tool so why was it needed? The intent of this package was to closely mimic the scipy API as close as possible with a simple `.fit()` method for any type of distribution (parametric or non-parametric); other survival analysis packages don't completely mimic that API. Further, there is currently (at the time of writing) no pacakage that can take an arbitrary comination of observed, censored, and truncated data. Finally, surpyval is unique in that it can be used with multiple parametric estimation methods. This allows for an analyst to determine a distribution for the parameters if another method fails. The parametric methods available are Maximum Likelihood Estimation (MLE), Probability Plotting (MPP), Mean Square Error (MSE), Method of Moments (MOM), and Maximum Product of Spacing (MPS). Surpyval can, for each type of estimator, take the following types of input data:

@@ -1,6 +1,6 @@
 
-SurPyval Models
-===============
+SurPyval Modelling
+==================
 
 Survival modelling with *surpyval* is very easy. This page will take you through a series of scenarios that can show you how to use the features of *surpyval* to get you the answers you need. The first example is if you simply have a list of event times and need to find the distribution of best fit.
 
@@ -44,6 +44,9 @@ The :code:`model` object from the above example can be used to calculate the den
 	:align: center
 
 The CDF :code:`ff()`, Survival (or Reliability) :code:`sf()`, hazard rate :code:`hf()`, or cumulative hazard rate :code:`Hf()` can be computed as well. This functionality makes it very easy to work with surpyval models to determine risks or to pass the function to other libraries to find optimal trade-offs. 
+
+Censored Data
+-------------
 
 A common complication in survival analysis is that all the data is not observed up to the point of failure (or death). In this case the data is right censored, see the types of data section for a more detailed discussion, surpyval offers a very clean and easy way to model this. First, let's create a simulated data set:
 
@@ -120,13 +123,79 @@ In this example we have created the varable x with a matrix of the intervals wit
 
 .. code:: raw
 
-	Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters (30.074154903683134, 9.637405285678735)
+	Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters (30.074154903683105, 9.637405285678366)
 
-Again, we have a result that is very close to the original parameters. SurPyval can take as input an arbitrary combination of censored data.
+Again, we have a result that is very close to the original parameters. SurPyval can take as input an arbitrary combination of censored data. If we plot the data we will see:
+
+.. image:: images/surpyval-modelling-5.png
+	:align: center
+
+This does not look to be such a good fit. This is because the Turbull estimator finds the probability of failing in a window, not at a given point. So if we align the model plot to the end of the window instead of start with:
+
+.. code:: python
+
+	np_model = surv.Turnbull.fit(x, n=n)
+	plt.step(np_model.x, np_model.R, where='post')
+	x_plot = np.linspace(20, 37.5, 1000)
+	plt.plot(x_plot, model.sf(x_plot), color='k', linestyle='dashed')
+
+We get:
+
+.. image:: images/surpyval-modelling-6.png
+	:align: center
 
 
+Which is, visually, clearly a better fit. You need to be careful when using the Turnbull plotting points to estimate the parameters of a distribution. This is because it is not known where in the intervals a death has actually occurred. However it is good to check the start and end of the window (changing 'where' betweek 'pre' and 'post' or 'mid') to see the goodness-of-fit.
 
 
+Truncated Data
+--------------
 
+Surpyval has the capacity to handle arbitrary truncated data. A common occurence of this is in the insurance industry data. When customers make a claim on their policies they have to pay an 'excess' which is a charge to submit a claim for processing. If say, the excess on a set of policies in an area is $250, then it would not be logical for a customer to submit a claim for a loss of less than that number. Therefore there will be no claims under $250. This can also happen in engineering where a part may be tested up to some limit prior to be sold, therefore, as a customer you need to make sure you take into account the fact that some parts would have been rejected at the end of the line which you may not have seen. So a washing machine may run through 25 cycles prior to shipping. This is similar to, but distinct from censoring. When something is left censored, we know there was a failure or event below the threshold.  Whereas with truncation, we do not see any variables below the threshold. A simulated example may explain this better:
+
+.. code:: python
+
+	np.random.seed(10)
+	x = surv.Weibull.random(100, alpha=100, beta=0.6)
+	# Keep only those values greater than 250
+	threshold = 25
+	x = x[x > threshold]
+
+We have therefore simulated a scenario where we have taken 100 random samples from a fat tailed Weibull distribution. We then filter to keep only those records that are above the threshold. In this case we assume we haven't seen the data for the washing machines with less than 25 cycles. To understand what could go wrong if we ignore this, what do we get if we assume all the data are failures and there is no truncation?
+
+.. code:: python
+
+	model = surv.Weibull.fit(x=x)
+	print(model.params)
+
+.. code:: raw
+
+	(218.39245675499225, 1.050718601374874)
+
+With a plot that looks like:
+
+.. image:: images/surpyval-modelling-7.png
+	:align: center
+
+
+Looking at the parameters of the distribution, you can see that the beta value is greater than 1. Although only slightly, this implies that this distribution has an increasing hazard rate. If you were the operator of the washing machines (e.g. a hotel or a laundromat) and any downtime had a cost, you would conclude from this that replacing the machines after a fixed time would be a good policy.
+
+But if you take the truncation into account:
+
+.. code:: python
+
+	model = surv.Weibull.fit(x=x, tl=threshold)
+	print(model.params)
+
+.. code:: raw
+
+	(127.32704868357536, 0.7105357186212391)
+
+With the plot:
+
+.. image:: images/surpyval-modelling-8.png
+	:align: center
+
+You can see now that 
 
 

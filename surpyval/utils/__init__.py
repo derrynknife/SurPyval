@@ -288,7 +288,7 @@ def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 				x_ndarray[idx, :] = np.array(val)
 			x = x_ndarray
 		else:
-			x = np.array(x).astype(float)
+			x = np.array(x)
 	elif type(x) == Series:
 		x = np.array(x)
 
@@ -395,8 +395,10 @@ def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 		elif (t[:, 1] <= x).any():            
 			raise ValueError("All right truncated values must be greater than the respective observed values")
 
-	n = n.astype(np.int64)
-	c = c.astype(np.int64)
+	x = x.astype(float)
+	c = c.astype(int)
+	n = n.astype(int)
+	t = t.astype(float)
 	
 	x, c, n, t = group_xcnt(x, c, n, t)
 	x, c, n, t = xcnt_sort(x, c, n, t)
