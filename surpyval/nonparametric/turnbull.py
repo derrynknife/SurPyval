@@ -38,20 +38,27 @@ def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
 	xl[c == -1] = -np.inf
 	xr[c ==  1] =  np.inf
 	
+	# bounds = bounds[0:-1]
 	M = bounds.size
 	N = xl.size
 	
 	alpha = np.zeros(shape=(N, M))
-	beta  = np.zeros(shape=(N, M))
+	beta  = np.ones(shape=(N, M))
+
 	for i in range(0, N):
 		x1, x2 = xl[i], xr[i]
 		t1, t2 = tl[i], tr[i]
 		if x1 == x2:
 			alpha[i, :] = (bounds == x1).astype(int) * n[i]
+		elif x2 == np.inf:
+			alpha[i, :] = ((bounds > x1) & (bounds <= x2)).astype(int) * n[i]
 		else:
 			alpha[i, :] = ((bounds >= x1) & (bounds < x2)).astype(int) * n[i]
-		beta[i, :]  = 1 - ((bounds >= t1) & (bounds <= t2)).astype(int)
 
+		beta[i, :]  = (((bounds >= t1) & (bounds < t2)).astype(int))
+
+	beta[:, M-1] = 1
+	n = n.reshape(-1, 1)
 	d = np.zeros(M)
 	p = np.ones(M)/M
 	
@@ -62,26 +69,35 @@ def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
 		func = km
 	else:
 		func = na
-	
-	while (not np.isclose(p, p_prev, atol=1e-100).all()) and (iters < 100000):
+
+	old_err_state = np.seterr(all='ignore')
+	while (not np.isclose(p, p_prev, atol=1e-100, rtol=1e-20).all()) and (iters < 100):
 		p_prev = p
+		iters +=1
 		ap = alpha * p
-		bp = beta * p
-		# Expected failures
-		mu = ap / ap.sum(axis=1).reshape(-1, 1)
+		# Observed deaths
+		mu = alpha * ap / ap.sum(axis=1, keepdims=True)
 		# Expected additional failures due to truncation
-		nu = bp / (1 - bp).sum(axis=1).reshape(-1, 1)
+		nu = n*(1 - beta) * (1 - beta)*p / (beta*p).sum(axis=1, keepdims=True)
+		
+		# Deaths/Failures
 		d = (nu + mu).sum(axis=0)
-		r = d.sum() - d.cumsum() + d
+		# M total observed and unobserved failures.
+		M = (nu + mu).sum()
+		
+		r = M - d.cumsum() + d
 		R = func(d, r)
 		p = np.abs(np.diff(np.hstack([[1], R])))
+
 		# The 'official' way to do it. This is the Kaplan-Meier
 		# p = (nu + mu).sum(axis=0)/(nu + mu).sum()
+	
 	mask = np.isfinite(bounds)
 	x = bounds[mask]
 	r = r[mask]
 	d = d[mask]
 	R = R[mask]
+	np.seterr(**old_err_state)
 	return x, r, d, R
 
 class Turnbull_(NonParametricFitter):

@@ -1,6 +1,8 @@
 # SurPyval - Survival Analysis in Python
 
-Yet another Python survival analysis tool. This is another pure python survival analysis tool so why was it needed? The intent of this package was to closely mimic the scipy API as close as possible, other survival analysis packages don't completely mimic that API. Further, there was a gap in the other tools, specifically, arbitrary combinations of observed, censored, and truncated data. The current capability is as follows:
+Yet another Python survival analysis tool. 
+
+This is another pure python survival analysis tool so why was it needed? The intent of this package was to closely mimic the scipy API as close as possible with a simple `.fit()` method for any type of distribution (parametric or non-parametric); other survival analysis packages don't completely mimic that API. Further, there is currently (at the time of writing) no pacakage that can take an arbitrary comination of observed, censored, and truncated data. Finally, surpyval is unique in that it can be used with multiple parametric estimation methods. This allows for an analyst to determine a distribution for the parameters if another method fails. The parametric methods available are Maximum Likelihood Estimation (MLE), Probability Plotting (MPP), Mean Square Error (MSE), Method of Moments (MOM), and Maximum Product of Spacing (MPS). Surpyval can, for each type of estimator, take the following types of input data:
 
 | Method | Para/Non-Para | Observed | Censored | Truncated |
 | ------ | ---- |-----|------|------|
@@ -14,7 +16,7 @@ Yet another Python survival analysis tool. This is another pure python survival 
 | **Fleming-Harrington** | Non-Parametric | Yes | Right only | Left only |
 | **Turnbull** | Non-Parametric | Yes | Yes | Yes |
 
-SurPyval also offers many different distributions for users, and because of the flexible implementation adding new distributions is easy. The available distributions are:
+SurPyval also offers many different distributions for users, and because of the flexible implementation adding new distributions is easy. The currently available distributions are:
 
 | Distribution |
 | ---- |
@@ -30,7 +32,7 @@ SurPyval also offers many different distributions for users, and because of the 
 | **Logistic** |
 | **LogLogistic** |
 
-This project spawned from a Reliaility Engineering project, as such there is a focus on visualising distribution fits with probability plots. This is combined with extremely flexible non-parametric fitting estimates. So each parametric.
+This project spawned from a Reliaility Engineering project; due to the history of reliability engineers estimating parameters from a probability plot. SurPyval has continued this tradition to ensure that any parametric distribution can have the estimate plotted on a probability plot. These visualisations enable an analyst to get a sense of the goodness of fit of the parametric distribution with the non-parametric distribution.
 
 # Install and Quick Intro
 

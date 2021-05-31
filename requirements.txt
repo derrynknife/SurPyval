@@ -1,6 +1,5 @@
 numpy
 scipy
-requests
 pandas
 autograd
 autograd-gamma

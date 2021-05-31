@@ -75,6 +75,7 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 				try:
 					res = minimize(fun, init, args=(offset, True))
 					p_hat = inv_fs(const(res.x))
+					np.seterr(**old_err_state)
 					return res, None, res.hess_inv, p_hat
 				except:
 					# Something really went wrong

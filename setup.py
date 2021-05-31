@@ -5,10 +5,10 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="surpyval",
-    version="0.3.0",
+    version="0.4.0",
     author="Derryn Knife",
     author_email="derryn@reliafy.com",
-    description="A survival analysis python package",
+    description="A python package for survival analysis",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/derrynknife/SurPyval",
@@ -19,7 +19,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
-    install_requires=['autograd', 'numpy', 'scipy', 'pandas', 'autograd_gamma'],
+    install_requires=['autograd', 'numpy', 'scipy', 'pandas', 'autograd_gamma', 'matplotlib'],
     include_package_data=True,
     package_data={'': ['datasets/*.csv']},
 )

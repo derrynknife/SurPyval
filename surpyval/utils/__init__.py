@@ -385,9 +385,9 @@ def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 	if (t[:, 1] <= t[:, 0]).any():
 		raise ValueError("All left truncated values must be less than right truncated values")
 	if x.ndim == 2:
-		if ((t[:, 0].reshape(-1, 1)  < x[:, 0]) & (np.isfinite(t[:, 0]))).any():            
+		if ((t[:, 0] > x[:, 0]) & (np.isfinite(t[:, 0]))).any():
 			raise ValueError("All left truncated values must be less than the respective observed values")
-		elif ((t[:, 1].reshape(-1, 1)  > x[:, 1]) & (np.isfinite(t[:, 1]))).any():            
+		elif ((t[:, 1] < x[:, 1]) & (np.isfinite(t[:, 1]))).any():            
 			raise ValueError("All right truncated values must be greater than the respective observed values")
 	else:
 		if (t[:, 0] >= x).any():            

@@ -36,29 +36,31 @@ Contents:
    :caption: Quickstart & Intro
 
    Quickstart
-   Conventions
    Types of Data
+   Conventions
    Data Wrangler Examples
    Datasets
+
 
 .. toctree::
    :maxdepth: 1
    :caption: Survival Modelling
 
-   Non-Parametric Models
+   Non-Parametric Modelling
    Parametric Modelling
-   Distributions (Parametric)
+   SurPyval Models
+   Distributions
 
 
 
 Installation
 ------------------------------
 
-Because someone beat me to putting 'surpyval' on pypi, i've settled with:
+*surpyval* can be installed easily with the pip command:
 
-.. code-block:: console
+.. code-block:: bash
 
-    pip install surpyval
+    $ pip install surpyval
 
 
 
