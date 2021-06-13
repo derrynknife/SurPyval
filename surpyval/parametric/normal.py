@@ -23,10 +23,11 @@ class Normal_(ParametricFitter):
 			'sigma' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
-		x, c, n = surpyval.xcn_handler(x, c, n)
-		flag = (c == 0).astype(int)
-		return x.sum() / (n * flag).sum(), np.std(x)
+	def parameter_initialiser(self, x, c=None, n=None, t=None):
+		return para.Normal.fit(x, c, n, t, how='MPP').params
+		# x, c, n = surpyval.xcn_handler(x, c, n)
+		# flag = (c == 0).astype(int)
+		# return x.sum() / (n * flag).sum(), np.std(x)
 
 	def sf(self, x, mu, sigma):
 		return norm.sf(x, mu, sigma)

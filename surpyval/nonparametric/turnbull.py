@@ -1,4 +1,5 @@
 import numpy as np
+from surpyval import nonparametric as nonp
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 def na(d, r):

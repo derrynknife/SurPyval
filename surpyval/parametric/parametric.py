@@ -70,11 +70,14 @@ class Parametric():
 
 	def R_cb(self, t, cb=0.05):
 		"""
-		Nailed this. Can be used elsewhere if needed
+		Needs work!
+		Need to flag to use (or not) the variance of the offset.
+		Limit this to only the MLE...
 		"""
 		if hasattr(self.dist, 'R_cb'):
 			return self.dist.R_cb(t, *self.params, self.hess_inv, cb=cb)
 
+		# This can be changed to a general lookup so that ANY function can have it's CB computed!
 		sf_func = lambda params : self.dist.sf(t, *params)
 
 		pvars = self.hess_inv[np.triu_indices(self.hess_inv.shape[0])]
@@ -82,7 +85,15 @@ class Parametric():
 			jac = jacobian(sf_func)(np.array(self.params))
 
 
-			
+		# See general process here:
+		# http://reliawiki.org/index.php/Confidence_Bounds#Fisher_Matrix_Confidence_Bounds
+		# I'm pretty sure this is quite wrong.
+		# Even if it is wrong it needs to be cleaned for clarity
+		# Need to break into a diag calc and an triupper (withouth diag) part.
+
+		# This interpretation comes from:
+		# http://reliawiki.org/index.php/The_Gamma_Distribution#Bounds_on_Reliability
+		# This is a general pattern
 		var_u = []
 		for i, j in enumerate(jac):
 			j = np.atleast_2d(j).T * j

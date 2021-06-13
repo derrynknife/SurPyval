@@ -16,7 +16,7 @@ SurPyval offers users several methods for estimating parameters, these are:
 - Mean Square Error (MSE)
 - Method of Moments (MOM)
 
-There are other methods that can be used, e.g. L-moments or generalised method of moments. These are interesting, and may be added in future, but for now surpyval offers the above estimation methods. Surpyval is unique in the capability to provide the estimation technique. Most other survival analysis methods do not allow for specifying different methods. The advantage of this flexibility will become apparent in the following discussion.
+There are other methods that can be used, e.g. L-moments or generalised method of moments. These are interesting, and may be added in future, but for now surpyval offers the above estimation methods. Surpyval is unique in the capability to provide the estimation technique. Most other survival analysis methods do not allow for specifying different methods. The advantage of this flexibility will become apparent.
 
 Maximum Likelihood Estimation (MLE)
 -----------------------------------

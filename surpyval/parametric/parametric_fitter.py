@@ -139,7 +139,6 @@ class ParametricFitter():
 	def fit(self, x, c=None, n=None, t=None, how='MLE', **kwargs):
 		# Check inputs
 		offset = kwargs.pop('offset', False)
-		heuristic = kwargs.pop('heuristic', 'Turnbull')
 		fixed = kwargs.pop('fixed', None)
 		tl = kwargs.pop('tl', None)
 		tr = kwargs.pop('tr', None)
@@ -167,6 +166,12 @@ class ParametricFitter():
 			raise ValueError('Maximum product spacing doesn\'t support tuncation')
 
 		x, c, n, t = surpyval.xcnt_handler(x, c, n, t=t, tl=tl, tr=tr)
+
+		# Turnbull should be avoided as the alpha and beta matrix can be memory expensive!
+		if (~np.isfinite(t)).any() & ((-1 not in c) & (2 not in c)):
+			heuristic = kwargs.pop('heuristic', 'Nelson-Aalen')
+		else:
+			heuristic = kwargs.pop('heuristic', 'Turnbull')
 
 		if surpyval.utils.check_no_censoring(c) and (how == 'MOM'):
 			raise ValueError('Method of moments doesn\'t support censoring')
@@ -200,7 +205,6 @@ class ParametricFitter():
 			'n' : n,
 			't' : t
 		}
-
 
 		bounds = deepcopy(self.bounds)
 		param_map = self.param_map.copy()
@@ -300,12 +304,12 @@ class ParametricFitter():
 		x = df[x_col].astype(surpyval.NUM)
 
 		if c_col in df:
-			c = df[c_col].values.astype(np.int64)
+			c = df[c_col].values.astype(int)
 		else:
 			c = None
 
 		if n_col in df:
-			n = df[n_col].values.astype(np.int64)
+			n = df[n_col].values.astype(int)
 		else:
 			n = None
 

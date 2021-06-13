@@ -21,9 +21,9 @@ class LogNormal_(ParametricFitter):
 			'sigma' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+	def parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
 		# Need an offset mpp function here
-		norm_mod = para.Normal.fit(np.log(x), c=c, n=n, how='MLE')
+		norm_mod = para.Normal.fit(np.log(x), c=c, n=n, t=t, how='MLE')
 		mu, sigma = norm_mod.params
 		return mu, sigma
 

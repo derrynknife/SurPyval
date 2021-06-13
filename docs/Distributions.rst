@@ -5,6 +5,8 @@ Distributions
 Relationship Between Distributions
 ----------------------------------
 
+
+
 Coming soon
 
 Weibull Distribution
@@ -15,6 +17,9 @@ Weibull Distribution
 
 Gumbel Distribution
 --------------------
+
+.. math::
+	R(x) = e^{-{(\frac{x}{\alpha}})^{\beta}}
 
 Exponentiated Weibull Distribution
 ----------------------------------

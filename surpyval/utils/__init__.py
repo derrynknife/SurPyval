@@ -161,8 +161,8 @@ def xcn_handler(x, c=None, n=None):
 		# Do check here for groupby and binning
 		n = np.ones(x.shape[0])
 
-	n = n.astype(np.int64)
-	c = c.astype(np.int64)
+	n = n.astype(int)
+	c = c.astype(int)
 	
 	x, c, n = group_xcn(x, c, n)
 	x, c, n = xcn_sort(x, c, n)
@@ -442,7 +442,7 @@ def xcnt_to_xrd(x, c=None, n=None, **kwargs):
 	x = np.repeat(x, n)
 	c = np.repeat(c, n)
 	t = np.repeat(t[:, 0], n)
-	n = np.ones_like(x).astype(np.int64)
+	n = np.ones_like(x).astype(int)
 
 	x, idx = np.unique(x, return_inverse=True)
 
@@ -451,8 +451,8 @@ def xcnt_to_xrd(x, c=None, n=None, **kwargs):
 	# do is drop outs
 	do = np.bincount(idx, weights=c)
 	r = le + d - d.cumsum() + do - do.cumsum()
-	r = r.astype(np.int64)
-	d = d.astype(np.int64)
+	r = r.astype(int)
+	d = d.astype(int)
 	return x, r, d
 def xcn_to_xrd(x, c=None, n=None):
 	"""
@@ -483,7 +483,7 @@ def xcn_to_xrd(x, c=None, n=None):
 
 	x = np.repeat(x, n)
 	c = np.repeat(c, n)
-	n = np.ones_like(x).astype(np.int64)
+	n = np.ones_like(x).astype(int)
 
 	x, idx = np.unique(x, return_inverse=True)
 
@@ -491,8 +491,8 @@ def xcn_to_xrd(x, c=None, n=None):
 	# do is drop outs
 	do = np.bincount(idx, weights=c)
 	r = n.sum() + d - d.cumsum() + do - do.cumsum()
-	r = r.astype(np.int64)
-	d = d.astype(np.int64)
+	r = r.astype(int)
+	d = d.astype(int)
 	return x, r, d
 def xrd_to_xcn(x, r, d):
 	"""
@@ -555,8 +555,8 @@ def fsli_to_xcn(f, s, l, i):
 	c_i = -np.ones_like(x_i)
 
 	x = np.concatenate([x_f, x_s, x_l, x_i])
-	c = np.hstack([c_f, c_s, c_l]).astype(np.int64)
-	n = np.hstack([n_f, n_s, n_l]).astype(np.int64)
+	c = np.hstack([c_f, c_s, c_l]).astype(int)
+	n = np.hstack([n_f, n_s, n_l]).astype(int)
 
 	x, c, n = xcn_sort(x, c, n)
 
@@ -593,8 +593,8 @@ def fsl_to_xcn(f, s, l):
 	c_l = -np.ones_like(x_l)
 
 	x = np.hstack([x_f, x_s, x_l])
-	c = np.hstack([c_f, c_s, c_l]).astype(np.int64)
-	n = np.hstack([n_f, n_s, n_l]).astype(np.int64)
+	c = np.hstack([c_f, c_s, c_l]).astype(int)
+	n = np.hstack([n_f, n_s, n_l]).astype(int)
 
 	x, c, n = xcn_sort(x, c, n)
 
@@ -626,8 +626,8 @@ def fs_to_xcn(f, s):
 	c_s = np.ones_like(x_s)
 
 	x = np.hstack([x_f, x_s])
-	c = np.hstack([c_f, c_s]).astype(np.int64)
-	n = np.hstack([n_f, n_s]).astype(np.int64)
+	c = np.hstack([c_f, c_s]).astype(int)
+	n = np.hstack([n_f, n_s]).astype(int)
 
 	x, c, n = xcn_sort(x, c, n)
 
@@ -670,5 +670,5 @@ def round_sig(points, sig=2):
 	places = sig - np.floor(np.log10(np.abs(points))) - 1
 	output = []
 	for p, i in zip(points, places):
-		output.append(np.round(p, np.int(i)))
+		output.append(np.round(p, int(i)))
 	return output

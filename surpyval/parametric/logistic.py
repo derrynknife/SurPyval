@@ -22,10 +22,14 @@ class Logistic_(ParametricFitter):
 			'sigma' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+		return self.fit(x, c, n, t, how='MPP').params
 		x, c, n = surpyval.xcn_handler(x, c, n)
 		flag = (c == 0).astype(int)
-		return x.sum() / (n * flag).sum(), 1.
+		if offset:
+			return x.sum() / (n * flag).sum(), 1., 1.
+		else:
+			return x.sum() / (n * flag).sum(), 1.
 
 	def sf(self, x, mu, sigma):
 		return 1 - self.ff(x, mu, sigma)
