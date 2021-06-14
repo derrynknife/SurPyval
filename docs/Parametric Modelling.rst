@@ -21,9 +21,7 @@ There are other methods that can be used, e.g. L-moments or generalised method o
 Method of Moments (MOM)
 -----------------------
 
-This method is the simplest (and least accurate) methods to find parameters of a distribution.
-
-
+This method is the simplest (and least accurate) method to find parameters of a distribution.
 
 
 Maximum Likelihood Estimation (MLE)

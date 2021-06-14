@@ -295,13 +295,25 @@ class ParametricFitter():
 			raise ValueError("df must be a pandas DataFrame")
 
 		how = kwargs.pop('how', 'MLE')
-		x_col = kwargs.pop('x', 'x')
+
+		if 'x' in kwargs and (('xl' in kwargs) or ('xr' in kwargs)):
+			raise ValueError("Must use either 'x' or 'xl' and 'xr' cannot use both")
+
+		if 'x' in kwargs:
+			x = kwargs.pop('x', 'x')
+			x = df[x].astype(float)
+		else:
+			xl = kwargs.pop('xl', 'xl')
+			xr = kwargs.pop('xr', 'xr')
+			xl = df[xl].astype(float)
+			xr = df[xr].astype(float)
+			x = np.vstack([xl, xr]).T
+
 		c_col = kwargs.pop('c', 'c')
 		n_col = kwargs.pop('n', 'n')
+		t_col = kwargs.pop('t', 't')
 
 		#raise TypeError('Unepxected kwargs provided: %s' % list(kwargs.keys()))
-
-		x = df[x_col].astype(surpyval.NUM)
 
 		if c_col in df:
 			c = df[c_col].values.astype(int)
@@ -313,7 +325,12 @@ class ParametricFitter():
 		else:
 			n = None
 
-		return self.fit(x, c, n, how, **kwargs)
+		if t_col in df:
+			t = df[t_col].values.astype(int)
+		else:
+			t = None
+
+		return self.fit(x, c, n, t, how, **kwargs)
 
 	def from_params(self, params, offset=None):
 		if self.k != len(params):
