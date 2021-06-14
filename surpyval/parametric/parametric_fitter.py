@@ -25,17 +25,17 @@ from .fitters import bounds_convert, fix_idx_and_function
 PARA_METHODS = ['MPP', 'MLE', 'MPS', 'MSE', 'MOM']
 
 class ParametricFitter():
-	def parameter_initialiser_(self, x, c, n, offset=False):
-		# Change this to simply invoke MPP
-		x, c, n, R = nonp.turnbull(x, c, n, estimator='Turnbull')
-		F = 1 - R
-		F = F[np.isfinite(x)]
-		x = x[np.isfinite(x)]
-		# Need to add offset step.
-		init = np.ones(self.k)
-		fun = lambda params : np.sum(((self.ff(x, *params)) - F)**2)
-		res = minimize(fun, init, bounds=self.bounds)
-		return res.x
+	# def parameter_initialiser_(self, x, c, n, offset=False):
+	# 	# Change this to simply invoke MPP
+	# 	x, c, n, R = nonp.turnbull(x, c, n, estimator='Turnbull')
+	# 	F = 1 - R
+	# 	F = F[np.isfinite(x)]
+	# 	x = x[np.isfinite(x)]
+	# 	# Need to add offset step.
+	# 	init = np.ones(self.k)
+	# 	fun = lambda params : np.sum(((self.ff(x, *params)) - F)**2)
+	# 	res = minimize(fun, init, bounds=self.bounds)
+	# 	return res.x
 
 	def like(self, x, c, n, *params):
 		like = np.zeros_like(x).astype(surpyval.NUM)
@@ -226,7 +226,7 @@ class ParametricFitter():
 			if 'init' in kwargs:
 				init = kwargs.pop('init')
 			else:
-				if self.name in ['Gumbel', 'Beta', 'Normal']:
+				if self.name in ['Gumbel', 'Beta', 'Normal', 'Uniform']:
 					init = np.array(self.parameter_initialiser(x, c, n))
 				else:
 					init = np.array(self.parameter_initialiser(x, c, n, offset=offset))

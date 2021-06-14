@@ -1,6 +1,6 @@
 
-Non-Parametric Modelling
-========================
+Non-Parametric Estimation
+=========================
 
 Non-parametric survival analysis is the attempt to capture the distribution of survival data without making any assumptions about the shape of the distribution. That is, non-parametric analysis, unlike parametric analysis, does not assume that the survival data was Weibull distributed or that it was Normally distributed etc. Concretely, non-parametric estimation does not attempt to estimate the parameters of a distribution, therefore "non-parametric." Parametric analysis is covered in more detail in the section covering parametric estimation but it is important to contrast non-parametric estimation against what it is not. So what exactly is non-parametric analysis?
 
@@ -35,11 +35,29 @@ Therefore using the at risk count, r, and the death count, d, can be used to est
 
 .. math::
 
-   \frac{ \sum_{t=0}^{N}f(t,k) }{N}
+   R(t) = \prod_{i:t_{i} \leq t}^{} \left ( 1 - \frac{d_{i} }{r_{i}}  \right )
+
 
 
 Nelson-Aalen Estimation
 -----------------------
+
+The Nelson-Aalen estimator [NA]_, isntead of finding the probability, it estimates the cumulative hazard function, and given that we know the relationship between the cumulative hazard function and the reliability function, the Nelson-Aalen estiamte can be converted to a survival curve. The equations are:
+
+.. math::
+
+   H(t) = \sum_{i:t_{i} \leq t}^{} \frac{d_{i} }{r_{i}} \\
+   \\
+   R(t) = e^{-H(t)}
+
+
+
+
+
+
+
+
+
 
 Fleming-Harrington Estimation
 -----------------------------
@@ -51,3 +69,5 @@ References
 ----------
 
 .. [KM] Kaplan, E. L., & Meier, P. (1958). Nonparametric estimation from incomplete observations. Journal of the American statistical association, 53(282), 457-481.
+
+.. [NA] Nelson, Wayne (1969). Hazard plotting for incomplete failure data. Journal of Quality Technology, 1(1), 27-52.

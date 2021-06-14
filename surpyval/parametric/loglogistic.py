@@ -27,12 +27,12 @@ class LogLogistic_(ParametricFitter):
 
 	def parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
 		if offset:
-			return *self.fit(x, c, n, t, how='MPP').params, 1.
-			# x, c, n = surpyval.xcn_handler(x, c, n)
-			# flag = (c == 0).astype(int)
-			# value_range = np.max(x) - np.min(x)
-			# gamma_init = np.min(x) - value_range / 10
-			# return gamma_init, x.sum() / (n * flag).sum(), 2.
+			# return *self.fit(x, c, n, t, how='MPP').params, 1.
+			x, c, n = surpyval.xcn_handler(x, c, n)
+			flag = (c == 0).astype(int)
+			value_range = np.max(x) - np.min(x)
+			gamma_init = np.min(x) - value_range / 10
+			return gamma_init, x.sum() / (n * flag).sum(), 2., 1.
 		else:
 			return self.fit(x, c, n, t, how='MPP').params
 			# x, c, n = surpyval.xcn_handler(x, c, n)

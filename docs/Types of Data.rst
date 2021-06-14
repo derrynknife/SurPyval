@@ -66,9 +66,9 @@ In surpyval, passing truncated data to the fitting method looks like:
 	import surpyval
 
 	x  = [674, 792, 1153, 1450, 1555, 1923, 2019]
-	lt = [500, 500, 500, 500, 500, 500, 500]
+	tl = [500, 500, 500, 500, 500, 500, 500]
 
-	model = surpyval.Weibull.fit(x=x, lt=lt)
+	model = surpyval.Weibull.fit(x=x, tl=tl)
 
 
 Concluding Points

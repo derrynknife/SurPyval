@@ -27,15 +27,15 @@ class Weibull_(ParametricFitter):
 			'beta' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+	def parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
 		log_x = np.log(x)
 		log_x[np.isnan(log_x)] = -np.inf
 		if offset:
-			return mpp(dist=self, x=x, c=c, n=n, on_d_is_0=True, offset=True)
+			return mpp(dist=self, x=x, c=c, n=n, t=t, on_d_is_0=True, offset=True)
 		else:
-			gumb = para.Gumbel.fit(log_x, c, n, how='MLE')
+			gumb = para.Gumbel.fit(log_x, c, n, t, how='MLE')
 			if not gumb.res.success:
-				gumb = para.Gumbel.fit(log_x, c, n, how='MPP')
+				gumb = para.Gumbel.fit(log_x, c, n, t, how='MPP')
 			mu, sigma = gumb.params
 			alpha, beta = np.exp(mu), 1. / sigma
 			if (np.isinf(alpha) | np.isnan(alpha)):

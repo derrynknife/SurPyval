@@ -20,5 +20,5 @@ Alas
 
 This gives us the Weibull plot
 
-.. image:: images/weibull_plot.png
+.. image:: images/quickstart-1.png
 	:align: center

@@ -22,7 +22,7 @@ Data Formats
 The conventional formats use in surpyval are:
 
 - xcnt = x variables, with c as the censoring scheme, n as the counts, and t as the truncation
-- xrd  = x variables, with the risk set, r,  at x and the deaths, d, also at x
+- xrd  = x variables, with the risk set, r, at x and the deaths, d, also at x
 
 All functions in surpyval have default handling conditions for c and n. That is, if these variables aren't passed, it is assumed that there was one observation and it was a failure for every x.
 
@@ -36,7 +36,7 @@ wranglers for formats:
 Censoring conventions
 ---------------------
 
-For the censoring values, surpyval uses the convention seen in Meeker and Escobar, that is:
+For the censoring values, surpyval uses the convention used in Meeker and Escobar, that is:
 
 - -1 = left
 - 0 = failure / event

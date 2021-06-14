@@ -41,13 +41,21 @@ def mps(dist, x, c, n, const, trans, inv_fs, init, fixed_idx, offset):
 
 	This method is exceptional for when using three parameter distributions.
 	"""
-	old_err_state = np.seterr(invalid='raise', divide='raise', over='ignore', under='ignore')
+
+	# Can change this to raise invalid and divide errors when MPS takes
+	old_err_state = np.seterr(invalid='ignore', divide='ignore', over='ignore', under='ignore')
+
 	if offset:
 		fun = lambda params: dist.neg_mean_D(x - inv_fs(const(params))[0], c, n, *inv_fs(const(params))[1::])
 		fun_hess = lambda params: dist.neg_mean_D(x - params[0], c, n, *params[1::])
 	else:
 		fun = lambda params: dist.neg_mean_D(x, c, n, *inv_fs(const(params)))
 		fun_hess = lambda params: dist.neg_mean_D(x, c, n, *params)
+
+	jac  = jacobian(fun)
+	hess = hessian(fun)
+	# res  = minimize(fun, init)
+	# print(res)
 
 	try:
 		jac  = jacobian(fun)
@@ -58,14 +66,18 @@ def mps(dist, x, c, n, const, trans, inv_fs, init, fixed_idx, offset):
 						hess=hess, 
 						tol=1e-15)
 	except:
-		print("Autodifferentiation with hessian failed, trying without hessian", file=sys.stderr)
+		print("MPS with autodiff hessian and jacobian failed, trying without hessian", file=sys.stderr)
 		try:
 			jac  = jacobian(fun)
 			res = minimize(fun, init, method='BFGS', jac=jac)
 		except:
-			print("MPS FAILED: Try alternate estimation method", file=sys.stderr)
-			np.seterr(**old_err_state)
-			return None, jac, None, None
+			print("MPS with autodiff jacobian failed, trying without jacobian or hessian", file=sys.stderr)
+			try:
+				res = minimize(fun, init)
+			except:
+				print("MPS FAILED: Try alternate estimation method", file=sys.stderr)
+				np.seterr(**old_err_state)
+				return None, jac, None, None
 
 	p_hat = inv_fs(const(res.x))
 	hess_inv = inv(hessian(fun_hess)(p_hat))

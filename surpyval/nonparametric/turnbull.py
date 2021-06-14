@@ -71,7 +71,7 @@ def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
 		func = na
 
 	old_err_state = np.seterr(all='ignore')
-	while (iters < 100):
+	while (iters < 1000):
 		p_prev = p
 		iters +=1
 		ap = alpha * p
@@ -84,18 +84,24 @@ def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
 		d = (nu + mu).sum(axis=0)
 		# M total observed and unobserved failures.
 		M = (nu + mu).sum()
-
+		# Risk set, i.e the number of items at risk at each value x
 		r = M - d.cumsum() + d
+		# Find the reliability using the deaths and risk set. Can use either NA or KM!
 		R = func(d, r)
+		# Calculate the probability mass in each interval
 		p = np.abs(np.diff(np.hstack([[1], R])))
 
-		# The 'official' way to do it. This is the Kaplan-Meier
+		# The 'official' way to do it which is equivalent to the Kaplan-Meier
 		# p = (nu + mu).sum(axis=0)/(nu + mu).sum()
+
+	# Remove the -Inf and the Inf values.
 	x = bounds[1:-1]
 	r = r[1:-1]
 	d = d[1:-1]
 	R = R[1:-1]
+
 	np.seterr(**old_err_state)
+
 	return x, r, d, R
 
 class Turnbull_(NonParametricFitter):

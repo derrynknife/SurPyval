@@ -5,7 +5,7 @@ Datasets
 Ball Bearing Failures
 ---------------------
 
-.. code:: python
+.. code:: pycon
 
 	>>> from surpyval.datasets import Bearing
 
