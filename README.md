@@ -23,18 +23,18 @@ This is another pure python survival analysis tool so why was it needed? The int
 
 SurPyval also offers many different distributions for users, and because of the flexible implementation adding new distributions is easy. Further, the power of SurPyval lay in the robust parameter estimation, as such, some distributions, those that are supported on the half real line, can be offset to make a three- or four-parameter version. The currently available distributions are:
 
-| Distribution | Offsetable |
-| ---- | ---- | No |
-| **Weibull** | Yes |
-| **Normal** | No |
+| Distribution  | Offsetable |
+| ------------- | ---- |
+| **Weibull**   | Yes |
+| **Normal**    | No |
 | **LogNormal** | Yes |
-| **Gamma** | Yes |
-| **Beta** | No |
-| **Uniform** | No |
+| **Gamma**     | Yes |
+| **Beta**      | No |
+| **Uniform**   | No |
 | **Exponential** | Yes |
 | **Exponentiated Weibull** | Yes |
-| **Gumbel** | No |
-| **Logistic** | No |
+| **Gumbel**    | No |
+| **Logistic**  | No |
 | **LogLogistic** | Yes |
 
 This project spawned from a Reliaility Engineering project; due to the history of reliability engineers estimating parameters from a probability plot. SurPyval has continued this tradition to ensure that any parametric distribution can have the estimate plotted on a probability plot. These visualisations enable an analyst to get a sense of the goodness of fit of the parametric distribution with the non-parametric distribution.
