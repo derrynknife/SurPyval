@@ -43,7 +43,7 @@ This example shows the flexibility surpyval offers. It allows users to analyse d
 	c = [-1, 0, 2, 2, 1]
 	n = [3, 2, 1, 1, 1]
 
-	model = surpyval.Weibull.fit(x=x, c=c, n)
+	model = surpyval.Weibull.fit(x=x, c=c, n=n)
 
 The first step of the fit method actually wrangles the input data into the densest form possible. So internally, the example without the n value, will be condensed to be the second example without you seeing it. But it shows the capability of how data can be input to surpyval if you have different formats. But we are getting away from data types...
 
@@ -66,7 +66,7 @@ In surpyval, passing truncated data to the fitting method looks like:
 	import surpyval
 
 	x  = [674, 792, 1153, 1450, 1555, 1923, 2019]
-	tl = [500, 500, 500, 500, 500, 500, 500]
+	tl = 500
 
 	model = surpyval.Weibull.fit(x=x, tl=tl)
 

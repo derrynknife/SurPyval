@@ -21,8 +21,34 @@ There are other methods that can be used, e.g. L-moments or generalised method o
 Method of Moments (MOM)
 -----------------------
 
-This method is the simplest (and least accurate) method to find parameters of a distribution.
+This method is the simplest (and least accurate) method to find parameters of a distribution. The intent of the Method of Moments (MOM) is to find the closest match of a distributions moments, to those of the moments of a sample of data.
 
+For a given data set, or sample, the kth moment is defined as:
+
+.. math::
+
+	M_{k} = \frac{1}{n} \sum_{i=1}^{n}X_{i}^{k}
+
+
+If the distribution has only one parameter, like the exponential distribution, then the method of moments is simply equates the sample moment to the dsitribution moment. For a continuous distribution the kth moment is defined as:
+
+.. math::
+
+	M_{k} = \int_{-\infty}^{\infty}x^{k}f(x)dx
+
+Where f(x) is the density function of that distribution. Therefore, for the exponential distribution, the moments can be computed (with some working) to be:
+
+.. math::
+
+	E[X^{k}] = \frac{k!}{\lambda^{k}}
+
+Because there is only one parameter of the exponential distribution, we need to only match the first moment of the distribution (k=1) to the first moment of the sample. Therefore we get:
+
+.. math::
+
+	\frac{1}{n} \sum_{i=1}^{n}X_{i} = \frac{1}{\lambda}
+
+This is to say that the method of moments solution for the parameter of the exponential is simply the inverse of the average. This is an easy result. When we extend to other distributions with more than one parameter, such simple analytical solutions are not available, so numeric optimisation is needed. SurPyval uses numeric optimisation. 
 
 Maximum Likelihood Estimation (MLE)
 -----------------------------------
