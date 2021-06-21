@@ -27,7 +27,7 @@ class Weibull_(ParametricFitter):
 			'beta' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+	def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
 		log_x = np.log(x)
 		log_x[np.isnan(log_x)] = -np.inf
 		if offset:
@@ -51,7 +51,7 @@ class Weibull_(ParametricFitter):
 		return 1 - np.exp(-(x / alpha)**beta)
 
 	def cs(self, x, X, alpha, beta):
-		return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
+		return self.sf(x, alpha, beta) / self.sf(X, alpha, beta)
 
 	def df(self, x, alpha, beta):
 		return (beta / alpha) * (x / alpha)**(beta-1) * np.exp(-(x / alpha)**beta)
@@ -127,7 +127,7 @@ class Weibull_(ParametricFitter):
 	def R_cb(self, x, alpha, beta, cv_matrix, cb=0.05):
 		return np.exp(-np.exp(self.u_cb(x, alpha, beta, cv_matrix, cb))).T
 
-	def jacobian(self, x, alpha, beta, c=None, n=None):
+	def _jacobian(self, x, alpha, beta, c=None, n=None):
 		"""
 		The jacobian for a two parameter Weibull distribution.
 

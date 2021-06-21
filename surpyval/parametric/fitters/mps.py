@@ -54,8 +54,6 @@ def mps(dist, x, c, n, const, trans, inv_fs, init, fixed_idx, offset):
 
 	jac  = jacobian(fun)
 	hess = hessian(fun)
-	# res  = minimize(fun, init)
-	# print(res)
 
 	try:
 		jac  = jacobian(fun)
@@ -77,14 +75,23 @@ def mps(dist, x, c, n, const, trans, inv_fs, init, fixed_idx, offset):
 			except:
 				print("MPS FAILED: Try alternate estimation method", file=sys.stderr)
 				np.seterr(**old_err_state)
-				return None, jac, None, None
+				return {}
 
-	p_hat = inv_fs(const(res.x))
-	hess_inv = inv(hessian(fun_hess)(p_hat))
+	results = {}
+	params = inv_fs(const(res.x))
+
+	if offset:
+		results['gamma'] = params[0]
+		results['params'] = params[1::]
+	else:
+		results['params'] = params
+
+	results['hess_inv'] = inv(hessian(fun_hess)(params))
+	results['jac'] = jac
 
 	np.seterr(**old_err_state)
 
-	return res, jac, hess_inv, p_hat
+	return results
 
 
 

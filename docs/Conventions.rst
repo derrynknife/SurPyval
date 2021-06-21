@@ -7,13 +7,15 @@ Variable Names
 
 Before discussing the formats, the conventions for vairable names needs to be clarified. These conventions are:
 
-- x = The random variable (time, stress etc.) array
-- c = Refers to the censoring data array associated with x
-- n = The count array associated with x
-- t = the truncation values for the left and right truncation at x (must be two dim, or use tl and tr instead)
-- r = risk set at x
-- d = failures/deaths at x
-- t = two dimensional array of the truncation interval at x
+- x  = The random variable (time, stress etc.) array
+- xl = The random variable (time, stress etc.) array for the left interval of interval censored data.
+- xr = The random variable (time, stress etc.) array for the right interval of interval censored data.
+- c  = Refers to the censoring data array associated with x
+- n  = The count array associated with x
+- t  = the truncation values for the left and right truncation at x (must be two dim, or use tl and tr instead)
+- r  = risk set at x
+- d  = failures/deaths at x
+- t  = two dimensional array of the truncation interval at x
 - tl = one dimensional array of the value at which x is left truncated
 - tr = one dimensional array of the value at which x is right truncated
 

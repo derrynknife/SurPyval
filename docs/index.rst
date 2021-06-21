@@ -3,8 +3,8 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-SurPyval
-========
+SurPyval - Survival Analysis in Python
+======================================
 
 *surpyval* is an implementation of survival analysis in Python. The intent of this was to see if I could actually make it, and therefore learn a lot about survival statistics along the way, but also so that each time a model is created, it can be reused by other planned projects for monte carlo simulations (used in reliability engineering) and optimisations.
 
@@ -103,6 +103,13 @@ Contents:
    Distributions
 
 
+.. toctree::
+   :maxdepth: 1
+   :caption: SurPyval
+
+   surpyval
+
+
 
 Installation
 ------------------------------
@@ -119,6 +126,6 @@ Installation
 Indices and tables
 ==================
 
-.. * :ref:`genindex`
+* :ref:`genindex`
 * :ref:`modindex`
-.. * :ref:`search`
+* :ref:`search`

@@ -5,15 +5,17 @@ from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 def fleming_harrington(x, c=None, n=None, **kwargs):
 	r"""
-
 	Fleming-Harrington estimation of survival distribution.
 
+	Attributes
+	----------
+	
 	x : array like
         The values of the random variables.
 	c : array like, default is None
         The array, of same length as x, that flags whether a value in x is left censored (-1), right censored (1), observed (0), or interval censored (2)
     n : int
-        The number of trials (copied from `binomtest` input).
+        The number of trials (copied from `b3inomtest` input).
 
 	Ref:
 	Fleming, T. R., and Harrington, D. P. (1984). “Nonparametric Estimation of the Survival Distribution in Censored Data.” Communications in Statistics—Theory and Methods 13:2469–2486.
@@ -29,11 +31,9 @@ def fleming_harrington(x, c=None, n=None, **kwargs):
 
 	.. math:: H = cumsum(h)
 
-	Reliability Function:
-	---------------------
+	Survival Function:
 
 	.. math:: R = e^{-H}
-
 
     Methods
     -------

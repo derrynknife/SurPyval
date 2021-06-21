@@ -24,4 +24,12 @@ def mom(dist, x, n, init, offset):
 
 	fun = lambda params : np.sum((moments - dist.mom_moment_gen(*params, offset=offset))**2)
 	res = minimize(fun, init, bounds=bounds)
-	return res
+
+	results = {}
+	if offset:
+		results['gamma'] = res.x[0]
+		results['params'] = res.x[1::]
+	else:
+		results['params'] = res.x
+	results['res'] = res
+	return results

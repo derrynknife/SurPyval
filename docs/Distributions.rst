@@ -34,7 +34,6 @@ Gamma Distribution
 .. math::
 	R(x) = 1 - \frac{1}{\Gamma(\alpha)}\int_{0}^{x}\beta^{\alpha}x^{\alpha - 1}e^{-\beta x} dx
 
-
 The Gamma distribution is parameterised by the scale parameter :math:`\alpha` and the shape parameter :math:`\beta`
 
 Beta Distribution

@@ -22,7 +22,7 @@ def _round_vals(x):
 class Parametric():
 	"""
 	Result of ``.fit()`` or ``.from_params()`` method for every surpyval distribution.
-
+	
 	Instances of this class are very useful when a user needs the other functions of a distribution for plotting, optimizations, monte carlo analysis and numeric integration.
 
 	"""
@@ -218,6 +218,32 @@ class Parametric():
 		return self.dist.qf(p, *self.params)
 
 	def cs(self, x, X):
+		r"""
+
+		The conditional survival of the model.
+
+		Parameters
+		----------
+
+		x : array like or scalar
+			The values at which conditional survival is to be calculated.
+		X : array like or scalar
+			The value(s) at which it is known the item has survived
+
+		Returns
+		-------
+
+		cs : array
+			The conditional survival probability.
+
+		Examples
+		--------
+
+		>>> from surpyval import Weibull
+		>>> model = Weibull.from_params([10, 3])
+		>>> model.cs(11, 10)
+		0.00025840046151723767
+		"""
 		return self.dist.cs(x, X, *self.params)
 
 	def random(self, size):
@@ -382,30 +408,99 @@ class Parametric():
 		R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
 		return R_cb.T
 
-	def ll(self):
-		if hasattr(self, 'log_like'):
-			return self.log_like
-		else:
-			x = self.data['x']
-			c = self.data['c']
-			n = self.data['n']
-			t = self.data['t']
-			self.log_like = -self.dist.neg_ll(x, c, n, t, *self.params)
-			return self.log_like
+	def neg_ll(self):
+		r"""
+
+		The the negative log-likelihood for the model, if it was fit with the ``fit()`` method. Not available if fit with the ``from_params()`` method.
+
+		Parameters
+		----------
+
+		None
+
+		Returns
+		-------
+
+		neg_ll : float
+			The negative log-likelihood of the model
+
+		Examples
+		--------
+
+		>>> from surpyval import Weibull
+		>>> import numpy as np
+		>>> np.random.seed(1)
+		>>> x = Weibull.random(100, 10, 3)
+		>>> model = Weibull.fit(x)
+		>>> model.neg_ll()
+		262.52685642385734
+		"""
+		if not hasattr(self, 'data'):
+			raise ValueError("Must have been fit with data")
+
+		return self._neg_ll
 
 	def aic(self):
+		r"""
+
+		The the Aikake Information Criterion (AIC) for the model, if it was fit with the ``fit()`` method. Not available if fit with the ``from_params()`` method.
+
+		Parameters
+		----------
+
+		None
+
+		Returns
+		-------
+
+		aic : float
+			The AIC of the model
+
+		Examples
+		--------
+
+		>>> from surpyval import Weibull
+		>>> import numpy as np
+		>>> np.random.seed(1)
+		>>> x = Weibull.random(100, 10, 3)
+		>>> model = Weibull.fit(x)
+		>>> model.aic()
+		529.0537128477147
+		"""
 		if hasattr(self, '_aic'):
 			return self._aic
 		else:
-			x = self.data['x']
-			c = self.data['c']
-			n = self.data['n']
-			t = self.data['t']
 			k = len(self.params)
-			self._aic = 2 * k + 2 * self.dist.neg_ll(x, c, n, t, *self.params)
+			self._aic = 2 * k + 2 * self.neg_ll()
 			return self._aic
 
 	def aic_c(self):
+		r"""
+
+		The the Corrected Aikake Information Criterion (AIC) for the model, if it was fit with the ``fit()`` method. Not available if fit with the ``from_params()`` method.
+
+		Parameters
+		----------
+
+		None
+
+		Returns
+		-------
+
+		aic_c : float
+			The Corrected AIC of the model
+
+		Examples
+		--------
+
+		>>> from surpyval import Weibull
+		>>> import numpy as np
+		>>> np.random.seed(1)
+		>>> x = Weibull.random(100, 10, 3)
+		>>> model = Weibull.fit(x)
+		>>> model.aic()
+		529.1774241879209
+		"""
 		if hasattr(self, '_aic_c'):
 			return self._aic_c
 		else:

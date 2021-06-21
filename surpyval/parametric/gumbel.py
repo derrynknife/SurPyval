@@ -25,7 +25,7 @@ class Gumbel_(ParametricFitter):
 			'sigma' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def _parameter_initialiser(self, x, c=None, n=None):
 		return para.Gumbel.fit(x, c, n, how='MPP').params
 
 	def sf(self, x, mu, sigma):

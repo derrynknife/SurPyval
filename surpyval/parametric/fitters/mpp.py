@@ -65,7 +65,11 @@ def mpp(dist, x, c, n, t=None, heuristic="Turnbull", rr='y', on_d_is_0=False, of
 
 	params = dist.unpack_rr(params, rr)
 
+	results = {}
+
 	if offset:
-		return [gamma, *params]
-	else:
-		return params
+		results['gamma']  = gamma
+		
+	results['params'] = params
+
+	return results

@@ -1,4 +1,0 @@
-
-
-Fleming-Harrington Estimate
-===========================

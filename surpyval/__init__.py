@@ -1,10 +1,9 @@
 """
 
-Surpyval Again
-===============
+Surpyval
+========
 
-More stuff about the surpyval package
-
+Survival analysis in python. The, at the time of writing, only survival analysis package that can be used with an arbitrary combination of observed, censored, and truncated data.
 """
 import numpy as np
 
@@ -27,7 +26,6 @@ from surpyval.parametric import Uniform
 from surpyval.parametric import Exponential
 from surpyval.parametric import Weibull
 from surpyval.parametric import ExpoWeibull
-from surpyval.parametric import Weibull3p
 from surpyval.parametric import Normal
 from surpyval.parametric import LogNormal
 from surpyval.parametric import Logistic

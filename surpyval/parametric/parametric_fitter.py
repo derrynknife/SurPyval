@@ -124,7 +124,6 @@ class ParametricFitter():
 				m = quad(fun, *self.support)[0]
 		return m
 		
-
 	def mom_moment_gen(self, *params, offset=False):
 		if offset:
 			k = self.k + 1
@@ -227,9 +226,9 @@ class ParametricFitter():
 				init = kwargs.pop('init')
 			else:
 				if self.name in ['Gumbel', 'Beta', 'Normal', 'Uniform']:
-					init = np.array(self.parameter_initialiser(x, c, n))
+					init = np.array(self._parameter_initialiser(x, c, n))
 				else:
-					init = np.array(self.parameter_initialiser(x, c, n, offset=offset))
+					init = np.array(self._parameter_initialiser(x, c, n, offset=offset))
 					
 			# This should happen in the optimiser
 			init = transform(init)
@@ -248,36 +247,36 @@ class ParametricFitter():
 
 		if how == 'MLE':
 			# Maximum Likelihood Estimation
-			model.res, model.jac, model.hess_inv, params = mle(dist=self, x=x, c=c, n=n, t=t, init=init, **fix_and_const_kwargs)
+			results = mle(dist=self, x=x, c=c, n=n, t=t, init=init, **fix_and_const_kwargs)
 
 		elif how == 'MPS':
 			# Maximum Product Spacing
-			model.res, model.jac, model.hess_inv, params = mps(dist=self, x=x, c=c, n=n, init=init, **fix_and_const_kwargs)
+			results = mps(dist=self, x=x, c=c, n=n, init=init, **fix_and_const_kwargs)
 
 		elif how == 'MOM':
 			# Method of Moments
-			model.res = mom(dist=self, x=x, n=n, init=init, offset=offset)
-			params = tuple(model.res.x)
+			results = mom(dist=self, x=x, n=n, init=init, offset=offset)
 
 		elif how == 'MPP':
 			# Method of Probability Plotting
 			rr = kwargs.get('rr', 'y')
-			params = mpp(dist=self, x=x, n=n, c=c, rr=rr, heuristic=heuristic, offset=offset)
+			results = mpp(dist=self, x=x, n=n, c=c, rr=rr, heuristic=heuristic, offset=offset)
 
 		elif how == 'MSE':
 			# Mean Square Error
 			model.res = mse(dist=self, x=x, c=c, n=n, init=init)
 			params = tuple(model.res.x)
 
+		for k, v in results.items():
+			setattr(model, k, v)
+
 		# Unpack params and offset
-		if params is not None:
-			if offset:
-				model.gamma = params[0]
-				model.params = tuple(params[1::])
-			else:
-				model.params = tuple(params)
-		else:
-			model.params = []
+		# if model.params is not None:
+			# if offset:
+				# model.gamma = model.params[0]
+				# model.params = list(model.params[1::])
+		# else:
+			# model.params = []
 
 		return model
 

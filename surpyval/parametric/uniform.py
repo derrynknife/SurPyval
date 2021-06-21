@@ -86,7 +86,9 @@ class Uniform_(ParametricFitter):
 
 	def mle(self, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 		params = np.array([np.min(x), np.max(x)])
-		return None, None, None, params
+		results = {}
+		results['params'] = params
+		return results
 
 	def mpp_x_transform(self, x):
 		return x

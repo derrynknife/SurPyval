@@ -11,7 +11,6 @@ Subpackages
 
 .. toctree::
 
-   surpyval
    surpyval.datasets
    surpyval.nonparametric
    surpyval.parametric

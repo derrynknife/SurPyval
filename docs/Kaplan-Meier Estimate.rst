@@ -1,3 +1,0 @@
-
-Kaplan-Meier Estimate
-======================
