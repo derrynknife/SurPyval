@@ -545,11 +545,10 @@ This shows, that the Maximum Likelihood Estimation failed for this data. However
 .. image:: images/surpyval-modelling-15.png
 	:align: center
 
-Our estimation has worked! Even with the alternate estimation method, we can still call all the same functions to find the density, hazard, CDF, SF etc.
-
-The options you have for selection are
+Our estimation has worked! Even though we used the MPS estimate for the parameters, we can still call all the same functions with the created variable to find the density :code:`df()`, hazard :code:`hf()`, CDF :code:`ff()`, SF :code:`sf()` etc. So regardless of the estimation method, we can still use the model.
 
 This shows the power of the flexible API that surpyval offers, because if your modelling fails using one estimation method, you can use another. In this case, the MPS method is quite good at handling offset distributions. It is therefore a good approach to use when using offset distributions.
+
 
 
 

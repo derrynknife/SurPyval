@@ -71,7 +71,7 @@ class Weibull_(ParametricFitter):
 	def moment(self, n, alpha, beta):
 		return alpha**n * gamma_func(1 + n/beta)
 
-	def entropy(self, alhpa, beta):
+	def entropy(self, alpha, beta):
 		return euler_gamma * (1 - 1/beta) + np.log(alpha / beta) + 1
 
 	def random(self, size, alpha, beta):

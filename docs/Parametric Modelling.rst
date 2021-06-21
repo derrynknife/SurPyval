@@ -48,7 +48,137 @@ Because there is only one parameter of the exponential distribution, we need to 
 
 	\frac{1}{n} \sum_{i=1}^{n}X_{i} = \frac{1}{\lambda}
 
-This is to say that the method of moments solution for the parameter of the exponential is simply the inverse of the average. This is an easy result. When we extend to other distributions with more than one parameter, such simple analytical solutions are not available, so numeric optimisation is needed. SurPyval uses numeric optimisation. 
+This is to say that the method of moments solution for the parameter of the exponential is simply the inverse of the average. This is an easy result. When we extend to other distributions with more than one parameter, such simple analytical solutions are not available, so numeric optimisation is needed. SurPyval uses numeric optimisation to compute the parameters for these distributions.
+
+The method of moments, although interesting, can produce incorrect results, and it can only be used with observed data, so it cannot account for truncation or censoring. But it is good to understand as it is one of the oldest methods used to estimate the parameters of a distribution.
+
+Method of Probability Plotting (MPP)
+------------------------------------
+
+Probability plotting is an extremely simple way to find the parameters of a distribution. This method has a long history because it is a simple activity to do while providing an easy to understand graphic. Further, probability plotting produces a good estimate for the parameters even with few data points. All this combined with the fact that probability plotting can be used for all types of data, observed, censored, and truncated, it is easy to understand why it is widely used.
+
+SurPyval uses the MPP method as an initial guess, when not provided, because it is the only method that does not require an initial guess of the parameters. This is because numeric optimisers require an initial guess, however, when using a probability plotting method, an initial guess is not needed. It therefore provides an excellent method to get an initial guess for subsequent optimisation. But the method itself can be sufficient enough for the majority of applications.
+
+So how does it work?
+
+Probability plotting works of the idea that a distributions CDF can be made into a straight line if the data is transformed. This can be shown by rearranging the CDF of a dsitribution. For the Weibull:
+
+.. math::
+
+	F(x) = 1 - e^{-{(\frac{x}{\alpha}})^{\beta}}
+
+If we negate, add one, and then take the log of each side we get:
+
+.. math::
+
+	\mathrm{ln}(1 - F(x)) = -{(\frac{x}{\alpha}})^{\beta}
+
+
+Then take the log again:
+
+.. math::
+
+	\mathrm{ln}(-\mathrm{ln}(1 - F(x))) = \beta \mathrm{ln}(x) - \beta\mathrm{ln}(\alpha)
+
+From here, we can see that there is a relationship between the CDF and x. That is, the log of the log of (1 - CDF) has a linear relationship with the log of x. Therefore, if we take the log of x, and take the log of the negative log of 1 minus the CDF and plot these, we will get a straight line. To make this work, we therefore need a method to estimate the CDF empirically. Traditionally, there have been heuristics used to create the CDF. However, we can also use the non-parametric estimate as discussed in the non-parametric session. Concretely, we can use the Kaplan-Meier, the Nelson-Aalen, Fleming-Harrington, or Turnbull estimates to approximate the CDF, F(x), transform it, plot, and then do the linear regression. SurPyval uses as a default, the Nelson-Aalen estimator for the plotting point.
+
+Other methods are available. The simplest estimate, for complete data, is the empirical CDF:
+
+.. math::
+
+	\hat{F}(x) = \frac{1}{n}\sum_{i=1}^{n}1_{X_{i} \leq x}
+
+This equation says, that (for a fully observed data set) for any given value, x, the estimate of the CDF at that value is simply the sum of all the observations that occurred below that value divided by the total number of observations. This is a simple percentage estimate that has failed at any given point. This equation will therefore make a step function that increases from 0 to 1.
+
+One issues with this is that the highest value is always 1. But if this is transformed as above, this will be an undefined number. As such, you can adjust the value with a simple change:
+
+
+.. math::
+
+	\hat{F}(x) = \frac{1}{n+1}\sum_{i=1}^{n}1_{X_{i} \leq x}
+
+By using this simple change, the highest value will not be 1, and will therefore be plottable, and not undefined. There are many different methods used to adjust the simple ECDF to be used with a plotting method to estimate the parameters of a distribution. For example, consider Blom's method:
+
+.. math::
+
+	\hat{F}_{k} = (k - 0.375)/(n + 0.25)
+
+Where k is the rank of an observation k is in (1, 2, 3, 4.... n) for n observations. Using these methods we can therefore plot the linearised version above.
+
+Combining this all together is simple witht surpyval.
+
+.. code::
+
+	x = [1, 4, 5, 7, 8, 9, 12, 14]
+	model = surv.Weibull.fit(x, how='MPP', heuristic='Blom')
+	model.plot()
+
+.. image:: images/mpp-1.png
+	:align: center
+
+In this example we have used the probability plotting method with the Blom heuristic to estimate the parameters of the distribution. SurPyval has the option to use many different plotting methods, including the regular KM, NA, and FH non-parametric estimates. All you need to do is change the 'heuristic' parameter; SurPyval includes:
+
+.. list-table:: SurPyval Modelling Methods
+   :header-rows: 1
+   :align: center
+
+   * - Method
+     - A
+     - B
+   * - Blom
+     - 0.375
+     - 0.25
+   * - Median
+     - 0.3
+     - 0.4
+   * - ECDF
+     - 0
+     - 0
+   * - ECDF_Adj
+     - 0
+     - 1
+   * - Mean
+     - 0
+     - 1
+   * - Weibull
+     - 0
+     - 1
+   * - Modal
+     - 1
+     - -1
+   * - DPW
+     - 1
+     - 0
+   * - Midpoint
+     - 0.5
+     - 0
+   * - Benard
+     - 0.3
+     - 0.2
+   * - Beard
+     - 0.31
+     - 0.38
+   * - Hazen
+     - 0.5
+     - 0
+   * - Gringorten
+     - 0.44
+     - 0.12
+   * - Larsen
+     - 0.567
+     - -0.134
+   * - Larsen
+     - 1/3
+     - 1/3
+   * - None
+     - 0
+     - 0
+
+Which is used with the general formula to estimate the plotting position heuristic:
+
+.. math::
+
+	\hat{F}_{k} = (k - A)/(n + B)
 
 Maximum Likelihood Estimation (MLE)
 -----------------------------------

@@ -13,5 +13,5 @@ Subpackages
 
    surpyval
    surpyval.datasets
-   .. surpyval.nonparametric
-   .. surpyval.parametric
+   surpyval.nonparametric
+   surpyval.parametric

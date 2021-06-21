@@ -54,7 +54,7 @@ class Normal_(ParametricFitter):
 		return mu
 
 	def moment(self, n, mu, sigma):
-		return norm.moment(n, mu, sigma)
+		return scipy_norm.moment(n, mu, sigma)
 
 	def random(self, size, mu, sigma):
 		U = uniform.rvs(size=size)

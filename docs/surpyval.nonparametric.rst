@@ -6,9 +6,6 @@ surpyval.nonparametric package
    :undoc-members:
    :show-inheritance:
 
-Submodules
-----------
-
 surpyval.nonparametric.filliben module
 --------------------------------------
 

@@ -75,6 +75,10 @@ SurPyval attempts to use the combination of these methods to make parameter esti
 Becoming a competent survival analyst depends strongly on having a very strong understanding of censoring, truncation, and observations in conjunction with a solid understanding of different types of distributions. Knowing and being able to identify situations as being censored or truncated in real applications will ensure you do not make an errors in your analysis. This can be very difficult to do. This documention can be used as a reference to understand the types of censoring and truncation so that you can identify these situations in your work. Further, having a deep understanding of the types of distributions used in survival analysis will allow you to identify the process that is generating your data. This will then allow you to select an appropriate distribution, if any, to solve your problem. Survival analysis is an extremely powerful, and thoroughly interesting tool, so don't give up, or if you do give up, do the survival statistics on it.
 
 
+.. warning::
+    At present, the *parametric* confidence bounds are in alpha and subject to non-backwards compatible changes. Improving the confidence bounds is the next major development for SurPyval, so watch this space. Or help out.
+
+
 Contents:
 =========
 
@@ -115,6 +119,6 @@ Installation
 Indices and tables
 ==================
 
-* :ref:`genindex`
+.. * :ref:`genindex`
 * :ref:`modindex`
-* :ref:`search`
+.. * :ref:`search`

@@ -345,7 +345,7 @@ class ParametricFitter():
 			model.bounds = ((None, offset), *deepcopy(self.bounds))
 		else:
 			model = para.Parametric()
-		model.params = params
+		model.params = np.array(params)
 		for i, (low, upp) in enumerate(self.bounds):
 			if low is None:
 				l = -np.inf

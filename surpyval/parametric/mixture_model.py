@@ -13,13 +13,9 @@ class MixtureModel():
 	Generalised from algorithm found here
 	https://www.sciencedirect.com/science/article/pii/S0307904X12002545
 	"""
-	def __init__(self, **kwargs): 
-		assert 'x' in kwargs
-		assert 'dist' in kwargs
-		self.dist = kwargs.pop('dist', para.Weibull)
+	def __init__(self, x, dist=para.Weibull, **kwargs):
 		self.m = kwargs.pop('m', 2)
 		raw_data = {}
-		x = kwargs.pop('x')
 		c = kwargs.pop('c', None)
 		n = kwargs.pop('n', None)
 		raw_data['x'] = x

@@ -67,7 +67,8 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom", **kwargs):
 
         if   heuristic == "Blom":       A, B = 0.375, 0.25
         elif heuristic == "Median":     A, B = 0.3, 0.4
-        elif heuristic == "ECDF":       A, B = 0, 1
+        elif heuristic == "ECDF":       A, B = 0, 0
+        elif heuristic == "ECDF_Adj":   A, B = 0, 1
         elif heuristic == "Modal":      A, B = 1.0, -1.0
         elif heuristic == "Midpoint":   A, B = 0.5, 0.0
         elif heuristic == "Mean":       A, B = 0.0, 1.0

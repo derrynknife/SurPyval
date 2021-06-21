@@ -81,6 +81,7 @@ Again, this can be extended to left censored data as well:
 	s = [float(x[0:-1]) for x in split_data if "+" in x]
 	l = [float(x[0:-1]) for x in split_data if "-" in x]
 
+	# Create the x, c, n data
 	data = surv.fsl_to_xcn(f, s, l)
 
 	model = surv.Weibull.fit(*data)
