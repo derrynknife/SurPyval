@@ -29,7 +29,7 @@ The conventional formats use in surpyval are:
 
 All functions in surpyval have default handling conditions for c and n. That is, if these variables aren't passed, it is assumed that there was one observation and it was a failure for every x.
 
-Surpyval fit() functions use the xcn format. But the package has handlers for other formats to rearrange it to the needed format. Other formats are:
+Surpyval fit() functions use the xcnt format. But the package has handlers for other formats to rearrange it to the needed format. Other formats are:
 
 wranglers for formats:
 

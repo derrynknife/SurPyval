@@ -1,5 +1,5 @@
-Gamma
-=====
+Gamma Distribution
+==================
 
 .. automodule:: surpyval.parametric.gamma
    :members:

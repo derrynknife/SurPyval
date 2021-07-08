@@ -8,58 +8,30 @@ Distributions
 
    exponential
    gamma
+   gumbel
+   weibull
+   logistic
+   loglogistic
+   lognormal
+   normal
+   uniform
+   weibull
 
+
+Parametric Class
+----------------
 
 .. autoclass:: surpyval.parametric.parametric.Parametric
    :members:
 
+Parametric Fitter
+-----------------
+
 .. autoclass:: surpyval.parametric.parametric_fitter.ParametricFitter
    :members:
 
-.. automodule:: surpyval.parametric.gamma
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: surpyval.parametric.gumbel
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: surpyval.parametric.lfp
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: surpyval.parametric.logistic
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: surpyval.parametric.loglogistic
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: surpyval.parametric.lognormal
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: surpyval.parametric.normal
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: surpyval.parametric.uniform
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: surpyval.parametric.weibull
-   :members:
-   :undoc-members:
-   :show-inheritance:
+Parametric Mixture Model
+------------------------
 
 .. automodule:: surpyval.parametric.mixture_model
    :members:

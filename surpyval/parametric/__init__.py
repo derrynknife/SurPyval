@@ -24,7 +24,9 @@ from .gumbel import Gumbel
 from .exponential import Exponential
 from .expo_weibull import ExpoWeibull
 from .normal import Normal
+from .normal import Gauss
 from .lognormal import LogNormal
+from .lognormal import Galton
 from .gamma import Gamma
 from .beta import Beta
 from .uniform import Uniform

@@ -94,3 +94,4 @@ class Normal_(ParametricFitter):
 		return self.sf(self.z_cb(x, mu, sigma, cv_matrix, cb=0.05), 0, 1).T
 
 Normal = Normal_('Normal')
+Gauss = Normal_('Gauss')

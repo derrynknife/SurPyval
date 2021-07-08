@@ -26,8 +26,8 @@ from surpyval.parametric import Uniform
 from surpyval.parametric import Exponential
 from surpyval.parametric import Weibull
 from surpyval.parametric import ExpoWeibull
-from surpyval.parametric import Normal
-from surpyval.parametric import LogNormal
+from surpyval.parametric import Normal, Gauss
+from surpyval.parametric import LogNormal, Galton
 from surpyval.parametric import Logistic
 from surpyval.parametric import LogLogistic
 from surpyval.parametric import Gamma

@@ -89,3 +89,4 @@ class LogNormal_(ParametricFitter):
 		return para.Normal.sf(self.z_cb(t, mu, sigma, cv_matrix, cb=0.05), 0, 1).T
 
 LogNormal = LogNormal_('LogNormal')
+Galton = LogNormal_('Galton')
