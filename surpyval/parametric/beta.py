@@ -58,7 +58,7 @@ class Beta_(ParametricFitter):
 	def hf(self, x, alpha, beta):
 		return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
 
-	def Hf(self, x, ahlpa, beta):
+	def Hf(self, x, alpha, beta):
 		return -np.log(self.sf(x, alpha, beta))
 
 	def qf(self, p, alpha, beta):
