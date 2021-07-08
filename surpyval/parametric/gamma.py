@@ -35,7 +35,7 @@ class Gamma_(ParametricFitter):
 			'beta'  : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+	def _parameter_initialiser(self, x, c=None, n=None, offset=False):
 		# These equations are truly magical
 		if offset:
 			s = np.log(x.sum()/len(x)) - np.log(x).sum()/len(x)
@@ -63,7 +63,7 @@ class Gamma_(ParametricFitter):
 	def hf(self, x, alpha, beta):
 		return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
 
-	def Hf(self, x, ahlpa, beta):
+	def Hf(self, x, alpha, beta):
 		return -np.log(self.sf(x, alpha, beta))
 
 	def qf(self, p, alpha, beta):

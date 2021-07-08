@@ -31,7 +31,7 @@ class ExpoWeibull_(ParametricFitter):
 			'mu'    : 2
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+	def _parameter_initialiser(self, x, c=None, n=None, offset=False):
 		log_x = np.log(x)
 		log_x[np.isnan(log_x)] = 0
 		gumb = para.Gumbel.fit(log_x, c, n, how='MLE')

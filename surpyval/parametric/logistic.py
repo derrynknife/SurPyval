@@ -22,7 +22,7 @@ class Logistic_(ParametricFitter):
 			'sigma' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+	def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
 		return self.fit(x, c, n, t, how='MPP').params
 		x, c, n = surpyval.xcn_handler(x, c, n)
 		flag = (c == 0).astype(int)

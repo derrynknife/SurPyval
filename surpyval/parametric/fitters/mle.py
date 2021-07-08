@@ -11,7 +11,7 @@ import surpyval
 import warnings
 import sys
 
-def _create_censor_flags(x_mle, gamma, c):
+def _create_censor_flags(x_mle, gamma, c, dist):
 	if 2 in c:
 		l_flag = x_mle[:, 0] <= np.min([gamma, dist.support[0]])
 		r_flag = x_mle[:, 1] >= dist.support[1]
@@ -61,7 +61,7 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 			else:
 				gamma = 0
 
-			inf_c_flags, x_mle = _create_censor_flags(x_mle, gamma, c)
+			inf_c_flags, x_mle = _create_censor_flags(x_mle, gamma, c, dist)
 			x_mle = x_mle - gamma
 
 			return dist.neg_ll(x_mle, c, n, inf_c_flags, t_mle, t_flags, *params)

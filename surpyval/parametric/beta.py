@@ -36,7 +36,7 @@ class Beta_(ParametricFitter):
 			'beta'  : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def _parameter_initialiser(self, x, c=None, n=None):
 		if (c is not None) & ((c == 0).all()):
 			p = tuple(self._mom(x, n, [1., 1.]).x)
 		else:

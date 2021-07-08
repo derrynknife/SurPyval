@@ -30,7 +30,7 @@ class Weibull3p_(ParametricFitter):
 			'gamma' : 2
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def _parameter_initialiser(self, x, c=None, n=None):
 		x, c, n = surpyval.xcn_handler(x, c, n)
 		diff = (np.max(x) - np.min(x))/10
 		init_mpp = Weibull3p.fit(x, c=c, n=n, how='MPP', heuristic='Turnbull').params

@@ -24,7 +24,7 @@ class Exponential_(ParametricFitter):
 			'lambda' : 0,
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None, offset=False):
+	def _parameter_initialiser(self, x, c=None, n=None, offset=False):
 		x, c, n = surpyval.xcn_handler(x, c, n)
 		c = (c == 0).astype(np.int64)
 		rate = (n * c).sum()/x.sum()

@@ -29,7 +29,7 @@ class Weibull_Mix_Two_(ParametricFitter):
 			'beta2'  : 3
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def _parameter_initialiser(self, x, c=None, n=None):
 		return np.mean(x), 1.
 
 	def df(self, x, n, w, alphas, betas): 

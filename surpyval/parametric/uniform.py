@@ -24,7 +24,7 @@ class Uniform_(ParametricFitter):
 			'b' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def _parameter_initialiser(self, x, c=None, n=None):
 		return np.min(x) - 1., np.max(x) + 1.
 
 	def sf(self, x, a, b):
@@ -68,7 +68,7 @@ class Uniform_(ParametricFitter):
 				out[i] = a**i * b**(n-i)
 			return np.sum(out)/(n + 1)
 
-	def p(self, c, N):
+	def p(self, c, n):
 		return 1 - 2 * (1 + c)**(1. - n) + (1 + 2*c)**(1. - n)
 
 	def random(self, size, a, b):

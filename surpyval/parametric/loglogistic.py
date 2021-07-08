@@ -25,7 +25,7 @@ class LogLogistic_(ParametricFitter):
 			'beta' : 1
 		}
 
-	def parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+	def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
 		if offset:
 			# return *self.fit(x, c, n, t, how='MPP').params, 1.
 			x, c, n = surpyval.xcn_handler(x, c, n)
