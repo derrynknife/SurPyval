@@ -1,7 +1,6 @@
 Exponential Distribution
 ========================
 
-.. automodule:: surpyval.parametric.exponential
+.. autoclass:: surpyval.parametric.exponential.Exponential_
    :members:
-   :undoc-members:
    :inherited-members: fit
