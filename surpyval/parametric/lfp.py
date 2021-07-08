@@ -8,13 +8,13 @@ class LFP(ParametricFitter):
 		self.bounds = tuple(((0, 1), *self.dist.bounds))
 		self.use_autograd = True
 
-	def parameter_initialiser(self, x, c=None, n=None):
+	def _parameter_initialiser(self, x, c=None, n=None):
 		return tuple((1., *self.dist.parameter_initialiser(x, c, n)))
 
 	def sf(self, x, w, *params):
 		return 1 - self.ff(x, w, *params)
 
-	def cs(self, x, w, *params):
+	def cs(self, x, X, *params):
 		return self.sf(x + X, *params) / self.sf(X, *params)
 
 	def ff(self, x, w, *params):
