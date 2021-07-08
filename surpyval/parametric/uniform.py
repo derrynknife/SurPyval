@@ -99,4 +99,14 @@ class Uniform_(ParametricFitter):
 	def mpp_inv_y_transform(self, y, *params):
 		return y
 
+	def unpack_rr(self, params, rr):
+		if rr == 'y':
+			a = -params[1]/params[0]
+			b = (1 - params[1])/params[0]
+		if rr == 'x':
+			a = params[1]
+			b = params[0] + params[1]
+
+		return a, b
+
 Uniform = Uniform_('Uniform')

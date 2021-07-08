@@ -1,5 +1,5 @@
-surpyval.datasets package
-=========================
+Datasets
+========
 
 .. automodule:: surpyval.datasets
    :members:

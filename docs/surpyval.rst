@@ -1,16 +1,8 @@
-surpyval package
-================
-
-.. automodule:: surpyval
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Subpackages
------------
+API
+===
 
 .. toctree::
 
-   surpyval.datasets
    surpyval.nonparametric
    surpyval.parametric
+   surpyval.datasets

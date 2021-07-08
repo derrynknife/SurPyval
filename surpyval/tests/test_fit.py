@@ -13,11 +13,17 @@ parameter_sample_bounds = [((1, 20), (0.5, 5)),
 						   ]
 FIT_SIZES = [5000, 10000, 20000, 50000]
 
-def generate_test_cases():
+def generate_mle_test_cases():
 	for idx, dist in enumerate(DISTS):
 		bounds = parameter_sample_bounds[idx]
 		for kind in ['full', 'censored', 'truncated', 'interval']:
 			yield dist, bounds, kind
+
+def generate_mpp_test_cases():
+	for idx, dist in enumerate(DISTS):
+		bounds = parameter_sample_bounds[idx]
+		for rr in ['x', 'y']:
+			yield dist, bounds, rr
 
 def idfunc(x):
 	if type(x) is tuple:
@@ -83,7 +89,7 @@ def truncate_at(x, q, where='right'):
 		raise ValueError("'where' parameter not correctly defined")
 
 
-@pytest.mark.parametrize("dist,bounds,kind", generate_test_cases(), ids=idfunc)
+@pytest.mark.parametrize("dist,bounds,kind", generate_mle_test_cases(), ids=idfunc)
 def test_mle(dist, bounds, kind):
 	for n in FIT_SIZES:
 		test_params = []
@@ -114,5 +120,28 @@ def test_mle(dist, bounds, kind):
 		if (diff < tol).all():
 			break
 	else:
-		raise AssertionError('fit not very good in %s\n' % dist.name)
+		raise AssertionError('MLE fit not very good in %s\n' % dist.name)
+
+@pytest.mark.parametrize("dist,bounds,rr", generate_mpp_test_cases(), ids=idfunc)
+def test_mpp(dist, bounds, rr):
+	for n in FIT_SIZES:
+		test_params = []
+		tol = 0.1
+		for b in bounds:
+			test_params.append(np.random.uniform(*b))
+		test_params = np.array(test_params)
+		x = dist.random(10000, *test_params)
+		model = dist.fit(x=x, rr=rr, how='MPP')
+		fitted_params = np.array(model.params)
+		max_params = np.max([fitted_params, test_params], axis=0)
+		diff = np.abs(fitted_params - test_params) / max_params
+		if (diff < tol).all():
+			break
+	else:
+		raise AssertionError('MPP fit not very good in %s\n' % dist.name)
+
+
+
+
+
 

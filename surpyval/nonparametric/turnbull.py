@@ -2,20 +2,21 @@ import numpy as np
 from surpyval import nonparametric as nonp
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
-def na(d, r):
+def _na(d, r):
 	H = np.cumsum(d/r)
 	H[np.isnan(H)] = np.inf
 	R = np.exp(-H)
 	p = np.abs(np.diff(np.hstack([[1], R])))
 	return R
 	
-def km(d, r):
+def _km(d, r):
 	R = 1 - d/r
 	R[np.isnan(R)] = 0
 	R = np.cumprod(R)
 	return R
 
 def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
+	
 	bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
 	N = n.sum()
 
@@ -66,9 +67,9 @@ def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
 	p_prev = np.zeros_like(p)
 		
 	if estimator == 'Kaplan-Meier':
-		func = km
+		func = _km
 	else:
-		func = na
+		func = _na
 
 	old_err_state = np.seterr(all='ignore')
 	while (iters < 1000):

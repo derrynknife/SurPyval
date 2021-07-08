@@ -35,7 +35,6 @@ from surpyval.parametric import Beta
 
 from surpyval.parametric import LFP
 from surpyval.parametric import MixtureModel
-from surpyval.parametric import Weibull_Mix_Two
 
 from surpyval.nonparametric import KaplanMeier
 from surpyval.nonparametric import NelsonAalen

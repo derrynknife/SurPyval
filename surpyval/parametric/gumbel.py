@@ -73,11 +73,11 @@ class Gumbel_(ParametricFitter):
 
 	def unpack_rr(self, params, rr):
 		if   rr == 'y':
-			sigma = 1/params[0]
+			sigma = 1./params[0]
 			mu    = -sigma * params[1]
 		elif rr == 'x':
-			sigma  = 1./params[0]
-			mu = np.exp(params[1] / (beta * params[0]))
+			sigma  = params[0]
+			mu = params[1]
 		return mu, sigma
 
 	def var_z(self, x, mu, sigma, cv_matrix):

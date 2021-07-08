@@ -1,20 +1,20 @@
-surpyval.parametric package
-===========================
+Parametric
+==========
 
-.. automodule:: surpyval.parametric.parametric
-   :members:
-   :undoc-members:
-   :show-inheritance:
+Distributions
+-------------
 
-.. automodule:: surpyval.parametric.parametric_fitter
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. toctree::
 
-.. automodule:: surpyval.parametric.exponential
+   exponential
+   gamma
+
+
+.. autoclass:: surpyval.parametric.parametric.Parametric
    :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autoclass:: surpyval.parametric.parametric_fitter.ParametricFitter
+   :members:
 
 .. automodule:: surpyval.parametric.gamma
    :members:

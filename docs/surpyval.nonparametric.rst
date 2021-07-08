@@ -1,5 +1,5 @@
-surpyval.nonparametric package
-==============================
+Non-Parametric
+==============
 
 .. automodule:: surpyval.nonparametric
    :members:

@@ -28,11 +28,9 @@ from .lognormal import LogNormal
 from .gamma import Gamma
 from .beta import Beta
 from .uniform import Uniform
-from .weibull_mix2 import Weibull_Mix_Two
-from .wmm import WMM
 from .logistic import Logistic
 from .loglogistic import LogLogistic
-
 from .mixture_model import MixtureModel
+
 from .lfp import LFP
 
