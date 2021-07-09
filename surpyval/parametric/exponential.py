@@ -2,7 +2,7 @@ import autograd.numpy as np
 from scipy.stats import uniform
 from scipy.special import ndtri as z
 
-import surpyval
+from surpyval import xcn_handler
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter
@@ -34,7 +34,7 @@ class Exponential_(ParametricFitter):
         }
 
     def _parameter_initialiser(self, x, c=None, n=None, offset=False):
-        x, c, n = surpyval.xcn_handler(x, c, n)
+        x, c, n = xcn_handler(x, c, n)
         c = (c == 0).astype(np.int64)
         rate = (n * c).sum()/x.sum()
         if offset:
