@@ -422,13 +422,6 @@ class ParametricFitter():
 			fitted parameters.
 
 
-		Examples
-		--------
-		>>> from surpyval import Weibull
-		>>> df = surv.datasets.BoforsSteel.df
-		>>> model = Weibull.fit_from_df(df, x='x', n='n', offset=True)
-		>>> print(model)
-		Offset Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters [7.14192522 2.6204524 ] with offset of 39.76562962867473
 		"""
 
 		if not type(df) == pd.DataFrame:
