@@ -14,7 +14,7 @@ def mom(dist, x, n, init, const, trans, inv_fs, fixed_idx, offset):
 	x_ = np.repeat(x, n)
 
 	if hasattr(dist, '_mom'):
-		return {'params' : dist._mom(x)}
+		return {'params' : dist._mom(x_)}
 
 	if offset:
 		k = dist.k + 1
@@ -41,4 +41,5 @@ def mom(dist, x, n, init, const, trans, inv_fs, fixed_idx, offset):
 	else:
 		results['params'] = params
 	results['res'] = res
+	results['offset'] = offset
 	return results

@@ -38,7 +38,8 @@ class Beta_(ParametricFitter):
 
 	def _parameter_initialiser(self, x, c=None, n=None):
 		if (c is not None) & ((c == 0).all()):
-			p = tuple(self._mom(x, n, [1., 1.]).x)
+			x = np.repeat(x, n)
+			p = self._mom(x)
 		else:
 			p = 1., 1.
 		return p
@@ -86,20 +87,17 @@ class Beta_(ParametricFitter):
 	def _mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False):
 		raise NotImplementedError("Probability Plotting Method for Beta distribution")
 
-	def _mom(self, x, n, init):
+	def _mom(self, x):
 		"""
 		MOM: Method of Moments for the beta distribution has an analytic answer.
 		"""
-		mean = np.repeat(x, n).mean()
-		var = np.repeat(x, n).var()
+		mean = x.mean()
+		var = x.var()
 		term1 = ((mean*(1 - mean)/var) - 1)
 		alpha =  term1 * mean
 		beta = term1 * (1 - mean)
 
-		# Need to keep fitter constant
-		res = types.SimpleNamespace()
-		res.x = [alpha, beta]
-		return res
+		return alpha, beta
 
 	def var_R(self, dR, cv_matrix):
 		dr_dalpha = dR[:, 0]

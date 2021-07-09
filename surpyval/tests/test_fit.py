@@ -1,9 +1,9 @@
 import pytest
 import numpy as np
 from surpyval import Gumbel, Normal, Weibull, LogNormal
-from surpyval import Logistic, LogLogistic, Uniform
+from surpyval import Logistic, LogLogistic, Uniform, Beta
 
-DISTS = [Gumbel, Normal, Weibull, LogNormal, Logistic, LogLogistic, Uniform]
+DISTS = [Gumbel, Normal, Weibull, LogNormal, Logistic, LogLogistic, Uniform, Beta]
 parameter_sample_bounds = [((1, 20), (0.5, 5)),
                            ((1, 100), (0.5, 100)),
                            ((1, 100), (0.5, 20)),
@@ -11,7 +11,7 @@ parameter_sample_bounds = [((1, 20), (0.5, 5)),
                            ((1, 100), (0.5, 20)),
                            ((1, 100), (0.5, 20)),
                            ((1, 100), (1, 100)),
-                           ]
+                           ((.1, 30), (.1, 30)),]
 FIT_SIZES = [5000, 10000, 20000, 50000, 100000]
 
 
