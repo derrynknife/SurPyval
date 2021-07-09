@@ -229,7 +229,6 @@ class ParametricFitter():
 					init = np.array(self._parameter_initialiser(x, c, n, offset=offset))
 					
 			# This should happen in the optimiser
-			print(init)
 			init = transform(init)
 			init = init[not_fixed]
 		else:
@@ -264,8 +263,7 @@ class ParametricFitter():
 
 		elif how == 'MSE':
 			# Mean Square Error
-			model.res = mse(dist=self, x=x, c=c, n=n, init=init)
-			params = tuple(model.res.x)
+			results = mse(dist=self, x=x, c=c, n=n, t=t, init=init, **fix_and_const_kwargs)
 
 		for k, v in results.items():
 			setattr(model, k, v)

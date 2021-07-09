@@ -71,5 +71,6 @@ def mpp(dist, x, c, n, t=None, heuristic="Turnbull", rr='y', on_d_is_0=False, of
 		results['gamma']  = gamma
 		
 	results['params'] = params
+	results['rr'] = rr
 
 	return results

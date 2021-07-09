@@ -12,7 +12,7 @@ parameter_sample_bounds = [((1, 20), (0.5, 5)),
                            ((1, 100), (0.5, 20)),
                            ((1, 100), (1, 100)),
                            ]
-FIT_SIZES = [5000, 10000, 20000, 50000]
+FIT_SIZES = [5000, 10000, 20000, 50000, 100000]
 
 
 def generate_mle_test_cases():
@@ -30,6 +30,17 @@ def generate_mpp_test_cases():
 
 
 def generate_mom_test_cases():
+    for idx, dist in enumerate(DISTS):
+        bounds = parameter_sample_bounds[idx]
+        yield dist, bounds
+
+
+def generate_mps_test_cases():
+    for idx, dist in enumerate(DISTS):
+        bounds = parameter_sample_bounds[idx]
+        yield dist, bounds
+
+def generate_mse_test_cases():
     for idx, dist in enumerate(DISTS):
         bounds = parameter_sample_bounds[idx]
         yield dist, bounds
@@ -164,7 +175,8 @@ def test_mpp(dist, bounds, rr):
 def test_mom(dist, bounds):
     for n in FIT_SIZES:
         test_params = []
-        tol = 0.1
+        # 1% accuracy!!
+        tol = 0.01
         for b in bounds:
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
@@ -180,12 +192,13 @@ def test_mom(dist, bounds):
 
 
 @pytest.mark.parametrize("dist,bounds",
-                         generate_mom_test_cases(),
+                         generate_mps_test_cases(),
                          ids=idfunc)
 def test_mps(dist, bounds):
     for n in FIT_SIZES:
         test_params = []
-        tol = 0.05
+        # 1% accuracy!!
+        tol = 0.01
         for b in bounds:
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
@@ -198,3 +211,25 @@ def test_mps(dist, bounds):
             break
     else:
         raise AssertionError('MPS fit not very good in %s\n' % dist.name)
+
+@pytest.mark.parametrize("dist,bounds",
+                         generate_mse_test_cases(),
+                         ids=idfunc)
+def test_mse(dist, bounds):
+    for n in FIT_SIZES:
+        test_params = []
+        # 1% accuracy!!
+        tol = 0.01
+        for b in bounds:
+            test_params.append(np.random.uniform(*b))
+        test_params = np.array(test_params)
+        x = dist.random(n, *test_params)
+        model = dist.fit(x=x, how='MSE')
+        fitted_params = np.array(model.params)
+        max_params = np.max([fitted_params, test_params], axis=0)
+        diff = np.abs(fitted_params - test_params) / max_params
+        if (diff < tol).all():
+            break
+    else:
+        raise AssertionError('MPS fit not very good in %s\n' % dist.name)
+
