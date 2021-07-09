@@ -324,6 +324,7 @@ class ParametricFitter():
 					init = np.array(self._parameter_initialiser(x, c, n, offset=offset))
 					
 			# This should happen in the optimiser
+
 			init = transform(init)
 			init = init[not_fixed]
 		else:
@@ -364,56 +365,116 @@ class ParametricFitter():
 
 		return model
 
-	def fit_from_df(self, df, **kwargs):
-		"""
-		For x, need to allow either:
-			- x for single, OR
-			- xl and xr for left and right interval
-		For t, need to have (for left and right interval):
-			- tl, and
-			- tr
+	def fit_from_df(self, df, x=None, c=None, n=None,
+					xl=None, xr=None, tl=None, tr=None,
+					**fit_options):
 
+		r"""
+
+		The central feature to SurPyval's capability. This function aimed to have an API to mimic the 
+		simplicity of the scipy API. That is, to use a simple :code:`fit()` call, with as many or as few
+		parameters as is needed.
+
+		Parameters
+		----------
+
+		df : DataFrame
+			DataFrame of data to be used to create surpyval model
+
+		x : string, optional
+			column name for the column in df containing the variable data. If not provided must provide
+			both xl and xr
+
+		c : string, optional
+			column name for the column in df containing the censor flag of x. If not provided assumes
+			all values of x are observed.
+
+		n : string, optional
+			column name in for the column in df containing the counts of x. If not provided assumes
+			each x is one observation.
+
+		tl : string or scalar, optional
+			If string, column name in for the column in df containing the left truncation data. If scalar
+			assumes each x is left truncated by that value. If not provided assumes x is not left truncated.
+
+		tr : string or scalar, optional
+			If string, column name in for the column in df containing the right truncation data. If scalar
+			assumes each x is right truncated by that value. If not provided assumes x is not right truncated.
+
+		xl : string, optional
+			column name for the column in df containing the left interval for interval censored data.
+			If left interval is -Inf, assumes left censored. If xl[i] == xr[i] assumes observed. Cannot
+			be provided with x, must be provided with xr.
+
+		xr : string, optional
+			column name for the column in df containing the right interval for interval censored data.
+			If right interval is Inf, assumes right censored. If xl[i] == xr[i] assumes observed. Cannot
+			be provided with x, must be provided with xl.
+
+		fit_options : dict, optional
+			dictionary of fit options that will be passed to the :code:`fit` method, see that method for options.
+
+		Returns
+		-------
+
+		model : Parametric
+			A parametric model with the fitted parameters and methods for all functions of the distribution using the 
+			fitted parameters.
+
+
+		Examples
+		--------
+		>>> from surpyval import Weibull
+		>>> df = surv.datasets.BoforsSteel.df
+		>>> model = Weibull.fit_from_df(df, x='x', n='n', offset=True)
+		>>> print(model)
+		Offset Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters [7.14192522 2.6204524 ] with offset of 39.76562962867473
 		"""
+
 		if not type(df) == pd.DataFrame:
 			raise ValueError("df must be a pandas DataFrame")
 
-		how = kwargs.pop('how', 'MLE')
+		if (x is not None) and ((xl is not None) or (xr is not None)):
+			raise ValueError("Must use either 'x' or 'xl' and 'xr'; cannot use both")
 
-		if 'x' in kwargs and (('xl' in kwargs) or ('xr' in kwargs)):
-			raise ValueError("Must use either 'x' or 'xl' and 'xr' cannot use both")
-
-		if 'x' in kwargs:
-			x = kwargs.pop('x', 'x')
+		if x is not None:
 			x = df[x].astype(float)
 		else:
-			xl = kwargs.pop('xl', 'xl')
-			xr = kwargs.pop('xr', 'xr')
 			xl = df[xl].astype(float)
 			xr = df[xr].astype(float)
 			x = np.vstack([xl, xr]).T
 
-		c_col = kwargs.pop('c', 'c')
-		n_col = kwargs.pop('n', 'n')
-		t_col = kwargs.pop('t', 't')
-
 		#raise TypeError('Unepxected kwargs provided: %s' % list(kwargs.keys()))
 
-		if c_col in df:
-			c = df[c_col].values.astype(int)
-		else:
-			c = None
+		if c is not None:
+			c = df[c].values.astype(int)
 
-		if n_col in df:
-			n = df[n_col].values.astype(int)
-		else:
-			n = None
+		if n is not None:
+			n = df[n].values.astype(int)
 
-		if t_col in df:
-			t = df[t_col].values.astype(int)
+		if tl is not None:
+			if type(tl) == str:
+				tl = df[tl].values.astype(float)
+			elif np.isscalar(tl):
+				tl = (np.ones(df.shape[0]) * tl).astype(float)
+			else:
+				raise ValueError('tl must be scalar or column label')
 		else:
-			t = None
+			tl = np.ones(df.shape[0]) * -np.inf
 
-		return self.fit(x, c, n, t, how, **kwargs)
+		if tr is not None:
+			if type(tr) == str:
+				tr = df[tr].values.astype(float)
+			elif np.isscalar(tr):
+				tr = (np.ones(df.shape[0]) * tr).astype(float)
+			else:
+				raise ValueError('tr must be scalar or column label')
+		else:
+			tr = np.ones(df.shape[0]) * np.inf
+
+		t = np.vstack([tl, tr]).T
+
+		return self.fit(x=x, c=c, n=n, t=t, **fit_options)
 
 	def from_params(self, params, offset=None):
 		if self.k != len(params):
