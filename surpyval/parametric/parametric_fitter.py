@@ -369,61 +369,6 @@ class ParametricFitter():
 					xl=None, xr=None, tl=None, tr=None,
 					**fit_options):
 
-		r"""
-
-		The central feature to SurPyval's capability. This function aimed to have an API to mimic the 
-		simplicity of the scipy API. That is, to use a simple :code:`fit()` call, with as many or as few
-		parameters as is needed.
-
-		Parameters
-		----------
-
-		df : DataFrame
-			DataFrame of data to be used to create surpyval model
-
-		x : string, optional
-			column name for the column in df containing the variable data. If not provided must provide
-			both xl and xr
-
-		c : string, optional
-			column name for the column in df containing the censor flag of x. If not provided assumes
-			all values of x are observed.
-
-		n : string, optional
-			column name in for the column in df containing the counts of x. If not provided assumes
-			each x is one observation.
-
-		tl : string or scalar, optional
-			If string, column name in for the column in df containing the left truncation data. If scalar
-			assumes each x is left truncated by that value. If not provided assumes x is not left truncated.
-
-		tr : string or scalar, optional
-			If string, column name in for the column in df containing the right truncation data. If scalar
-			assumes each x is right truncated by that value. If not provided assumes x is not right truncated.
-
-		xl : string, optional
-			column name for the column in df containing the left interval for interval censored data.
-			If left interval is -Inf, assumes left censored. If xl[i] == xr[i] assumes observed. Cannot
-			be provided with x, must be provided with xr.
-
-		xr : string, optional
-			column name for the column in df containing the right interval for interval censored data.
-			If right interval is Inf, assumes right censored. If xl[i] == xr[i] assumes observed. Cannot
-			be provided with x, must be provided with xl.
-
-		fit_options : dict, optional
-			dictionary of fit options that will be passed to the :code:`fit` method, see that method for options.
-
-		Returns
-		-------
-
-		model : Parametric
-			A parametric model with the fitted parameters and methods for all functions of the distribution using the 
-			fitted parameters.
-
-
-		"""
-
 		if not type(df) == pd.DataFrame:
 			raise ValueError("df must be a pandas DataFrame")
 
