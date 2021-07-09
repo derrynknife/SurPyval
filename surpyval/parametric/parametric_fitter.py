@@ -229,6 +229,7 @@ class ParametricFitter():
 					init = np.array(self._parameter_initialiser(x, c, n, offset=offset))
 					
 			# This should happen in the optimiser
+			print(init)
 			init = transform(init)
 			init = init[not_fixed]
 		else:
@@ -253,7 +254,8 @@ class ParametricFitter():
 
 		elif how == 'MOM':
 			# Method of Moments
-			results = mom(dist=self, x=x, n=n, init=init, offset=offset)
+			# results = mom(dist=self, x=x, n=n, init=init, offset=offset)
+			results = mom(dist=self, x=x, n=n, init=init, **fix_and_const_kwargs)
 
 		elif how == 'MPP':
 			# Method of Probability Plotting
