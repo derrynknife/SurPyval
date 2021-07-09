@@ -12,6 +12,15 @@ from .fitters.mpp import mpp
 import warnings
 
 class Exponential_(ParametricFitter):
+    r"""
+
+    Class used to generate the Exponential class.
+
+    .. code:: python
+
+        from surpyval import Exponential
+
+    """
     def __init__(self, name):
         self.name = name
         self.k = 1

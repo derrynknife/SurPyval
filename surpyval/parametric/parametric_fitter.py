@@ -110,7 +110,6 @@ class ParametricFitter():
 		return M + LL
 
 	def _moment(self, n, *params, offset=False):
-		## Worth doing an analytic offset moment?
 		if offset:
 			gamma = params[0]
 			params = params[1::]
@@ -152,7 +151,7 @@ class ParametricFitter():
 			raise ValueError('ExpoWeibull distribution does not work with probability plot fitting')			
 
 		if t is not None and how == 'MPS':
-			raise ValueError('Maximum product spacing doesn\'t support tuncation')
+			raise ValueError('Maximum product spacing doesn\'t yet support tuncation')
 
 		if t is not None and how == 'MSE':
 			raise NotImplementedError('Mean square error doesn\'t yet support tuncation')
@@ -160,7 +159,6 @@ class ParametricFitter():
 		if t is not None and how == 'MPP':
 			raise NotImplementedError('Method of probability plotting doesn\'t yet support tuncation')
 
-		# Needs to handle tl and tr
 		if t is not None and how == 'MOM':
 			raise ValueError('Maximum product spacing doesn\'t support tuncation')
 

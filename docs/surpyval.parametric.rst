@@ -1,8 +1,8 @@
 Parametric
 ==========
 
-Distributions
--------------
+Distribution Classes
+--------------------
 
 .. toctree::
 
@@ -35,5 +35,4 @@ Parametric Mixture Model
 
 .. automodule:: surpyval.parametric.mixture_model
    :members:
-   :undoc-members:
    :show-inheritance:

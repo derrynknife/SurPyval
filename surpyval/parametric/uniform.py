@@ -109,4 +109,13 @@ class Uniform_(ParametricFitter):
 
 		return a, b
 
+	def _mom(self, x):
+		mu_1 = np.mean(x)
+		mu_2 = np.mean(x**2)
+
+		d = np.sqrt(3 * (mu_2 - mu_1**2))
+		a = mu_1 - d
+		b = mu_1 + d
+		return a, b
+
 Uniform = Uniform_('Uniform')
