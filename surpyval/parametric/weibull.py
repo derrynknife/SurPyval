@@ -32,7 +32,7 @@ class Weibull_(ParametricFitter):
 		log_x[np.isnan(log_x)] = -np.inf
 		if offset:
 			results =  mpp(dist=self, x=x, c=c, n=n, t=t, on_d_is_0=True, offset=True)
-			return results['gamma'], *results['params']
+			return (results['gamma'], *results['params'])
 		else:
 			gumb = para.Gumbel.fit(log_x, c, n, t, how='MLE')
 			if not gumb.res.success:
