@@ -3,7 +3,7 @@ from scipy.stats import uniform
 from scipy.special import gamma as gamma_func
 from scipy.special import ndtri as z
 
-import surpyval
+from surpyval import xcn_handler
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter
 from surpyval.parametric.parametric import Parametric
@@ -76,7 +76,7 @@ class Weibull_Mix_Two_(ParametricFitter):
 			'n' : None
 		}
 
-		x, c, n = surpyval.xcn_handler(x, c, n)
+		x, c, n = xcn_handler(x, c, n)
 
 		model.data = {
 			'x' : x,

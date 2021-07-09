@@ -3,7 +3,7 @@ from scipy.stats import uniform
 from scipy.special import ndtri as z
 from autograd.scipy.stats import norm
 from scipy.stats import norm as scipy_norm
-import surpyval
+
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter

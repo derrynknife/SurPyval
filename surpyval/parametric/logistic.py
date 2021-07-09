@@ -2,7 +2,7 @@ import autograd.numpy as np
 from scipy.stats import uniform
 from scipy.special import ndtri as z
 
-import surpyval
+from surpyval import xcn_handler
 from surpyval.parametric.parametric_fitter import ParametricFitter
 
 class Logistic_(ParametricFitter):
@@ -24,7 +24,7 @@ class Logistic_(ParametricFitter):
 
 	def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
 		return self.fit(x, c, n, t, how='MPP').params
-		x, c, n = surpyval.xcn_handler(x, c, n)
+		x, c, n = xcn_handler(x, c, n)
 		flag = (c == 0).astype(int)
 		if offset:
 			return x.sum() / (n * flag).sum(), 1., 1.

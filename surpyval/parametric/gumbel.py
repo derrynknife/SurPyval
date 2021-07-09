@@ -3,7 +3,6 @@ from scipy.stats import uniform
 from numpy import euler_gamma
 from scipy.special import ndtri as z
 
-import surpyval
 from surpyval import nonparametric as nonp
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter

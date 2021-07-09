@@ -13,7 +13,6 @@ from scipy.stats import pearsonr
 
 import warnings
 
-import surpyval
 from surpyval import parametric as para
 from surpyval import nonparametric as nonp
 from surpyval.parametric.parametric_fitter import ParametricFitter

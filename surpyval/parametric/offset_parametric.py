@@ -3,7 +3,7 @@ from autograd import jacobian
 import autograd.numpy as np
 from scipy.stats import uniform
 
-import surpyval
+from surpyval import round_sig
 from scipy.special import ndtri as z
 from surpyval import nonparametric as nonp
 
@@ -14,7 +14,7 @@ def round_vals(x):
 	not_different = True
 	i = 1
 	while not_different:
-		x_ticks = np.array(surpyval.round_sig(x, i))
+		x_ticks = np.array(round_sig(x, i))
 		not_different = (np.diff(x_ticks) == 0).any()
 		i += 1
 	return x_ticks

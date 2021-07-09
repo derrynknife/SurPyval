@@ -4,7 +4,7 @@ from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
 from scipy.special import ndtri as z
 
-import surpyval
+from surpyval import xcn_handler
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter
 
@@ -28,7 +28,7 @@ class LogLogistic_(ParametricFitter):
 	def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
 		if offset:
 			# return *self.fit(x, c, n, t, how='MPP').params, 1.
-			x, c, n = surpyval.xcn_handler(x, c, n)
+			x, c, n = xcn_handler(x, c, n)
 			flag = (c == 0).astype(int)
 			value_range = np.max(x) - np.min(x)
 			gamma_init = np.min(x) - value_range / 10
