@@ -25,18 +25,6 @@ from .fitters import bounds_convert, fix_idx_and_function
 PARA_METHODS = ['MPP', 'MLE', 'MPS', 'MSE', 'MOM']
 
 class ParametricFitter():
-	# def parameter_initialiser_(self, x, c, n, offset=False):
-	# 	# Change this to simply invoke MPP
-	# 	x, c, n, R = nonp.turnbull(x, c, n, estimator='Turnbull')
-	# 	F = 1 - R
-	# 	F = F[np.isfinite(x)]
-	# 	x = x[np.isfinite(x)]
-	# 	# Need to add offset step.
-	# 	init = np.ones(self.k)
-	# 	fun = lambda params : np.sum(((self.ff(x, *params)) - F)**2)
-	# 	res = minimize(fun, init, bounds=self.bounds)
-	# 	return res.x
-
 	def like(self, x, c, n, *params):
 		like = np.zeros_like(x).astype(surpyval.NUM)
 		like = np.where(c ==  0, self.df(x, *params), like)
@@ -134,12 +122,118 @@ class ParametricFitter():
 			moments[i] = self._moment(n, *params, offset=offset)
 		return moments
 
-	def fit(self, x, c=None, n=None, t=None, how='MLE', **kwargs):
-		# Check inputs
-		offset = kwargs.pop('offset', False)
-		fixed = kwargs.pop('fixed', None)
-		tl = kwargs.pop('tl', None)
-		tr = kwargs.pop('tr', None)
+	def fit(self, x=None, c=None, n=None, t=None, how='MLE',
+			offset=False, tl=None, tr=None, xl=None, xr=None,
+			fixed=None, heuristic='Nelson-Aalen', init=[], rr='y'):
+
+		r"""
+
+		The central feature to SurPyval's capability. This function aimed to have an API to mimic the 
+		simplicity of the scipy API. That is, to use a simple :code:`fit()` call, with as many or as few
+		parameters as is needed.
+
+		Parameters
+		----------
+
+		x : array like, optional
+			Array of observations of the random variables. If x is :code:`None`, xl and xr must be provided.
+		c : array like, optional
+			Array of censoring flag. -1 is left censored, 0 is observed, 1 is right censored, and 2 is intervally
+			censored. If not provided will assume all values are observed.
+		n : array like, optional
+			Array of counts for each x. If data is proivded as counts, then this can be provided. If :code:`None`
+			will assume each observation is 1.
+		t : 2D-array like, optional
+			2D array like of the left and right values at which the respective observation was truncated. If
+			not provided it assumes that no truncation occurs.
+		how : {'MLE', 'MPP', 'MOM', 'MSE', 'MPS'}, optional
+			Method to estimate parameters, these are:
+
+				- MLE : Maximum Likelihood Estimation
+				- MPP : Method of Probability Plotting
+				- MOM : Method of Moments
+				- MSE : Mean Square Error
+				- MPS : Maximum Product Spacing
+
+		offset : boolean, optional
+			If :code:`True` finds the shifted distribution. If not provided assumes not a shifted distribution.
+			Only works with distributions that are supported on the half-real line.
+
+		tl : array like or scalar, optional
+			Values of left truncation for observations. If it is a scalar value assumes each observation is
+			left truncated at the value. If an array, it is the respective 'late entry' of the observation
+
+		tr : array like or scalar, optional
+			Values of right truncation for observations. If it is a scalar value assumes each observation is
+			right truncated at the value. If an array, it is the respective right truncation value for each
+			observation
+
+		xl : array like, optional
+			Array like of the left array for 2-dimensional input of x. This is useful for data that is all
+			intervally censored. Must be used with the :code:`xr` input.
+
+		xr : array like, optional
+			Array like of the right array for 2-dimensional input of x. This is useful for data that is all
+			intervally censored. Must be used with the :code:`xl` input.
+
+		fixed : dict, optional
+			Dictionary of parameters and their values to fix. Fixes parameter by name.
+
+		heuristic : {'"Blom", "Median", "ECDF", "Modal", "Midpoint", "Mean", "Weibull", "Benard", "Beard", "Hazen", "Gringorten", "None", "Tukey", "DPW", "Fleming-Harrington", "Kaplan-Meier", "Nelson-Aalen", "Filliben", "Larsen", "Turnbull"}
+			Plotting method to use, if using the probability plotting, MPP, method.
+
+		init : array like, optional
+			initial guess of parameters. Useful if method is failing.
+
+		rr : {'y', 'x'}
+			The dimension on which to minimise the spacing between the line and the observation.
+			If 'y' the mean square error between the line and vertical distance to each point is minimised.
+			If 'x' the mean square error between the line and horizontal distance to each point is minimised.
+
+		Returns
+		-------
+
+		model : Parametric
+			A parametric model with the fitted parameters and methods for all functions of the distribution using the 
+			fitted parameters.
+
+
+		Examples
+		--------
+		>>> from surpyval import Weibull
+		>>> x = Weibull.random(100, 10, 4)
+		>>> model = Weibull.fit(x)
+		>>> print(model)
+		Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters [10.25563233  3.68512055]
+
+		>>> model = Weibull.fit(x, how='MPS', fixed={'alpha' : 10})
+		>>> print(model)
+		Parametric Surpyval model with Weibull distribution fitted by MPS yielding parameters [10.          3.45512434]
+
+		>>> model = Weibull.fit(xl=x, xr=x+2, how='MPP')
+		>>> print(model)
+		Parametric Surpyval model with Weibull distribution fitted by MPP yielding parameters (11.465337182989183, 9.217130068358955)
+
+		>>> c = np.zeros_like(x)
+		>>> c[x > 13] = 1
+		>>> x[x > 13] = 13
+		>>> c = c[x > 6]
+		>>> x = x[x > 6]
+		>>> model = Weibull.fit(x=x, c=c, tl=6)
+		>>> print(model)
+		Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters [9.70132936 3.03139549]
+		"""
+
+		if (x is not None) & ((xl is not None) | (xr is not None)):
+			raise ValueError("Must use either 'x' of both 'xl and 'xr'")
+
+		if (x is None) & ((xl is None) | (xr is None)):
+			raise ValueError("Must use either 'x' of both 'xl and 'xr'")
+
+		if x is None:
+			xl = np.array(xl).astype(float)
+			xr = np.array(xr).astype(float)
+			x = np.vstack([xl, xr]).T
 
 		if offset and self.name in ['Normal', 'Beta', 'Uniform', 'Gumbel', 'Logistic']:
 			raise ValueError('{dist} distribution cannot be offset'.format(dist=self.name))
@@ -162,13 +256,16 @@ class ParametricFitter():
 		if t is not None and how == 'MOM':
 			raise ValueError('Maximum product spacing doesn\'t support tuncation')
 
-		x, c, n, t = surpyval.xcnt_handler(x, c, n, t=t, tl=tl, tr=tr)
+		x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, tl=tl, tr=tr)
+
+		if x.ndim == 2:
+			heuristic = 'Turnbull'
 
 		# Turnbull should be avoided as the alpha and beta matrix can be memory expensive!
-		if (~np.isfinite(t)).any() & ((-1 not in c) & (2 not in c)):
-			heuristic = kwargs.pop('heuristic', 'Nelson-Aalen')
-		else:
-			heuristic = kwargs.pop('heuristic', 'Turnbull')
+		# if (~np.isfinite(t)).any() & ((-1 not in c) & (2 not in c)):
+		# 	heuristic = kwargs.pop('heuristic', 'Nelson-Aalen')
+		# else:
+		# 	heuristic = kwargs.pop('heuristic', 'Turnbull')
 
 		if surpyval.utils.check_no_censoring(c) and (how == 'MOM'):
 			raise ValueError('Method of moments doesn\'t support censoring')
@@ -220,9 +317,7 @@ class ParametricFitter():
 
 		if how != 'MPP':
 			# Need a better general fitter to include offset
-			if 'init' in kwargs:
-				init = kwargs.pop('init')
-			else:
+			if init == []:
 				if self.name in ['Gumbel', 'Beta', 'Normal', 'Uniform']:
 					init = np.array(self._parameter_initialiser(x, c, n))
 				else:
@@ -258,7 +353,6 @@ class ParametricFitter():
 
 		elif how == 'MPP':
 			# Method of Probability Plotting
-			rr = kwargs.get('rr', 'y')
 			results = mpp(dist=self, x=x, n=n, c=c, rr=rr, heuristic=heuristic, offset=offset)
 
 		elif how == 'MSE':
@@ -267,14 +361,6 @@ class ParametricFitter():
 
 		for k, v in results.items():
 			setattr(model, k, v)
-
-		# Unpack params and offset
-		# if model.params is not None:
-			# if offset:
-				# model.gamma = model.params[0]
-				# model.params = list(model.params[1::])
-		# else:
-			# model.params = []
 
 		return model
 
