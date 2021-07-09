@@ -9,7 +9,6 @@ Distribution Classes
    exponential
    gamma
    gumbel
-   weibull
    logistic
    loglogistic
    lognormal
