@@ -198,7 +198,7 @@ def test_mom(dist, bounds):
 def test_mps(dist, bounds):
     for n in FIT_SIZES:
         test_params = []
-        # 1% accuracy!!
+        # 5% accuracy!!
         tol = 0.05
         for b in bounds:
             test_params.append(np.random.uniform(*b))
@@ -219,8 +219,8 @@ def test_mps(dist, bounds):
 def test_mse(dist, bounds):
     for n in FIT_SIZES:
         test_params = []
-        # 1% accuracy!!
-        tol = 0.01
+        # 5% accuracy!!
+        tol = 0.05
         for b in bounds:
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
