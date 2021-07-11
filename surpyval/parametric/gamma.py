@@ -92,6 +92,40 @@ class Gamma_(ParametricFitter):
         return 1 - self.ff(x, alpha, beta)
 
     def cs(self, x, X, alpha, beta):
+        r"""
+
+        Conditional survival function for the Gamma Distribution:
+
+        .. math::
+            R(x) = e^{-\lambda x}
+
+        Parameters
+        ----------
+
+        x : numpy array or scalar
+            The value(s) at which the function will be calculated
+        X : numpy array or scalar
+            The value(s) at which each value(s) in x was known to have survived
+        alpha : numpy array or scalar
+            The shape parameter for the Gamma distribution
+        beta : numpy array or scalar
+            The scale parameter for the Gamma distribution
+
+        Returns
+        -------
+
+        cs : scalar or numpy array 
+            the conditional survival probability.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Gamma
+        >>> x = np.array([1, 2, 3, 4, 5])
+        >>> Gamma.cs(x, 5, 3, 4)
+        array([2.59402488e-02, 6.39048747e-04, 1.51519143e-05, 3.48776510e-07,
+               7.79933496e-09])
+        """
         return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
 
     def ff(self, x, alpha, beta):
@@ -235,15 +269,134 @@ class Gamma_(ParametricFitter):
         return -np.log(self.sf(x, alpha, beta))
 
     def qf(self, p, alpha, beta):
+        r"""
+
+        Quantile function for the Gamma Distribution:
+
+        .. math::
+            q(p) = \frac{-\ln\left ( p \right )}{\lambda}
+
+        Parameters
+        ----------
+
+        p : numpy array or scalar
+            The percentiles at which the quantile will be calculated 
+        alpha : numpy array or scalar
+            The shape parameter for the Gamma distribution
+        beta : numpy array or scalar
+            The scale parameter for the Gamma distribution
+
+        Returns
+        -------
+
+        q : scalar or numpy array 
+            The quantiles for the Gamma distribution at each value p.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Gamma
+        >>> p = np.array([.1, .2, .3, .4, .5])
+        >>> Gamma.qf(p, 3, 4)
+        array([0.27551633, 0.38376105, 0.47844395, 0.57126923, 0.66851508])
+        """
         return gammaincinv(alpha, p) / beta
 
     def mean(self, alpha, beta):
+        r"""
+
+        Calculates the mean of the Gamma distribution with given parameters.
+
+        .. math::
+            E = \frac{\alpha}{\beta}
+
+        Parameters
+        ----------
+
+        alpha : numpy array or scalar
+            The shape parameter for the Gamma distribution
+        beta : numpy array or scalar
+            The scale parameter for the Gamma distribution
+
+        Returns
+        -------
+
+        mean : scalar or numpy array 
+            The mean(s) of the Gamma distribution 
+
+        Examples
+        --------
+        >>> from surpyval import Gamma
+        >>> Gamma.mean(3, 4)
+        0.75
+        """
         return alpha / beta
 
     def moment(self, n, alpha, beta):
+        r"""
+
+        Calculates the n-th moment of the Gamma distribution with given parameters.
+
+        .. math::
+            E = \frac{\Gamma \left ( n + \alpha \right )}{\beta^{n}\Gamma \left ( \alpha \right )}
+
+        Parameters
+        ----------
+
+        n : integer or numpy array of integers
+            The ordinal of the moment to calculate
+        alpha : numpy array or scalar
+            The shape parameter for the Gamma distribution
+        beta : numpy array or scalar
+            The scale parameter for the Gamma distribution
+
+        Returns
+        -------
+
+        mean : scalar or numpy array 
+            The moment(s) of the Gamma distribution 
+
+        Examples
+        --------
+        >>> from surpyval import Gamma
+        >>> Gamma.moment(3, 3, 4)
+        0.9375
+        """
         return agamma(n + alpha) / (beta**n * agamma(alpha))
 
     def random(self, size, alpha, beta):
+        r"""
+
+        Draws random samples from the Gamma distribution in shape `size`
+
+        Parameters
+        ----------
+
+        alpha : numpy array or scalar
+            The shape parameter for the Gamma distribution
+        beta : numpy array or scalar
+            The scale parameter for the Gamma distribution
+
+        Returns
+        -------
+
+        random : scalar or numpy array 
+            Random values drawn from the distribution in shape `size`
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Gamma
+        >>> Gamma.random(10, 3, 4)
+        array([0.22856155, 1.69542468, 0.70894789, 0.75552168, 0.76634128,
+               0.58624638, 1.03288812, 0.85768925, 0.75071764, 0.91979151])
+        >>> Gamma.random((5, 5), 3, 4)
+        array([[0.55481976, 1.02867642, 1.25525161, 0.5141736 , 0.7227451 ],
+               [1.59192864, 1.22897457, 0.80820007, 0.39872068, 0.53656654],
+               [0.80703614, 0.75406597, 0.87307426, 1.88748737, 0.78115455],
+               [1.3233755 , 0.29908068, 1.88304902, 2.65690385, 0.51018073],
+               [0.36070265, 0.48834586, 0.45623895, 0.30104303, 0.49942908]])
+        """
         U = uniform.rvs(size=size)
         return self.qf(U, alpha, beta)
 

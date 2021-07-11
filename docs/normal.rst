@@ -1,7 +1,6 @@
 Normal
 ======
 
-.. automodule:: surpyval.parametric.normal
+.. autoclass:: surpyval.parametric.normal.Normal_
    :members:
-   :undoc-members:
-   :inherited-members: fit
+   :show-inheritance:

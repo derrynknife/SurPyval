@@ -1,7 +1,6 @@
 Weibull
 =======
 
-.. automodule:: surpyval.parametric.weibull
+.. autoclass:: surpyval.parametric.weibull.Weibull_
    :members:
-   :undoc-members:
-   :inherited-members: fit
+   :show-inheritance:

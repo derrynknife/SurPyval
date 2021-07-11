@@ -1,7 +1,6 @@
 LogNormal
 =========
 
-.. automodule:: surpyval.parametric.lognormal
+.. autoclass:: surpyval.parametric.lognormal.LogNormal_
    :members:
-   :undoc-members:
-   :inherited-members: fit
+   :show-inheritance:

@@ -16,7 +16,6 @@ Distribution Classes
    uniform
    weibull
 
-
 Parametric Class
 ----------------
 

@@ -1,7 +1,6 @@
 Uniform
 =======
 
-.. automodule:: surpyval.parametric.uniform
+.. autoclass:: surpyval.parametric.uniform.Uniform_
    :members:
-   :undoc-members:
-   :inherited-members: fit
+   :show-inheritance:

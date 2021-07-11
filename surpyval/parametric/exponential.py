@@ -76,7 +76,40 @@ class Exponential_(ParametricFitter):
         return np.exp(-failure_rate * x)
 
     def cs(self, x, X, failure_rate):
-        # The exponential distribution is memoryless so of course it is the same as the survival function
+        r"""
+
+        Conditional survival function for the Exponential Distribution:
+
+        .. math::
+            R(x) = e^{-\lambda x}
+
+        The Exponential distribution is memoryless, and hence is the same as the regular survival distribution.
+
+        Parameters
+        ----------
+
+        x : numpy array or scalar
+            The value(s) at which the function will be calculated
+        X : numpy array or scalar
+            The value(s) at which each value(s) in x was known to have survived
+        failure_rate : numpy array or scalar
+            The scale parameter for the Exponential distribution
+
+        Returns
+        -------
+
+        cs : scalar or numpy array 
+            the conditional survival probability.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Exponential
+        >>> x = np.array([1, 2, 3, 4, 5])
+        >>> Exponential.cs(x, 5, 3)
+        array([4.97870684e-02, 2.47875218e-03, 1.23409804e-04, 6.14421235e-06,
+               3.05902321e-07])
+        """
         return self.sf(x, failure_rate)
 
     def ff(self, x, failure_rate):

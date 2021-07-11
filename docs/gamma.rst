@@ -1,7 +1,6 @@
 Gamma
 =====
 
-.. automodule:: surpyval.parametric.gamma
+.. autoclass:: surpyval.parametric.gamma.Gamma_
    :members:
-   :undoc-members:
-   :inherited-members: fit
+   :show-inheritance:

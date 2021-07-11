@@ -1,7 +1,6 @@
 Logistic
 ========
 
-.. automodule:: surpyval.parametric.logistic
+.. autoclass:: surpyval.parametric.logistic.Logistic_
    :members:
-   :undoc-members:
-   :inherited-members: fit
+   :show-inheritance:

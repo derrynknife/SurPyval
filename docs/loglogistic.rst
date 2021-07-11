@@ -1,7 +1,6 @@
 LogLogistic
 ===========
 
-.. automodule:: surpyval.parametric.loglogistic
+.. autoclass:: surpyval.parametric.loglogistic.LogLogistic_
    :members:
-   :undoc-members:
-   :inherited-members: fit
+   :show-inheritance:
