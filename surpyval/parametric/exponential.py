@@ -369,6 +369,8 @@ class Exponential_(ParametricFitter):
         Parameters
         ----------
 
+        size : integer or tuple of positive integers
+            Shape or size of the random draw
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
 

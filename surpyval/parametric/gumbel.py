@@ -279,7 +279,7 @@ class Gumbel_(ParametricFitter):
 		Parameters
 		----------
 
-		mu : integer or tuple of positive integers
+		size : integer or tuple of positive integers
 			Shape or size of the random draw
 		mu : numpy array like or scalar
 			The location parameter(s) of the distribution

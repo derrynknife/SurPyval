@@ -444,8 +444,6 @@ class ParametricFitter():
 			xr = df[xr].astype(float)
 			x = np.vstack([xl, xr]).T
 
-		#raise TypeError('Unepxected kwargs provided: %s' % list(kwargs.keys()))
-
 		if c is not None:
 			c = df[c].values.astype(int)
 
@@ -476,7 +474,39 @@ class ParametricFitter():
 
 		return self.fit(x=x, c=c, n=n, t=t, **fit_options)
 
-	def from_params(self, params, offset=None):
+	def from_params(self, params, gamma=None):
+		r"""
+
+		Creating a SurPyval Parametric class with provided parameters.
+
+		Parameters
+		----------
+
+		params : array like
+			array of the parameters of the distribution.
+
+		gamma : scalar, optional
+			offset value for the distribution. If not provided will fit a regular, unshifted/not offset, distribution.
+
+
+		Returns
+		-------
+
+		model : Parametric
+			A parametric model with the fitted parameters and methods for all functions of the distribution using the 
+			fitted parameters.
+
+
+		Examples
+		--------
+		>>> from surpyval import Weibull
+		>>> model = Weibull.from_params([10, 4])
+		>>> print(model)
+		Parametric Surpyval model with Weibull distribution fitted by given parameters yielding parameters [10  4]
+		>>> model = Weibull.from_params([10, 4], gamma=2)
+		>>> print(model)
+		Offset Parametric Surpyval model with Weibull distribution fitted by given parameters yielding parameters [10  4] with offset of 2
+		"""
 		if self.k != len(params):
 			raise ValueError("Must have {k} params for {dist} distribution".format(k=self.k, dist=self.name))
 
@@ -489,6 +519,8 @@ class ParametricFitter():
 			model.bounds = ((None, offset), *deepcopy(self.bounds))
 		else:
 			model = para.Parametric()
+
+		model.method = 'given parameters'
 		model.params = np.array(params)
 		for i, (low, upp) in enumerate(self.bounds):
 			if low is None:
