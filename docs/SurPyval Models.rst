@@ -550,8 +550,55 @@ Our estimation has worked! Even though we used the MPS estimate for the paramete
 This shows the power of the flexible API that surpyval offers, because if your modelling fails using one estimation method, you can use another. In this case, the MPS method is quite good at handling offset distributions. It is therefore a good approach to use when using offset distributions.
 
 
+Mixture Models
+^^^^^^^^^^^^^^
 
 
+On occarion, it can appear as though there are one, or two different distributions in the data you are using. On these occasions it can be useful to use a different type of distribuiton; or really, distributions. A mixture model is a distribution made from the partial combination of several distributions. Intuitively, it can be understood as a distribution where there is a proportion that fail for each kind of distribution. So 60% may come from a Weibull(3, 4) distribution but then another 40% come from a Weibull(19, 2) distribution.
+
+SurPyval uses Expectation-Maximisation to 
+
+.. code:: python
+
+	x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17 ,17, 18, 19]
+	x_ = np.linspace(np.min(x), np.max(x))
+
+	model = surv.Weibull.fit(x)
+	wmm = surv.MixtureModel(x=x, dist=surv.Weibull, m=2)
+
+	model.plot(plot_bounds=False)
+	plt.plot(x_, wmm.ff(x_))
+
+
+.. image:: images/surpyval-modelling-16.png
+	:align: center
+
+
+You can see that the mixture model, in blue, tracks the data more closely than does the single model. SurPyval has incredible flexibility. The number of distributions can be changed by simply changing the value of m, and, the distribution used in the mixture can also be changed. Consider:
+
+.. code:: python
+
+	np.random.seed(1)
+	x1 = surv.Normal.random(20, -10, 5)
+	x2 = surv.Normal.random(30, 10, 10)
+	x3 = surv.Normal.random(40, 50, 15)
+	x = np.concatenate([x1, x2, x3])
+	np.random.shuffle(x)
+	x_ = np.linspace(np.min(x), np.max(x))
+
+	normal = surv.Normal.fit(x)
+	gmm = surv.MixtureModel(x=x, dist=surv.Normal, m=3)
+
+	normal.plot(plot_bounds=False)
+	plt.plot(x_, gmm.ff(x_), color='red')
+
+.. image:: images/surpyval-modelling-17.png
+	:align: center
+
+
+It was that simple to create a gaussian mixture model using m=3 and the dist=surv.Normal parameters. SurPuyval does default to 2 Weibull distributions if neither are provided.
+
+Finally, mixture models can take counts and censoring flags as input (but not, yet, truncation). This makes SurPyval a truly powerful package for your survival analysis.
 
 
 

@@ -22,6 +22,7 @@ class MixtureModel():
 		raw_data['c'] = c
 		raw_data['n'] = n
 		self.raw_data = raw_data
+		self.dist = dist
 
 		x, c, n = surpyval.xcn_handler(x, c, n)
 		assert len(x) > self.m * (self.dist.k + 1)
