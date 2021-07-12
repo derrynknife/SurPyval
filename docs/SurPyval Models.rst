@@ -422,7 +422,7 @@ This is evidently a much better fit! The offset value for an offset distribution
 Fixing parameters
 ^^^^^^^^^^^^^^^^^
 
-Another usefule feature of surpyval is the ability to easily fix parameters. For example:
+Another useful feature of surpyval is the ability to easily fix parameters. For example:
 
 .. code:: python
 
@@ -596,10 +596,43 @@ You can see that the mixture model, in blue, tracks the data more closely than d
 	:align: center
 
 
-It was that simple to create a gaussian mixture model using m=3 and the dist=surv.Normal parameters. SurPuyval does default to 2 Weibull distributions if neither are provided.
+It was that simple to create a gaussian mixture model using m=3 and the dist=surv.Normal parameters. SurPuyval does default to 2 Weibull distributions if neither parameters are provided, but it can take any distribution in SurPyval as an input distribution.
 
 Finally, mixture models can take counts and censoring flags as input (but not, yet, truncation). This makes SurPyval a truly powerful package for your survival analysis.
 
 
+Limited Failure Population
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Another kind of model that is useful in survival analysis is when a population has a limited number of items in the population that are susceptible to the failure. As such, no matter how long a test continues, it will not be possible for all items to fail (with the particular death/failure). 
+
+As an example:
+
+.. code:: python
+
+	lfp_weibull = LFP(surv.Weibull)
+	np.random.seed(10)
+	x1 = surv.Weibull.random(60, 10, 2)
+	c1 = np.zeros_like(x1)
+	x2 = np.ones(40) * (np.max(x1) + 1)
+	c2 = np.ones_like(x2)
+	x = np.concatenate([x1, x2])
+	c = np.concatenate([c1, c2])
+
+	model = surv.Weibull.fit(x=x, c=c)
+	model.plot(plot_bounds=False)
+	lfp_model = lfp_weibull.fit(x=x, c=c)
+	print(lfp_model)
+	xx = np.linspace(np.min(x), np.max(x)*2)
+	plt.plot(xx, lfp_model.ff(xx), color='red')
+
+.. code:: text
+
+	Parametric Surpyval model with LFP distribution fitted by MLE yielding parameters [ 0.60363768 10.06681404  2.0920684 ]
+
+.. image:: images/surpyval-modelling-18.png
+	:align: center
 
 
+
+This feature, is still unstable. More optimisations are coming.

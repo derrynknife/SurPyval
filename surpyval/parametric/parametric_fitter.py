@@ -323,8 +323,6 @@ class ParametricFitter():
 				else:
 					init = np.array(self._parameter_initialiser(x, c, n, offset=offset))
 					
-			# This should happen in the optimiser
-
 			init = transform(init)
 			init = init[not_fixed]
 		else:

@@ -180,6 +180,17 @@ Which is used with the general formula to estimate the plotting position heurist
 
 	\hat{F}_{k} = (k - A)/(n + B)
 
+Mean Square Error (MSE)
+-----------------------
+
+MSE is essentially the same as probability plotting. Instead of finding the minimum against the transformed data in the x and y axes. The parameters are found by minimising the distance to the non-parametric estimate without transforming the data to be linear. Mathematically, MSE find the parameters by minimising:
+
+.. math::
+
+  \Sigma \left( \hat{F} - F(x; \theta) \right )^{2}
+
+This is the difference between the, untransformed, empirical estimate of the CDF and the parametric distribution.
+
 Maximum Likelihood Estimation (MLE)
 -----------------------------------
 

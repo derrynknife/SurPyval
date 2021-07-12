@@ -38,6 +38,9 @@ def bounds_convert(x, bounds):
                 limit = 0
             funcs.append(lambda x: inv_rev_adj_relu(x - limit))
             inv_f.append(lambda x: limit + rev_adj_relu(x))
+        else:
+            funcs.append(lambda x: pass_through(x))
+            inv_f.append(lambda x: pass_through(x))
 
     def transform(params):
         return np.array([f(p) for p, f in zip(params, funcs)])

@@ -7,9 +7,18 @@ class LFP(ParametricFitter):
 		self.dist = dist
 		self.bounds = tuple(((0, 1), *self.dist.bounds))
 		self.use_autograd = True
+		self.support = dist.support
+		self.param_map = {'w' : 0,}
+		for k, v in dist.param_map.items():
+			self.param_map[k] = v + 1
 
-	def _parameter_initialiser(self, x, c=None, n=None):
-		return tuple((1., *self.dist.parameter_initialiser(x, c, n)))
+		self.bounds = ((0, 1), *dist.bounds)
+		self.k = dist.k + 1
+		self.name = 'LFP'
+		self.offset = False
+
+	def _parameter_initialiser(self, x, c=None, n=None, offset=False):
+		return tuple((1., *self.dist._parameter_initialiser(x, c, n)))
 
 	def sf(self, x, w, *params):
 		return 1 - self.ff(x, w, *params)
