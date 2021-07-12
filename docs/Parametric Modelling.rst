@@ -242,3 +242,7 @@ But what about truncated data
 
 
 
+Maximum Product of Spacings (MPS)
+---------------------------------
+
+Coming soon
