@@ -13,6 +13,7 @@ parameter_sample_bounds = [((1, 20), (0.5, 5)),
                            ((1, 100), (1, 100)),
                            ((.1, 30), (.1, 30)),]
 FIT_SIZES = [5000, 10000, 20000, 50000, 100000, 1000000]
+TOL = 0.2
 
 
 def generate_mle_test_cases():
@@ -142,7 +143,7 @@ def test_mle(dist, bounds, kind):
         fitted_params = np.array(model.params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
-        if (diff < tol).all():
+        if (diff < TOL).all():
             break
     else:
         raise AssertionError('MLE fit not very good in %s\n' % dist.name)
@@ -164,7 +165,7 @@ def test_mpp(dist, bounds, rr):
             fitted_params = np.array(model.params)
             max_params = np.max([fitted_params, test_params], axis=0)
             diff = np.abs(fitted_params - test_params) / max_params
-            if (diff < tol).all():
+            if (diff < TOL).all():
                 break
         else:
             raise AssertionError('MPP fit not very good in %s\n' % dist.name)
@@ -186,7 +187,7 @@ def test_mom(dist, bounds):
         fitted_params = np.array(model.params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
-        if (diff < tol).all():
+        if (diff < TOL).all():
             break
     else:
         raise AssertionError('MOM fit not very good in %s\n' % dist.name)
@@ -208,7 +209,7 @@ def test_mps(dist, bounds):
         fitted_params = np.array(model.params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
-        if (diff < tol).all():
+        if (diff < TOL).all():
             break
     else:
         raise AssertionError('MPS fit not very good in %s\n' % dist.name)
@@ -229,7 +230,7 @@ def test_mse(dist, bounds):
         fitted_params = np.array(model.params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
-        if (diff < tol).all():
+        if (diff < TOL).all():
             break
     else:
         raise AssertionError('MPS fit not very good in %s\n' % dist.name)
