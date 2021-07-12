@@ -510,13 +510,13 @@ class ParametricFitter():
 		if self.k != len(params):
 			raise ValueError("Must have {k} params for {dist} distribution".format(k=self.k, dist=self.name))
 
-		if offset is not None and self.name in ['Normal', 'Beta', 'Uniform', 'Gumbel', 'Logistic']:
+		if gamma is not None and self.name in ['Normal', 'Beta', 'Uniform', 'Gumbel', 'Logistic']:
 			raise ValueError('{dist} distribution cannot be offset'.format(dist=self.name))
 
-		if offset is not None:
+		if gamma is not None:
 			model = para.OffsetParametric()
-			model.gamma = offset
-			model.bounds = ((None, offset), *deepcopy(self.bounds))
+			model.gamma = gamma
+			model.bounds = ((None, gamma), *deepcopy(self.bounds))
 		else:
 			model = para.Parametric()
 
