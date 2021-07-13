@@ -634,5 +634,4 @@ As an example:
 	:align: center
 
 
-
-This feature, is still unstable. More optimisations are coming.
+LFP models can be computed with each method that handles censoring, the default, as always is MLE, but you can use MPS, MSE, but not (yet) MPP. This feature can still unstable. More optimisations are coming.
