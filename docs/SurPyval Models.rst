@@ -419,6 +419,28 @@ This is evidently a much better fit! The offset value for an offset distribution
 .. image:: images/surpyval-modelling-12.png
 	:align: center
 
+
+A four parameter exponentiated Weibull can also be found:
+
+.. code:: python
+
+	np.random.seed(10)
+	x = surv.ExpoWeibull.random(100, 10, 1.2, 4) + 10
+	model = ExpoWeibull.fit(x, offset=True)
+	print(model)
+	model.plot(plot_bounds=False)
+
+.. code:: text
+
+	Offset Parametric Surpyval model with ExpoWeibull distribution fitted by MLE yielding parameters [11.47511146  1.39697851  2.84530724] with offset of 10.701280166556678
+
+.. image:: images/surpyval-modelling-12a.png
+	:align: center
+
+np.random.seed(10)
+x = ExpoWeibull.random(100, 10, 1.2, 4) + 10
+print(ExpoWeibull.fit(x, offset=True))
+
 Fixing parameters
 ^^^^^^^^^^^^^^^^^
 
