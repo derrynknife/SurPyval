@@ -94,9 +94,6 @@ class MixtureModel():
 			print('Max iterations reached')
 
 	def neg_ll(self, x, c, n, *params):
-		"""
-		Handles autograd
-		"""
 		f = np.zeros_like(self.p)
 		params = np.reshape(params, (self.m, self.dist.k + 1))
 		f = np.zeros_like(x)
@@ -139,9 +136,7 @@ class MixtureModel():
 		return self.loglike
 
 	def R_cb(self, t, cb=0.05):
-		"""
-		Nailed this. Can be used elsewhere if needed
-		"""
+
 		def ssf(params):
 			params = np.reshape(params, (self.m, self.dist.k + 1))
 			F = np.zeros_like(t) 
