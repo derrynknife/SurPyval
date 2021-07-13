@@ -74,6 +74,9 @@ class Normal_(ParametricFitter):
 
         Conditional survival function for the Normal Distribution:
 
+        .. math::
+            R(x, X) = \frac{R(x + X)}{R(X)}
+
         Parameters
         ----------
 
