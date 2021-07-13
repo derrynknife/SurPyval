@@ -33,7 +33,7 @@ class Gumbel_(ParametricFitter):
 		Surival (or Reliability) function for the Gumbel Distribution:
 
 		.. math::
-			R(x) = 1 - e^{e^{-(x - \mu)/\sigma}}
+			R(x) = 1 - e^{e^{-\left ( x - \mu \right ) / \sigma}}
 
 		Parameters
 		----------
@@ -71,7 +71,7 @@ class Gumbel_(ParametricFitter):
 		CDF (or Failure) function for the Gumbel Distribution:
 
 		.. math::
-			F(x) = e^{e^{-(x - \mu)/\sigma}}
+			F(x) = e^{e^{-\left ( x - \mu \right )/\sigma}}
 
 		Parameters
 		----------
@@ -176,7 +176,7 @@ class Gumbel_(ParametricFitter):
 		Cumulative hazard rate for the Gumbel Distribution:
 
 		.. math::
-			h(x) = e^{\frac{x-\mu}{\sigma}}
+			H(x) = e^{\frac{x-\mu}{\sigma}}
 
 		Parameters
 		----------

@@ -149,7 +149,7 @@ class LogLogistic_(ParametricFitter):
         Density function for the LogLogistic Distribution:
 
         .. math::
-            f(x) = \frac{\left ( \beta / \alpha \right ) \left ( x / \alpha \right )^{\beta - 1}}{\left ( 1 + \left ( x / \alpha \right )^{-\beta} \ right )^2}
+            f(x) = \frac{\left ( \beta / \alpha \right ) \left ( x / \alpha \right )^{\beta - 1}}{\left ( 1 + \left ( x / \alpha \right )^{-\beta} \right )^2}
 
         Parameters
         ----------

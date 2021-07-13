@@ -37,7 +37,7 @@ class Logistic_(ParametricFitter):
         Survival (or reliability) function for the Logistic Distribution:
 
         .. math::
-            R(x) = 1 - \frac{1}{1 + e^{- \left ( x - mu \right )/ \sigma}}
+            R(x) = 1 - \frac{1}{1 + e^{- \left ( x - \mu \right )/ \sigma}}
 
         Parameters
         ----------
@@ -74,7 +74,7 @@ class Logistic_(ParametricFitter):
         Failure (CDF or unreliability) function for the Logistic Distribution:
 
         .. math::
-            F(x) = \frac{1}{1 + e^{- \left ( x - mu \right )/ \sigma}}
+            F(x) = \frac{1}{1 + e^{- \left ( x - \mu \right )/ \sigma}}
 
         Parameters
         ----------
