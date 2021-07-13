@@ -189,7 +189,7 @@ class Weibull_(ParametricFitter):
         Instantaneous hazard rate for the Weibull Distribution:
 
         .. math::
-            h(x) = \frac{\beta}{\alpha} \frac{x}{\alpha}^{\beta - 1}
+            h(x) = \frac{\beta}{\alpha} \left ( \frac{x}{\alpha} \right )^{\beta - 1}
 
         Parameters
         ----------

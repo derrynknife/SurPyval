@@ -211,7 +211,7 @@ class Uniform_(ParametricFitter):
         Instantaneous hazard rate for the Uniform Distribution:
 
         .. math::
-            H(x) = \ln left ( b - a \right ) - \ln left ( b - x \right )
+            H(x) = \ln \left ( b - a \right ) - \ln \left ( b - x \right )
 
         Parameters
         ----------
