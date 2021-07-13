@@ -53,6 +53,7 @@ For the Non-Parametric estimation *SurPyval* can estimate the survival distribut
 <p align="center">
   Table 1: Estimation Techniques and ability to handle types of data
 </p>
+<p style="text-align: center;">Table 1: Estimation Techniques and ability to handle types of data</p>
 
 *SurPyval* achieves this flexibility with a simple API. *SurPyval* uses a data input API, the 'xcnt' format, that can be used to define any arbitrarty combination of censored or truncated data. 'x' is the value at the observation, 'c' is the censoring flag, 'n' is the counts, and 't' is the truncation values. *SurPyval* uses the convention for the censor flag where -1 is left censored, 0 is an observed value, 1 is right censored, and 2 is intervally censored. Utilities have also been created to help users transform their data into the 'xcnt' format if they have it in another format. For example, a lot of survival data is provided in an observered and suspended format, this is where you have a list of the failure times and a list of the suspended times. E.g. Failures of [1, 2, 3, 4, 5] and suspended times of [1, 2, 3]. *SurPyval* refers to this format as the 'fs' format.
 
@@ -69,6 +70,12 @@ Unlike other survival analysis packages *SurPyval* allows users fix any paramete
 *SurPyval*, inspired by *lifelines*, uses *autograd* [@maclaurin2015autograd] autodifferentiation to calculate the jacobians and hessians needed for optimisations in parametric analysis. Additionally, SurPyval uses lessons from deep learning to improve the stability of estimation. Concretely, SurPyval uses a modified ELU function [@clevert2015fast] to transform bounded parameters to be unbounded. For example, the alpha parameter for a Weibull distribution is supported on the half-real line, (0, Inf). Using the modified ELU function the input to the optimizer is transformed to be supported over the full real line (-Inf, Inf) but then will transform this value to a positive number when calculating the objective function. This reduces the risk of optimisations failing because the numeric gradient might 'overshoot' and hit a bound therefore produce undefined results which in turn causes the autodifferentiation to fail. The ELU is also useful for autodifferentiation because it is continuously differentiable which eliminates discrete jumps in the gradient. Another advantage of this improvement is that it can be used to robustly estimate offsets, i.e. the 'gamma' parameter, for half real-line supported distribtuions. For example, *SurPyval* can be used to estimate the parameters of the four parameter Exponentiated-Weibull distribution, which is a feature that is absent from other currently available survival packages.
 
 Another optimisation used by *SurPyval* is the use of good initial approximations for parameter initialisation. Probability plotting methods do not require initial estimates of the parameters; which is in contrast to estimates using optimizers. Further, optimisation results are very sensitive to the initial estimates, if the initial estimate is too far from the actual result it can yield incredulous results. As such *SurPyval* uses either probability plotting estimates or estimates using transformed data with another distribution to do the initial esimate. Combining the use of autogradients, bound transformations, and close initial approximations, *SurPyval* is a stable software for estimating parameters for statistical distributions.
+
+
+
+
+
+
 
 # Examples
 
@@ -92,7 +99,8 @@ model = Weibull.fit(x)
 print(model)
 ```
 ```text
-Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters [9.71565772 2.33944554]
+Parametric Surpyval model with Weibull distribution fitted by MLE yielding 
+parameters [9.71565772 2.33944554]
 ```
 
 Using offsets with SurPyval is a simple change by setting the offset parameter to true. Using data from Weibull's paper [@weibull1951statistical] which introduced the wide applicability of the distribution to survival analysis, we can get a three parameter Weibull distribution:
@@ -111,7 +119,8 @@ model.plot()
 print(model)
 ```
 ```text
-Offset Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters [7.14192522 2.6204524 ] with offset of 39.76562962867473
+Offset Parametric Surpyval model with Weibull distribution fitted by MLE yielding 
+parameters [7.14192522 2.6204524 ] with offset of 39.76562962867473
 ```
 
 ![Weibull Data and Distribution](docs/images/weibull_plot.png)
