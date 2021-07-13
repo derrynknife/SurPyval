@@ -36,7 +36,7 @@ Survival analysis is being increasingly used by scientists, data scientists, eng
 
 *SurPyval* is grouped into two modules, these are parametric and non-parametric modules. For the parametric modeul *SurPyval* offers several methods to estimate parameters; these are Maximum Likelihood Estimation (MLE), Mean Square Error (MSE), Probability Plotting (MPP), Minimum Product Spacing (MPS), Method of Moments (MOM), and Expectation-Maximisation (EM). The EM is only used for mixture models.
 
-For the Non-Parametric estimation *SurPyval* can estimate the survival distribution using either the Kaplan-Meier [@kaplan1958nonparametric], Nelson-Aalen [@nelson1969hazard]; [@aalen1978nonparametric], Fleming-Harrington [@fleming1984nonparametric], or the Turnbull [@turnbull1976empirical] estimators. Support for data types and estimation methods can be seen in Table 1.
+For the Non-Parametric estimation *SurPyval* can estimate the survival distribution using either the Kaplan-Meier [@kaplan1958nonparametric], Nelson-Aalen [@nelson1969hazard]; [@aalen1978nonparametric], Fleming-Harrington [@fleming1984nonparametric], or the Turnbull [@turnbull1976empirical] estimators. Support for data types and estimation methods can be seen in the table below.
 
 | Method | Para/Non-Para | Observed | Censored | Truncated |
 | ------ | ---- |-----|------|------|
@@ -49,11 +49,6 @@ For the Non-Parametric estimation *SurPyval* can estimate the survival distribut
 | **Nelson-Aalen** | Non-Parametric | Yes | Right only | Left only |
 | **Fleming-Harrington** | Non-Parametric | Yes | Right only | Left only |
 | **Turnbull** | Non-Parametric | Yes | Yes | Yes |
-
-<p align="center">
-  Table 1: Estimation Techniques and ability to handle types of data
-</p>
-<p style="text-align: center;">Table 1: Estimation Techniques and ability to handle types of data</p>
 
 *SurPyval* achieves this flexibility with a simple API. *SurPyval* uses a data input API, the 'xcnt' format, that can be used to define any arbitrarty combination of censored or truncated data. 'x' is the value at the observation, 'c' is the censoring flag, 'n' is the counts, and 't' is the truncation values. *SurPyval* uses the convention for the censor flag where -1 is left censored, 0 is an observed value, 1 is right censored, and 2 is intervally censored. Utilities have also been created to help users transform their data into the 'xcnt' format if they have it in another format. For example, a lot of survival data is provided in an observered and suspended format, this is where you have a list of the failure times and a list of the suspended times. E.g. Failures of [1, 2, 3, 4, 5] and suspended times of [1, 2, 3]. *SurPyval* refers to this format as the 'fs' format.
 

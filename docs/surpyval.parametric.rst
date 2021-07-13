@@ -15,6 +15,7 @@ Distribution Classes
    normal
    uniform
    weibull
+   expoweibull
 
 Parametric Class
 ----------------

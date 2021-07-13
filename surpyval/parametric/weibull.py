@@ -86,7 +86,7 @@ class Weibull_(ParametricFitter):
         Failure (CDF or unreliability) function for the Weibull Distribution:
 
         .. math::
-            R(x) = 1 - e^{-\left ( \frac{x}{\alpha} \right )^\beta}
+            F(x) = 1 - e^{-\left ( \frac{x}{\alpha} \right )^\beta}
 
         Parameters
         ----------
@@ -117,7 +117,7 @@ class Weibull_(ParametricFitter):
     def cs(self, x, X, alpha, beta):
         r"""
 
-        Failure (CDF or unreliability) function for the Weibull Distribution:
+        Conditional survival function for the Weibull Distribution:
 
         .. math::
             R(x, X) = \frac{R(x + X)}{R(X)}
@@ -152,7 +152,7 @@ class Weibull_(ParametricFitter):
     def df(self, x, alpha, beta):
         r"""
 
-        Failure (CDF or unreliability) function for the Weibull Distribution:
+        Density function for the Weibull Distribution:
 
         .. math::
             f(x) = \frac{\beta}{\alpha} \frac{x}{\alpha}^{\beta - 1} e^{-\left ( \frac{x}{\alpha} \right )^\beta}
