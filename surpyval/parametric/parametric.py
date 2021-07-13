@@ -26,7 +26,7 @@ class Parametric():
 	Instances of this class are very useful when a user needs the other functions of a distribution for plotting, optimizations, monte carlo analysis and numeric integration.
 
 	"""
-	def __str__(self):
+	def __repr__(self):
 		return 'Parametric Surpyval model with {dist} distribution fitted by {method} yielding parameters {params}'.format(dist=self.dist.name, method=self.method, params=self.params)
 
 	def sf(self, x):
