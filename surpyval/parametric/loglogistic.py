@@ -285,7 +285,7 @@ class LogLogistic_(ParametricFitter):
         Mean of the LogLogistic distribution
 
         .. math::
-            E = \frac{\alpha \pi / \pi}{sin \left ( \pi / \beta \right )}
+            E = \frac{\alpha \pi / \beta}{sin \left ( \pi / \beta \right )}
 
         Parameters
         ----------
