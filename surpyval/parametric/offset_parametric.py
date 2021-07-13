@@ -20,7 +20,7 @@ def round_vals(x):
 	return x_ticks
 
 class OffsetParametric():
-	def __str__(self):
+	def __repr__(self):
 		return 'Offset Parametric Surpyval model with {dist} distribution fitted by {method} yielding parameters {params} with offset of {gamma}'.format(dist=self.dist.name, method=self.method, params=self.params, gamma=self.gamma)
 
 	def sf(self, x):
@@ -285,7 +285,7 @@ class ParametricO():
 		if not offset:
 			self.gamma = 0
 
-	def __str__(self):
+	def __repr__(self):
 		if self.offset:
 			return 'Parametric Surpyval model with {dist} distribution fitted by {method} yielding parameters {params} with offset of {gamma}'.format(dist=self.dist.name, method=self.method, params=self.params, gamma=self.gamma)
 		else:

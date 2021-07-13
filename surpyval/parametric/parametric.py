@@ -760,7 +760,7 @@ class _Parametric():
 			self.off = lambda x : x
 			self.off_inv = lambda x : x
 
-	def __str__(self):
+	def __repr__(self):
 		return 'Parametric Surpyval model with {dist} distribution fitted by {method} yielding parameters {params}'.format(dist=self.dist.name, method=self.method, params=self.params)
 
 	def sf(self, x):

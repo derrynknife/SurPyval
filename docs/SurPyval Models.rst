@@ -437,9 +437,6 @@ A four parameter exponentiated Weibull can also be found:
 .. image:: images/surpyval-modelling-12a.png
 	:align: center
 
-np.random.seed(10)
-x = ExpoWeibull.random(100, 10, 1.2, 4) + 10
-print(ExpoWeibull.fit(x, offset=True))
 
 Fixing parameters
 ^^^^^^^^^^^^^^^^^
