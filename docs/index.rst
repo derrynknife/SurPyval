@@ -109,6 +109,15 @@ Contents:
 
    surpyval
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Community Guidelines
+
+   Support
+   Report an Issue <https://github.com/derrynknife/SurPyval/issues>
+   Contributing
+
+
 
 
 Installation
