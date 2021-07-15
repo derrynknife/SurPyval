@@ -31,6 +31,9 @@ def bounds_convert(x, bounds):
         elif (upper is None):
             funcs.append(lambda x: inv_adj_relu(x))
             inv_f.append(lambda x: adj_relu(x))
+        elif (lower == 0) and (upper == 0):
+            funcs.append(lambda x: 1000 * np.arctanh((2 * x)-1))
+            inv_f.append(lambda x: (np.tanh(x/1000) + 1)/2)
         elif (lower is None):
             if upper != 0:
                 limit = np.min(x)
