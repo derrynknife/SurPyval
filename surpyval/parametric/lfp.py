@@ -18,7 +18,7 @@ class LFP(ParametricFitter):
 		self.offset = False
 
 	def _parameter_initialiser(self, x, c=None, n=None, offset=False):
-		return tuple((1., *self.dist._parameter_initialiser(x, c, n)))
+		return tuple((.5, *self.dist._parameter_initialiser(x, c, n)))
 
 	def sf(self, x, w, *params):
 		return 1 - self.ff(x, w, *params)

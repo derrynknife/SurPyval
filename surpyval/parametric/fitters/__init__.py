@@ -1,4 +1,5 @@
 import autograd.numpy as np
+from copy import copy
 
 
 def pass_through(x):
@@ -24,26 +25,25 @@ def inv_rev_adj_relu(x):
 def bounds_convert(x, bounds):
     funcs = []
     inv_f = []
-    for lower, upper in bounds:
-        if (lower is None) and (upper is None):
-            funcs.append(lambda x: pass_through(x))
-            inv_f.append(lambda x: pass_through(x))
-        elif (upper is None):
-            funcs.append(lambda x: inv_adj_relu(x))
-            inv_f.append(lambda x: adj_relu(x))
-        elif (lower == 0) and (upper == 0):
-            funcs.append(lambda x: 1000 * np.arctanh((2 * x)-1))
-            inv_f.append(lambda x: (np.tanh(x/1000) + 1)/2)
-        elif (lower is None):
-            if upper != 0:
-                limit = np.min(x)
+    for i, (lower, upper) in enumerate(bounds):
+        def add_to_funcs(l, u, i):
+            if (l is None) and (u is None):
+                funcs.append(lambda x: pass_through(x))
+                inv_f.append(lambda x: pass_through(x))
+            elif (l == 0) and (u == 1):
+                D = 10
+                funcs.append(lambda x: D * np.arctanh((2 * x)-1))
+                inv_f.append(lambda x: (np.tanh(x/D) + 1)/2)
+            elif (u is None):
+                funcs.append(lambda x: (inv_adj_relu(x - l)))
+                inv_f.append(lambda x: (adj_relu(x) + l))
+            elif (l is None):
+                funcs.append(lambda x: inv_rev_adj_relu(x - np.copy(u)))
+                inv_f.append(lambda x: np.copy(u) + rev_adj_relu(x))
             else:
-                limit = 0
-            funcs.append(lambda x: inv_rev_adj_relu(x - limit))
-            inv_f.append(lambda x: limit + rev_adj_relu(x))
-        else:
-            funcs.append(lambda x: pass_through(x))
-            inv_f.append(lambda x: pass_through(x))
+                funcs.append(lambda x: pass_through(x))
+                inv_f.append(lambda x: pass_through(x))
+        add_to_funcs(lower, upper, i)
 
     def transform(params):
         return np.array([f(p) for p, f in zip(params, funcs)])

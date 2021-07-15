@@ -26,7 +26,7 @@ PARA_METHODS = ['MPP', 'MLE', 'MPS', 'MSE', 'MOM']
 
 class ParametricFitter():
 	def like(self, x, c, n, *params):
-		like = np.zeros_like(x).astype(surpyval.NUM)
+		like = np.zeros_like(x).astype(float)
 		like = np.where(c ==  0, self.df(x, *params), like)
 		like = np.where(c == -1, self.ff(x, *params), like)
 		like = np.where(c ==  1, self.sf(x, *params), like)
@@ -54,12 +54,13 @@ class ParametricFitter():
 		else:
 			like_i = 0
 			x_ = copy(x)
-			
+		
 		like = self.like(x_, c, n, *params)
 		like = like + like_i
 		like = np.log(like) - np.log(self.like_t(t, t_flags, *params))
 		like = np.multiply(n, like)
-		return -np.sum(like)
+		like = -np.sum(like)
+		return like
 
 	def neg_mean_D(self, x, c, n, *params):
 		mask = c == 0
@@ -322,6 +323,7 @@ class ParametricFitter():
 					init = np.array(self._parameter_initialiser(x, c, n))
 				else:
 					init = np.array(self._parameter_initialiser(x, c, n, offset=offset))
+
 					
 			init = transform(init)
 			init = init[not_fixed]

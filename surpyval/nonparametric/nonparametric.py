@@ -81,7 +81,7 @@ class NonParametric():
 		if how == 'step':
 			R_out[np.where(x < self.x.min())] = 1
 			R_out[np.where(x > self.x.max())] = np.nan
-			R_out[np.where(x < 0)] = np.nan
+			# R_out[np.where(x < 0)] = np.nan
 			idx = np.searchsorted(self.x, x, side='right') - 1
 			if bound == 'two-sided':
 				R_out = R_out[:, idx].T
