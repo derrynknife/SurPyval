@@ -38,32 +38,61 @@ Therefore using the at risk count, r, and the death count, d, can be used to est
    R(t) = \prod_{i:t_{i} \leq t}^{} \left ( 1 - \frac{d_{i} }{r_{i}}  \right )
 
 
-
 Nelson-Aalen Estimation
 -----------------------
 
-The Nelson-Aalen estimator [NA]_, isntead of finding the probability, it estimates the cumulative hazard function, and given that we know the relationship between the cumulative hazard function and the reliability function, the Nelson-Aalen estiamte can be converted to a survival curve. The equations are:
+The Nelson-Aalen estimator [NA]_ (also known as the Breslow estimator), instead of finding the probability, estimates the cumulative hazard function, and given that we know the relationship between the cumulative hazard function and the reliability function, the Nelson-Aalen cumulative hazard estimate can be converted to a survival curve.
+
+The first step in computing the NA estimate is to convert your data to the x, r, d format. Once in this format the instantaneous hazard rate is found by:
 
 .. math::
 
-   H(t) = \sum_{i:t_{i} \leq t}^{} \frac{d_{i} }{r_{i}} \\
-   \\
-   R(t) = e^{-H(t)}
+   h(x) = \frac{d_{x} }{r_{x}}
+
+This estimate of the instantaneous hazard rate is the proportion of deaths/failures at a value, x. Then to find the cumulative hazard rate for any x we simply take the sum of the instantaneous hazard rates for all the values below x. Mathematically:
+
+.. math::
+   H(x) = \sum_{i:x_{i} \leq x}^{} \frac{d_{i} }{r_{i}}
+
+Then, since we know that the reliability, or survival function, is related to the cumulative hazard function, we can easily compute it.
+
+.. math::
+   R(x) = e^{-H(x)}
 
 
-
-
-
-
-
-
+So we now have the survival/reliability function. One benefit of the Nelson-Aalen estimator is that it does not estimate a probability of 0 for the highest value (in a completely observed data set). This means that for a completely observed data set the whole estimation can be plotted on a transformed y-axis. For this reason SurPyval uses the Nelson-Aalen as the default plotting position.
 
 
 Fleming-Harrington Estimation
 -----------------------------
 
+The Fleming-Harrington estimator [FH]_, uses the same principal as the Nelson-Aalen estimator. That is, it finds the cumulative hazard function and then converts that to the reliability/survival estimate. However, the NA estimate assumes, for any given step that the number of items at risk is equal for each death, the FH estimate changes this. Mathematically, the hazard rate is calculated with:
+
+.. math::
+
+   h(x) = \frac{1}{r_{x}} + \frac{1}{r_{x} - 1} + + \frac{1}{r_{x} - 2} + ... + \frac{1}{r_{x} - d_{x}}
+
+You can see that the cumulative hazard rate will be slightly higher than the NA estimate since:
+
+.. math::
+
+   \frac{1}{r_{x}} + ... + \frac{1}{r_{x}} \leq \frac{1}{r_{x}} + ... + \frac{1}{r_{x} - d_{x}}
+
+The above is less than or equal for the case where there is one death/failure. The Fleming-Harrington and Nelson-Aalen estimates are particularly useful for small samples, see [FH]_.
+
+
 Turnbull Estimation
 -------------------
+
+
+Confidence Intervals
+--------------------
+
+Right Censoring
+---------------
+
+Left Truncation
+---------------
 
 References
 ----------
@@ -71,3 +100,7 @@ References
 .. [KM] Kaplan, E. L., & Meier, P. (1958). Nonparametric estimation from incomplete observations. Journal of the American statistical association, 53(282), 457-481.
 
 .. [NA] Nelson, Wayne (1969). Hazard plotting for incomplete failure data. Journal of Quality Technology, 1(1), 27-52.
+
+.. [FH] Fleming, Thomas R and Harrington, David P (1984). Nonparametric estimation of the survival distribution in censored data. Communications in Statistics-Theory and Methods, 13(20), 2469-2486.
+
+
