@@ -35,7 +35,7 @@ Therefore using the at risk count, r, and the death count, d, can be used to est
 
 .. math::
 
-   R(t) = \prod_{i:t_{i} \leq t}^{} \left ( 1 - \frac{d_{i} }{r_{i}}  \right )
+   R(x) = \prod_{i:x_{i} \leq x}^{} \left ( 1 - \frac{d_{i} }{r_{i}}  \right )
 
 
 Nelson-Aalen Estimation
@@ -84,6 +84,9 @@ The above is less than or equal for the case where there is one death/failure. T
 Turnbull Estimation
 -------------------
 
+The Turnbull estimator is a remarkable non-parametric estimation method for data that can handle arbitrary censoring and truncation [TB]_. The Turnbull estimator can be found with a procedure of finding the most likely survival curve from the data, for that reason it is also known as the Non-Parametric Maximum Likelihood Estimator. The Kaplan-Meier is also known as the Maximum Likelihood estimator, so is there a contradiciton? No, the Turnbull estimator is the same as the Kaplan-Meier for fully observed data.
+
+The Turnbull estimate
 
 Confidence Intervals
 --------------------
@@ -103,4 +106,4 @@ References
 
 .. [FH] Fleming, Thomas R and Harrington, David P (1984). Nonparametric estimation of the survival distribution in censored data. Communications in Statistics-Theory and Methods, 13(20), 2469-2486.
 
-
+.. [TB] Turnbull, Bruce W (1976). The empirical distribution function with arbitrarily grouped, censored and truncated data. Journal of the Royal Statistical Society: Series B (Methodological), 38(3), 290-295.
