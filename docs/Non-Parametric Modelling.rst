@@ -105,12 +105,12 @@ This formula then finds the number of failures outside the truncated interval fo
 We can then estimate the probability of failure in a given interval using the total failures in each interval divided by the total number of failures:
 
 .. math::
-   s_j = \sum_{i=1}^{N} {\mu_{ij} + nu_{ij} / M(s)}
+   s_j = \frac{\sum_{i=1}^{N} \mu_{ij} + \nu_{ij}}{M(s)}
 
 where
 
 .. math::
-   M(s) = \sum_{i=1}^{N} \sum_{j=1}^{m}  {\mu_{ij} + nu_{ij} / M(s)}
+   M(s) = \frac{\sum_{i=1}^{N} \sum_{j=1}^{m}  \mu_{ij} + \nu_{ij}}{M(s)}
 
 Using this estimate of the survival function, it can be input to the start of this procedure and it done again. This can then be repeated over and over until the values do not change. At this point we have reached the NPMLE estimate of the survival function!
 
