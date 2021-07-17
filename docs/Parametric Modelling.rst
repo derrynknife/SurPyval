@@ -180,6 +180,11 @@ Which is used with the general formula to estimate the plotting position heurist
 
 	\hat{F}_{k} = (k - A)/(n + B)
 
+One final option available is that of the Filliben estimate:
+
+.. image:: images/filiben.svg
+  :align: center
+
 Mean Square Error (MSE)
 -----------------------
 

@@ -22,17 +22,12 @@ Non-Parametric
    :members:
    :show-inheritance:
 
-.. automodule:: surpyval.nonparametric.plotting_positions
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: surpyval.nonparametric.rank_adjust
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 .. automodule:: surpyval.nonparametric.success_run
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: surpyval.nonparametric.plotting_positions
    :members:
    :undoc-members:
    :show-inheritance:
