@@ -9,20 +9,41 @@ import matplotlib.pyplot as plt
 
 class NonParametric():
 	"""
-	Class to capture all data and meta data on non-parametric sur(py)val model
-
-	Needs to have:
-	f = None - or empirical
-	confidence bounds
-
-	TODO: add confidence bounds
-	standard: h_u, H_u or Ru, Rl
-
+	Result of ``.fit()`` method for every non-parametric surpyval distribution. This means that each of the 
+	methods in this class can be called with a model created from the ``NelsonAalen``, ``KaplanMeier``, 
+	``FlemingHarrington``, or ``Turnbull`` estimators.
 	"""
 	def __str__(self):
 		return "{model} survival model".format(model=self.model)
 
 	def sf(self, x, how='step'):
+		r"""
+
+		Surival (or Reliability) function with the non-parametric estimates from the data
+
+		Parameters
+		----------
+
+		x : array like or scalar
+			The values of the random variables at which the survival function will be calculated 
+
+		Returns
+		-------
+
+		sf : scalar or numpy array 
+			The value(s) of the survival function at each x
+
+
+		Examples
+		--------
+		>>> from surpyval import NelsonAalen
+		>>> x = np.array([1, 2, 3, 4, 5])
+		>>> model = NelsonAalen.fit(x)
+		>>> model.sf(2)
+		array([0.63762815])
+		>>> model.sf([1., 1.5, 2., 2.5])
+		array([0.81873075, 0.81873075, 0.63762815, 0.63762815])
+		"""
 		x = np.atleast_1d(x)
 		# Let's not assume we can predict above the highest measurement
 		if how == 'step':
@@ -40,19 +61,186 @@ class NonParametric():
 			return R
 
 	def ff(self, x, how='step'):
+		r"""
+
+		CDF (failure or unreliability) function with the non-parametric estimates from the data
+
+		Parameters
+		----------
+
+		x : array like or scalar
+			The values of the random variables at which the survival function will be calculated 
+
+		Returns
+		-------
+
+		ff : scalar or numpy array 
+			The value(s) of the failure function at each x
+
+
+		Examples
+		--------
+		>>> from surpyval import NelsonAalen
+		>>> x = np.array([1, 2, 3, 4, 5])
+		>>> model = NelsonAalen.fit(x)
+		>>> model.ff(2)
+		array([0.36237185])
+		>>> model.ff([1., 1.5, 2., 2.5])
+		array([0.18126925, 0.18126925, 0.36237185, 0.36237185])
+		"""
 		return 1 - self.sf(x, how=how)
 
 	def hf(self, x, how='step'):
-		return np.diff(self.Hf(x, how=how))
+		r"""
+
+		Instantaneous hazard function with the non-parametric estimates from the data. This is
+		calculated using simply the difference between consecutive H(x).
+
+		Parameters
+		----------
+
+		x : array like or scalar
+			The values of the random variables at which the survival function will be calculated 
+
+		Returns
+		-------
+
+		hf : scalar or numpy array 
+			The value(s) of the failure function at each x
+
+
+		Examples
+		--------
+		>>> from surpyval import NelsonAalen
+		>>> x = np.array([1, 2, 3, 4, 5])
+		>>> model = NelsonAalen.fit(x)
+		>>> model.ff(2)
+		array([0.36237185])
+		>>> model.ff([1., 1.5, 2., 2.5])
+		array([0.18126925, 0.18126925, 0.36237185, 0.36237185])
+		"""
+		return np.diff(np.hstack([[0], self.Hf(x, how=how)]))
+
+
+	def df(self, x, how='step'):
+		r"""
+
+		Density function with the non-parametric estimates from the data. This is calculated using 
+		the relationship between the hazard function and the density:
+
+		.. math::
+			f(x) = h(x)e^{-H(x)}
+
+		Parameters
+		----------
+
+		x : array like or scalar
+			The values of the random variables at which the survival function will be calculated 
+
+		Returns
+		-------
+
+		df : scalar or numpy array 
+			The value(s) of the density function at x
+
+
+		Examples
+		--------
+		>>> from surpyval import NelsonAalen
+		>>> x = np.array([1, 2, 3, 4, 5])
+		>>> model = NelsonAalen.fit(x)
+		>>> model.df(2)
+		array([0.28693267])
+		>>> model.df([1., 1.5, 2., 2.5])
+		array([0.16374615, 0.        , 0.15940704, 0.        ])
+		"""
+		return self.hf(x, how=how) * np.exp(-self.Hf(x, how=how))
 
 	def Hf(self, x, how='step'):
+		r"""
+
+		Cumulative hazard rate with the non-parametric estimates from the data. This is calculated using 
+		the relationship between the hazard function and the density:
+
+		.. math::
+			H(x) = -\ln(R(x))
+
+		Parameters
+		----------
+
+		x : array like or scalar
+			The values of the random variables at which the survival function will be calculated 
+
+		Returns
+		-------
+
+		Hf : scalar or numpy array 
+			The value(s) of the density function at x
+
+
+		Examples
+		--------
+		>>> from surpyval import NelsonAalen
+		>>> x = np.array([1, 2, 3, 4, 5])
+		>>> model = NelsonAalen.fit(x)
+		>>> model.Hf(2)
+		array([0.45])
+		>>> model.df([1., 1.5, 2., 2.5])
+		model.Hf([1., 1.5, 2., 2.5])
+		"""
 		H = -np.log(self.sf(x, how=how))
-		H[H == 0] = 0
 		return H
 
 	def R_cb(self, x, bound='two-sided', how='step', confidence=0.95, bound_type='exp', dist='z'):
-		# Greenwoods variance using t-stat. Ref found:
-		# http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
+		r"""
+
+		Cumulative hazard rate with the non-parametric estimates from the data. This is calculated using 
+		the relationship between the hazard function and the density:
+
+		Parameters
+		----------
+
+		x : array like or scalar
+			The values of the random variables at which the confidence bounds will be calculated
+		bound : ('two-sided', 'upper', 'lower'), str, optional
+			Compute either the two-sided, upper or lower confidence bound(s). Defaults to two-sided
+		how : ('step', 'interp'), optional
+			How to compute the values between observations. Survival statistics traditionally uses
+			step functions, but can use interpolated values if desired. Defaults to step.
+		confidence : scalar, optional
+			The confidence level at which the bound will be computed.
+		bound_type : ('exp', 'regular'), str, optional
+			The method with which the bounds will be calculated. Using regular will allow for the 
+			bounds to exceed 1 or be less than 0. Defaults to exp as this ensures the bounds are 
+			within 0 and 1.
+		dist : ('t', 'z'), str, optional
+			The distribution to use in finding the bounds. Defaults to the normal (z) distribution.
+
+		Returns
+		-------
+
+		R_cb : scalar or numpy array 
+			The value(s) of the upper, lower, or both confidence bound(s) of the survival function at x
+
+		Examples
+		--------
+		>>> from surpyval import NelsonAalen
+		>>> x = np.array([1, 2, 3, 4, 5])
+		>>> model = NelsonAalen.fit(x)
+		>>> model.R_cb([1., 1.5, 2., 2.5], bound='lower', dist='t')
+		array([0.11434813, 0.11434813, 0.04794404, 0.04794404])
+		>>> model.R_cb([1., 1.5, 2., 2.5])
+		array([[0.97789387, 0.16706394],
+		       [0.97789387, 0.16706394],
+		       [0.91235117, 0.10996882],
+		       [0.91235117, 0.10996882]])
+
+		References
+		----------
+		
+		http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
+
+		"""
 		assert bound_type in ['exp', 'normal']
 		assert dist in ['t', 'z']
 		x = np.atleast_1d(x)
@@ -101,9 +289,6 @@ class NonParametric():
 		return np.random.choice(self.x, size=size)
 
 	def get_plot_data(self, **kwargs):
-		"""
-		Looking a little less ugly now.
-		"""
 		y_scale_min = 0
 		y_scale_max = 1
 
@@ -130,6 +315,9 @@ class NonParametric():
 		return plot_data
 
 	def plot(self, **kwargs):
+		r"""
+		Creates a plot of the survival function.
+		"""
 		plot_bounds = kwargs.pop('plot_bounds', True)
 		how = kwargs.pop('how', 'step')
 		bound = kwargs.pop('how', 'two-sided')

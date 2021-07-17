@@ -4,43 +4,6 @@ from surpyval import nonparametric as nonp
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 def fleming_harrington(x, c=None, n=None, **kwargs):
-	r"""
-	Fleming-Harrington estimation of survival distribution.
-
-	Attributes
-	----------
-	
-	x : array like
-        The values of the random variables.
-	c : array like, default is None
-        The array, of same length as x, that flags whether a value in x is left censored (-1), right censored (1), observed (0), or interval censored (2)
-    n : int
-        The number of trials (copied from `b3inomtest` input).
-
-	Ref:
-	Fleming, T. R., and Harrington, D. P. (1984). “Nonparametric Estimation of the Survival Distribution in Censored Data.” Communications in Statistics—Theory and Methods 13:2469–2486.
-
-	The Fleming-Harrington method estimates, like the Nelson-Aalen estimator the instantaneous hazard rate. With the instantaneous rate, the cumulative hazard is then computed, then the reliability function.
-
-	Hazard Rate:
-	at each x, for each d:
-
-	.. math:: h = 1/r + 1/(r-1) + ... + 1/(r-d)
-	
-	Cumulative Hazard Function:
-
-	.. math:: H = cumsum(h)
-
-	Survival Function:
-
-	.. math:: R = e^{-H}
-
-    Methods
-    -------
-    proportion_ci :
-        Compute the confidence interval for the estimate of the proportion.
-
-    """
 	x, r, d = surpyval.xcnt_to_xrd(x, c, n, **kwargs)
 
 	h = [np.sum([1./(r[i]-j) for j in range(d[i])]) for i in range(len(x))]
@@ -49,6 +12,24 @@ def fleming_harrington(x, c=None, n=None, **kwargs):
 	return x, r, d, R
 
 class FlemingHarrington_(NonParametricFitter):
+	r"""
+	Fleming-Harrington estimation of survival distribution.  Returns a `NonParametric` object from method :code:`fit()` Calculates the Non-Parametric estimate of the survival function using:
+
+	.. math:: 
+
+		R = e^{-\sum_{i:x_{i} \leq x} \sum_{i=0}^{d_x-1} \frac{1}{r_x - i}}
+
+	See 'NonParametric section for detailed estimate of how H is computed.'
+
+	Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import FlemingHarrington
+    >>> x = np.array([1, 2, 3, 4, 5])
+    >>> model = FlemingHarrington.fit(x)
+    >>> model.R
+    array([0.81873075, 0.63762815, 0.45688054, 0.27711205, 0.10194383])
+    """
 	def __init__(self):
 		self.how = 'Fleming-Harrington'
 

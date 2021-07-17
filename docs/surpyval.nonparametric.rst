@@ -1,34 +1,25 @@
 Non-Parametric
 ==============
 
-.. automodule:: surpyval.nonparametric
+
+.. autoclass:: surpyval.nonparametric.nonparametric.NonParametric
    :members:
-   :undoc-members:
    :show-inheritance:
 
-.. automodule:: surpyval.nonparametric.filliben
+.. autoclass:: surpyval.nonparametric.kaplan_meier.KaplanMeier_
    :members:
-   :undoc-members:
    :show-inheritance:
 
-.. automodule:: surpyval.nonparametric.fleming_harrington
+.. autoclass:: surpyval.nonparametric.nelson_aalen.NelsonAalen_
    :members:
-   :undoc-members:
    :show-inheritance:
 
-.. automodule:: surpyval.nonparametric.kaplan_meier
+.. autoclass:: surpyval.nonparametric.fleming_harrington.FlemingHarrington_
    :members:
-   :undoc-members:
    :show-inheritance:
 
-.. automodule:: surpyval.nonparametric.nelson_aalen
+.. autoclass:: surpyval.nonparametric.turnbull.Turnbull_
    :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: surpyval.nonparametric.nonparametric
-   :members:
-   :undoc-members:
    :show-inheritance:
 
 .. automodule:: surpyval.nonparametric.plotting_positions
@@ -46,8 +37,5 @@ Non-Parametric
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: surpyval.nonparametric.turnbull
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
 

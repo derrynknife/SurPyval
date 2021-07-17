@@ -21,7 +21,7 @@ def _round_vals(x):
 
 class Parametric():
 	"""
-	Result of ``.fit()`` or ``.from_params()`` method for every surpyval distribution.
+	Result of ``.fit()`` or ``.from_params()`` method for every parametric surpyval distribution.
 	
 	Instances of this class are very useful when a user needs the other functions of a distribution for plotting, optimizations, monte carlo analysis and numeric integration.
 

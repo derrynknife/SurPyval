@@ -72,6 +72,17 @@ The Fleming-Harrington estimator [FH]_, uses the same principal as the Nelson-Aa
 
    h(x) = \frac{1}{r_{x}} + \frac{1}{r_{x} - 1} + \frac{1}{r_{x} - 2} + ... + \frac{1}{r_{x} - (d_{x} - 1)}
 
+Which can be summarised as:
+
+.. math::
+
+   h(x) = \sum_{i=0}^{d_x-1} \frac{1}{r_x - i}
+
+The cumulative hazard rate therefore becomes:
+
+.. math::
+   H(x) = \sum_{i:x_{i} \leq x} \sum_{i=0}^{d_x-1} \frac{1}{r_x - i}
+
 You can see that the cumulative hazard rate will be slightly higher than the NA estimate since:
 
 .. math::

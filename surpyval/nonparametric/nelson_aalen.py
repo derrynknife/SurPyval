@@ -4,28 +4,30 @@ from surpyval import nonparametric as nonp
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 def nelson_aalen(x, c=None, n=None, **kwargs):
-	r"""
-	Nelson-Aalen estimation of Reliability function'Nelson, W.: Theory and Applications of Hazard Plotting for Censored Failure Data. Technometrics, Vol. 14, #4, 1972' Technically the NA estimate is for the Cumulative Hazard Function, The reliability (survival) curve that is output is also known as the Breslow estimate. I will leave it as Nelson-Aalen for this library.
+    x, r, d = surpyval.xcnt_to_xrd(x, c, n, **kwargs)
 
-    return_all is called by the fit method to ensure h, x, c, d are all saved
-
-    Hazard Rate
-	h = d/r
-	Cumulative Hazard Function
-	H = cumsum(h)
-	Reliability Function
-	R = exp(-H)
-
-	"""	
-	x, r, d = surpyval.xcnt_to_xrd(x, c, n, **kwargs)
-
-	h = d/r
-	H = np.cumsum(h)
-	R = np.exp(-H)
-	return x, r, d, R
+    h = d/r
+    H = np.cumsum(h)
+    R = np.exp(-H)
+    return x, r, d, R
 
 class NelsonAalen_(NonParametricFitter):
-	def __init__(self):
-		self.how = 'Nelson-Aalen'
+    r"""
+    Nelson-Aalen estimator class. Returns a `NonParametric` object from method :code:`fit()` Calculates the Non-Parametric estimate of the survival function using:
+
+    .. math::
+        R(x) = e^{-\sum_{i:x_{i} \leq x}^{} \frac{d_{i} }{r_{i}}}
+    
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import NelsonAalen
+    >>> x = np.array([1, 2, 3, 4, 5])
+    >>> model = NelsonAalen.fit(x)
+    >>> model.R
+    array([0.81873075, 0.63762815, 0.45688054, 0.27711205, 0.10194383])
+    """
+    def __init__(self):
+        self.how = 'Nelson-Aalen'
 
 NelsonAalen = NelsonAalen_()
