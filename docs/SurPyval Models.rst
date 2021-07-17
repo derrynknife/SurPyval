@@ -13,8 +13,8 @@ To get started, let's import some useful packages, as such, for the rest of this
 Non-Parametric
 --------------
 
-Nelson-Aalen
-^^^^^^^^^^^^
+Complete Data
+^^^^^^^^^^^^^
 
 .. code:: python
 
@@ -98,6 +98,13 @@ Parametric
 ----------
 
 Survival modelling with *surpyval* is very easy. This page will take you through a series of scenarios that can show you how to use the features of *surpyval* to get you the answers you need. The first example is if you simply have a list of event times and need to find the distribution of best fit.
+
+Complete Data
+^^^^^^^^^^^^^
+
+The easiest and simplest case is that when you have a dataset of exactly observed data. that is, 
+you have one array of data with the values at which they failed. Fitting a parametric distribution
+to the data can be done with a simple call to the ``fit()`` method:
 
 .. code:: python
 
