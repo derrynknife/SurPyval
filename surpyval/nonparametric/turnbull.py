@@ -72,7 +72,8 @@ def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
 		func = _na
 
 	old_err_state = np.seterr(all='ignore')
-	while (iters < 1000):
+
+	while (iters < 1000) & (not np.allclose(p, p_prev)):
 		p_prev = p
 		iters +=1
 		ap = alpha * p

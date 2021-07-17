@@ -70,7 +70,7 @@ The Fleming-Harrington estimator [FH]_, uses the same principal as the Nelson-Aa
 
 .. math::
 
-   h(x) = \frac{1}{r_{x}} + \frac{1}{r_{x} - 1} + + \frac{1}{r_{x} - 2} + ... + \frac{1}{r_{x} - d_{x}}
+   h(x) = \frac{1}{r_{x}} + \frac{1}{r_{x} - 1} + \frac{1}{r_{x} - 2} + ... + \frac{1}{r_{x} - d_{x}}
 
 You can see that the cumulative hazard rate will be slightly higher than the NA estimate since:
 
@@ -86,16 +86,36 @@ Turnbull Estimation
 
 The Turnbull estimator is a remarkable non-parametric estimation method for data that can handle arbitrary censoring and truncation [TB]_. The Turnbull estimator can be found with a procedure of finding the most likely survival curve from the data, for that reason it is also known as the Non-Parametric Maximum Likelihood Estimator. The Kaplan-Meier is also known as the Maximum Likelihood estimator, so is there a contradiciton? No, the Turnbull estimator is the same as the Kaplan-Meier for fully observed data.
 
-The Turnbull estimate
+The Turnbull estimate is really an estimate of the observed failures given censoring, and then the 'ghost' failures (as Turnbull describes it) due to truncation. Turnbull's estimate converts all failures to interval failures regardless of the censoring. This is because a left censored point is equivalent to an intervally censored observation in the interval -Inf to x, and a right censored point is equivalent to an intervally censored observation in the interval x to Inf. Then for all the intervals between negative infinity we find how many failures happened in that interval. This value need not be a whole number since a single observation could have failed across several intervals. To estimate the failures, we use:
 
-Confidence Intervals
---------------------
+.. math::
+   \mu_{ij}(s) = \frac{\alpha_{ij}s_j}{\sum_{k=1}^{m}\alpha_{ik}s_k}
 
-Right Censoring
----------------
+Where :math:`\mu_{ij}` is the probability of the i-th observation failing in the j-th interval, :math:`\alpha_{ij}` is a flag to indicate if the i-th failure was at risk in interval j, (1 if at risk and 0 if not), and :math:`s_j` is the probability of failure in an interval. That is, :math:`s_j` is the survival function we are trying to estimate.
 
-Left Truncation
----------------
+If an observation is truncated, it was only a possible observation among others that would have been seen had the observation not been limited. To estimate the additional at risk items outside of the domain for which an observation is truncated we use:
+
+.. math::
+   \nu_{ij}(s) = \frac{(1 - \beta_{ij})s_j}{\sum_{k=1}^{m}\alpha_{ik}s_k}
+
+Where :math:`\nu_{ij}` is the probability of the i-th observation failing in the j-th interval and :math:`\beta_{ij}` is a flag to indicate if the i-th failure was observable in interval j, (1 if at risk and 0 if not).
+
+This formula then finds the number of failures outside the truncated interval for a given observation.
+
+We can then estimate the probability of failure in a given interval using the total failures in each interval divided by the total number of failures:
+
+.. math::
+   s_j = \sum_{i=1}^{N} {\mu_{ij} + nu_{ij} / M(s)}
+
+where
+
+.. math::
+   M(s) = \sum_{i=1}^{N} \sum_{j=1}^{m}  {\mu_{ij} + nu_{ij} / M(s)}
+
+Using this estimate of the survival function, it can be input to the start of this procedure and it done again. This can then be repeated over and over until the values do not change. At this point we have reached the NPMLE estimate of the survival function!
+
+The Turnbull estimation is the only non-parametric method that can be used with truncated and left censored data. Therefore it must be used when using the plotting methods in the parametric package when you have truncated or left censored data.
+
 
 References
 ----------
