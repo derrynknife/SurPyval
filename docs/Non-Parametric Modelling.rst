@@ -76,7 +76,7 @@ You can see that the cumulative hazard rate will be slightly higher than the NA 
 
 .. math::
 
-   \frac{1}{r_{x}} + ... + \frac{1}{r_{x}} \leq \frac{1}{r_{x}} + ... + \frac{1}{r_{x} - d_{x}}
+   \frac{1}{r_{x}} + ... + \frac{1}{r_{x}} \leq \frac{1}{r_{x}} + ... + \frac{1}{r_{x} - (d_{x} - 1)}
 
 The above is less than or equal for the case where there is one death/failure. The Fleming-Harrington and Nelson-Aalen estimates are particularly useful for small samples, see [FH]_.
 
