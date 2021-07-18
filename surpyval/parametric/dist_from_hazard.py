@@ -63,7 +63,7 @@ class Distribution(ParametricFitter):
             elif low is None:
                 out.append(high - 1.)
             else:
-                out.append((hig + low)/2.)
+                out.append((high + low)/2.)
         return out
 
     def mpp_y_transform(self, y, *params):
