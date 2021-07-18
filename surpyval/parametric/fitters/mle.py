@@ -70,7 +70,7 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
     jac  = jacobian(fun)
     hess = hessian(fun)
 
-    if str(type(dist)) == "<class 'surpyval.parametric.dist_from_hazard.Dist'>":
+    if str(type(dist)) == "<class 'surpyval.parametric.dist_from_hazard.Distribution'>":
         np.seterr(all='ignore')
         jac = lambda params, *args: approx_fprime(params, fun, np.sqrt(np.finfo(float).eps), *args)
         res = minimize(fun, init, args=(offset, True), method='BFGS', jac=jac)

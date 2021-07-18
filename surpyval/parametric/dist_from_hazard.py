@@ -3,7 +3,7 @@ import autograd.numpy as np
 from autograd import grad
 import inspect
 
-class Dist(ParametricFitter):
+class Distribution(ParametricFitter):
     def __init__(self, name, fun, param_names, bounds, support):
         if str(inspect.signature(fun)) != '(x, *params)':
             raise ValueError('Function must have the signature \'(x, *params)\'')

@@ -882,3 +882,84 @@ As an example:
 
 
 LFP models can be computed with each method that handles censoring, the default, as always is MLE, but you can use MPS, MSE, but not (yet) MPP.
+
+Using a new distribution
+------------------------
+
+Given the implementation in SurPyval, it is possible to create a new distribution and use all the 
+previously listed techniques. For example, the Gompertz distribution is not implemented in the 
+surpyval API, this however can be quickly overcome. First, we set up a random number generator.
+Because SurPyval works based on the autograd numpy implementation, it is essential that you 
+use the autograd numpy import to make this work.
+
+.. code:: python
+
+    import surpyval as surv
+    from autograd import numpy as np
+
+    def qf(p, mu, b):
+        return (np.log(((-np.log(p)/mu))) + 1)/b
+
+    # Generate random values from Gompertz distribution
+    np.random.seed(1)
+    x = qf(np.random.uniform(0, 1, 100), .3, 1.1)
+
+Now that we have our random data set, we can fit a Gompertz distribution to it. To do so, we need
+to create a Gompertz distribution class, and to do this we need the cumulative hazard function, 
+the names of the parameters, the bounds of the parameters, and the distribution support.
+
+.. code:: python
+
+    name = 'Gompertz'
+
+    def Hf(x, *params):
+        return params[0] * np.exp(params[1] * x - 1)
+
+    param_names = ['nu', 'b']
+    bounds = ((0, None), (0, None))
+    support = (-np.inf, np.inf)
+    Gompertz = surv.parametric.Distribution(name, Hf, param_names, bounds, support)
+
+
+With this now created, all the calls to the regular surpyval API can be used.
+
+.. code:: python
+
+    Gompertz.fit(x)
+
+.. code:: text
+
+    Parametric Surpyval model with Gompertz distribution fitted by MLE yielding parameters [0.30887091 1.04352087]
+
+If we transform the data slightly, we can show that this can be used with censored and truncated data
+as well.
+
+
+.. code:: python
+
+    c = np.zeros_like(x)
+    # Right censor all values above 2
+    c[x > 2] = 1
+    x[x > 2] = 2
+    # Left truncate all values below 0
+    lt = 0
+    c = c[x > lt]
+    x = x[x > lt]
+
+    Gompertz.fit(x=x, c=c, tl=lt)
+
+
+.. code::text
+
+    Parametric Surpyval model with Gompertz distribution fitted by MLE yielding parameters [0.24876072 1.16574707]
+
+This is extraordinary! We have created a new distribution using only the cumulative hazard function, but
+are able to handle arbitrary censoring and truncation. It shows the power of the SurPyval API and
+functionality.
+
+Credit for this idea must be given to the creators of the *lifelines* package. *lifelines* is capable
+of receiving a cumulative hazard function that can then be used as a distribution to fit parameters.
+However, at the time of writing it could not handle arbitrarily censored or truncated data.
+
+
+

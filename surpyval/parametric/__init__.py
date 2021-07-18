@@ -35,6 +35,5 @@ from .loglogistic import LogLogistic
 from .mixture_model import MixtureModel
 
 from .lfp import LFP
-
-from .dist_from_hazard import Dist
+from .dist_from_hazard import Distribution
 
