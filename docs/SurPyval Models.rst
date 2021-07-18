@@ -227,9 +227,9 @@ This is done even though we might not have a complete failure occur in an interv
            1.66794197e+00])
 
 You can see that some values are 0 (or essentially 0) or that there is an interval where there were
-1.72083332 failures. But because the Turbull estimate finds the x, r, d format we can actually elect to use the Nelson-Aalen or Kaplan-Meier estimate with the Turnbull estimates of x, r, and d.
+4.1095188 failures. But because the Turbull estimate finds the x, r, d format we can actually elect to use the Nelson-Aalen or Kaplan-Meier estimate with the Turnbull estimates of x, r, and d.
 
-..code:: python
+.. code:: python
 
     model = TB.fit(x=x, c=c, n=n, tl=tl, tr=tr, estimator='Nelson-Aalen')
     model.plot()
