@@ -13,7 +13,7 @@ class NonParametric():
 	methods in this class can be called with a model created from the ``NelsonAalen``, ``KaplanMeier``, 
 	``FlemingHarrington``, or ``Turnbull`` estimators.
 	"""
-	def __str__(self):
+	def __repr__(self):
 		return "{model} survival model".format(model=self.model)
 
 	def sf(self, x, how='step'):
@@ -241,8 +241,13 @@ class NonParametric():
 		http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
 		"""
-		assert bound_type in ['exp', 'normal']
-		assert dist in ['t', 'z']
+		if bound_type not in ['exp', 'normal']:
+			return ValueError("'bound_type' must be in ['exp', 'normal']")
+		if dist not in ['t', 'z']:
+			return ValueError("'dist' must be in ['t', 'z']")
+
+		old_err_state = np.seterr(all='ignore')
+			
 		x = np.atleast_1d(x)
 		if bound in ['upper', 'lower']:
 			if dist == 't':
@@ -283,6 +288,9 @@ class NonParametric():
 			else:
 				R_out = np.interp(x, self.x, R_out)
 			R_out[np.where(x > self.x.max())] = np.nan
+
+		np.seterr(**old_err_state)
+
 		return R_out
 
 	def random(self, size):
