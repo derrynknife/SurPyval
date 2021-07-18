@@ -13,8 +13,8 @@ To get started, let's import some useful packages, as such, for the rest of this
 
 Survival modelling with *surpyval* is very easy. This page will take you through a series of scenarios that can show you how to use the features of *surpyval* to get you the answers you need. The first example is if you simply have a list of event times and need to find the distribution of best fit.
 
-Non-Parametric
---------------
+Non-Parametric SurPyval Modelling
+---------------------------------
 
 In each of the examples below, each of the ``KaplanMeier``, ``NelsonAalen``, or ``FlemingHarrington`` can be substituted with any of the others. It is the choice of the analyst which should be used. The 
 ``Turnbull`` estimator has additional capabilities that can be used when you have right truncated, left censored, or interval censored data.
@@ -241,8 +241,25 @@ The Greenwood confidence intervals do give us a strange set of bounds. But you c
 using the Nelson-Aalen estimator instead of the Kaplan-Meier gives us a better approximation 
 for the tail end of the distribution.
 
-Parametric
-----------
+Some Issues with the Turnbull Estimate
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Caution must be given when using the Turnbull estimate when all values are truncated by some left and/or
+right value. This will be shown below in the methods for estimating parameters with truncated values. But
+essentially the Turnbull method cannot make any assumptions about the probability by which the smallest
+value if left truncated should be adjusted. This is because there is no information available with the
+non-parametric method below this smallest value. The same is true for the largest value if it is also
+right truncated, there is no information available about the probability of its observation. Therefore
+the Turnbull method makes an implicit assumption that the first value, if left truncated has 100% chance
+of observation, and the highest value, if right truncated also has 100% chance of being observed. The
+implications of this are detailed below, because the only way to gain an understanding of these
+situations is by assuming a shape of the distribution. That is, by doing parametric analysis. This is
+possible since if the distribution within the truncated ends has a shape that matches to a particular
+distribution you can then extrapolate beyond the observed values. Parametric analysis is therefore 
+incredibly powerful for prediction.
+
+Parametric SurPyval Modelling
+-----------------------------
 
 The parametric API is essentially the exact same as the non-parametric API. All models are fit by a 
 call to the ``fit()`` method. However, the parametric models have more options that are only applicable to parametric modelling. The inputs of ``x`` for the random variable, ``c`` for the censoring flag, ``n``
@@ -725,6 +742,60 @@ Our estimation has worked! Even though we used the MPS estimate for the paramete
 
 This shows the power of the flexible API that surpyval offers, because if your modelling fails using one estimation method, you can use another. In this case, the MPS method is quite good at handling offset distributions. It is therefore a good approach to use when using offset distributions.
 
+As stated in the Non-Parametric section, there is a risk that using the Turnbull estimator when all
+values are trunctated by the same values. We will now show what happens. First, some example data:
+
+.. code:: python
+
+    import surpyval as surv
+    import numpy as np
+
+    np.random.seed(1)
+    x = surv.Normal.random(1000, 100, 10)
+    tl = 90
+    tr = 110
+    x = x[x > tl]
+    x = x[x < tr]
+
+    mpp_model = surv.Normal.fit(x, tl=tl, tr=tr, how='MPP')
+    mpp_model.plot()
+    mpp_model
+
+.. code:: text 
+
+    Parametric Surpyval model with Normal distribution fitted by MPP yielding parameters (99.44586157765144, 5.819425236010943)
+
+.. image:: images/mpp-turnbull-1.png
+    :align: center
+
+
+You can see that there is a strange match between the Turnbull estimate of the CDF and the parametric
+model. Also, you can see that the CDF at 90 is near 0% and the CDF at 110 is near 100%. This shows
+that it has not taken into account the truncation. Instead, if we use MLE we get:
+
+.. code:: python
+
+    model = surv.Normal.fit(x, tl=tl, tr=tr, how='MLE')
+    model.plot()
+    model
+
+.. code:: text 
+
+    Parametric Surpyval model with Normal distribution fitted by MLE yielding parameters [100.13045398   9.17784957]
+
+
+.. image:: images/mpp-turnbull-2.png
+    :align: center
+
+We can see that the MLE method is a much better fit to this data, further, the MLE estimate of the 
+:math:`\sigma` parameter is much closer. The plotting points for the MLE plot
+have been adjusted in accordance with the truncation that the MLE model has estimated at the first entry.
+This is because it is known to be truncated and needs to be adjusted. This is not possible with the MPP
+method because the Turnbull estimator cannot adjust the truncation at the first and last value as it
+can make no assumptions about the truncation at those points.
+
+This is just a word of warning for when using Truncation and the MPP method, make sure not all values
+are truncated by the same value, otherwise it will give a poor fit.
 
 Mixture Models
 ^^^^^^^^^^^^^^

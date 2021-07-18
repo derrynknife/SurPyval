@@ -125,7 +125,8 @@ class ParametricFitter():
 
 	def fit(self, x=None, c=None, n=None, t=None, how='MLE',
 			offset=False, tl=None, tr=None, xl=None, xr=None,
-			fixed=None, heuristic='Nelson-Aalen', init=[], rr='y'):
+			fixed=None, heuristic='Nelson-Aalen', init=[], rr='y',
+			turnbull_estimator='Kaplan-Meier'):
 
 		r"""
 
@@ -191,6 +192,10 @@ class ParametricFitter():
 			If 'y' the mean square error between the line and vertical distance to each point is minimised.
 			If 'x' the mean square error between the line and horizontal distance to each point is minimised.
 
+		turnbull_estimator : ('Nelson-Aalen' or 'Kaplan-Meier'), str, optional
+			If using the Turnbull heuristic, you can elect to use either the KM or NA estimator with 
+			the Turnbull estimate of x, r, and d. Defaults to KM.
+
 		Returns
 		-------
 
@@ -251,8 +256,8 @@ class ParametricFitter():
 		if t is not None and how == 'MSE':
 			raise NotImplementedError('Mean square error doesn\'t yet support tuncation')
 
-		if t is not None and how == 'MPP':
-			raise NotImplementedError('Method of probability plotting doesn\'t yet support tuncation')
+		# if t is not None and how == 'MPP':
+			# raise NotImplementedError('Method of probability plotting doesn\'t yet support tuncation')
 
 		if t is not None and how == 'MOM':
 			raise ValueError('Maximum product spacing doesn\'t support tuncation')

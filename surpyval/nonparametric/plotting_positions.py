@@ -77,7 +77,7 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
     if heuristic not in nonp.PLOTTING_METHODS:
         raise ValueError("Must use available heuristic")
 
-    if ((-1 in c) or (2 in c)) & (heuristic == 'Turnbull'):
+    if ((-1 in c) or (2 in c)) & (heuristic != 'Turnbull'):
         raise ValueError("Left or interval censored data requires the use of the Turnbull estimator")
 
     if (np.isfinite(t[:, 0]).any()) & (heuristic not in ['Nelson-Aalen', 'Kaplan-Meier', 'Fleming-Harrington', 'Turnbull']):
