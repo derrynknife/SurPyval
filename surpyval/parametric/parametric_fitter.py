@@ -642,9 +642,9 @@ class ParametricFitter():
 		return moments
 
 	def fit(self, x=None, c=None, n=None, t=None, how='MLE',
-			offset=False, tl=None, tr=None, xl=None, xr=None,
-			fixed=None, heuristic='Nelson-Aalen', init=[], rr='y',
-			turnbull_estimator='Kaplan-Meier'):
+			offset=False, zi=False, lfp=False, tl=None, tr=None,
+			xl=None, xr=None, fixed=None, heuristic='Nelson-Aalen',
+			init=[], rr='y', turnbull_estimator='Kaplan-Meier'):
 
 		r"""
 
@@ -784,12 +784,6 @@ class ParametricFitter():
 
 		if x.ndim == 2:
 			heuristic = 'Turnbull'
-
-		# Turnbull should be avoided as the alpha and beta matrix can be memory expensive!
-		# if (~np.isfinite(t)).any() & ((-1 not in c) & (2 not in c)):
-		# 	heuristic = kwargs.pop('heuristic', 'Nelson-Aalen')
-		# else:
-		# 	heuristic = kwargs.pop('heuristic', 'Turnbull')
 
 		if surpyval.utils.check_no_censoring(c) and (how == 'MOM'):
 			raise ValueError('Method of moments doesn\'t support censoring')

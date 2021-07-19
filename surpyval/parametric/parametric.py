@@ -23,13 +23,28 @@ def _round_vals(x):
 
 class Parametric():
     """
-    Result of ``.fit()`` or ``.from_params()`` method for every parametric surpyval distribution.
+    Result of ``.fit()`` or ``.from_params()`` method for every parametric surpyval 
+    distribution.
     
-    Instances of this class are very useful when a user needs the other functions of a distribution for plotting, optimizations, monte carlo analysis and numeric integration.
+    Instances of this class are very useful when a user needs the other functions 
+    of a distribution for plotting, optimizations, monte carlo analysis and numeric 
+    integration.
 
     """
     def __repr__(self):
-        return 'Parametric Surpyval model with {dist} distribution fitted by {method} yielding parameters {params}'.format(dist=self.dist.name, method=self.method, params=self.params)
+        if self.offset:
+            return ('Parametric Surpyval model with {dist} distribution'
+                    + ' fitted by {method} yielding parameters {params} with offset of '
+                    + '{gamma}').format(dist=self.dist.name,
+                                        method=self.method,
+                                        params=self.params,
+                                        gamma=self.gamma)
+        else:    
+            return ('Parametric Surpyval model with {dist} distribution fitted by '
+                    + '{method} yielding parameters '
+                    + '{params}').format(dist=self.dist.name, 
+                                         method=self.method, 
+                                         params=self.params)
 
     def sf(self, x):
         r"""
@@ -384,7 +399,7 @@ class Parametric():
 
         else:
             def R_cb(x):
-                sf_func = lambda params : self.dist.sf(x - self.gamma, *params)
+                sf_func = lambda params : self.dist.sf(x, *params)
                 jac = np.atleast_2d(jacobian(sf_func)(np.array(self.params)))
                 var_R = []
                 for i, j in enumerate(jac):
@@ -393,7 +408,7 @@ class Parametric():
                     var_R.append(np.sum(j * pvars))
 
                 diff = z(alpha_ci/2) * np.sqrt(np.array(var_R)) * np.array([1., -1.]).reshape(2, 1)
-                R_hat = self.sf(x - self.gamma)
+                R_hat = self.sf(x)
                 exponent = diff/(R_hat*(1 - R_hat))
                 R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
                 return R_cb.T
@@ -419,7 +434,7 @@ class Parametric():
             def cb_df(x):
                 out = []
                 for v in x:
-                    out.append(jacobian(lambda x: -np.log(R_cb(x)))(v) * self.sf(v - self.gamma) )
+                    out.append(jacobian(lambda x: -np.log(R_cb(x)))(v) * self.sf(v) )
                 return np.concatenate(out)
             cb = cb_df(t)
 
@@ -627,7 +642,7 @@ class Parametric():
         y_ticks_labels = [str(int(y))+'%' if (re.match('([0-9]+\.0+)', str(y)) is not None) & 
                             (y > 1) else str(y) for y in y_ticks * 100]
 
-        if hasattr(self, 'hess_inv'):
+        if hasattr(self, 'hess_inv') & (self.method == 'MLE'):
             if (self.hess_inv is not None):
                 cbs = self.cb(x_model + self.gamma, on='ff', alpha_ci=alpha_ci)
             else:

@@ -51,7 +51,7 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
     results['t_mle'] = t_mle
 
     # Create the objective function
-    def fun(params, offset=False, transform=True):
+    def fun(params, offset=False, transform=True, gamma=0):
         x_mle = np.copy(x)
         if transform:
             params = inv_fs(const(params))
@@ -59,7 +59,8 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
             gamma = params[0]
             params = params[1::]
         else:
-            gamma = 0
+            # Use the assumed value. Useful for hessian calcs holding gamma constant
+            pass
 
         inf_c_flags, x_mle = _create_censor_flags(x_mle, gamma, c, dist)
         x_mle = x_mle - gamma
@@ -93,21 +94,22 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
                 return {}
 
     p_hat = inv_fs(const(res.x))
+
     if offset:
         results['gamma'] = p_hat[0]
-        results['params'] = p_hat[1::]
+        results['params'] = p_hat[1:]
     else:
+        results['gamma'] = 0
         results['params'] = p_hat
 
-    # This needs to be changed so that if offset, it computes only the variation due to the parameters.
+
     try:
-        results['hess_inv'] = inv(hessian(fun)(p_hat, *(offset, False)))
+        results['hess_inv'] = inv(hessian(fun)(results['params'], *(False, False, results['gamma'])))
     except:
         results['hess_inv'] = None
     results['fun'] = fun
     results['jac'] = jac
     results['res'] = res
-
 
     np.seterr(**old_err_state)
 
