@@ -95,8 +95,12 @@ Contents:
 
    Non-Parametric Modelling
    Parametric Modelling
+
+.. toctree::
+   :maxdepth: 1
+   :caption: SurPyval Analysis
+   
    SurPyval Models
-   Distributions
 
 
 .. toctree::

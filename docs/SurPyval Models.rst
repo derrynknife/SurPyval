@@ -930,10 +930,6 @@ we want the confidence interval. That is, the ``on`` keyword can be any of ``sf`
 This will work with models that you create as well, so even a user defined Distribution will be able to have the
 confidence intervals computed. Creating these models is discussed in the section below.
 
-.. warning::
-    These functions do work for custom models, like the Gompertz example above. However, due to the implementation
-    it can result in numeric overflows which results in incredulous bounds. Please take caution when using the cb
-    with non surpyval implemented distributions.
 
 Using a new distribution
 ------------------------
@@ -1013,4 +1009,21 @@ Credit for this idea must be given to the creators of the *lifelines* package. *
 of receiving a cumulative hazard function that can then be used as a distribution to fit parameters.
 However, at the time of writing it could not handle arbitrarily censored or truncated data.
 
+Even with a user defined ``Hf()`` we can still use the confidence bounds as well. The results of this
+can be seen by simply calling the plot function:
 
+.. code:: python
+
+    model.plot(alpha_ci=0.5)
+
+.. image:: images/surpyval-modelling-20.png
+    :align: center
+
+You can see that the distribution is not linearised. This is because the Hf is not readily convertible 
+into the transformation function needed to do the linearisation of the CDF. The defaults are a simple
+linear scale for both the x and y axis and it shows that the confidence bounds have worked nicely.
+
+.. warning::
+    However, due to the implementation of confidence bounds in surpyval it can result 
+    in numeric overflows which results in incredulous bounds. Please take caution when 
+    using the cb with non surpyval implemented distributions.

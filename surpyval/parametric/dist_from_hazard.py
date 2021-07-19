@@ -16,7 +16,7 @@ class Distribution(ParametricFitter):
         self.bounds = bounds
         self.support = support
         self.plot_x_scale = 'linear'
-        self.y_ticks = np.linspace(0, 1, 10)
+        self.y_ticks = np.linspace(0, 1, 11)
         self.param_names = param_names
         self.param_map = {v : i for i, v in enumerate(param_names)}
         self.Hf = fun
