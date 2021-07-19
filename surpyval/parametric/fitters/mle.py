@@ -1,11 +1,10 @@
 import autograd.numpy as np
 from autograd import jacobian, hessian
 from autograd.numpy.linalg import inv
-import copy
 from scipy.optimize import minimize
-import sys
-from scipy.optimize import approx_fprime
 
+import sys
+import copy
 
 def _create_censor_flags(x_mle, gamma, c, dist):
     if 2 in c:
@@ -70,52 +69,45 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
     jac  = jacobian(fun)
     hess = hessian(fun)
 
-    if str(type(dist)) == "<class 'surpyval.parametric.dist_from_hazard.Distribution'>":
-        np.seterr(all='ignore')
-        jac = lambda params, *args: approx_fprime(params, fun, np.sqrt(np.finfo(float).eps), *args)
-        res = minimize(fun, init, args=(offset, True), method='BFGS', jac=jac)
-    else:
+    try:
+        # First attempt to be with with jacobian and hessian from autograd
+        res = minimize(fun, init, args=(offset, True), method='Newton-CG', jac=jac, hess=hess)
+        if not res.success:
+            raise Exception
+    except:
+        # If first attempt fails, try a second time with only jacobian from autograd
+        # print("MLE with autodiff hessian and jacobian failed, trying without hessian", file=sys.stderr)
         try:
-            # First attempt to be with with jacobian and hessian from autograd
-            res = minimize(fun, init, args=(offset, True), method='Newton-CG', jac=jac, hess=hess)
+            res = minimize(fun, init, args=(offset, True), method='BFGS', jac=jac)
             if not res.success:
                 raise Exception
         except:
-            # If first attempt fails, try a second time with only jacobian from autograd
-            print("MLE with autodiff hessian and jacobian failed, trying without hessian", file=sys.stderr)
+            # If second attempt fails, try a third time with only the objective function
+            # print("MLE with autodiff jacobian failed, trying without jacobian or hessian", file=sys.stderr)
             try:
-                res = minimize(fun, init, args=(offset, True), method='BFGS', jac=jac)
-                if not res.success:
-                    raise Exception
+                res = minimize(fun, init, args=(offset, True))
             except:
-                # If second attempt fails, try a third time with only jthe objective function
-                print("MLE with autodiff jacobian failed, trying without jacobian or hessian", file=sys.stderr)
-                try:
-                    res = minimize(fun, init, args=(offset, True))
-                except:
-                    # Something really went wrong
-                    print("MLE FAILED: Likelihood function appears undefined; try alternate estimation method", file=sys.stderr)
-                    np.seterr(**old_err_state)
-                    return {}
+                # Something really went wrong
+                # print("MLE FAILED: Likelihood function appears undefined; try alternate estimation method", file=sys.stderr)
+                np.seterr(**old_err_state)
+                return {}
 
     p_hat = inv_fs(const(res.x))
-    results['_neg_ll'] = res.fun
-    if 'hess_inv' in res:
-        results['hess_inv'] = res['hess_inv']
-    else:
-        try:
-            results['hess_inv'] = inv(hessian(fun)(p_hat, *(offset, False)))
-        except:
-            results['hess_inv'] = None
-    results['fun'] = fun
-    results['jac'] = jac
-    results['res'] = res
-
     if offset:
         results['gamma'] = p_hat[0]
         results['params'] = p_hat[1::]
     else:
         results['params'] = p_hat
+
+    # This needs to be changed so that if offset, it computes only the variation due to the parameters.
+    try:
+        results['hess_inv'] = inv(hessian(fun)(p_hat, *(offset, False)))
+    except:
+        results['hess_inv'] = None
+    results['fun'] = fun
+    results['jac'] = jac
+    results['res'] = res
+
 
     np.seterr(**old_err_state)
 

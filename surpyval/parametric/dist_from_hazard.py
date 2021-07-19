@@ -1,6 +1,6 @@
 from surpyval.parametric.parametric_fitter import ParametricFitter
 import autograd.numpy as np
-from autograd import grad
+from autograd import elementwise_grad
 import inspect
 
 class Distribution(ParametricFitter):
@@ -20,38 +20,10 @@ class Distribution(ParametricFitter):
         self.param_names = param_names
         self.param_map = {v : i for i, v in enumerate(param_names)}
         self.Hf = fun
-        self._hf = lambda x, *params: grad(self.Hf)(x, *params)
-        # self.hf = np.vectorize(lambda x, *params: grad(self.Hf)(x, *params))
+        self.hf = lambda x, *params: elementwise_grad(self.Hf)(x, *params)
         self.sf = lambda x, *params: np.exp(-self.Hf(x, *params))
         self.ff = lambda x, *params: 1 - np.exp(-self.Hf(x, *params))
-        self._df = lambda x, *params: grad(self.Hf)(x, *params) * np.exp(-self.Hf(x, *params))
-
-    def hf(self, x, *params):
-        if hasattr(x, '__iter__'):
-            out = np.zeros_like(x).astype(float)
-            for i, v in enumerate(x):
-                hf = self._hf(v, *params)
-                if str(type(hf)) == "<class 'autograd.numpy.numpy_boxes.ArrayBox'>":
-                    out[i] = hf._value
-                else:
-                    out[i] = hf
-            return out
-        else:
-            return self._hf(x, *params)
-
-    def df(self, x, *params):
-        if hasattr(x, '__iter__'):
-            out = np.zeros_like(x).astype(float)
-            for i, v in enumerate(x):
-                df = self._df(v, *params)
-                if str(type(df)) == "<class 'autograd.numpy.numpy_boxes.ArrayBox'>":
-                    out[i] = df._value
-                else:
-                    out[i] = df
-
-            return out
-        else:
-            return self._df(x, *params)
+        self.df = lambda x, *params: elementwise_grad(self.Hf)(x, *params) * np.exp(-self.Hf(x, *params))
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         out = []

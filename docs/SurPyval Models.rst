@@ -258,6 +258,9 @@ possible since if the distribution within the truncated ends has a shape that ma
 distribution you can then extrapolate beyond the observed values. Parametric analysis is therefore 
 incredibly powerful for prediction.
 
+Confidence Interval - Non-Parametric
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 Parametric SurPyval Modelling
 -----------------------------
 
@@ -851,7 +854,7 @@ Finally, mixture models can take counts and censoring flags as input (but not, y
 Limited Failure Population
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Another kind of model that is useful in survival analysis is when a population has a limited number of items in the population that are susceptible to the failure. As such, no matter how long a test continues, it will not be possible for all items to fail (with the particular death/failure). 
+Another kind of model that is useful in survival analysis is when a population has a limited number of items in the population that are susceptible to the failure. This is also known as a 'Defective Subpopulation' model. As such, no matter how long a test continues, it will not be possible for all items to fail (with the particular death/failure).
 
 As an example:
 
@@ -882,6 +885,55 @@ As an example:
 
 
 LFP models can be computed with each method that handles censoring, the default, as always is MLE, but you can use MPS, MSE, but not (yet) MPP.
+
+Zero-Inflated Modelling
+^^^^^^^^^^^^^^^^^^^^^^^
+
+In survival analysis you might have the scenario where many failure times are 0, known as being dead on arrival. In this case
+we need a model that can account for the fact that many will be failed at 0, this is a situation that cannot be handled by
+regular distribuitons, since most have a 0% chance of failing at 0. Therefore what we need is something that is symmetrical
+to the LFP/DS case, where a proportion of the failures occur at 0 instead of there being a proportion that will never fail.
+
+Examples coming soon.
+
+
+Confidence Interval - Parametric
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*SurPyval* can be used to compute the confidence interval for any of the functions of a distribution. That is, *SurPyval* can 
+compute the confidence interval for ``ff()``, ``sf()``, ``hf()``, ``Hf()``, and ``df()``.
+
+Once you have a model, this can easily be computed with the ``cb()`` method.
+
+
+.. code:: python
+
+    from surpyval import Weibull
+    from autograd import numpy as np
+    from matplotlib import pyplot as plt
+
+    x = Weibull.random(100, 10, 3)
+
+    model = Weibull.fit(x)
+
+    x_plot = np.linspace(0, 20, 100)
+    plt.plot(x_plot, model.sf(x_plot), color='black')
+    plt.plot(x_plot, model.cb(x_plot, on='sf', alpha_ci=0.1), color='red', linestyle='--')
+
+
+.. image:: images/surpyval-modelling-19.png
+    :align: center
+
+
+This shows that we can change the confidence level with ``alpha_ci`` and that we can change the function for which
+we want the confidence interval. That is, the ``on`` keyword can be any of ``sf``, ``ff``, ``df``, ``hf``, or ``Hf``.
+This will work with models that you create as well, so even a user defined Distribution will be able to have the
+confidence intervals computed. Creating these models is discussed in the section below.
+
+.. warning::
+    These functions do work for custom models, like the Gompertz example above. However, due to the implementation
+    it can result in numeric overflows which results in incredulous bounds. Please take caution when using the cb
+    with non surpyval implemented distributions.
 
 Using a new distribution
 ------------------------
@@ -942,11 +994,11 @@ as well.
     c[x > 2] = 1
     x[x > 2] = 2
     # Left truncate all values below 0
-    lt = 0
-    c = c[x > lt]
-    x = x[x > lt]
+    tl = 0
+    c = c[x > tl]
+    x = x[x > tl]
 
-    Gompertz.fit(x=x, c=c, tl=lt)
+    Gompertz.fit(x=x, c=c, tl=tl)
 
 
 .. code::text
@@ -960,6 +1012,5 @@ functionality.
 Credit for this idea must be given to the creators of the *lifelines* package. *lifelines* is capable
 of receiving a cumulative hazard function that can then be used as a distribution to fit parameters.
 However, at the time of writing it could not handle arbitrarily censored or truncated data.
-
 
 

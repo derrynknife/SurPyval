@@ -398,15 +398,15 @@ class LogNormal_(ParametricFitter):
             2 * z_hat * cv_matrix[0, 1])
         return var_z
 
-    def z_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
+    def z_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
         z_hat = (x - mu)/sigma
         var_z = self.var_z(x, mu, sigma, cv_matrix)
-        bounds = z_hat + np.array([1., -1.]).reshape(2, 1) * z(cb/2) * np.sqrt(var_z)
+        bounds = z_hat + np.array([1., -1.]).reshape(2, 1) * z(alpha_ci/2) * np.sqrt(var_z)
         return bounds
 
     def R_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
         t = np.log(x)
-        return para.Normal.sf(self.z_cb(t, mu, sigma, cv_matrix, alpha_ci=0.05), 0, 1).T
+        return para.Normal.sf(self.z_cb(t, mu, sigma, cv_matrix, alpha_ci=alpha_ci), 0, 1).T
 
     def _mom(self, x):
         norm_mod = para.Normal.fit(np.log(x), how='MOM')
