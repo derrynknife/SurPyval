@@ -19,7 +19,6 @@ from .offset_parametric import OffsetParametric
 from .offset_parametric import ParametricO
 
 from .weibull import Weibull
-from .weibull3p import Weibull3p
 from .gumbel import Gumbel
 from .exponential import Exponential
 from .expo_weibull import ExpoWeibull

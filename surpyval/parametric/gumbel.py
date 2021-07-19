@@ -347,7 +347,7 @@ class Gumbel_(ParametricFitter):
         bounds = z_hat + np.array([1., -1.]).reshape(2, 1) * z(cb/2) * np.sqrt(var_z)
         return bounds
 
-    def R_cb(self, x, mu, sigma, cv_matrix, cb=0.05):
-        return self.sf(self.z_cb(x, mu, sigma, cv_matrix, cb=0.05), 0, 1).T
+    def R_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
+        return self.sf(self.z_cb(x, mu, sigma, cv_matrix, alpha_ci=0.05), 0, 1).T
 
 Gumbel = Gumbel_('Gumbel')

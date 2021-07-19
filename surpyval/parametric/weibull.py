@@ -439,8 +439,8 @@ class Weibull_(ParametricFitter):
             2 * da * db * cv_matrix[0, 1])
         return var_u
 
-    def R_cb(self, x, alpha, beta, cv_matrix, cb=0.05):
-        return np.exp(-np.exp(self.u_cb(x, alpha, beta, cv_matrix, cb))).T
+    def R_cb(self, x, alpha, beta, cv_matrix, alpha_ci=0.05):
+        return np.exp(-np.exp(self.u_cb(x, alpha, beta, cv_matrix, alpha_ci))).T
 
     def _jacobian(self, x, alpha, beta, c=None, n=None):
         f = c == 0

@@ -23,7 +23,7 @@ class LFP(ParametricFitter):
 	def sf(self, x, w, *params):
 		return 1 - self.ff(x, w, *params)
 
-	def cs(self, x, X, *params):
+	def cs(self, x, X, w, *params):
 		return self.sf(x + X, *params) / self.sf(X, *params)
 
 	def ff(self, x, w, *params):

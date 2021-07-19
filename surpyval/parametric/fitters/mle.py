@@ -100,10 +100,13 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 
     p_hat = inv_fs(const(res.x))
     results['_neg_ll'] = res.fun
-    try:
-        results['hess_inv'] = inv(hessian(fun)(p_hat, *(offset, False)))
-    except:
-        results['hess_inv'] = None
+    if 'hess_inv' in res:
+        results['hess_inv'] = res['hess_inv']
+    else:
+        try:
+            results['hess_inv'] = inv(hessian(fun)(p_hat, *(offset, False)))
+        except:
+            results['hess_inv'] = None
     results['fun'] = fun
     results['jac'] = jac
     results['res'] = res

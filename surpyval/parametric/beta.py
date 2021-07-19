@@ -417,24 +417,4 @@ class Beta_(ParametricFitter):
                  2 * dr_dalpha * dr_dbeta * cv_matrix[0, 1])
         return var_r
 
-    def R_cb(self, x, alpha, beta, cv_matrix, cb=0.05):
-        R_hat = self.sf(x, alpha, beta)
-        dR_f = lambda t : self.sf(*t)
-        jac = jacobian(dR_f)
-        #jac = lambda t : approx_fprime(t, dR_f, surpyval.EPS)[1::]
-        x_ = np.array(x)
-        if x_.size == 1:
-            dR = jac(np.array((x_, alpha, beta))[1::])
-            dR = dR.reshape(1, 2)
-        else:
-            out = []
-            for xx in x_:
-                out.append(jac(np.array((xx, alpha, beta)))[1::])
-            dR = np.array(out)
-        K = z(cb/2)
-        exponent = K * np.array([-1, 1]).reshape(2, 1) * np.sqrt(self.var_R(dR, cv_matrix))
-        exponent = exponent/(R_hat*(1 - R_hat))
-        R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
-        return R_cb.T
-
 Beta = Beta_('Beta')
