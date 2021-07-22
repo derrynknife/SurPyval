@@ -47,6 +47,7 @@ class ParametricFitter0():
 		return t_denom
 
 	def neg_ll(self, x, c, n, inf_c_flags, t, t_flags, *params):
+		print(params)
 		if 2 in c:
 			like_i = self.like_i(x, c, n, inf_c_flags, *params)
 			x_ = copy(x[:, 0])
@@ -578,6 +579,7 @@ class ParametricFitter():
 		like = np.log(like) - np.log(self.like_t(t, t_flags, *params))
 		like = np.multiply(n, like)
 		like = -np.sum(like)
+		
 		return like
 
 	def neg_mean_D(self, x, c, n, *params):

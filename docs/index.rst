@@ -93,14 +93,15 @@ Contents:
    :maxdepth: 1
    :caption: Survival Analysis
 
-   Non-Parametric Modelling
-   Parametric Modelling
+   Non-Parametric Estimation
+   Parametric Estimation
 
 .. toctree::
    :maxdepth: 1
    :caption: SurPyval Analysis
    
-   SurPyval Models
+   Non-Parametric SurPyval Modelling
+   Parametric SurPyval Modelling
 
 
 .. toctree::

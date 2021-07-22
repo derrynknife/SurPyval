@@ -1,4 +1,5 @@
 from surpyval.parametric.parametric_fitter import ParametricFitter
+import surpyval
 import autograd.numpy as np
 from autograd import elementwise_grad
 import inspect
@@ -23,7 +24,7 @@ class Distribution(ParametricFitter):
         self.hf = lambda x, *params: elementwise_grad(self.Hf)(x, *params)
         self.sf = lambda x, *params: np.exp(-self.Hf(x, *params))
         self.ff = lambda x, *params: 1 - np.exp(-self.Hf(x, *params))
-        self.df = lambda x, *params: elementwise_grad(self.Hf)(x, *params) * np.exp(-self.Hf(x, *params))
+        self.df = lambda x, *params: elementwise_grad(self.ff)(x, *params)
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         out = []
@@ -36,6 +37,8 @@ class Distribution(ParametricFitter):
                 out.append(high - 1.)
             else:
                 out.append((high + low)/2.)
+
+        out = self.fit(x, c, n, t, how='MSE', init=out).params
         return out
 
     def mpp_y_transform(self, y, *params):

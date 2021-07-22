@@ -15,8 +15,6 @@ import autograd.numpy as np
 from surpyval import nonparametric as nonp
 from .parametric_fitter import ParametricFitter
 from .parametric import Parametric
-from .offset_parametric import OffsetParametric
-from .offset_parametric import ParametricO
 
 from .weibull import Weibull
 from .gumbel import Gumbel
