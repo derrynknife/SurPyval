@@ -158,7 +158,7 @@ def test_mle(dist, bounds, kind):
                          generate_mpp_test_cases(),
                          ids=idfunc)
 def test_mpp(dist, bounds, rr):
-    if not dist == Beta:
+    if dist not in [Beta, ExpoWeibull]:
         for n in FIT_SIZES:
             test_params = []
             tol = 0.1

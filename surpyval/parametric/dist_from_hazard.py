@@ -38,8 +38,25 @@ class Distribution(ParametricFitter):
             else:
                 out.append((high + low)/2.)
 
-        out = self.fit(x, c, n, t, how='MSE', init=out).params
+        # out = self.fit(x, c, n, t, how='MSE', init=out).params
+        
         return out
+
+    # def mpp_x_transform(self, x):
+    #     return np.log(x)
+
+    # def mpp_inv_x_transform(self, x, gamma=0):
+    #     return np.exp(x - gamma)
+
+    # def mpp_y_transform(self, y, *params):
+    #     mask = ((y == 0) | (y == 1))
+    #     out = np.zeros_like(y)
+    #     out[~mask] = np.log(-np.log((1 - y[~mask])))
+    #     out[mask] = np.nan
+    #     return out
+
+    def mpp_inv_y_transform(self, y, *params):
+        return 1 - np.exp(-np.exp(y))
 
     def mpp_y_transform(self, y, *params):
         return y

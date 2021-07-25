@@ -33,8 +33,6 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
                               over='ignore',
                               under='ignore')
 
-    np.seterr(all='ignore')
-
     results = {}
 
     # Need to flag entries where truncation is inf or -inf so that the autograd doesn't fail. Because
@@ -67,7 +65,6 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
 
         inf_c_flags, x_mle = _create_censor_flags(x_mle, gamma, c, dist)
         x_mle = x_mle - gamma
-
         return dist.neg_ll(x_mle, c, n, inf_c_flags, t_mle, t_flags, *params)
 
     jac  = jacobian(fun)
@@ -80,26 +77,37 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
             raise Exception
     except:
         # If first attempt fails, try a second time with only jacobian from autograd
-        print("MLE with autodiff hessian and jacobian failed, trying without hessian", file=sys.stderr)
+        # print("MLE with autodiff hessian and jacobian failed, trying without hessian", file=sys.stderr)
         try:
             res = minimize(fun, init, args=(offset, True), method='BFGS', jac=jac)
             if not res.success:
                 raise Exception
         except:
             # If second attempt fails, try a third time with only the objective function
-            print("MLE with autodiff jacobian failed, trying without jacobian or hessian", file=sys.stderr)
-            try:
-                res = minimize(fun, init, args=(offset, True))
-            except:
+            # print("MLE with autodiff jacobian failed, trying without jacobian or hessian", file=sys.stderr)
+            # try:
+            np.seterr(all='ignore')
+            res = minimize(fun, init, args=(offset, True))
+            # except:
                 # Something really went wrong
-                print("MLE FAILED: Likelihood function appears undefined; try alternate estimation method", file=sys.stderr)
-                res = None
+            if res['message'] == 'Desired error not necessarily achieved due to precision loss.':
+                print("""Precision was lost, try:
+    - Using alternate fitting method
+    - visually checking model fit
+    - change data to be closer to 1.""", file=sys.stderr)
+            elif (not res.success) | (np.isnan(res.x).any()):
                 np.seterr(**old_err_state)
-                return {}
+                print("""MLE Failed: Try making the values of the data closer to 1 by dividing or multiplying by
+some constant.
+
+Or try setting the `init` keyword in the `fit()` method to a value you believe is closer.
+A good way to do this is to set any shape parameter to 1. and any scale parameter to be 
+the mean of the data (or it's inverse)
+                    """, file=sys.stderr)
+                return {'res' : res}
 
     try:
         p_hat = inv_fs(const(res.x))
-        print(p_hat)
     except:
         p_hat = [None] * len(init)
 
@@ -110,9 +118,8 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
         results['gamma'] = 0
         results['params'] = p_hat
 
-
     try:
-        results['hess_inv'] = inv(hessian(fun)(results['params'], *(False, False, results['gamma'])))
+        results['hess_inv'] = inv(hess(results['params'], *(False, False, results['gamma'])))
     except:
         results['hess_inv'] = None
 

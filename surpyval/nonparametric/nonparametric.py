@@ -6,6 +6,7 @@ from .nelson_aalen import NelsonAalen
 from .fleming_harrington import FlemingHarrington_
 
 import matplotlib.pyplot as plt
+import pandas as pd
 
 class NonParametric():
 	"""
@@ -119,7 +120,12 @@ class NonParametric():
 		>>> model.ff([1., 1.5, 2., 2.5])
 		array([0.18126925, 0.18126925, 0.36237185, 0.36237185])
 		"""
-		return np.diff(np.hstack([[0], self.Hf(x, how=how)]))
+		hf = np.diff(np.hstack([self.Hf(x[0], how=how), self.Hf(x, how=how)]))
+		hf[0] = hf[1]
+		hf = pd.Series(hf)
+		hf[hf == 0] = np.nan
+		hf = hf.ffill().values
+		return hf
 
 
 	def df(self, x, how='step'):
@@ -188,8 +194,7 @@ class NonParametric():
 		>>> model.df([1., 1.5, 2., 2.5])
 		model.Hf([1., 1.5, 2., 2.5])
 		"""
-		H = -np.log(self.sf(x, how=how))
-		return H
+		return -np.log(self.sf(x, how=how))
 
 	def R_cb(self, x, bound='two-sided', how='step', confidence=0.95, bound_type='exp', dist='z'):
 		r"""

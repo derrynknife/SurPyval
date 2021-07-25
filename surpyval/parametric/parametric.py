@@ -32,19 +32,22 @@ class Parametric():
 
     """
     def __repr__(self):
-        if self.offset:
-            return ('Parametric Surpyval model with {dist} distribution'
-                    + ' fitted by {method} yielding parameters {params} with offset of '
-                    + '{gamma}').format(dist=self.dist.name,
-                                        method=self.method,
-                                        params=self.params,
-                                        gamma=self.gamma)
-        else:    
-            return ('Parametric Surpyval model with {dist} distribution fitted by '
-                    + '{method} yielding parameters '
-                    + '{params}').format(dist=self.dist.name, 
-                                         method=self.method, 
-                                         params=self.params)
+        if hasattr(self, 'params'):
+            if self.offset:
+                return ('Parametric Surpyval model with {dist} distribution'
+                        + ' fitted by {method} yielding parameters {params} with offset of '
+                        + '{gamma}').format(dist=self.dist.name,
+                                            method=self.method,
+                                            params=self.params,
+                                            gamma=self.gamma)
+            else:    
+                return ('Parametric Surpyval model with {dist} distribution fitted by '
+                        + '{method} yielding parameters '
+                        + '{params}').format(dist=self.dist.name, 
+                                             method=self.method, 
+                                             params=self.params)
+        else:
+            return "Model with no fitted values"
 
     def sf(self, x):
         r"""
