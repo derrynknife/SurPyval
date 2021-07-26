@@ -82,7 +82,7 @@ class ParametricFitter():
         if 2 in c:
             like_i = self.log_like_i(x, c, n, inf_c_flags, *params)
             x_ = copy(x[:, 0])
-            x_[x_ == 0] = 1
+            # x_[x_ == 0] = 1
         else:
             like_i = 0
             x_ = copy(x)
@@ -298,9 +298,6 @@ class ParametricFitter():
             raise ValueError('Maximum product spacing doesn\'t support tuncation')
 
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, tl=tl, tr=tr)
-
-        if x.ndim == 2:
-            heuristic = 'Turnbull'
 
         if surpyval.utils.check_no_censoring(c) and (how == 'MOM'):
             raise ValueError('Method of moments doesn\'t support censoring')

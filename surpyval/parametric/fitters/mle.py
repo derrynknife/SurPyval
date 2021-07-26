@@ -123,9 +123,7 @@ the mean of the data (or it's inverse)
     except:
         results['hess_inv'] = None
 
-    results['fun'] = fun
     results['_neg_ll'] = res['fun']
-    results['jac'] = jac
     results['res'] = res
 
     np.seterr(**old_err_state)
