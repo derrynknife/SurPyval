@@ -412,7 +412,10 @@ class Gamma_(ParametricFitter):
         return x - gamma
 
     def mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False, offset=False):
+
         x_pp, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+
+        results = {}
 
         if on_d_is_0:
             pass
@@ -426,7 +429,7 @@ class Gamma_(ParametricFitter):
             F = F[mask]
             x_pp = x_pp[mask]
 
-        init = self.parameter_initialiser(x_pp, c, n)
+        init = self._parameter_initialiser(x_pp, c, n)
 
         mask = np.isfinite(F)
         if mask.any():
@@ -450,7 +453,10 @@ class Gamma_(ParametricFitter):
                 beta = 1./params[0]
                 gamma = -params[1]/beta
 
-            return gamma, alpha, beta
+            results['gamma'] = gamma
+            results['params'] = [alpha, beta]
+
+            return results
         else:
             if rr == 'y':
                 x_pp = x_pp[:,np.newaxis]
@@ -465,7 +471,10 @@ class Gamma_(ParametricFitter):
                 alpha = res.x[0]
                 beta = np.linalg.lstsq(self.mpp_y_transform(F, alpha, 1.)[:, np.newaxis], x)[0]
                 beta = 1./beta
-            return alpha, beta
+
+            results['params'] = [alpha, beta]
+
+            return results
 
     def var_R(self, dR, cv_matrix):
         dr_dalpha = dR[:, 0]
@@ -489,7 +498,7 @@ class Gamma_(ParametricFitter):
             for xx in x_:
                 out.append(jac(np.array((xx, alpha, beta)))[1::])
             dR = np.array(out)
-        K = z(cb/2)
+        K = z(alpha_ci/2)
         exponent = K * np.array([-1, 1]).reshape(2, 1) * np.sqrt(self.var_R(dR, cv_matrix))
         exponent = exponent/(R_hat*(1 - R_hat))
         R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))

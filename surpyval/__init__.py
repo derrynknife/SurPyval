@@ -40,7 +40,6 @@ from surpyval.parametric import (
 	Gamma,
 	Beta,
 	Distribution,
-	LFP,
 	MixtureModel
 )
 

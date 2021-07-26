@@ -4,9 +4,10 @@ from autograd import grad
 import autograd.numpy as np
 from scipy.stats import uniform
 
-from surpyval import round_sig
+from surpyval import round_sig, fs_to_xcn
 from scipy.special import ndtri as z
 from surpyval import nonparametric as nonp
+from copy import deepcopy, copy
 
 import matplotlib.pyplot as plt
 from scipy.optimize import approx_fprime
@@ -31,23 +32,57 @@ class Parametric():
     integration.
 
     """
+    def __init__(self, dist, method, data, offset, lfp, zi):
+        self.dist = dist
+        self.k = copy(dist.k)
+        self.method = method
+        self.data = data
+        self.offset = offset
+        self.lfp = lfp
+        self.zi = zi
+
+        bounds = deepcopy(dist.bounds)
+        param_map = dist.param_map.copy()
+
+        if offset:
+            if data is not None:
+                bounds = ((None, np.min(data['x'])), *bounds)
+            else:
+                bounds = ((None, None), *bounds)
+
+            param_map = {k : v + 1 for k, v in param_map.items()}
+            param_map.update({'gamma' : 0})
+            self.k +=1
+        else:
+            self.gamma = 0
+
+        if lfp:
+            bounds = (*bounds, (0, 1))
+            param_map.update({'p' : len(param_map) + 1})
+            self.k += 1
+        else:
+            self.p = 1
+
+        self.bounds = bounds
+        self.param_map = param_map
+
+
     def __repr__(self):
         if hasattr(self, 'params'):
+            out = ('Parametric Surpyval model with {dist} distribution fitted by '
+                   + '{method} yielding parameters '
+                   + '{params}').format(dist=self.dist.name, 
+                                        method=self.method, 
+                                        params=self.params)
             if self.offset:
-                return ('Parametric Surpyval model with {dist} distribution'
-                        + ' fitted by {method} yielding parameters {params} with offset of '
-                        + '{gamma}').format(dist=self.dist.name,
-                                            method=self.method,
-                                            params=self.params,
-                                            gamma=self.gamma)
-            else:    
-                return ('Parametric Surpyval model with {dist} distribution fitted by '
-                        + '{method} yielding parameters '
-                        + '{params}').format(dist=self.dist.name, 
-                                             method=self.method, 
-                                             params=self.params)
+                out += ' with offset of {gamma}'.format(gamma=self.gamma)
+
+            if self.lfp:
+                out += ' limited to a maximum proportion of {p}'.format(p=self.p)
+
+            return out
         else:
-            return "Model with no fitted values"
+            return "Unable to fit values"
 
     def sf(self, x):
         r"""
@@ -78,7 +113,10 @@ class Parametric():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.dist.sf(x - self.gamma, *self.params)
+        if self.p == 1:
+            return self.dist.sf(x - self.gamma, *self.params)
+        else:
+            return 1 - self.p * self.dist.ff(x - self.gamma, *self.params)
 
     def ff(self, x):
         r"""
@@ -110,7 +148,7 @@ class Parametric():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.dist.ff(x - self.gamma, *self.params)
+        return self.p * self.dist.ff(x - self.gamma, *self.params)
 
     def df(self, x): 
         r"""
@@ -142,7 +180,7 @@ class Parametric():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.dist.df(x - self.gamma, *self.params)
+        return self.p * self.dist.df(x - self.gamma, *self.params)
 
     def hf(self, x):
         r"""
@@ -174,7 +212,10 @@ class Parametric():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.dist.hf(x - self.gamma, *self.params)
+        if self.p == 1:
+            return self.dist.hf(x - self.gamma, *self.params)
+        else:
+            return 1 - self.p * self.dist.ff(x - self.gamma, *self.params)
 
     def Hf(self, x):
         r"""
@@ -206,7 +247,11 @@ class Parametric():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.dist.Hf(x - self.gamma, *self.params)
+
+        if self.p == 1:
+            return self.dist.Hf(x - self.gamma, *self.params)
+        else:
+            return -np.log(self.sf(x))
 
     def qf(self, p):
         r"""
@@ -235,7 +280,10 @@ class Parametric():
         """
         if type(p) == list:
             p = np.array(p)
-        return self.dist.qf(p, *self.params) + self.gamma
+        if self.p == 1:
+            return self.dist.qf(p, *self.params) + self.gamma
+        else:
+            raise NotImplementedError("Quantile function for LFP not implemented.")
 
     def cs(self, x, X):
         r"""
@@ -293,7 +341,15 @@ class Parametric():
         array([10.84103403,  0.48542084,  7.11387062,  5.41420125,  4.59286657,
                 5.90703589,  7.5124326 ,  7.96575225,  9.18134126,  8.16000438])
         """
-        return self.dist.qf(uniform.rvs(size=size), *self.params)
+        if self.p == 1:
+            return self.dist.qf(uniform.rvs(size=size), *self.params) + self.gamma
+        else:
+            n_obs = np.random.binomial(size, self.p)
+
+            f = self.dist.qf(uniform.rvs(size=n_obs), *self.params) + self.gamma
+            s = np.ones(np.array(size) - n_obs) * np.max(f) + 1
+
+            return fs_to_xcn(f, s)
 
     def mean(self):
         r"""
@@ -317,7 +373,7 @@ class Parametric():
         8.929795115692489
         """
         if not hasattr(self, '_mean'):
-            self._mean = self.dist.mean(*self.params) + self.gamma
+            self._mean = self.p * (self.dist.mean(*self.params) + self.gamma)
         return self._mean
 
     def moment(self, n):
@@ -348,7 +404,10 @@ class Parametric():
         >>> model.moment(5)
         202150.0
         """
-        return self.dist.moment(n, *self.params)
+        if self.p == 1:
+            return self.dist.moment(n, *self.params)
+        else:
+            raise NotImplementedError('LFP distributions cannot yet have their moment calculated')
 
     def entropy(self):
         r"""
@@ -378,7 +437,10 @@ class Parametric():
         >>> model.entropy()
         2.588783247593625
         """
-        return self.dist.entropy(*self.params)
+        if self.p == 1:
+            return self.dist.entropy(*self.params)
+        else:
+            raise NotImplementedError("Entropy not available for LFP distribution")
 
     def cb(self, t, on='R', alpha_ci=0.05):
         """
@@ -476,7 +538,46 @@ class Parametric():
 
         return self._neg_ll
 
-    def aic(self):
+    def bic(self):
+        r"""
+
+        The the Bayesian Information Criterion (BIC) for the model, if it was fit with the ``fit()`` method. Not available if fit with the ``from_params()`` method.
+
+        Parameters
+        ----------
+
+        None
+
+        Returns
+        -------
+
+        bic : float
+            The BIC of the model
+
+        Examples
+        --------
+
+        >>> from surpyval import Weibull
+        >>> import numpy as np
+        >>> np.random.seed(1)
+        >>> x = Weibull.random(100, 10, 3)
+        >>> model = Weibull.fit(x)
+        >>> model.bic()
+        534.2640532196908
+
+        References:
+        -----------
+
+        `Bayesian Information Criterion for Censored Survival Models <https://www.jstor.org/stable/2677130>`_.
+
+        """
+        if hasattr(self, '_bic'):
+            return self._bic
+        else:
+            self._bic = self.k  * np.log(self.data['n'][self.data['c'] == 0].sum()) + 2 * self.neg_ll()
+            return self._bic
+
+    def aic(self): 
         r"""
 
         The the Aikake Information Criterion (AIC) for the model, if it was fit with the ``fit()`` method. Not available if fit with the ``from_params()`` method.
@@ -506,8 +607,7 @@ class Parametric():
         if hasattr(self, '_aic'):
             return self._aic
         else:
-            k = len(self.params)
-            self._aic = 2 * k + 2 * self.neg_ll()
+            self._aic = 2 * self.k + 2 * self.neg_ll()
             return self._aic
 
     def aic_c(self):
@@ -698,6 +798,14 @@ class Parametric():
         >>> model = Weibull.fit(x)
         >>> model.plot()
         """
+        if not hasattr(self, 'params'):
+            print("Can't plot model that failed to fit")
+            return None
+
+        if self.method == 'given parameters':
+            print("Can't plot model that was given parameters and no data")
+            return None
+
         d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
         # MAKE THE PLOT
         # Set the y limits

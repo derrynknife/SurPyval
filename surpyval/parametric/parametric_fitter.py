@@ -23,6 +23,13 @@ from .fitters.mpp import mpp
 from .fitters import bounds_convert, fix_idx_and_function
 
 PARA_METHODS = ['MPP', 'MLE', 'MPS', 'MSE', 'MOM']
+METHOD_FUNC_DICT = {
+    'MPP' : mpp,
+    'MOM' : mom,
+    'MLE' : mle,
+    'MPS' : mps,
+    'MSE' : mse
+}
 
 class ParametricFitter():
     def log_df(self, x, *params):
@@ -34,7 +41,6 @@ class ParametricFitter():
     def log_ff(self, x, *params):
         return np.log(self.ff(x, *params))
 
-
     def like(self, x, c, n, *params):
         like = np.zeros_like(x).astype(float)
         like = np.where(c ==  0, self.df(x, *params), like)
@@ -42,16 +48,19 @@ class ParametricFitter():
         like = np.where(c ==  1, self.sf(x, *params), like)
         return like
 
-    def log_like(self, x, c, n, *params):
+    def log_like(self, x, c, n, p, *params):
         like = np.zeros_like(x).astype(float)
-        like = np.where(c ==  0, self.log_df(x, *params), like)
-        like = np.where(c == -1, self.log_ff(x, *params), like)
-        like = np.where(c ==  1, self.log_sf(x, *params), like)
+        like = np.where(c ==  0, np.log(p) + self.log_df(x, *params), like)
+        like = np.where(c == -1, np.log(p) + self.log_ff(x, *params), like)
+        if p == 1:
+            like = np.where(c ==  1, self.log_sf(x, *params), like)
+        else:
+            like = np.where(c ==  1, np.log(1 - (p * self.ff(x, *params))), like)
         return like
 
-    def log_like_i(self, x, c, n, inf_c_flags, *params):
-        ir = np.where(inf_c_flags[:, 1] == 1, 1, self.ff(x[:, 1], *params))
-        il = np.where(inf_c_flags[:, 0] == 1, 0, self.ff(x[:, 0], *params))
+    def log_like_i(self, x, c, n, inf_c_flags, p, *params):
+        ir = np.where(inf_c_flags[:, 1] == 1, 1, p * self.ff(x[:, 1], *params))
+        il = np.where(inf_c_flags[:, 0] == 1, 0, p * self.ff(x[:, 0], *params))
         like_i = ir - il
         like_i = np.where(c != 2, 1., like_i)
         return np.log(like_i)
@@ -70,7 +79,7 @@ class ParametricFitter():
         t_denom = tr_denom - tl_denom
         return t_denom
 
-    def neg_ll(self, x, c, n, inf_c_flags, t, t_flags, *params):
+    def neg_ll(self, x, c, n, inf_c_flags, t, t_flags, gamma, p, *params):
         # if 2 in c:
         #     like_i = self.like_i(x, c, n, inf_c_flags, *params)
         #     x_ = copy(x[:, 0])
@@ -79,8 +88,10 @@ class ParametricFitter():
         #     like_i = 0
         #     x_ = copy(x)
 
+        x = copy(x) - gamma
+
         if 2 in c:
-            like_i = self.log_like_i(x, c, n, inf_c_flags, *params)
+            like_i = self.log_like_i(x, c, n, inf_c_flags, p, *params)
             x_ = copy(x[:, 0])
             # x_[x_ == 0] = 1
         else:
@@ -88,7 +99,7 @@ class ParametricFitter():
             x_ = copy(x)
         
         # like = self.like(x_, c, n, *params)
-        like = self.log_like(x_, c, n, *params)
+        like = self.log_like(x_, c, n, p, *params)
         like = like + like_i
         # like = np.where(like ==  0, np.finfo(np.longdouble).tiny, like)
         # like = np.log(like) - np.log(self.like_t(t, t_flags, *params))
@@ -160,8 +171,9 @@ class ParametricFitter():
 
     def fit(self, x=None, c=None, n=None, t=None, how='MLE',
             offset=False, zi=False, lfp=False, tl=None, tr=None,
-            xl=None, xr=None, fixed=None, heuristic='Nelson-Aalen',
-            init=[], rr='y', turnbull_estimator='Kaplan-Meier'):
+            xl=None, xr=None, fixed=None, heuristic='Turnbull',
+            init=[], rr='y', on_d_is_0=False,
+            turnbull_estimator='Nelson-Aalen'):
 
         r"""
 
@@ -314,36 +326,28 @@ class ParametricFitter():
                     raise ValueError("Observed values must be in support of distribution; are some of your observed values 0, -Inf, or Inf?")
 
         # Passed checks
-        model = para.Parametric()
-
-        model.method = how
-        model.offset = offset
-        model.heuristic = heuristic
-        model.dist = self
-        model.data = {
+        data = {
             'x' : x,
             'c' : c,
             'n' : n,
             't' : t
         }
-
-        bounds = deepcopy(self.bounds)
-        param_map = self.param_map.copy()
-
-        if offset:
-            bounds = ((None, np.min(x)), *bounds)
-            offset_index_inc = 1
-            param_map.update({'gamma' : -1})
-        else:
-            offset_index_inc = 0
-            model.gamma = 0
-
-        model.bounds = bounds
-
-        transform, inv_trans, funcs, inv_f = bounds_convert(x, bounds)
-        const, fixed_idx, not_fixed = fix_idx_and_function(self, fixed, param_map, offset_index_inc, funcs)
+        model = para.Parametric(self, how, data, offset, lfp, zi)
+        fitting_info = {}
 
         if how != 'MPP':
+            transform, inv_trans, funcs, inv_f = bounds_convert(x, model)
+            const, fixed_idx, not_fixed = fix_idx_and_function(fixed, model, funcs)
+
+            fitting_info['transform'] = transform
+            fitting_info['inv_trans'] = inv_trans
+            fitting_info['funcs'] = funcs
+            fitting_info['inv_f'] = inv_f
+
+            fitting_info['const'] = const
+            fitting_info['fixed_idx'] = fixed_idx
+            fitting_info['not_fixed'] = not_fixed
+
             # Need a better general fitter to include offset
             if init == []:
                 if self.name in ['Gumbel', 'Beta', 'Normal', 'Uniform']:
@@ -351,41 +355,23 @@ class ParametricFitter():
                 else:
                     init = np.array(self._parameter_initialiser(x, c, n, offset=offset))
 
-                    
+                if lfp:
+                    init = np.concatenate([init, [0.75]])
+
             init = transform(init)
             init = init[not_fixed]
+            fitting_info['init'] = init
         else:
             # Probability plotting method does not need an initial estimate
-            init = None
+            fitting_info['rr'] = rr
+            fitting_info['heuristic'] = heuristic
+            fitting_info['on_d_is_0'] = on_d_is_0
+            fitting_info['turnbull_estimator'] = turnbull_estimator
+            fitting_info['init'] = None
 
-        fix_and_const_kwargs = {
-            'const' : const,
-            'trans' : transform,
-            'inv_fs' : inv_trans,
-            'fixed_idx' : fixed_idx,
-            'offset' : offset
-        }
+        model.fitting_info = fitting_info
 
-        if how == 'MLE':
-            # Maximum Likelihood Estimation
-            results = mle(dist=self, x=x, c=c, n=n, t=t, init=init, **fix_and_const_kwargs)
-
-        elif how == 'MPS':
-            # Maximum Product Spacing
-            results = mps(dist=self, x=x, c=c, n=n, init=init, **fix_and_const_kwargs)
-
-        elif how == 'MOM':
-            # Method of Moments
-            # results = mom(dist=self, x=x, n=n, init=init, offset=offset)
-            results = mom(dist=self, x=x, n=n, init=init, **fix_and_const_kwargs)
-
-        elif how == 'MPP':
-            # Method of Probability Plotting
-            results = mpp(dist=self, x=x, n=n, c=c, rr=rr, heuristic=heuristic, offset=offset)
-
-        elif how == 'MSE':
-            # Mean Square Error
-            results = mse(dist=self, x=x, c=c, n=n, t=t, init=init, **fix_and_const_kwargs)
+        results = METHOD_FUNC_DICT[how](model)
 
         for k, v in results.items():
             setattr(model, k, v)
@@ -501,7 +487,7 @@ class ParametricFitter():
 
         return self.fit(x=x, c=c, n=n, t=t, **fit_options)
 
-    def from_params(self, params, gamma=None):
+    def from_params(self, params, gamma=None, p=None):
         r"""
 
         Creating a SurPyval Parametric class with provided parameters.
@@ -541,15 +527,22 @@ class ParametricFitter():
             raise ValueError('{dist} distribution cannot be offset'.format(dist=self.name))
 
         if gamma is not None:
-            model = para.OffsetParametric()
-            model.gamma = gamma
-            model.bounds = ((None, gamma), *deepcopy(self.bounds))
+            offset = True
         else:
-            model = para.Parametric()
-            model.gamma = 0
+            offset = False
+            gamma = 0
 
-        model.method = 'given parameters'
+        if p is not None:
+            lfp = True
+        else:
+            lfp = False
+            p = 1
+
+        model = para.Parametric(self, 'given parameters', None, offset, lfp, False)
+        model.gamma = gamma
+        model.p = p
         model.params = np.array(params)
+
         for i, (low, upp) in enumerate(self.bounds):
             if low is None:
                 l = -np.inf

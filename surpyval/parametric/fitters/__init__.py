@@ -22,10 +22,10 @@ def inv_rev_adj_relu(x):
     return np.where(x < -1, -x - 1, np.log(-x))
 
 
-def bounds_convert(x, bounds):
+def bounds_convert(x, model):
     funcs = []
     inv_f = []
-    for i, (lower, upper) in enumerate(bounds):
+    for i, (lower, upper) in enumerate(model.bounds):
         def add_to_funcs(l, u, i):
             if (l is None) and (u is None):
                 funcs.append(lambda x: pass_through(x))
@@ -54,8 +54,36 @@ def bounds_convert(x, bounds):
     return transform, inv_trans, funcs, inv_f
 
 
+def fix_idx_and_function(fixed, model, funcs):
+    if fixed is not None:
+        """
+        Record to the model that parameters were fixed
+        """
+        fixed_idx = [model.param_map[x] for x in fixed.keys()]
+        not_fixed = [x for x in range(model.k) if x not in fixed_idx]
+        not_fixed = np.array(not_fixed)
+
+        def constraints(p):
+            params = [0] * (model.k)
+            for k, v in fixed.items():
+                params[model.param_map[k]] = funcs[model.param_map[k]](v)
+            for i, v in zip(not_fixed, p):
+                params[i] = v
+            return np.array(params)
+
+        const = constraints
+    else:
+
+        def const(x):
+            return x
+
+        fixed_idx = []
+        not_fixed = np.array([x for x in range(model.k)])
+
+    return const, fixed_idx, not_fixed
+
 # Functions to support fixing parameters
-def fix_idx_and_function(dist, fixed, param_map, offset_index_inc, funcs):
+def fix_idx_and_function_old(dist, fixed, param_map, offset_index_inc, funcs):
     if fixed is not None:
         """
         Record to the model that parameters were fixed

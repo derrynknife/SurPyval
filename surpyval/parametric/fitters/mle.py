@@ -19,14 +19,25 @@ def _create_censor_flags(x_mle, gamma, c, dist):
     return inf_c_flags, x_mle
 
 
-def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
+def mle(model):
     """
     Maximum Likelihood Estimation (MLE)
 
     """
+    dist = model.dist
+    x, c, n, t = model.data['x'], model.data['c'], model.data['n'], model.data['t']
+    const = model.fitting_info['const']
+    trans = model.fitting_info['transform']
+    inv_trans = model.fitting_info['inv_trans']
+    inv_f = model.fitting_info['inv_f']
+    init = model.fitting_info['init']
+    fixed_idx = model.fitting_info['fixed_idx']
+    offset = model.offset
+    lfp = model.lfp
+
+
     if hasattr(dist, 'mle'):
-        return dist.mle(x, c, n, t, const, trans,
-                        inv_fs, init, fixed_idx, offset)
+        return dist.mle(x, c, n, t, const, trans, inv_trans, init, fixed_idx, offset)
 
     old_err_state = np.seterr(invalid='raise',
                               divide='raise',
@@ -51,10 +62,10 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
     results['t_mle'] = t_mle
 
     # Create the objective function
-    def fun(params, offset=False, transform=True, gamma=0.):
+    def fun(params, offset=False, lfp=False, transform=True, gamma=0.):
         x_mle = np.copy(x)
         if transform:
-            params = inv_fs(const(params))
+            params = inv_trans(const(params))
 
         if offset:
             gamma = params[0]
@@ -63,23 +74,29 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
             # Use the assumed value. Useful for hessian calcs holding gamma constant
             pass
 
+        if lfp:
+            p = params[-1]
+            params = params[0:-1]
+        else:
+            p = 1.
+
         inf_c_flags, x_mle = _create_censor_flags(x_mle, gamma, c, dist)
-        x_mle = x_mle - gamma
-        return dist.neg_ll(x_mle, c, n, inf_c_flags, t_mle, t_flags, *params)
+
+        return dist.neg_ll(x_mle, c, n, inf_c_flags, t_mle, t_flags, gamma, p, *params)
 
     jac  = jacobian(fun)
     hess = hessian(fun)
 
     try:
         # First attempt to be with with jacobian and hessian from autograd
-        res = minimize(fun, init, args=(offset, True), method='Newton-CG', jac=jac, hess=hess)
+        res = minimize(fun, init, args=(offset, lfp, True), method='Newton-CG', jac=jac, hess=hess)
         if not res.success:
             raise Exception
     except:
         # If first attempt fails, try a second time with only jacobian from autograd
         # print("MLE with autodiff hessian and jacobian failed, trying without hessian", file=sys.stderr)
         try:
-            res = minimize(fun, init, args=(offset, True), method='BFGS', jac=jac)
+            res = minimize(fun, init, args=(offset, lfp, True), method='BFGS', jac=jac)
             if not res.success:
                 raise Exception
         except:
@@ -87,7 +104,7 @@ def mle(dist, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
             # print("MLE with autodiff jacobian failed, trying without jacobian or hessian", file=sys.stderr)
             # try:
             np.seterr(all='ignore')
-            res = minimize(fun, init, args=(offset, True))
+            res = minimize(fun, init, args=(offset, lfp, True))
             # except:
                 # Something really went wrong
             if res['message'] == 'Desired error not necessarily achieved due to precision loss.':
@@ -107,19 +124,26 @@ the mean of the data (or it's inverse)
                 return {'res' : res}
 
     try:
-        p_hat = inv_fs(const(res.x))
+        p_hat = inv_trans(const(res.x))
     except:
         p_hat = [None] * len(init)
 
     if offset:
         results['gamma'] = p_hat[0]
-        results['params'] = p_hat[1:]
+        params = p_hat[1:]
     else:
         results['gamma'] = 0
-        results['params'] = p_hat
+        params = p_hat
+
+    if lfp:
+        results['p'] = params[-1]
+        results['params'] = params[0:-1]
+    else:
+        results['p'] = 1.
+        results['params'] = params
 
     try:
-        results['hess_inv'] = inv(hess(results['params'], *(False, False, results['gamma'])))
+        results['hess_inv'] = inv(hess(results['params'], *(False, lfp, False, results['gamma'])))
     except:
         results['hess_inv'] = None
 

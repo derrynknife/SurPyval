@@ -166,7 +166,7 @@ def test_mpp(dist, bounds, rr):
                 test_params.append(np.random.uniform(*b))
             test_params = np.array(test_params)
             x = dist.random(10000, *test_params)
-            model = dist.fit(x=x, rr=rr, how='MPP')
+            model = dist.fit(x=x, rr=rr, how='MPP', heuristic='Nelson-Aalen')
             fitted_params = np.array(model.params)
             max_params = np.max([fitted_params, test_params], axis=0)
             diff = np.abs(fitted_params - test_params) / max_params

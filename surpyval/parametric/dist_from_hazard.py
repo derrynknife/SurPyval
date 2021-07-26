@@ -12,6 +12,15 @@ class Distribution(ParametricFitter):
         if len(param_names) != len(bounds):
             raise ValueError('param_names and bounds must have same length')
 
+        if 'p' in param_names:
+            raise ValueError("'p' reserved parameter name for LFP distributions")
+
+        if 'gamma' in param_names:
+            raise ValueError("'gamma' reserved parameter name for offset distributions")
+
+        if 'f0' in param_names:
+            raise ValueError("'f0' reserved parameter name for zero inflated or hurdle models")
+
         self.name = name
         self.k = len(param_names)
         self.bounds = bounds
@@ -41,19 +50,6 @@ class Distribution(ParametricFitter):
         # out = self.fit(x, c, n, t, how='MSE', init=out).params
         
         return out
-
-    # def mpp_x_transform(self, x):
-    #     return np.log(x)
-
-    # def mpp_inv_x_transform(self, x, gamma=0):
-    #     return np.exp(x - gamma)
-
-    # def mpp_y_transform(self, y, *params):
-    #     mask = ((y == 0) | (y == 1))
-    #     out = np.zeros_like(y)
-    #     out[~mask] = np.log(-np.log((1 - y[~mask])))
-    #     out[mask] = np.nan
-    #     return out
 
     def mpp_inv_y_transform(self, y, *params):
         return 1 - np.exp(-np.exp(y))

@@ -30,7 +30,5 @@ from .uniform import Uniform
 from .logistic import Logistic
 from .loglogistic import LogLogistic
 from .mixture_model import MixtureModel
-
-from .lfp import LFP
 from .dist_from_hazard import Distribution
 

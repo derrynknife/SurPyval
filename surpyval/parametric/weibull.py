@@ -34,9 +34,20 @@ class Weibull_(ParametricFitter):
             heuristic = "Turnbull"
         else:
             heuristic = "Nelson-Aalen"
+
+        data = {'x' : x, 'c' : c, 'n' : n, 't' : t}
+        model = para.Parametric(self, 'MPP', data, offset, False, False)
+        fitting_info = {}
+        fitting_info['rr'] = 'x'
+        fitting_info['heuristic'] = heuristic
+        fitting_info['on_d_is_0'] = True
+        fitting_info['turnbull_estimator'] = 'Nelson-Aalen'
+        fitting_info['init'] = None
+
+        model.fitting_info = fitting_info
+
         if offset:
-            results = mpp(dist=self, x=x, c=c, n=n, t=t, 
-                          heuristic=heuristic, on_d_is_0=True, offset=True)
+            results = mpp(model)
             return (results['gamma'], *results['params'])
         else:
             gumb = para.Gumbel.fit(log_x, c, n, t, how='MLE')
