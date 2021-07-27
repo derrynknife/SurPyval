@@ -21,8 +21,8 @@ class Distribution(ParametricFitter):
         if 'f0' in param_names:
             raise ValueError("'f0' reserved parameter name for zero inflated or hurdle models")
 
-        for name in param_names:
-            if hasattr(self, name):
+        for p_name in param_names:
+            if hasattr(self, p_name):
                 raise ValueError("Can't name a parameter after a function in the Parametric class.")
 
         self.name = name

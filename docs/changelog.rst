@@ -15,6 +15,10 @@ v0.9.0 (in progress)
 	- Reliability Engineering
 	- Actuary / Demography
 	- Social Science
+	- Boston Housing
+	- Medical science
+- Better docs on using Pandas
+- Better initial estimates in the ``_parameter_initialiser`` for the lfp data (use max F from nonp estimate...)
 
 v0.8.0 (27 July 2021)
 ---------------------
