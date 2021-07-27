@@ -63,14 +63,22 @@ class Parametric():
         else:
             self.p = 1
 
+        if zi:
+            bounds = (*bounds, (0, 1))
+            param_map.update({'f0' : len(param_map) + 1})
+            self.k += 1
+        else:
+            self.f0 = 0
+
         self.bounds = bounds
         self.param_map = param_map
 
 
     def __repr__(self):
         if hasattr(self, 'params'):
-            out = ('Parametric Surpyval model with {dist} distribution fitted by '
-                   + '{method} yielding parameters '
+            out = ('Parametric Surpyval model with {dist} distribution \n'
+                   + 'Fitted by {method} \n'
+                   + 'with parameters '
                    + '{params}').format(dist=self.dist.name, 
                                         method=self.method, 
                                         params=self.params)
@@ -78,7 +86,10 @@ class Parametric():
                 out += ' with offset of {gamma}'.format(gamma=self.gamma)
 
             if self.lfp:
-                out += ' limited to a maximum proportion of {p}'.format(p=self.p)
+                out += '\nlimited to a maximum proportion of {p}'.format(p=self.p)
+
+            if self.zi:
+                out += '\nzero-inflated by {f0}'.format(f0=self.f0)
 
             return out
         else:
@@ -114,9 +125,10 @@ class Parametric():
         if type(x) == list:
             x = np.array(x)
         if self.p == 1:
-            return self.dist.sf(x - self.gamma, *self.params)
+            sf = self.dist.sf(x - self.gamma, *self.params)
         else:
-            return 1 - self.p * self.dist.ff(x - self.gamma, *self.params)
+            sf = 1 - self.p * self.dist.ff(x - self.gamma, *self.params)
+        return (1. - self.f0)*sf
 
     def ff(self, x):
         r"""
@@ -148,7 +160,8 @@ class Parametric():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.p * self.dist.ff(x - self.gamma, *self.params)
+
+        return self.f0 + (1 - self.f0) * self.p * self.dist.ff(x - self.gamma, *self.params)
 
     def df(self, x): 
         r"""
@@ -180,7 +193,12 @@ class Parametric():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.p * self.dist.df(x - self.gamma, *self.params)
+        if self.f0 == 0:
+            df = self.p * self.dist.df(x - self.gamma, *self.params)
+        else:
+            df = np.where(x == 0, self.f0, 
+                (1 - self.f0) * self.p * self.dist.df(x - self.gamma, *self.params))
+        return df
 
     def hf(self, x):
         r"""
@@ -341,14 +359,34 @@ class Parametric():
         array([10.84103403,  0.48542084,  7.11387062,  5.41420125,  4.59286657,
                 5.90703589,  7.5124326 ,  7.96575225,  9.18134126,  8.16000438])
         """
-        if self.p == 1:
+        if (self.p == 1) and (self.f0 == 0):
             return self.dist.qf(uniform.rvs(size=size), *self.params) + self.gamma
-        else:
+        elif (self.p != 1) and (self.f0 == 0):
             n_obs = np.random.binomial(size, self.p)
 
             f = self.dist.qf(uniform.rvs(size=n_obs), *self.params) + self.gamma
             s = np.ones(np.array(size) - n_obs) * np.max(f) + 1
 
+            return fs_to_xcn(f, s)
+
+        elif (self.p == 1) and (self.f0 != 0):
+            n_doa = np.random.binomial(size, self.f0)
+
+            x0 = np.zeros(n_doa) + self.gamma
+            x = self.dist.qf(uniform.rvs(size=size - n_doa), *self.params) + self.gamma
+            x = np.concatenate([x, x0])
+            np.random.shuffle(x)
+
+            return x
+        else:
+            N = np.random.multinomial(1, [self.f0, self.p - self.f0, 1. - self.p], size).sum(axis=0)
+            N = np.atleast_2d(N)
+            n_doa, n_obs, n_cens = N[:, 0], N[:, 1], N[:, 2]
+            x0 = np.zeros(n_doa) + self.gamma
+            x = self.dist.qf(uniform.rvs(size=n_obs), *self.params) + self.gamma
+            f = np.concatenate([x, x0])
+            s = np.ones(n_cens) * np.max(f) + 1
+            # raise NotImplementedError("Combo zero-inflated and lfp model not yet supported")
             return fs_to_xcn(f, s)
 
     def mean(self):

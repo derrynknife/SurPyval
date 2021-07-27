@@ -195,6 +195,8 @@ def group_xcnt(x, c, n, t):
 				n_out.append(nv)
 				t_out.append(tv)
 	return np.array(x_out), np.array(c_out), np.array(n_out), np.array(t_out)
+
+
 def xcnt_sort(x, c, n, t):
 	"""
 	Sorts the x, c, and n arrays so that x is increasing, and where there are ties they are ordered as left censored, failure, right censored, then intervally censored.
@@ -248,6 +250,8 @@ def xcnt_sort(x, c, n, t):
 	t = t[idx]
 	
 	return x, c, n, t
+
+
 def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 	"""
 	Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
@@ -282,7 +286,7 @@ def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 		array of truncation values of observations at output array x and with censoring c.
 	"""
 	if type(x) == list:
-		if any([list == type(v) for v in x]):
+		if any([type(v) == list for v in x]):
 			x_ndarray = np.empty(shape=(len(x), 2))
 			for idx, val in enumerate(x):
 				x_ndarray[idx, :] = np.array(val)
@@ -390,9 +394,9 @@ def xcnt_handler(x, c=None, n=None, t=None, tl=None, tr=None):
 		elif ((t[:, 1] < x[:, 1]) & (np.isfinite(t[:, 1]))).any():            
 			raise ValueError("All right truncated values must be greater than the respective observed values")
 	else:
-		if (t[:, 0] >= x).any():            
+		if (t[:, 0] > x).any():            
 			raise ValueError("All left truncated values must be less than the respective observed values")
-		elif (t[:, 1] <= x).any():            
+		elif (t[:, 1] < x).any():            
 			raise ValueError("All right truncated values must be greater than the respective observed values")
 
 	x = x.astype(float)

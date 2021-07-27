@@ -34,7 +34,7 @@ def mle(model):
     fixed_idx = model.fitting_info['fixed_idx']
     offset = model.offset
     lfp = model.lfp
-
+    zi = model.zi
 
     if hasattr(dist, 'mle'):
         return dist.mle(x, c, n, t, const, trans, inv_trans, init, fixed_idx, offset)
@@ -62,7 +62,7 @@ def mle(model):
     results['t_mle'] = t_mle
 
     # Create the objective function
-    def fun(params, offset=False, lfp=False, transform=True, gamma=0.):
+    def fun(params, offset=False, lfp=False, zi=False, transform=True, gamma=0.):
         x_mle = np.copy(x)
         if transform:
             params = inv_trans(const(params))
@@ -74,6 +74,12 @@ def mle(model):
             # Use the assumed value. Useful for hessian calcs holding gamma constant
             pass
 
+        if zi:
+            f0 = params[-1]
+            params = params[0:-1]
+        else:
+            f0 = 0.
+
         if lfp:
             p = params[-1]
             params = params[0:-1]
@@ -82,21 +88,21 @@ def mle(model):
 
         inf_c_flags, x_mle = _create_censor_flags(x_mle, gamma, c, dist)
 
-        return dist.neg_ll(x_mle, c, n, inf_c_flags, t_mle, t_flags, gamma, p, *params)
+        return dist.neg_ll(x_mle, c, n, inf_c_flags, t_mle, t_flags, gamma, p, f0, *params)
 
     jac  = jacobian(fun)
     hess = hessian(fun)
 
     try:
         # First attempt to be with with jacobian and hessian from autograd
-        res = minimize(fun, init, args=(offset, lfp, True), method='Newton-CG', jac=jac, hess=hess)
+        res = minimize(fun, init, args=(offset, lfp, zi, True), method='Newton-CG', jac=jac, hess=hess)
         if not res.success:
             raise Exception
     except:
         # If first attempt fails, try a second time with only jacobian from autograd
         # print("MLE with autodiff hessian and jacobian failed, trying without hessian", file=sys.stderr)
         try:
-            res = minimize(fun, init, args=(offset, lfp, True), method='BFGS', jac=jac)
+            res = minimize(fun, init, args=(offset, lfp, zi, True), method='BFGS', jac=jac)
             if not res.success:
                 raise Exception
         except:
@@ -104,7 +110,7 @@ def mle(model):
             # print("MLE with autodiff jacobian failed, trying without jacobian or hessian", file=sys.stderr)
             # try:
             np.seterr(all='ignore')
-            res = minimize(fun, init, args=(offset, lfp, True))
+            res = minimize(fun, init, args=(offset, lfp, zi, True))
             # except:
                 # Something really went wrong
             if res['message'] == 'Desired error not necessarily achieved due to precision loss.':
@@ -135,6 +141,13 @@ the mean of the data (or it's inverse)
         results['gamma'] = 0
         params = p_hat
 
+    if zi:
+        results['f0'] = params[-1]
+        params = params[0:-1]
+    else:
+        results['f0'] = 0.
+        params = params
+
     if lfp:
         results['p'] = params[-1]
         results['params'] = params[0:-1]
@@ -143,7 +156,7 @@ the mean of the data (or it's inverse)
         results['params'] = params
 
     try:
-        results['hess_inv'] = inv(hess(results['params'], *(False, lfp, False, results['gamma'])))
+        results['hess_inv'] = inv(hess(results['params'], *(False, lfp, zi, False, results['gamma'])))
     except:
         results['hess_inv'] = None
 

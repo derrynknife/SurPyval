@@ -10,7 +10,7 @@ import surpyval
 from surpyval import nonparametric as nonp
 
 def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom", 
-                       turnbull_estimator='Nelson-Aalen'):
+                       turnbull_estimator='Fleming-Harrington'):
     r"""
     This function takes in data in the xcnt format and outputs an approximation
     of the CDF. This function can be used to produce estimates of F using the 

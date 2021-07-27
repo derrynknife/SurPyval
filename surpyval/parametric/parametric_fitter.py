@@ -48,19 +48,30 @@ class ParametricFitter():
         like = np.where(c ==  1, self.sf(x, *params), like)
         return like
 
-    def log_like(self, x, c, n, p, *params):
+    def log_like(self, x, c, n, p, f0, *params):
+        # This is getting a bit much....
         like = np.zeros_like(x).astype(float)
-        like = np.where(c ==  0, np.log(p) + self.log_df(x, *params), like)
-        like = np.where(c == -1, np.log(p) + self.log_ff(x, *params), like)
-        if p == 1:
-            like = np.where(c ==  1, self.log_sf(x, *params), like)
+        if f0 == 0:
+            like = np.where(c ==  0, np.log(p) + self.log_df(x, *params), like)
+            like = np.where(c == -1, np.log(p) + self.log_ff(x, *params), like)
+            if p == 1:
+                like = np.where(c ==  1, self.log_sf(x, *params), like)
+            else:
+                like = np.where(c ==  1, np.log(1 - (p * self.ff(x, *params))), like)
         else:
-            like = np.where(c ==  1, np.log(1 - (p * self.ff(x, *params))), like)
+            like = np.where(c ==  0, np.log(1 - f0) + np.log(p) + self.log_df(x, *params), like)
+            like = np.where(c == -1, np.log(1 - f0) + np.log(p) + self.log_ff(x, *params), like)
+            like = np.where((c == 0) & (x == 0), np.log(f0), like)
+            if p == 1:
+                like = np.where(c ==  1, np.log(1 - f0) + self.log_sf(x, *params), like)
+            else:
+                like = np.where(c ==  1, np.log(1 - f0) + np.log(1 - (p * self.ff(x, *params))), like)
+
         return like
 
-    def log_like_i(self, x, c, n, inf_c_flags, p, *params):
-        ir = np.where(inf_c_flags[:, 1] == 1, 1, p * self.ff(x[:, 1], *params))
-        il = np.where(inf_c_flags[:, 0] == 1, 0, p * self.ff(x[:, 0], *params))
+    def log_like_i(self, x, c, n, inf_c_flags, p, f0, *params):
+        ir = np.where(inf_c_flags[:, 1] == 1, 1, (1 - f0) * p * self.ff(x[:, 1], *params))
+        il = np.where(inf_c_flags[:, 0] == 1, 0, (1 - f0) * p * self.ff(x[:, 0], *params))
         like_i = ir - il
         like_i = np.where(c != 2, 1., like_i)
         return np.log(like_i)
@@ -74,12 +85,14 @@ class ParametricFitter():
         return like_i
 
     def like_t(self, t, t_flags, *params):
+        # Needs to be updated to work with zi and ds models.
+        # until then, can prevent it working in the `fit` method
         tr_denom = np.where(t_flags[:, 1] == 1, self.ff(t[:, 1], *params), 1.)
         tl_denom = np.where(t_flags[:, 0] == 1, self.ff(t[:, 0], *params), 0.)
         t_denom = tr_denom - tl_denom
         return t_denom
 
-    def neg_ll(self, x, c, n, inf_c_flags, t, t_flags, gamma, p, *params):
+    def neg_ll(self, x, c, n, inf_c_flags, t, t_flags, gamma, p, f0, *params):
         # if 2 in c:
         #     like_i = self.like_i(x, c, n, inf_c_flags, *params)
         #     x_ = copy(x[:, 0])
@@ -91,7 +104,7 @@ class ParametricFitter():
         x = copy(x) - gamma
 
         if 2 in c:
-            like_i = self.log_like_i(x, c, n, inf_c_flags, p, *params)
+            like_i = self.log_like_i(x, c, n, inf_c_flags, p, f0, *params)
             x_ = copy(x[:, 0])
             # x_[x_ == 0] = 1
         else:
@@ -99,9 +112,9 @@ class ParametricFitter():
             x_ = copy(x)
         
         # like = self.like(x_, c, n, *params)
-        like = self.log_like(x_, c, n, p, *params)
+        like = self.log_like(x_, c, n, p, f0, *params)
         like = like + like_i
-        # like = np.where(like ==  0, np.finfo(np.longdouble).tiny, like)
+
         # like = np.log(like) - np.log(self.like_t(t, t_flags, *params))
         like = like - np.log(self.like_t(t, t_flags, *params))
         like = np.multiply(n, like)
@@ -309,6 +322,12 @@ class ParametricFitter():
         if t is not None and how == 'MOM':
             raise ValueError('Maximum product spacing doesn\'t support tuncation')
 
+        if (lfp or zi) & (how != 'MLE'):
+            raise ValueError('Limited failure or zero-inflated models can only be made with MLE')
+
+        if (zi & (self.support[0] != 0)):
+            raise ValueError("zero-inflated models can only work with models starting at 0")
+
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, tl=tl, tr=tr)
 
         if surpyval.utils.check_no_censoring(c) and (how == 'MOM'):
@@ -317,7 +336,7 @@ class ParametricFitter():
         if (surpyval.utils.no_left_or_int(c)) and (how == 'MPP') and (not heuristic == 'Turnbull'):
             raise ValueError('Probability plotting estimation with left or interval censoring only works with Turnbull heuristic')
 
-        if not offset:
+        if (not offset) & (not zi):
             if x.ndim == 2:
                 if ((x[:, 0] <= self.support[0]) & (c == 0)).any():
                     raise ValueError("Observed values must be in support of distribution; are some of your observed values 0, -Inf, or Inf?")
@@ -332,6 +351,7 @@ class ParametricFitter():
             'n' : n,
             't' : t
         }
+
         model = para.Parametric(self, how, data, offset, lfp, zi)
         fitting_info = {}
 
@@ -350,13 +370,17 @@ class ParametricFitter():
 
             # Need a better general fitter to include offset
             if init == []:
+                init_mask = np.logical_and(x > self.support[0], x < self.support[1])
                 if self.name in ['Gumbel', 'Beta', 'Normal', 'Uniform']:
-                    init = np.array(self._parameter_initialiser(x, c, n))
+                    init = np.array(self._parameter_initialiser(x[init_mask], c[init_mask], n[init_mask]))
                 else:
-                    init = np.array(self._parameter_initialiser(x, c, n, offset=offset))
+                    init = np.array(self._parameter_initialiser(x[init_mask], c[init_mask], n[init_mask], offset=offset))
 
                 if lfp:
                     init = np.concatenate([init, [0.75]])
+
+                if zi:
+                    init = np.concatenate([init, [(n[x == 0]).sum()/n.sum()]])
 
             init = transform(init)
             init = init[not_fixed]
@@ -381,7 +405,6 @@ class ParametricFitter():
     def fit_from_df(self, df, x=None, c=None, n=None,
                     xl=None, xr=None, tl=None, tr=None,
                     **fit_options):
-
         r"""
 
         The central feature to SurPyval's capability. This function aimed to have an API to mimic the 
@@ -487,7 +510,7 @@ class ParametricFitter():
 
         return self.fit(x=x, c=c, n=n, t=t, **fit_options)
 
-    def from_params(self, params, gamma=None, p=None):
+    def from_params(self, params, gamma=None, p=None, f0=None):
         r"""
 
         Creating a SurPyval Parametric class with provided parameters.
@@ -538,9 +561,16 @@ class ParametricFitter():
             lfp = False
             p = 1
 
+        if f0 is not None:
+            zi = True
+        else:
+            zi = False
+            f0 = 0
+
         model = para.Parametric(self, 'given parameters', None, offset, lfp, False)
         model.gamma = gamma
         model.p = p
+        model.f0 = f0
         model.params = np.array(params)
 
         for i, (low, upp) in enumerate(self.bounds):

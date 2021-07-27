@@ -6,7 +6,6 @@ def _na(d, r):
     H = np.cumsum(d/r)
     H[np.isnan(H)] = np.inf
     R = np.exp(-H)
-    p = np.abs(np.diff(np.hstack([[1], R])))
     return R
     
 def _km(d, r):
@@ -15,7 +14,23 @@ def _km(d, r):
     R = np.cumprod(R)
     return R
 
-def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
+def fh_h(d_i, r_i):
+    out = 0
+    while d_i > 1:
+        out += 1./r_i
+        r_i -= 1
+        d_i -= 1
+    out += d_i/r_i
+    return out
+
+def _fh(d, r):
+    Y = np.array([fh_h(d_i, r_i) for r_i, d_i in zip(r, d)])
+    H = Y.cumsum()
+    H[np.isnan(H)] = np.inf
+    R = np.exp(-H)
+    return R
+
+def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
     N = n.sum()
 
@@ -67,8 +82,10 @@ def turnbull(x, c, n, t, estimator='Kaplan-Meier'):
         
     if estimator == 'Kaplan-Meier':
         func = _km
-    else:
+    elif estimator == 'Nelson-Aalen':
         func = _na
+    else:
+        func = _fh
 
     old_err_state = np.seterr(all='ignore')
 
