@@ -109,6 +109,7 @@ Contents:
    :caption: SurPyval
 
    surpyval
+   changelog
 
 .. toctree::
    :maxdepth: 1

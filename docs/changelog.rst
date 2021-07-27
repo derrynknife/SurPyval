@@ -1,0 +1,39 @@
+Changelog
+=========
+
+v0.10.0 (planned)
+--------------------
+
+- General ALT fitter
+- General PH fitter
+
+v0.9.0 (in progress)
+--------------------
+
+- Document the rationale behind using Fleming-Harrington as the default.
+- Add application examples:
+	- Reliability Engineering
+	- Actuary / Demography
+	- Social Science
+
+v0.8.0 (27 July 2021)
+---------------------
+
+- Made backwards incompatible changes to ``LFP`` models, these are now created with the ``lfp=True`` keyword in the ``fit()`` method
+- Created ability to fit zero-inflated models. Simply pass the ``zi=True`` option to the ``fit()`` method.
+- Chanages to ``utils.xcnt_handler`` to ensure ``x``, ``xl``, and ``xr`` are handled consistently.
+- changed the way ``__repr__`` displays a Parametric object.
+- Changed the default for plotting to be ``Fleming-Harrington``. This was a result of seeing how poorly the ``Nelson-Aalen`` method fits zero inflated models. FH therefore offers the best performance of a Non-Parametric estimate at the low values of the survival function (as KM reaches 0 for fully observed data) and at high values (KM is good but NA is poor).
+- Added a Fleming-Harrington method to the Turnbull class.
+- Improved stability with dedicated ``log_sf``, ``log_ff``, and ``log_df`` functions. Less chance of overflows and therefore better convergence.
+- Changed interpolation method of ``NonParametric``. Allows for use of cubic interpolation
+- Improved the way surpyval fails
+- Substantial docs updates.
+
+
+v0.7.0 (19 July 2021)
+---------------------
+
+- Major changes to the confidence bounds for ``Parametric`` models. Now use the ``cb()`` method for every bound.
+- Removed the ``OffsetParametric`` class and made ``Parametric`` class now work with (or without) an offset.
+- Minor doc updates.
