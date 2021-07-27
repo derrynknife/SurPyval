@@ -40,8 +40,7 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
     t : 2D-array like, optional
         2D array like of the left and right values at which the respective observation was truncated. If
         not provided it assumes that no truncation occurs.
-    heuristic : ("Blom", "Median", "ECDF", "ECDF_Adj", "Modal", "Midpoint", "Mean", "Weibull", 
-                 "Benard", "Beard", "Hazen", "Gringorten", "None", "Larsen", "Tukey", "DPW"), str, optional
+    heuristic : ("Blom", "Median", "ECDF", "ECDF_Adj", "Modal", "Midpoint", "Mean", "Weibull", "Benard", "Beard", "Hazen", "Gringorten", "None", "Larsen", "Tukey", "DPW"), str, optional
         Method to use to compute the heuristic of F. See details of each heursitic in the
         `probability plotting section <https://surpyval.readthedocs.io/en/latest/Parametric%20Modelling.html#method-of-probability-plotting-mpp>`_.
     turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier'), str, optional

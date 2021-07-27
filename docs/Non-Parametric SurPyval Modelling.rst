@@ -251,12 +251,9 @@ value if left truncated should be adjusted. This is because there is no informat
 non-parametric method below this smallest value. The same is true for the largest value if it is also
 right truncated, there is no information available about the probability of its observation. Therefore
 the Turnbull method makes an implicit assumption that the first value, if left truncated has 100% chance
-of observation, and the highest value, if right truncated also has 100% chance of being observed. The
-implications of this are detailed below, because the only way to gain an understanding of these
-situations is by assuming a shape of the distribution. That is, by doing parametric analysis. This is
-possible since if the distribution within the truncated ends has a shape that matches to a particular
-distribution you can then extrapolate beyond the observed values. Parametric analysis is therefore 
-incredibly powerful for prediction.
+of observation, and the highest value, if right truncated also has 100% chance of being observed. 
+
+The implications of this are detailed in the Parametric section, because the only way to gain an understanding of these situations is by assuming a shape of the distribution. That is, by doing parametric analysis. This is possible since if the distribution within the truncated ends has a shape that matches to a particular distribution you can then extrapolate beyond the observed values. Parametric analysis is therefore incredibly powerful for prediction / extrapolation.
 
 Confidence Intervals
 --------------------

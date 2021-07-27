@@ -14,14 +14,14 @@ class NonParametricFitter():
 	standard: h_u, H_u or Ru, Rl
 	"""
 
-	def fit(self, x, c=None, n=None, **kwargs):
-		sig = kwargs.pop('sig', 0.05)
+	def fit(self, x, c=None, n=None, t=None,
+			xl=None, xr=None, tl=None, tr=None,
+			estimator='Fleming-Harrington'):
+
+
+		x, c, n, t = xcnt_handler(x, c, n, t=t, tl=tl, tr=tr)
+
 		data = {}
-		if self.how == 'Turnbull': 
-			data['estimator'] = kwargs.pop('estimator', 'Kaplan-Meier')
-
-		x, c, n, t = xcnt_handler(x, c, n, **kwargs)
-
 		data['x'] = x
 		data['c'] = c
 		data['n'] = n
@@ -36,15 +36,15 @@ class NonParametricFitter():
 		out.max_x = np.max(out.x)
 		out.r = r
 		out.d = d
-		with np.errstate(divide='ignore'):
+		with np.errstate(all='ignore'):
 			out.H = -np.log(R)
 		out.R = R
 		out.F = 1 - out.R
 
-		with np.errstate(divide='ignore'):
+		with np.errstate(all='ignore'):
 			var = out.d / (out.r * (out.r - out.d))
 		
-		with np.errstate(invalid='ignore'):
+		with np.errstate(all='ignore'):
 			greenwood = np.cumsum(var)
 		out.greenwood = greenwood
 

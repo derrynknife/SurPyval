@@ -15,14 +15,24 @@ to the data can be done with a simple call to the ``fit()`` method:
 
 .. code:: python
 
-    np.random.seed(1)
+    import surpyval as surv
+    import numpy as np
+
+    np.random.seed(10)
     x = surv.Weibull.random(50, 30., 9.)
     model = surv.Weibull.fit(x)
     print(model)
+    model.plot();
 
 .. code:: text
 
-    Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters (29.805137406871953, 10.296037991991037)
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Parameters          :
+         alpha: 29.805137406871953
+          beta: 10.296037991991037
 
 To visualise the outcome of this fit we can inspect the results on a probability plot:
 
@@ -51,9 +61,15 @@ The CDF :code:`ff()`, Survival (or Reliability) :code:`sf()`, hazard rate :code:
 Using censored data
 -------------------
 
+Right Censored
+^^^^^^^^^^^^^^
+
 A common complication in survival analysis is that all the data is not observed up to the point of failure (or death). In this case the data is right censored, see the types of data section for a more detailed discussion, surpyval offers a very clean and easy way to model this. First, let's create a simulated data set:
 
 .. code:: python
+
+    import surpyval as surv
+    import numpy as np
 
     np.random.seed(10)
     x = surv.Weibull.random(50, 30, 2.)
@@ -74,14 +90,25 @@ In this example, we created 50 random Weibull distributed values with alpha = 30
 
 .. code:: text
 
-    Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters (29.249243175047084, 2.2291485877428756)
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Parameters          :
+         alpha: 29.249243175049152
+          beta: 2.2291485877426354
 
 The plot for this can be seen to be:
 
 .. image:: images/surpyval-modelling-3.png
     :align: center
 
-The results from this model are very close to the data we input, and with only 50 samples. This example can be extended to another kind of censoring; left censored data. This is the case where the values are known to fall below a particular value. We can change our example data set to have a start observation time for which we will left censor all the data below that:
+The results from this model are very close to the data we input, and with only 50 samples. 
+
+Left Censored
+^^^^^^^^^^^^^
+
+The above example can be extended to another kind of censoring; left censored data. This is the case where the values are known to fall below a particular value. We can change our example data set to have a start observation time for which we will left censor all the data below that:
 
 .. code:: python
 
@@ -100,21 +127,33 @@ That is, we set the start of the observations at 10 and flag that all the values
 
 .. code:: text
 
-    Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters (29.347097662381277, 2.304902790957594)
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Parameters          :
+         alpha: 29.34709766238127
+          beta: 2.3049027909575903
 
 The values did not substantially change, although the plot does look different as there are no values below 10.
 
 .. image:: images/surpyval-modelling-4.png
     :align: center
 
+Intervally Censored
+^^^^^^^^^^^^^^^^^^^
+
 The next type of censoring that is naturally handled by surpyval is interval censoring. Creating another example data set:
 
 .. code:: python
 
+    import surpyval as surv
+    import numpy as np
+
     np.random.seed(30)
     x = surv.Weibull.random(50, 30, 10.)
     n, xx = np.histogram(x, bins=[20, 23, 26, 29, 32, 35, 38])
-    x = np.vstack([xx[0:-1], xx[1::]]).T
+    x = np.vstack([xx[0:-1], xx[1:]]).T
 
 In this example we have created the varable x with a matrix of the intervals within which each of the obervations have failed. That is each exact observation has been binned into a window and the x array has an entry [left, right] within which the event failed. We also have the n array that has the count of the failures within the window. With these two values we can make the simple surpyval call:
 
@@ -126,7 +165,13 @@ In this example we have created the varable x with a matrix of the intervals wit
 
 .. code:: text
 
-    Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters (30.074154903683105, 9.637405285678366)
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Parameters          :
+         alpha: 30.074154903683105
+          beta: 9.637405285678362
 
 Again, we have a result that is very close to the original parameters. SurPyval can take as input an arbitrary combination of censored data. If we plot the data we will see:
 
@@ -150,13 +195,43 @@ We get:
 
 Which is, visually, clearly a better fit. You need to be careful when using the Turnbull plotting points to estimate the parameters of a distribution. This is because it is not known where in the intervals a death has actually occurred. However it is good to check the start and end of the window (changing 'where' betweek 'pre' and 'post' or 'mid') to see the goodness-of-fit.
 
+Mixed Censoring
+^^^^^^^^^^^^^^^
+
+Mixed censoring, or arbitrary censoring is easily handled by SurPyval. So no matter the combination
+of the data that you have, SurPyval will be able to fit a distribution to it.
+
+.. code:: python
+
+    import surpyval as surv
+
+    x  = [0, 1, 2, [3, 4], [6, 10], [4, 8], 5, 19, 10, 13, 15]
+    c  = [0, 0, 1, 2, 2, 2, 0, -1, 0, 1, 0]
+    surv.Gumbel.fit(x, c=c)
+
+
+.. code:: text
+
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Gumbel
+    Fitted by           : MLE
+    Parameters          :
+            mu: 9.912232006272871
+         sigma: 4.95952392045353
 
 Using truncated data
 --------------------
 
+Left truncated
+^^^^^^^^^^^^^^
+
 Surpyval has the capacity to handle arbitrary truncated data. A common occurence of this is in the insurance industry data. When customers make a claim on their policies they have to pay an 'excess' which is a charge to submit a claim for processing. If say, the excess on a set of policies in an area is $250, then it would not be logical for a customer to submit a claim for a loss of less than that number. Therefore there will be no claims under $250. This can also happen in engineering where a part may be tested up to some limit prior to be sold, therefore, as a customer you need to make sure you take into account the fact that some parts would have been rejected at the end of the line which you may not have seen. So a washing machine may run through 25 cycles prior to shipping. This is similar to, but distinct from censoring. When something is left censored, we know there was a failure or event below the threshold.  Whereas with truncation, we do not see any variables below the threshold. A simulated example may explain this better:
 
 .. code:: python
+
+    import numpy as np
+    import surpyval as surv
 
     np.random.seed(10)
     x = surv.Weibull.random(100, alpha=100, beta=0.6)
@@ -173,7 +248,7 @@ We have therefore simulated a scenario where we have taken 100 random samples fr
 
 .. code:: text
 
-    (218.39245675499225, 1.050718601374874)
+    [218.39245675   1.0507186 ]
 
 With a plot that looks like:
 
@@ -192,17 +267,25 @@ But if you take the truncation into account:
 
 .. code:: text
 
-    (127.32704868357536, 0.7105357186212391)
+    [127.32704868   0.71053572]
 
 With the plot:
 
 .. image:: images/surpyval-modelling-8.png
     :align: center
 
-You can see now that the model fits the data much better, but also that the beta parameter is actually below 1. This shows that ignoring the left-truncated data in parametric estimation can lead to errors in prediction. This example can be continued for right-truncated data as well.
+You can see now that the model fits the data much better, but also that the beta parameter is actually below 1. This shows that ignoring the left-truncated data in parametric estimation can lead to errors in prediction. 
+
+Right truncated
+^^^^^^^^^^^^^^^
+
+The example from above can be continued for right-truncated data as well.
 
 
 .. code:: python
+
+    import numpy as np
+    import surpyval as surv
 
     np.random.seed(10)
     x = surv.Normal.random(100, mu=100, sigma=10)
@@ -217,7 +300,7 @@ You can see now that the model fits the data much better, but also that the beta
 
 .. code:: text
 
-    (102.27078400794343, 12.479061358290593)
+    [102.27078401  12.47906136]
 
 
 .. image:: images/surpyval-modelling-9.png
@@ -230,6 +313,8 @@ In the cases above we used a scalar value for the truncation values. But some da
 
 .. code:: python
 
+    import surpyval as surv
+
     x  = [3, 4, 6, 7, 9, 10]
     tl = [0, 0, 0, 0, 5, 2]
 
@@ -238,12 +323,17 @@ In the cases above we used a scalar value for the truncation values. But some da
 
 .. code:: text
 
-    (7.058547173157075, 2.700966723124606)
+    [7.05854717 2.70096672]
 
+
+Intervally and Arbitrarily truncated
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Surpyval can even work with arbitrary left and right truncation:
 
 .. code:: python
+
+    import surpyval as surv
 
     x  = [3, 4, 6, 7, 9, 10]
     tl = [0, 0, 0, 0, 5, 2]
@@ -254,11 +344,13 @@ Surpyval can even work with arbitrary left and right truncation:
 
 .. code:: text
 
-    (8.123776023131574, 2.5691703597563285)
+    [8.12377602 2.56917036]
 
 In the above example we used both the tl and tr. However, surpyval has a flexible API where it can take the truncation data as a two dimensional array:
 
 .. code:: python
+
+    import surpyval as surv
 
     x  = [3, 4, 6, 7, 9, 10]
     t =   [[ 0, 10],
@@ -273,17 +365,20 @@ In the above example we used both the tl and tr. However, surpyval has a flexibl
 
 .. code:: text
 
-    (8.123776023131574, 2.5691703597563285)
+    [8.12377602 2.56917036]
 
 Which, obviously, gives the same result. This shows the flexibility of the surpyval API, you can use scalar, array, or matrix values for the truncations using the t, tl, and tr keywords with the fit method and surpyval does the rest.
 
 Offsets
 -------
 
-Another common feature in survival analysis is a requirement to fit a distribution with an offset. For example, the three three parameter Weibull distribution. Using data from Weibull's original paper for the strenght of Bofor's steel shows when this might be necessary.
+Another common feature in survival analysis is a requirement to fit a distribution with an offset. These distributions are sometimes referred to as the two-parameter (e.g. two parameter exponential) three parameter, (e.g., the three three parameter Weibull), or four parameter (e.g four parameter Exponentiated Weibull distribution). SurPyval however just uses an ``offset`` to increase the numbers of parameters and allow the distribution to be shifted.
+
+Using data from Weibull's original paper for the strenght of Bofor's steel shows when this might be necessary.
 
 .. code:: python
 
+    import surpyval as surv
     from surpyval.datasets import BoforsSteel
 
     df = BoforsSteel.df
@@ -296,7 +391,7 @@ Another common feature in survival analysis is a requirement to fit a distributi
 
 .. code:: text
 
-    (47.36735846101269, 17.57131949975446)
+    [47.36735846 17.5713195 ]
 
 .. image:: images/surpyval-modelling-10.png
     :align: center
@@ -305,20 +400,37 @@ The above plot does not look to be a good fit. However, if we use an offset we c
 
 .. code:: python
 
+    import surpyval as surv
+    from surpyval.datasets import BoforsSteel
+
+    df = BoforsSteel.df
+    x = df['x']
+    n = df['n']
+
     model = surv.Weibull.fit(x=x, n=n, offset=True)
-    print(model.params, model.gamma)
+    print(model)
     model.plot()
 
 .. code:: text
 
-    (7.141925216146573, 2.620452404013804) 39.76562962867473
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Offset (gamma)      : 39.76562962867477
+    Parameters          :
+         alpha: 7.141925216146524
+          beta: 2.6204524040137844
 
 .. image:: images/surpyval-modelling-11.png
     :align: center
 
-This is evidently a much better fit! The offset value for an offset distribution is saved as 'gamma' in the model object. Offsets can be used for any distribution supported on the half real line. Currently, this is the Weibull, Gamma, LogNormal, LogLogistic, and Exponential. For example:
+This is evidently a much better fit! The offset value for an offset distribution is saved as :code:`gamma` in the model object. Offsets can be used for any distribution supported on the half real line. Currently, this is the Weibull, Gamma, LogNormal, LogLogistic, and Exponential. For example:
 
 .. code:: python
+
+    import surpyval as surv
+    import numpy as np
 
     np.random.seed(10)
     x = surv.LogLogistic.random(100, 10, 3) + 10
@@ -328,7 +440,14 @@ This is evidently a much better fit! The offset value for an offset distribution
 
 .. code:: text
 
-    Offset Parametric Surpyval model with LogLogistic distribution fitted by MLE yielding parameters (10.189469674675024, 3.4073259756607106) with offset of 9.562707940500465
+    Parametric SurPyval Model
+    =========================
+    Distribution        : LogLogistic
+    Fitted by           : MLE
+    Offset (gamma)      : 9.56270794050046
+    Parameters          :
+         alpha: 10.18946967467503
+          beta: 3.407325975660712
 
 .. image:: images/surpyval-modelling-12.png
     :align: center
@@ -338,15 +457,26 @@ A four parameter exponentiated Weibull can also be found:
 
 .. code:: python
 
+    import surpyval as surv
+    import numpy as np
+
     np.random.seed(10)
     x = surv.ExpoWeibull.random(100, 10, 1.2, 4) + 10
-    model = ExpoWeibull.fit(x, offset=True)
+    model = surv.ExpoWeibull.fit(x, offset=True)
     print(model)
     model.plot(plot_bounds=False)
 
 .. code:: text
 
-    Offset Parametric Surpyval model with ExpoWeibull distribution fitted by MLE yielding parameters [11.47511146  1.39697851  2.84530724] with offset of 10.701280166556678
+    Parametric SurPyval Model
+    =========================
+    Distribution        : ExpoWeibull
+    Fitted by           : MLE
+    Offset (gamma)      : 10.701280166551431
+    Parameters          :
+         alpha: 11.47511146192537
+          beta: 1.3969785125819283
+            mu: 2.845307244239084
 
 .. image:: images/surpyval-modelling-12a.png
     :align: center
@@ -359,6 +489,9 @@ Another useful feature of surpyval is the ability to easily fix parameters. For 
 
 .. code:: python
 
+    import surpyval as surv
+    import numpy as np
+
     np.random.seed(30)
     x = surv.Normal.random(50, 10., 2)
     model = surv.Normal.fit(x, fixed={'mu' : 10})
@@ -368,7 +501,13 @@ Another useful feature of surpyval is the ability to easily fix parameters. For 
 
 .. code:: text
 
-    Parametric Surpyval model with Normal distribution fitted by MLE yielding parameters (10.0, 1.9353643871115993)
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Normal
+    Fitted by           : MLE
+    Parameters          :
+            mu: 10.0
+         sigma: 1.9353643871136006
 
 .. image:: images/surpyval-modelling-13.png
     :align: center
@@ -376,6 +515,9 @@ Another useful feature of surpyval is the ability to easily fix parameters. For 
 You can see that the mu parameter has been fixed at 10. This can work for distribuitons with many more parameters, including the offset.
 
 .. code:: python
+
+    import surpyval as surv
+    import numpy as np
 
     np.random.seed(30)
     x = surv.ExpoWeibull.random(50, 10., 2, 4) + 10
@@ -385,14 +527,21 @@ You can see that the mu parameter has been fixed at 10. This can work for distri
 
 .. code:: text
 
-    Offset Parametric Surpyval model with ExpoWeibull distribution fitted by MLE yielding parameters (10.0, 2.044204898692162, 4.0) with offset of 10.0
+    Parametric SurPyval Model
+    =========================
+    Distribution        : ExpoWeibull
+    Fitted by           : MLE
+    Offset (gamma)      : 10.0
+    Parameters          :
+         alpha: 10.0
+          beta: 1.9986073390210994
+            mu: 1.2
 
 .. image:: images/surpyval-modelling-14.png
     :align: center
 
 
-We have fit three of the four parameters for an offset exponentiated-Weibull distribution.
-
+We have fit three of the four parameters for an offset exponentiated-Weibull distribution!
 
 Modelling with arbitrary input
 ------------------------------
@@ -400,6 +549,8 @@ Modelling with arbitrary input
 The surpyval API is extremely flexible. All the unique examples provided above can all be used at once. That is, data can be censored, truncated, and directly observed with offsets and fixing parameters. The API is completely flexible. This makes surpyval an extremely useful tool for analysts where the data is gathered in a manner where it's cleanliness is not guaranteed.
 
 .. code:: python
+
+    import surpyval as surv
 
     x  = [0, 1, 2, [3, 4], [6, 10], [4, 8], 5, 19, 10, 13, 15]
     c  = [0, 0, 1, 2, 2, 2, 0, -1, 0, 1, 0]
@@ -410,7 +561,13 @@ The surpyval API is extremely flexible. All the unique examples provided above c
 
 .. code:: text
 
-    Parametric Surpyval model with Normal distribution fitted by MLE yielding parameters (1.0, 9.11973420034752)
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Normal
+    Fitted by           : MLE
+    Parameters          :
+            mu: 1.0
+         sigma: 9.131202240846182
 
 
 Using alternate estimation methods
@@ -421,6 +578,9 @@ Surpyval's API is very flexible because you can change which method is used to e
 The default parametric method for surpyval is the maximum likelihood estimation (MLE), this is because it can take any arbitrary input. However, the MLE is not always the best estimator. Consider an example with the uniform distribution:
 
 .. code:: python
+
+    import surpyval as surv
+    import numpy as np
 
     np.random.seed(5)
     x = surv.Uniform.random(20, 5, 10)
@@ -453,27 +613,43 @@ The other important use case is when, for some reason, an alternate estimation m
 
 .. code:: python
 
+    import surpyval as surv
+    import numpy as np
+
     np.random.seed(30)
     x = surv.LogLogistic.random(10, 4., 2) + 10
     model = surv.LogLogistic.fit(x, how='MLE', offset=True)
 
 .. code:: text
 
-    MLE with autodiff hessian and jacobian failed, trying without hessian
-    MLE with autodiff jacobian failed, trying without jacobian or hessian
-    MLE FAILED: Likelihood function appears undefined; try alternate estimation method
+    Precision was lost, try:
+        - Using alternate fitting method
+        - visually checking model fit
+        - change data to be closer to 1.
 
-This shows, that the Maximum Likelihood Estimation failed for this data. However, because we have access to other methods, we can use an alternate estimation method:
+This shows, that the Maximum Likelihood Estimation may have failed for this data. However, because we have access to other methods, we can use an alternate estimation method:
 
 .. code:: python
+    
+    import surpyval as surv
+    import numpy as np
 
+    np.random.seed(30)
+    x = surv.LogLogistic.random(10, 4., 2) + 10
     model = surv.LogLogistic.fit(x, how='MPS', offset=True)
     print(model)
-    model.plot(plot_bounds=False)
+    model.plot()
 
 .. code:: text
 
-    Offset Parametric Surpyval model with LogLogistic distribution fitted by MPS yielding parameters (2.631868521887908, 0.9657662293516666) with offset of 11.524905733806891
+    Parametric SurPyval Model
+    =========================
+    Distribution        : LogLogistic
+    Fitted by           : MPS
+    Offset (gamma)      : 11.524905733806891
+    Parameters          :
+         alpha: 2.631868521887908
+          beta: 0.9657662293516666
 
 .. image:: images/surpyval-modelling-15.png
     :align: center
@@ -503,7 +679,13 @@ values are trunctated by the same values. We will now show what happens. First, 
 
 .. code:: text 
 
-    Parametric Surpyval model with Normal distribution fitted by MPP yielding parameters (99.44586157765144, 5.819425236010943)
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Normal
+    Fitted by           : MPP
+    Parameters          :
+            mu: 100.03108440743388
+         sigma: 5.432878735738111
 
 .. image:: images/mpp-turnbull-1.png
     :align: center
@@ -521,7 +703,13 @@ that it has not taken into account the truncation. Instead, if we use MLE we get
 
 .. code:: text 
 
-    Parametric Surpyval model with Normal distribution fitted by MLE yielding parameters [100.13045398   9.17784957]
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Normal
+    Fitted by           : MLE
+    Parameters          :
+            mu: 100.13045397963812
+         sigma: 9.17784957390746
 
 
 .. image:: images/mpp-turnbull-2.png
@@ -540,12 +728,15 @@ are truncated by the same value, otherwise it will give a poor fit.
 Mixture Models
 --------------
 
-
-On occarion, it can appear as though there are one, or two different distributions in the data you are using. On these occasions it can be useful to use a different type of distribuiton; or really, distributions. A mixture model is a distribution made from the partial combination of several distributions. Intuitively, it can be understood as a distribution where there is a proportion that fail for each kind of distribution. So 60% may come from a Weibull(3, 4) distribution but then another 40% come from a Weibull(19, 2) distribution.
+On occasion, it can appear as though there are one, or two different distributions in the data you are using. On these occasions it can be useful to use a different type of distribuiton; or really, distributions. A mixture model is a distribution made from the partial combination of several distributions. Intuitively, it can be understood as a distribution where there is a proportion that fail for each kind of distribution. So 60% may come from a Weibull(3, 4) distribution but then another 40% come from a Weibull(19, 2) distribution.
 
 SurPyval uses Expectation-Maximisation to 
 
 .. code:: python
+
+    import surpyval as surv
+    import numpy as np
+    from matplotlib import pyplot as plt
 
     x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17 ,17, 18, 19]
     x_ = np.linspace(np.min(x), np.max(x))
@@ -561,9 +752,13 @@ SurPyval uses Expectation-Maximisation to
     :align: center
 
 
-You can see that the mixture model, in blue, tracks the data more closely than does the single model. SurPyval has incredible flexibility. The number of distributions can be changed by simply changing the value of m, and, the distribution used in the mixture can also be changed. Consider:
+You can see that the mixture model, in blue, tracks the data more closely than does the single model. SurPyval has incredible flexibility. The number of distributions can be changed by simply changing the value of ``m``, and, the distribution passed to ``dist`` in the mixture can also be changed. Consider:
 
 .. code:: python
+
+    import surpyval as surv
+    import numpy as np
+    from matplotlib import pyplot as plt
 
     np.random.seed(1)
     x1 = surv.Normal.random(20, -10, 5)
@@ -583,7 +778,7 @@ You can see that the mixture model, in blue, tracks the data more closely than d
     :align: center
 
 
-It was that simple to create a gaussian mixture model using m=3 and the dist=surv.Normal parameters. SurPuyval does default to 2 Weibull distributions if neither parameters are provided, but it can take any distribution in SurPyval as an input distribution.
+It was that simple to create a gaussian mixture model using ``m=3`` and the ``dist=surv.Normal`` parameters. SurPuyval does default to 2 Weibull distributions if neither parameters are provided, but it can take any distribution in SurPyval as an input distribution.
 
 Finally, mixture models can take counts and censoring flags as input (but not, yet, truncation). This makes SurPyval a truly powerful package for your survival analysis.
 
@@ -593,46 +788,141 @@ Limited Failure Population
 
 Another kind of model that is useful in survival analysis is when a population has a limited number of items in the population that are susceptible to the failure. This is also known as a 'Defective Subpopulation' model. As such, no matter how long a test continues, it will not be possible for all items to fail (with the particular death/failure).
 
-As an example:
+As an example, we can created a Defective Subpopulation Weibull, also known as a Limited Failure Population Model using a Weibull distribution:
 
 .. code:: python
 
-    lfp_weibull = LFP(surv.Weibull)
-    np.random.seed(10)
-    x1 = surv.Weibull.random(60, 10, 2)
-    c1 = np.zeros_like(x1)
-    x2 = np.ones(40) * (np.max(x1) + 1)
-    c2 = np.ones_like(x2)
-    x = np.concatenate([x1, x2])
-    c = np.concatenate([c1, c2])
+    import surpyval as surv
+    import numpy as np
+    from matplotlib import pyplot as plt
 
-    model = surv.Weibull.fit(x=x, c=c)
+    lfp_weibull = surv.Weibull.from_params([10, 2], p=0.6)
+    np.random.seed(10)
+    # LFP Model outputs x, c, and n from `random()`
+    x, c, n = lfp_weibull.random(100)
+
+    # Fit regular Weibull
+    model = surv.Weibull.fit(x=x, c=c, n=n)
     model.plot(plot_bounds=False)
-    lfp_model = lfp_weibull.fit(x=x, c=c)
+
+    # Set LFP to be `True`
+    lfp_model = surv.Weibull.fit(x=x, c=c, n=n, lfp=True)
     print(lfp_model)
     xx = np.linspace(np.min(x), np.max(x)*2)
     plt.plot(xx, lfp_model.ff(xx), color='red')
 
 .. code:: text
 
-    Parametric Surpyval model with LFP distribution fitted by MLE yielding parameters [ 0.60363768 10.06681404  2.0920684 ]
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Max Proportion (p)  : 0.5553951704157292
+    Parameters          :
+         alpha: 10.180334244350309
+          beta: 2.1358575854287265
 
 .. image:: images/surpyval-modelling-18.png
     :align: center
 
+This API works with any distribution so simply changing ``Weibull`` to ``Exponential`` would create a Defective Subpopulation Exponential / Limited Failure Population Exponential model. Further, if it was changed to ``Gamma`` it would create a Defective Subpopulation Gamma model / Limited Failure Population Gamma.
 
-LFP models can be computed with each method that handles censoring, the default, as always is MLE, but you can use MPS, MSE, but not (yet) MPP.
+LFP models can only (as yet) work with ``MLE``. It cannot (yet) work with the other estimation methods. The ``MSE`` is a good candidate for implementation.
 
 Zero-Inflated Modelling
 -----------------------
 
-In survival analysis you might have the scenario where many failure times are 0, known as being dead on arrival. In this case
-we need a model that can account for the fact that many will be failed at 0, this is a situation that cannot be handled by
-regular distribuitons, since most have a 0% chance of failing at 0. Therefore what we need is something that is symmetrical
-to the LFP/DS case, where a proportion of the failures occur at 0 instead of there being a proportion that will never fail.
+In survival analysis you might have the scenario where many failure times are 0, known as being dead on arrival. In this case we need a model that can account for the fact that many will be failed at 0, this is a situation that cannot be handled by regular distribuitons, since most have a 0% chance of failing at 0. Therefore what we need is something that is symmetrical to the LFP/DS case, where a proportion of the failures occur at 0 instead of there being a proportion that will never fail.
 
-Examples coming soon.
 
+.. code:: python
+
+    import surpyval as surv
+    from autograd import numpy as np
+
+    dist = surv.ExpoWeibull
+    model = dist.from_params([10.2, 2., 1.3], f0=0.15)
+    np.random.seed(10)
+    x = model.random(100)
+    model
+
+.. code:: text
+
+    Parametric SurPyval Model
+    =========================
+    Distribution        : ExpoWeibull
+    Fitted by           : given parameters
+    Zero-Inflation (f0) : 0.15
+    Parameters          :
+         alpha: 10.2
+          beta: 2.0
+            mu: 1.3
+
+Using this random data, we can make a fitted model (with the added convenience not offered in the real world of knowing exactly what parameters we are aiming toward).
+
+.. code:: python
+
+    fitted_model = dist.fit(x, zi=True)
+    print(fitted_model)
+    fitted_model.plot()
+
+
+.. code:: text
+
+    Parametric SurPyval Model
+    =========================
+    Distribution        : ExpoWeibull
+    Fitted by           : MLE
+    Zero-Inflation (f0) : 0.1799999522942094
+    Parameters          :
+         alpha: 11.723925167019866
+          beta: 2.769781748379123
+            mu: 0.8437868556785479
+
+
+.. image:: images/zi-model-1.png
+    :align: center
+
+
+We can see that we have made a good fit!
+
+To showcase the SurPyval API again, and to demonstrate the flexibility, it is trivial to have Defective Subpopulation Zero Inflated (DSZI) model / Limited Failure Population and Zero Inflated model.
+
+
+.. code:: python
+
+    import surpyval as surv
+    import numpy as np
+
+    dist = surv.LogNormal
+    model = dist.from_params([2.2, .2], f0=0.05, p=0.6)
+    np.random.seed(10)
+    # Random values from LFP models come in xcn format!!!!!
+    x, c, n = model.random(100)
+
+
+    fitted_model = dist.fit(x, c, n, zi=True, lfp=True)
+    print(fitted_model)
+    fitted_model.plot()
+
+
+.. code:: text
+
+    Parametric SurPyval Model
+    =========================
+    Distribution        : LogNormal
+    Fitted by           : MLE
+    Max Proportion (p)  : 0.6061204729747632
+    Zero-Inflation (f0) : 0.040000034963115105
+    Parameters          :
+            mu: 2.2060270833195372
+         sigma: 0.19060910628572927
+
+
+.. image:: images/zi-model-2.png
+    :align: center
+
+Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data.
 
 Confidence Intervals
 --------------------
@@ -646,7 +936,7 @@ Once you have a model, this can easily be computed with the ``cb()`` method.
 .. code:: python
 
     from surpyval import Weibull
-    from autograd import numpy as np
+    import numpy as np
     from matplotlib import pyplot as plt
 
     x = Weibull.random(100, 10, 3)
@@ -680,6 +970,7 @@ use the autograd numpy import to make this work.
 .. code:: python
 
     import surpyval as surv
+    # IMPORTANT - Will not work with regular numpy
     from autograd import numpy as np
 
     def qf(p, mu, b):
@@ -714,7 +1005,13 @@ With this now created, all the calls to the regular surpyval API can be used.
 
 .. code:: text
 
-    Parametric Surpyval model with Gompertz distribution fitted by MLE yielding parameters [0.30887091 1.04352087]
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Gompertz
+    Fitted by           : MLE
+    Parameters          :
+            nu: 1.15060014910275
+             b: 1.8973107004872167
 
 If we transform the data slightly, we can show that this can be used with censored and truncated data
 as well.
@@ -731,12 +1028,19 @@ as well.
     c = c[x > tl]
     x = x[x > tl]
 
-    Gompertz.fit(x=x, c=c, tl=tl)
+    model = Gompertz.fit(x=x, c=c, tl=tl)
+    model
 
 
-.. code::text
+.. code:: text
 
-    Parametric Surpyval model with Gompertz distribution fitted by MLE yielding parameters [0.24876072 1.16574707]
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Gompertz
+    Fitted by           : MLE
+    Parameters          :
+            nu: 1.4228615499353794
+             b: 1.688152800158132
 
 This is extraordinary! We have created a new distribution using only the cumulative hazard function, but
 are able to handle arbitrary censoring and truncation. It shows the power of the SurPyval API and
@@ -764,3 +1068,4 @@ linear scale for both the x and y axis and it shows that the confidence bounds h
     Due to the implementation of confidence bounds in surpyval it can result 
     in numeric overflows which results in incredulous bounds. Please take caution when 
     using the cb with non surpyval implemented distributions.
+

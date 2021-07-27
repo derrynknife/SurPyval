@@ -186,7 +186,7 @@ class ParametricFitter():
             offset=False, zi=False, lfp=False, tl=None, tr=None,
             xl=None, xr=None, fixed=None, heuristic='Turnbull',
             init=[], rr='y', on_d_is_0=False,
-            turnbull_estimator='Nelson-Aalen'):
+            turnbull_estimator='Fleming-Harrington'):
 
         r"""
 
@@ -247,14 +247,20 @@ class ParametricFitter():
         init : array like, optional
             initial guess of parameters. Useful if method is failing.
 
-        rr : {'y', 'x'}
+        rr : ('y', 'x')
             The dimension on which to minimise the spacing between the line and the observation.
             If 'y' the mean square error between the line and vertical distance to each point is minimised.
             If 'x' the mean square error between the line and horizontal distance to each point is minimised.
 
-        turnbull_estimator : ('Nelson-Aalen' or 'Kaplan-Meier'), str, optional
-            If using the Turnbull heuristic, you can elect to use either the KM or NA estimator with 
-            the Turnbull estimate of x, r, and d. Defaults to KM.
+        on_d_is_0 : boolean, optional
+            For the case when using MPP and the highest value is right censored, you can choosed to
+            include this value into the regression analysis or not. That is, if :code:`False`, all values
+            where there are 0 deaths are excluded from the regression. If :code:`True` all values
+            regardless of whether there is a death or not are included in the regression.
+
+        turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier', or 'Fleming-Harrington'), str, optional
+            If using the Turnbull heuristic, you can elect to use either the KM, NA, or FH estimator with 
+            the Turnbull estimates of r, and d. Defaults to FH.
 
         Returns
         -------
@@ -263,43 +269,50 @@ class ParametricFitter():
             A parametric model with the fitted parameters and methods for all functions of the distribution using the 
             fitted parameters.
 
-
         Examples
         --------
         >>> from surpyval import Weibull
+        >>> import numpy as np
         >>> x = Weibull.random(100, 10, 4)
         >>> model = Weibull.fit(x)
         >>> print(model)
-        Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters [10.25563233  3.68512055]
-
-        >>> model = Weibull.fit(x, how='MPS', fixed={'alpha' : 10})
-        >>> print(model)
-        Parametric Surpyval model with Weibull distribution fitted by MPS yielding parameters [10.          3.45512434]
-
-        >>> model = Weibull.fit(xl=x, xr=x+2, how='MPP')
-        >>> print(model)
-        Parametric Surpyval model with Weibull distribution fitted by MPP yielding parameters (11.465337182989183, 9.217130068358955)
-
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MLE
+        Parameters          :
+             alpha: 10.551521182640098
+              beta: 3.792549834495306
+        >>> Weibull.fit(x, how='MPS', fixed={'alpha' : 10})
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MPS
+        Parameters          :
+             alpha: 10.0
+              beta: 3.4314657446866836
+        >>> Weibull.fit(xl=x-1, xr=x+1, how='MPP')
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MPP
+        Parameters          :
+             alpha: 9.943092756713078
+              beta: 8.613016934518258
         >>> c = np.zeros_like(x)
         >>> c[x > 13] = 1
         >>> x[x > 13] = 13
         >>> c = c[x > 6]
         >>> x = x[x > 6]
-        >>> model = Weibull.fit(x=x, c=c, tl=6)
-        >>> print(model)
-        Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters [9.70132936 3.03139549]
+        >>> Weibull.fit(x=x, c=c, tl=6)
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MLE
+        Parameters          :
+             alpha: 10.363725328793413
+              beta: 4.9886821457305865
         """
-
-        if (x is not None) & ((xl is not None) | (xr is not None)):
-            raise ValueError("Must use either 'x' of both 'xl and 'xr'")
-
-        if (x is None) & ((xl is None) | (xr is None)):
-            raise ValueError("Must use either 'x' of both 'xl and 'xr'")
-
-        if x is None:
-            xl = np.array(xl).astype(float)
-            xr = np.array(xr).astype(float)
-            x = np.vstack([xl, xr]).T
 
         if offset and self.name in ['Normal', 'Beta', 'Uniform', 'Gumbel', 'Logistic']:
             raise ValueError('{dist} distribution cannot be offset'.format(dist=self.name))
@@ -328,13 +341,19 @@ class ParametricFitter():
         if (zi & (self.support[0] != 0)):
             raise ValueError("zero-inflated models can only work with models starting at 0")
 
-        x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, tl=tl, tr=tr)
+        x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
 
         if surpyval.utils.check_no_censoring(c) and (how == 'MOM'):
             raise ValueError('Method of moments doesn\'t support censoring')
         
         if (surpyval.utils.no_left_or_int(c)) and (how == 'MPP') and (not heuristic == 'Turnbull'):
             raise ValueError('Probability plotting estimation with left or interval censoring only works with Turnbull heuristic')
+
+        if (heuristic == 'Turnbull') & (not ((-1 in c) or (2 in c))) & ((~np.isfinite(t[:, 1])).any()):
+            # The Turnbull method is extremely memory intensive.
+            # So if no left or interval censoring and no right-truncation
+            # then this is equivalent.
+            heuristic = turnbull_estimator
 
         if (not offset) & (not zi):
             if x.ndim == 2:
@@ -370,14 +389,30 @@ class ParametricFitter():
 
             # Need a better general fitter to include offset
             if init == []:
-                init_mask = np.logical_and(x > self.support[0], x < self.support[1])
                 if self.name in ['Gumbel', 'Beta', 'Normal', 'Uniform']:
-                    init = np.array(self._parameter_initialiser(x[init_mask], c[init_mask], n[init_mask]))
+                    init = np.array(self._parameter_initialiser(x, c, n))
                 else:
-                    init = np.array(self._parameter_initialiser(x[init_mask], c[init_mask], n[init_mask], offset=offset))
+                    
+                    if x.ndim == 2:
+                        init_mask = np.logical_or(x[:, 0] <= self.support[0],
+                                                  x[:, 0] >= self.support[1])
+                        init_mask = ~np.logical_and(init_mask, c == 0)
+                        xl = x[init_mask, 0]
+                        xr = x[init_mask, 1]
+                        x_init = np.vstack([xl, xr]).T
+                    else:
+                        init_mask = np.logical_or(x <= self.support[0],
+                                                  x >= self.support[1])
+                        init_mask = ~np.logical_and(init_mask, c == 0)
+
+                        x_init = x[init_mask]
+                    c_init = c[init_mask]
+                    n_init = n[init_mask]
+                    
+                    init = np.array(self._parameter_initialiser(x_init, c_init, n_init, offset=offset))
 
                 if lfp:
-                    init = np.concatenate([init, [0.75]])
+                    init = np.concatenate([init, [0.99]])
 
                 if zi:
                     init = np.concatenate([init, [(n[x == 0]).sum()/n.sum()]])
@@ -398,6 +433,9 @@ class ParametricFitter():
         results = METHOD_FUNC_DICT[how](model)
 
         for k, v in results.items():
+            setattr(model, k, v)
+
+        for k, v in zip(self.param_names, model.params):
             setattr(model, k, v)
 
         return model
@@ -460,18 +498,25 @@ class ParametricFitter():
 
         Examples
         --------
-        >>> from surpyval import Weibull
+        >>> import surpyval as surv
         >>> df = surv.datasets.BoforsSteel.df
-        >>> model = Weibull.fit_from_df(df, x='x', n='n', offset=True)
+        >>> model = surv.Weibull.fit_from_df(df, x='x', n='n', offset=True)
         >>> print(model)
-        Offset Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters [7.14192522 2.6204524 ] with offset of 39.76562962867473
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MLE
+        Offset (gamma)      : 39.76562962867477
+        Parameters          :
+             alpha: 7.141925216146524
+              beta: 2.6204524040137844
         """
 
         if not type(df) == pd.DataFrame:
             raise ValueError("df must be a pandas DataFrame")
 
         if (x is not None) and ((xl is not None) or (xr is not None)):
-            raise ValueError("Must use either 'x' or 'xl' and 'xr'; cannot use both")
+            raise ValueError("Must use either `x` or `xl` and `xr`; cannot use both")
 
         if x is not None:
             x = df[x].astype(float)
@@ -492,7 +537,7 @@ class ParametricFitter():
             elif np.isscalar(tl):
                 tl = (np.ones(df.shape[0]) * tl).astype(float)
             else:
-                raise ValueError('tl must be scalar or column label')
+                raise ValueError('`tl` must be scalar or column label')
         else:
             tl = np.ones(df.shape[0]) * -np.inf
 
@@ -502,7 +547,7 @@ class ParametricFitter():
             elif np.isscalar(tr):
                 tr = (np.ones(df.shape[0]) * tr).astype(float)
             else:
-                raise ValueError('tr must be scalar or column label')
+                raise ValueError("`tr` must be scalar or a string representing a column label")
         else:
             tr = np.ones(df.shape[0]) * np.inf
 
@@ -538,10 +583,23 @@ class ParametricFitter():
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 4])
         >>> print(model)
-        Parametric Surpyval model with Weibull distribution fitted by given parameters yielding parameters [10  4]
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : given parameters
+        Parameters          :
+             alpha: 10
+              beta: 4
         >>> model = Weibull.from_params([10, 4], gamma=2)
         >>> print(model)
-        Offset Parametric Surpyval model with Weibull distribution fitted by given parameters yielding parameters [10  4] with offset of 2
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : given parameters
+        Offset (gamma)      : 2
+        Parameters          :
+             alpha: 10
+              beta: 4
         """
         if self.k != len(params):
             raise ValueError("Must have {k} params for {dist} distribution".format(k=self.k, dist=self.name))
@@ -567,7 +625,7 @@ class ParametricFitter():
             zi = False
             f0 = 0
 
-        model = para.Parametric(self, 'given parameters', None, offset, lfp, False)
+        model = para.Parametric(self, 'given parameters', None, offset, lfp, zi)
         model.gamma = gamma
         model.p = p
         model.f0 = f0

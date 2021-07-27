@@ -23,7 +23,7 @@ def mse(model):
 
     # Need to make the Turnbull estimate much much much faster (and less memory before I unlock this)
     if (-1 in c) or (2 in c):
-        x_, r, d, R = nonp.turnbull(x, c, n, t, estimator='Nelson-Aalen')
+        x_, r, d, R = nonp.turnbull(x, c, n, t, estimator='Fleming-Harrington')
     else:
         x_, r, d, R = nonp.nelson_aalen(x, c, n)
 

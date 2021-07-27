@@ -75,21 +75,25 @@ class Parametric():
 
 
     def __repr__(self):
+        param_string = '\n'.join(['{:>10}'.format(name) + ": " + str(p) for p, name in zip(self.params, self.dist.param_names)])
         if hasattr(self, 'params'):
-            out = ('Parametric Surpyval model with {dist} distribution \n'
-                   + 'Fitted by {method} \n'
-                   + 'with parameters '
-                   + '{params}').format(dist=self.dist.name, 
-                                        method=self.method, 
-                                        params=self.params)
+            out = ('Parametric SurPyval Model'
+                   + '\n========================='
+                   + '\nDistribution        : {dist}'
+                   + '\nFitted by           : {method}'
+                   ).format(dist=self.dist.name, 
+                            method=self.method)
             if self.offset:
-                out += ' with offset of {gamma}'.format(gamma=self.gamma)
+                out += '\nOffset (gamma)      : {gamma}'.format(gamma=self.gamma)
 
             if self.lfp:
-                out += '\nlimited to a maximum proportion of {p}'.format(p=self.p)
+                out += '\nMax Proportion (p)  : {p}'.format(p=self.p)
 
             if self.zi:
-                out += '\nzero-inflated by {f0}'.format(f0=self.f0)
+                out += '\nZero-Inflation (f0) : {f0}'.format(f0=self.f0)
+
+            out = (out + '\nParameters          :\n'
+                       + '{params}'.format(params=param_string))
 
             return out
         else:

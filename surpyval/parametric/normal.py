@@ -35,8 +35,8 @@ class Normal_(ParametricFitter):
     def _parameter_initialiser(self, x, c=None, n=None, t=None):
         return para.Normal.fit(x, c, n, t, how='MPP').params
 
-    def log_sf(self, x, mu, sigma):
-        return np.log(self.sf(x, mu, sigma))
+    def log_df(self, x, mu, sigma):
+        return np.log(self.df(x, mu, sigma))
 
     def sf(self, x, mu, sigma):
         r"""
