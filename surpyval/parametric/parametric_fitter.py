@@ -441,8 +441,9 @@ class ParametricFitter():
         for k, v in results.items():
             setattr(model, k, v)
 
-        for k, v in zip(self.param_names, model.params):
-            setattr(model, k, v)
+        if hasattr(mdoel, 'params'):
+            for k, v in zip(self.param_names, model.params):
+                setattr(model, k, v)
 
         return model
 
