@@ -47,6 +47,12 @@ class BoforsSteel_():
 		#self.df = pd.read_csv('surpyval/datasets/bofors_steel.csv')
 		self.df = pd.read_csv(resource_filename("surpyval", "datasets/bofors_steel.csv"), engine="python")
 
+class Boston_():
+	def __init__(self):
+		#self.df = pd.read_csv('surpyval/datasets/bofors_steel.csv')
+		self.df = pd.read_csv(resource_filename("surpyval", "datasets/boston.csv"), engine="python")
+
+
 class Bearing_():
 	def __init__(self):
 		x = [17.88, 28.92, 33, 41.52, 42.12, 45.6, 48.4, 51.84, 
@@ -63,3 +69,4 @@ class Bearing_():
 
 BoforsSteel = BoforsSteel_()
 Bearing = Bearing_()
+Boston = Boston_()
