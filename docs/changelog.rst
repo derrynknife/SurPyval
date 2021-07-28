@@ -10,6 +10,7 @@ v0.10.0 (planned)
 v0.9.0 (in progress)
 --------------------
 
+- CoxPH Fitter
 - Document the rationale behind using Fleming-Harrington as the default.
 - Add application examples:
 	- Reliability Engineering
@@ -19,6 +20,7 @@ v0.9.0 (in progress)
 	- Medical science
 - Better docs on using Pandas
 - Better initial estimates in the ``_parameter_initialiser`` for the lfp data (use max F from nonp estimate...)
+- `issue #13 <https://github.com/derrynknife/SurPyval/issues/13>`_ - Better failures when insufficient data provided.
 
 v0.8.0 (27 July 2021)
 ---------------------

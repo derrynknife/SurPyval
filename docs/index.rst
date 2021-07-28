@@ -83,6 +83,7 @@ Contents:
    Quickstart
    Types of Data
    Conventions
+   Handy References - Aide-mémoire
    Data Wrangler Examples
    Datasets
 
@@ -93,6 +94,7 @@ Contents:
 
    Non-Parametric Estimation
    Parametric Estimation
+   Proportional Hazard
 
 .. toctree::
    :maxdepth: 1

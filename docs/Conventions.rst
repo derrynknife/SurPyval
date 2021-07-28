@@ -49,15 +49,8 @@ For the censoring values, surpyval uses the convention used in Meeker and Escoba
 This convention gives an intuitive feel for the placement of the data on a timeline.
 
 
-Function conventions
+Function Conventions
 --------------------
-
-There exists a relationship between each of the functions of a distribution and the others. This can be very useful to keep in mind when understanding how surpyval works. For example, the Nelson-Aalen estimator is used to estimate the cumulative hazard function (Hf), the below relationships is how distribution for this can be used to estimate the survival function, or the cdf.
-
-.. image:: images/relationships.png
-  :align: center
-
-The above table shows how the function on the right, can be described by the function along the top row (I leave out the function describing itself as it is simply itself...). So, an interesting one is that the reliability or survival function, R(t), is simply the exponentiated negative of the cumulative hazard function! This relationship holds for **every** distribution.
 
 The conventions for SurPyval are that each object returned from a :code:`fit()` call has the ability to compute the following:
 
