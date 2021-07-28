@@ -581,6 +581,7 @@ def fsli_to_xcn(f, s, l, i):
     x, c, n = xcn_sort(x, c, n)
 
     return x, c, n
+
 def fsl_to_xcn(f, s, l):
     """
     Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
@@ -619,6 +620,8 @@ def fsl_to_xcn(f, s, l):
     x, c, n = xcn_sort(x, c, n)
 
     return x, c, n
+
+
 def fs_to_xcn(f, s):
     """
     Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
@@ -652,6 +655,8 @@ def fs_to_xcn(f, s):
     x, c, n = xcn_sort(x, c, n)
 
     return x, c, n
+
+
 def tl_tr_to_t(tl=None, tr=None):
     if tl is not None: tl = np.array(tl)
     if tr is not None: tr = np.array(tr)
@@ -671,18 +676,48 @@ def tl_tr_to_t(tl=None, tr=None):
 
     t = np.vstack([tl, tr]).T
     return t
+
+
+def fsli_to_xcn(f=None, s=None, l=None, i=None):
+    """
+    Chain of the fs_to_xrd and xrd_to_xcn functions.
+    """
+    if f is None:
+        f = []
+    if s is None:
+        s = []
+    if l is None:
+        l = []
+    x, c, n = fsl_to_xcn(f, s, l)
+
+    if i is None:
+        return x, c, n
+    else:
+        i = np.array(i)
+        if i.ndim != 2:
+            raise ValueError("'i' must be of shape (n, 2)")
+        x = np.vstack([x, x]).T
+        x = np.concatenate([x, i], axis=0)
+        c = np.concatenate([c, np.ones(i.shape[0]) * 2])
+        n = np.concatenate([n, np.ones(i.shape[0])])
+        return x, c, n
+
 def fs_to_xrd(f, s):
     """
     Chain of the fs_to_xrd and xrd_to_xcn functions.
     """
     x, c, n = fs_to_xcn(f, s)
     return xcn_to_xrd(x, c, n)
+
+
 def fsl_to_xrd(f, s, l):
     """
     Chain of the fsl_to_xrd and xrd_to_xcn functions.
     """
     x, c, n = fsl_to_xcn(f, s, l)
     return xcn_to_xrd(x, c, n)
+
+
 def round_sig(points, sig=2):
     """
     Used to round to sig significant figures.

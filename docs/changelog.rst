@@ -19,8 +19,14 @@ v0.9.0 (in progress)
 	- Boston Housing
 	- Medical science
 - Better docs on using Pandas
+
+
 - Better initial estimates in the ``_parameter_initialiser`` for the lfp data (use max F from nonp estimate...)
 - `issue #13 <https://github.com/derrynknife/SurPyval/issues/13>`_ - Better failures when insufficient data provided.
+- Cleaned up NonParametric code (removed some technical debt and duplicated code).
+- Changed the ``__repr__`` function in ``NonParametric`` to be aligned to ``Parametric``
+- Updated the docstring for ``fit()`` for ``NonParametric``
+
 
 v0.8.0 (27 July 2021)
 ---------------------
@@ -33,6 +39,8 @@ v0.8.0 (27 July 2021)
 - Added a Fleming-Harrington method to the Turnbull class.
 - Improved stability with dedicated ``log_sf``, ``log_ff``, and ``log_df`` functions. Less chance of overflows and therefore better convergence.
 - Changed interpolation method of ``NonParametric``. Allows for use of cubic interpolation
+- Changed ``from_params`` to accept lfp and zi (or any combo)
+- Changed ``random()`` in ``Parametric`` so that lfp or zi models can be simulated!
 - Improved the way surpyval fails
 - Substantial docs updates.
 

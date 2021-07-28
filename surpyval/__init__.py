@@ -21,6 +21,7 @@ from surpyval.utils import (
 	xrd_to_xcn,
 	xcnt_handler, 
 	xcnt_to_xrd,
+	fsli_to_xcn,
 	fsl_to_xcn, 
 	fs_to_xcn, 
 	fs_to_xrd, 

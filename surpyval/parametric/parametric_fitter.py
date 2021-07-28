@@ -331,9 +331,6 @@ class ParametricFitter():
         if t is not None and how == 'MSE':
             raise NotImplementedError('Mean square error doesn\'t yet support tuncation')
 
-        # if t is not None and how == 'MPP':
-            # raise NotImplementedError('Method of probability plotting doesn\'t yet support tuncation')
-
         if t is not None and how == 'MOM':
             raise ValueError('Maximum product spacing doesn\'t support tuncation')
 
