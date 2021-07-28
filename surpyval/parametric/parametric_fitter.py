@@ -31,6 +31,20 @@ METHOD_FUNC_DICT = {
     'MSE' : mse
 }
 
+def init_from_bounds(dist):
+    out = []
+    for low, high in dist.bounds:
+        if (low is None) & (high is None):
+            out.append(0)
+        elif high is None:
+            out.append(low + 1.)
+        elif low is None:
+            out.append(high - 1.)
+        else:
+            out.append((high + low)/2.)
+
+    return out
+
 class ParametricFitter():
     def log_df(self, x, *params):
         return np.log(self.hf(x, *params)) - self.Hf(x, *params)
@@ -412,7 +426,14 @@ class ParametricFitter():
                     init = np.array(self._parameter_initialiser(x_init, c_init, n_init, offset=offset))
 
                 if lfp:
-                    init = np.concatenate([init, [0.99]])
+                    _, _, _, F = nonp.plotting_positions(x, c, n)
+
+                    max_F = np.max(F)
+
+                    if max_F > 0.5:
+                        init = np.concatenate([init, [np.max(F)]])
+                    else:
+                        init = np.concatenate([init_from_bounds(self), [np.max(F)]])
 
                 if zi:
                     init = np.concatenate([init, [(n[x == 0]).sum()/n.sum()]])

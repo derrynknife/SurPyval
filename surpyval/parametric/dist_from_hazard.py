@@ -51,7 +51,6 @@ class Distribution(ParametricFitter):
             else:
                 out.append((high + low)/2.)
 
-        # out = self.fit(x, c, n, t, how='MSE', init=out).params
         
         return out
 
