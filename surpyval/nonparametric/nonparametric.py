@@ -17,7 +17,16 @@ class NonParametric():
     ``FlemingHarrington``, or ``Turnbull`` estimators.
     """
     def __repr__(self):
-        return "{model} survival model".format(model=self.model)
+        out = ('Non-Parametric SurPyval Model'
+               + '\n============================='
+               + '\nModel            : {dist}'
+              ).format(dist=self.model)
+
+        if 'estimator' in self.data:
+            out += '\nEstimator        : {turnbull}'.format(turnbull=self.data['estimator'])
+
+        return out
+
 
     def sf(self, x, interp='step'):
         r"""
