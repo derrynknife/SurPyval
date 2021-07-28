@@ -727,8 +727,8 @@ class Parametric():
         F  =  F[mask]
 
         if np.isfinite(self.data['t']).any():
-            Ftl = self.ff(np.min(self.data['t'][:, 0]))
-            Ftr = self.ff(np.max(self.data['t'][:, 1]))
+            Ftl = self.ff(x_[0])
+            Ftr = self.ff(x_[-1])
             F = Ftl + F * (Ftr - Ftl)
 
         y_scale_min = np.min(F[F > 0])/2
