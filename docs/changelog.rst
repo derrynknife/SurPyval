@@ -23,9 +23,11 @@ v0.9.0 (in progress)
 
 - Better initial estimates in the ``_parameter_initialiser`` for the lfp data (use max F from nonp estimate...)
 - `issue #13 <https://github.com/derrynknife/SurPyval/issues/13>`_ - Better failures when insufficient data provided.
+- `issue #12 <https://github.com/derrynknife/SurPyval/issues/12>`_ - Created ``fsli_to_xcn`` helper function.
 - Cleaned up NonParametric code (removed some technical debt and duplicated code).
 - Changed the ``__repr__`` function in ``NonParametric`` to be aligned to ``Parametric``
 - Updated the docstring for ``fit()`` for ``NonParametric``
+- 
 
 
 v0.8.0 (27 July 2021)

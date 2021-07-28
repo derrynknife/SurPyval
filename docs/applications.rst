@@ -6,7 +6,54 @@ This section documents some of the applications that a survival analysis toolkit
 Reliability Engineering
 -----------------------
 
-In 
+In reliability engineering we might be interested in the proportion of a population that will experience a particular failure mode. Further, in an effort to save money, we will want to determine the minimum duration of a test that can establish whether a component will fail. If the test is too long we will waste time and money in testing and if the testing is too short we will ship some products that will fail in the field. We need to optimise this interval.
+
+Using data from the paper that introduced the Limited Failure Population model to the reliability engineering world [Meeker]_ we can show how surpyval can be used to calculate the test duration.
+
+.. code:: python
+
+    import surpyval as surv
+
+    f = [.1, .1, .15, .6, .8, .8, 1.2, 2.5, 3., 4., 4., 6., 10., 10., 
+         12.5, 20., 20., 43., 43., 48., 48., 54., 74., 84., 94., 168., 263., 593.]
+    s = [1370.] * 4128
+
+    x, c, n = surv.fs_to_xcn(f, s)
+    model = surv.Weibull.fit(x, c, n, lfp=True)
+    print(model)
+    model.plot()
+
+
+.. code:: text
+
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Max Proportion (p)  : 0.006744450944727198
+    Parameters          :
+         alpha: 28.367193779799038
+          beta: 0.4959762140288241
+
+
+.. image:: images/applications-reliability-1.png
+    :align: center
+
+We can see from these results that at maximum we will have approximately 0.67% fail. If the company accepts a 0.1% probability of their products failing in the field then we can calculate the interval at which the difference between the total population and the proportion failed in the test is 0.1%.
+
+.. code:: python
+
+    from scipy.optimize import minimize
+    fun = lambda x : (0.001 - np.abs(model.p - model.ff(x)))**2
+
+    res = minimize(fun, 10, tol=1e-50)
+    print(res.x)
+
+.. code:: text
+
+    [104.43741352]
+
+Therefore we should do a burn in test up to approximately 104.4 to make sure we minimize the number of items shipped that are defective while also minimizing the duration of the test.
 
 Demographics / Actuarial
 ------------------------
@@ -94,6 +141,8 @@ Although this is a basic example, as insurance companies would have much more so
 
 References
 ----------
+
+.. [Meeker] William Q. Meeker (1987) Limited Failure Population Life Tests: Application to Integrated Circuit Reliability, Technometrics, 29(1), 51-65
 
 .. [GGN] Gavrilov, L. A., Gavrilova, N. S., & Nosov, V. N. (1983). Human life span stopped increasing: why?. Gerontology, 29(3), 176-180.
 
