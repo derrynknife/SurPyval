@@ -1,34 +1,9 @@
 import numpy as np
-from surpyval import nonparametric as nonp
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
-def _na(d, r):
-    H = np.cumsum(d/r)
-    H[np.isnan(H)] = np.inf
-    R = np.exp(-H)
-    return R
-    
-def _km(d, r):
-    R = 1 - d/r
-    R[np.isnan(R)] = 0
-    R = np.cumprod(R)
-    return R
-
-def fh_h(d_i, r_i):
-    out = 0
-    while d_i > 1:
-        out += 1./r_i
-        r_i -= 1
-        d_i -= 1
-    out += d_i/r_i
-    return out
-
-def _fh(d, r):
-    Y = np.array([fh_h(d_i, r_i) for r_i, d_i in zip(r, d)])
-    H = Y.cumsum()
-    H[np.isnan(H)] = np.inf
-    R = np.exp(-H)
-    return R
+from .nelson_aalen import na
+from .kaplan_meier import km
+from .fleming_harrington import fh
 
 def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
@@ -81,11 +56,11 @@ def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
     p_prev = np.zeros_like(p)
         
     if estimator == 'Kaplan-Meier':
-        func = _km
+        func = km
     elif estimator == 'Nelson-Aalen':
-        func = _na
+        func = na
     else:
-        func = _fh
+        func = fh
 
     old_err_state = np.seterr(all='ignore')
 
@@ -105,7 +80,7 @@ def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
         # Risk set, i.e the number of items at risk at each value x
         r = M - d.cumsum() + d
         # Find the reliability using the deaths and risk set. Can use either NA or KM!
-        R = func(d, r)
+        R = func(r, d)
         # Calculate the probability mass in each interval
         p = np.abs(np.diff(np.hstack([[1], R])))
 
@@ -118,9 +93,15 @@ def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
     d = d[1:-1]
     R = R[1:-1]
 
+    out = {}
+    out['x'] = x
+    out['r'] = r
+    out['d'] = d
+    out['R'] = R
+
     np.seterr(**old_err_state)
 
-    return x, r, d, R
+    return out
 
 class Turnbull_(NonParametricFitter):
     r"""

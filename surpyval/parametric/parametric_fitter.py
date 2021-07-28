@@ -107,29 +107,17 @@ class ParametricFitter():
         return t_denom
 
     def neg_ll(self, x, c, n, inf_c_flags, t, t_flags, gamma, p, f0, *params):
-        # if 2 in c:
-        #     like_i = self.like_i(x, c, n, inf_c_flags, *params)
-        #     x_ = copy(x[:, 0])
-        #     x_[x_ == 0] = 1
-        # else:
-        #     like_i = 0
-        #     x_ = copy(x)
-
         x = copy(x) - gamma
 
         if 2 in c:
             like_i = self.log_like_i(x, c, n, inf_c_flags, p, f0, *params)
             x_ = copy(x[:, 0])
-            # x_[x_ == 0] = 1
         else:
             like_i = 0
             x_ = copy(x)
         
-        # like = self.like(x_, c, n, *params)
         like = self.log_like(x_, c, n, p, f0, *params)
         like = like + like_i
-
-        # like = np.log(like) - np.log(self.like_t(t, t_flags, *params))
         like = like - np.log(self.like_t(t, t_flags, *params))
         like = np.multiply(n, like)
         like = -np.sum(like)
@@ -426,14 +414,14 @@ class ParametricFitter():
                     init = np.array(self._parameter_initialiser(x_init, c_init, n_init, offset=offset))
 
                 if lfp:
-                    _, _, _, F = nonp.plotting_positions(x, c, n)
+                    _, _, _, F = nonp.plotting_positions(x, c, n, heuristic='Nelson-Aalen')
 
                     max_F = np.max(F)
 
                     if max_F > 0.5:
-                        init = np.concatenate([init, [np.max(F)]])
+                        init = np.concatenate([init, [0.99]])
                     else:
-                        init = np.concatenate([init_from_bounds(self), [np.max(F)]])
+                        init = np.concatenate([init_from_bounds(self), [max_F]])
 
                 if zi:
                     init = np.concatenate([init, [(n[x == 0]).sum()/n.sum()]])

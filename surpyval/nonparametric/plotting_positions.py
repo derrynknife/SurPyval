@@ -89,25 +89,15 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
 
     if heuristic == 'Filliben':
         # Needs work
-        x_, r, d, R = nonp.filliben(x, c, n)
-        F = 1 - R 
-        return x_, r, d, F
+        out = nonp.filliben(x, c, n)
     elif heuristic == 'Nelson-Aalen':
-        x_, r, d, R = nonp.nelson_aalen(x, c, n, t=t)
-        F = 1 - R
-        return x_, r, d, F
+        out = nonp.nelson_aalen(x, c, n, t=t)
     elif heuristic == 'Kaplan-Meier':
-        x_, r, d, R = nonp.kaplan_meier(x, c, n, t=t)
-        F = 1 - R
-        return x_, r, d, F
+        out = nonp.kaplan_meier(x, c, n, t=t)
     elif heuristic == 'Fleming-Harrington':
-        x_, r, d, R = nonp.fleming_harrington(x, c, n, t=t)
-        F = 1 - R
-        return x_, r, d, F
+        out = nonp.fleming_harrington(x, c, n, t)
     elif heuristic == 'Turnbull':
-        x_, r, d, R = nonp.turnbull(x, c, n, t, estimator=turnbull_estimator)
-        F = 1 - R
-        return x_, r, d, F
+        out = nonp.turnbull(x, c, n, t, estimator=turnbull_estimator)
     else:
         # Reformat for plotting point style
         x_ = np.repeat(x, n)
@@ -144,5 +134,11 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
         elif heuristic == "DPW":        A, B = 1.0, 0.0
 
         F = (ranks - A)/(N + B)
-        F = pd.Series(F).ffill().fillna(0).values
-        return x_, r, d, F
+        R = 1 - pd.Series(F).ffill().fillna(0).values
+        out = {}
+        out['x'] = x_
+        out['r'] = r
+        out['d'] = d
+        out['R'] = R
+        
+    return out['x'], out['r'], out['d'], 1 - out['R']

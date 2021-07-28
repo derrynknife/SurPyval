@@ -1,15 +1,28 @@
 import numpy as np
-import surpyval
-from surpyval import nonparametric as nonp
+from surpyval.utils import xcnt_to_xrd
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
-def fleming_harrington(x, c=None, n=None, **kwargs):
-    x, r, d = surpyval.xcnt_to_xrd(x, c, n, **kwargs)
+def fh_h(r_i, d_i):
+    out = 0
+    while d_i > 1:
+        out += 1./r_i
+        r_i -= 1
+        d_i -= 1
+    out += d_i/r_i
+    return out
 
-    h = [np.sum([1./(r[i]-j) for j in range(d[i])]) for i in range(len(x))]
-    H = np.cumsum(h)
+def fh(r, d):
+    Y = np.array([fh_h(r_i, d_i) for r_i, d_i in zip(r, d)])
+    H = Y.cumsum()
+    H[np.isnan(H)] = np.inf
     R = np.exp(-H)
-    return x, r, d, R
+    return R
+
+def fleming_harrington(x, c, n, t, **kwargs):
+    xrd = xcnt_to_xrd(x, c, n, t)
+    out = {k : v for k, v in zip(['x', 'r', 'd'], xrd)}
+    out['R'] = fh(out['r'], out['d'])
+    return out
 
 class FlemingHarrington_(NonParametricFitter):
     r"""

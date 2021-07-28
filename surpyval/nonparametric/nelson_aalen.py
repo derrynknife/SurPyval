@@ -1,15 +1,18 @@
-import surpyval
 import numpy as np
-from surpyval import nonparametric as nonp
+from surpyval.utils import xcnt_to_xrd
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
-def nelson_aalen(x, c=None, n=None, **kwargs):
-    x, r, d = surpyval.xcnt_to_xrd(x, c, n, **kwargs)
-
-    h = d/r
-    H = np.cumsum(h)
+def na(r, d):
+    H = np.cumsum(d/r)
+    H[np.isnan(H)] = np.inf
     R = np.exp(-H)
-    return x, r, d, R
+    return R
+
+def nelson_aalen(x, c, n, t, **kwargs):
+    xrd = xcnt_to_xrd(x, c, n, t)
+    out = {k : v for k, v in zip(['x', 'r', 'd'], xrd)}
+    out['R'] = na(out['r'], out['d'])
+    return out
 
 class NelsonAalen_(NonParametricFitter):
     r"""

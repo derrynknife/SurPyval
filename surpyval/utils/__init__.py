@@ -425,7 +425,7 @@ def xcnt_handler(x=None, c=None, n=None, t=None,
 
     return x, c, n, t
 
-def xcnt_to_xrd(x, c=None, n=None, **kwargs):
+def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     """
     Converts the xcn format to the xrd format.
 
@@ -448,8 +448,8 @@ def xcnt_to_xrd(x, c=None, n=None, **kwargs):
     d: array
         array of the count of failures/deaths at each time x.
     """
-    x, c, n, t = xcnt_handler(x, c, n, **kwargs)
-        
+    x, c, n, t = xcnt_handler(x, c, n, t, **kwargs)
+
     if np.isfinite(t[:, 1]).any():
         raise ValueError("xrd format can't be used right truncated data")
         
