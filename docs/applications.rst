@@ -255,7 +255,7 @@ We now have a GM distribution object that can be used to fit data. But we need s
     x = x[np.isfinite(x)]
 
 
-The parameters for the distribution come from Gavrilov et al. ([GGN]_), specifically the parameters for the lifespans of the 1974-1978 data. So in this case we have (simulated) data on the lifespans of 100,000 thousand people and we need to determine the GM parameters. This can be compared to the historic parameters to see if the age related mortality has changed or has remained roughly constant. To do so, all we need do with surpyval is to put the data to the ``fit()`` method.
+The parameters for the distribution come from [Gavrilov]_, specifically the parameters for the lifespans of the 1974-1978 data. So in this case we have (simulated) data on the lifespans of 100,000 thousand people and we need to determine the GM parameters. This can be compared to the historic parameters to see if the age related mortality has changed or has remained roughly constant. To do so, all we need do with surpyval is to put the data to the ``fit()`` method.
 
 .. code:: python
 
@@ -347,13 +347,76 @@ The characteristic life of the new bearing is over 10 times higher! Quite an imp
 Social Science / Criminology
 ----------------------------
 
+Another application of surpyval is when encountering extreme values. The Weibull distribution is one of the limiting cases of the Generalized Extreme Value distribution. In other words, the Weibull distribution is the distribution that can model the strength of a chain because it can model the extreme value, in this case the minimum, of a collection of distributions. A chain is as only as strong as it's weakest link. If there are many many links in a chain (which is a fair assumption) then links of which follow a known strength distribution, then the strength of the chain will will follow a Weibull distribution. It is for this reason that the Weibull distribution is so widely used.
+
+Another extreme value is the maximum. The maximum extreme value distribution is the Frechet distribution. But, if you simply inverse a minimum, you can get a maxmimum. Therefore, if we know our data is following a process of finding a maximum, then we can use the Weibull distribution to model the phenonmena.
+
+.. warning::
+    This may be a distressing topic for some readers.
+
+Social scientists and criminologists are interested in understanding the phenomena of mass shootings in an effort to eliminate the scourge from society. A mass shooting is an extreme event, and an extreme event can be modelled to understand the risks of future occurence, and with that understanding, the effect of interventions can also be understood.
+
+Using the gun violence data from `Kaggle <https://www.kaggle.com/jameslko/gun-violence-data>`_ we can model the process. That is, if we take the maximum number of deaths in a given month over several years, we have data that can be used to estimate the probability of something even worse occuring. This data covers the period from 2013 to 2018, see Kaggle for more details.
+
+.. code:: python
+
+    import surpyval as surv
+    import pandas as pd
+
+    # Data not in surpyval, available at https://www.kaggle.com/jameslko/gun-violence-data
+    gun_violence_df = pd.read_csv('../gun-violence-data_01-2013_03-2018.csv', parse_dates=['date'])
+
+    # Find the maximum number of people killed each month
+    gun_violence_df = gun_violence_df.groupby(pd.Grouper(key='date', freq='M')).agg({'n_killed' : 'max'})
+
+    x = df['n_killed'].values
+
+    # Inverse the data to get the maximum
+    model = surv.Weibull.fit(1./x)
+    model.plot()
+
+.. image:: images/applications-crime-1.png
+    :align: center
+
+It is worth reminding that since we have taken the inverse, it is the lower values that represent more victims. And it is the extremes that we are trying to capture. You can see from the above plot that the model does not fit the data from 0.02 to 0.1 very well. We can try using a different approach
+
+.. code:: python
+
+    # Inverse the data to get the maximum
+    mpp_model = surv.Weibull.fit(1./x, how='MPP', offset=True)
+    mpp_model.plot()
+
+.. image:: images/applications-crime-2.png
+    :align: center
+
+You can see that this model is a much better description of the data. However, the problem is that it cannot have a real interpretation. Because the offset is negative, that means there is a non-zero probability of 0, which because the data was inversed, means that there is a non-zero probability of having a shooting with infinite victims. This model is therefore not a good option for such extreme extrapolations. The model can however, be used to estimate the probabiltiy of having a shooting as bad or worse than the most extreme event up to 2040.
+
+.. code:: python
+
+    p_happening = mpp_model.ff(1./50)
+    p_not_happening = 1 - p_happening
+    # Months from 2022 to 2040
+    months = 12 * (2040 - 2022)
+    p_not_happening_before_2040 = (p_not_happening)**(months)
+    (1 - p_not_happening_before_2040)*100
+
+.. code:: text
+
+    (1.6077640040390584, 96.98325003600236)
+
+The model estimates that there is an approximately 1.6% chance of an event killing 50 or more people in a given month, which may seem low, however, because there are 216 months between 2022 and 2040 the chances of not having as extreme an event over that time period becomes horrifyingly small. The model suggests that the probability of having a month in which an event with more than 50 people will be killed, has a 97.0% chance of happening from 2022 to 2040. Chilling.
+
+This is a bit higher than other reports of the same prediction, see [Duwe]_ who report at 35% probability, which is comforting.
+
 Economics
 ---------
 
 References
 ----------
 
+.. [Duwe] Duwe, G., Sanders, N. E., Rocque, M., & Fox, J. A. (2021). Forecasting the Severity of Mass Public Shootings in the United States. Journal of Quantitative Criminology, 1-39.
+
 .. [Meeker] William Q. Meeker (1987) Limited Failure Population Life Tests: Application to Integrated Circuit Reliability, Technometrics, 29(1), 51-65
 
-.. [GGN] Gavrilov, L. A., Gavrilova, N. S., & Nosov, V. N. (1983). Human life span stopped increasing: why?. Gerontology, 29(3), 176-180.
+.. [Gavrilov] Gavrilov, L. A., Gavrilova, N. S., & Nosov, V. N. (1983). Human life span stopped increasing: why?. Gerontology, 29(3), 176-180.
 
