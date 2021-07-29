@@ -295,8 +295,60 @@ From the results above, you can see that the probability of death over the two y
 
 Although this is a basic example, as insurance companies would have much more sophisticated models, it shows the basics of how demographic and actuarial data can be used. This shows the application of surpyval to actuarial and demogrphic studies.
 
-Reliability Engineering
------------------------
+Applied Reliability Engineering - 2
+-----------------------------------
+
+In reliability engineering you can come across the case where a new product has been built that is similar in design to a previous, but has better materias, geometry, seals.. etc. You have data from the tests of the old product and new results for the same test on the new product. The only problem, the new product only had one failure in the test! What will you do?
+
+Given the similarities, it is common to use the same shape parameter, the :math:`\beta` value, from a similar product as an initial estimate. In this case, we may need to know the reliability of the item in the field. We can create a model of this new product, but first the old product:
+
+
+.. code:: python
+
+    import surpyval as surv
+
+    x_old = [ 5.2, 10.7, 16.3, 22. , 32.9, 38.6, 42.1, 58.7, 92.8, 93.8]
+    old = surv.Weibull.fit(x_old)
+    print(old)
+
+.. code:: text
+
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Parameters          :
+         alpha: 45.27418484669478
+          beta: 1.377623372184365
+
+We can use the above value of beta with the new data:
+
+.. code:: python
+
+
+    x_new = [87, 100]
+    c_new = [0, 1]
+    n_new = [1, 9]
+
+    surv.Weibull.fit(x_new, c_new, n_new, fixed={'beta' : 1.3776}, init=[100.])
+
+.. code:: text
+
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Parameters          :
+         alpha: 525.1398140084557
+          beta: 1.3776
+
+The characteristic life of the new bearing is over 10 times higher! Quite an improved new design. This new model can be used as part of the sales of the new product (10x more life!) and to provide recommendations for maintenance.
+
+Social Science / Criminology
+----------------------------
+
+Economics
+---------
 
 References
 ----------

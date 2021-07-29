@@ -12,12 +12,13 @@ v0.9.0 (in progress)
 
 - CoxPH Fitter
 - Document the rationale behind using Fleming-Harrington as the default.
-- Add application examples:
+- Add application examples to docs:
 	- Reliability Engineering
 	- Actuary / Demography
-	- Social Science
+	- `Social Science/Criminology <https://link.springer.com/article/10.1007/s10940-021-09499-5>`_
 	- Boston Housing
 	- Medical science
+	- `Economics <https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0232615>`_
 - Better docs on using Pandas
 
 
