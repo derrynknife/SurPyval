@@ -411,12 +411,84 @@ This is a bit higher than other reports of the same prediction, see [Duwe]_ who 
 Economics
 ---------
 
+Economists are interested in the times between recessions. This information helps them formulate policy proscriptions that may (or may not) reduce the duration of a recession, or the time between recessions. Using data from Tadeu Cristino et al. [TC]_ we can use real data to esimate the probability of a recession.
+
+.. code:: python
+
+    import pandas as pd
+    import surpyval as surv
+
+    start = [np.nan, "June 1857", "October 1860", "April 1865", "June 1869", 
+             "October 1873", "March 1882", "March 1887", "July 1890", "January 1893",
+             "December 1895", "June 1899", "September 1902", "May 1907", "January 1910",
+             "January 1913", "August 1918", "January 1920", "May 1923", "October 1926",
+             "August 1929", "May 1937", "February 1945", "November 1948", "July 1953",
+             "August 1957", "April 1960", "December 1969", "November 1973", 
+             "January 1980", "July 1981", "July 1990", "March 2001", "December 2007"]
+
+
+    end = [
+        "December 1854", "December 1858", "June 1861", "December 1867", "December 1870",
+        "March 1879", "May 1885", "April 1888", "May 1891", "June 1894", "June 1897",
+        "December 1900", "August 1904", "June 1908", "January 1912", "December 1914",
+        "March 1919", "July 1921", "July 1924", "November 1927", "March 1933", 
+        "June 1938", "October 1945", "October 1949", "May 1954", "April 1958", 
+        "February 1961", "November 1970", "March 1975", "July 1980", "November 1982",
+        "March 1991", "November 2001", "June 2009"
+    ]
+
+    df = pd.DataFrame({'start' : pd.to_datetime(start),
+                       'end' : pd.to_datetime(end)})
+
+    # Compute time from end of last recession to peak of next.
+    x = (df.start - df.end.shift(1)).dropna().dt.days.values
+
+    model = surv.Weibull.fit(x, offset=True)
+    print(model)
+    model.plot()
+
+
+.. code:: text
+
+    Parametric SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Offset (gamma)      : 304.0659320899125
+    Parameters          :
+         alpha: 895.3220718605215
+          beta: 1.0629492868473804
+
+
+.. image:: images/applications-economics-1.png
+    :align: center
+
+
+You can see from the above the data is a good fit to the model! Great. So now what?
+
+We can communicate what the expected time between recessions is:
+
+.. code:: python
+
+    model.mean()
+
+
+.. code:: text
+
+    1178.2499033086633
+
+Therefore the average growth period is 1,178 days, or about 3.2 years between recessions.
+
 References
 ----------
 
+.. [TC] Tadeu Cristino, C., Żebrowski, P., & Wildemeersch, M. (2020). Assessing the time intervals between economic recessions. PloS one, 15(5), e0232615.
+
+.. [Cole] Cole SR, Hudgens MG. Survival analysis in infectious disease research: describing events in time. AIDS. 2010;24(16):2423-31.
+
 .. [Duwe] Duwe, G., Sanders, N. E., Rocque, M., & Fox, J. A. (2021). Forecasting the Severity of Mass Public Shootings in the United States. Journal of Quantitative Criminology, 1-39.
 
-.. [Meeker] William Q. Meeker (1987) Limited Failure Population Life Tests: Application to Integrated Circuit Reliability, Technometrics, 29(1), 51-65
-
 .. [Gavrilov] Gavrilov, L. A., Gavrilova, N. S., & Nosov, V. N. (1983). Human life span stopped increasing: why?. Gerontology, 29(3), 176-180.
+
+.. [Meeker] William Q. Meeker (1987) Limited Failure Population Life Tests: Application to Integrated Circuit Reliability, Technometrics, 29(1), 51-65
 
