@@ -8,7 +8,7 @@ def km(r, d):
     R = np.cumprod(R)
     return R
 
-def kaplan_meier(x, c, n, t, **kwargs):
+def kaplan_meier(x, c, n, t):
     xrd = xcnt_to_xrd(x, c, n, t)
     out = {k : v for k, v in zip(['x', 'r', 'd'], xrd)}
     out['R'] = km(out['r'], out['d'])

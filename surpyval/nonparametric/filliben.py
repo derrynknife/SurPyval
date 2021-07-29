@@ -9,7 +9,7 @@ def filliben(x, c, n, t):
     "The Probability Plot Correlation Coefficient Test for Normality", 
     Technometrics, American Society for Quality, 17 (1): 111-117
     """
-    x, c, n = xcnt_handler(x, c, n, t)
+    x, c, n, t = xcnt_handler(x, c, n, t)
         
     x = np.repeat(x, n)
     c = np.repeat(c, n)
@@ -31,7 +31,7 @@ def filliben(x, c, n, t):
     F     = (ranks - 0.3175) / (N + 0.365)
     F[0]  = 1 - (0.5 ** (1./N))
     F[-1] = 0.5 ** (1./N)
-    out = {}
+    
     out = {k : v for k, v in zip(['x', 'r', 'd'], (x, r, d))}
     out['R'] = R
     return out

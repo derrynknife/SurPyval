@@ -18,7 +18,7 @@ def fh(r, d):
     R = np.exp(-H)
     return R
 
-def fleming_harrington(x, c, n, t, **kwargs):
+def fleming_harrington(x, c, n, t):
     xrd = xcnt_to_xrd(x, c, n, t)
     out = {k : v for k, v in zip(['x', 'r', 'd'], xrd)}
     out['R'] = fh(out['r'], out['d'])

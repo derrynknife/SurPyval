@@ -8,7 +8,7 @@ def na(r, d):
     R = np.exp(-H)
     return R
 
-def nelson_aalen(x, c, n, t, **kwargs):
+def nelson_aalen(x, c, n, t):
     xrd = xcnt_to_xrd(x, c, n, t)
     out = {k : v for k, v in zip(['x', 'r', 'd'], xrd)}
     out['R'] = na(out['r'], out['d'])
