@@ -445,11 +445,11 @@ class Exponential_(ParametricFitter):
                 failure_rate = 1. / mttf
             return tuple([failure_rate[0]])
 
-    def lambda_cb(self, x, failure_rate, cv_matrix, cb=0.05):
-        return failure_rate * np.exp(np.array([-1, 1]).reshape(2, 1) * (z(cb/2) * 
+    def lambda_cb(self, x, failure_rate, cv_matrix, alpha_ci=0.05):
+        return failure_rate * np.exp(np.array([-1, 1]).reshape(2, 1) * (z(alpha_ci/2) * 
                                     np.sqrt(cv_matrix.item()) / failure_rate))
 
     def R_cb(self, x, failure_rate, cv_matrix, alpha_ci=0.05):
-        return np.exp(-self.lambda_cb(x, failure_rate, cv_matrix, alpha_ci=0.05) * x).T
+        return np.exp(-self.lambda_cb(x, failure_rate, cv_matrix, alpha_ci=alpha_ci) * x).T
 
 Exponential = Exponential_('Exponential')
