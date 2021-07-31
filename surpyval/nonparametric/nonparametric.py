@@ -57,22 +57,23 @@ class NonParametric():
         array([0.81873075, 0.81873075, 0.63762815, 0.63762815])
         """
         x = np.atleast_1d(x)
+        idx = np.argsort(x)
+        rev = np.argsort(idx)
+        x = x[idx]
         # Let's not assume we can predict above the highest measurement
         if interp == 'step':
             idx = np.searchsorted(self.x, x, side='right') - 1
             R = self.R[idx]
             R[np.where(x < self.x.min())] = 1
-            R[np.where(x > self.x.max())] = np.nan
-            R[np.where(x < 0)] = np.nan
-            return R
-        # elif how == 'interp':
+            R[np.where(x > self.x.max())] = 0
+            # R[np.where(x < 0)] = np.nan
         else:
             R = np.hstack([[1], self.R])
             x_data = np.hstack([[0], self.x])
             # R = np.interp(x, x_data, R)
             R = interp1d(x_data, R, kind=interp)(x)
             R[np.where(x > self.x.max())] = np.nan
-            return R
+        return R[rev]
 
     def ff(self, x, interp='step'):
         r"""
@@ -133,12 +134,15 @@ class NonParametric():
         >>> model.ff([1., 1.5, 2., 2.5])
         array([0.18126925, 0.18126925, 0.36237185, 0.36237185])
         """
+        idx = np.argsort(x)
+        rev = np.argsort(idx)
+        x = x[idx]
         hf = np.diff(np.hstack([self.Hf(x[0], interp=interp), self.Hf(x, interp=interp)]))
         hf[0] = hf[1]
         hf = pd.Series(hf)
         hf[hf == 0] = np.nan
         hf = hf.ffill().values
-        return hf
+        return hf[rev]
 
 
     def df(self, x, interp='step'):
