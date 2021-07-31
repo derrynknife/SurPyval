@@ -374,8 +374,8 @@ class ParametricFitter():
         fitting_info = {}
 
         if how != 'MPP':
-            transform, inv_trans, funcs, inv_f = bounds_convert(x, model)
-            const, fixed_idx, not_fixed = fix_idx_and_function(fixed, model, funcs)
+            transform, inv_trans, funcs, inv_f = bounds_convert(x, model.bounds)
+            const, fixed_idx, not_fixed = fix_idx_and_function(fixed, model.param_map, funcs)
 
             fitting_info['transform'] = transform
             fitting_info['inv_trans'] = inv_trans

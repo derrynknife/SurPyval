@@ -22,10 +22,10 @@ def inv_rev_adj_relu(x):
     return np.where(x < -1, -x - 1, np.log(-x))
 
 
-def bounds_convert(x, model):
+def bounds_convert(x, bounds):
     funcs = []
     inv_f = []
-    for i, (lower, upper) in enumerate(model.bounds):
+    for i, (lower, upper) in enumerate(bounds):
         def add_to_funcs(l, u, i):
             if (l is None) and (u is None):
                 funcs.append(lambda x: pass_through(x))
@@ -54,19 +54,20 @@ def bounds_convert(x, model):
     return transform, inv_trans, funcs, inv_f
 
 
-def fix_idx_and_function(fixed, model, funcs):
+def fix_idx_and_function(fixed, param_map, funcs):
+    n_params = len(param_map)
     if fixed is not None:
         """
         Record to the model that parameters were fixed
         """
-        fixed_idx = [model.param_map[x] for x in fixed.keys()]
-        not_fixed = [x for x in range(model.k) if x not in fixed_idx]
+        fixed_idx = [param_map[x] for x in fixed.keys()]
+        not_fixed = [x for x in range(n_params) if x not in fixed_idx]
         not_fixed = np.array(not_fixed)
 
         def constraints(p):
-            params = [0] * (model.k)
+            params = [0] * (n_params)
             for k, v in fixed.items():
-                params[model.param_map[k]] = funcs[model.param_map[k]](v)
+                params[param_map[k]] = funcs[param_map[k]](v)
             for i, v in zip(not_fixed, p):
                 params[i] = v
             return np.array(params)
@@ -78,38 +79,6 @@ def fix_idx_and_function(fixed, model, funcs):
             return x
 
         fixed_idx = []
-        not_fixed = np.array([x for x in range(model.k)])
-
-    return const, fixed_idx, not_fixed
-
-# Functions to support fixing parameters
-def fix_idx_and_function_old(dist, fixed, param_map, offset_index_inc, funcs):
-    if fixed is not None:
-        """
-        Record to the model that parameters were fixed
-        """
-        fixed_idx = [param_map[x] + offset_index_inc for x in fixed.keys()]
-        not_fixed = [x for x in
-                     range(dist.k + offset_index_inc) if x not in fixed_idx]
-        not_fixed = np.array(not_fixed)
-
-        def constraints(p):
-            params = [0] * (dist.k + offset_index_inc)
-            # params = np.empty(self.k + offset_index_inc)
-            for k, v in fixed.items():
-                params[param_map[k] + offset_index_inc] = (
-                    funcs[param_map[k] + offset_index_inc](v))
-            for i, v in zip(not_fixed, p):
-                params[i] = v
-            return np.array(params)
-
-        const = constraints
-    else:
-
-        def const(x):
-            return x
-
-        fixed_idx = []
-        not_fixed = np.array([x for x in range(dist.k + offset_index_inc)])
+        not_fixed = np.array([x for x in range(n_params)])
 
     return const, fixed_idx, not_fixed
