@@ -51,11 +51,10 @@ class Distribution(ParametricFitter):
             else:
                 out.append((high + low)/2.)
 
-        
         return out
 
     def mpp_inv_y_transform(self, y, *params):
-        return 1 - np.exp(-np.exp(y))
+        return y
 
     def mpp_y_transform(self, y, *params):
         return y
