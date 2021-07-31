@@ -2,14 +2,16 @@ Changelog
 =========
 
 v0.10.0 (planned)
---------------------
+-----------------
 
-- General ALT fitter
-- General PH fitter
+- Ideas please!
+
 
 v0.9.0 (in progress)
 --------------------
 
+- General ALT fitter
+- General PH fitter
 - CoxPH Fitter
 - Document the rationale behind using Fleming-Harrington as the default.
 - Add application examples to docs:
@@ -19,6 +21,7 @@ v0.9.0 (in progress)
 	- Boston Housing
 	- Medical science
 	- `Economics <https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0232615>`_
+	- Biology - Ware, J.H., Demets, D.L.: Reanalysis of some baboon descent data. Biometrics 459–463 (1976).
 - Better docs on using Pandas
 
 
@@ -28,7 +31,8 @@ v0.9.0 (in progress)
 - Cleaned up NonParametric code (removed some technical debt and duplicated code).
 - Changed the ``__repr__`` function in ``NonParametric`` to be aligned to ``Parametric``
 - Updated the docstring for ``fit()`` for ``NonParametric``
-- 
+- Fixed bug in ``NonParametric`` that required the ``x`` input to be in order.
+
 
 
 v0.8.0 (27 July 2021)

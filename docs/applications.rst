@@ -406,7 +406,7 @@ You can see that this model is a much better description of the data. However, t
 
 The model estimates that there is an approximately 1.6% chance of an event killing 50 or more people in a given month, which may seem low, however, because there are 216 months between 2022 and 2040 the chances of not having as extreme an event over that time period becomes horrifyingly small. The model suggests that the probability of having a month in which an event with more than 50 people will be killed, has a 97.0% chance of happening from 2022 to 2040. Chilling.
 
-This is a bit higher than other reports of the same prediction, see [Duwe]_ who report at 35% probability, which is comforting.
+This is a bit higher than other reports of the same prediction, see [Duwe]_ who report at 35% probability, which is some, but not even close to complete, relief.
 
 Economics
 ---------

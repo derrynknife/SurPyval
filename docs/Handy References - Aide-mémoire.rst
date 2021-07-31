@@ -9,7 +9,7 @@ There exists a relationship between each of the functions of a distribution and 
 .. image:: images/relationships.png
   :align: center
 
-The above table shows how the function on the right, can be described by the function along the top row (I leave out the function describing itself as it is simply itself...). So, an interesting one is that the reliability or survival function, R(t), is simply the exponentiated negative of the cumulative hazard function! This relationship holds for **every** distribution.
+The above table shows how the function on the left, can be described by the function along the top row (I leave out the function describing itself as it is simply itself...). So, an interesting one is that the reliability or survival function, R(t), is simply the exponentiated negative of the cumulative hazard function! This relationship holds for **every** distribution.
 
 How an AFT and PH Model Relate to a regular distribution
 --------------------------------------------------------
