@@ -253,7 +253,8 @@ def xcnt_sort(x, c, n, t):
 
 
 def xcnt_handler(x=None, c=None, n=None, t=None, 
-                 xl=None, xr=None, tl=None, tr=None):
+                 xl=None, xr=None, tl=None, tr=None,
+                 group_and_sort=True):
     """
     Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
 
@@ -420,8 +421,9 @@ def xcnt_handler(x=None, c=None, n=None, t=None,
     n = n.astype(int)
     t = t.astype(float)
     
-    x, c, n, t = group_xcnt(x, c, n, t)
-    x, c, n, t = xcnt_sort(x, c, n, t)
+    if group_and_sort:
+        x, c, n, t = group_xcnt(x, c, n, t)
+        x, c, n, t = xcnt_sort(x, c, n, t)
 
     return x, c, n, t
 
