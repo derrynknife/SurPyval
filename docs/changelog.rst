@@ -4,27 +4,19 @@ Changelog
 v0.10.0 (planned)
 -----------------
 
-- Ideas please!
-
+- General ALT fitter full release
+- General PH fitter full release
 
 v0.9.0 (in progress)
 --------------------
 
-- General ALT fitter
-- General PH fitter
-- CoxPH Fitter
+- General ALT fitter beta release
+- General PH fitter beta release
 - Document the rationale behind using Fleming-Harrington as the default.
-- Add application examples to docs:
-	- Reliability Engineering
-	- Actuary / Demography
-	- `Social Science/Criminology <https://link.springer.com/article/10.1007/s10940-021-09499-5>`_
-	- Boston Housing
-	- Medical science
-	- `Economics <https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0232615>`_
-	- Biology - Ware, J.H., Demets, D.L.: Reanalysis of some baboon descent data. Biometrics 459–463 (1976).
 - Better docs on using Pandas
 
-
+Completed to date
+^^^^^^^^^^^^^^^^^
 - Better initial estimates in the ``_parameter_initialiser`` for the lfp data (use max F from nonp estimate...)
 - `issue #13 <https://github.com/derrynknife/SurPyval/issues/13>`_ - Better failures when insufficient data provided.
 - `issue #12 <https://github.com/derrynknife/SurPyval/issues/12>`_ - Created ``fsli_to_xcn`` helper function.
@@ -32,8 +24,16 @@ v0.9.0 (in progress)
 - Changed the ``__repr__`` function in ``NonParametric`` to be aligned to ``Parametric``
 - Updated the docstring for ``fit()`` for ``NonParametric``
 - Fixed bug in ``NonParametric`` that required the ``x`` input to be in order.
-
-
+- ``CoxPH`` released.
+- Docs Updates:
+	- Add application examples to docs:
+		- Reliability Engineering
+		- Actuary / Demography
+		- `Social Science/Criminology <https://link.springer.com/article/10.1007/s10940-021-09499-5>`_
+		- Boston Housing
+		- Medical science
+		- `Economics <https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0232615>`_
+		- Biology - Ware, J.H., Demets, D.L.: Reanalysis of some baboon descent data. Biometrics 459–463 (1976).
 
 v0.8.0 (27 July 2021)
 ---------------------
