@@ -7,48 +7,100 @@ import inspect
 from ..parametric.fitters import bounds_convert, fix_idx_and_function
 from .regression import Regression
 
-class AcceleratedFailureTimeFitter():
-    def __init__(self, name, distribution, acc_model, fixed_parameter, 
-                 acc_parameter_relationship):
+class ParameterSubstitutionFitter():
+    def __init__(self, kind, name, distribution, life_model, life_parameter, baseline=[]):
 
-        if str(inspect.signature(acc_model.phi)) != '(X, *params)':
+        if str(inspect.signature(life_model.phi)) != '(X, *params)':
             raise ValueError('PH function must have the signature \'(X, *params)\'')
 
+        if type(baseline) != list:
+            # Baseline used if using a function that deviates from some number, e.g. np.exp(np.dot(X, beta))
+            baseline = [baseline]
+
         self.name = name
+        self.kind = kind
         self.dist = distribution
-        self.acc_model = acc_model
-        self.acc_parameter_relationship = acc_parameter_relationship
-        self.fixed_parameter = fixed_parameter
+        self.life_model = life_model
         self.k_dist = len(self.dist.param_names)
         self.bounds = self.dist.bounds
         self.support = self.dist.support
         self.param_names = self.dist.param_names
         self.param_map = {v : i for i, v in enumerate(self.dist.param_names)}
-        self.phi = acc_model.phi
+        self.phi = life_model.phi
         self.Hf_dist = self.dist.Hf
-        self.hf_dist = lambda x, *params: elementwise_grad(self.Hf_dist)(x, *params)
-        self.sf_dist = lambda x, *params: np.exp(-self.Hf_dist(x, *params))
-        self.ff_dist = lambda x, *params: 1 - np.exp(-self.Hf_dist(x, *params))
-        self.df_dist = lambda x, *params: elementwise_grad(self.ff_dist)(x, *params)
-        self.fixed = {fixed_parameter : 1.}
+        self.hf_dist = self.dist.hf
+        self.sf_dist = self.dist.sf
+        self.ff_dist = self.dist.ff
+        self.df_dist = self.dist.df
+        self.baseline = baseline
+        self.life_parameter = life_parameter
+        self.fixed = {life_parameter : 1.}
 
     def Hf(self, x, X, *params):
+        x = np.array(x)
+        if np.isscalar(X):
+            X = np.ones_like(x) * X
+        else:
+            X = np.array(X)
+
         dist_params = np.array(params[0:self.k_dist])
         phi_params = np.array(params[self.k_dist:])
-        return self.Hf_dist(self.phi(X, *phi_params) * x, *dist_params)
+
+        Hf = np.zeros_like(x)
+        stresses = np.unique(X, axis=0)
+        for stress in stresses:
+            life_param_mask = np.array(range(0, len(dist_params))) == self.param_map[self.life_parameter]
+            dist_params_i = np.where(life_param_mask,
+                self.phi(stress, *phi_params),
+                dist_params)
+            mask = (X == stress).all(axis=1)
+            Hf = np.where(mask, self.Hf_dist(x, *dist_params_i), Hf)
+
+        return Hf
 
     def hf(self, x, X, *params):
+        x = np.array(x)
+        if np.isscalar(X):
+            X = np.ones_like(x) * X
+        else:
+            X = np.array(X)
+
         dist_params = np.array(params[0:self.k_dist])
         phi_params = np.array(params[self.k_dist:])
-        return self.hf_dist(self.phi(X, *phi_params) * x, *dist_params)
+
+        hf = np.zeros_like(x)
+        for stress in np.unique(X, axis=0):
+            life_param_mask = np.array(range(0, len(dist_params))) == self.param_map[self.life_parameter]
+            params = np.where(life_param_mask,
+                self.phi(stress, *phi_params),
+                dist_params)
+            mask = (X == stress).all(axis=1)
+            hf = np.where(mask, self.hf_dist(x, *params), hf)
+
+        return hf
 
     def df(self, x, X, *params):
+        x = np.array(x)
+        if np.isscalar(X):
+            X = np.ones_like(x) * X
+        else:
+            X = np.array(X)
         return self.hf(x, X, *params) * np.exp(-self.Hf(x, X, *params))
 
     def sf(self, x, X, *params):
+        x = np.array(x)
+        if np.isscalar(X):
+            X = np.ones_like(x) * X
+        else:
+            X = np.array(X)
         return np.exp(-self.Hf(x, X, *params))
 
     def ff(self, x, X, *params):
+        x = np.array(x)
+        if np.isscalar(X):
+            X = np.ones_like(x) * X
+        else:
+            X = np.array(X)
         return 1 - np.exp(-self.Hf(x, X, *params))
 
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
@@ -86,23 +138,37 @@ class AcceleratedFailureTimeFitter():
     def log_ff(self, x, X, *params):
         return np.log(self.ff(x, X, *params))
 
+    def random(self, size, X, *params):
+        dist_params = np.array(params[0:self.k_dist])
+        phi_params = np.array(params[self.k_dist:])
+
+        x = []
+        X_out = []
+        if type(X) == tuple:
+            X = np.random.uniform(*X, size)
+
+        for stress in np.unique(X, axis=0):
+            life_param_mask = np.array(range(0, len(dist_params))) == self.param_map[self.life_parameter]
+            dist_params = np.where(life_param_mask,
+                                   self.phi(stress, *phi_params),
+                                   dist_params)
+
+            U = np.random.uniform(0, 1, size)
+            x.append(self.dist.qf(U, *dist_params))
+            if np.isscalar(stress):
+                cols = 1
+            else:
+                cols = len(stress)
+            X_out.append((np.ones((size, cols)) * stress))
+        return np.array(x).flatten(), np.concatenate(X_out)
+
     def neg_ll(self, X, x, c, n, *params):
-        params = np.array(params)
         like = np.zeros_like(x).astype(float)
         like = np.where(c ==  0, self.log_df(x, X, *params), like)
         like = np.where(c ==  1, self.log_sf(x, X, *params), like)
         like = np.where(c ==  -1, self.log_ff(x, X, *params), like)
         like = np.multiply(n, like)
         return -np.sum(like)
-
-    def random(self, size, X, *params):
-        dist_params = np.array(params[0:self.k_dist])
-        phi_params = np.array(params[self.k_dist:])
-        random = []
-        U = np.random.uniform(0, 1, size)
-        x = self.dist.qf(U, *dist_params)/self.phi(X, *phi_params)
-        X_out = np.ones_like(x) * X
-        return x.flatten(), X_out.flatten()
 
     def fit(self, X, x, c=None, n=None, t=None, init=[], fixed={}):
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, group_and_sort=False)
@@ -111,39 +177,46 @@ class AcceleratedFailureTimeFitter():
             stress_data = np.unique(X, axis=0)
             params_at_X = []
             for s in stress_data:
-                params_at_X.append(self.dist.fit(x[X == s], c[X == s], n[X == s]).params)
+                mask = (X == s).all(axis=1)
+                params_at_X.append(self.dist.fit(x[mask], c[mask], n[mask]).params)
 
             params_at_X = np.array(params_at_X)
             dist_init = params_at_X.mean(axis=0)
 
-            acc_parameter_data = params_at_X[:, self.param_map[self.fixed_parameter]]
-            acc_parameter_data = self.acc_parameter_relationship(acc_parameter_data)
 
-            if callable(self.acc_model.phi_init):
-                phi_init = self.acc_model.phi_init(acc_parameter_data, stress_data)
+            life_parameter_data = params_at_X[:, self.param_map[self.life_parameter]]
+
+            if callable(self.life_model.phi_init):
+                phi_init = self.life_model.phi_init(life_parameter_data, stress_data)
             else:
-                phi_init = self.acc_model.phi_init
+                phi_init = self.life_model.phi_init
 
 
             init = np.array([*dist_init, *phi_init])
         else:
             init = np.array(init)
 
+        if self.baseline != []:
+            baseline_model = self.dist.fit(x, c, n, t)
+            baseline_fixed = {k : baseline_model.params[baseline_model.param_map[k]] for k in self.baseline}
+            fixed = {**baseline_fixed, **fixed}
+
         if self.fixed != {}:
             fixed = {**self.fixed, **fixed}
 
         # Dynamic or static bounds determination
-        if callable(self.acc_model.phi_bounds):
-            bounds = (*self.bounds, *self.acc_model.phi_bounds(X))
+        if callable(self.life_model.phi_bounds):
+            bounds = (*self.bounds, *self.life_model.phi_bounds(X))
         else:
-            bounds = (*self.bounds, *self.acc_model.phi_bounds)
+            bounds = (*self.bounds, *self.life_model.phi_bounds)
 
-        if callable(self.acc_model.phi_param_map):
-            phi_param_map = self.acc_model.phi_param_map(X)
+        if callable(self.life_model.phi_param_map):
+            phi_param_map = self.life_model.phi_param_map(X)
         else:
-            phi_param_map = self.acc_model.phi_param_map
+            phi_param_map = self.life_model.phi_param_map
 
         param_map = {**self.param_map, **{k : v + len(self.param_map) for k, v in phi_param_map.items()}}
+        self.param_map = param_map
 
         transform, inv_trans, funcs, inv_f = bounds_convert(x, bounds)
         const, fixed_idx, not_fixed = fix_idx_and_function(fixed, param_map, funcs)
@@ -152,20 +225,25 @@ class AcceleratedFailureTimeFitter():
 
         with np.errstate(all='ignore'):
             fun  = lambda params : self.neg_ll(X, x, c, n, *inv_trans(const(params)))
-            # fun  = lambda params : self.neg_ll(X, x, c, n, *params)
             # jac = jacobian(fun)
             # hess = hessian(fun)
             res = minimize(fun, init)
+            res = minimize(fun, res.x, method='TNC')
             # res = minimize(fun, init, jac=jac, method='BFGS')
             # res = minimize(fun, init, method='Newton-CG', jac=jac)
 
         params = inv_trans(const(res.x))
+        dist_params = np.array(params[0:self.k_dist])
+        phi_params = np.array(params[self.k_dist:])
+
         model = Regression()
         model.model = self
-        model.reg_model = self.acc_model
-        model.kind = "Accelerated Failure Time"
+        model.kind = self.kind
         model.distribution = self.dist
+        model.reg_model = self.life_model
         model.params = np.array(params)
+        model.dist_params = dist_params
+        model.phi_params = phi_params
         model.res = res
         model._neg_ll = res['fun']
         model.fixed = self.fixed

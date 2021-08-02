@@ -89,14 +89,3 @@ NormalExponentialAFT = AcceleratedFailureTimeFitter('NormalExponentialAFT',
     'mu',
     lambda x: x
     )
-
-
-
-
-
-
-
-
-
-
-
