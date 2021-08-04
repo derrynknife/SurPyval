@@ -6,8 +6,9 @@ v0.10.0 (planned)
 
 - General ALT fitter full release
 - General PH fitter full release
-- Formulas?
+- Formulas
 - Add more than `Breslow <http://www-personal.umich.edu/~yili/lect4notes.pdf>`_ to the CoxPH methods.
+- Parameter confidence bounds
 
 v0.9.0 (in progress)
 --------------------
