@@ -404,9 +404,9 @@ class LogNormal_(ParametricFitter):
         bounds = z_hat + np.array([1., -1.]).reshape(2, 1) * z(alpha_ci/2) * np.sqrt(var_z)
         return bounds
 
-    def R_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
-        t = np.log(x)
-        return para.Normal.sf(self.z_cb(t, mu, sigma, cv_matrix, alpha_ci=alpha_ci), 0, 1).T
+    # def R_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
+        # t = np.log(x)
+        # return para.Normal.sf(self.z_cb(t, mu, sigma, cv_matrix, alpha_ci=alpha_ci), 0, 1).T
 
     def _mom(self, x):
         norm_mod = para.Normal.fit(np.log(x), how='MOM')

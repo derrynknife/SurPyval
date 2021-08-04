@@ -484,9 +484,9 @@ class Parametric():
         else:
             raise NotImplementedError("Entropy not available for LFP distribution")
 
-    def cb(self, t, on='R', alpha_ci=0.05):
+    def cb(self, t, on='R', alpha_ci=0.05, bound='two-sided'):
         """
-
+        
         """
         if self.method != 'MLE':
             raise Exception('Only MLE has confidence bounds')
@@ -494,15 +494,11 @@ class Parametric():
         hess_inv = np.copy(self.hess_inv)
         
         pvars = hess_inv[np.triu_indices(hess_inv.shape[0])]
-        old_err_state = np.seterr(invalid='raise',
-                                  divide='raise',
-                                  over='raise',
-                                  under='raise')
-        
-        np.seterr(all='ignore')
+        old_err_state = np.seterr(all='ignore')
 
         if hasattr(self.dist, 'R_cb'):
-            R_cb = lambda x: self.dist.R_cb(x - self.gamma, *self.params, hess_inv, alpha_ci=alpha_ci)
+            R_cb = lambda x: self.dist.R_cb(x - self.gamma, *self.params, hess_inv,
+                                            alpha_ci=alpha_ci, bound=bound)
 
         else:
             def R_cb(x):
@@ -521,7 +517,13 @@ class Parametric():
 
                 # TODO: Add lower, upper, and two-sided options here
                 R_hat = self.sf(x)
-                diff = z(alpha_ci/2) * np.sqrt(np.array(var_R)) * np.array([1., -1.]).reshape(2, 1)
+                if bound == 'two-sided':
+                    diff = z(alpha_ci/2) * np.sqrt(np.array(var_R)) * np.array([1., -1.]).reshape(2, 1)
+                elif bound == 'upper':
+                    diff = z(alpha_ci) * np.sqrt(np.array(var_R))
+                    print(diff)
+                else:
+                    diff = -z(alpha_ci) * np.sqrt(np.array(var_R))
                 
                 exponent = diff/(R_hat*(1 - R_hat))
                 R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))

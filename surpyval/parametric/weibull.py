@@ -432,12 +432,17 @@ class Weibull_(ParametricFitter):
     def u(self, x, alpha, beta):
         return beta * (np.log(x) - np.log(alpha))
 
-    def u_cb(self, x, alpha, beta, cv_matrix, cb=0.05):
+    def u_cb(self, x, alpha, beta, cv_matrix, alpha_ci, bound='two-sided'):
         u = self.u(x, alpha, beta)
         var_u = self.var_u(x, alpha, beta, cv_matrix)
-        diff = z(cb/2) * np.sqrt(var_u)
-        bounds = u + np.array([1., -1.]).reshape(2, 1) * diff
-        return bounds
+        if bound == 'two-sided':
+            diff = z(alpha_ci/2) * np.array([1., -1.]).reshape(2, 1)
+        elif bound == 'upper':
+            diff = z(alpha_ci)
+        else:
+            diff = -z(alpha_ci)
+        u_cb = u + (diff * np.sqrt(var_u))
+        return u_cb
 
     def du(self, x, alpha, beta):
         du_dbeta = np.log(x) - np.log(alpha)
@@ -450,8 +455,8 @@ class Weibull_(ParametricFitter):
             2 * da * db * cv_matrix[0, 1])
         return var_u
 
-    def R_cb(self, x, alpha, beta, cv_matrix, alpha_ci=0.05):
-        return np.exp(-np.exp(self.u_cb(x, alpha, beta, cv_matrix, alpha_ci))).T
+    def R_cb(self, x, alpha, beta, cv_matrix, alpha_ci=0.05, bound='two-sided'):
+        return np.exp(-np.exp(self.u_cb(x, alpha, beta, cv_matrix, alpha_ci, bound))).T
 
     def _jacobian(self, x, alpha, beta, c=None, n=None):
         f = c == 0

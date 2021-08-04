@@ -484,7 +484,7 @@ class Gamma_(ParametricFitter):
                  2 * dr_dalpha * dr_dbeta * cv_matrix[0, 1])
         return var_r
 
-    def R_cb(self, x, alpha, beta, cv_matrix, alpha_ci=0.05):
+    def R_cb_(self, x, alpha, beta, cv_matrix, alpha_ci=0.05):
         R_hat = self.sf(x, alpha, beta)
         dR_f = lambda t : self.sf(*t)
         jac = jacobian(dR_f)
