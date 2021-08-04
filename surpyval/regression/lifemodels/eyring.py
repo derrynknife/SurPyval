@@ -21,7 +21,7 @@ Eyring = Eyring_()
 
 class InverseEyring_():
     def __init__(self):
-        self.name = 'Eyring'
+        self.name = 'InverseEyring'
         self.phi_param_map = {'a' : 0, 'c' : 1}
         self.phi_bounds = ((None, None), (None, None),)
 

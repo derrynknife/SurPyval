@@ -7,6 +7,7 @@ from scipy.optimize import minimize
 import surpyval
 
 from ..parametric.fitters import bounds_convert, fix_idx_and_function
+from .regression import Regression
 
 class ProportionalHazardsFitter():
     def __init__(self, name, dist, phi, phi_bounds, phi_param_map,
@@ -21,17 +22,17 @@ class ProportionalHazardsFitter():
 
         self.name = name
         self.dist = dist
-        self.k = len(self.dist.param_names)
+        self.k_dist = len(self.dist.param_names)
         self.bounds = self.dist.bounds
         self.support = self.dist.support
         self.param_names = self.dist.param_names
         self.param_map = {v : i for i, v in enumerate(self.dist.param_names)}
         self.phi = phi
         self.Hf_dist = self.dist.Hf
-        self.hf_dist = lambda x, *params: elementwise_grad(self.Hf_dist)(x, *params)
-        self.sf_dist = lambda x, *params: np.exp(-self.Hf_dist(x, *params))
-        self.ff_dist = lambda x, *params: 1 - np.exp(-self.Hf_dist(x, *params))
-        self.df_dist = lambda x, *params: elementwise_grad(self.ff_dist)(x, *params)
+        self.hf_dist = self.dist.hf
+        self.sf_dist = self.dist.sf
+        self.ff_dist = self.dist.ff
+        self.df_dist = self.dist.df
         self.baseline = baseline
         self.fixed = fixed
         self.phi_init = phi_init
@@ -39,14 +40,14 @@ class ProportionalHazardsFitter():
         self.phi_param_map = phi_param_map
 
     def Hf(self, x, X, *params):
-        dist_params = np.array(params[0:self.k])
-        phi_params = np.array(params[self.k:])
+        dist_params = np.array(params[0:self.k_dist])
+        phi_params = np.array(params[self.k_dist:])
         Hf_raw = self.Hf_dist(x, *dist_params)
         return self.phi(X, *phi_params) * Hf_raw
 
     def hf(self, x, X, *params):
-        dist_params = np.array(params[0:self.k])
-        phi_params = np.array(params[self.k:])
+        dist_params = np.array(params[0:self.k_dist])
+        phi_params = np.array(params[self.k_dist:])
         hf_raw = self.hf_dist(x, *dist_params)
         return self.phi(X, *phi_params) * hf_raw
 
@@ -145,16 +146,29 @@ class ProportionalHazardsFitter():
         transform, inv_trans, funcs, inv_f = bounds_convert(x, bounds)
         const, fixed_idx, not_fixed = fix_idx_and_function(fixed, param_map, funcs)
 
-
         init = transform(init)[not_fixed]
 
         with np.errstate(all='ignore'):
             fun  = lambda params : self.neg_ll(X, x, c, n, *inv_trans(const(params)))
-            jac = jacobian(fun)
-            hess = hessian(fun)
-            res = minimize(fun, init, jac=jac)
+            # jac = jacobian(fun)
+            # hess = hessian(fun)
+            res = minimize(fun, init)
+            res = minimize(fun, res.x, method='TNC')
 
         params = inv_trans(const(res.x))
 
-        # res = minimize(fun, init, method='BFGS', jac=jac)
+        model = Regression()
+        model.model = self
+        model.reg_model = self.phi
+        model.kind = "Proportional Hazard"
+        model.distribution = self.dist
+        model.params = np.array(params)
+        model.res = res
+        model._neg_ll = res['fun']
+        model.fixed = self.fixed
+        model.k_dist = self.k_dist
+        model.phi_param_map = phi_param_map
+
+        print(res)
+
         return params

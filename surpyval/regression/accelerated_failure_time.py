@@ -8,8 +8,7 @@ from ..parametric.fitters import bounds_convert, fix_idx_and_function
 from .regression import Regression
 
 class AcceleratedFailureTimeFitter():
-    def __init__(self, name, distribution, acc_model, fixed_parameter, 
-                 acc_parameter_relationship):
+    def __init__(self, name, distribution, acc_model):
 
         if str(inspect.signature(acc_model.phi)) != '(X, *params)':
             raise ValueError('PH function must have the signature \'(X, *params)\'')
@@ -17,8 +16,6 @@ class AcceleratedFailureTimeFitter():
         self.name = name
         self.dist = distribution
         self.acc_model = acc_model
-        self.acc_parameter_relationship = acc_parameter_relationship
-        self.fixed_parameter = fixed_parameter
         self.k_dist = len(self.dist.param_names)
         self.bounds = self.dist.bounds
         self.support = self.dist.support
@@ -26,11 +23,10 @@ class AcceleratedFailureTimeFitter():
         self.param_map = {v : i for i, v in enumerate(self.dist.param_names)}
         self.phi = acc_model.phi
         self.Hf_dist = self.dist.Hf
-        self.hf_dist = lambda x, *params: elementwise_grad(self.Hf_dist)(x, *params)
-        self.sf_dist = lambda x, *params: np.exp(-self.Hf_dist(x, *params))
-        self.ff_dist = lambda x, *params: 1 - np.exp(-self.Hf_dist(x, *params))
-        self.df_dist = lambda x, *params: elementwise_grad(self.ff_dist)(x, *params)
-        self.fixed = {fixed_parameter : 1.}
+        self.hf_dist = self.dist.hf
+        self.sf_dist = self.dist.sf
+        self.ff_dist = self.dist.ff
+        self.df_dist = self.dist.df
 
     def Hf(self, x, X, *params):
         dist_params = np.array(params[0:self.k_dist])
@@ -88,21 +84,27 @@ class AcceleratedFailureTimeFitter():
 
     def neg_ll(self, X, x, c, n, *params):
         params = np.array(params)
+
         like = np.zeros_like(x).astype(float)
         like = np.where(c ==  0, self.log_df(x, X, *params), like)
         like = np.where(c ==  1, self.log_sf(x, X, *params), like)
         like = np.where(c ==  -1, self.log_ff(x, X, *params), like)
+
         like = np.multiply(n, like)
         return -np.sum(like)
 
     def random(self, size, X, *params):
         dist_params = np.array(params[0:self.k_dist])
         phi_params = np.array(params[self.k_dist:])
-        random = []
-        U = np.random.uniform(0, 1, size)
-        x = self.dist.qf(U, *dist_params)/self.phi(X, *phi_params)
-        X_out = np.ones_like(x) * X
-        return x.flatten(), X_out.flatten()
+
+        x = []
+        X_out = []
+
+        for stress in np.unique(X):
+            U = np.random.uniform(0, 1, size)
+            x.append(self.dist.qf(U, *dist_params)/self.phi(stress, *phi_params))
+            X_out.append(np.ones(size) * stress)
+        return np.concatenate(x), np.concatenate(X_out)
 
     def fit(self, X, x, c=None, n=None, t=None, init=[], fixed={}):
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, group_and_sort=False)
@@ -156,6 +158,7 @@ class AcceleratedFailureTimeFitter():
             # jac = jacobian(fun)
             # hess = hessian(fun)
             res = minimize(fun, init)
+            res = minimize(fun, res.x, method='TNC')
             # res = minimize(fun, init, jac=jac, method='BFGS')
             # res = minimize(fun, init, method='Newton-CG', jac=jac)
 
@@ -170,5 +173,13 @@ class AcceleratedFailureTimeFitter():
         model._neg_ll = res['fun']
         model.fixed = self.fixed
         model.k_dist = self.k_dist
+        model.k = len(bounds)
+
+        model.data = {
+            'x' : x,
+            'c' : c,
+            'n' : n,
+            't' : t
+        }
 
         return model

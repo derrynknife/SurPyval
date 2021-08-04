@@ -3,12 +3,14 @@ from autograd import jacobian, hessian, elementwise_grad
 from scipy.optimize import minimize
 import surpyval
 import inspect
+import warnings
 
 from ..parametric.fitters import bounds_convert, fix_idx_and_function
 from .regression import Regression
 
 class ParameterSubstitutionFitter():
-    def __init__(self, kind, name, distribution, life_model, life_parameter, baseline=[]):
+    def __init__(self, kind, name, distribution, life_model, life_parameter, baseline=[],
+                 param_transform=None, inverse_param_transform=None):
 
         if str(inspect.signature(life_model.phi)) != '(X, *params)':
             raise ValueError('PH function must have the signature \'(X, *params)\'')
@@ -36,6 +38,13 @@ class ParameterSubstitutionFitter():
         self.life_parameter = life_parameter
         self.fixed = {life_parameter : 1.}
 
+        if param_transform is None:
+            self.param_transform = lambda x: x
+            self.inverse_param_transform = lambda x: x
+        else:
+            self.param_transform = param_transform
+            self.inverse_param_transform = inverse_param_transform
+
     def Hf(self, x, X, *params):
         x = np.array(x)
         if np.isscalar(X):
@@ -51,7 +60,7 @@ class ParameterSubstitutionFitter():
         for stress in stresses:
             life_param_mask = np.array(range(0, len(dist_params))) == self.param_map[self.life_parameter]
             dist_params_i = np.where(life_param_mask,
-                self.phi(stress, *phi_params),
+                self.param_transform(self.phi(stress, *phi_params)),
                 dist_params)
             mask = (X == stress).all(axis=1)
             Hf = np.where(mask, self.Hf_dist(x, *dist_params_i), Hf)
@@ -72,7 +81,7 @@ class ParameterSubstitutionFitter():
         for stress in np.unique(X, axis=0):
             life_param_mask = np.array(range(0, len(dist_params))) == self.param_map[self.life_parameter]
             params = np.where(life_param_mask,
-                self.phi(stress, *phi_params),
+                self.param_transform(self.phi(stress, *phi_params)),
                 dist_params)
             mask = (X == stress).all(axis=1)
             hf = np.where(mask, self.hf_dist(x, *params), hf)
@@ -150,7 +159,7 @@ class ParameterSubstitutionFitter():
         for stress in np.unique(X, axis=0):
             life_param_mask = np.array(range(0, len(dist_params))) == self.param_map[self.life_parameter]
             dist_params = np.where(life_param_mask,
-                                   self.phi(stress, *phi_params),
+                                   self.param_transform(self.phi(stress, *phi_params)),
                                    dist_params)
 
             U = np.random.uniform(0, 1, size)
@@ -162,35 +171,58 @@ class ParameterSubstitutionFitter():
             X_out.append((np.ones((size, cols)) * stress))
         return np.array(x).flatten(), np.concatenate(X_out)
 
-    def neg_ll(self, X, x, c, n, *params):
+    def neg_ll(self, X, x, c, n, *params, verbose=False):
         like = np.zeros_like(x).astype(float)
         like = np.where(c ==  0, self.log_df(x, X, *params), like)
         like = np.where(c ==  1, self.log_sf(x, X, *params), like)
         like = np.where(c ==  -1, self.log_ff(x, X, *params), like)
         like = np.multiply(n, like)
-        return -np.sum(like)
+        like = -np.sum(like)
+        if verbose:
+            print('   ' * 100, end='\r')
+            print(like, ": ", params, end='\r')
+        return like
 
-    def fit(self, X, x, c=None, n=None, t=None, init=[], fixed={}):
+    def fit(self, X, x, c=None, n=None, t=None, init=[], fixed={}, verbose=False):
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, group_and_sort=False)
 
         if init == []:
-            stress_data = np.unique(X, axis=0)
+            stress_data = []
             params_at_X = []
-            for s in stress_data:
+
+            # How do I make this work when there is only one failure per stress?
+            for s in np.unique(X, axis=0):
                 mask = (X == s).all(axis=1)
-                params_at_X.append(self.dist.fit(x[mask], c[mask], n[mask]).params)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('error')
+                    try:
+                        params_at_X.append(self.dist.fit(x[mask], c[mask], n[mask]).params)
+                        stress_data.append(s)
+                    except np.RankWarning:
+                        pass
+                    finally:
+                        pass
 
             params_at_X = np.array(params_at_X)
+            stress_data = np.array(stress_data)
             dist_init = params_at_X.mean(axis=0)
 
+            i = self.param_map[self.life_parameter]
 
-            life_parameter_data = params_at_X[:, self.param_map[self.life_parameter]]
+            if len(params_at_X) < 2:
+                raise ValueError("Insufficient data at separate X values. Try manually setting initial guess using `init` keyword in `fit`")
+
+            parameter_data = params_at_X[:, i]
+
+            parameter_data = self.inverse_param_transform(parameter_data)
 
             if callable(self.life_model.phi_init):
-                phi_init = self.life_model.phi_init(life_parameter_data, stress_data)
+                if str(inspect.signature(self.life_model.phi_init)) == '(X)':
+                    phi_init = self.life_model.phi_init(X)
+                else:
+                    phi_init = self.life_model.phi_init(parameter_data, stress_data)
             else:
                 phi_init = self.life_model.phi_init
-
 
             init = np.array([*dist_init, *phi_init])
         else:
@@ -224,11 +256,11 @@ class ParameterSubstitutionFitter():
         init = transform(init)[not_fixed]
 
         with np.errstate(all='ignore'):
-            fun  = lambda params : self.neg_ll(X, x, c, n, *inv_trans(const(params)))
+            fun  = lambda params, verbose : self.neg_ll(X, x, c, n, *inv_trans(const(params)), verbose=verbose)
             # jac = jacobian(fun)
             # hess = hessian(fun)
-            res = minimize(fun, init)
-            res = minimize(fun, res.x, method='TNC')
+            res = minimize(fun, init, args=(verbose))
+            res = minimize(fun, res.x, args=(verbose), method='TNC')
             # res = minimize(fun, init, jac=jac, method='BFGS')
             # res = minimize(fun, init, method='Newton-CG', jac=jac)
 
@@ -248,5 +280,14 @@ class ParameterSubstitutionFitter():
         model._neg_ll = res['fun']
         model.fixed = self.fixed
         model.k_dist = self.k_dist
+
+        model.k = len(bounds)
+
+        model.data = {
+            'x' : x,
+            'c' : c,
+            'n' : n,
+            't' : t
+        }
 
         return model
