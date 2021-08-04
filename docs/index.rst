@@ -94,7 +94,7 @@ Contents:
 
    Non-Parametric Estimation
    Parametric Estimation
-   Proportional Hazard
+   regression
 
 .. toctree::
    :maxdepth: 1

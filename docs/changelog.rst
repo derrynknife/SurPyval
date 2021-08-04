@@ -6,25 +6,37 @@ v0.10.0 (planned)
 
 - General ALT fitter full release
 - General PH fitter full release
+- Formulas?
+- Add more than `Breslow <http://www-personal.umich.edu/~yili/lect4notes.pdf>`_ to the CoxPH methods.
 
 v0.9.0 (in progress)
 --------------------
 
-- General ALT fitter beta release
-- General PH fitter beta release
 - Document the rationale behind using Fleming-Harrington as the default.
-- Better docs on using Pandas
+- Docs on how to integrate with Pandas
+- Docs for CoxPH
+- Docs for Accelerated Life fitters
+- Create a ``RegressionFitter`` class. I keep copying code across the three fitters.
+- Allow truncation with zi and lfp models.
+- Allow truncation with regression
 
 Completed to date
 ^^^^^^^^^^^^^^^^^
 - Better initial estimates in the ``_parameter_initialiser`` for the lfp data (use max F from nonp estimate...)
 - `issue #13 <https://github.com/derrynknife/SurPyval/issues/13>`_ - Better failures when insufficient data provided.
 - `issue #12 <https://github.com/derrynknife/SurPyval/issues/12>`_ - Created ``fsli_to_xcn`` helper function.
+- Fixed bug in confidence bounds implementation for offset distributions. CBs were not using the offset and were therefore way out. Now fixed.
+- Created a  ``NonParametric.cb()`` method to match ``Parametric`` API for confidence bounds.
 - Cleaned up NonParametric code (removed some technical debt and duplicated code).
 - Changed the ``__repr__`` function in ``NonParametric`` to be aligned to ``Parametric``
 - Updated the docstring for ``fit()`` for ``NonParametric``
-- Fixed bug in ``NonParametric`` that required the ``x`` input to be in order.
+- Fixed bug in ``NonParametric`` that required the ``x`` input to be in order for the functions (e.g. ``df`` etc.).
 - ``CoxPH`` released.
+- General AL fitter in beta
+- General PH fitter in beta
+- Created ``Linear``, ``Power``, ``InversePower``, ``Exponential``, ``InverseExponential``, ``Eyring``, ``InverseEyring``, ``DualPower``, ``PowerExponential``, ``DualExponential`` life models.
+- Created ``GeneralLogLinear`` life model for variable stress count input.
+- For each combination of a SurPyval distribution and life model, there is an instance to use ``fit()``. For example there are ``WeibullDualExponential``, ``LogNormalPower``, ``ExponentialExponential`` etc.
 - Docs Updates:
 	- Add application examples to docs:
 		- Reliability Engineering
