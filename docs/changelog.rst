@@ -8,11 +8,7 @@ v0.10.0 (planned)
 - General PH fitter full release
 - Formulas
 - Add more than `Breslow <http://www-personal.umich.edu/~yili/lect4notes.pdf>`_ to the CoxPH methods.
-- Parameter confidence bounds
-
-v0.9.0 (in progress)
---------------------
-
+- Parameter confidence bound
 - Document the rationale behind using Fleming-Harrington as the default.
 - Docs on how to integrate with Pandas
 - Docs for CoxPH
@@ -21,8 +17,9 @@ v0.9.0 (in progress)
 - Allow truncation with zi and lfp models.
 - Allow truncation with regression
 
-Completed to date
-^^^^^^^^^^^^^^^^^
+v0.9.0 (5 Aug 2021)
+-------------------
+
 - Better initial estimates in the ``_parameter_initialiser`` for the lfp data (use max F from nonp estimate...)
 - `issue #13 <https://github.com/derrynknife/SurPyval/issues/13>`_ - Better failures when insufficient data provided.
 - `issue #12 <https://github.com/derrynknife/SurPyval/issues/12>`_ - Created ``fsli_to_xcn`` helper function.
