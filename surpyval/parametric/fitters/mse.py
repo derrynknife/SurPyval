@@ -23,16 +23,16 @@ def mse(model):
 
     # Need to make the Turnbull estimate much much much faster (and less memory before I unlock this)
     if (-1 in c) or (2 in c):
-        x_, r, d, R = nonp.turnbull(x, c, n, t, estimator='Fleming-Harrington')
+        out = nonp.turnbull(x, c, n, t, estimator='Fleming-Harrington')
     else:
-        x_, r, d, R = nonp.nelson_aalen(x, c, n)
+        out = nonp.fleming_harrington(x, c, n, t)
 
-    F = 1 - R
-    mask = np.isfinite(x_)
+    F = 1 - out['R']
+    mask = np.isfinite(out['x'])
     F  = F[mask]
-    x_ = x_[mask]
+    x = out['x'][mask]
 
-    fun = lambda params : np.sum(((dist.ff(x_, *inv_trans(const(params)))) - F)**2)
+    fun = lambda params : np.sum(((dist.ff(x, *inv_trans(const(params)))) - F)**2)
     jac = jacobian(fun)
     hess = hessian(fun)
 
