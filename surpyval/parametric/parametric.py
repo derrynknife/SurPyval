@@ -485,8 +485,29 @@ class Parametric():
             raise NotImplementedError("Entropy not available for LFP distribution")
 
     def cb(self, t, on='R', alpha_ci=0.05, bound='two-sided'):
-        """
-        
+        r"""
+
+        Confidence bounds of the ``on`` function at the ``alpa_ci`` level of significance. 
+        Can be the upper, lower, or two-sided confidence by changing value of ``bound``.
+
+        Parameters
+        ----------
+
+        x : array like or scalar
+            The values of the random variables at which the confidence bounds will be calculated
+        on : ('sf', 'ff', 'Hf'), optional
+            The function on which the confidence bound will be calculated.
+        bound : ('two-sided', 'upper', 'lower'), str, optional
+            Compute either the two-sided, upper or lower confidence bound(s). Defaults to two-sided.
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be computed.
+
+        Returns
+        -------
+
+        cb : scalar or numpy array 
+            The value(s) of the upper, lower, or both confidence bound(s) of the selected function at x
+
         """
         if self.method != 'MLE':
             raise Exception('Only MLE has confidence bounds')

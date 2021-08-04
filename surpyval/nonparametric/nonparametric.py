@@ -218,8 +218,9 @@ class NonParametric():
     def cb(self, x, on='sf', bound='two-sided', interp='step', alpha_ci=0.05, bound_type='exp', dist='z'):
         r"""
 
-        Cumulative hazard rate with the non-parametric estimates from the data. This is calculated using 
-        the relationship between the hazard function and the density:
+        Confidence bounds of the ``on`` function at the ``alpa_ci`` level of significance. 
+        Can be the upper, lower, or two-sided confidence by changing value of ``bound``.
+        Can change the bound type to be regular or exponential using either the 't' or 'z' statistic.
 
         Parameters
         ----------
@@ -245,17 +246,17 @@ class NonParametric():
         Returns
         -------
 
-        R_cb : scalar or numpy array 
-            The value(s) of the upper, lower, or both confidence bound(s) of the survival function at x
+        cb : scalar or numpy array 
+            The value(s) of the upper, lower, or both confidence bound(s) of the selected function at x
 
         Examples
         --------
         >>> from surpyval import NelsonAalen
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> model = NelsonAalen.fit(x)
-        >>> model.R_cb([1., 1.5, 2., 2.5], bound='lower', dist='t')
+        >>> model.cb([1., 1.5, 2., 2.5], bound='lower', dist='t')
         array([0.11434813, 0.11434813, 0.04794404, 0.04794404])
-        >>> model.R_cb([1., 1.5, 2., 2.5])
+        >>> model.cb([1., 1.5, 2., 2.5])
         array([[0.97789387, 0.16706394],
                [0.97789387, 0.16706394],
                [0.91235117, 0.10996882],
