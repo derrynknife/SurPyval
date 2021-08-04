@@ -6,6 +6,7 @@ from .nelson_aalen import NelsonAalen
 from .fleming_harrington import FlemingHarrington_
 
 from scipy.interpolate import interp1d
+from autograd import jacobian
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -63,6 +64,7 @@ class NonParametric():
         # Let's not assume we can predict above the highest measurement
         if interp == 'step':
             idx = np.searchsorted(self.x, x, side='right') - 1
+            # idx = np.searchsorted(self.x, x, side='left')
             R = self.R[idx]
             R[np.where(x < self.x.min())] = 1
             R[np.where(x > self.x.max())] = 0
@@ -213,7 +215,7 @@ class NonParametric():
         """
         return -np.log(self.sf(x, interp=interp))
 
-    def R_cb(self, x, bound='two-sided', interp='step', alpha_ci=0.05, bound_type='exp', dist='z'):
+    def cb(self, x, on='sf', bound='two-sided', interp='step', alpha_ci=0.05, bound_type='exp', dist='z'):
         r"""
 
         Cumulative hazard rate with the non-parametric estimates from the data. This is calculated using 
@@ -224,8 +226,10 @@ class NonParametric():
 
         x : array like or scalar
             The values of the random variables at which the confidence bounds will be calculated
+        on : ('sf', 'ff', 'Hf'), optional
+            The function on which the confidence bound will be calculated.
         bound : ('two-sided', 'upper', 'lower'), str, optional
-            Compute either the two-sided, upper or lower confidence bound(s). Defaults to two-sided
+            Compute either the two-sided, upper or lower confidence bound(s). Defaults to two-sided.
         interp : ('step', 'linear', 'cubic'), optional
             How to interpolate the values between observations. Survival statistics traditionally 
             uses step functions, but can use interpolated values if desired. Defaults to step.
@@ -236,7 +240,7 @@ class NonParametric():
             bounds to exceed 1 or be less than 0. Defaults to exp as this ensures the bounds are 
             within 0 and 1.
         dist : ('t', 'z'), str, optional
-            The distribution to use in finding the bounds. Defaults to the normal (z) distribution.
+            The statistic to use in calculating the bounds (student-t or normal). Defaults to the normal (z).
 
         Returns
         -------
@@ -263,6 +267,31 @@ class NonParametric():
         http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
         """
+        if on in ['df', 'hf']:
+            raise ValueError("NonParametric cannot do confidence bounds on density or hazard rate functions. Try Hf, ff, or sf")
+
+        old_err_state = np.seterr(all='ignore')
+
+        cb = self.R_cb(x,
+                bound=bound,
+                interp=interp,
+                alpha_ci=alpha_ci,
+                bound_type=bound_type,
+                dist=dist
+            )
+
+        if (on == 'ff') or (on == 'F'):
+            cb = 1. - cb
+
+        elif on == 'Hf':
+            cb = -np.log(cb)
+
+        np.seterr(**old_err_state)
+
+        return cb
+
+    def R_cb(self, x, bound='two-sided', interp='step', alpha_ci=0.05, bound_type='exp', dist='z'):
+        
         if bound_type not in ['exp', 'normal']:
             return ValueError("'bound_type' must be in ['exp', 'normal']")
         if dist not in ['t', 'z']:
@@ -294,28 +323,43 @@ class NonParametric():
         else:
             # Normal Greenwood confidence
             R_out = self.R + np.sqrt(self.greenwood * self.R**2) * stat
-        # Let's not assume we can predict above the highest measurement
+
+
         if interp == 'step':
-            R_out[np.where(x < self.x.min())] = 1
-            R_out[np.where(x > self.x.max())] = np.nan
-            # R_out[np.where(x < 0)] = np.nan
             idx = np.searchsorted(self.x, x, side='right') - 1
+            nan_idx = ((x < self.x.min()) | (x > self.x.max()))
             if bound == 'two-sided':
-                R_out = R_out[:, idx].T
+                R_out = R_out[:, idx]
             else:
                 R_out = R_out[idx]
+
         else:
         # elif how == 'interp':
             if bound == 'two-sided':
                 R1 = interp1d(self.x, R_out[0, :], kind=interp)(x)
                 R2 = interp1d(self.x, R_out[1, :], kind=interp)(x)
-                # R1 = np.interp(x, self.x, R_out[0, :])
-                # R2 = np.interp(x, self.x, R_out[1, :])
-                R_out = np.vstack([R1, R2]).T
+                R_out = np.vstack([R1, R2])
             else:
                 R_out = interp1d(self.x, R_out, kind=interp)(x)
-                # R_out = np.interp(x, self.x, R_out)
-            R_out[np.where(x > self.x.max())] = np.nan
+
+
+        if R_out.ndim == 2:
+            min_idx = (x < self.x.min())
+            max_idx = (x > self.x.max())
+            # print(R_out[0, :])
+            R_out[0, :][min_idx] = 1
+            R_out[0, :][max_idx] = 1
+            R_out[1, :][min_idx] = 0
+            R_out[1, :][max_idx] = 0
+            R_out = R_out.T
+            # print(R_out)
+            # nan_idx = ((x < self.x.min()) | (x > self.x.max()))
+            # R_out[nan_i3dx] = np.nan
+        else:
+            min_idx = (x < self.x.min())
+            max_idx = (x > self.x.max())
+            R_out[min_idx] = 0
+            R_out[max_idx] = 1
 
         np.seterr(**old_err_state)
 
