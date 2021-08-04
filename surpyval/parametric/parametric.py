@@ -506,16 +506,23 @@ class Parametric():
 
         else:
             def R_cb(x):
-                sf_func = lambda params : self.dist.sf(x, *params)
+                sf_func = lambda params : self.dist.sf(x - self.gamma, *params)
                 jac = np.atleast_2d(jacobian(sf_func)(np.array(self.params)))
+
+                # Second-Order Taylor Series Expansion of Variance
                 var_R = []
                 for i, j in enumerate(jac):
                     j = np.atleast_2d(j).T * j
                     j = j[np.triu_indices(j.shape[0])] 
                     var_R.append(np.sum(j * pvars))
 
-                diff = z(alpha_ci/2) * np.sqrt(np.array(var_R)) * np.array([1., -1.]).reshape(2, 1)
+                # First-Order Taylor Series Expansion of Variance
+                # var_R = (jac**2 * np.diag(hess_inv)).sum(axis=1).T
+
+                # TODO: Add lower, upper, and two-sided options here
                 R_hat = self.sf(x)
+                diff = z(alpha_ci/2) * np.sqrt(np.array(var_R)) * np.array([1., -1.]).reshape(2, 1)
+                
                 exponent = diff/(R_hat*(1 - R_hat))
                 R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
                 return R_cb.T
@@ -541,7 +548,8 @@ class Parametric():
             def cb_df(x):
                 out = []
                 for v in x:
-                    out.append(jacobian(lambda x: -np.log(R_cb(x)))(v) * self.sf(v) )
+                    # out.append(jacobian(lambda x: -np.log(R_cb(x)))(v) * self.sf(v) )
+                    out.append(jacobian(lambda x: -np.log(R_cb(x)))(v) * self.sf(v))
                 return np.concatenate(out)
             cb = cb_df(t)
 
