@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="surpyval",
-    version="0.8.0",
+    version="0.9.0",
     author="Derryn Knife",
     author_email="derryn@reliafy.com",
     description="A python package for survival analysis",
