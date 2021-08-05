@@ -6,7 +6,15 @@ from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 def km(r, d):
     R = 1 - (d / r)
     R[np.isnan(R)] = 0
-    R = np.cumprod(R)
+    old_err_state = np.seterr(under='raise')
+
+    try:
+        R = np.cumprod(R)
+    except FloatingPointError:
+        R = np.cumsum(np.log(R))
+        R = np.exp(R)
+
+    np.seterr(**old_err_state)
     return R
 
 
