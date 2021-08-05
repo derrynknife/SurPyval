@@ -1,5 +1,4 @@
 import autograd.numpy as np
-from copy import copy
 
 
 def pass_through(x):
@@ -26,20 +25,20 @@ def bounds_convert(x, bounds):
     funcs = []
     inv_f = []
     for i, (lower, upper) in enumerate(bounds):
-        def add_to_funcs(l, u, i):
-            if (l is None) and (u is None):
+        def add_to_funcs(low, upp, i):
+            if (low is None) and (upp is None):
                 funcs.append(lambda x: pass_through(x))
                 inv_f.append(lambda x: pass_through(x))
-            elif (l == 0) and (u == 1):
+            elif (low == 0) and (upp == 1):
                 D = 10
-                funcs.append(lambda x: D * np.arctanh((2 * x)-1))
-                inv_f.append(lambda x: (np.tanh(x/D) + 1)/2)
-            elif (u is None):
-                funcs.append(lambda x: (inv_adj_relu(x - l)))
-                inv_f.append(lambda x: (adj_relu(x) + l))
-            elif (l is None):
-                funcs.append(lambda x: inv_rev_adj_relu(x - np.copy(u)))
-                inv_f.append(lambda x: np.copy(u) + rev_adj_relu(x))
+                funcs.append(lambda x: D * np.arctanh((2 * x) - 1))
+                inv_f.append(lambda x: (np.tanh(x / D) + 1) / 2)
+            elif (upp is None):
+                funcs.append(lambda x: (inv_adj_relu(x - low)))
+                inv_f.append(lambda x: (adj_relu(x) + low))
+            elif (low is None):
+                funcs.append(lambda x: inv_rev_adj_relu(x - np.copy(upp)))
+                inv_f.append(lambda x: np.copy(upp) + rev_adj_relu(x))
             else:
                 funcs.append(lambda x: pass_through(x))
                 inv_f.append(lambda x: pass_through(x))
