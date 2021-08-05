@@ -10,7 +10,6 @@ def km(r, d):
 
     try:
         R = np.cumprod(R)
-        raise FloatingPointError
     except FloatingPointError:
         R = np.cumsum(np.log(1 - (d / r)))
         R = np.exp(R)
