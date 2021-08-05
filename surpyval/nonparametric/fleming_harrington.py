@@ -2,14 +2,16 @@ import numpy as np
 from surpyval.utils import xcnt_to_xrd
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
+
 def fh_h(r_i, d_i):
     out = 0
     while d_i > 1:
-        out += 1./r_i
+        out += 1. / r_i
         r_i -= 1
         d_i -= 1
-    out += d_i/r_i
+    out += d_i / r_i
     return out
+
 
 def fh(r, d):
     Y = np.array([fh_h(r_i, d_i) for r_i, d_i in zip(r, d)])
@@ -18,17 +20,21 @@ def fh(r, d):
     R = np.exp(-H)
     return R
 
+
 def fleming_harrington(x, c, n, t):
     xrd = xcnt_to_xrd(x, c, n, t)
-    out = {k : v for k, v in zip(['x', 'r', 'd'], xrd)}
+    out = {k: v for k, v in zip(['x', 'r', 'd'], xrd)}
     out['R'] = fh(out['r'], out['d'])
     return out
 
+
 class FlemingHarrington_(NonParametricFitter):
     r"""
-    Fleming-Harrington estimation of survival distribution.  Returns a `NonParametric` object from method :code:`fit()` Calculates the Non-Parametric estimate of the survival function using:
+    Fleming-Harrington estimation of survival distribution.
+    Returns a `NonParametric` object from method :code:`fit()`
+    calculates the Non-Parametric estimate of the survival function using:
 
-    .. math:: 
+    .. math::
 
         R = e^{-\sum_{i:x_{i} \leq x} \sum_{i=0}^{d_x-1} \frac{1}{r_x - i}}
 
@@ -45,5 +51,6 @@ class FlemingHarrington_(NonParametricFitter):
     """
     def __init__(self):
         self.how = 'Fleming-Harrington'
+
 
 FlemingHarrington = FlemingHarrington_()

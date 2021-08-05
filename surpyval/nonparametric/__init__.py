@@ -1,9 +1,3 @@
-
-PLOTTING_METHODS = [ "Blom", "Median", "ECDF", "Modal", "Midpoint", 
-"Mean", "Weibull", "Benard", "Beard", "Hazen", "Gringorten", 
-"None", "Tukey", "DPW", "Fleming-Harrington", "Kaplan-Meier",
-"Nelson-Aalen", "Filliben", "Larsen", "Turnbull"]
-
 from .plotting_positions import plotting_positions
 from .turnbull import turnbull
 from .filliben import filliben
@@ -20,11 +14,14 @@ from .fleming_harrington import FlemingHarrington
 from .turnbull import Turnbull
 
 FIT_FUNCS = {
-	'Nelson-Aalen'       : nelson_aalen,
-	'Kaplan-Meier'       : kaplan_meier,
-	'Fleming-Harrington' : fleming_harrington,
-	'Turnbull'           : turnbull
+    'Nelson-Aalen': nelson_aalen,
+    'Kaplan-Meier': kaplan_meier,
+    'Fleming-Harrington': fleming_harrington,
+    'Turnbull': turnbull
 }
 
-
-
+PLOTTING_METHODS = ["Blom", "Median", "ECDF", "Modal", "Midpoint",
+                    "Mean", "Weibull", "Benard", "Beard",
+                    "Hazen", "Gringorten", "None", "Tukey",
+                    "DPW", "Fleming-Harrington", "Kaplan-Meier",
+                    "Nelson-Aalen", "Filliben", "Larsen", "Turnbull"]

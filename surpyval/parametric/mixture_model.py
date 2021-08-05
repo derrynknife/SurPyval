@@ -5,7 +5,6 @@ from scipy.optimize import minimize
 from scipy.special import ndtri as z
 
 from autograd import jacobian, hessian
-import surpyval
 from surpyval import parametric as para
 
 class MixtureModel():

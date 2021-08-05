@@ -33,7 +33,7 @@ class Weibull_(ParametricFitter):
         if (2 in c) or (-1 in c):
             heuristic = "Turnbull"
         else:
-            heuristic = "Nelson-Aalen"
+            heuristic = "Fleming-Harrington"
 
         data = {'x' : x, 'c' : c, 'n' : n, 't' : t}
         model = para.Parametric(self, 'MPP', data, offset, False, False)
@@ -41,7 +41,7 @@ class Weibull_(ParametricFitter):
         fitting_info['rr'] = 'x'
         fitting_info['heuristic'] = heuristic
         fitting_info['on_d_is_0'] = True
-        fitting_info['turnbull_estimator'] = 'Nelson-Aalen'
+        fitting_info['turnbull_estimator'] = 'Fleming-Harrington'
         fitting_info['init'] = None
 
         model.fitting_info = fitting_info
@@ -52,7 +52,7 @@ class Weibull_(ParametricFitter):
         else:
             gumb = para.Gumbel.fit(log_x, c, n, t, how='MLE')
             if not gumb.res.success:
-                gumb = para.Gumbel.fit(log_x, c, n, t, how='MPP', heuristic=heuristic)
+                gumb = para,Gumbel.fit(log_x, c, n, t, how='MPP', heuristic=heuristic)
             mu, sigma = gumb.params
             alpha, beta = np.exp(mu), 1. / sigma
             if (np.isinf(alpha) | np.isnan(alpha)):

@@ -2,61 +2,73 @@ import numpy as np
 from surpyval import nonparametric as nonp
 from surpyval.utils import xcnt_handler
 
+
 class NonParametricFitter():
     def fit(self, x=None, c=None, n=None, t=None,
             xl=None, xr=None, tl=None, tr=None,
             turnbull_estimator='Fleming-Harrington'):
         r"""
 
-        The central feature to SurPyval's capability. This function aimed to have an API to mimic the 
-        simplicity of the scipy API. That is, to use a simple :code:`fit()` call, with as many or as few
-        parameters as is needed.
+        The central feature to SurPyval's capability. This function aimed to
+        have an API to mimic the simplicity of the scipy API. That is, to use a
+        simple :code:`fit()` call, with as many or as few parameters as are
+        needed.
 
         Parameters
         ----------
 
         x : array like, optional
-            Array of observations of the random variables. If x is :code:`None`, xl and xr must be provided.
+            Array of observations of the random variables. If x is
+            :code:`None`, xl and xr must be provided.
 
         c : array like, optional
-            Array of censoring flag. -1 is left censored, 0 is observed, 1 is right censored, and 2 is intervally
-            censored. If not provided will assume all values are observed.
+            Array of censoring flag. -1 is left censored, 0 is observed, 1 is
+            right censored, and 2 is intervally censored. If not provided will
+            assume all values are observed.
 
         n : array like, optional
-            Array of counts for each x. If data is proivded as counts, then this can be provided. If :code:`None`
-            will assume each observation is 1.
+            Array of counts for each x. If data is proivded as counts, then
+            this can be provided. If :code:`None` will assume each
+            observation is 1.
 
         t : 2D-array like, optional
-            2D array like of the left and right values at which the respective observation was truncated. If
-            not provided it assumes that no truncation occurs.
+            2D array like of the left and right values at which the
+            respective observation was truncated. If not provided it assumes
+            that no truncation occurs.
 
         tl : array like or scalar, optional
-            Values of left truncation for observations. If it is a scalar value assumes each observation is
-            left truncated at the value. If an array, it is the respective 'late entry' of the observation
+            Values of left truncation for observations. If it is a scalar
+            value assumes each observation is left truncated at the value.
+            If an array, it is the respective 'late entry' of the observation.
 
         tr : array like or scalar, optional
-            Values of right truncation for observations. If it is a scalar value assumes each observation is
-            right truncated at the value. If an array, it is the respective right truncation value for each
-            observation
+            Values of right truncation for observations. If it is a scalar
+            value assumes each observation is right truncated at the value.
+            If an array, it is the respective right truncation value for each
+            observation.
 
         xl : array like, optional
-            Array like of the left array for 2-dimensional input of x. This is useful for data that is all
-            intervally censored. Must be used with the :code:`xr` input.
+            Array like of the left array for 2-dimensional input of x. This is
+            useful for data that is all intervally censored. Must be used with
+            the :code:`xr` input.
 
         xr : array like, optional
-            Array like of the right array for 2-dimensional input of x. This is useful for data that is all
-            intervally censored. Must be used with the :code:`xl` input.
+            Array like of the right array for 2-dimensional input of x. This is
+            useful for data that is all intervally censored. Must be used with
+            the :code:`xl` input.
 
-        turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier', or 'Fleming-Harrington'), str, optional
-            If using the Turnbull heuristic, you can elect to use either the KM, NA, or FH estimator with 
-            the Turnbull estimates of r, and d. Defaults to FH.
+        turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier', or
+        'Fleming-Harrington'), str, optional
+            If using the Turnbull heuristic, you can elect to use either the
+            KM, NA, or FH estimator with the Turnbull estimates of r, and d.
+            Defaults to FH.
 
         Returns
         -------
 
         model : NonParametric
-            A parametric model with the fitted parameters and methods for all functions of the distribution using the 
-            fitted parameters.
+            A parametric model with the fitted parameters and methods for all
+            functions of the distribution using the fitted parameters.
 
         Examples
         --------
@@ -74,8 +86,8 @@ class NonParametricFitter():
         Model            : Turnbull
         Estimator        : Kaplan-Meier
         """
-        x, c, n, t = xcnt_handler(x=x, c=c, n=n, t=t, 
-                                  tl=tl, tr=tr, 
+        x, c, n, t = xcnt_handler(x=x, c=c, n=n, t=t,
+                                  tl=tl, tr=tr,
                                   xl=xl, xr=xr)
 
         data = {}

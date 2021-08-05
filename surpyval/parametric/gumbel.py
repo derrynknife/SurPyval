@@ -29,7 +29,7 @@ class Gumbel_(ParametricFitter):
             heuristic = "Turnbull"
         else:
             heuristic = "Nelson-Aalen"
-        return para.Gumbel.fit(x, c, n, how='MPP', heuristic=heuristic).params
+        return self.fit(x, c, n, how='MPP', heuristic=heuristic).params
 
     def sf(self, x, mu, sigma):
         r"""

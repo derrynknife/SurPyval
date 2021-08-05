@@ -11,39 +11,44 @@ from autograd import jacobian
 import matplotlib.pyplot as plt
 import pandas as pd
 
+
 class NonParametric():
     """
-    Result of ``.fit()`` method for every non-parametric surpyval distribution. This means that each of the 
-    methods in this class can be called with a model created from the ``NelsonAalen``, ``KaplanMeier``, 
+    Result of ``.fit()`` method for every non-parametric
+    surpyval distribution. This means that each of the
+    methods in this class can be called with a model created
+    from the ``NelsonAalen``, ``KaplanMeier``,
     ``FlemingHarrington``, or ``Turnbull`` estimators.
     """
     def __repr__(self):
         out = ('Non-Parametric SurPyval Model'
                + '\n============================='
                + '\nModel            : {dist}'
-              ).format(dist=self.model)
+               ).format(dist=self.model)
 
         if 'estimator' in self.data:
-            out += '\nEstimator        : {turnbull}'.format(turnbull=self.data['estimator'])
+            out += '\nEstimator        : {turnbull}'.format(
+                turnbull=self.data['estimator'])
 
         return out
-
 
     def sf(self, x, interp='step'):
         r"""
 
-        Surival (or Reliability) function with the non-parametric estimates from the data
+        Surival (or Reliability) function with the
+        non-parametric estimates from the data.
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the survival function will be calculated 
+            The values of the random variables at which t
+            he survival function will be calculated.
 
         Returns
         -------
 
-        sf : scalar or numpy array 
+        sf : scalar or numpy array
             The value(s) of the survival function at each x
 
 
@@ -80,18 +85,20 @@ class NonParametric():
     def ff(self, x, interp='step'):
         r"""
 
-        CDF (failure or unreliability) function with the non-parametric estimates from the data
+        CDF (failure or unreliability) function with the
+        non-parametric estimates from the data
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the survival function will be calculated 
+            The values of the random variables at which
+            the survival function will be calculated.
 
         Returns
         -------
 
-        ff : scalar or numpy array 
+        ff : scalar or numpy array
             The value(s) of the failure function at each x
 
 
@@ -110,19 +117,21 @@ class NonParametric():
     def hf(self, x, interp='step'):
         r"""
 
-        Instantaneous hazard function with the non-parametric estimates from the data. This is
-        calculated using simply the difference between consecutive H(x).
+        Instantaneous hazard function with the non-parametric
+        estimates from the data. This is calculated using simply
+        the difference between consecutive H(x).
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the survival function will be calculated 
+            The values of the random variables at which
+            the survival function will be calculated
 
         Returns
         -------
 
-        hf : scalar or numpy array 
+        hf : scalar or numpy array
             The value(s) of the failure function at each x
 
 
@@ -139,19 +148,20 @@ class NonParametric():
         idx = np.argsort(x)
         rev = np.argsort(idx)
         x = x[idx]
-        hf = np.diff(np.hstack([self.Hf(x[0], interp=interp), self.Hf(x, interp=interp)]))
+        hf = np.diff(np.hstack([self.Hf(x[0], interp=interp),
+                                self.Hf(x, interp=interp)]))
         hf[0] = hf[1]
         hf = pd.Series(hf)
         hf[hf == 0] = np.nan
         hf = hf.ffill().values
         return hf[rev]
 
-
     def df(self, x, interp='step'):
         r"""
 
-        Density function with the non-parametric estimates from the data. This is calculated using 
-        the relationship between the hazard function and the density:
+        Density function with the non-parametric estimates
+        from the data. This is calculated using the relationship
+        between the hazard function and the density:
 
         .. math::
             f(x) = h(x)e^{-H(x)}
@@ -160,12 +170,13 @@ class NonParametric():
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the survival function will be calculated 
+            The values of the random variables at which the
+            survival function will be calculated
 
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the density function at x
 
 
@@ -184,24 +195,25 @@ class NonParametric():
     def Hf(self, x, interp='step'):
         r"""
 
-        Cumulative hazard rate with the non-parametric estimates from the data. This is calculated using 
-        the relationship between the hazard function and the density:
+        Cumulative hazard rate with the non-parametric estimates
+        from the data. This is calculated using the relationship
+        between the hazard function and the density:
 
         .. math::
-            H(x) = -\ln(R(x))
+            H(x) = -\ln (R(x))
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the survival function will be calculated 
+            The values of the random variables at which the
+            function will be calculated.
 
         Returns
         -------
 
-        Hf : scalar or numpy array 
+        Hf : scalar or numpy array
             The value(s) of the density function at x
-
 
         Examples
         --------
@@ -215,39 +227,47 @@ class NonParametric():
         """
         return -np.log(self.sf(x, interp=interp))
 
-    def cb(self, x, on='sf', bound='two-sided', interp='step', alpha_ci=0.05, bound_type='exp', dist='z'):
+    def cb(self, x, on='sf', bound='two-sided', interp='step',
+           alpha_ci=0.05, bound_type='exp', dist='z'):
         r"""
 
-        Confidence bounds of the ``on`` function at the ``alpa_ci`` level of significance. 
-        Can be the upper, lower, or two-sided confidence by changing value of ``bound``.
-        Can change the bound type to be regular or exponential using either the 't' or 'z' statistic.
+        Confidence bounds of the ``on`` function at the
+        ``alpa_ci`` level of significance. Can be the upper,
+        lower, or two-sided confidence by changing value of ``bound``.
+        Can change the bound type to be regular or exponential
+        using either the 't' or 'z' statistic.
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the confidence bounds will be calculated
+            The values of the random variables at which the confidence bounds
+            will be calculated
         on : ('sf', 'ff', 'Hf'), optional
             The function on which the confidence bound will be calculated.
         bound : ('two-sided', 'upper', 'lower'), str, optional
-            Compute either the two-sided, upper or lower confidence bound(s). Defaults to two-sided.
+            Compute either the two-sided, upper or lower confidence bound(s).
+            Defaults to two-sided.
         interp : ('step', 'linear', 'cubic'), optional
-            How to interpolate the values between observations. Survival statistics traditionally 
-            uses step functions, but can use interpolated values if desired. Defaults to step.
+            How to interpolate the values between observations. Survival
+            statistics traditionally uses step functions, but can use
+            interpolated values if desired. Defaults to step.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
         bound_type : ('exp', 'regular'), str, optional
-            The method with which the bounds will be calculated. Using regular will allow for the 
-            bounds to exceed 1 or be less than 0. Defaults to exp as this ensures the bounds are 
-            within 0 and 1.
+            The method with which the bounds will be calculated. Using regular
+            will allow for the bounds to exceed 1 or be less than 0. Defaults
+            to exp as this ensures the bounds are within 0 and 1.
         dist : ('t', 'z'), str, optional
-            The statistic to use in calculating the bounds (student-t or normal). Defaults to the normal (z).
+            The statistic to use in calculating the bounds (student-t or
+            normal). Defaults to the normal (z).
 
         Returns
         -------
 
-        cb : scalar or numpy array 
-            The value(s) of the upper, lower, or both confidence bound(s) of the selected function at x
+        cb : scalar or numpy array
+            The value(s) of the upper, lower, or both confidence bound(s) of
+            the selected function at x
 
         Examples
         --------
@@ -264,22 +284,24 @@ class NonParametric():
 
         References
         ----------
-        
+
         http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
         """
         if on in ['df', 'hf']:
-            raise ValueError("NonParametric cannot do confidence bounds on density or hazard rate functions. Try Hf, ff, or sf")
+            raise ValueError("NonParametric cannot do confidence bounds on "
+                             + "density or hazard rate functions. Try Hf, "
+                             + "ff, or sf")
 
         old_err_state = np.seterr(all='ignore')
 
         cb = self.R_cb(x,
-                bound=bound,
-                interp=interp,
-                alpha_ci=alpha_ci,
-                bound_type=bound_type,
-                dist=dist
-            )
+                       bound=bound,
+                       interp=interp,
+                       alpha_ci=alpha_ci,
+                       bound_type=bound_type,
+                       dist=dist
+                       )
 
         if (on == 'ff') or (on == 'F'):
             cb = 1. - cb
@@ -291,8 +313,9 @@ class NonParametric():
 
         return cb
 
-    def R_cb(self, x, bound='two-sided', interp='step', alpha_ci=0.05, bound_type='exp', dist='z'):
-        
+    def R_cb(self, x, bound='two-sided', interp='step', alpha_ci=0.05,
+             bound_type='exp', dist='z'):
+
         if bound_type not in ['exp', 'normal']:
             return ValueError("'bound_type' must be in ['exp', 'normal']")
         if dist not in ['t', 'z']:
@@ -301,48 +324,45 @@ class NonParametric():
         confidence = 1. - alpha_ci
 
         old_err_state = np.seterr(all='ignore')
-            
+
         x = np.atleast_1d(x)
         if bound in ['upper', 'lower']:
             if dist == 't':
                 stat = t.ppf(1 - confidence, self.r - 1)
             else:
                 stat = norm.ppf(1 - confidence, 0, 1)
-            if bound == 'upper' : stat = -stat
+            if bound == 'upper':
+                stat = -stat
         elif bound == 'two-sided':
             if dist == 't':
-                stat = t.ppf((1 - confidence)/2, self.r - 1)
+                stat = t.ppf((1 - confidence) / 2, self.r - 1)
             else:
-                stat = norm.ppf((1 - confidence)/2, 0, 1)
+                stat = norm.ppf((1 - confidence) / 2, 0, 1)
             stat = np.array([-1, 1]).reshape(2, 1) * stat
 
         if bound_type == 'exp':
             # Exponential Greenwood confidence
-            R_out = self.greenwood * 1./(np.log(self.R)**2)
+            R_out = self.greenwood * 1. / (np.log(self.R)**2)
             R_out = np.log(-np.log(self.R)) - stat * np.sqrt(R_out)
             R_out = np.exp(-np.exp(R_out))
         else:
             # Normal Greenwood confidence
             R_out = self.R + np.sqrt(self.greenwood * self.R**2) * stat
 
-
         if interp == 'step':
             idx = np.searchsorted(self.x, x, side='right') - 1
-            nan_idx = ((x < self.x.min()) | (x > self.x.max()))
             if bound == 'two-sided':
                 R_out = R_out[:, idx]
             else:
                 R_out = R_out[idx]
 
         else:
-        # elif how == 'interp':
             if bound == 'two-sided':
                 R1 = interp1d(self.x, R_out[0, :], kind=interp)(x)
                 R2 = interp1d(self.x, R_out[1, :], kind=interp)(x)
                 R_out = np.vstack([R1, R2])
             else:
                 R_out = interp1d(self.x, R_out, kind=interp)(x)
-
 
         if R_out.ndim == 2:
             min_idx = (x < self.x.min())
@@ -384,14 +404,14 @@ class NonParametric():
         cbs = self.R_cb(self.x, **kwargs)
 
         plot_data = {
-            'x_scale_min' : x_scale_min,
-            'x_scale_max' : x_scale_max,
-            'y_scale_min' : y_scale_min,
-            'y_scale_max' : y_scale_max,
-            'cbs' : cbs,
-            'x_' : self.x,
-            'R' : self.R,
-            'F' : self.F
+            'x_scale_min': x_scale_min,
+            'x_scale_max': x_scale_max,
+            'y_scale_min': y_scale_min,
+            'y_scale_max': y_scale_max,
+            'cbs': cbs,
+            'x_': self.x,
+            'R': self.R,
+            'F': self.F
         }
         return plot_data
 
@@ -426,5 +446,3 @@ class NonParametric():
             if plot_bounds:
                 plt.step(d['x_'], d['cbs'], color='r')
             return plt.step(d['x_'], d['R'])
-
-
