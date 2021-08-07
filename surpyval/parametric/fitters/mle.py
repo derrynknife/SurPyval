@@ -1,7 +1,7 @@
 import autograd.numpy as np
 from autograd import jacobian, hessian
 from autograd.numpy.linalg import inv
-from scipy.optimize import minimize
+from scipy.optimize import minimize, approx_fprime
 import sys
 import copy
 
@@ -69,7 +69,7 @@ def mle(model):
 
         if offset:
             gamma = params[0]
-            params = params[1::]
+            params = params[1:]
         else:
             # Use the assumed value
             pass
@@ -87,13 +87,19 @@ def mle(model):
             p = 1.
 
         inf_c_flags, x_mle = _create_censor_flags(x_mle, gamma, c, dist)
-
         return dist.neg_ll(x_mle, c, n, inf_c_flags,
                            t_mle, t_flags, gamma, p, f0, *params)
 
     old_err_state = np.seterr(all='ignore')
-    jac = jacobian(fun)
-    hess = hessian(fun)
+
+    if zi:
+        def jac(x, offset, lfp, zi, transform):
+            return approx_fprime(x, fun, np.sqrt(np.finfo(float).eps),
+                                 offset, lfp, zi, transform)
+        hess = None
+    else:
+        jac = jacobian(fun)
+        hess = hessian(fun)
 
     res = minimize(fun, init, args=(offset, lfp, zi, True),
                    method='Newton-CG', jac=jac, hess=hess)
@@ -127,9 +133,11 @@ def mle(model):
     if offset:
         results['gamma'] = p_hat[0]
         params = p_hat[1:]
+        parameters_for_hessian = copy.copy(params)
     else:
         results['gamma'] = 0
         params = p_hat
+        parameters_for_hessian = copy.copy(params)
 
     if zi:
         results['f0'] = params[-1]
@@ -146,9 +154,12 @@ def mle(model):
         results['params'] = params
 
     try:
-        results['hess_inv'] = inv(hess(results['params'],
-                                       *(False, lfp, zi,
-                                         False, results['gamma'])))
+        if zi or lfp:
+            results['hess_inv'] = None
+        else:
+            results['hess_inv'] = inv(hess(parameters_for_hessian,
+                                           *(False, lfp, zi,
+                                             False, results['gamma'])))
     except np.linalg.LinAlgError:
         results['hess_inv'] = None
 
