@@ -349,8 +349,10 @@ class NonParametric():
             idx = np.searchsorted(self.x, x, side='right') - 1
             if bound == 'two-sided':
                 R_out = R_out[:, idx]
+                R_out = np.where(idx < 0, 1, R_out)
             else:
                 R_out = R_out[idx]
+                R_out = np.where(idx < 0, 1, R_out)
 
         else:
             if bound == 'two-sided':
