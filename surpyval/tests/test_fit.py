@@ -1,5 +1,7 @@
 import pytest
 import numpy as np
+import lifelines
+import surpyval
 from surpyval import (
     Gumbel, Normal, Weibull, LogNormal,
     Logistic, LogLogistic, Uniform, 
@@ -40,16 +42,19 @@ def generate_mpp_test_cases():
             yield dist, bounds, rr
 
 
+
 def generate_mom_test_cases():
     for idx, dist in enumerate(DISTS):
         bounds = parameter_sample_bounds[idx]
         yield dist, bounds
 
 
+
 def generate_mps_test_cases():
     for idx, dist in enumerate(DISTS):
         bounds = parameter_sample_bounds[idx]
         yield dist, bounds
+
 
 def generate_mse_test_cases():
     for idx, dist in enumerate(DISTS):
@@ -123,6 +128,8 @@ def truncate_at(x, q, where='right'):
         raise ValueError("'where' parameter not correctly defined")
 
 
+
+
 @pytest.mark.parametrize("dist,bounds,kind",
                          generate_mle_test_cases(),
                          ids=idfunc)
@@ -158,6 +165,9 @@ def test_mle_convergence(dist, bounds, kind):
     else:
         raise AssertionError('MLE convergence not good for %s\n' % dist.name)
 
+
+
+
 @pytest.mark.parametrize("dist,bounds,kind",
                          generate_small_mle_test_cases(),
                          ids=idfunc)
@@ -184,7 +194,6 @@ def test_mle_convergence_small(dist, bounds, kind):
     else:
         raise AssertionError('MLE fit for small data not good for %s\n' 
                              % dist.name)
-
 
 
 @pytest.mark.parametrize("dist,bounds,rr",
