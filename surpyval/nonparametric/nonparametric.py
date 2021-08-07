@@ -66,14 +66,10 @@ class NonParametric():
         idx = np.argsort(x)
         rev = np.argsort(idx)
         x = x[idx]
-        # Let's not assume we can predict above the highest measurement
         if interp == 'step':
             idx = np.searchsorted(self.x, x, side='right') - 1
-            # idx = np.searchsorted(self.x, x, side='left')
             R = self.R[idx]
-            R[np.where(x < self.x.min())] = 1
-            R[np.where(x > self.x.max())] = 0
-            # R[np.where(x < 0)] = np.nan
+            R = np.where(idx < 0, 1, R)
         else:
             R = np.hstack([[1], self.R])
             x_data = np.hstack([[0], self.x])
@@ -444,5 +440,5 @@ class NonParametric():
             return plt.plot(d['x_'], d['R'])
         else:
             if plot_bounds:
-                plt.step(d['x_'], d['cbs'], color='r')
-            return plt.step(d['x_'], d['R'])
+                plt.step(d['x_'], d['cbs'], color='r', where='post')
+            return plt.step(d['x_'], d['R'], where='post')
