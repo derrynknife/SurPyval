@@ -1,26 +1,11 @@
-import types
 import autograd.numpy as np
-from autograd import jacobian
 from scipy.stats import uniform
-from scipy.optimize import approx_fprime
-from scipy.special import betainc, betaincinv
+from scipy.special import betaincinv
 from scipy.special import gamma as gamma_func
-from scipy.special import gammainc, gammaincinv
-from autograd_gamma import gammainc as agammainc
 from autograd.scipy.special import beta as abeta
 from autograd_gamma import betainc as abetainc
-from scipy.special import ndtri as z
-from scipy.linalg import lstsq
-
-import warnings
-
-from scipy.optimize import minimize
-from scipy.stats import pearsonr
-
-import surpyval
-from surpyval import parametric as para
-from surpyval import nonparametric as nonp
 from surpyval.parametric.parametric_fitter import ParametricFitter
+
 
 class Beta_(ParametricFitter):
     def __init__(self, name):
@@ -29,14 +14,14 @@ class Beta_(ParametricFitter):
         self.bounds = ((0, None), (0, None),)
         self.support = (0, 1)
         self.plot_x_scale = 'linear'
-        self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
-            0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
-            0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
-            0.9, 0.95, 0.99, 0.999, 0.9999]
+        self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002,
+                        0.003, 0.005, 0.01, 0.02, 0.03, 0.05,
+                        0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,
+                        0.9, 0.95, 0.99, 0.999, 0.9999]
         self.param_names = ['alpha', 'beta']
         self.param_map = {
-            'alpha' : 0,
-            'beta'  : 1
+            'alpha': 0,
+            'beta': 1
         }
 
     def _parameter_initialiser(self, x, c=None, n=None):
@@ -53,13 +38,14 @@ class Beta_(ParametricFitter):
         Survival (or reliability) function for the Beta Distribution:
 
         .. math::
-            R(x) = 1 - \int_{0}^{x}t^{\alpha-1}\left (1 - t \right )^{\beta -1}dt
+            R(x) = 1 - \int_{0}^{x}t^{\alpha-1}\left (1 - t \right )^
+            {\beta - 1}dt
 
         Parameters
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             One shape parameter for the Beta distribution
         beta : numpy array or scalar
@@ -68,7 +54,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the reliability function at x.
 
         Examples
@@ -84,7 +70,8 @@ class Beta_(ParametricFitter):
     def cs(self, x, X, alpha, beta):
         r"""
 
-        Conditional survival (or reliability) function for the Beta Distribution:
+        Conditional survival (or reliability) function for the Beta
+        Distribution:
 
         .. math::
             R(x, X) = \frac{R(x + X)}{R(X)}
@@ -93,7 +80,7 @@ class Beta_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         X : numpy array or scalar
             The value(s) at which each value(s) in x was known to have survived
         alpha : numpy array or scalar
@@ -104,7 +91,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the conditional survival function at x.
 
         Examples
@@ -129,7 +116,7 @@ class Beta_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             One shape parameter for the Beta distribution
         beta : numpy array or scalar
@@ -138,7 +125,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -157,13 +144,14 @@ class Beta_(ParametricFitter):
         Density function for the Beta Distribution:
 
         .. math::
-            f(x) = \frac{x^{\alpha-1}\left(1 - x \right )^{\beta-1}}{B \left ( \alpha , \beta \right )}
+            f(x) = \frac{x^{\alpha-1}\left(1 - x \right )^{\beta-1}}{B \left (
+            \alpha , \beta \right )}
 
         Parameters
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             One shape parameter for the Beta distribution
         beta : numpy array or scalar
@@ -172,7 +160,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the density function at x.
 
         Examples
@@ -197,7 +185,7 @@ class Beta_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             One shape parameter for the Beta distribution
         beta : numpy array or scalar
@@ -206,7 +194,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the instantaneous hazard rate at x.
 
         Examples
@@ -231,7 +219,7 @@ class Beta_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             One shape parameter for the Beta distribution
         beta : numpy array or scalar
@@ -240,7 +228,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the cumulative hazard function at x.
 
         Examples
@@ -262,7 +250,7 @@ class Beta_(ParametricFitter):
         ----------
 
         p : numpy array or scalar
-            The percentiles at which the quantile will be calculated 
+            The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             One shape parameter for the Beta distribution
         beta : numpy array or scalar
@@ -271,7 +259,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        q : scalar or numpy array 
+        q : scalar or numpy array
             The quantiles for the Beta distribution at each value p.
 
         Examples
@@ -303,7 +291,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        mean : scalar or numpy array 
+        mean : scalar or numpy array
             The mean(s) of the Beta distribution
 
         Examples
@@ -320,7 +308,8 @@ class Beta_(ParametricFitter):
         n-th (non central) moment of the Beta distribution
 
         .. math::
-            E = \frac{\Gamma \left( n + \alpha\right )}{\beta^{n}\Gamma \left ( \alpha \right )}
+            E = \frac{\Gamma \left( n + \alpha\right )}{\beta^{n}\Gamma
+            \left ( \alpha \right )}
 
         Parameters
         ----------
@@ -335,7 +324,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        moment : scalar or numpy array 
+        moment : scalar or numpy array
             The moment(s) of the Beta distribution
 
         Examples
@@ -348,7 +337,6 @@ class Beta_(ParametricFitter):
 
     def random(self, size, alpha, beta):
         r"""
-
         Draws random samples from the distribution in shape `size`
 
         Parameters
@@ -364,7 +352,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        random : scalar or numpy array 
+        random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
 
         Examples
@@ -393,28 +381,30 @@ class Beta_(ParametricFitter):
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
 
-    def mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False, offset=False):
-        raise NotImplementedError("Probability Plotting Method for Beta distribution")
-        
+    def mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen",
+            rr='y', on_d_is_0=False, offset=False):
+        msg = "Probability Plotting Method for Beta distribution"
+        raise NotImplementedError(msg)
 
     def _mom(self, x):
         """
-        MOM: Method of Moments for the beta distribution has an analytic answer.
+        MOM: Method of Moments for the beta distribution has an analytic answer
         """
         mean = x.mean()
         var = x.var()
         term1 = ((mean*(1 - mean)/var) - 1)
-        alpha =  term1 * mean
+        alpha = term1 * mean
         beta = term1 * (1 - mean)
 
         return alpha, beta
 
     def var_R(self, dR, cv_matrix):
         dr_dalpha = dR[:, 0]
-        dr_dbeta  = dR[:, 1]
-        var_r = (dr_dalpha**2 * cv_matrix[0, 0] + 
-                 dr_dbeta**2  * cv_matrix[1, 1] + 
+        dr_dbeta = dR[:, 1]
+        var_r = (dr_dalpha**2 * cv_matrix[0, 0] +
+                 dr_dbeta**2 * cv_matrix[1, 1] +
                  2 * dr_dalpha * dr_dbeta * cv_matrix[0, 1])
         return var_r
+
 
 Beta = Beta_('Beta')
