@@ -1,17 +1,14 @@
 import re
-from autograd import jacobian
-from autograd import grad
 import autograd.numpy as np
+import matplotlib.pyplot as plt
+from autograd import jacobian
 from scipy.stats import uniform
-
 from surpyval import round_sig, fs_to_xcn
 from scipy.special import ndtri as z
 from surpyval import nonparametric as nonp
 from copy import deepcopy, copy
-
-import matplotlib.pyplot as plt
-from scipy.optimize import approx_fprime
 from matplotlib.ticker import FixedLocator
+
 
 def _round_vals(x):
     not_different = True
@@ -22,15 +19,15 @@ def _round_vals(x):
         i += 1
     return x_ticks
 
+
 class Parametric():
     """
-    Result of ``.fit()`` or ``.from_params()`` method for every parametric surpyval 
-    distribution.
-    
-    Instances of this class are very useful when a user needs the other functions 
-    of a distribution for plotting, optimizations, monte carlo analysis and numeric 
-    integration.
+    Result of ``.fit()`` or ``.from_params()`` method for every parametric
+    surpyval distribution.
 
+    Instances of this class are very useful when a user needs the other
+    functions of a distribution for plotting, optimizations, monte carlo
+    analysis and numeric integration.
     """
     def __init__(self, dist, method, data, offset, lfp, zi):
         self.dist = dist
@@ -50,22 +47,22 @@ class Parametric():
             else:
                 bounds = ((None, None), *bounds)
 
-            param_map = {k : v + 1 for k, v in param_map.items()}
-            param_map.update({'gamma' : 0})
-            self.k +=1
+            param_map = {k: v + 1 for k, v in param_map.items()}
+            param_map.update({'gamma': 0})
+            self.k += 1
         else:
             self.gamma = 0
 
         if lfp:
             bounds = (*bounds, (0, 1))
-            param_map.update({'p' : len(param_map) + 1})
+            param_map.update({'p': len(param_map) + 1})
             self.k += 1
         else:
             self.p = 1
 
         if zi:
             bounds = (*bounds, (0, 1))
-            param_map.update({'f0' : len(param_map) + 1})
+            param_map.update({'f0': len(param_map) + 1})
             self.k += 1
         else:
             self.f0 = 0
@@ -73,18 +70,20 @@ class Parametric():
         self.bounds = bounds
         self.param_map = param_map
 
-
     def __repr__(self):
-        param_string = '\n'.join(['{:>10}'.format(name) + ": " + str(p) for p, name in zip(self.params, self.dist.param_names)])
+        param_string = '\n'.join(['{:>10}'.format(name)
+                                  + ": " + str(p) for p, name in
+                                  zip(self.params, self.dist.param_names)])
+
         if hasattr(self, 'params'):
             out = ('Parametric SurPyval Model'
                    + '\n========================='
                    + '\nDistribution        : {dist}'
                    + '\nFitted by           : {method}'
-                   ).format(dist=self.dist.name, 
+                   ).format(dist=self.dist.name,
                             method=self.method)
             if self.offset:
-                out += '\nOffset (gamma)      : {gamma}'.format(gamma=self.gamma)
+                out += '\nOffset (gamma)      : {g}'.format(g=self.gamma)
 
             if self.lfp:
                 out += '\nMax Proportion (p)  : {p}'.format(p=self.p)
@@ -102,20 +101,24 @@ class Parametric():
     def sf(self, x):
         r"""
 
-        Surival (or Reliability) function for a distribution using the parameters found in the ``.params`` attribute.
+        Surival (or Reliability) function for a distribution using the
+        parameters found in the ``.params`` attribute.
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the survival function will be calculated 
+            The values of the random variables at which the survival
+            function will be calculated.
 
         Returns
         -------
 
-        sf : scalar or numpy array 
-            The scalar value of the survival function of the distribution if a scalar was passed. If an array like object was passed then a numpy array is returned with the value of the survival function at each corresponding value in the input array.
-
+        sf : scalar or numpy array
+            The scalar value of the survival function of the distribution if
+            a scalar was passed. If an array like object was passed then a
+            numpy array is returned with the value of the survival function at
+            each corresponding value in the input array.
 
         Examples
         --------
@@ -132,25 +135,29 @@ class Parametric():
             sf = self.dist.sf(x - self.gamma, *self.params)
         else:
             sf = 1 - self.p * self.dist.ff(x - self.gamma, *self.params)
-        return (1. - self.f0)*sf
+        return (1. - self.f0) * sf
 
     def ff(self, x):
         r"""
 
-        The cumulative distribution function, or failure function, for a distribution using the parameters found in the ``.params`` attribute.
+        The cumulative distribution function, or failure function, for a
+        distribution using the parameters found in the ``.params`` attribute.
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the failure function (CDF) will be calculated
+            The values of the random variables at which the failure function
+            (CDF) will be calculated.
 
         Returns
         -------
 
-        ff : scalar or numpy array 
-            The scalar value of the CDF of the distribution if a scalar was passed. If an array like object was passed then a numpy array is returned with the value of the CDF at each corresponding value in the input array.
-
+        ff : scalar or numpy array
+            The scalar value of the CDF of the distribution if a scalar was
+            passed. If an array like object was passed then a numpy array is
+            returned with the value of the CDF at each corresponding value in
+            the input array.
 
         Examples
         --------
@@ -165,25 +172,31 @@ class Parametric():
         if type(x) == list:
             x = np.array(x)
 
-        return self.f0 + (1 - self.f0) * self.p * self.dist.ff(x - self.gamma, *self.params)
+        return self.f0 + ((1 - self.f0)
+                          * self.p
+                          * self.dist.ff(x - self.gamma, *self.params))
 
-    def df(self, x): 
+    def df(self, x):
         r"""
 
-        The density function for a distribution using the parameters found in the ``.params`` attribute.
+        The density function for a distribution using the parameters found
+        in the ``.params`` attribute.
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the density function will be calculated
+            The values of the random variables at which the density function
+            will be calculated.
 
         Returns
         -------
 
-        df : scalar or numpy array 
-            The scalar value of the density function of the distribution if a scalar was passed. If an array like object was passed then a numpy array is returned with the value of the density function at each corresponding value in the input array.
-
+        df : scalar or numpy array
+            The scalar value of the density function of the distribution if
+            a scalar was passed. If an array like object was passed then a
+            numpy array is returned with the value of the density function at
+            each corresponding value in the input array.
 
         Examples
         --------
@@ -200,27 +213,33 @@ class Parametric():
         if self.f0 == 0:
             df = self.p * self.dist.df(x - self.gamma, *self.params)
         else:
-            df = np.where(x == 0, self.f0, 
-                (1 - self.f0) * self.p * self.dist.df(x - self.gamma, *self.params))
+            df = np.where(x == 0, self.f0,
+                          ((1 - self.f0)
+                           * self.p
+                           * self.dist.df(x - self.gamma, *self.params)))
         return df
 
     def hf(self, x):
         r"""
-
-        The instantaneous hazard function for a distribution using the parameters found in the ``.params`` attribute.
+        The instantaneous hazard function for a distribution using the
+        parameters found in the ``.params`` attribute.
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the instantaneous hazard function will be calculated
+            The values of the random variables at which the instantaneous
+            hazard function will be calculated.
 
         Returns
         -------
 
-        hf : scalar or numpy array 
-            The scalar value of the instantaneous hazard function of the distribution if a scalar was passed. If an array like object was passed then a numpy array is returned with the value of the instantaneous hazard function at each corresponding value in the input array.
-
+        hf : scalar or numpy array
+            The scalar value of the instantaneous hazard function of the
+            distribution if a scalar was passed. If an array like object was
+            passed then a numpy array is returned with the value of the
+            instantaneous hazard function at each corresponding value in
+            the input array.
 
         Examples
         --------
@@ -241,21 +260,25 @@ class Parametric():
 
     def Hf(self, x):
         r"""
-
-        The cumulative hazard function for a distribution using the parameters found in the ``.params`` attribute.
+        The cumulative hazard function for a distribution using the
+        parameters found in the ``.params`` attribute.
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the cumulative hazard function will be calculated
+            The values of the random variables at which the cumulative
+            hazard function will be calculated
 
         Returns
         -------
 
-        Hf : scalar or numpy array 
-            The scalar value of the cumulative hazard function of the distribution if a scalar was passed. If an array like object was passed then a numpy array is returned with the value of the cumulative hazard function at each corresponding value in the input array.
-
+        Hf : scalar or numpy array
+            The scalar value of the cumulative hazard function of the
+            distribution if a scalar was passed. If an array like object was
+            passed then a numpy array is returned with the value of the
+            cumulative hazard function at each corresponding value in the
+            input array.
 
         Examples
         --------
@@ -278,18 +301,22 @@ class Parametric():
     def qf(self, p):
         r"""
 
-        The quantile function for a distribution using the parameters found in the ``.params`` attribute.
+        The quantile function for a distribution using the parameters found
+        in the ``.params`` attribute.
 
         Parameters
         ----------
         p : array like or scalar
-            The values, which must be between 0 and 1, at which the the quantile will be calculated
+            The values, which must be between 0 and 1, at which the the
+            quantile will be calculated
 
         Returns
         -------
-        qf : scalar or numpy array 
-            The scalar value of the quantile of the distribution if a scalar was passed. If an array like object was passed then a numpy array is returned with the value of the quantile at each corresponding value in the input array.
-
+        qf : scalar or numpy array
+            The scalar value of the quantile of the distribution if a
+            scalar was passed. If an array like object was passed then a
+            numpy array is returned with the value of the quantile at each
+            corresponding value in the input array.
 
         Examples
         --------
@@ -305,7 +332,7 @@ class Parametric():
         if self.p == 1:
             return self.dist.qf(p, *self.params) + self.gamma
         else:
-            raise NotImplementedError("Quantile function for LFP not implemented.")
+            raise NotImplementedError("Quantile for LFP not implemented.")
 
     def cs(self, x, X):
         r"""
@@ -339,7 +366,8 @@ class Parametric():
     def random(self, size):
         r"""
 
-        A method to draw random samples from the distributions using the parameters found in the ``.params`` attribute.
+        A method to draw random samples from the distributions using the
+        parameters found in the ``.params`` attribute.
 
         Parameters
         ----------
@@ -348,9 +376,9 @@ class Parametric():
 
         Returns
         -------
-        random : numpy array 
-            Returns a numpy array of size ``size`` with random values drawn from the distribution.
-
+        random : numpy array
+            Returns a numpy array of size ``size`` with random values
+            drawn from the distribution.
 
         Examples
         --------
@@ -360,15 +388,17 @@ class Parametric():
         >>> model.random(1)
         array([8.14127103])
         >>> model.random(10)
-        array([10.84103403,  0.48542084,  7.11387062,  5.41420125,  4.59286657,
-                5.90703589,  7.5124326 ,  7.96575225,  9.18134126,  8.16000438])
+        array([10.84103403,  0.48542084,  7.11387062,  5.41420125, 4.59286657,
+                5.90703589,  7.5124326 ,  7.96575225,  9.18134126, 8.16000438])
         """
         if (self.p == 1) and (self.f0 == 0):
-            return self.dist.qf(uniform.rvs(size=size), *self.params) + self.gamma
+            return self.dist.qf(uniform.rvs(size=size),
+                                *self.params) + self.gamma
         elif (self.p != 1) and (self.f0 == 0):
             n_obs = np.random.binomial(size, self.p)
 
-            f = self.dist.qf(uniform.rvs(size=n_obs), *self.params) + self.gamma
+            f = self.dist.qf(uniform.rvs(size=n_obs),
+                             *self.params) + self.gamma
             s = np.ones(np.array(size) - n_obs) * np.max(f) + 1
 
             return fs_to_xcn(f, s)
@@ -377,35 +407,37 @@ class Parametric():
             n_doa = np.random.binomial(size, self.f0)
 
             x0 = np.zeros(n_doa) + self.gamma
-            x = self.dist.qf(uniform.rvs(size=size - n_doa), *self.params) + self.gamma
+            x = self.dist.qf(uniform.rvs(size=size - n_doa),
+                             *self.params) + self.gamma
             x = np.concatenate([x, x0])
             np.random.shuffle(x)
 
             return x
         else:
-            N = np.random.multinomial(1, [self.f0, self.p - self.f0, 1. - self.p], size).sum(axis=0)
+            N = np.random.multinomial(1, [self.f0,
+                                          self.p - self.f0,
+                                          1. - self.p], size).sum(axis=0)
+
             N = np.atleast_2d(N)
             n_doa, n_obs, n_cens = N[:, 0], N[:, 1], N[:, 2]
             x0 = np.zeros(n_doa) + self.gamma
-            x = self.dist.qf(uniform.rvs(size=n_obs), *self.params) + self.gamma
+
+            x = self.dist.qf(uniform.rvs(size=n_obs),
+                             *self.params) + self.gamma
+
             f = np.concatenate([x, x0])
             s = np.ones(n_cens) * np.max(f) + 1
-            # raise NotImplementedError("Combo zero-inflated and lfp model not yet supported")
             return fs_to_xcn(f, s)
 
     def mean(self):
         r"""
-        A method to draw random samples from the distributions using the parameters found in the ``.params`` attribute.
-
-        Parameters
-        ----------
-        None
+        A method to draw random samples from the distributions using the
+        parameters found in the ``.params`` attribute.
 
         Returns
         -------
         mean : float
             Returns the mean of the distribution.
-
 
         Examples
         --------
@@ -421,7 +453,8 @@ class Parametric():
     def moment(self, n):
         r"""
 
-        A method to draw random samples from the distributions using the parameters found in the ``.params`` attribute.
+        A method to draw random samples from the distributions using the
+        parameters found in the ``.params`` attribute.
 
         Parameters
         ----------
@@ -449,28 +482,19 @@ class Parametric():
         if self.p == 1:
             return self.dist.moment(n, *self.params)
         else:
-            raise NotImplementedError('LFP distributions cannot yet have their moment calculated')
+            msg = 'LFP distributions cannot yet have their moment calculated'
+            raise NotImplementedError(msg)
 
     def entropy(self):
         r"""
-
-        A method to draw random samples from the distributions using the parameters found in the ``.params`` attribute.
-
-        Parameters
-        ----------
-
-        None
+        A method to draw random samples from the distributions using the
+        parameters found in the ``.params`` attribute.
 
         Returns
         -------
 
         entropy : float
             Returns entropy of the distribution
-
-        References
-        ----------
-        
-        ENTROPY REF
 
         Examples
         --------
@@ -482,71 +506,80 @@ class Parametric():
         if self.p == 1:
             return self.dist.entropy(*self.params)
         else:
-            raise NotImplementedError("Entropy not available for LFP distribution")
+            msg = "Entropy not available for LFP distribution"
+            raise NotImplementedError(msg)
 
     def cb(self, t, on='R', alpha_ci=0.05, bound='two-sided'):
         r"""
-
-        Confidence bounds of the ``on`` function at the ``alpa_ci`` level of significance. 
-        Can be the upper, lower, or two-sided confidence by changing value of ``bound``.
+        Confidence bounds of the ``on`` function at the ``alpa_ci`` level of
+        significance. Can be the upper, lower, or two-sided confidence by
+        changing value of ``bound``.
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which the confidence bounds will be calculated
+            The values of the random variables at which the confidence bounds
+            will be calculated
         on : ('sf', 'ff', 'Hf'), optional
             The function on which the confidence bound will be calculated.
         bound : ('two-sided', 'upper', 'lower'), str, optional
-            Compute either the two-sided, upper or lower confidence bound(s). Defaults to two-sided.
+            Compute either the two-sided, upper or lower confidence bound(s).
+            Defaults to two-sided.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
 
         Returns
         -------
 
-        cb : scalar or numpy array 
-            The value(s) of the upper, lower, or both confidence bound(s) of the selected function at x
+        cb : scalar or numpy array
+            The value(s) of the upper, lower, or both confidence bound(s) of
+            the selected function at x
 
         """
         if self.method != 'MLE':
             raise Exception('Only MLE has confidence bounds')
 
         hess_inv = np.copy(self.hess_inv)
-        
+
         pvars = hess_inv[np.triu_indices(hess_inv.shape[0])]
         old_err_state = np.seterr(all='ignore')
 
         if hasattr(self.dist, 'R_cb'):
-            R_cb = lambda x: self.dist.R_cb(x - self.gamma, *self.params, hess_inv,
-                                            alpha_ci=alpha_ci, bound=bound)
+            def R_cb(x):
+                return self.dist.R_cb(x - self.gamma,
+                                      *self.params,
+                                      hess_inv,
+                                      alpha_ci=alpha_ci,
+                                      bound=bound)
 
         else:
             def R_cb(x):
-                sf_func = lambda params : self.dist.sf(x - self.gamma, *params)
+                def sf_func(params):
+                    return self.dist.sf(x - self.gamma, *params)
                 jac = np.atleast_2d(jacobian(sf_func)(np.array(self.params)))
 
                 # Second-Order Taylor Series Expansion of Variance
                 var_R = []
                 for i, j in enumerate(jac):
                     j = np.atleast_2d(j).T * j
-                    j = j[np.triu_indices(j.shape[0])] 
+                    j = j[np.triu_indices(j.shape[0])]
                     var_R.append(np.sum(j * pvars))
 
                 # First-Order Taylor Series Expansion of Variance
                 # var_R = (jac**2 * np.diag(hess_inv)).sum(axis=1).T
 
-                # TODO: Add lower, upper, and two-sided options here
                 R_hat = self.sf(x)
                 if bound == 'two-sided':
-                    diff = z(alpha_ci/2) * np.sqrt(np.array(var_R)) * np.array([1., -1.]).reshape(2, 1)
+                    diff = (z(alpha_ci / 2)
+                            * np.sqrt(np.array(var_R))
+                            * np.array([1., -1.]).reshape(2, 1))
                 elif bound == 'upper':
                     diff = z(alpha_ci) * np.sqrt(np.array(var_R))
-                    print(diff)
                 else:
                     diff = -z(alpha_ci) * np.sqrt(np.array(var_R))
-                
-                exponent = diff/(R_hat*(1 - R_hat))
+
+                exponent = diff / (R_hat * (1 - R_hat))
                 R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
                 return R_cb.T
 
@@ -571,8 +604,8 @@ class Parametric():
             def cb_df(x):
                 out = []
                 for v in x:
-                    # out.append(jacobian(lambda x: -np.log(R_cb(x)))(v) * self.sf(v) )
-                    out.append(jacobian(lambda x: -np.log(R_cb(x)))(v) * self.sf(v))
+                    out.append(jacobian(lambda x: (-np.log(R_cb(x)))(v)
+                                        * self.sf(v)))
                 return np.concatenate(out)
             cb = cb_df(t)
 
@@ -582,12 +615,9 @@ class Parametric():
     def neg_ll(self):
         r"""
 
-        The the negative log-likelihood for the model, if it was fit with the ``fit()`` method. Not available if fit with the ``from_params()`` method.
-
-        Parameters
-        ----------
-
-        None
+        The the negative log-likelihood for the model, if it was fit with the
+        ``fit()`` method. Not available if fit with the ``from_params()``
+        method.
 
         Returns
         -------
@@ -614,12 +644,9 @@ class Parametric():
     def bic(self):
         r"""
 
-        The the Bayesian Information Criterion (BIC) for the model, if it was fit with the ``fit()`` method. Not available if fit with the ``from_params()`` method.
-
-        Parameters
-        ----------
-
-        None
+        The the Bayesian Information Criterion (BIC) for the model, if it
+        was fit with the ``fit()`` method. Not available if fit with the
+        ``from_params()`` method.
 
         Returns
         -------
@@ -641,24 +668,23 @@ class Parametric():
         References:
         -----------
 
-        `Bayesian Information Criterion for Censored Survival Models <https://www.jstor.org/stable/2677130>`_.
+        `Bayesian Information Criterion for Censored Survival Models
+        <https://www.jstor.org/stable/2677130>`_.
 
         """
         if hasattr(self, '_bic'):
             return self._bic
         else:
-            self._bic = self.k  * np.log(self.data['n'][self.data['c'] == 0].sum()) + 2 * self.neg_ll()
+            self._bic = (self.k
+                         * np.log(self.data['n'][self.data['c'] == 0].sum())
+                         + 2 * self.neg_ll())
             return self._bic
 
-    def aic(self): 
+    def aic(self):
         r"""
-
-        The the Aikake Information Criterion (AIC) for the model, if it was fit with the ``fit()`` method. Not available if fit with the ``from_params()`` method.
-
-        Parameters
-        ----------
-
-        None
+        The the Aikake Information Criterion (AIC) for the model, if it was
+        fit with the ``fit()`` method. Not available if fit with the
+        ``from_params()`` method.
 
         Returns
         -------
@@ -685,13 +711,9 @@ class Parametric():
 
     def aic_c(self):
         r"""
-
-        The the Corrected Aikake Information Criterion (AIC) for the model, if it was fit with the ``fit()`` method. Not available if fit with the ``from_params()`` method.
-
-        Parameters
-        ----------
-
-        None
+        The the Corrected Aikake Information Criterion (AIC) for the model,
+        if it was fit with the ``fit()`` method. Not available if fit with
+        the ``from_params()`` method.
 
         Returns
         -------
@@ -715,7 +737,7 @@ class Parametric():
         else:
             k = len(self.params)
             n = self.data['n'].sum()
-            self._aic_c = self.aic() + (2*k**2 + 2*k)/(n - k - 1)
+            self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
             return self._aic_c
 
     def get_plot_data(self, heuristic='Turnbull', alpha_ci=0.05):
@@ -725,11 +747,16 @@ class Parametric():
 
         Parameters
         ----------
-        heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean', 'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None', 'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier', 'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
-            The method that the plotting point on the probablility plot will be calculated.
+        heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean',
+        'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None', 'Tukey',
+        'DPW', 'Fleming-Harrington', 'Kaplan-Meier', 'Nelson-Aalen',
+        'Filliben', 'Larsen', 'Turnbull'}, optional
+            The method that the plotting point on the probablility plot will
+            be calculated.
 
         alpha_ci : float, optional
-            The confidence with which the confidence bounds, if able, will be calculated. Defaults to 0.95.
+            The confidence with which the confidence bounds, if able, will
+            be calculated. Defaults to 0.95.
 
         Returns
         -------
@@ -743,28 +770,27 @@ class Parametric():
         >>> model = Weibull.fit(x)
         >>> data = model.get_plot_data()
         """
-        x = self.data['x']
         x_, r, d, F = nonp.plotting_positions(
-            x=self.data['x'], 
-            c=self.data['c'], 
-            n=self.data['n'], 
+            x=self.data['x'],
+            c=self.data['c'],
+            n=self.data['n'],
             t=self.data['t'],
             heuristic=heuristic)
 
         mask = np.isfinite(x_)
         x_ = x_[mask] - self.gamma
-        r  =  r[mask]
-        d  =  d[mask]
-        F  =  F[mask]
+        r = r[mask]
+        d = d[mask]
+        F = F[mask]
 
         if np.isfinite(self.data['t']).any():
             Ftl = self.ff(x_[0])
             Ftr = self.ff(x_[-1])
             F = Ftl + F * (Ftr - Ftl)
 
-        y_scale_min = np.min(F[F > 0])/2
-        #y_scale_max = np.max(F[F < 1]) + (1 - np.max(F[F < 1]))/2
-        y_scale_max = (1 - (1 - np.max(F[F < 1]))/10)
+        y_scale_min = np.min(F[F > 0]) / 2
+        # y_scale_max = np.max(F[F < 1]) + (1 - np.max(F[F < 1]))/2
+        y_scale_max = (1 - (1 - np.max(F[F < 1])) / 10)
 
         # x-axis
         if self.dist.plot_x_scale == 'log':
@@ -774,9 +800,9 @@ class Parametric():
             vals_non_sig = 10 ** np.linspace(x_min, x_max, 7)
             x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
             x_minor_ticks = ((10**x_minor_ticks * np.array(np.arange(1, 11))
-                                                    .reshape((10, 1)))
-                                                    .flatten())
-            diff = (x_max - x_min)/10
+                             .reshape((10, 1)))
+                             .flatten())
+            diff = (x_max - x_min) / 10
             x_scale_min = 10**(x_min - diff)
             x_scale_max = 10**(x_max + diff)
             x_model = 10**np.linspace(x_min - diff, x_max + diff, 100)
@@ -809,14 +835,20 @@ class Parametric():
         cdf = self.ff(x_model + self.gamma)
 
         x_ticks = _round_vals(vals_non_sig)
-        x_ticks_labels = [str(int(x)) if (re.match('([0-9]+\.0+)', str(x)) is not None) & 
-                        (x > 1) else str(x) for x in _round_vals(vals_non_sig + self.gamma)]
+        x_ticks_labels = [str(int(x))
+                          if (re.match(r'([0-9]+\.0+)', str(x)) is not None)
+                          & (x > 1)
+                          else str(x)
+                          for x in _round_vals(vals_non_sig + self.gamma)]
 
         y_ticks = np.array(self.dist.y_ticks)
-        y_ticks = y_ticks[np.where((y_ticks > y_scale_min) & (y_ticks < y_scale_max))[0]]
+        y_ticks = y_ticks[np.where((y_ticks > y_scale_min)
+                          & (y_ticks < y_scale_max))[0]]
 
-        y_ticks_labels = [str(int(y))+'%' if (re.match('([0-9]+\.0+)', str(y)) is not None) & 
-                            (y > 1) else str(y) for y in y_ticks * 100]
+        y_ticks_labels = [str(int(y)) + '%'
+                          if (re.match(r'([0-9]+\.0+)', str(y)) is not None)
+                          & (y > 1)
+                          else str(y) for y in y_ticks * 100]
 
         if hasattr(self, 'hess_inv') & (self.method == 'MLE'):
             if (self.hess_inv is not None):
@@ -827,21 +859,21 @@ class Parametric():
             cbs = []
 
         return {
-            'x_scale_min' : x_scale_min,
-            'x_scale_max' : x_scale_max,
-            'y_scale_min' : y_scale_min,
-            'y_scale_max' : y_scale_max,
-            'y_ticks' : y_ticks,
-            'y_ticks_labels' : y_ticks_labels,
-            'x_ticks' : x_ticks,
-            'x_ticks_labels' : x_ticks_labels,
-            'cdf' : cdf,
-            'x_model' : x_model,
-            'x_minor_ticks' : x_minor_ticks,
-            'cbs' : cbs,
-            'x_scale' : self.dist.plot_x_scale,
-            'x_' : x_,
-            'F' : F
+            'x_scale_min': x_scale_min,
+            'x_scale_max': x_scale_max,
+            'y_scale_min': y_scale_min,
+            'y_scale_max': y_scale_max,
+            'y_ticks': y_ticks,
+            'y_ticks_labels': y_ticks_labels,
+            'x_ticks': x_ticks,
+            'x_ticks_labels': x_ticks_labels,
+            'cdf': cdf,
+            'x_model': x_model,
+            'x_minor_ticks': x_minor_ticks,
+            'cbs': cbs,
+            'x_scale': self.dist.plot_x_scale,
+            'x_': x_,
+            'F': F
         }
 
     def plot(self, heuristic='Turnbull', plot_bounds=True, alpha_ci=0.05):
@@ -850,14 +882,20 @@ class Parametric():
 
         Parameters
         ----------
-        heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean', 'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None', 'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier', 'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
-            The method that the plotting point on the probablility plot will be calculated.
+        heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean',
+        'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None', 'Tukey',
+        'DPW', 'Fleming-Harrington', 'Kaplan-Meier', 'Nelson-Aalen',
+        'Filliben', 'Larsen', 'Turnbull'}, optional
+            The method that the plotting point on the probablility plot will
+            be calculated.
 
         plot_bounds : Boolean, optional
-            A Boolean value to indicate whehter you want the probability bounds to be calculated.
+            A Boolean value to indicate whehter you want the probability
+            bounds to be calculated.
 
         alpha_ci : float, optional
-            The confidence with which the confidence bounds, if able, will be calculated. Defaults to 0.95.
+            The confidence with which the confidence bounds, if able, will
+            be calculated. Defaults to 0.95.
 
         Returns
         -------
@@ -883,14 +921,16 @@ class Parametric():
         # MAKE THE PLOT
         # Set the y limits
         plt.gca().set_ylim([d['y_scale_min'], d['y_scale_max']])
-        
+
         # Set the x scale
         plt.xscale(d['x_scale'])
         # Set the y scale
-        plt.gca().set_yscale('function',
-            functions=(lambda x : self.dist.mpp_y_transform(x, *self.params), 
-                       lambda x : self.dist.mpp_inv_y_transform(x, *self.params)))
-        
+        functions = (
+            lambda x: self.dist.mpp_y_transform(x, *self.params),
+            lambda x: self.dist.mpp_inv_y_transform(x, *self.params))
+
+        plt.gca().set_yscale('function', functions=functions)
+
         # Set Major Y axis ticks
         plt.yticks(d['y_ticks'], labels=d['y_ticks_labels'])
         # Set Minor Y axis ticks
