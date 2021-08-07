@@ -5,11 +5,11 @@ import surpyval
 from surpyval import (
     Gumbel, Normal, Weibull, LogNormal,
     Logistic, LogLogistic, Uniform, 
-    Beta, ExpoWeibull)
+    Gamma, Beta, ExpoWeibull)
 
 DISTS = [Gumbel, Normal, Weibull, LogNormal, 
          Logistic, LogLogistic, Uniform, 
-         Beta, ExpoWeibull]
+         Beta, ExpoWeibull, Gamma]
 parameter_sample_bounds = [((1, 20), (0.5, 5)),
                            ((1, 100), (0.5, 100)),
                            ((1, 100), (0.5, 20)),
@@ -18,8 +18,9 @@ parameter_sample_bounds = [((1, 20), (0.5, 5)),
                            ((1, 100), (0.5, 20)),
                            ((1, 100), (1, 100)),
                            ((.1, 30), (.1, 30)),
-                           ((1, 30), (.1, 10), (0.5, 1.5)),]
-FIT_SIZES = [1_000, 10_000, 100_000]
+                           ((1, 30), (.1, 10), (0.5, 1.5)),
+                           ((1, 30), (.1, 10)),]
+FIT_SIZES = [1_000, 10_000]#, 100_000]
 
 
 def generate_mle_test_cases():
