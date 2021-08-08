@@ -70,6 +70,7 @@ class NonParametric():
             idx = np.searchsorted(self.x, x, side='right') - 1
             R = self.R[idx]
             R = np.where(idx < 0, 1, R)
+            R = np.where(np.isposinf(x), 0, R)
         else:
             R = np.hstack([[1], self.R])
             x_data = np.hstack([[0], self.x])

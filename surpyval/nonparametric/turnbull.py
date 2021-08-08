@@ -8,7 +8,6 @@ from .fleming_harrington import fh
 def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
     bounds = np.sort(np.concatenate([bounds, np.unique(x[c==0])]))
-    # bounds = np.sort(np.concatenate([bounds, np.repeat(np.unique(x[c==0]), 2)]))
     N = n.sum()
 
     if x.ndim == 1:
@@ -46,8 +45,14 @@ def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
             alpha[i, idx] = n[i]
         elif x2 == np.inf:
             alpha[i, :] = ((bounds > x1) & (bounds <= x2)).astype(int) * n[i]
+            if x1 in x[c == 0]:
+                idx = np.where(bounds == x1)[0][0]
+                alpha[i, idx] = 0
         else:
             alpha[i, :] = ((bounds >= x1) & (bounds < x2)).astype(int) * n[i]
+            if x1 in x[c == 0]:
+                idx = np.where(bounds == x1)[0][0]
+                alpha[i, idx] = 0
 
         beta[i, :] = (((bounds >= t1) & (bounds < t2)).astype(int))
 
@@ -95,21 +100,13 @@ def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
         # The 'official' way to do it which is equivalent to using KM
         # p = (nu + mu).sum(axis=0)/(nu + mu).sum()
 
-    # Remove the -Inf and the Inf values.
-    x = bounds[1:-1]
-    r = r[1:-1]
-    d = d[1:-1]
-    R = R[0:-2]
-    R_upper = R[0:-2]
-    R_lower = R[1:-1]
-
     out = {}
-    out['x'] = x
-    out['r'] = r
-    out['d'] = d
-    out['R'] = R
-    out['R_upper'] = R_upper
-    out['R_lower'] = R_lower
+    out['x'] = bounds[1:-1]
+    out['r'] = r[1:-1]
+    out['d'] = d[1:-1]
+    out['R'] = R[0:-2]
+    out['R_upper'] = R[0:-2]
+    out['R_lower'] = R[1:-1]
     out['alpha'] = alpha
     out['bounds'] = bounds
 
