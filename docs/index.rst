@@ -94,7 +94,6 @@ Contents:
 
    Non-Parametric Estimation
    Parametric Estimation
-   regression
 
 .. toctree::
    :maxdepth: 1
