@@ -91,6 +91,7 @@ def mle(model):
                            t_mle, t_flags, gamma, p, f0, *params)
 
     old_err_state = np.seterr(all='ignore')
+    use_initial = False
 
     if zi:
         def jac(x, offset, lfp, zi, transform):
@@ -118,17 +119,21 @@ def mle(model):
               + "\n- change data to be closer to 1.", file=sys.stderr)
 
     elif (not res.success) | (np.isnan(res.x).any()):
-        np.seterr(**old_err_state)
         print("MLE Failed: Try making the values of the data closer to "
               + "1 by dividing or multiplying by some constant."
               + "\n\nAlternately try setting the `init` keyword in the `fit()`"
               + " method to a value you believe is closer."
               + "A good way to do this is to set any shape parameter to 1. "
               + "and any scale parameter to be the mean of the data "
-              + "(or it's inverse)", file=sys.stderr)
-        return {'res': res}
+              + "(or it's inverse)"
+              + "\n\nModel returned with inital guesses", file=sys.stderr)
 
-    p_hat = inv_trans(const(res.x))
+        use_initial = True
+
+    if use_initial:
+        p_hat = inv_trans(const(init))
+    else:
+        p_hat = inv_trans(const(res.x))
 
     if offset:
         results['gamma'] = p_hat[0]
