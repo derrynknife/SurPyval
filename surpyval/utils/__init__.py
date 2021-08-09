@@ -427,6 +427,20 @@ def xcnt_handler(x=None, c=None, n=None, t=None,
 
     return x, c, n, t
 
+def xcn_to_fs(x, c=None, n=None):
+    x = np.array(x)
+    if c is None:
+        c = np.zeros_like(x)
+    if n is None:
+        n = np.ones_like(x).astype(int)
+
+    c = np.array(c)
+    n = np.array(n).astype(int)
+
+    f = np.repeat(x[c == 0], n[c == 0])
+    s = np.repeat(x[c == 1], n[c == 1])
+    return f, s
+
 def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     """
     Converts the xcn format to the xrd format.
