@@ -71,11 +71,10 @@ class Parametric():
         self.param_map = param_map
 
     def __repr__(self):
-        param_string = '\n'.join(['{:>10}'.format(name)
-                                  + ": " + str(p) for p, name in
-                                  zip(self.params, self.dist.param_names)])
-
         if hasattr(self, 'params'):
+            param_string = '\n'.join(['{:>10}'.format(name)
+                                      + ": " + str(p) for p, name in
+                                      zip(self.params, self.dist.param_names)])
             out = ('Parametric SurPyval Model'
                    + '\n========================='
                    + '\nDistribution        : {dist}'
