@@ -1049,6 +1049,8 @@ You can see that the distribution is not linearised. This is because the Hf is n
 into the transformation function needed to do the linearisation of the CDF. The defaults are a simple
 linear scale for both the x and y axis and it shows that the confidence bounds have worked nicely.
 
+You can also see that the confidence bound expands quite widely above approximately 1.2. This is due to the heavy truncation and censoring, if using complete data the confidence boudns do not diverge. This shows the importance of inference when working with truncated and censored data, the uncertainty can be quite wide!
+
 .. warning::
     Due to the implementation of confidence bounds in surpyval it can result 
     in numeric overflows which results in incredulous bounds. Please take caution when 
