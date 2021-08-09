@@ -8,7 +8,7 @@ from surpyval import (
 DISTS = [Gumbel, Normal, Weibull, LogNormal,
          Logistic, LogLogistic, Uniform,
          Beta, ExpoWeibull, Gamma]
-parameter_sample_random_bounds = [((1, 20), (0.5, 5)),
+parameter_sample_random_parameters = [((1, 20), (0.5, 5)),
                                   ((1, 100), (0.5, 100)),
                                   ((1, 100), (0.5, 20)),
                                   ((1, 3), (0.2, 1)),
@@ -23,46 +23,46 @@ FIT_SIZES = [1_000, 10_000, 100_000]
 
 def generate_mle_test_cases():
     for idx, dist in enumerate(DISTS):
-        random_bounds = parameter_sample_random_bounds[idx]
+        random_parameters = parameter_sample_random_parameters[idx]
         for kind in ['full', 'censored', 'truncated', 'interval']:
-            yield dist, random_bounds, kind
+            yield dist, random_parameters, kind
 
 
 def generate_small_mle_test_cases():
     for idx, dist in enumerate(DISTS):
-        random_bounds = parameter_sample_random_bounds[idx]
+        random_parameters = parameter_sample_random_parameters[idx]
         for kind in ['full']:
-            yield dist, random_bounds, kind
+            yield dist, random_parameters, kind
 
 
 def generate_mpp_test_cases():
     for idx, dist in enumerate(DISTS):
-        random_bounds = parameter_sample_random_bounds[idx]
+        random_parameters = parameter_sample_random_parameters[idx]
         for rr in ['x', 'y']:
-            yield dist, random_bounds, rr
+            yield dist, random_parameters, rr
 
 
 def generate_mom_test_cases():
     for idx, dist in enumerate(DISTS):
-        random_bounds = parameter_sample_random_bounds[idx]
-        yield dist, random_bounds
+        random_parameters = parameter_sample_random_parameters[idx]
+        yield dist, random_parameters
 
 
 def generate_mps_test_cases():
     for idx, dist in enumerate(DISTS):
-        random_bounds = parameter_sample_random_bounds[idx]
-        yield dist, random_bounds
+        random_parameters = parameter_sample_random_parameters[idx]
+        yield dist, random_parameters
 
 
 def generate_mse_test_cases():
     for idx, dist in enumerate(DISTS):
-        random_bounds = parameter_sample_random_bounds[idx]
-        yield dist, random_bounds
+        random_parameters = parameter_sample_random_parameters[idx]
+        yield dist, random_parameters
 
 
 def idfunc(x):
     if type(x) is tuple:
-        return 'random_bounds'
+        return 'random_parameters'
     elif type(x) is str:
         return x
     else:
@@ -126,14 +126,14 @@ def truncate_at(x, q, where='right'):
         raise ValueError("'where' parameter not correctly defined")
 
 
-@pytest.mark.parametrize("dist,random_bounds,kind",
+@pytest.mark.parametrize("dist,random_parameters,kind",
                          generate_mle_test_cases(),
                          ids=idfunc)
-def test_mle_convergence(dist, random_bounds, kind):
+def test_mle_convergence(dist, random_parameters, kind):
     tol = 0.025
     for n in FIT_SIZES:
         test_params = []
-        for b in random_bounds:
+        for b in random_parameters:
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = dist.random(n, *test_params)
@@ -162,14 +162,14 @@ def test_mle_convergence(dist, random_bounds, kind):
         raise AssertionError('MLE convergence not good for %s\n' % dist.name)
 
 
-@pytest.mark.parametrize("dist,random_bounds,kind",
+@pytest.mark.parametrize("dist,random_parameters,kind",
                          generate_small_mle_test_cases(),
                          ids=idfunc)
-def test_mle_convergence_small(dist, random_bounds, kind):
+def test_mle_convergence_small(dist, random_parameters, kind):
     tol = 0.03
     for n in [100, 250, 500]:
         test_params = []
-        for b in random_bounds:
+        for b in random_parameters:
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = dist.random(n, *test_params)
@@ -190,15 +190,15 @@ def test_mle_convergence_small(dist, random_bounds, kind):
                              % dist.name)
 
 
-@pytest.mark.parametrize("dist,random_bounds,rr",
+@pytest.mark.parametrize("dist,random_parameters,rr",
                          generate_mpp_test_cases(),
                          ids=idfunc)
-def test_mpp(dist, random_bounds, rr):
+def test_mpp(dist, random_parameters, rr):
     if dist not in [Beta, ExpoWeibull]:
         for n in FIT_SIZES:
             test_params = []
             tol = 0.025
-            for b in random_bounds:
+            for b in random_parameters:
                 test_params.append(np.random.uniform(*b))
             test_params = np.array(test_params)
             x = dist.random(10000, *test_params)
@@ -212,14 +212,14 @@ def test_mpp(dist, random_bounds, rr):
             raise AssertionError('MPP fit not very good in %s\n' % dist.name)
 
 
-@pytest.mark.parametrize("dist,random_bounds",
+@pytest.mark.parametrize("dist,random_parameters",
                          generate_mom_test_cases(),
                          ids=idfunc)
-def test_mom(dist, random_bounds):
+def test_mom(dist, random_parameters):
     for n in FIT_SIZES:
         test_params = []
         tol = 0.025
-        for b in random_bounds:
+        for b in random_parameters:
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = dist.random(n, *test_params)
@@ -233,14 +233,14 @@ def test_mom(dist, random_bounds):
         raise AssertionError('MOM fit not very good in %s\n' % dist.name)
 
 
-@pytest.mark.parametrize("dist,random_bounds",
+@pytest.mark.parametrize("dist,random_parameters",
                          generate_mps_test_cases(),
                          ids=idfunc)
-def test_mps(dist, random_bounds):
+def test_mps(dist, random_parameters):
     for n in FIT_SIZES:
         test_params = []
         tol = 0.01
-        for b in random_bounds:
+        for b in random_parameters:
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = dist.random(n, *test_params)
@@ -254,15 +254,15 @@ def test_mps(dist, random_bounds):
         raise AssertionError('MPS fit not very good in %s\n' % dist.name)
 
 
-@pytest.mark.parametrize("dist,random_bounds",
+@pytest.mark.parametrize("dist,random_parameters",
                          generate_mse_test_cases(),
                          ids=idfunc)
-def test_mse(dist, random_bounds):
+def test_mse(dist, random_parameters):
     for n in FIT_SIZES:
         test_params = []
         # 5% accuracy!!
         tol = 0.05
-        for b in random_bounds:
+        for b in random_parameters:
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = dist.random(n, *test_params)
