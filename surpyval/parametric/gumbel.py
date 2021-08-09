@@ -28,7 +28,7 @@ class Gumbel_(ParametricFitter):
         if (2 in c) or (-1 in c):
             heuristic = "Turnbull"
         else:
-            heuristic = "Nelson-Aalen"
+            heuristic = "Fleming-Harrington"
         return self.fit(x, c, n, how='MPP', heuristic=heuristic).params
 
     def sf(self, x, mu, sigma):
