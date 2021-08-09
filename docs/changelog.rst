@@ -1,7 +1,7 @@
 Changelog
 =========
 
-v0.10.0 (planned)
+v0.11.0 (planned)
 -----------------
 
 - General ALT fitter full release
@@ -16,6 +16,11 @@ v0.10.0 (planned)
 - Create a ``RegressionFitter`` class. I keep copying code across the three fitters.
 - Allow truncation with zi and lfp models.
 - Allow truncation with regression
+
+v0.10.0 (9 Aug 2021)
+--------------------
+
+- Version snapshot for JOSS review
 
 v0.9.0 (5 Aug 2021)
 -------------------
