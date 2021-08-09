@@ -178,22 +178,7 @@ Again, we have a result that is very close to the original parameters. SurPyval 
 .. image:: images/surpyval-modelling-5.png
     :align: center
 
-This does not look to be such a good fit. This is because the Turbull estimator finds the probability of failing in a window, not at a given point. So if we align the model plot to the end of the window instead of start with:
-
-.. code:: python
-
-    np_model = surv.Turnbull.fit(x, n=n)
-    plt.step(np_model.x, np_model.R, where='post')
-    x_plot = np.linspace(20, 37.5, 1000)
-    plt.plot(x_plot, model.sf(x_plot), color='k', linestyle='dashed')
-
-We get:
-
-.. image:: images/surpyval-modelling-6.png
-    :align: center
-
-
-Which is, visually, clearly a better fit. You need to be careful when using the Turnbull plotting points to estimate the parameters of a distribution. This is because it is not known where in the intervals a death has actually occurred. However it is good to check the start and end of the window (changing 'where' betweek 'pre' and 'post' or 'mid') to see the goodness-of-fit.
+This is a good fit! The data at the tails are a little bit off, but this is only 50 samples and the core of the model matches the data quite well.
 
 Mixed Censoring
 ^^^^^^^^^^^^^^^
