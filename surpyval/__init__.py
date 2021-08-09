@@ -11,7 +11,8 @@ from surpyval.utils import (
     fsl_to_xcn,
     fs_to_xcn,
     fs_to_xrd,
-    round_sig
+    round_sig,
+    xcn_to_fs
 )
 
 from surpyval.parametric import (
