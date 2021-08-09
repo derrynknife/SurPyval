@@ -408,7 +408,11 @@ class ParametricFitter():
                     c_init = c[init_mask]
                     n_init = n[init_mask]
                     
+
                     init = np.array(self._parameter_initialiser(x_init, c_init, n_init, offset=offset))
+                    
+                    if offset:
+                        init[0] = x.min() - 1.
 
                 if lfp:
                     _, _, _, F = nonp.plotting_positions(x, c, n, heuristic='Nelson-Aalen')
@@ -433,6 +437,8 @@ class ParametricFitter():
             fitting_info['on_d_is_0'] = on_d_is_0
             fitting_info['turnbull_estimator'] = turnbull_estimator
             fitting_info['init'] = None
+
+
 
         model.fitting_info = fitting_info
 
