@@ -112,6 +112,12 @@ def mle(model):
     if (res.success is False) or (np.isnan(res.x).any()):
         res = minimize(fun, init, args=(offset, lfp, zi, True))
 
+    if 'Desired error ' in res['message']:
+        res_tmp = minimize(fun, res.x, args=(offset, lfp, zi, True),
+                           method='TNC', jac=jac)
+        if res_tmp.success:
+            res = res_tmp
+
     if 'Desired error not necessarily' in res['message']:
         print("Precision was lost, try:"
               + "\n- Using alternate fitting method"

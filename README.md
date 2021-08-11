@@ -72,6 +72,11 @@ model.plot();
 
 SurPyval is well documented, and improving, at the main [documentation](https://surpyval.readthedocs.io/en/latest/).
 
+# JOSS Paper!
+
+SurPyval has been accepted by the Journal of Open Source Software. See the paper: [![DOI](https://joss.theoj.org/papers/10.21105/joss.03484/status.svg)](https://doi.org/10.21105/joss.03484)
+
+
 # Contact
 
 Email [derryn](mailto:derryn.knife@gmail.com) if you want any features or to see how SurPyval can be used for you.
