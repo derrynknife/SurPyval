@@ -362,7 +362,7 @@ class Parametric():
         """
         return self.dist.cs(x - self.gamma, X - self.gamma, *self.params)
 
-    def random(self, size):
+    def random(self, size, a=None, b=None):
         r"""
 
         A method to draw random samples from the distributions using the
@@ -372,6 +372,12 @@ class Parametric():
         ----------
         size : int
             The number of random samples to be drawn from the distribution.
+        a: float or None
+            The left truncated value if sampling from a truncated
+            distribution
+        b: float or None
+            The right truncated value if sampling from a truncated
+            distribution
 
         Returns
         -------
@@ -390,9 +396,33 @@ class Parametric():
         array([10.84103403,  0.48542084,  7.11387062,  5.41420125, 4.59286657,
                 5.90703589,  7.5124326 ,  7.96575225,  9.18134126, 8.16000438])
         """
+        if ((a is not None) | (b is not None)) & ((self.p != 1) |
+                                                  (self.f0 != 0)):
+            raise NotImplementedError("Truncated smapling not supported with" +
+                                      " LFP or ZI models")
+        elif ((a is not None) | (b is not None)) & (self.offset):
+            raise NotImplementedError("Truncated smapling not supported with" +
+                                      " offset distributions")
+
         if (self.p == 1) and (self.f0 == 0):
-            return self.dist.qf(uniform.rvs(size=size),
-                                *self.params) + self.gamma
+            if (a is None) & (b is None):
+                return self.dist.qf(uniform.rvs(size=size),
+                                    *self.params) + self.gamma
+
+            else:
+                # Truncated sampling
+                # F-1(u) = G-1[u(G(b) - G(a)) + G(a)]
+                if a is None:
+                    Fa = 0
+                else:
+                    Fa = self.dist.ff(a, *self.params)
+                if b is None:
+                    Fb = 1
+                else:
+                    Fb = self.dist.ff(b, *self.params)
+                u = uniform.rvs(size=size)
+                return self.dist.qf((u * (Fb - Fa) + Fa), *self.params)
+
         elif (self.p != 1) and (self.f0 == 0):
             n_obs = np.random.binomial(size, self.p)
 
