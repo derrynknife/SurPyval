@@ -565,7 +565,7 @@ def xrd_to_xcn(x, r, d):
     x_s = np.repeat(x_s, n_s)
 
     return fs_to_xcn(x_f, x_s)
-def fsli_to_xcn(f, s, l, i):
+def fsli_to_xcn(f, s=None, l=None, i=None):
     """
     Main handler that ensures any input to a surpyval fitter meets the requirements to be used in
      one of the parametric or nonparametric fitters.
