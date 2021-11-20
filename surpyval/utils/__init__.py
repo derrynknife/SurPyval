@@ -594,6 +594,10 @@ def fsli_to_xcn(f, s, l, i):
     x_f = np.array([x_f, x_f]).T
     c_f = np.zeros_like(x_f)
 
+    if s is None: s = []
+    if l is None: l = []
+    if i is None: i = []
+
     x_s, n_s = np.unique(s, return_counts=True)
     x_s = np.array([x_s, x_s]).T
     c_s = np.ones_like(x_s)
@@ -613,7 +617,7 @@ def fsli_to_xcn(f, s, l, i):
 
     return x, c, n
 
-def fsl_to_xcn(f, s, l):
+def fsl_to_xcn(f, s=None, l=None):
     """
     Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
 
@@ -637,6 +641,9 @@ def fsl_to_xcn(f, s, l):
     """
     x_f, n_f = np.unique(f, return_counts=True)
     c_f = np.zeros_like(x_f)
+
+    if s is None: s = []
+    if l is None: l = []
 
     x_s, n_s = np.unique(s, return_counts=True)
     c_s = np.ones_like(x_s)
