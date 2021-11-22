@@ -5,8 +5,10 @@ import sys
 
 def check_no_censoring(c):
     return any(c != 0)
+
 def no_left_or_int(c):
     return any((c == -1) | (c == 2))
+
 def surv_tolist(x):
     """
     supplement to the .tolist() function where there is mixed scalars and arrays.
@@ -18,6 +20,16 @@ def surv_tolist(x):
         return [v[0] if v[0] == v[1] else v.tolist() for v in x]
     else:
         return x.tolist()
+
+def check_and_convert_expected_float_array(a, name):
+    if a is None:
+        a = np.array([])
+    else:
+        try:
+            a = np.array(a).astype(float, casting='safe')
+        except Exception as e:
+            raise ValueError("'{name}' must be an array of scalar numbers with real values.".format(name=name))
+    return a
 
 def group_xcn(x, c, n):
     """
@@ -42,6 +54,34 @@ def group_xcn(x, c, n):
             c_out.append(cv)
             n_out.append(nv)
     return np.array(x_out), np.array(c_out), np.array(n_out)
+
+def group_xcnt(x, c, n, t):
+    """
+    Ensures that all unique combinations of x and c are grouped. This should 
+    reduce the chance of having arrays that are too long for the MLE fit.
+    """
+    grouped = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    if x.ndim == 2:
+        for vx, vc, vn, vt in zip(x, c, n, t):
+            grouped[tuple(vx)][vc][tuple(vt)] += vn
+    else:
+        for vx, vc, vn, vt in zip(x, c, n, t):
+            grouped[vx][vc][tuple(vt)] += vn
+
+    x_out = []
+    c_out = []
+    n_out = []
+    t_out = []
+
+    for xv, level2 in grouped.items():
+        for cv, level3 in level2.items():
+            for tv, nv in level3.items():
+                x_out.append(xv)
+                c_out.append(cv)
+                n_out.append(nv)
+                t_out.append(tv)
+    return np.array(x_out), np.array(c_out), np.array(n_out), np.array(t_out)
+
 def xcn_sort(x, c, n):
     """
     Sorts the x, c, and n arrays so that x is increasing, and where there are ties they are ordered as left censored, failure, right censored, then intervally censored.
@@ -79,6 +119,7 @@ def xcn_sort(x, c, n):
     c = c[idx]
     n = n[idx]
     return x, c, n
+
 def xcn_handler(x, c=None, n=None):
     """
     Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
@@ -169,34 +210,6 @@ def xcn_handler(x, c=None, n=None):
 
     return x, c, n
 
-def group_xcnt(x, c, n, t):
-    """
-    Ensures that all unique combinations of x and c are grouped. This should 
-    reduce the chance of having arrays that are too long for the MLE fit.
-    """
-    grouped = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-    if x.ndim == 2:
-        for vx, vc, vn, vt in zip(x, c, n, t):
-            grouped[tuple(vx)][vc][tuple(vt)] += vn
-    else:
-        for vx, vc, vn, vt in zip(x, c, n, t):
-            grouped[vx][vc][tuple(vt)] += vn
-
-    x_out = []
-    c_out = []
-    n_out = []
-    t_out = []
-
-    for xv, level2 in grouped.items():
-        for cv, level3 in level2.items():
-            for tv, nv in level3.items():
-                x_out.append(xv)
-                c_out.append(cv)
-                n_out.append(nv)
-                t_out.append(tv)
-    return np.array(x_out), np.array(c_out), np.array(n_out), np.array(t_out)
-
-
 def xcnt_sort(x, c, n, t):
     """
     Sorts the x, c, and n arrays so that x is increasing, and where there are ties they are ordered as left censored, failure, right censored, then intervally censored.
@@ -250,6 +263,117 @@ def xcnt_sort(x, c, n, t):
     t = t[idx]
     
     return x, c, n, t
+
+def fsli_handler(f=None, s=None, l=None, i=None):
+    """
+    Converts the fsli format to the xcn format. This ensures is so that the 
+    data can be passed to one of the parametric or nonparametric fitters.
+
+    Parameters
+    ----------
+    f: array
+        array of values for which the failure/death was observed
+    s: array
+        array of right censored observation values
+    l: array
+        array of left censored observation values
+    i: array
+        array of interval censored data
+
+    Returns
+    ----------
+    f: array
+        array of values for which the failure/death was observed that have
+        been checked for correctness
+    s: array
+        array of right censored observation values that have been checked
+        for correctness
+    l: array
+        array of left censored observation values that have been checked
+        for correctness
+    i: array
+        array of interval censored data that have been checked for correctness
+    """
+    f = check_and_convert_expected_float_array(f, 'f')
+    s = check_and_convert_expected_float_array(s, 's')
+    l = check_and_convert_expected_float_array(l, 'l')
+    i = check_and_convert_expected_float_array(i, 'i')
+
+    if f.ndim != 1:
+        raise ValueError("'f' array must be one-dimensional")
+    if s.ndim != 1:
+        raise ValueError("'s' array must be one-dimensional")
+    if l.ndim != 1:
+        raise ValueError("'l' array must be one-dimensional")
+
+    if (i.ndim != 2)  & (i.size != 0):
+        raise ValueError("'i' array must be one-dimensional")
+
+    if (i.size != 0):
+        if (i[:, 0] >= i[:, 1]).any():
+            raise ValueError("Lower interval must not be greater than or equal to the upper interval")
+
+    return f, s, l, i
+
+def xrd_handler(x, r, d):
+    """
+    Takes a combination of 'x', 'r', and 'd' arrays and ensures that the data
+    is feasible.
+
+    Parameters
+    ----------
+    x: array
+        array of values of variable for which observations were made.
+    r: array
+        array of at risk items at each value of x
+    d: array
+        array of failures / deaths at each value of x
+
+    Returns
+    ----------
+
+    x: array
+        array of values of variable for which observations were made.
+    r: array
+        array of at risk items at each value of x
+    d: array
+        array of failures / deaths at each value of x
+    """
+
+    try:
+        x = np.array(x).astype(float)
+    except Exception as e:
+        raise ValueError("'x' must be an array of scalar numbers with real values.")
+
+    try:
+        r = np.array(r).astype(int, casting='safe')
+    except Exception as e:
+        raise ValueError("'r' must be an array of integers.")
+
+    try:
+        d = np.array(d).astype(int, casting='safe')
+    except Exception as e:
+        raise ValueError("'d' must be an array of integers.")
+
+    if x.ndim != 1:
+        raise ValueError("'x' must be a one dimensional array")
+
+    if x.shape != r.shape:
+        raise ValueError("'x' array not the same length as 'r' array")
+    if x.shape != d.shape:
+        raise ValueError("'x' array not the same length as 'd' array")
+
+    if (d < 0).any():
+        raise ValueError("'d' array cannot have any negative values")
+
+    # Could this be 1?
+    if (r < 0).any():
+        raise ValueError("'r' at risk item count array cannot have any negative values")
+
+    if (d > r).any():
+        raise ValueError("cannot have more deaths/failures than there are items at risk")
+
+    return x, r, d
 
 
 def xcnt_handler(x=None, c=None, n=None, t=None, 
@@ -357,7 +481,7 @@ def xcnt_handler(x=None, c=None, n=None, t=None,
         if n.shape[0] != x.shape[0]:
             raise ValueError("count array must be same length as variable array.")
         if not (n > 0).all():
-            raise ValueError("count array can't be 0")
+            raise ValueError("count array can't be 0 or less")
     else:
         # Do check here for groupby and binning
         n = np.ones(x.shape[0])
@@ -505,6 +629,7 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     r = r.astype(int)
     d = d.astype(int)
     return x, r, d
+
 def xcn_to_xrd(x, c=None, n=None):
     """
     Converts the xcn format to the xrd format.
@@ -545,9 +670,11 @@ def xcn_to_xrd(x, c=None, n=None):
     r = r.astype(int)
     d = d.astype(int)
     return x, r, d
+
 def xrd_to_xcn(x, r, d):
     """
     Exact inverse of the xcn_to_xrd function.
+    ONLY USE IF YOU HAVE NO TRUNCATION
     """
     n_f = np.copy(d)
     x_f = np.copy(x)
@@ -565,10 +692,11 @@ def xrd_to_xcn(x, r, d):
     x_s = np.repeat(x_s, n_s)
 
     return fs_to_xcn(x_f, x_s)
-def fsli_to_xcn(f, s=None, l=None, i=None):
+
+def fsli_to_xcn(f=None, s=None, l=None, i=None):
     """
-    Main handler that ensures any input to a surpyval fitter meets the requirements to be used in
-     one of the parametric or nonparametric fitters.
+    Converts the fsli format to the xcn format. This ensures is so that the 
+    data can be passed to one of the parametric or nonparametric fitters.
 
     Parameters
     ----------
@@ -590,60 +718,28 @@ def fsli_to_xcn(f, s=None, l=None, i=None):
     n: array
         array of count of observations at to output array x and with censoring c.
     """
-    x_f, n_f = np.unique(f, return_counts=True)
-    x_f = np.array([x_f, x_f]).T
-    c_f = np.zeros_like(x_f)
 
-    if s is None: s = []
-    if l is None: l = []
-    if i is None: i = []
+    f, s, l, i = fsli_handler(f, s, l, i)
+    x, c, n = fsl_to_xcn(f, s, l)
 
-    x_s, n_s = np.unique(s, return_counts=True)
-    x_s = np.array([x_s, x_s]).T
-    c_s = np.ones_like(x_s)
+    if i.size == 0:
+        return x, c, n
+    else:
+        x_i, n_i = np.unique(i, axis=0, return_counts=True)
+        c_i = np.ones(x_i.shape[0]) * 2
 
-    x_l, n_l = np.unique(l, return_counts=True)
-    x_l = np.array([x_l, x_l]).T
-    c_l = -np.ones_like(x_l)
+        x_two = np.vstack([x, x]).T
+        x = np.concatenate([x_two, x_i]).astype(float)
+        c = np.hstack([c, c_i]).astype(int)
+        n = np.hstack([n, n_i]).astype(int)
 
-    x_i, n_i = np.unique(i, axis=0, return_counts=True)
-    c_i = -np.ones_like(x_i)
+        x, c, n = xcn_sort(x, c, n)
 
-    x = np.concatenate([x_f, x_s, x_l, x_i])
-    c = np.hstack([c_f, c_s, c_l]).astype(int)
-    n = np.hstack([n_f, n_s, n_l]).astype(int)
+        return x, c, n
 
-    x, c, n = xcn_sort(x, c, n)
-
-    return x, c, n
-
-def fsl_to_xcn(f, s=None, l=None):
-    """
-    Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
-
-    Parameters
-    ----------
-    f: array
-        array of values for which the failure/death was observed
-    s: array
-        array right censored observation values
-    l: array
-        array left censored observation values
-
-    Returns
-    ----------
-    x: array
-        sorted array of values of variable for which observations were made.
-    c: array
-        array of censoring values (-1, 0, 1, 2) corrseponding to output array x.
-    n: array
-        array of count of observations at to output array x and with censoring c.
-    """
+def fsl_to_xcn(f=None, s=None, l=None):
     x_f, n_f = np.unique(f, return_counts=True)
     c_f = np.zeros_like(x_f)
-
-    if s is None: s = []
-    if l is None: l = []
 
     x_s, n_s = np.unique(s, return_counts=True)
     c_s = np.ones_like(x_s)
@@ -654,41 +750,6 @@ def fsl_to_xcn(f, s=None, l=None):
     x = np.hstack([x_f, x_s, x_l])
     c = np.hstack([c_f, c_s, c_l]).astype(int)
     n = np.hstack([n_f, n_s, n_l]).astype(int)
-
-    x, c, n = xcn_sort(x, c, n)
-
-    return x, c, n
-
-
-def fs_to_xcn(f, s):
-    """
-    Main handler that ensures any input to a surpyval fitter meets the requirements to be used in one of the parametric or nonparametric fitters.
-
-    Parameters
-    ----------
-    f: array
-        array of values for which the failure/death was observed
-    s: array
-        array right censored observation values
-
-    Returns
-    ----------
-    x: array
-        sorted array of values of variable for which observations were made.
-    c: array
-        array of censoring values (-1, 0, 1, 2) corrseponding to output array x.
-    n: array
-        array of count of observations at to output array x and with censoring c.
-    """
-    x_f, n_f = np.unique(f, return_counts=True)
-    c_f = np.zeros_like(x_f)
-
-    x_s, n_s = np.unique(s, return_counts=True)
-    c_s = np.ones_like(x_s)
-
-    x = np.hstack([x_f, x_s])
-    c = np.hstack([c_f, c_s]).astype(int)
-    n = np.hstack([n_f, n_s]).astype(int)
 
     x, c, n = xcn_sort(x, c, n)
 
@@ -714,31 +775,6 @@ def tl_tr_to_t(tl=None, tr=None):
 
     t = np.vstack([tl, tr]).T
     return t
-
-
-def fsli_to_xcn(f=None, s=None, l=None, i=None):
-    """
-    Chain of the fs_to_xrd and xrd_to_xcn functions.
-    """
-    if f is None:
-        f = []
-    if s is None:
-        s = []
-    if l is None:
-        l = []
-    x, c, n = fsl_to_xcn(f, s, l)
-
-    if i is None:
-        return x, c, n
-    else:
-        i = np.array(i)
-        if i.ndim != 2:
-            raise ValueError("'i' must be of shape (n, 2)")
-        x = np.vstack([x, x]).T
-        x = np.concatenate([x, i], axis=0)
-        c = np.concatenate([c, np.ones(i.shape[0]) * 2])
-        n = np.concatenate([n, np.ones(i.shape[0])])
-        return x, c, n
 
 def fs_to_xrd(f, s):
     """

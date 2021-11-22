@@ -9,7 +9,6 @@ from surpyval.utils import (
     xcnt_to_xrd,
     fsli_to_xcn,
     fsl_to_xcn,
-    fs_to_xcn,
     fs_to_xrd,
     round_sig,
     xcn_to_fs

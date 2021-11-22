@@ -17,6 +17,11 @@ v0.11.0 (planned)
 - Allow truncation with zi and lfp models.
 - Allow truncation with regression
 
+v0.10.0.1 (22 Nov 2021)
+-----------------------
+
+- Removed fsl_to_xcn function and replaced with fsli_to_xcn function that is able to take any combination of fsli.
+
 v0.10.0 (9 Aug 2021)
 --------------------
 

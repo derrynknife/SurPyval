@@ -4,7 +4,7 @@ from autograd import grad
 import autograd.numpy as np
 from scipy.stats import uniform
 
-from surpyval import round_sig, fs_to_xcn
+from surpyval import round_sig, fsli_to_xcn
 from scipy.special import ndtri as z
 from surpyval import nonparametric as nonp
 from copy import deepcopy, copy
@@ -251,7 +251,7 @@ class Regression():
             f = self.dist.qf(uniform.rvs(size=n_obs), *self.params) + self.gamma
             s = np.ones(np.array(size) - n_obs) * np.max(f) + 1
 
-            return fs_to_xcn(f, s)
+            return fsli_to_xcn(f, s)
 
         elif (self.p == 1) and (self.f0 != 0):
             n_doa = np.random.binomial(size, self.f0)
@@ -271,7 +271,7 @@ class Regression():
             f = np.concatenate([x, x0])
             s = np.ones(n_cens) * np.max(f) + 1
             # raise NotImplementedError("Combo zero-inflated and lfp model not yet supported")
-            return fs_to_xcn(f, s)
+            return fsli_to_xcn(f, s)
 
     def neg_ll(self):
         r"""
