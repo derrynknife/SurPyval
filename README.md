@@ -1,4 +1,4 @@
-<img src="docs/_static/logo.png" alt="surpyval logo" width="200"/>
+<center><img src="docs/_static/logo.png" alt="surpyval logo" width="200"/></center>
 
 # SurPyval - Survival Analysis in Python
 
