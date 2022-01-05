@@ -46,7 +46,6 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
-
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
@@ -59,6 +58,8 @@ html_theme = 'default'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
+html_logo = "_static/logo.png"
+
 autoclass_content = "both"  # include both class docstring and __init__
 autodoc_default_flags = [
     # Make sure that any autodoc declarations show the right members
@@ -67,6 +68,13 @@ autodoc_default_flags = [
     "show-inheritance",
 ]
 autosummary_generate = True  # Make _autosummary files and include them
+
+html_theme_options = {
+    # 'analytics_id': 'G-XXXXXXXXXX',  #  Provided by Google in your dashboard
+    # 'analytics_anonymize_ip': False,
+    'logo_only': True,
+    'style_nav_header_background': "#ea5454"
+}
 
 
 on_rtd = os.environ.get("READTHEDOCS", None) == "True"
