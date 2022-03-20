@@ -737,7 +737,7 @@ def fsli_to_xcn(f=None, s=None, l=None, i=None):
 
         return x, c, n
 
-def fsl_to_xcn(f=None, s=None, l=None):
+def fsl_to_xcn(f=[], s=[], l=[]):
     x_f, n_f = np.unique(f, return_counts=True)
     c_f = np.zeros_like(x_f)
 
@@ -754,6 +754,9 @@ def fsl_to_xcn(f=None, s=None, l=None):
     x, c, n = xcn_sort(x, c, n)
 
     return x, c, n
+
+def fs_to_xcn(f=[], s=[]):
+    return fsl_to_xcn(f, s, [])
 
 
 def tl_tr_to_t(tl=None, tr=None):
