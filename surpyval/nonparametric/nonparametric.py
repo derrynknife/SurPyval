@@ -402,7 +402,7 @@ class NonParametric():
 
         cbs = self.R_cb(self.x, **kwargs)
 
-        plot_data = {
+        return {
             'x_scale_min': x_scale_min,
             'x_scale_max': x_scale_max,
             'y_scale_min': y_scale_min,
@@ -412,12 +412,14 @@ class NonParametric():
             'R': self.R,
             'F': self.F
         }
-        return plot_data
 
-    def plot(self, **kwargs):
+    def plot(self, ax=None, **kwargs):
         r"""
         Creates a plot of the survival function.
         """
+        if ax is None:
+            ax = plt.gcf().gca()
+
         plot_bounds = kwargs.pop('plot_bounds', True)
         interp = kwargs.pop('interp', 'step')
         bound = kwargs.pop('bound', 'two-sided')
@@ -432,16 +434,18 @@ class NonParametric():
                                dist=dist)
         # MAKE THE PLOT
         # Set the y limits
-        plt.gca().set_ylim([d['y_scale_min'], d['y_scale_max']])
+        ax.set_ylim([d['y_scale_min'], d['y_scale_max']])
 
         # Label it
-        plt.title('Model Survival Plot')
-        plt.ylabel('R')
+        ax.set_title('Model Survival Plot')
+        ax.set_ylabel('R')
         if interp != 'step':
+            ax.plot(d['x_'], d['R'])
             if plot_bounds:
-                plt.plot(d['x_'], d['cbs'], color='r')
-            return plt.plot(d['x_'], d['R'])
+                ax.plot(d['x_'], d['cbs'], color='r')
         else:
+            ax.step(d['x_'], d['R'], where='post')
             if plot_bounds:
-                plt.step(d['x_'], d['cbs'], color='r', where='post')
-            return plt.step(d['x_'], d['R'], where='post')
+                ax.step(d['x_'], d['cbs'], color='r', where='post')
+        
+        return ax
