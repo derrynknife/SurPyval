@@ -1,5 +1,5 @@
 import re
-import autograd.numpy as np
+from surpyval import np
 import matplotlib.pyplot as plt
 from autograd import jacobian
 from scipy.stats import uniform
@@ -9,6 +9,7 @@ from surpyval import nonparametric as nonp
 from copy import deepcopy, copy
 from matplotlib.ticker import FixedLocator
 
+CB_COLOUR = "#e94c54"
 
 def _round_vals(x):
     not_different = True
@@ -905,7 +906,7 @@ class Parametric():
             'F': F
         }
 
-    def plot(self, heuristic='Turnbull', plot_bounds=True, alpha_ci=0.05):
+    def plot(self, heuristic='Turnbull', plot_bounds=True, alpha_ci=0.05, ax=None):
         r"""
         A method to do a probability plot
 
@@ -926,6 +927,10 @@ class Parametric():
             The confidence with which the confidence bounds, if able, will
             be calculated. Defaults to 0.95.
 
+        ax: matplotlib.axes.Axes, optional
+            The axis onto which the plot will be created. Optional, if not
+            provided a new axes will be created.
+
         Returns
         -------
         plot : list
@@ -938,48 +943,44 @@ class Parametric():
         >>> model = Weibull.fit(x)
         >>> model.plot()
         """
+        if ax is None:
+            ax = plt.gcf().gca()
+ 
         if not hasattr(self, 'params'):
-            print("Can't plot model that failed to fit")
-            return None
-
+            raise Exception("Can't plot model that failed to fit")
+ 
         if self.method == 'given parameters':
-            print("Can't plot model that was given parameters and no data")
-            return None
-
+            raise Exception("Can't plot model that was given parameters and no data")
+        
         d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
-        # MAKE THE PLOT
-        # Set the y limits
-        plt.gca().set_ylim([d['y_scale_min'], d['y_scale_max']])
-
-        # Set the x scale
-        plt.xscale(d['x_scale'])
-        # Set the y scale
+ 
+        # Set limits and scale
+        ax.set_ylim([d['y_scale_min'], d['y_scale_max']])
+        ax.set_xscale(d['x_scale'])
         functions = (
             lambda x: self.dist.mpp_y_transform(x, *self.params),
             lambda x: self.dist.mpp_inv_y_transform(x, *self.params))
-
-        plt.gca().set_yscale('function', functions=functions)
-
-        # Set Major Y axis ticks
-        plt.yticks(d['y_ticks'], labels=d['y_ticks_labels'])
-        # Set Minor Y axis ticks
-        plt.gca().yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
-        # Set Major X axis ticks
-        plt.xticks(d['x_ticks'], labels=d['x_ticks_labels'])
-        # Set Minor X axis ticks if log scale.
+        ax.set_yscale('function', functions=functions)
+        ax.set_yticks(d['y_ticks'])
+        ax.set_yticklabels(d['y_ticks_labels'])
+        ax.yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
+        ax.set_xticks(d['x_ticks'])
+        ax.set_xticklabels(d['x_ticks_labels'])
+ 
         if d['x_scale'] == 'log':
-            plt.gca().set_xticks(d['x_minor_ticks'], minor=True)
-            plt.gca().set_xticklabels([], minor=True)
-
-        # Turn on the grid
-        plt.grid(b=True, which='major', color='g', alpha=0.4, linestyle='-')
-        plt.grid(b=True, which='minor', color='g', alpha=0.1, linestyle='-')
-
-        # Label it
-        plt.title('{} Probability Plot'.format(self.dist.name))
-        plt.ylabel('CDF')
-        plt.scatter(d['x_'], d['F'])
-        plt.gca().set_xlim([d['x_scale_min'], d['x_scale_max']])
+            ax.set_xticks(d['x_minor_ticks'], minor=True)
+            ax.set_xticklabels([], minor=True)
+        
+        ax.grid(b=True, which='major', color='g', alpha=0.4, linestyle='-')
+        ax.grid(b=True, which='minor', color='g', alpha=0.1, linestyle='-')
+ 
+        ax.set_title('{} Probability Plot'.format(self.dist.name))
+        ax.set_ylabel('CDF')
+        ax.scatter(d['x_'], d['F'])
+ 
+        ax.set_xlim([d['x_scale_min'], d['x_scale_max']])
         if plot_bounds & (len(d['cbs']) != 0):
-            plt.plot(d['x_model'], d['cbs'], color='r')
-        return plt.plot(d['x_model'], d['cdf'], color='k', linestyle='--')
+            ax.plot(d['x_model'], d['cbs'], color=CB_COLOUR)
+        
+        ax.plot(d['x_model'], d['cdf'], color='k', linestyle='--')
+        return ax
