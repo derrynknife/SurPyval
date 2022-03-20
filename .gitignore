@@ -16,6 +16,7 @@ surpyval-env
 .python-version
 surpyval/pyvenv.cfg
 surpyval/bin
+surpyval/share
 surpyval/include
 surpyval/lib
 __pycache__/
