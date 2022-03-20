@@ -19,6 +19,7 @@ v0.11.0 (planned)
 
 v0.10.1.0 (25 Mar 2022)
 -----------------------
+
 - Changed plot methods to now take 'Axis' object. This allows a user to pass in an existing axis.
 - plot functions now return an Axis object instead of the Lines2D object. Allows for easy user update after plotting.
 - Added fs_to_xcn as it was dropped in 10.0.1.

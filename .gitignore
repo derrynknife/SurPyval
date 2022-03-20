@@ -8,6 +8,7 @@
 .ipynb_checkpoints/
 *.egg-info
 .pytest_cache
+.vscode/
 build
 dist
 references
