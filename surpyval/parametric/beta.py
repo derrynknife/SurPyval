@@ -1,4 +1,4 @@
-import autograd.numpy as np
+from surpyval import np
 from scipy.stats import uniform
 from scipy.special import betaincinv
 from scipy.special import gamma as gamma_func

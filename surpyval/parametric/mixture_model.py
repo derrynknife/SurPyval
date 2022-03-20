@@ -1,5 +1,5 @@
 import surpyval
-import autograd.numpy as np
+from surpyval import np
 from scipy.linalg import inv
 from scipy.optimize import minimize
 from scipy.special import ndtri as z

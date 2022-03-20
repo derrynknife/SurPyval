@@ -1,5 +1,5 @@
 from autograd import jacobian, hessian
-import autograd.numpy as np
+from surpyval import np
 from autograd.numpy.linalg import inv
 
 from scipy.optimize import minimize
@@ -457,7 +457,6 @@ class ParametricFitter():
                     xl=None, xr=None, tl=None, tr=None,
                     **fit_options):
         r"""
-
         The central feature to SurPyval's capability. This function aimed to have an API to mimic the 
         simplicity of the scipy API. That is, to use a simple :code:`fit()` call, with as many or as few
         parameters as is needed.

@@ -1,4 +1,4 @@
-import autograd.numpy as np
+from surpyval import np
 from scipy.stats import uniform
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
@@ -52,7 +52,7 @@ class Weibull_(ParametricFitter):
         else:
             gumb = para.Gumbel.fit(log_x, c, n, t, how='MLE')
             if not gumb.res.success:
-                gumb = para,Gumbel.fit(log_x, c, n, t, how='MPP', heuristic=heuristic)
+                gumb = para.Gumbel.fit(log_x, c, n, t, how='MPP', heuristic=heuristic)
             mu, sigma = gumb.params
             alpha, beta = np.exp(mu), 1. / sigma
             if (np.isinf(alpha) | np.isnan(alpha)):

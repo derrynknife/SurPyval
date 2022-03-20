@@ -1,4 +1,4 @@
-import autograd.numpy as np
+from surpyval import np
 from autograd import jacobian
 from scipy.stats import uniform
 from autograd.scipy.special import gamma as agamma

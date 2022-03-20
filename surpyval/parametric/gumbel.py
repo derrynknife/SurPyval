@@ -1,4 +1,4 @@
-import autograd.numpy as np
+from surpyval import np
 from scipy.stats import uniform
 from numpy import euler_gamma
 from scipy.special import ndtri as z

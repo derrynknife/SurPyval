@@ -1,5 +1,4 @@
-import autograd.numpy as np
-
+from surpyval import np
 
 def pass_through(x):
     return x

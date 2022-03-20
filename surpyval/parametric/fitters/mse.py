@@ -1,4 +1,4 @@
-import autograd.numpy as np
+from surpyval import np
 
 from surpyval import nonparametric as nonp
 from scipy.optimize import minimize

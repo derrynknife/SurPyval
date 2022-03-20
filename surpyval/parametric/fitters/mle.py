@@ -1,4 +1,4 @@
-import autograd.numpy as np
+from surpyval import np
 from autograd import jacobian, hessian
 from autograd.numpy.linalg import inv
 from scipy.optimize import minimize, approx_fprime

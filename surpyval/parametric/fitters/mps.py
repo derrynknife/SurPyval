@@ -1,5 +1,5 @@
 from scipy.optimize import minimize
-import autograd.numpy as np
+from surpyval import np
 from autograd import jacobian, hessian
 import sys
 

@@ -1,4 +1,4 @@
-import autograd.numpy as np
+from surpyval import np
 from scipy.stats import pearsonr
 from surpyval.nonparametric import plotting_positions
 from scipy.optimize import minimize

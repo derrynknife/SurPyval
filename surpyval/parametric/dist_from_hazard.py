@@ -1,6 +1,6 @@
 from surpyval.parametric.parametric_fitter import ParametricFitter
 import surpyval
-import autograd.numpy as np
+from surpyval import np
 from autograd import elementwise_grad
 import inspect
 
