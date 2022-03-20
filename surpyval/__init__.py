@@ -1,4 +1,4 @@
-import numpy as np
+from autograd import numpy as np
 
 from surpyval.utils import (
     xcn_sort,
@@ -9,6 +9,7 @@ from surpyval.utils import (
     xcnt_to_xrd,
     fsli_to_xcn,
     fsl_to_xcn,
+    fs_to_xcn,
     fs_to_xrd,
     round_sig,
     xcn_to_fs
