@@ -26,6 +26,8 @@ class ParametricCountingModel():
         else:
             raise ValueError("Inverse cif undefined for {}".format(self.dist.name))
 
+    # TODO: random, to T, and to N
+
 class NHPP():
     def __init__(self, name, param_names, param_bounds, support, cif, iif=None,
                  parameter_initialiser=None):
