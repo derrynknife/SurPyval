@@ -22,6 +22,10 @@ nonparametric_dists = {
 }
 
 class CoxProportionalHazardsFitter():
+    """
+    This is wrong.
+    """
+
     def __init__(self):
         self.name = 'CoxPH'
         self.phi = lambda X, *params: np.exp(np.dot(X, np.array(params)))

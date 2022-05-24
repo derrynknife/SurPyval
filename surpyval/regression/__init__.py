@@ -25,6 +25,9 @@ from ..parametric import (
     Logistic
 )
 
+# Useful for proportional odds
+# https://data.princeton.edu/pop509/parametricsurvival.pdf
+
 # Semi-Parametric Proportional Hazard
 CoxPH = CoxProportionalHazardsFitter()
 

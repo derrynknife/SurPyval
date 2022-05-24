@@ -2,11 +2,12 @@ from surpyval.parametric import Weibull
 from collections import defaultdict
 import heapq
 
+from .nhpp import Duane, CoxLewis, Crow, CrowAMSAA, HPP
 
-class GRP:
-    __init__(self, dist):
+
+class GRP():
+    def __init__(self, dist):
         self.dist = dist
-
 
     def fit(self, units, x):
         units = np.array(units)
