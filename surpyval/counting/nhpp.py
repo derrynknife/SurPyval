@@ -285,7 +285,7 @@ def hpp_cif(x, *params):
 
 def hpp_rocof(x, *params):
     rate = params[0]
-    return rate
+    return np.ones_like(x) * rate
 
 def hpp_inv_cif(cif, *params):
     rate = params[0]
