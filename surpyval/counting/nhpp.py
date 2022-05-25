@@ -3,6 +3,7 @@ from inspect import signature
 from autograd import elementwise_grad, jacobian
 from scipy.optimize import minimize
 from surpyval.utils.counting_utils import xicn_to_xrd, handle_xicn
+import numpy_indexed as npi
 
 class ParametricCountingModel():
     def __repr__(self):
@@ -115,7 +116,9 @@ class NHPP():
         elif how == "MLE":
             if self.name == "HPP":
                 # Homogeneous Poisson Process has a simple, closed form solution.
-                params = np.array([len(x) / T])
+                total = npi.group_by(i).max(x)[1].sum()
+                d = (n * (c == 0).astype(int)).sum()
+                params = np.array([d / total])
                 res = None
             else:
                 ll_func = self.create_ll_func(x, i, c, n)
