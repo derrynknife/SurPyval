@@ -2,6 +2,7 @@ from autograd import numpy as np
 from inspect import signature
 from autograd import elementwise_grad, jacobian
 from scipy.optimize import minimize
+from surpyval.utils.counting_utils import xicn_to_xrd, handle_xicn
 
 class ParametricCountingModel():
     def __repr__(self):
@@ -54,18 +55,33 @@ class NHPP():
         else:
             self.parameter_initialiser = parameter_initialiser
 
-    def create_ll_func(self, x, T):
+    def create_ll_func(self, x, i, c, n):
         """
         Need to allow for multiple items, i.
-        
         """
+        ll_dict = {}
+
+        for ii in set(i):
+            T = x[i == ii].max()
+            mask = (i == ii) & (c == 0)
+            xi = x[mask]
+            ni = n[mask]
+            ll_dict[ii] = {
+                'T' : T,
+                'x' : xi,
+                'n' : ni
+            }
+
 
         def ll_func(params):
-            return self.cif(T, *params) - np.log(self.iif(x, *params)).sum()
+            rv = 0
+            for i in ll_dict.keys():
+                rv += self.cif(ll_dict[i]['T'], *params) - (ll_dict[i]['n'] * np.log(self.iif(ll_dict[i]['x'], *params))).sum()
+            return rv
 
         return ll_func
 
-    def fit(self, x, i=None, T=None, how="MSE", init=None):
+    def fit(self, x, i=None, c=None, n=None, how="MSE", init=None):
         """
         Format for counting processes...
         Thinking x, i, n.
@@ -75,8 +91,6 @@ class NHPP():
         n is counts ... maybe
 
         """
-        if T is None:
-            T = np.max(x)
 
         if init is None:
             param_init = self.parameter_initialiser(x)
@@ -85,13 +99,13 @@ class NHPP():
 
         model = ParametricCountingModel()
 
+        # Need an xin checker
         # Need an xin to xrd format wrangler
-        if i is None:
-            r = np.ones_like(x)
-            d = np.ones_like(x)
+        x, i, c, n = handle_xicn(x, i, c, n)
+        x_unqiue, r, d = xicn_to_xrd(x, i, c, n)
         
         mcf_hat = np.cumsum(d/r)
-        fun = lambda params : np.sum((self.cif(x, *params) - mcf_hat)**2)
+        fun = lambda params : np.sum((self.cif(x_unqiue, *params) - mcf_hat)**2)
         res = minimize(fun, param_init)
         model.mcf_hat = mcf_hat
 
@@ -100,17 +114,18 @@ class NHPP():
 
         elif how == "MLE":
             if self.name == "HPP":
+                # Homogeneous Poisson Process has a simple, closed form solution.
                 params = np.array([len(x) / T])
                 res = None
             else:
-                ll_func = self.create_ll_func(x, T)
+                ll_func = self.create_ll_func(x, i, c, n)
                 jac = jacobian(ll_func)
                 res = minimize(ll_func, res.x, jac=jac, method="TNC")
                 params = res.x
 
         model.res = res
         model.params = params
-        model.x = x
+        model.x = x_unqiue
         model.dist = self
         return model
 
