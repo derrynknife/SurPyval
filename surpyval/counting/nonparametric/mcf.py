@@ -1,23 +1,6 @@
 from autograd import numpy as np
 from scipy.stats import t, norm
-
-class DataWrangler():
-    @classmethod
-    def Nxd_to_xrd(cls, N, x, d):
-        # When you have N, the number of components
-        r = np.zeros_like(x)
-        r[0] = 5
-        r = np.cumsum(r - (1 - d))
-        r = np.hstack([[5], r[0:-1]])
-        return x, r, d
-
-    @classmethod
-    def arrange(cls, x, r, d):
-        idx = np.argsort(x)
-        x = x[idx]
-        r = r[idx]
-        d = d[idx]
-        return x, r, d
+from surpyval.utils.counting_utils import xicn_to_xrd, handle_xicn
 
 class NonParametricCounting():
     def mcf(self, x, how='step'):
@@ -84,10 +67,11 @@ class NonParametricCounting():
         return mcf_cb
 
     @classmethod
-    def fit(cls, x, r, d):
+    def fit(cls, x, i=None, c=None, n=None):
         out = cls()
 
-        x, r, d = DataWrangler.arrange(x, r, d)
+        xicn = handle_xicn(x, i, c, n)
+        x, r, d = xicn_to_xrd(*xicn)
         
         out.x = x
         out.r = r
