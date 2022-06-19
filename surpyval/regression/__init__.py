@@ -1,7 +1,7 @@
 import autograd.numpy as np
 from collections import defaultdict
 
-from .cox_ph import CoxProportionalHazardsFitter
+from .cox_ph import CoxPH
 
 from .proportional_hazards import ProportionalHazardsFitter
 from .accelerated_failure_time import AcceleratedFailureTimeFitter
@@ -29,7 +29,7 @@ from ..parametric import (
 # https://data.princeton.edu/pop509/parametricsurvival.pdf
 
 # Semi-Parametric Proportional Hazard
-CoxPH = CoxProportionalHazardsFitter()
+# CoxPH = CoxProportionalHazardsFitter()
 
 DISTS = [surv.Exponential, Normal, Weibull, Gumbel, Logistic, LogNormal]
 LIFE_PARAMS = ['lambda', 'mu', 'alpha', 'mu', 'mu', 'mu']
