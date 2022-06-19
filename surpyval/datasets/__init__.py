@@ -52,6 +52,15 @@ class BoforsSteel_():
         self.df = pd.read_csv(resource_filename("surpyval",
                                                 "datasets/bofors_steel.csv"),
                               engine="python")
+    
+    def __repr__(self):
+        return """
+        Data from:
+        Weibull, W., A Statistical Distribution Function
+        of Wide Applicability, Journal of Applied Mechanics,
+        Vol. 18, No. 3, pp 293-297 (1951).
+        https://doi.org/10.1115/1.4010337
+        """
 
 
 class Boston_():
@@ -68,7 +77,7 @@ class Bearing_():
              93.12, 98.64, 105.12, 105.84, 127.92, 128.04, 173.4]
         self.df = pd.DataFrame({'Cycles to Failure (millions)': x})
 
-    def __str__(self):
+    def __repr__(self):
         return """
         Data from:
         Lieblein, J. and Zelen, M. (1956) Statistical Investigation
