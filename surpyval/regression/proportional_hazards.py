@@ -9,6 +9,33 @@ import surpyval
 from ..parametric.fitters import bounds_convert, fix_idx_and_function
 from .regression import Regression
 
+from ..utils import _get_idx
+
+class ProportionalHazardsModel():
+    """
+    A Proportional Hazard Model class.
+    Currently only implemented for semi-parametric
+    would need to change should we want to allow
+    fully parametric models.
+    """
+    def hf(self, x, Z):
+        idx, rev = _get_idx(self.x, x)
+        return (self.h0[idx] * self.phi(Z))[rev]
+
+    def Hf(self, x, Z):
+        idx, rev = _get_idx(self.x, x)
+        return (self.H0[idx] * self.phi(Z))[rev]
+
+    def sf(self, x, Z):
+        return np.exp(-self.Hf(x, Z))
+
+    def ff(self, x, Z):
+        return 1 - self.sf(x, Z)
+
+    def df(self, x, Z):
+        return self.hf(x, Z) * self.sf(x, Z)
+
+
 class ProportionalHazardsFitter():
     def __init__(self, name, dist, phi, phi_bounds, phi_param_map,
                  baseline=[], fixed={}, phi_init=None):
