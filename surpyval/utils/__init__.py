@@ -1,7 +1,17 @@
 import numpy as np
 from pandas import Series
 from collections import defaultdict
+from formulaic import Formula
 import sys
+
+import warnings
+
+COX_PH_METHODS = ["breslow", "efron"]
+FG_BASELINE_OPTIONS = [
+    "Nelson-Aalen",
+    "Kaplan-Meier"
+]
+
 
 def check_no_censoring(c):
     return any(c != 0)
@@ -757,6 +767,297 @@ def fsl_to_xcn(f=[], s=[], l=[]):
 
 def fs_to_xcn(f=[], s=[]):
     return fsl_to_xcn(f, s, [])
+
+
+
+def _scale(ll, n, scale):
+    if scale:
+        # Sometimes the ll can get too big. If we normalise it 
+        # against the number of observations it is smaller
+        # This allows for better performance of the optimizer.
+        return ll.sum() / n.sum()
+    else:
+        return ll.sum()
+
+def _get_idx(x_target, x):
+    """
+    Function to get the indices for a given vector of x values
+    """
+    x = np.atleast_1d(x)
+    idx = np.argsort(x)
+    rev = np.argsort(idx)
+    x = x[idx]
+    idx = np.searchsorted(x_target, x, side='right') - 1
+    return idx, rev
+
+def check_left_or_int_cens(c):
+    if (-1 in c) or (2 in c):
+        raise ValueError("Left or interval censoring not implemented with Competing Risks")
+
+def check_Z_and_x(Z, x):
+    if x.shape[0] != Z.shape[0]:
+        raise ValueError("Z must have len(x) number of rows")
+
+def check_e_and_x(e, x):
+    if e.shape != x.shape:
+        raise ValueError('Event vector, e, and duration vector, x, must have same shape')
+
+def check_c_and_e(c, e):
+    if     any(~(e[c == 1] == None)) \
+        or any(~(e[c != 1] != None)):
+        raise ValueError('None can only be used as event type for censored observation')
+
+def wrangle_and_check_form_and_Z_cols(Z_cols, formula, df):
+    if (Z_cols is None) & (formula is None):
+        raise ValueError("'Z_cols' or 'formula' cannot both be None")
+    
+    if (Z_cols is not None) & (formula is not None):
+        raise ValueError("Either 'Z_cols' or 'formula' must be provided; not both")
+    
+    if Z_cols is not None:
+        unknown = [x for x in Z_cols if x not in df.columns]
+        if len(unknown) > 0:
+            raise ValueError("{} not in dataframe columns".format(unknown))
+        Z = df[Z_cols].values.astype(float)
+        mask = ~df[Z_cols].isna().any(axis=1).values
+        Z = Z[mask]
+        form = None
+    else:
+        form = Formula('0 + ' + formula)
+        Z = form.get_model_matrix(df, na_action='ignore').values.astype(float)
+        mask = ~np.any(np.isnan(Z), axis=1)
+
+    return Z, mask, form
+
+def wrangle_Z(Z):
+    Z = np.array(Z)
+
+    if Z.ndim == 1:
+        Z = np.atleast_2d(Z).T
+    elif Z.ndim == 2:
+        pass
+    else:
+        raise ValueError("Covariate matrix must be two dimensional")
+
+    mask = ~np.any(np.isnan(Z), axis=1)
+
+    return Z[mask], mask
+
+def validate_cr_df_inputs(df, x_col, e_col, 
+                          c_col=None, n_col=None):
+    x = df[x_col].values
+    e = df[e_col].values
+
+    if c_col:
+        c = df[c_col].values
+    else:
+        c = None
+
+    if n_col:
+        n = df[n_col].values
+    else:
+        n = None
+    return x, c, n, e
+
+def validate_cr_inputs(x, c, n, e, method):
+    """
+    Validates the inputs prior to be used by the CoxPH model.
+    """
+    # Use existing surpyval validator. But don't group and sort
+    # so as to put it out of order of the event array, e.
+    x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
+
+    e = np.array(e)
+    (x, c, n) = (np.array(a).astype(float) for a in [x, c, n])
+
+    # Check same shape
+    check_e_and_x(e, x)
+
+    # Not implemented, yet.
+    if (-1 in c) or (2 in c):
+        raise ValueError("Left or interval censoring not implemented with Competing Risks")
+
+    # Ensure all cases where c is 0, e is not None and
+    # where c is 1 e is None
+    if     any(~(e[c == 1] == None)) \
+        or any(~(e[c != 1] != None)):
+        raise ValueError('None can only be used as event type for censored observation')
+
+    # Two baselines
+    # TODO: Add fh
+    if method not in ['Nelson-Aalen', 'Kaplan-Meier']:
+        raise ValueError("Unrecognised baseline method")
+
+    return x, c, n, e
+
+def validate_event(mapping, event):
+    if event is not None and event not in mapping:
+        raise ValueError("Event type not in model")
+
+def validate_cif_event(event):
+    if event is None:
+        raise ValueError("CIF needs event type, not None")
+
+def check_an_ids_tl_and_x(id, tl, x):
+    """
+    This function checks that, for a given item, id, the history
+    of the item is complete. That is, the timeline provided in the
+    steps from tl[0] > x[0] == tl[1] > x[1] == ... tl[-1] > x[-1]
+    This ensures there are no overlaps nor are there any gaps.
+    # TODO: Consider allowing gaps in timeline, but not overlaps!
+    """
+    if len(tl) != len(x):
+        raise ValueError('Item {id} has differing lengths of the tl and x vectors'.format(id=id))
+    n = len(x)
+    if n != len(np.unique(tl)):
+        raise ValueError('Item {id} has repeated tl values'.format(id=id))
+
+    # Check finish times are unqiue
+    if n != len(np.unique(x)):
+        raise ValueError('Item {id} has repeated x values'.format(id=id))
+    # Check all starts are less than stops
+    if np.any(tl >= x):
+        raise ValueError("tl has some values greater than or equal to x")
+
+    # check that there is one start time and one finish time and
+    # no other double ups or gaps
+    x, n = np.unique([tl, x], return_counts=True)
+
+    if n[0] != 1:
+        raise ValueError("Multiple start times for item {id}".format(id=id))
+    if n[-1] != 1:
+        raise ValueError("Multiple end times for item {id}".format(id=id))
+
+    if np.any(n[1:-1] != 2):
+        raise ValueError("Missing or doubled-up time windows for item {id}".format(id=id))
+
+def validate_tv_coxph(id, tl, x, Z, c, n):
+    x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+
+    if id is None:
+        warnings.warn("No id provided, model fitted by coherence not checked")
+    else:
+        id = np.array(id)
+        for i in id:
+            tl_i = tl[id == i]
+            x_i = x[id == i]
+            check_an_ids_tl_and_x(i, tl_i, x_i)
+
+    Z, mask = wrangle_Z(Z)
+    x, c, n = [arr[mask] for arr in (x, c, n)]
+    (x, c, n, Z) = (arr.astype(float) for arr in [x, c, n, Z])
+
+    check_Z_and_x(Z, x)
+    x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+
+    return t[:, 0], x, Z, c, n
+
+def validate_tv_coxph_df_inputs(df, id_col, tl_col, x_col,
+                                Z_cols, c_col, n_col, formula):
+
+    # TODO: Create count of dropped rows
+
+    if x_col is None:
+        raise ValueError("'x_col' not provided")
+    elif x_col not in df.columns:
+        raise ValueError("'{}' not in dataframe's columns".format(x_col))
+
+    if tl_col is None:
+        raise ValueError("'tl_col' not given")
+    elif tl_col not in df.columns:
+        raise ValueError("'{}' not in dataframe's columns".format(tl_col))
+
+    if id_col is None:
+        warnings.warn("'id_cols' is None, fit carried out without checking coherence of each id's timeline.")
+        id = None
+    elif id_col not in df.columns:
+        raise ValueError("'{}' not in dataframe's columns".format(id_col))
+    else:
+        # Check to ensure each item (by id) has coherent data.
+        # That is, make sure that there are no gaps or overlaps
+        # in the timline of each item.
+        id = df[id_col].values
+        for i, s in df.groupby(id_col):
+            tl = s[tl_col].values
+            x = s[x_col].values
+            check_an_ids_tl_and_x(i, tl, x)
+
+    Z, mask, form = wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+
+    x = df.loc[mask, x_col].values
+    tl = df.loc[mask, tl_col].values
+
+    if c_col is None:
+        c = None
+    else:
+        c = df.loc[mask, c_col].values
+
+    if n_col is None:
+        n = None
+    else:
+        n = df.loc[mask, n_col].values
+
+    x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+
+    return t[:, 0], x, Z, id, c, n, form
+
+def validate_coxph_df_inputs(df, x_col, c_col, n_col, Z_cols, formula):
+    # TODO: Return the count of dropped rows?
+
+    Z, mask, form = wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+    
+    x = df.loc[mask, x_col].values
+
+    if c_col is None:
+        c = None
+    else:
+        c = df.loc[mask, c_col].values
+
+    if n_col is None:
+        n = None
+    else:
+        n = df.loc[mask, n_col].values
+
+    x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
+
+    return x, c, n, Z, form
+
+def validate_coxph(x, c, n, Z, tl, method):
+    if method not in COX_PH_METHODS:
+        raise ValueError("Method must be in {}".format(COX_PH_METHODS))
+
+    x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+
+    tl = t[:, 0]
+
+    (x, c, n, Z, tl) = (np.array(a).astype(float) for a in [x, c, n, Z, tl])
+
+    Z, mask = wrangle_Z(Z)
+    x, c, n, tl = [arr[mask] for arr in (x, c, n, tl)]
+    (x, c, n, tl, Z) = (arr.astype(float) for arr in [x, c, n, tl, Z])
+
+    check_Z_and_x(Z, x)
+    
+    return x, c, n, tl, Z
+
+def validate_fine_gray_inputs(x, Z, e, c, n):
+
+    x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
+
+    e = np.array(e)
+    Z, mask = wrangle_Z(Z)
+    x, c, n, e = [arr[mask] for arr in (x, c, n, e)]
+
+    # Set all dtypes to float. Very poor results otherwise.
+    (x, c, n, Z) = (arr.astype(float) for arr in [x, c, n, Z])
+
+    check_e_and_x(e, x)
+    check_Z_and_x(Z, x)
+    check_c_and_e(c, e)
+    check_left_or_int_cens(c)
+
+    return x, Z, e, c, n
+
 
 
 def tl_tr_to_t(tl=None, tr=None):
