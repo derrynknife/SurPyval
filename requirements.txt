@@ -5,3 +5,5 @@ autograd
 autograd-gamma
 matplotlib
 numpy-indexed
+formulaic
+numba
