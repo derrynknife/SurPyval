@@ -361,7 +361,10 @@ class Parametric():
         >>> model.cs(11, 10)
         0.00025840046151723767
         """
-        return self.dist.cs(x - self.gamma, X - self.gamma, *self.params)
+        x = np.array(x)
+        cs = np.array(self.dist.cs(x - self.gamma, X - self.gamma, *self.params))
+        cs[cs > 1.] = 1
+        return cs
 
     def random(self, size, a=None, b=None):
         r"""
