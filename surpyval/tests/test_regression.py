@@ -1,18 +1,18 @@
 import pytest
-from cartiga import np
-from cartiga.datasets import (
-    load_lung,
-    load_rossi,
-    load_heart
+import numpy as np
+from ..datasets import (
+    Lung,
+    Rossi,
+    Heart
 )
-from cartiga import CoxPH, TimeVaryingCoxPH
+from surpyval.regression import CoxPH
 
 def test_coxph_against_ll_rossi_static():
     ll_answer = np.array([-0.37942216, -0.05743772,  0.31389978,
                           -0.14979572, -0.43370385, -0.08487107, 
                            0.09149708])
 
-    rossi = load_rossi()
+    rossi = Rossi.data
     model = CoxPH.fit_from_df(rossi, 
             x_col='week',
             c_col='arrest',
@@ -27,7 +27,7 @@ def test_coxph_against_ll_rossi_static():
 def test_coxph_against_r_lung_1():
     r_answer = np.array([-0.5310235])
 
-    lung = load_lung()
+    lung = Lung.data
     x = lung['time'].values
     c = lung['status'].values
     Z = lung[['sex']].values
@@ -39,7 +39,7 @@ def test_coxph_against_r_lung_1():
 def test_coxph_against_r_lung_2():
     r_answer = np.array([0.01106676, -0.55261240, 0.46372848])
 
-    lung = load_lung()
+    lung = Lung.data
     model = CoxPH.fit_from_df(
         lung, 
         x_col='time',
