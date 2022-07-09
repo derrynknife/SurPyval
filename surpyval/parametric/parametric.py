@@ -797,7 +797,7 @@ class Parametric():
             self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
             return self._aic_c
 
-    def get_plot_data(self, heuristic='Turnbull', alpha_ci=0.05):
+    def get_plot_data(self, heuristic='Nelson-Aalen', alpha_ci=0.05):
         r"""
 
         A method to gather plot data
@@ -933,7 +933,7 @@ class Parametric():
             'F': F
         }
 
-    def plot(self, heuristic='Turnbull', plot_bounds=True, alpha_ci=0.05, ax=None):
+    def plot(self, heuristic='Nelson-Aalen', plot_bounds=True, alpha_ci=0.05, ax=None):
         r"""
         A method to do a probability plot
 
