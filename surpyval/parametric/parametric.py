@@ -98,6 +98,30 @@ class Parametric():
         else:
             return "Unable to fit values"
 
+    def param_cb(self, name, alpha=0.05, bound="two-sided"):
+        """
+        Method to calculate the confidence bound on a parameter.
+        """
+        idx = self.dist.param_map[name]
+        p_hat = self.params[idx]
+
+        if bound == "two-sided":
+            alpha = alpha / 2
+            bounds = np.array([-1, 1])
+        elif bound == "lower":
+            bounds = np.array([-1])
+        elif bound == "upper":
+            bounds = np.array([1])
+
+        if self.dist.bounds[idx] == (0, None):
+            exponent = z(alpha) * np.sqrt(self.hess_inv[idx, idx])/p_hat
+            bounds = -bounds * exponent
+            return p_hat * np.exp(bounds)
+        else:
+            factor = z(alpha) * np.sqrt(self.hess_inv[idx, idx])
+            bounds = -bounds * factor
+            return p_hat + bounds
+
     def sf(self, x):
         r"""
 
