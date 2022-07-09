@@ -1,16 +1,24 @@
-# from autograd import jacobian, hessian
-#import autograd.numpy as np
+"""
+This code was created for and sponsored by Cartiga (www.cartiga.com). 
+Cartiga makes no representations or warranties in connection with the code 
+and waives any and all liability in connection therewith. Your use of the 
+code constitutes acceptance of these terms.
+
+Copyright 2022 Cartiga LLC
+"""
+
 from copy import copy
 import numpy as np
 from numpy.linalg import inv
 from scipy.stats import norm
 
 from ..parametric.fitters import bounds_convert, fix_idx_and_function
-
-from ..nonparametric import NelsonAalen
-from ..nonparametric import KaplanMeier
-from ..nonparametric import FlemingHarrington
-from ..nonparametric import Turnbull
+from ..nonparametric import (
+    NelsonAalen,
+    KaplanMeier, 
+    FlemingHarrington,
+    Turnbull
+)
 
 nonparametric_dists = {
     'Nelson-Aalen' : NelsonAalen,

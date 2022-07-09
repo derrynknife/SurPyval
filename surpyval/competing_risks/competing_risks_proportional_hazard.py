@@ -1,9 +1,20 @@
-# from cartiga import np
+"""
+This code was created for and sponsored by Cartiga (www.cartiga.com). 
+Cartiga makes no representations or warranties in connection with the code 
+and waives any and all liability in connection therewith. Your use of the 
+code constitutes acceptance of these terms.
+
+Copyright 2022 Cartiga LLC
+"""
+
 import numpy as np
-from cartiga.competing_risks.fine_gray import FineGray
-from cartiga.regression.cox_ph import CoxPH
-from cartiga.utils import _get_idx
-from cartiga.utils import validate_fine_gray_inputs, _scale
+from .fine_gray import FineGray
+from surpyval import CoxPH
+from surpyval.utils import _get_idx
+from surpyval.utils import (
+    validate_fine_gray_inputs, 
+    _scale
+)
 from scipy.optimize import minimize
 
 class CompetingRiskProportionalHazard():

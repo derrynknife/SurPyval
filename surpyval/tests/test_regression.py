@@ -1,3 +1,12 @@
+"""
+This code was created for and sponsored by Cartiga (www.cartiga.com). 
+Cartiga makes no representations or warranties in connection with the code 
+and waives any and all liability in connection therewith. Your use of the 
+code constitutes acceptance of these terms.
+
+Copyright 2022 Cartiga LLC
+"""
+
 import pytest
 import numpy as np
 from ..datasets import (

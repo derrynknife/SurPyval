@@ -1,15 +1,21 @@
-# from cartiga import np
+"""
+This code was created for and sponsored by Cartiga (www.cartiga.com). 
+Cartiga makes no representations or warranties in connection with the code 
+and waives any and all liability in connection therewith. Your use of the 
+code constitutes acceptance of these terms.
+
+Copyright 2022 Cartiga LLC
+"""
+
 import numpy as np
-from cartiga.regression.cox_ph import CoxPH
-from cartiga.utils import _get_idx
+from surpyval import CoxPH
+from surpyval.utils import _get_idx
 import numpy_indexed as npi
-from cartiga.utils import validate_fine_gray_inputs, _scale
+from surpyval.utils import validate_fine_gray_inputs, _scale
 from scipy.optimize import minimize
 # from numba import njit
-
 # from scipy.optimize import root
 
-# TODO: Could do an Efron Fine-Gray.... But that seems unnecessary.
 # TODO: Improve this so that it uses root and the jac and hess.
 # TODO: Implement it with time-varying covariates
 

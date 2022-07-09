@@ -19,7 +19,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
-    install_requires=['autograd', 'numpy', 'scipy', 'pandas', 'autograd_gamma', 'matplotlib'],
+    install_requires=['autograd', 'numpy', 'scipy', 'pandas', 'autograd_gamma', 'matplotlib', 'numpy_indexed'],
     include_package_data=True,
     package_data={'': ['datasets/*.csv']},
 )

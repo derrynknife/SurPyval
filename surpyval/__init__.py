@@ -1,3 +1,5 @@
+__version__ = "0.11.0.0"
+
 from autograd import numpy as np
 
 from surpyval.utils import (
@@ -36,6 +38,10 @@ from surpyval.nonparametric import (
     NelsonAalen,
     FlemingHarrington,
     Turnbull
+)
+
+from surpyval.regression import (
+    CoxPH
 )
 
 NUM = np.float64
