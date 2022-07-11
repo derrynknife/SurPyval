@@ -79,7 +79,7 @@ Contents:
 =========
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: Quickstart & Intro
 
    Quickstart
@@ -91,14 +91,15 @@ Contents:
 
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: Survival Analysis
 
    Non-Parametric Estimation
    Parametric Estimation
+   Regression
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: SurPyval Analysis
    
    Non-Parametric SurPyval Modelling
@@ -106,19 +107,20 @@ Contents:
    applications
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: SurPyval
 
    surpyval
    changelog
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: Community Guidelines
 
    Support
    Report an Issue <https://github.com/derrynknife/SurPyval/issues>
    Contributing
+   acknowledgements
 
 
 

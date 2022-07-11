@@ -386,33 +386,34 @@ class ParametricFitter():
             fitting_info['fixed_idx'] = fixed_idx
             fitting_info['not_fixed'] = not_fixed
 
-            # Need a better general fitter to include offset
+            # This initial estimation is just terrible
             if init == []:
                 if self.name in ['Gumbel', 'Beta', 'Normal', 'Uniform']:
-                    init = np.array(self._parameter_initialiser(x, c, n))
+                    with np.errstate(all='ignore'):
+                        init = np.array(self._parameter_initialiser(x, c, n))
                 else:
-                    
-                    if x.ndim == 2:
-                        init_mask = np.logical_or(x[:, 0] <= self.support[0],
-                                                  x[:, 0] >= self.support[1])
-                        init_mask = ~np.logical_and(init_mask, c == 0)
-                        xl = x[init_mask, 0]
-                        xr = x[init_mask, 1]
-                        x_init = np.vstack([xl, xr]).T
-                    else:
-                        init_mask = np.logical_or(x <= self.support[0],
-                                                  x >= self.support[1])
-                        init_mask = ~np.logical_and(init_mask, c == 0)
+                    with np.errstate(all='ignore'):
+                        if x.ndim == 2:
+                            init_mask = np.logical_or(x[:, 0] <= self.support[0],
+                                                    x[:, 0] >= self.support[1])
+                            init_mask = ~np.logical_and(init_mask, c == 0)
+                            xl = x[init_mask, 0]
+                            xr = x[init_mask, 1]
+                            x_init = np.vstack([xl, xr]).T
+                        else:
+                            init_mask = np.logical_or(x <= self.support[0],
+                                                    x >= self.support[1])
+                            init_mask = ~np.logical_and(init_mask, c == 0)
 
-                        x_init = x[init_mask]
-                    c_init = c[init_mask]
-                    n_init = n[init_mask]
-                    
+                            x_init = x[init_mask]
+                        c_init = c[init_mask]
+                        n_init = n[init_mask]
+                        
 
-                    init = np.array(self._parameter_initialiser(x_init, c_init, n_init, offset=offset))
-                    
-                    if offset:
-                        init[0] = x.min() - 1.
+                        init = np.array(self._parameter_initialiser(x_init, c_init, n_init, offset=offset))
+                        
+                        if offset:
+                            init[0] = x.min() - 1.
 
                 if lfp:
                     _, _, _, F = nonp.plotting_positions(x, c, n, heuristic='Nelson-Aalen')
