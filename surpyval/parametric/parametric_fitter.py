@@ -342,6 +342,12 @@ class ParametricFitter():
 
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
 
+        if (c == 1).all():
+            raise ValueError("Cannot have only right censored data")
+
+        if (c == -1).all():
+            raise ValueError("Cannot have only left censored data")
+
         if surpyval.utils.check_no_censoring(c) and (how == 'MOM'):
             raise ValueError('Method of moments doesn\'t support censoring')
         
