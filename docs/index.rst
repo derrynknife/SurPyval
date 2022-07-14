@@ -104,6 +104,7 @@ Contents:
    
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
+   Regression Modelling with SurPyval
    applications
 
 .. toctree::

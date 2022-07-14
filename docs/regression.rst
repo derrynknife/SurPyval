@@ -50,7 +50,21 @@ Where
 .. math::
 	X\cdot \beta = X_{0}\beta_{0} + X_{1} \beta_{1} + ... + X_{n-1}\beta_{n-1} + X_{n}\beta_{n}
 
-In this case the proportional term is the e raised to the power of the cross product of X and beta. Using this as the covairate function is a very common choice. This is because it will not ever become negative. It can capture situations where a covariate will increase the hazard rate if it's coefficient, beta, is positive, and it will decrease the hazard rate it it's coefficient is negative.
+In this case the proportional term is the e raised to the power of the cross product of X and beta. Using this as the covairate function is a very common choice. This is because it will not ever become negative. It can capture situations where a covariate will increase the hazard rate if it's coefficient, beta, is positive, and it will decrease the hazard rate it it's coefficient is negative. Also, the dot product can capture a varying number of covariates with ease. For these reasons the Cox model is a widely used. Although you can choose any function for your covariates there is already likely literature about your problem which might indicate which function to use.
+
+Surpyval uses MLE to estimate the parameters for proportional hazards models. This is a simple conversion from regulare MLE since we know the relationship between a baseline distribution and the proportional hazards version. These relationships are:
+
+.. math::
+
+	f(t|X) = \phi(X) h_{0}(t) e^{-\phi(X) H(t)} \\ 
+	\\
+	F(t|X) = 1 - e^{-\phi(X) H(t)} \\
+	\\
+	S(t|X) = e^{-\phi(X) H(t)}
+
+It is therefore relatively simple to adjust the MLE methods to accommodate propotional hazard models.
+
+The details on fitting proportional hazards model is detailed more in the surpyval analysis section.
 
 Semi-Parametric
 ^^^^^^^^^^^^^^^
@@ -61,17 +75,85 @@ The previous sections covered 'parametric' and 'non-parametric' survival models,
 
 	h(t|X) = \phi(X) h_{0}(t)
 
-It is interesting to note that the phi term must be parametric, however, the baseline hazard rate need not be parametric, it can be 'non-parametric'!! Therefore, what we have is a parametric relationship of the covariates to the baseline hazard rate, but a non-parametric baseline hazard rate, therefore, a 'semi-parametric' model.
+It is interesting to note that the phi term must be parametric, however, the baseline hazard rate need not be parametric, it can be non-parametric! Therefore, what we have is a parametric relationship of the covariates to the baseline hazard rate, but a non-parametric baseline hazard rate, therefore, a 'semi-parametric' model.
 
-By far the most common of any regression model of any kind (parametric, non-parametric, and semi-parametric) is the Cox Proportional Hazard model. The CoxPH model is a semi-parametric model and is used in a wide variety of fields.
+By far the most common of any regression model of any kind (parametric, non-parametric, and semi-parametric of all the accelerated life, proportinal hazard, and accelerated time) is the Cox Proportional Hazard model, it is a semi-parametric model.
+
+The Cox model is used in a wide variety of fields. It has been used in criminology to study the recidivism of parolees, in engineering to understand the factors affecting tire reliability, and in medical science to understand factors affecting cancer and other diseases, among many many other applications. The wide use of the model shows the utility the model has and the broad applicability to solve problems.
 
 
 Accelerated Time
 ----------------
 
-Coming Soon
+An accelerated time model is very similar to a proportional hazards model. The difference is where the function is applied; instead of multiplying the hazard function, and accelerated time model multiplies the time by the function of covariates. The general definition is:
+
+.. math::
+
+	f(t|X) = f(\phi(X)t)
+
+It is called an accelerated time since the time term is transformed by the covariates, i.e. time is 'accelerated' by the covariates.
+
+.. math::
+
+	t_{a} = \phi(X)t
+
+
+Just like proportinal hazards, there are simple transofmations that apply 
+
+
+.. math::
+
+	f(t|X) = f(\phi(X)t) \\
+	\\
+	F(t|X) = F(\phi(X)t) \\
+	\\
+	S(t|X) = S(\phi(X)t)
+
+Given the simple transofmation of the time term the MLE is feasible with an additional transformation step. This is how surpyval estimates the parameters.
 
 Accelerated Life
 ----------------
 
-Coming Soon
+An accelerated life model is, in many cases, simply the inverse of an accelerated time model. However, there are some cases where they are different. Consider an accelerated life model with a normal distribution:
+
+.. math::
+
+	F(t|X) = \Phi\left(\frac{\phi(X)t - \mu}{\sigma}\right) \\
+
+Where :math:`\Phi` is the CDF of the standard normal distribution. In this case :math:`\mu` is the expected life of the model, however, we may isntead be interested in determining what effect covariates have on the expected life of an item. In this case we can simply substitute the expected life:
+
+.. math::
+
+	F(t|X) = \Phi\left(\frac{t - \phi(X)}{\sigma}\right) \\
+
+An accelerated life model is, therefore, simply a model where the life parameter of a distribution is substituted with a function of the covariates, that is, it 'accelerates' the expected life, as opposed to accelerating time as per an accelerated time model. For each of the distributions in Surpyval their life parameter that varies is as per the following table:
+
++--------------+------------+
+| Distribution | Life Param |
++--------------+------------+
+| Weibull      | alpha      |
++--------------+------------+
+| Exponential  | 1./lambda  |
++--------------+------------+
+| Normal       | mu         |
++--------------+------------+
+| LogNormal    | mu         |
++--------------+------------+
+| Gamma        | alpha      |
++--------------+------------+
+| Gumbel       | mu         |
++--------------+------------+
+| Logistic     | mu         |
++--------------+------------+
+| LogLogistic  | alpha      |
++--------------+------------+
+| ExpoWeibull  | Not Avail  |
++--------------+------------+
+| Uniform      | Not Avail  |
++--------------+------------+
+| Beta         | Not Avail  |
++--------------+------------+
+
+Given the simple substitution into the life parameter, surpyval uses MLE to calculate the parameters.
+
+For examples on how to do regression analysis, see the entry in the 'SurPyval Analysis' section of the docs.

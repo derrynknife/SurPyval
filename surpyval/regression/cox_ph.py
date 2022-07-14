@@ -421,18 +421,18 @@ class CoxPH_():
 
 
 
-        model = ProportionalHazardsModel()
+        model = ProportionalHazardsModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values
         model.neg_ll = neg_ll
         model.jac = jac
         model.hess = hess
-        model.kind = "Semi-Parametric"
         model.tie_method = method
         model.baseline_method = "breslow"
         model.res = res
         model.beta = copy(res.x)
         model.phi = lambda Z: np.exp(Z @ model.beta)
+        model.parameters = res.x
 
         x, r, d = self.baseline(model.beta, x, c, n, Z)
         model.x = x

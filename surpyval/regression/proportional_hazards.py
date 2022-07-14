@@ -17,7 +17,25 @@ class ProportionalHazardsModel():
     Currently only implemented for semi-parametric
     would need to change should we want to allow
     fully parametric models.
-    """
+    # """
+    def __init__(self, kind, parameterization):
+        self.kind = kind
+        self.parameterization = parameterization
+
+    def __repr__(self):
+        out = ('Regression SurPyval Model'
+            + '\n========================='
+            + '\nType                : Proportional Hazards'
+            + '\nKind                : {kind}'
+            + '\nParameterization    : {parameterization}'
+            ).format(kind=self.kind,
+                    parameterization=self.parameterization)
+            
+        out = (out + '\nParameters          :\n')
+        for i, p in enumerate(self.parameters):
+            out += '   beta_{i}  :  {p}\n'.format(i=i, p=p)
+        return out
+
     def hf(self, x, Z):
         idx, rev = _get_idx(self.x, x)
         return (self.h0[idx] * self.phi(Z))[rev]
