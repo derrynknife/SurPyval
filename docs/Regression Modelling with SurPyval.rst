@@ -54,6 +54,7 @@ We can see that we have a micture of coefficients. We can check the p-values:
     print(model.p_values)
 
 .. code:: text
+    
     [0.13000628, 0.03677433, 0.02074066, 0.0918419 , 0.01200102, 0.14831534, 0.01867559]
 
 We can asee that it is only 1, 2, 4, and 6 that are significant at the 0.05 level.
