@@ -8,14 +8,16 @@ from .accelerated_failure_time import AcceleratedFailureTimeFitter
 from .parameter_substitution import ParameterSubstitutionFitter
 
 import surpyval as surv
-from .lifemodels.power import InversePower, Power
-from .lifemodels.exponential import InverseExponential, Exponential
-from .lifemodels.linear import Linear
-from .lifemodels.eyring import Eyring, InverseEyring
-from .lifemodels.dual_exponential import DualExponential
-from .lifemodels.dual_power import DualPower
-from .lifemodels.power_exponential import PowerExponential
-from .lifemodels.general_log_linear import GeneralLogLinear
+from .lifemodels import (
+    InversePower, Power,
+    InverseExponential, Exponential,
+    Linear,
+    Eyring, InverseEyring,
+    DualExponential,
+    DualPower,
+    PowerExponential,
+    GeneralLogLinear
+)
 
 from ..parametric import (
     LogNormal,
