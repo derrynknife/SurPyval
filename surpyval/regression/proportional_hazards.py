@@ -216,4 +216,4 @@ class ProportionalHazardsFitter():
 
         print(res)
 
-        return params
+        return model

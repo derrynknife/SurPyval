@@ -13,7 +13,7 @@ def fh_h(r_i, d_i):
     return out
 
 
-def fh(r, d):
+def fleming_harrington(r, d):
     Y = np.array([fh_h(r_i, d_i) for r_i, d_i in zip(r, d)])
     H = Y.cumsum()
     H[np.isnan(H)] = np.inf
@@ -21,11 +21,11 @@ def fh(r, d):
     return R
 
 
-def fleming_harrington(x, c, n, t):
-    xrd = xcnt_to_xrd(x, c, n, t)
-    out = {k: v for k, v in zip(['x', 'r', 'd'], xrd)}
-    out['R'] = fh(out['r'], out['d'])
-    return out
+# def fleming_harrington(x, c, n, t):
+#     xrd = xcnt_to_xrd(x, c, n, t)
+#     out = {k: v for k, v in zip(['x', 'r', 'd'], xrd)}
+#     out['R'] = fh(out['r'], out['d'])
+#     return out
 
 
 class FlemingHarrington_(NonParametricFitter):

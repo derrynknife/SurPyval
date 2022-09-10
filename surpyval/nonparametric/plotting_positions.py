@@ -1,8 +1,7 @@
-import numpy as np
 import pandas as pd
+import numpy as np
 import surpyval
 from surpyval import nonparametric as nonp
-
 
 def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
                        turnbull_estimator='Fleming-Harrington'):

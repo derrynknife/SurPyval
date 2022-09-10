@@ -1,8 +1,8 @@
 import numpy as np
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
-from .nelson_aalen import na
-from .kaplan_meier import km
-from .fleming_harrington import fh
+from .nelson_aalen import nelson_aalen as na
+from .kaplan_meier import kaplan_meier as km
+from .fleming_harrington import fleming_harrington as fh
 
 
 def turnbull(x, c, n, t, estimator='Fleming-Harrington'):

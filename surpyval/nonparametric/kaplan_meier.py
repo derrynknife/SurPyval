@@ -3,7 +3,7 @@ from surpyval.utils import xcnt_to_xrd
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 
-def km(r, d):
+def kaplan_meier(r, d):
     R = 1 - (d / r)
     R[np.isnan(R)] = 0
     old_err_state = np.seterr(under='raise')
@@ -18,11 +18,11 @@ def km(r, d):
     return R
 
 
-def kaplan_meier(x, c, n, t):
-    xrd = xcnt_to_xrd(x, c, n, t)
-    out = {k: v for k, v in zip(['x', 'r', 'd'], xrd)}
-    out['R'] = km(out['r'], out['d'])
-    return out
+# def kaplan_meier(x, c, n, t):
+#     xrd = xcnt_to_xrd(x, c, n, t)
+#     out = {k: v for k, v in zip(['x', 'r', 'd'], xrd)}
+#     out['R'] = km(out['r'], out['d'])
+#     return out
 
 
 class KaplanMeier_(NonParametricFitter):

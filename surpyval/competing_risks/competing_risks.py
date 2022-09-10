@@ -18,8 +18,8 @@ from surpyval.utils import (
 )
 import textwrap
 
-from surpyval.nonparametric.nelson_aalen import na
-from surpyval.nonparametric.kaplan_meier import km
+from surpyval.nonparametric.nelson_aalen import nelson_aalen as na
+from surpyval.nonparametric.kaplan_meier import kaplan_meier as km
 
 class CompetingRisks():
     def __repr__(self):

@@ -11,6 +11,10 @@ from autograd import jacobian
 import matplotlib.pyplot as plt
 import pandas as pd
 
+def interp_function(x, y, kind):
+    return interp1d(x, y, kind=kind,
+                    bounds_error=False,
+                    fill_value=np.nan)
 
 class NonParametric():
     """
@@ -26,9 +30,10 @@ class NonParametric():
                + '\nModel            : {dist}'
                ).format(dist=self.model)
 
-        if 'estimator' in self.data:
-            out += '\nEstimator        : {turnbull}'.format(
-                turnbull=self.data['estimator'])
+        if hasattr(self, 'data'):
+            if 'estimator' in self.data:
+                out += '\nEstimator        : {turnbull}'.format(
+                    turnbull=self.data['estimator'])
 
         return out
 
@@ -72,11 +77,11 @@ class NonParametric():
             R = np.where(idx < 0, 1, R)
             R = np.where(np.isposinf(x), 0, R)
         else:
-            R = np.hstack([[1], self.R])
-            x_data = np.hstack([[0], self.x])
+            # R = np.hstack([[1], self.R])
+            # x_data = np.hstack([[0], self.x])
             # R = np.interp(x, x_data, R)
-            R = interp1d(x_data, R, kind=interp)(x)
-            R[np.where(x > self.x.max())] = np.nan
+            R = interp_function(self.x, self.R, kind=interp)(x)
+            # R[np.where(x > self.x.max())] = np.nan
         return R[rev]
 
     def ff(self, x, interp='step'):
@@ -339,12 +344,27 @@ class NonParametric():
 
         if bound_type == 'exp':
             # Exponential Greenwood confidence
+            # print(self.greenwood)
             R_out = self.greenwood * 1. / (np.log(self.R)**2)
             R_out = np.log(-np.log(self.R)) - stat * np.sqrt(R_out)
             R_out = np.exp(-np.exp(R_out))
+            R_out = np.where(self.greenwood == 0, 1, R_out)
         else:
             # Normal Greenwood confidence
             R_out = self.R + np.sqrt(self.greenwood * self.R**2) * stat
+
+        # Allows for confidence bound to be estimated up to the last value.
+        # only used in event that there is no right censoring.
+        if bound == 'upper':
+            R_out = np.where(np.isfinite(R_out), R_out, np.nanmin(R_out))
+        elif bound == 'lower':
+            R_out = np.where(np.isfinite(R_out), R_out, 0)
+        else:
+            R_out[0, :] = np.where(np.isfinite(R_out[0, :]), R_out[0, :], np.nanmin(R_out[0, :]))
+            R_out[1, :] = np.where(np.isfinite(R_out[1, :]), R_out[1, :], 0)
+
+
+        
 
         if interp == 'step':
             idx = np.searchsorted(self.x, x, side='right') - 1
@@ -355,31 +375,22 @@ class NonParametric():
                 R_out = R_out[idx]
                 R_out = np.where(idx < 0, 1, R_out)
 
+       
         else:
             if bound == 'two-sided':
-                R1 = interp1d(self.x, R_out[0, :], kind=interp)(x)
-                R2 = interp1d(self.x, R_out[1, :], kind=interp)(x)
+                R1 = interp_function(self.x, R_out[0, :], kind=interp)(x)
+                R2 = interp_function(self.x, R_out[1, :], kind=interp)(x)
                 R_out = np.vstack([R1, R2])
             else:
-                R_out = interp1d(self.x, R_out, kind=interp)(x)
+                R_out = interp_function(self.x, R_out, kind=interp)(x)
 
-        if R_out.ndim == 2:
-            min_idx = (x < self.x.min())
-            max_idx = (x > self.x.max())
-            # print(R_out[0, :])
-            R_out[0, :][min_idx] = 1
-            R_out[0, :][max_idx] = 1
-            R_out[1, :][min_idx] = 0
-            R_out[1, :][max_idx] = 0
+
+        # The question remains. Should bounds above and below observed values
+        # be calculable?...
+        R_out = np.where((x < self.x.min()) | (x > self.x.max()), np.nan, R_out)
+
+        if bound == 'two-sided':
             R_out = R_out.T
-            # print(R_out)
-            # nan_idx = ((x < self.x.min()) | (x > self.x.max()))
-            # R_out[nan_i3dx] = np.nan
-        else:
-            min_idx = (x < self.x.min())
-            max_idx = (x > self.x.max())
-            R_out[min_idx] = 0
-            R_out[max_idx] = 1
 
         np.seterr(**old_err_state)
 

@@ -33,6 +33,7 @@ from scipy.optimize import root
 import numpy.ma as ma
 
 from .proportional_hazards import ProportionalHazardsModel
+from .regression import Regression
 from ..utils import (
     validate_coxph,
     validate_coxph_df_inputs
@@ -420,7 +421,7 @@ class CoxPH_():
             p_values = None
 
 
-
+        model = Regression()
         model = ProportionalHazardsModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values

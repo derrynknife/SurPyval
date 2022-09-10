@@ -1,12 +1,36 @@
 import numpy as np
 from surpyval import nonparametric as nonp
-from surpyval.utils import xcnt_handler
+from surpyval.utils import xcnt_handler, xcnt_to_xrd, xrd_handler
 
 
 class NonParametricFitter():
+    def _create_non_p_model(self, x, r, d, data=None):
+        out = nonp.NonParametric()
+        if data is not None:
+            out.data = data
+        out.x = x
+        out.r = r
+        out.d = d
+        out.R = nonp.FIT_FUNCS[self.how](r, d)
+        out.model = self.how
+        out.F = 1 - out.R
+        with np.errstate(all='ignore'):
+            out.H = -np.log(out.R)
+
+        out.greenwood = self._compute_var(out.R, r, d)
+        return out
+
+    def _compute_var(self, R, r, d):
+        with np.errstate(all='ignore'):
+            var = d / (r * (r - d))
+            var = np.where(np.isfinite(var), var, np.nan)
+            greenwood = np.cumsum(var)
+        return greenwood
+
     def fit(self, x=None, c=None, n=None, t=None,
             xl=None, xr=None, tl=None, tr=None,
-            turnbull_estimator='Fleming-Harrington'):
+            turnbull_estimator='Fleming-Harrington',
+            set_lower_limit=None):
         r"""
 
         The central feature to SurPyval's capability. This function aimed to
@@ -98,18 +122,58 @@ class NonParametricFitter():
         if self.how == 'Turnbull':
             data['estimator'] = turnbull_estimator
 
-        out = nonp.NonParametric()
-        out.data = data
-        results = nonp.FIT_FUNCS[self.how](**data)
-        for k, v in results.items():
-            setattr(out, k, v)
-        out.model = self.how
-        out.F = 1 - out.R
+        x, r, d = xcnt_to_xrd(x, c, n, t)
 
-        with np.errstate(all='ignore'):
-            out.H = -np.log(out.R)
-            var = out.d / (out.r * (out.r - out.d))
-            greenwood = np.cumsum(var)
-            out.greenwood = greenwood
+        if set_lower_limit is not None:
+            x = np.hstack([[set_lower_limit], x])
+            r = np.hstack([[r[0]], r])
+            d = np.hstack([[0], d])
 
-        return out
+        return self._create_non_p_model(x, r, d, data)
+
+    def from_xrd(self, x, r, d):
+        r"""
+        The central feature to SurPyval's capability. This function aimed to
+        have an API to mimic the simplicity of the scipy API. That is, to use a
+        simple :code:`fit()` call, with as many or as few parameters as are
+        needed.
+
+        Parameters
+        ----------
+
+        x : array like, optional
+            Array of observations of the random variables. If x is
+            :code:`None`, xl and xr must be provided.
+
+        r : array like, optional
+            Array of at risk items. For each value of x the r array is
+            the number of at risk items immediately prior to the failures
+            at x.
+
+        d : array like, optional
+            Array of counts of deaths/failures at each x. For each value of x
+            the d array is the number of deaths at x (can be zero).
+
+        Returns
+        -------
+
+        model : NonParametric
+            A non-parametric model with the survival curved estimated
+            using the selected method.
+
+        Examples
+        --------
+        >>> from surpyval import NelsonAalen, Weibull, Turnbull
+        >>> import numpy as np
+        >>> x = [1, 2, 3, 4, 5, 6]
+        >>> r = [10, 8, 6, 4, 3, 2]
+        >>> d = [2, 1, 1, 1, 1, 1]
+        >>> model = NelsonAalen.from_xrd(x)
+        >>> print(model)
+        Non-Parametric SurPyval Model
+        =============================
+        Model            : Nelson-Aalen
+        """
+        x, r, d = xrd_handler(x, r, d)
+
+        return self._create_non_p_model(x, r, d)

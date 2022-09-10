@@ -46,6 +46,8 @@ def group_xcn(x, c, n):
     Ensures that all unique combinations of x and c are grouped. This should 
     reduce the chance of having arrays that are too long for the MLE fit.
     """
+
+    # TODO: Change to numpy index
     grouped = defaultdict(lambda: defaultdict(int))
     if x.ndim == 2:
         for vx, vc, vn in zip(x, c, n):
@@ -376,8 +378,7 @@ def xrd_handler(x, r, d):
     if (d < 0).any():
         raise ValueError("'d' array cannot have any negative values")
 
-    # Could this be 1?
-    if (r < 0).any():
+    if (r <= 0).any():
         raise ValueError("'r' at risk item count array cannot have any negative values")
 
     if (d > r).any():
