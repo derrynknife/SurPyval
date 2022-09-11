@@ -20,7 +20,7 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     install_requires=['autograd', 'numpy', 'scipy', 'pandas','autograd_gamma',
-                      'matplotlib', 'numpy_indexed', 'numba'],
+                      'matplotlib', 'numpy_indexed', 'numba', 'formulaic'],
     include_package_data=True,
     package_data={'': ['datasets/*.csv']},
 )

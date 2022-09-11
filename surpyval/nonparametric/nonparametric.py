@@ -315,6 +315,10 @@ class NonParametric():
         elif on == 'Hf':
             cb = -np.log(cb)
 
+        elif (on == 'sf') or (on == 'R'):
+            if bound == 'two-sided':
+                cb = np.fliplr(cb)
+
         np.seterr(**old_err_state)
 
         return cb
