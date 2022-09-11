@@ -9,7 +9,9 @@ from surpyval import nonparametric as nonp
 from copy import deepcopy, copy
 from matplotlib.ticker import FixedLocator
 
+
 CB_COLOUR = "#e94c54"
+
 
 def _round_vals(x):
     not_different = True
@@ -386,7 +388,9 @@ class Parametric():
         0.00025840046151723767
         """
         x = np.array(x)
-        cs = np.array(self.dist.cs(x - self.gamma, X - self.gamma, *self.params))
+        cs = np.array(self.dist.cs(x - self.gamma,
+                                   X - self.gamma,
+                                   *self.params))
         cs[cs > 1.] = 1
         return cs
 
@@ -933,7 +937,10 @@ class Parametric():
             'F': F
         }
 
-    def plot(self, heuristic='Nelson-Aalen', plot_bounds=True, alpha_ci=0.05, ax=None):
+    def plot(self, heuristic='Nelson-Aalen',
+             plot_bounds=True,
+             alpha_ci=0.05,
+             ax=None):
         r"""
         A method to do a probability plot
 
@@ -972,15 +979,16 @@ class Parametric():
         """
         if ax is None:
             ax = plt.gcf().gca()
- 
+
         if not hasattr(self, 'params'):
             raise Exception("Can't plot model that failed to fit")
- 
+
         if self.method == 'given parameters':
-            raise Exception("Can't plot model that was given parameters and no data")
-        
+            detail = "Can't plot model that was given parameters and no data"
+            raise Exception(detail)
+
         d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
- 
+
         # Set limits and scale
         ax.set_ylim([d['y_scale_min'], d['y_scale_max']])
         ax.set_xscale(d['x_scale'])
@@ -993,21 +1001,21 @@ class Parametric():
         ax.yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
         ax.set_xticks(d['x_ticks'])
         ax.set_xticklabels(d['x_ticks_labels'])
- 
+
         if d['x_scale'] == 'log':
             ax.set_xticks(d['x_minor_ticks'], minor=True)
             ax.set_xticklabels([], minor=True)
-        
+
         ax.grid(b=True, which='major', color='g', alpha=0.4, linestyle='-')
         ax.grid(b=True, which='minor', color='g', alpha=0.1, linestyle='-')
- 
+
         ax.set_title('{} Probability Plot'.format(self.dist.name))
         ax.set_ylabel('CDF')
         ax.scatter(d['x_'], d['F'])
- 
+
         ax.set_xlim([d['x_scale_min'], d['x_scale_max']])
         if plot_bounds & (len(d['cbs']) != 0):
             ax.plot(d['x_model'], d['cbs'], color=CB_COLOUR)
-        
+
         ax.plot(d['x_model'], d['cdf'], color='k', linestyle='--')
         return ax

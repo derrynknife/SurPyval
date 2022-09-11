@@ -4,14 +4,14 @@ from surpyval.utils import xcnt_handler, xcnt_to_xrd, xrd_handler
 
 
 class NonParametricFitter():
-    def _create_non_p_model(self, x, r, d, data=None):
+    def _create_non_p_model(self, x, r, d, estimator, data=None):
         out = nonp.NonParametric()
         if data is not None:
             out.data = data
         out.x = x
         out.r = r
         out.d = d
-        out.R = nonp.FIT_FUNCS[self.how](r, d)
+        out.R = nonp.FIT_FUNCS[estimator](r, d)
         out.model = self.how
         out.F = 1 - out.R
         with np.errstate(all='ignore'):
@@ -119,17 +119,28 @@ class NonParametricFitter():
         data['c'] = c
         data['n'] = n
         data['t'] = t
+
         if self.how == 'Turnbull':
             data['estimator'] = turnbull_estimator
+            out = nonp.NonParametric()
+            t_obj = nonp.turnbull(x, c, n, t, turnbull_estimator)
+            for k, v in t_obj.items():
+                setattr(out, k, v)
 
-        x, r, d = xcnt_to_xrd(x, c, n, t)
+            out.data = data
+            return out
+
+        else:
+            x, r, d = xcnt_to_xrd(x, c, n, t)
+            estimator = self.how
 
         if set_lower_limit is not None:
             x = np.hstack([[set_lower_limit], x])
             r = np.hstack([[r[0]], r])
             d = np.hstack([[0], d])
 
-        return self._create_non_p_model(x, r, d, data)
+        return self._create_non_p_model(x, r, d, estimator=estimator,
+                                        data=data)
 
     def from_xrd(self, x, r, d):
         r"""
@@ -174,6 +185,9 @@ class NonParametricFitter():
         =============================
         Model            : Nelson-Aalen
         """
+        if self.how == 'Turnbull':
+            raise ValueError("Can't use from_xrd with Turnbull estimator")
+
         x, r, d = xrd_handler(x, r, d)
 
-        return self._create_non_p_model(x, r, d)
+        return self._create_non_p_model(x, r, d, estimator=self.how)

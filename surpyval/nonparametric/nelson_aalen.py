@@ -8,10 +8,6 @@ def nelson_aalen(r, d):
     R = np.exp(-H)
     return R
 
-# def nelson_aalen(x, c, n, t):
-#     out['R'] = na(out['r'], out['d'])
-#     return out
-
 
 class NelsonAalen_(NonParametricFitter):
     r"""

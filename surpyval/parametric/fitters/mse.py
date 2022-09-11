@@ -5,6 +5,7 @@ from scipy.optimize import minimize
 
 from autograd import jacobian, hessian
 
+from surpyval.utils import xcnt_to_xrd
 
 def mse_fun(params, dist, x, F, inv_trans, const):
     return np.sum(((dist.ff(x, *inv_trans(const(params)))) - F)**2)
@@ -30,13 +31,16 @@ def mse(model):
 
     if (-1 in c) or (2 in c):
         out = nonp.turnbull(x, c, n, t, estimator='Fleming-Harrington')
+        F = 1 - out['R']
+        x = out['x']
     else:
-        out = nonp.fleming_harrington(x, c, n, t)
-
-    F = 1 - out['R']
-    mask = np.isfinite(out['x'])
+        x, r, d = xcnt_to_xrd(x, c, n, t)
+        R = nonp.fleming_harrington(r, d)
+        F = 1 - R
+    
+    mask = np.isfinite(x)
     F = F[mask]
-    x = out['x'][mask]
+    x = x[mask]
 
     jac = jacobian(mse_fun)
     hess = hessian(mse_fun)

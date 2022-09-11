@@ -7,7 +7,7 @@ from .fleming_harrington import fleming_harrington as fh
 
 def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
-    bounds = np.sort(np.concatenate([bounds, np.unique(x[c==0])]))
+    bounds = np.sort(np.concatenate([bounds, np.unique(x[c == 0])]))
     N = n.sum()
 
     if x.ndim == 1:

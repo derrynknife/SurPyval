@@ -1,7 +1,9 @@
-import pandas as pd
-import numpy as np
-import surpyval
+from surpyval import xcnt_handler
 from surpyval import nonparametric as nonp
+from pandas import Series
+import numpy as np
+from surpyval.utils import xcnt_to_xrd
+
 
 def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
                        turnbull_estimator='Fleming-Harrington'):
@@ -71,7 +73,7 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
            0.67931859, 0.79886432, 0.91700404])
     """
 
-    x, c, n, t = surpyval.xcnt_handler(x, c, n, t)
+    x, c, n, t = xcnt_handler(x, c, n, t)
 
     if heuristic not in nonp.PLOTTING_METHODS:
         raise ValueError("Must use available heuristic")
@@ -98,11 +100,17 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
         # Needs work
         out = nonp.filliben(x, c, n)
     elif heuristic == 'Nelson-Aalen':
-        out = nonp.nelson_aalen(x, c, n, t)
+        x, r, d = xcnt_to_xrd(x, c, n, t)
+        R = nonp.nelson_aalen(r, d)
+        return x, r, d, 1 - R
     elif heuristic == 'Kaplan-Meier':
-        out = nonp.kaplan_meier(x, c, n, t)
+        x, r, d = xcnt_to_xrd(x, c, n, t)
+        R = nonp.kaplan_meier(r, d)
+        return x, r, d, 1 - R
     elif heuristic == 'Fleming-Harrington':
-        out = nonp.fleming_harrington(x, c, n, t)
+        x, r, d = xcnt_to_xrd(x, c, n, t)
+        R = nonp.fleming_harrington(r, d)
+        return x, r, d, 1 - R
     elif heuristic == 'Turnbull':
         out = nonp.turnbull(x, c, n, t, estimator=turnbull_estimator)
     else:
@@ -157,7 +165,7 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
             A, B = 1.0, 0.0
 
         F = (ranks - A) / (N + B)
-        R = 1 - pd.Series(F).ffill().fillna(0).values
+        R = 1 - Series(F).ffill().fillna(0).values
         out = {}
         out['x'] = x_
         out['r'] = r

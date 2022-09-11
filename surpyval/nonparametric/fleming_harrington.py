@@ -1,5 +1,4 @@
 import numpy as np
-from surpyval.utils import xcnt_to_xrd
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 
@@ -19,13 +18,6 @@ def fleming_harrington(r, d):
     H[np.isnan(H)] = np.inf
     R = np.exp(-H)
     return R
-
-
-# def fleming_harrington(x, c, n, t):
-#     xrd = xcnt_to_xrd(x, c, n, t)
-#     out = {k: v for k, v in zip(['x', 'r', 'd'], xrd)}
-#     out['R'] = fh(out['r'], out['d'])
-#     return out
 
 
 class FlemingHarrington_(NonParametricFitter):

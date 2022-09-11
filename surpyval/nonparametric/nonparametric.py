@@ -1,20 +1,16 @@
 import numpy as np
-from surpyval import nonparametric as nonp
 from scipy.stats import t, norm
-from .kaplan_meier import KaplanMeier
-from .nelson_aalen import NelsonAalen
-from .fleming_harrington import FlemingHarrington_
-
 from scipy.interpolate import interp1d
-from autograd import jacobian
 
 import matplotlib.pyplot as plt
 import pandas as pd
+
 
 def interp_function(x, y, kind):
     return interp1d(x, y, kind=kind,
                     bounds_error=False,
                     fill_value=np.nan)
+
 
 class NonParametric():
     """
@@ -77,12 +73,14 @@ class NonParametric():
             R = np.where(idx < 0, 1, R)
             R = np.where(np.isposinf(x), 0, R)
         else:
-            # R = np.hstack([[1], self.R])
-            # x_data = np.hstack([[0], self.x])
-            # R = np.interp(x, x_data, R)
             R = interp_function(self.x, self.R, kind=interp)(x)
-            # R[np.where(x > self.x.max())] = np.nan
-        return R[rev]
+
+        R = R[rev]
+        # Maybe set a parameter where 'extrapolate' is False
+        # x = x[rev]
+        # R = np.where(x < self.x.min(), np.nan, R)
+        # R = np.where(x > self.x.max(), np.nan, R)
+        return R
 
     def ff(self, x, interp='step'):
         r"""
@@ -360,11 +358,10 @@ class NonParametric():
         elif bound == 'lower':
             R_out = np.where(np.isfinite(R_out), R_out, 0)
         else:
-            R_out[0, :] = np.where(np.isfinite(R_out[0, :]), R_out[0, :], np.nanmin(R_out[0, :]))
+            R_out[0, :] = np.where(np.isfinite(R_out[0, :]),
+                                   R_out[0, :],
+                                   np.nanmin(R_out[0, :]))
             R_out[1, :] = np.where(np.isfinite(R_out[1, :]), R_out[1, :], 0)
-
-
-        
 
         if interp == 'step':
             idx = np.searchsorted(self.x, x, side='right') - 1
@@ -375,7 +372,6 @@ class NonParametric():
                 R_out = R_out[idx]
                 R_out = np.where(idx < 0, 1, R_out)
 
-       
         else:
             if bound == 'two-sided':
                 R1 = interp_function(self.x, R_out[0, :], kind=interp)(x)
@@ -384,10 +380,10 @@ class NonParametric():
             else:
                 R_out = interp_function(self.x, R_out, kind=interp)(x)
 
-
         # The question remains. Should bounds above and below observed values
         # be calculable?...
-        R_out = np.where((x < self.x.min()) | (x > self.x.max()), np.nan, R_out)
+        mask = (x < self.x.min()) | (x > self.x.max())
+        R_out = np.where(mask, np.nan, R_out)
 
         if bound == 'two-sided':
             R_out = R_out.T
@@ -458,5 +454,5 @@ class NonParametric():
             ax.step(d['x_'], d['R'], where='post')
             if plot_bounds:
                 ax.step(d['x_'], d['cbs'], color='r', where='post')
-        
+
         return ax
