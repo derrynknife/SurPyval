@@ -1,29 +1,35 @@
 from surpyval.parametric.parametric_fitter import ParametricFitter
-import surpyval
 from surpyval import np
 from autograd import elementwise_grad
 import inspect
 
+
 class Distribution(ParametricFitter):
     def __init__(self, name, fun, param_names, bounds, support):
         if str(inspect.signature(fun)) != '(x, *params)':
-            raise ValueError('Function must have the signature \'(x, *params)\'')
+            detail = 'Function must have the signature \'(x, *params)\''
+            raise ValueError(detail)
 
         if len(param_names) != len(bounds):
             raise ValueError('param_names and bounds must have same length')
 
         if 'p' in param_names:
-            raise ValueError("'p' reserved parameter name for LFP distributions")
+            detail = "'p' reserved parameter name for LFP distributions"
+            raise ValueError(detail)
 
         if 'gamma' in param_names:
-            raise ValueError("'gamma' reserved parameter name for offset distributions")
+            detail = "'gamma' reserved parameter name for offset distributions"
+            raise ValueError(detail)
 
         if 'f0' in param_names:
-            raise ValueError("'f0' reserved parameter name for zero inflated or hurdle models")
+            detail = "'f0' reserved parameter name for zero" + \
+                     "inflated or hurdle models"
+            raise ValueError(detail)
 
         for p_name in param_names:
             if hasattr(self, p_name):
-                raise ValueError("Can't name a parameter after a function in the Parametric class.")
+                detail = "Can't name a parameter after a function"
+                raise ValueError(detail)
 
         self.name = name
         self.k = len(param_names)
@@ -32,7 +38,7 @@ class Distribution(ParametricFitter):
         self.plot_x_scale = 'linear'
         self.y_ticks = np.linspace(0, 1, 11)
         self.param_names = param_names
-        self.param_map = {v : i for i, v in enumerate(param_names)}
+        self.param_map = {v: i for i, v in enumerate(param_names)}
         self.Hf = fun
         self.hf = lambda x, *params: elementwise_grad(self.Hf)(x, *params)
         self.sf = lambda x, *params: np.exp(-self.Hf(x, *params))
@@ -59,11 +65,5 @@ class Distribution(ParametricFitter):
     def mpp_y_transform(self, y, *params):
         return y
 
-    def mpp_inv_y_transform(self, y, *params):
-        return y
-
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
-
-
-
