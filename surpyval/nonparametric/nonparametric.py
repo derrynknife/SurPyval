@@ -295,6 +295,12 @@ class NonParametric():
 
         old_err_state = np.seterr(all='ignore')
 
+        # Reverse for ff and F
+        if on in ['ff', 'F', 'Hf', 'hf', 'df'] and bound == 'lower':
+            bound = 'upper'
+        elif on in ['ff', 'F', 'Hf', 'hf', 'df'] and bound == 'upper':
+            bound = 'lower'
+
         cb = self.R_cb(x,
                        bound=bound,
                        interp=interp,

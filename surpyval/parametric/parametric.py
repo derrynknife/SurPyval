@@ -8,6 +8,7 @@ from scipy.special import ndtri as z
 from surpyval import nonparametric as nonp
 from copy import deepcopy, copy
 from matplotlib.ticker import FixedLocator
+from autograd import elementwise_grad
 
 
 CB_COLOUR = "#e94c54"
@@ -100,7 +101,7 @@ class Parametric():
         else:
             return "Unable to fit values"
 
-    def param_cb(self, name, alpha=0.05, bound="two-sided"):
+    def param_cb(self, name, alpha_ci=0.05, bound="two-sided"):
         """
         Method to calculate the confidence bound on a parameter.
         """
@@ -598,6 +599,7 @@ class Parametric():
             the selected function at x
 
         """
+        t = np.atleast_1d(t)
         if self.method != 'MLE':
             raise Exception('Only MLE has confidence bounds')
 
@@ -607,7 +609,7 @@ class Parametric():
         old_err_state = np.seterr(all='ignore')
 
         if hasattr(self.dist, 'R_cb'):
-            def R_cb(x):
+            def R_cb(x, bound=bound):
                 return self.dist.R_cb(x - self.gamma,
                                       *self.params,
                                       hess_inv,
@@ -615,7 +617,7 @@ class Parametric():
                                       bound=bound)
 
         else:
-            def R_cb(x):
+            def R_cb(x, bound=bound):
                 def sf_func(params):
                     return self.dist.sf(x - self.gamma, *params)
                 jac = np.atleast_2d(jacobian(sf_func)(np.array(self.params)))
@@ -644,30 +646,54 @@ class Parametric():
                 R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
                 return R_cb.T
 
-        # Default cb is R
-        cb = R_cb(t)
+        # Reverse for ff and F
+        if on in ['ff', 'F', 'Hf', 'hf', 'df'] and bound == 'lower':
+            bound = 'upper'
+        elif on in ['ff', 'F', 'Hf', 'hf', 'df'] and bound == 'upper':
+            bound = 'lower'
 
         if (on == 'ff') or (on == 'F'):
+            cb = R_cb(t, bound=bound)
             cb = 1. - cb
-
+        elif (on == 'sf') or (on == 'R'):
+            cb = R_cb(t, bound=bound)
+            if bound == 'two-sided':
+                cb = np.fliplr(cb)
         elif on == 'Hf':
+            cb = R_cb(t, bound=bound)
             cb = -np.log(cb)
-
         elif on == 'hf':
             def cb_hf(x):
                 out = []
-                for v in x:
-                    out.append(jacobian(lambda x: -np.log(R_cb(x)))(v))
-                return np.concatenate(out)
+                func = lambda x: -np.log(R_cb(x, bound=bound))
+                if bound == 'two-sided':
+                    jac = jacobian(func)
+                    cbs = [jac(np.array([v])).flatten() for v in x]
+                    return np.vstack(cbs)
+                else:
+                    grad = elementwise_grad(func)
+                    return grad(x)
+
             cb = cb_hf(t)
 
         elif on == 'df':
             def cb_df(x):
                 out = []
-                for v in x:
-                    out.append(jacobian(lambda x: (-np.log(R_cb(x)))(v)
-                                        * self.sf(v)))
-                return np.concatenate(out)
+                
+                func = lambda x: (-np.log(R_cb(x, bound)))
+                
+                if bound == 'two-sided':
+                    jac = jacobian(func)
+                    cbs = [jac(np.array([v])).flatten() for v in x]
+                    cbs = np.vstack(cbs)
+                    cbs = cbs * self.sf(x).reshape(-1, 1)
+                else:
+                    grad = elementwise_grad(func)
+                    cbs = grad(x)
+                    cbs = cbs * self.sf(x)
+
+                return cbs
+
             cb = cb_df(t)
 
         np.seterr(**old_err_state)
