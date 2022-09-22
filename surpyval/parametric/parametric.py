@@ -9,6 +9,8 @@ from surpyval import nonparametric as nonp
 from copy import deepcopy, copy
 from matplotlib.ticker import FixedLocator
 from autograd import elementwise_grad
+from .convolution import ConvolvedModel
+import surpyval as surv
 
 
 CB_COLOUR = "#e94c54"
@@ -73,6 +75,88 @@ class Parametric():
 
         self.bounds = bounds
         self.param_map = param_map
+
+    @classmethod
+    def from_dict(cls, model_dict):
+        if model_dict['parameterization'] != 'parametric':
+            raise ValueError("Must create parametric model from parametric model dict")
+
+        dist = getattr(surv, model_dict['distribution'])
+        how = model_dict['how']
+        data = model_dict['data']
+        offset = model_dict['offset']
+        lfp = model_dict['lfp']
+        zi = model_dict['zi']
+        out = cls(
+            dist,
+            how,
+            data,
+            offset,
+            lfp,
+            zi
+        )
+
+        if offset:
+            out.gamma = model_dict['gamma']
+        
+        if lfp:
+            out.p = model_dict['p']
+
+        if zi:
+            out.f0 = model_dict['f0']
+
+        if 'hess_inv' in model_dict:
+            out.hess_inv = np.array(model_dict['hess_inv'])
+
+        if '_neg_ll' in model_dict:
+            out._neg_ll = model_dict['_neg_ll']
+
+        out.params = np.array(model_dict['params'])
+
+        return out
+
+    def to_dict(self):
+        out = {}
+        out['parameterization'] = 'parametric'
+        out['distribution'] = self.dist.name
+        out['how'] = self.method
+        out['param_names'] = self.dist.param_names
+        out['data'] = {
+            'x': self.data['x'].tolist(),
+            'c': self.data['c'].tolist(),
+            'n': self.data['n'].tolist(),
+            't': self.data['t'].tolist()
+        }
+        
+        out['params'] = np.array(self.params).tolist()
+        out['lfp'] = self.lfp
+
+        if self.lfp:
+            out['p'] = self.p
+        else:
+            out['p'] = 1.
+
+        out['zi'] = self.zi
+        if self.zi:
+            out['f0'] = self.f0
+        else:
+            out['f0'] = 0.
+
+        out['offset'] = self.offset
+        if self.offset:
+            out['gamma'] = self.gamma
+        else:
+            out['gamma'] = 0.
+
+        if hasattr(self, 'hess_inv'):
+            if self.hess_inv is None:
+                pass
+            else:
+                out['hess_inv'] = self.hess_inv.tolist()
+        if hasattr(self, '_neg_ll'):
+            out['neg_ll'] = self._neg_ll
+        
+        return out
 
     def __repr__(self):
         if hasattr(self, 'params'):
