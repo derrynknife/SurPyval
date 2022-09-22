@@ -1,4 +1,4 @@
-__version__ = "0.10.2"
+__version__ = "0.10.7"
 
 from autograd import numpy as np
 
@@ -18,6 +18,7 @@ from surpyval.utils import (
 )
 
 from surpyval.parametric import (
+    Parametric,
     Gumbel,
     Uniform,
     Exponential,
@@ -37,7 +38,8 @@ from surpyval.nonparametric import (
     KaplanMeier,
     NelsonAalen,
     FlemingHarrington,
-    Turnbull
+    Turnbull,
+    NonParametric
 )
 
 from surpyval.regression import (
