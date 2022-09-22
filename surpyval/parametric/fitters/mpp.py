@@ -71,7 +71,7 @@ def mpp(model):
     elif rr == 'x':
         params = np.polyfit(y_pp, x_pp, 1)
 
-    params = dist.unpack_rr(params, rr)
+    params = np.array(dist.unpack_rr(params, rr))
 
     results = {}
 
