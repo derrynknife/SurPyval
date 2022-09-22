@@ -11,7 +11,6 @@ def interp_function(x, y, kind):
                     bounds_error=False,
                     fill_value=np.nan)
 
-
 class NonParametric():
     """
     Result of ``.fit()`` method for every non-parametric
@@ -466,3 +465,15 @@ class NonParametric():
                 ax.step(d['x_'], d['cbs'], color='r', where='post')
 
         return ax
+
+    @classmethod
+    def fit_from_ecdf(cls, x, R):
+        out = cls()
+        out.model = 'from_ecdf'
+        out.R = R
+        out.x = x
+        out.F = 1 - out.R
+        with np.errstate(all='ignore'):
+            out.H = -np.log(out.R)
+
+        return out
