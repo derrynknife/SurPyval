@@ -3,24 +3,26 @@ from scipy.stats import t, norm
 from surpyval.utils.counting_utils import xicn_to_xrd, handle_xicn
 
 class NonParametricCounting():
-    def mcf(self, x, how='step'):
+    def mcf(self, x, interp='step'):
         x = np.atleast_1d(x)
         # Let's not assume we can predict above the highest measurement
-        if how == 'step':
+        if interp == 'step':
             idx = np.searchsorted(self.x, x, side='right') - 1
             mcf = self.mcf_hat[idx]
             mcf[np.where(x < self.x.min())] = 0
             mcf[np.where(x > self.x.max())] = np.nan
             mcf[np.where(x < 0)] = np.nan
             return mcf
-        elif how == 'interp':
+        elif interp == 'linear':
             mcf = np.hstack([[0], self.mcf_hat])
             x_data = np.hstack([[0], self.x])
             mcf = np.interp(x, x_data, mcf)
             mcf[np.where(x > self.x.max())] = np.nan
             return mcf
+        else:
+            raise ValueError("`interp` must be either 'step' or 'linear'")
 
-    def mcf_cb(self, x, bound='two-sided', how='step', 
+    def mcf_cb(self, x, bound='two-sided', interp='step', 
                confidence=0.95, bound_type='exp', dist='z'):
         # Greenwoods variance using t-stat. Ref found:
         # http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
@@ -47,7 +49,7 @@ class NonParametricCounting():
             # Normal Greenwood confidence
             mcf_cb = self.mcf_hat + np.sqrt(self.var * self.mcf_hat**2) * stat
         # Let's not assume we can predict above the highest measurement
-        if how == 'step':
+        if interp == 'step':
             mcf_cb[np.where(x < self.x.min())] = 0
             mcf_cb[np.where(x > self.x.max())] = np.nan
             mcf_cb[np.where(x < 0)] = np.nan
@@ -56,7 +58,7 @@ class NonParametricCounting():
                 mcf_cb = mcf_cb[:, idx].T
             else:
                 mcf_cb = mcf_cb[idx]
-        elif how == 'interp':
+        elif interp == 'linear':
             if bound == 'two-sided':
                 R1 = np.interp(x, self.x, mcf_cb[0, :])
                 R2 = np.interp(x, self.x, mcf_cb[1, :])
