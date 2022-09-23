@@ -515,10 +515,10 @@ class Parametric():
         """
         if ((a is not None) | (b is not None)) & ((self.p != 1) |
                                                   (self.f0 != 0)):
-            raise NotImplementedError("Truncated smapling not supported with" +
+            raise NotImplementedError("Truncated sampling not supported with" +
                                       " LFP or ZI models")
         elif ((a is not None) | (b is not None)) & (self.offset):
-            raise NotImplementedError("Truncated smapling not supported with" +
+            raise NotImplementedError("Truncated sampling not supported with" +
                                       " offset distributions")
 
         if (self.p == 1) and (self.f0 == 0):
