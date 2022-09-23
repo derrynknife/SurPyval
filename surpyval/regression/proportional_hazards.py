@@ -53,13 +53,15 @@ class ProportionalHazardsModel():
     def df(self, x, Z):
         return self.hf(x, Z) * self.sf(x, Z)
 
+class RegressionModel():
+    pass
 
 class ProportionalHazardsFitter():
     def __init__(self, name, dist, phi, phi_bounds, phi_param_map,
                  baseline=[], fixed={}, phi_init=None):
 
-        if str(inspect.signature(phi)) != '(X, *params)':
-            raise ValueError('PH function must have the signature \'(X, *params)\'')
+        if str(inspect.signature(phi)) != '(Z, *params)':
+            raise ValueError('PH function must have the signature \'(Z, *params)\'')
 
         if type(baseline) != list:
             # If passed a single string..
@@ -84,26 +86,26 @@ class ProportionalHazardsFitter():
         self.phi_bounds = phi_bounds
         self.phi_param_map = phi_param_map
 
-    def Hf(self, x, X, *params):
+    def Hf(self, x, Z, *params):
         dist_params = np.array(params[0:self.k_dist])
         phi_params = np.array(params[self.k_dist:])
         Hf_raw = self.Hf_dist(x, *dist_params)
-        return self.phi(X, *phi_params) * Hf_raw
+        return self.phi(Z, *phi_params) * Hf_raw
 
-    def hf(self, x, X, *params):
+    def hf(self, x, Z, *params):
         dist_params = np.array(params[0:self.k_dist])
         phi_params = np.array(params[self.k_dist:])
         hf_raw = self.hf_dist(x, *dist_params)
-        return self.phi(X, *phi_params) * hf_raw
+        return self.phi(Z, *phi_params) * hf_raw
 
-    def df(self, x, X, *params):
-        return self.hf(x, X, *params) * np.exp(-self.Hf(x, X, *params))
+    def df(self, x, Z, *params):
+        return self.hf(x, Z, *params) * np.exp(-self.Hf(x, Z, *params))
 
-    def sf(self, x, X, *params):
-        return np.exp(-self.Hf(x, X, *params))
+    def sf(self, x, Z, *params):
+        return np.exp(-self.Hf(x, Z, *params))
 
-    def ff(self, x, X, *params):
-        return 1 - np.exp(-self.Hf(x, X, *params))
+    def ff(self, x, Z, *params):
+        return 1 - np.exp(-self.Hf(x, Z, *params))
 
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
         out = []
@@ -131,40 +133,40 @@ class ProportionalHazardsFitter():
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
 
-    def log_df(self, x, X, *params):
-        return np.log(self.hf(x, X, *params)) - self.Hf(x, X, *params)
+    def log_df(self, x, Z, *params):
+        return np.log(self.hf(x, Z, *params)) - self.Hf(x, Z, *params)
 
-    def log_sf(self, x, X, *params):
-        return -self.Hf(x, X, *params)
+    def log_sf(self, x, Z, *params):
+        return -self.Hf(x, Z, *params)
 
-    def log_ff(self, x, X, *params):
-        return np.log(self.ff(x, X, *params))
+    def log_ff(self, x, Z, *params):
+        return np.log(self.ff(x, Z, *params))
 
-    def random(self, size, X, *params):
+    def random(self, size, Z, *params):
         dist_params = np.array(params[0:self.k_dist])
         phi_params = np.array(params[self.k_dist:])
         random = []
         U = np.random.uniform(0, 1, size)
-        x = self.dist.qf(U**(self.phi(X, *phi_params)), *dist_params)
-        X_out = np.ones_like(x) * X
-        return x.flatten(), X_out.flatten()
+        x = self.dist.qf(U**(self.phi(Z, *phi_params)), *dist_params)
+        Z_out = np.ones_like(x) * Z
+        return x.flatten(), Z_out.flatten()
 
-    def neg_ll(self, X, x, c, n, *params):
+    def neg_ll(self, Z, x, c, n, *params):
         params = np.array(params)
         like = np.zeros_like(x).astype(float)
-        like = np.where(c ==  0, self.log_df(x, X, *params), like)
-        like = np.where(c ==  1, self.log_sf(x, X, *params), like)
-        like = np.where(c ==  -1, self.log_ff(x, X, *params), like)
+        like = np.where(c ==  0, self.log_df(x, Z, *params), like)
+        like = np.where(c ==  1, self.log_sf(x, Z, *params), like)
+        like = np.where(c ==  -1, self.log_ff(x, Z, *params), like)
         like = np.multiply(n, like)
         return -np.sum(like)
 
-    def fit(self, X, x, c=None, n=None, t=None, init=[], fixed={}):
+    def fit(self, Z, x, c=None, n=None, t=None, init=[], fixed={}):
         x, c, n, t = surpyval.xcnt_handler(x, c, n, t, group_and_sort=False)
 
         if init == []:
             ps = self.dist.fit(x, c=c, n=n, t=t).params
             if callable(self.phi_init):
-                init_phi = self.phi_init(X)
+                init_phi = self.phi_init(Z)
 
             init = np.array([*ps, *init_phi])
         else:
@@ -177,15 +179,18 @@ class ProportionalHazardsFitter():
 
         # Dynamic or static bounds determination
         if callable(self.phi_bounds):
-            bounds = (*self.bounds, *self.phi_bounds(X))
+            bounds = (*self.bounds, *self.phi_bounds(Z))
         else:
             bounds = (*self.bounds, *self.phi_bounds)
 
         if callable(self.phi_param_map):
-            phi_param_map = self.phi_param_map(X)
+            phi_param_map = self.phi_param_map(Z)
         else:
             phi_param_map = self.phi_param_map
 
+        model = Regression()
+        model.baseline_param_map = self.param_map
+        model.phi_param_map = self.phi_param_map
         param_map = {**self.param_map, **phi_param_map}
 
         transform, inv_trans, funcs, inv_f = bounds_convert(x, bounds)
@@ -194,17 +199,25 @@ class ProportionalHazardsFitter():
         init = transform(init)[not_fixed]
 
         with np.errstate(all='ignore'):
-            fun  = lambda params : self.neg_ll(X, x, c, n, *inv_trans(const(params)))
+            fun  = lambda params : self.neg_ll(Z, x, c, n, *inv_trans(const(params)))
             # jac = jacobian(fun)
             # hess = hessian(fun)
             res = minimize(fun, init)
             res = minimize(fun, res.x, method='TNC')
 
+        print(res)
         params = inv_trans(const(res.x))
+        print(params)
 
-        model = Regression()
+
+        reg_model = RegressionModel()
+        reg_model.phi = self.phi
+        reg_model.phi_param_map = phi_param_map
+        reg_model.name = "Log Linear (Exponential)"
+
         model.model = self
-        model.reg_model = self.phi
+        # model.reg_model = self.phi
+        model.reg_model = reg_model
         model.kind = "Proportional Hazard"
         model.distribution = self.dist
         model.params = np.array(params)
@@ -213,7 +226,5 @@ class ProportionalHazardsFitter():
         model.fixed = self.fixed
         model.k_dist = self.k_dist
         model.phi_param_map = phi_param_map
-
-        print(res)
 
         return model

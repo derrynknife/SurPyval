@@ -10,8 +10,8 @@ from .regression import Regression
 class AcceleratedFailureTimeFitter():
     def __init__(self, name, distribution, acc_model):
 
-        if str(inspect.signature(acc_model.phi)) != '(X, *params)':
-            raise ValueError('PH function must have the signature \'(X, *params)\'')
+        if str(inspect.signature(acc_model.phi)) != '(Z, *params)':
+            raise ValueError('PH function must have the signature \'(Z, *params)\'')
 
         self.name = name
         self.dist = distribution
@@ -28,24 +28,24 @@ class AcceleratedFailureTimeFitter():
         self.ff_dist = self.dist.ff
         self.df_dist = self.dist.df
 
-    def Hf(self, x, X, *params):
+    def Hf(self, x, Z, *params):
         dist_params = np.array(params[0:self.k_dist])
         phi_params = np.array(params[self.k_dist:])
-        return self.Hf_dist(self.phi(X, *phi_params) * x, *dist_params)
+        return self.Hf_dist(self.phi(Z, *phi_params) * x, *dist_params)
 
-    def hf(self, x, X, *params):
+    def hf(self, x, Z, *params):
         dist_params = np.array(params[0:self.k_dist])
         phi_params = np.array(params[self.k_dist:])
-        return self.hf_dist(self.phi(X, *phi_params) * x, *dist_params)
+        return self.hf_dist(self.phi(Z, *phi_params) * x, *dist_params)
 
-    def df(self, x, X, *params):
-        return self.hf(x, X, *params) * np.exp(-self.Hf(x, X, *params))
+    def df(self, x, Z, *params):
+        return self.hf(x, Z, *params) * np.exp(-self.Hf(x, Z, *params))
 
-    def sf(self, x, X, *params):
-        return np.exp(-self.Hf(x, X, *params))
+    def sf(self, x, Z, *params):
+        return np.exp(-self.Hf(x, Z, *params))
 
-    def ff(self, x, X, *params):
-        return 1 - np.exp(-self.Hf(x, X, *params))
+    def ff(self, x, Z, *params):
+        return 1 - np.exp(-self.Hf(x, Z, *params))
 
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
         out = []
@@ -73,52 +73,52 @@ class AcceleratedFailureTimeFitter():
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
 
-    def log_df(self, x, X, *params):
-        return np.log(self.hf(x, X, *params)) - self.Hf(x, X, *params)
+    def log_df(self, x, Z, *params):
+        return np.log(self.hf(x, Z, *params)) - self.Hf(x, Z, *params)
 
-    def log_sf(self, x, X, *params):
-        return -self.Hf(x, X, *params)
+    def log_sf(self, x, Z, *params):
+        return -self.Hf(x, Z, *params)
 
-    def log_ff(self, x, X, *params):
-        return np.log(self.ff(x, X, *params))
+    def log_ff(self, x, Z, *params):
+        return np.log(self.ff(x, Z, *params))
 
-    def neg_ll(self, X, x, c, n, *params):
+    def neg_ll(self, Z, x, c, n, *params):
         params = np.array(params)
 
         like = np.zeros_like(x).astype(float)
-        like = np.where(c ==  0, self.log_df(x, X, *params), like)
-        like = np.where(c ==  1, self.log_sf(x, X, *params), like)
-        like = np.where(c ==  -1, self.log_ff(x, X, *params), like)
+        like = np.where(c ==  0, self.log_df(x, Z, *params), like)
+        like = np.where(c ==  1, self.log_sf(x, Z, *params), like)
+        like = np.where(c ==  -1, self.log_ff(x, Z, *params), like)
 
         like = np.multiply(n, like)
         return -np.sum(like)
 
-    def random(self, size, X, *params):
+    def random(self, size, Z, *params):
         dist_params = np.array(params[0:self.k_dist])
         phi_params = np.array(params[self.k_dist:])
 
         x = []
-        X_out = []
+        Z_out = []
 
-        for stress in np.unique(X):
+        for stress in np.unique(Z):
             U = np.random.uniform(0, 1, size)
             x.append(self.dist.qf(U, *dist_params)/self.phi(stress, *phi_params))
-            X_out.append(np.ones(size) * stress)
-        return np.concatenate(x), np.concatenate(X_out)
+            Z_out.append(np.ones(size) * stress)
+        return np.concatenate(x), np.concatenate(Z_out)
 
-    def fit(self, X, x, c=None, n=None, t=None, init=[], fixed={}):
+    def fit(self, Z, x, c=None, n=None, t=None, init=[], fixed={}):
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, group_and_sort=False)
 
         if init == []:
-            stress_data = np.unique(X, axis=0)
-            params_at_X = []
+            stress_data = np.unique(Z, axis=0)
+            params_at_Z = []
             for s in stress_data:
-                params_at_X.append(self.dist.fit(x[X == s], c[X == s], n[X == s]).params)
+                params_at_Z.append(self.dist.fit(x[Z == s], c[Z == s], n[Z == s]).params)
 
-            params_at_X = np.array(params_at_X)
-            dist_init = params_at_X.mean(axis=0)
+            params_at_Z = np.array(params_at_Z)
+            dist_init = params_at_Z.mean(axis=0)
 
-            acc_parameter_data = params_at_X[:, self.param_map[self.fixed_parameter]]
+            acc_parameter_data = params_at_Z[:, self.param_map[self.fixed_parameter]]
             acc_parameter_data = self.acc_parameter_relationship(acc_parameter_data)
 
             if callable(self.acc_model.phi_init):
@@ -136,12 +136,12 @@ class AcceleratedFailureTimeFitter():
 
         # Dynamic or static bounds determination
         if callable(self.acc_model.phi_bounds):
-            bounds = (*self.bounds, *self.acc_model.phi_bounds(X))
+            bounds = (*self.bounds, *self.acc_model.phi_bounds(Z))
         else:
             bounds = (*self.bounds, *self.acc_model.phi_bounds)
 
         if callable(self.acc_model.phi_param_map):
-            phi_param_map = self.acc_model.phi_param_map(X)
+            phi_param_map = self.acc_model.phi_param_map(Z)
         else:
             phi_param_map = self.acc_model.phi_param_map
 
@@ -153,8 +153,8 @@ class AcceleratedFailureTimeFitter():
         init = transform(init)[not_fixed]
 
         with np.errstate(all='ignore'):
-            fun  = lambda params : self.neg_ll(X, x, c, n, *inv_trans(const(params)))
-            # fun  = lambda params : self.neg_ll(X, x, c, n, *params)
+            fun  = lambda params : self.neg_ll(Z, x, c, n, *inv_trans(const(params)))
+            # fun  = lambda params : self.neg_ll(Z, x, c, n, *params)
             # jac = jacobian(fun)
             # hess = hessian(fun)
             res = minimize(fun, init)

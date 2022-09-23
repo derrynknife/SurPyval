@@ -87,11 +87,22 @@ for dist, parameter in zip(DISTS, LIFE_PARAMS):
 ExponentialPH = ProportionalHazardsFitter(
     'ExponentialPH', 
     surv.Exponential,
-    lambda X, *params: np.exp(np.dot(X, np.array(params))),
-    lambda X: (((None, None),) * X.shape[1]),
-    phi_param_map=lambda X: {'beta_' + str(i) : i for i in range(X.shape[1])},
+    lambda Z, *params: np.exp(np.dot(Z, np.array(params))),
+    lambda Z: (((None, None),) * Z.shape[1]),
+    phi_param_map=lambda Z: {'beta_' + str(i) : i for i in range(Z.shape[1])},
     baseline=['lambda'],
-    phi_init=lambda X: np.zeros(X.shape[1])
+    phi_init=lambda Z: np.zeros(Z.shape[1])
+)
+
+# Parametric Proportional Hazard
+WeibullPH = ProportionalHazardsFitter(
+    'WeibullPH', 
+    surv.Weibull,
+    lambda Z, *params: np.exp(np.dot(Z, np.array(params))),
+    lambda Z: (((None, None),) * Z.shape[1]),
+    phi_param_map=lambda Z: {'beta_' + str(i) : i for i in range(Z.shape[1])},
+    baseline=[],
+    phi_init=lambda Z: np.zeros(Z.shape[1])
 )
 
 

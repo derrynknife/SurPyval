@@ -54,10 +54,10 @@ class Regression():
         else:
             return "Unable to fit values"
 
-    def phi(self, X):
-        return self.reg_model.phi(X, *self.phi_params)
+    def phi(self, Z):
+        return self.reg_model.phi(Z, *self.phi_params)
 
-    def sf(self, x, X):
+    def sf(self, x, Z):
         r"""
         Surival (or Reliability) function for a distribution using the parameters found in the ``.params`` attribute.
 
@@ -85,9 +85,9 @@ class Regression():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.model.sf(x, X, *self.params)
+        return self.model.sf(x, Z, *self.params)
 
-    def ff(self, x, X):
+    def ff(self, x, Z):
         r"""
         The cumulative distribution function, or failure function, for a distribution using the parameters found in the ``.params`` attribute.
 
@@ -117,9 +117,9 @@ class Regression():
         if type(x) == list:
             x = np.array(x)
 
-        return self.model.ff(x, X, *self.params)
+        return self.model.ff(x, Z, *self.params)
 
-    def df(self, x, X):
+    def df(self, x, Z):
         r"""
         The density function for a distribution using the parameters found in the ``.params`` attribute.
 
@@ -148,9 +148,9 @@ class Regression():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.model.df(x, X, *self.params)
+        return self.model.df(x, Z, *self.params)
 
-    def hf(self, x, X):
+    def hf(self, x, Z):
         r"""
         The instantaneous hazard function for a distribution using the parameters found in the ``.params`` attribute.
 
@@ -179,9 +179,9 @@ class Regression():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.model.hf(x, X, *self.params)
+        return self.model.hf(x, Z, *self.params)
 
-    def Hf(self, x, X):
+    def Hf(self, x, Z):
         r"""
 
         The cumulative hazard function for a distribution using the parameters found in the ``.params`` attribute.
@@ -211,9 +211,9 @@ class Regression():
         """
         if type(x) == list:
             x = np.array(x)
-        return self.model.hf(x, X, *self.params)
+        return self.model.hf(x, Z, *self.params)
 
-    def random(self, size, X):
+    def random(self, size, Z):
         r"""
 
         A method to draw random samples from the distributions using the parameters found in the ``.params`` attribute.
@@ -223,7 +223,7 @@ class Regression():
         size : int
             The number of random samples to be drawn from the distribution.
 
-        X : scalar or array like
+        Z : scalar or array like
             The value(s) of the stresses at which the random 
 
         Returns
