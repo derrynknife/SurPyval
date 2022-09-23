@@ -100,8 +100,6 @@ class NHPP():
 
         model = ParametricCountingModel()
 
-        # Need an xin checker
-        # Need an xin to xrd format wrangler
         x, i, c, n = handle_xicn(x, i, c, n)
         x_unqiue, r, d = xicn_to_xrd(x, i, c, n)
         
@@ -114,6 +112,7 @@ class NHPP():
             params = res.x
 
         elif how == "MLE":
+            ll_func = self.create_ll_func(x, i, c, n)
             if self.name == "HPP":
                 # Homogeneous Poisson Process has a simple, closed form solution.
                 total = npi.group_by(i).max(x)[1].sum()
@@ -121,11 +120,11 @@ class NHPP():
                 params = np.array([d / total])
                 res = None
             else:
-                ll_func = self.create_ll_func(x, i, c, n)
                 jac = jacobian(ll_func)
                 res = minimize(ll_func, res.x, jac=jac, method="TNC")
                 params = res.x
 
+            model._neg_ll = ll_func(params)
         model.res = res
         model.params = params
         model.x = x_unqiue
