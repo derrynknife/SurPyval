@@ -6,14 +6,14 @@ class InverseExponential_():
         self.phi_param_map = {'a' : 0, 'b' : 1}
         self.phi_bounds = ((None, None), (0, None),)
 
-    def phi(self, X, *params):
+    def phi(self, Z, *params):
         a = params[0]
         b = params[1]
-        return 1./(b * np.exp(a/X))
+        return 1./(b * np.exp(a/Z))
 
-    def phi_init(self, life, X):
-        X = X.flatten()
-        a, b = (np.polyfit(1./X, np.log(1./life), 1))
+    def phi_init(self, life, Z):
+        Z = Z.flatten()
+        a, b = (np.polyfit(1./Z, np.log(1./life), 1))
         return [a, np.exp(b)]
 
 InverseExponential = InverseExponential_()
@@ -24,14 +24,14 @@ class Exponential_():
         self.phi_param_map = {'a' : 0, 'b' : 1}
         self.phi_bounds = ((None, None), (0, None),)
 
-    def phi(self, X, *params):
+    def phi(self, Z, *params):
         a = params[0]
         b = params[1]
-        return b * np.exp(a/X)
+        return b * np.exp(a/Z)
 
-    def phi_init(self, life, X):
-        X = X.flatten()
-        a, b = (np.polyfit(1./X, np.log(life), 1))
+    def phi_init(self, life, Z):
+        Z = Z.flatten()
+        a, b = (np.polyfit(1./Z, np.log(life), 1))
         return [a, np.exp(b)]
 
 Exponential = Exponential_()

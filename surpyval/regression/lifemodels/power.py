@@ -6,12 +6,12 @@ class InversePower_():
         self.phi_param_map = {'a' : 0, 'n' : 1}
         self.phi_bounds = ((0, None), (None, None),)
 
-    def phi(self, X, *params):
-        return 1./(params[0] * X**params[1])
+    def phi(self, Z, *params):
+        return 1./(params[0] * Z**params[1])
 
-    def phi_init(self, life, X):
-        X = X.flatten()
-        n, a = (np.polyfit(np.log(X), np.log(1./life), 1))
+    def phi_init(self, life, Z):
+        Z = Z.flatten()
+        n, a = (np.polyfit(np.log(Z), np.log(1./life), 1))
         return [np.exp(a), n]
 
 InversePower = InversePower_()
@@ -22,12 +22,12 @@ class Power_():
         self.phi_param_map = {'a' : 0, 'n' : 1}
         self.phi_bounds = ((0, None), (None, None),)
 
-    def phi(self, X, *params):
-        return params[0] * X**params[1]
+    def phi(self, Z, *params):
+        return params[0] * Z**params[1]
 
-    def phi_init(self, life, X):
-        X = X.flatten()
-        n, a = (np.polyfit(np.log(X), np.log(life), 1))
+    def phi_init(self, life, Z):
+        Z = Z.flatten()
+        n, a = (np.polyfit(np.log(Z), np.log(life), 1))
         return [np.exp(a), n]
 
 Power = Power_()
