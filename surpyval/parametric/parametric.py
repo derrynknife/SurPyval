@@ -9,12 +9,14 @@ from surpyval import nonparametric as nonp
 from copy import deepcopy, copy
 from matplotlib.ticker import FixedLocator
 from autograd import elementwise_grad
-from .convolution import ConvolvedModel
 import surpyval as surv
 
+from .convolution import ConvolutionModel
+from .series import SeriesModel
+from .parallel import ParallelModel
+import surpyval as surv
 
 CB_COLOUR = "#e94c54"
-
 
 def _round_vals(x):
     not_different = True
@@ -75,6 +77,38 @@ class Parametric():
 
         self.bounds = bounds
         self.param_map = param_map
+
+    def __add__(self, other):
+        if self.dist == surv.Uniform or other.dist == surv.Uniform:
+            raise NotImplementedError()("Convolutions with Uniform distribution not yet implemented")
+        if self.dist == surv.Beta or other.dist == surv.Beta:
+            raise NotImplementedError()("Convolutions with Beta distribution not yet implemented")
+
+        if self.dist == surv.Normal and other.dist == surv.Normal:
+            mu_new = self.params[0] + other.params[0]
+            sig_new = np.sqrt(self.params[1]**2 + other.params[1]**2)
+            return surv.Normal.from_params([mu_new, sig_new])
+
+        return ConvolutionModel(self, other, op='add')
+
+    def __sub__(self, other):
+        if self.dist == surv.Normal and other.dist == surv.Normal:
+            mu_new = self.params[0] - other.params[0]
+            sig_new = np.sqrt(self.params[1]**2 + other.params[1]**2)
+            return surv.Normal.from_params([mu_new, sig_new])
+        return ConvolutionModel(self, other, op='sub')
+
+    def __or__(self, other):
+        if type(other) == SeriesModel:
+            return SeriesModel([self, *other.models])
+        else:
+            return SeriesModel([self, other])
+
+    def __and__(self, other):
+        if type(other) == SeriesModel:
+            return ParallelModel([self, *other.models])
+        else:
+            return ParallelModel([self, other])
 
     @classmethod
     def from_dict(cls, model_dict):
