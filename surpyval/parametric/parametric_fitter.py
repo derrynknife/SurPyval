@@ -4,7 +4,7 @@ from scipy.integrate import quad
 from ..nonparametric import plotting_positions as pp
 
 import surpyval
-from surpyval import parametric as para
+from .parametric import Parametric
 
 import pandas as pd
 from copy import copy
@@ -455,7 +455,7 @@ class ParametricFitter():
             't': t
         }
 
-        model = para.Parametric(self, how, data, offset, lfp, zi)
+        model = Parametric(self, how, data, offset, lfp, zi)
         fitting_info = {}
 
         if how != 'MPP':
@@ -743,7 +743,7 @@ class ParametricFitter():
             zi = False
             f0 = 0
 
-        model = para.Parametric(self, 'given parameters',
+        model = Parametric(self, 'given parameters',
                                 None, offset, lfp, zi)
         model.gamma = gamma
         model.p = p
