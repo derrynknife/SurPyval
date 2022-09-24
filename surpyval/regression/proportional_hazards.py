@@ -205,10 +205,7 @@ class ProportionalHazardsFitter():
             res = minimize(fun, init)
             res = minimize(fun, res.x, method='TNC')
 
-        print(res)
         params = inv_trans(const(res.x))
-        print(params)
-
 
         reg_model = RegressionModel()
         reg_model.phi = self.phi
