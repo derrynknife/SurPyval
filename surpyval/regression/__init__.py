@@ -90,7 +90,7 @@ ExponentialPH = ProportionalHazardsFitter(
     lambda Z, *params: np.exp(np.dot(Z, np.array(params))),
     lambda Z: (((None, None),) * Z.shape[1]),
     phi_param_map=lambda Z: {'beta_' + str(i) : i for i in range(Z.shape[1])},
-    baseline=['lambda'],
+    baseline=[],
     phi_init=lambda Z: np.zeros(Z.shape[1])
 )
 
