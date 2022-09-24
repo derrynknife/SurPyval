@@ -105,3 +105,42 @@ We can plot the survival curves of the average tire and the 10% above and 10% be
     :align: center
 
 We can see that as the covariates increase there is a decrease in the probability of survival up to 1.2. The Semi-Parametric nature of the model can also be seen clearly in this plot. You can see that the baseline is non-parametric, but the baseline has been affected by the covariates.
+
+Parametric Proportional Hazards Modelling
+-----------------------------------------
+
+In the above example we used a semi-parametric model where the 'baseline' hazard rate was a non-parametric model but the hazard was multiplied by a parametric function of the covariates. We can use fully parametric models instead. These come with the advantages of parametric models, namely extrapolation, but are also disadvantaged by the assumption needed about the shape of the distribution. SurPyval has two Proportional Hazard models that are ready to use with any number of covariate inputs (just like the CoxPH model); these are the `ExponentialPH` and the `WeibullPH` models. We will analyse the tires data using the Weibull Proportional hazards model.
+
+.. code:: python
+
+
+    from surpyval.datasets import Tires
+    from surpyval.regression import WeibullPH
+
+    x = Tires.data['Survival']
+    c = Tires.data['Censoring']
+    Z = Tires.data[['Wedge gauge', 'Interbelt gauge', 'Peel force', 'Wedge gauge×peel force']]
+    weibull_ph_model = WeibullPH.fit(x=x, Z=Z, c=c)
+    weibull_ph_model
+
+.. code:: text
+
+    Parametric Regression SurPyval Model
+    ====================================
+    Kind                : Proportional Hazard
+    Distribution        : Weibull
+    Regression Model    : Log Linear (Exponential)
+    Fitted by           : MLE
+    Distribution        :
+        alpha: 0.24255057163126237
+        beta: 16.057788534593193
+    Regression Model    :
+        beta_0: -9.165054735694651
+        beta_1: -7.998600691841399
+        beta_2: -27.50328118957879
+        beta_3: 18.38550168401127
+
+You can see from the above that the coefficients for the covariates are very similar. 
+
+.. image:: images/cox_para_ph_tires.png
+    :align: center

@@ -105,6 +105,7 @@ Contents:
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
    Regression Modelling with SurPyval
+   Distribution Operations
    applications
 
 .. toctree::
