@@ -188,7 +188,7 @@ class Parametric():
             else:
                 out['hess_inv'] = self.hess_inv.tolist()
         if hasattr(self, '_neg_ll'):
-            out['neg_ll'] = self._neg_ll
+            out['_neg_ll'] = self._neg_ll
         
         return out
 
