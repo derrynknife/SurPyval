@@ -521,6 +521,7 @@ class ParametricFitter():
                 if zi:
                     init = np.concatenate([init, [(n[x == 0]).sum()/n.sum()]])
 
+            init = np.atleast_1d(init)
             init = transform(init)
             init = init[not_fixed]
             fitting_info['init'] = init
@@ -539,9 +540,31 @@ class ParametricFitter():
         for k, v in results.items():
             setattr(model, k, v)
 
+        model.params = np.atleast_1d(model.params)
+
         if hasattr(model, 'params'):
             for k, v in zip(self.param_names, model.params):
                 setattr(model, k, v)
+
+        # Set the support of the distribution.
+        if offset:
+            left = model.gamma
+        elif np.isfinite(self.support[0]):
+            left = self.support[0]
+        elif self.support[0] == -np.inf:
+            left = -np.inf
+        elif np.isnan(self.support[0]):
+            left = model.params[0]
+
+
+        if np.isfinite(self.support[1]):
+            right = self.support[1]
+        elif self.support[1] == np.inf:
+            right = np.inf
+        elif np.isnan(self.support[1]):
+            right = model.params[1]
+
+        model.support = np.array([left, right])
 
         return model
 
@@ -744,11 +767,18 @@ class ParametricFitter():
             f0 = 0
 
         model = Parametric(self, 'given parameters',
-                                None, offset, lfp, zi)
+                           None, offset, lfp, zi)
         model.gamma = gamma
         model.p = p
         model.f0 = f0
         model.params = np.array(params)
+        model.support = self.support
+
+        if offset:
+            model.support[0] = gamma
+        elif np.isnan(self.support).any():
+            model.support = np.array(model.params)
+
 
         for i, (low, upp) in enumerate(self.bounds):
             if low is None:
