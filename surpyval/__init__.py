@@ -21,6 +21,7 @@ from surpyval.parametric import (
     Parametric,
     Gumbel,
     Uniform,
+    Rayleigh,
     Exponential,
     Weibull,
     ExpoWeibull,

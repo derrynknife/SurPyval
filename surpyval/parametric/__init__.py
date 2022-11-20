@@ -14,6 +14,7 @@ from surpyval import nonparametric as nonp
 from .parametric_fitter import ParametricFitter
 from .parametric import Parametric
 from .gumbel import Gumbel
+from .rayleigh import Rayleigh
 from .weibull import Weibull
 from .exponential import Exponential
 from .expo_weibull import ExpoWeibull
