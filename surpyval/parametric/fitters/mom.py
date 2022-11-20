@@ -5,6 +5,8 @@ from scipy.optimize import minimize
 def mom_fun(params, dist, inv_trans, const, offset, moments):
     dist_moments = dist.mom_moment_gen(*inv_trans(const(params)),
                                        offset=offset)
+    # Unsure which is better
+    # return (np.abs(moments - dist_moments) / moments).sum()
     return np.log(((np.abs(moments - dist_moments) / moments))).sum()
 
 
@@ -33,7 +35,7 @@ def mom(model):
     for i in range(0, model.k):
         moments[i] = (x_**(i + 1)).mean()
 
-    res = minimize(mom_fun, np.array(init), tol=1e-15,
+    res = minimize(mom_fun, np.array(init), tol=1e-1,
                    args=(dist, inv_trans, const, offset, moments))
 
     params = inv_trans(const(res.x))
