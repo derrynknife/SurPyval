@@ -36,7 +36,7 @@ class NHPP():
 
         self.name = name
         self.param_names = param_names
-        self.param_bounds = param_bounds
+        self.bounds = param_bounds
         self.support = support
 
         if str(signature(cif)) != '(x, *params)':
@@ -129,6 +129,14 @@ class NHPP():
         model.params = params
         model.x = x_unqiue
         model.dist = self
+        model.how = how
+        return model
+
+    def from_params(self, params):
+        model = ParametricCountingModel()
+        model.params = params
+        model.dist = self
+        model.how = "from_params"
         return model
 
 # Duane Model
@@ -279,7 +287,7 @@ hpp_support = (0.0, np.inf)
 
 def hpp_iif(x, *params):
     rate = params[0]
-    return rate
+    return np.ones_like(x) * rate
 
 def hpp_cif(x, *params):
     rate = params[0]
