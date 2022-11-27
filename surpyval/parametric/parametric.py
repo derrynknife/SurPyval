@@ -11,9 +11,6 @@ from matplotlib.ticker import FixedLocator
 from autograd import elementwise_grad
 import surpyval as surv
 
-from .convolution import ConvolutionModel
-from .series import SeriesModel
-from .parallel import ParallelModel
 import surpyval as surv
 
 CB_COLOUR = "#e94c54"
@@ -77,38 +74,6 @@ class Parametric():
 
         self.bounds = bounds
         self.param_map = param_map
-
-    def __add__(self, other):
-        if self.dist == surv.Uniform or other.dist == surv.Uniform:
-            raise NotImplementedError()("Convolutions with Uniform distribution not yet implemented")
-        if self.dist == surv.Beta or other.dist == surv.Beta:
-            raise NotImplementedError()("Convolutions with Beta distribution not yet implemented")
-
-        if self.dist == surv.Normal and other.dist == surv.Normal:
-            mu_new = self.params[0] + other.params[0]
-            sig_new = np.sqrt(self.params[1]**2 + other.params[1]**2)
-            return surv.Normal.from_params([mu_new, sig_new])
-
-        return ConvolutionModel(self, other, op='add')
-
-    def __sub__(self, other):
-        if self.dist == surv.Normal and other.dist == surv.Normal:
-            mu_new = self.params[0] - other.params[0]
-            sig_new = np.sqrt(self.params[1]**2 + other.params[1]**2)
-            return surv.Normal.from_params([mu_new, sig_new])
-        return ConvolutionModel(self, other, op='sub')
-
-    def __or__(self, other):
-        if type(other) == SeriesModel:
-            return SeriesModel([self, *other.models])
-        else:
-            return SeriesModel([self, other])
-
-    def __and__(self, other):
-        if type(other) == SeriesModel:
-            return ParallelModel([self, *other.models])
-        else:
-            return ParallelModel([self, other])
 
     @classmethod
     def from_dict(cls, model_dict):
@@ -988,10 +953,26 @@ class Parametric():
         d = d[mask]
         F = F[mask]
 
-        if np.isfinite(self.data['t']).any():
-            Ftl = self.ff(x_[0])
-            Ftr = self.ff(x_[-1])
-            F = Ftl + F * (Ftr - Ftl)
+        # if np.isfinite(self.data['t']).any():
+        #     Ftl = self.ff(x_[0])
+        #     Ftr = self.ff(x_[-1])
+        #     F = Ftl + F * (Ftr - Ftl)
+
+
+        # Adjust the plotting points in event data is truncated.
+        if np.isfinite(self.data['t'][0][0]):
+            # Min is if data is intervally censored
+            Ftl = self.ff(self.data['t'][0][0])
+        else:
+            Ftl = 0
+
+        if np.isfinite(self.data['t'][-1][-1]):
+            # Max is if data is intervally censored
+            Ftr = self.ff(self.data['t'][-1][-1])
+        else:
+            Ftr = 1
+
+        F = Ftl + F * (Ftr - Ftl)
 
         y_scale_min = np.min(F[F > 0]) / 2
         # y_scale_max = np.max(F[F < 1]) + (1 - np.max(F[F < 1]))/2
@@ -1134,7 +1115,7 @@ class Parametric():
         d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
 
         # Set limits and scale
-        ax.set_ylim([d['y_scale_min'], d['y_scale_max']])
+        ax.set_ylim([max(d['y_scale_min'], 1e-4), min(d['y_scale_max'], 0.9999)])
         ax.set_xscale(d['x_scale'])
         functions = (
             lambda x: self.dist.mpp_y_transform(x, *self.params),

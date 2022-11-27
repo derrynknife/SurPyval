@@ -29,5 +29,3 @@ from .logistic import Logistic
 from .loglogistic import LogLogistic
 from .mixture_model import MixtureModel
 from .dist_from_hazard import Distribution
-from .series import SeriesModel
-from .parallel import ParallelModel
