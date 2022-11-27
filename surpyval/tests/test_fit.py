@@ -239,7 +239,7 @@ def test_mom(dist, random_parameters):
 def test_mps(dist, random_parameters):
     for n in FIT_SIZES:
         test_params = []
-        tol = 0.01
+        tol = 0.01                                                
         for b in random_parameters:
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)

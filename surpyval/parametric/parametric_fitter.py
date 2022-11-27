@@ -138,26 +138,35 @@ class ParametricFitter():
         like = -np.sum(like)
         return like
 
-    def neg_mean_D(self, x, c, n, *params):
+    def neg_mean_D(self, x, c, n, tl, tr, *params):
         mask = c == 0
         x_obs = x[mask]
         n_obs = n[mask]
 
-        gamma = 0
-
         # Assumes already ordered
-        F = self.ff(x_obs - gamma, *params)
-        D0 = F[0]
-        Dn = 1 - F[-1]
-        D = np.diff(F)
-        D = np.concatenate([np.array([D0]), D.T, np.array([Dn])]).T
+        if np.isfinite(tl):
+            F_tl = self.ff(tl, *params)
+        else:
+            F_tl = 0.
+        
+        if np.isfinite(tr):
+            F_tr = self.ff(tr, *params)
+        else:
+            F_tr = 1.
+        
+        F = self.ff(x_obs, *params)
 
-        Dr = self.sf(x[c == 1] - gamma, *params)
-        Dl = self.ff(x[c == -1] - gamma, *params)
+        all_F = np.hstack([F_tl, F, F_tr])
+        D_0_1_normed = (all_F - F_tl) / (F_tr - F_tl)
+        D = np.diff(D_0_1_normed)
+
+        # Censoring
+        Dr = self.sf(x[c == 1], *params)
+        Dl = self.ff(x[c == -1], *params)
 
         if (n_obs > 1).any():
             n_ties = (n_obs - 1).sum()
-            Df = self.df(x_obs - gamma, *params)
+            Df = self.df(x_obs, *params)
             # Df = Df[Df != 0]
             LL = np.concatenate([Dl, Df, Dr])
             ll_n = np.concatenate([n[c == -1], (n_obs - 1), n[c == 1]])
@@ -358,8 +367,8 @@ class ParametricFitter():
               beta: 4.9886821457305865
         """
 
-        if offset and self.name in ['Normal', 'Beta', 'Uniform',
-                                    'Gumbel', 'Logistic']:
+        if offset and (self.support[0] != 0):
+            # self.name in ['Normal', 'Beta', 'Uniform', 'Gumbel', 'Logistic']:
             detail = '{} distribution cannot be offset'.format(self.name)
             raise ValueError(detail)
 
@@ -371,9 +380,9 @@ class ParametricFitter():
                      ' with probability plot fitting'
             raise ValueError(detail)
 
-        if t is not None and how == 'MPS':
-            detail = 'Maximum product spacing doesn\'t yet support tuncation'
-            raise NotImplementedError(detail)
+        # if t is not None and how == 'MPS':
+        #     detail = 'Maximum product spacing doesn\'t yet support tuncation'
+        #     raise NotImplementedError(detail)
 
         if t is not None and how == 'MSE':
             detail = 'Mean square error doesn\'t yet support tuncation'
@@ -447,6 +456,17 @@ class ParametricFitter():
                                                     upper=self.support[1])
                     raise ValueError(detail)
 
+        tl = t[:, 0]
+        tr = t[:, 1]
+
+        if (tl[0] != tl).any() and how == 'MPS':
+            raise ValueError("Left truncated value can only be single number \
+                              when using MPS")
+
+        if (tr[0] != tr).any() and how == 'MPS':
+            raise ValueError("Right truncated value can only be single number \
+                              when using MPS")
+
         # Passed checks
         data = {
             'x': x,
@@ -457,6 +477,12 @@ class ParametricFitter():
 
         model = Parametric(self, how, data, offset, lfp, zi)
         fitting_info = {}
+
+        if how == 'MPS':
+            # Need to set the scalar truncation values
+            # if the MPS method is used.
+            model.tl = tl[0]
+            model.tr = tr[0]
 
         if how != 'MPP':
             transform, inv_trans, funcs, inv_f = bounds_convert(x,
@@ -540,6 +566,8 @@ class ParametricFitter():
         for k, v in results.items():
             setattr(model, k, v)
 
+        # Only needed since not all models return the params
+        # as a numpy array... which ought to be fixed.
         model.params = np.atleast_1d(model.params)
 
         if hasattr(model, 'params'):
@@ -554,6 +582,8 @@ class ParametricFitter():
         elif self.support[0] == -np.inf:
             left = -np.inf
         elif np.isnan(self.support[0]):
+            # This only works for the uniform dist
+            # TODO: More general support setting. i.e. 4 parameter Beta
             left = model.params[0]
 
 

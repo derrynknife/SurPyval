@@ -4,13 +4,16 @@ from autograd import jacobian, hessian
 import sys
 
 
-def mps_fun(params, dist, x, inv_trans, const, c, n, offset):
+def mps_fun(params, dist, x, inv_trans, const, c, n, tl, tr, offset):
+    params_bounded = inv_trans(const(params))
     if offset:
-        x = x - inv_trans(const(params))[0]
+        x_new = x - inv_trans(const(params))[0]
         params = inv_trans(const(params))[1:]
     else:
         params = inv_trans(const(params))
-    return dist.neg_mean_D(x, c, n, *params)
+        x_new = x.copy()
+    D = dist.neg_mean_D(x_new, c, n, tl, tr, *params)
+    return D
 
 
 def mps(model):
@@ -31,6 +34,8 @@ def mps(model):
     inv_trans = model.fitting_info['inv_trans']
     init = model.fitting_info['init']
     offset = model.offset
+    tl = model.tl
+    tr = model.tr
 
     jac = jacobian(mps_fun)
     hess = hessian(mps_fun)
@@ -40,15 +45,15 @@ def mps(model):
                    jac=jac,
                    hess=hess,
                    tol=1e-15,
-                   args=(dist, x, inv_trans, const, c, n, offset))
+                   args=(dist, x, inv_trans, const, c, n, tl, tr, offset))
 
     if (res.success is False) or (np.isnan(res.x).any()):
         res = minimize(mps_fun, init, method='BFGS', jac=jac,
-                       args=(dist, x, inv_trans, const, c, n, offset))
+                       args=(dist, x, inv_trans, const, c, n, tl, tr, offset))
 
     if (res.success is False) or (np.isnan(res.x).any()):
         res = minimize(mps_fun, init,
-                       args=(dist, x, inv_trans, const, c, n, offset))
+                       args=(dist, x, inv_trans, const, c, n, tl, tr, offset))
 
     if (res.success is False) or (np.isnan(res.x).any()):
         print("MPS FAILED: Try alternate estimation method", file=sys.stderr)
