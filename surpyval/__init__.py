@@ -32,7 +32,10 @@ from surpyval.parametric import (
     Gamma,
     Beta,
     Distribution,
-    MixtureModel
+    MixtureModel,
+    Bernoulli,
+    FixedEventProbability,
+    ExactEventTime
 )
 
 from surpyval.nonparametric import (

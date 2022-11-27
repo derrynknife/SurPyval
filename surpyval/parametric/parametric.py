@@ -520,6 +520,9 @@ class Parametric():
             raise NotImplementedError("Truncated sampling not supported with" +
                                       " offset distributions")
 
+        if hasattr(self.dist, 'random'):
+            return self.dist.random(size, *self.params)
+
         if (self.p == 1) and (self.f0 == 0):
             if (a is None) & (b is None):
                 return self.dist.qf(uniform.rvs(size=size),

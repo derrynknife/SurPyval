@@ -29,3 +29,6 @@ from .logistic import Logistic
 from .loglogistic import LogLogistic
 from .mixture_model import MixtureModel
 from .dist_from_hazard import Distribution
+from .bernoulli import Bernoulli
+from .bernoulli import FixedEventProbability
+from .exact_event_time import ExactEventTime
