@@ -467,6 +467,14 @@ class ParametricFitter():
             raise ValueError("Right truncated value can only be single number \
                               when using MPS")
 
+        # Ensure truncation values move to edge where support is not
+        # -np.inf to np.inf
+        if np.isfinite(self.support[0]):
+            tl = np.where(tl < self.support[0], self.support[0], tl)
+        
+        if np.isfinite(self.support[1]):
+            tr = np.where(tl > self.support[1], self.support[1], tr)
+
         # Passed checks
         data = {
             'x': x,
