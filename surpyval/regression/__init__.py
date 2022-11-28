@@ -70,6 +70,8 @@ for dist, parameter in zip(DISTS, LIFE_PARAMS):
                             inverse_param_transform=life_parameter_inverse_transform[dist.name]
                         )
 
+# I think the baseline feature should be removed
+# I think the logic behind it was flawed from the start.
 for dist, parameter in zip(DISTS, LIFE_PARAMS):
     name = dist.name + life_model.name + "AL"
     vars()[name] = ParameterSubstitutionFitter(

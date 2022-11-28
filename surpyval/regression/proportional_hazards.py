@@ -151,17 +151,29 @@ class ProportionalHazardsFitter():
         Z_out = np.ones_like(x) * Z
         return x.flatten(), Z_out.flatten()
 
-    def neg_ll(self, Z, x, c, n, *params):
-        params = np.array(params)
+    def neg_ll(self, Z, x, c, n, tl, tr, *params):
         like = np.zeros_like(x).astype(float)
         like = np.where(c ==  0, self.log_df(x, Z, *params), like)
         like = np.where(c ==  1, self.log_sf(x, Z, *params), like)
         like = np.where(c ==  -1, self.log_ff(x, Z, *params), like)
-        like = np.multiply(n, like)
+        like_trunced = self.ff(tr, Z, *params) - self.ff(tl, Z, *params)
+        like_trunced = np.log(like_trunced)
+        like = np.multiply(n, like - like_trunced)
         return -np.sum(like)
 
     def fit(self, Z, x, c=None, n=None, t=None, init=[], fixed={}):
         x, c, n, t = surpyval.xcnt_handler(x, c, n, t, group_and_sort=False)
+
+        # Need to convert t to be at the edges of the support, if not
+        # within it.
+        tl = t[:, 0]
+        tr = t[:, 1]
+
+        if np.isfinite(self.support[0]):
+            tl = np.where(tl < self.support[0], self.support[0], tl)
+        
+        if np.isfinite(self.support[1]):
+            tr = np.where(tl > self.support[1], self.support[1], tr)
 
         if init == []:
             ps = self.dist.fit(x, c=c, n=n, t=t).params
@@ -199,7 +211,7 @@ class ProportionalHazardsFitter():
         init = transform(init)[not_fixed]
 
         with np.errstate(all='ignore'):
-            fun  = lambda params : self.neg_ll(Z, x, c, n, *inv_trans(const(params)))
+            fun  = lambda params : self.neg_ll(Z, x, c, n, tl, tr, *inv_trans(const(params)))
             # jac = jacobian(fun)
             # hess = hessian(fun)
             res = minimize(fun, init)
