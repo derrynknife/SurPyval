@@ -380,10 +380,6 @@ class ParametricFitter():
                      ' with probability plot fitting'
             raise ValueError(detail)
 
-        # if t is not None and how == 'MPS':
-        #     detail = 'Maximum product spacing doesn\'t yet support tuncation'
-        #     raise NotImplementedError(detail)
-
         if t is not None and how == 'MSE':
             detail = 'Mean square error doesn\'t yet support tuncation'
             raise NotImplementedError(detail)
@@ -456,6 +452,7 @@ class ParametricFitter():
                                                     upper=self.support[1])
                     raise ValueError(detail)
 
+        # Unpack the truncation
         tl = t[:, 0]
         tr = t[:, 1]
 
@@ -508,52 +505,71 @@ class ParametricFitter():
             fitting_info['fixed_idx'] = fixed_idx
             fitting_info['not_fixed'] = not_fixed
 
-            # This initial estimation is just terrible
             if init == []:
+                # this needs to be more general.
                 if self.name in ['Gumbel', 'Beta', 'Normal', 'Uniform']:
                     with np.errstate(all='ignore'):
                         init = np.array(self._parameter_initialiser(x, c, n))
                 else:
                     with np.errstate(all='ignore'):
                         if x.ndim == 2:
-                            x_arr = x[:, 0]
-                            init_mask = np.logical_or(x_arr <= self.support[0],
-                                                      x_arr >= self.support[1])
-                            init_mask = ~np.logical_and(init_mask, c == 0)
-                            xl = x[init_mask, 0]
-                            xr = x[init_mask, 1]
-                            x_init = np.vstack([xl, xr]).T
+                            # If x has 2 dims, then there is intervally
+                            # censored data. Simply take the midpoint to 
+                            # get the initial estimate.
+                            x_init = x.mean(axis=1)
+                            c_init = np.copy(c)
+                            c_init[c_init == 2] = 0
                         else:
-                            init_mask = np.logical_or(x <= self.support[0],
-                                                      x >= self.support[1])
-                            init_mask = ~np.logical_and(init_mask, c == 0)
+                            x_init = np.copy(x)
+                            c_init = np.copy(c)
 
-                            x_init = x[init_mask]
+                        # Remove x where x is out of support
+                        # This is if data for a zi or lfp model is given
+                        if not offset:
+                            in_support_mask = (x_init > self.support[0]) \
+                                              & (x_init < self.support[1])
 
-                        c_init = c[init_mask]
-                        n_init = n[init_mask]
+                        
+                            # Reduce x, c, and n to the case where it is in the
+                            # support of the distribution
+                            x_init = x_init[in_support_mask]
+                            c_init = c_init[in_support_mask]
+                            n_init = n[in_support_mask]
+                        else:
+                            n_init = np.copy(n)
 
+                        # Create an initial estimate with the new points
                         init = self._parameter_initialiser(x_init,
                                                            c_init,
                                                            n_init,
                                                            offset=offset)
                         init = np.array(init)
+
                         if offset:
                             init[0] = x.min() - 1.
 
                 if lfp:
-                    _, _, _, F = pp(x, c, n, heuristic='Nelson-Aalen')
+                    _, _, _, F = pp(x_init, c_init, n_init,
+                                    heuristic='Nelson-Aalen')
 
                     max_F = np.max(F)
 
                     if max_F > 0.5:
                         init = np.concatenate([init, [0.99]])
                     else:
-                        init = np.concatenate([init_from_bounds(self),
-                                              [max_F]])
+                        init = np.concatenate([init, [max_F]])
 
                 if zi:
-                    init = np.concatenate([init, [(n[x == 0]).sum()/n.sum()]])
+                    if x.ndim == 2:
+                        x_0 = x[c == 0, 0]
+                    else:
+                        x_0 = x[c == 0]
+
+                    n_0 = n[c == 0]
+                    total_failures_at_zero = n_0[x_0 == 0].sum()
+
+                    f_0_init = total_failures_at_zero/n.sum()
+                    init = np.concatenate([init, [f_0_init]])
 
             init = np.atleast_1d(init)
             init = transform(init)
