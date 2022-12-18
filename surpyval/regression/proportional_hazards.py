@@ -151,6 +151,23 @@ class ProportionalHazardsFitter():
         Z_out = np.ones_like(x) * Z
         return x.flatten(), Z_out.flatten()
 
+    def neg_ll_i(self, Z, x, c, n, tl, tr, *params):
+        like = np.zeros_like(n).astype(float)
+        like = np.where(c == 0, self.log_df(x[:, 0], Z, *params), like)
+        like = np.where(c == 1, self.log_sf(x[:, 0], Z, *params), like)
+        like = np.where(c == -1, self.log_ff(x[:, 0], Z, *params), like)
+
+        ir = np.where(c == 2, self.ff(x[:, 1], Z, *params), 1)
+        il = np.where(c == 2, self.ff(x[:, 0], Z, *params), 0)
+        like_i = ir - il
+        log_like_i = np.log(like_i)
+        like = np.where(c == 2, log_like_i, like)
+
+        like_trunced = self.ff(tr, Z, *params) - self.ff(tl, Z, *params)
+        like_trunced = np.log(like_trunced)
+        like = np.multiply(n, like - like_trunced)
+        return -np.sum(like)
+
     def neg_ll(self, Z, x, c, n, tl, tr, *params):
         like = np.zeros_like(x).astype(float)
         like = np.where(c ==  0, self.log_df(x, Z, *params), like)
@@ -210,8 +227,13 @@ class ProportionalHazardsFitter():
 
         init = transform(init)[not_fixed]
 
+        if 2 in c:
+            func = self.neg_ll_i
+        else:
+            func = self.neg_ll
+
         with np.errstate(all='ignore'):
-            fun  = lambda params : self.neg_ll(Z, x, c, n, tl, tr, *inv_trans(const(params)))
+            fun  = lambda params : func(Z, x, c, n, tl, tr, *inv_trans(const(params)))
             # jac = jacobian(fun)
             # hess = hessian(fun)
             res = minimize(fun, init)
