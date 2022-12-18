@@ -8,6 +8,7 @@ from surpyval import (
 DISTS = [Gumbel, Normal, Weibull, LogNormal,
          Logistic, LogLogistic, Uniform,
          Beta, ExpoWeibull, Gamma]
+
 parameter_sample_random_parameters = [((1, 20), (0.5, 5)),
                                   ((1, 100), (0.5, 100)),
                                   ((1, 100), (0.5, 20)),
@@ -151,6 +152,9 @@ def test_mle_convergence(dist, random_parameters, kind):
         if len(model.params) == 0:
             continue
         fitted_params = np.array(model.params)
+        if dist.name == "Uniform":
+            fitted_params = np.sort(fitted_params)
+            test_params = np.sort(test_params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
         # Decrease the tolerance for every parameter
@@ -178,6 +182,9 @@ def test_mle_convergence_small(dist, random_parameters, kind):
         if len(model.params) == 0:
             continue
         fitted_params = np.array(model.params)
+        if dist.name == "Uniform":
+            fitted_params = np.sort(fitted_params)
+            test_params = np.sort(test_params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
         # Decrease the tolerance for every parameter
@@ -204,6 +211,9 @@ def test_mpp(dist, random_parameters, rr):
             x = dist.random(10000, *test_params)
             model = dist.fit(x=x, rr=rr, how='MPP', heuristic='Nelson-Aalen')
             fitted_params = np.array(model.params)
+            if dist.name == "Uniform":
+                fitted_params = np.sort(fitted_params)
+                test_params = np.sort(test_params)
             max_params = np.max([fitted_params, test_params], axis=0)
             diff = np.abs(fitted_params - test_params) / max_params
             if (diff < tol * dist.k).all():
@@ -225,6 +235,9 @@ def test_mom(dist, random_parameters):
         x = dist.random(n, *test_params)
         model = dist.fit(x=x, how='MOM')
         fitted_params = np.array(model.params)
+        if dist.name == "Uniform":
+            fitted_params = np.sort(fitted_params)
+            test_params = np.sort(test_params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
         if (diff < tol * dist.k).all():
@@ -246,6 +259,9 @@ def test_mps(dist, random_parameters):
         x = dist.random(n, *test_params)
         model = dist.fit(x=x, how='MPS')
         fitted_params = np.array(model.params)
+        if dist.name == "Uniform":
+            fitted_params = np.sort(fitted_params)
+            test_params = np.sort(test_params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
         if (diff < tol * dist.k).all():
@@ -268,6 +284,9 @@ def test_mse(dist, random_parameters):
         x = dist.random(n, *test_params)
         model = dist.fit(x=x, how='MSE')
         fitted_params = np.array(model.params)
+        if dist.name == "Uniform":
+            fitted_params = np.sort(fitted_params)
+            test_params = np.sort(test_params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
         if (diff < tol).all():
