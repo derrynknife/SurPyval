@@ -148,7 +148,7 @@ def test_mle_convergence(dist, random_parameters, kind):
         elif kind == 'interval':
             x, n = interval_censor(x)
             model = dist.fit(x=x, n=n)
-        if model.params == []:
+        if len(model.params) == 0:
             continue
         fitted_params = np.array(model.params)
         max_params = np.max([fitted_params, test_params], axis=0)
@@ -175,7 +175,7 @@ def test_mle_convergence_small(dist, random_parameters, kind):
         x = dist.random(n, *test_params)
         if kind == 'full':
             model = dist.fit(x)
-        if model.params == []:
+        if len(model.params) == 0:
             continue
         fitted_params = np.array(model.params)
         max_params = np.max([fitted_params, test_params], axis=0)
