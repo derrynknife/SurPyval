@@ -956,29 +956,23 @@ class Parametric():
         d = d[mask]
         F = F[mask]
 
-        # if np.isfinite(self.data['t']).any():
-        #     Ftl = self.ff(x_[0])
-        #     Ftr = self.ff(x_[-1])
-        #     F = Ftl + F * (Ftr - Ftl)
-
-
         # Adjust the plotting points in event data is truncated.
-        if np.isfinite(self.data['t'][0][0]):
-            # Min is if data is intervally censored
-            Ftl = self.ff(self.data['t'][0][0])
+        tl_min = self.data['t'][0][0]
+        if np.isfinite(tl_min):
+            Ftl = self.ff(tl_min)
         else:
             Ftl = 0
 
-        if np.isfinite(self.data['t'][-1][-1]):
-            # Max is if data is intervally censored
-            Ftr = self.ff(self.data['t'][-1][-1])
+        tr_max = self.data['t'][-1][-1]
+        if np.isfinite(tr_max):
+            Ftr = self.ff(tr_max)
         else:
             Ftr = 1
 
+        # Adjust the plotting points due to truncation
         F = Ftl + F * (Ftr - Ftl)
 
         y_scale_min = np.min(F[F > 0]) / 2
-        # y_scale_max = np.max(F[F < 1]) + (1 - np.max(F[F < 1]))/2
         y_scale_max = (1 - (1 - np.max(F[F < 1])) / 10)
 
         # x-axis
