@@ -11,7 +11,7 @@ from matplotlib.ticker import FixedLocator
 from autograd import elementwise_grad
 import surpyval as surv
 
-import surpyval as surv
+import warnings
 
 CB_COLOUR = "#e94c54"
 
@@ -1114,6 +1114,16 @@ class Parametric():
         if self.method == 'given parameters':
             detail = "Can't plot model that was given parameters and no data"
             raise Exception(detail)
+
+        if 2 in self.data['c']:
+            if heuristic != 'Turnbull':
+                warnings.warn("Interval censored data, heuristic changed to Turnbull'", stacklevel=1)
+                heuristic = 'Turnbull'
+
+        if np.isfinite(self.data['t']).any():
+            if heuristic != 'Turnbull':
+                warnings.warn("Truncated censored data, heuristic changed to Turnbull'", stacklevel=1)
+                heuristic = 'Turnbull'
 
         d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
 
