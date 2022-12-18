@@ -351,3 +351,4 @@ class Gumbel_(ParametricFitter):
         # return self.sf(self.z_cb(x, mu, sigma, cv_matrix, alpha_ci=alpha_ci), 0, 1).T
 
 Gumbel = Gumbel_('Gumbel')
+GumbelSEV = Gumbel_('GumbelSEV')
