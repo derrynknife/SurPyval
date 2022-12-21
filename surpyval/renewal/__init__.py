@@ -1,3 +1,3 @@
-from .parametric import Duane, CoxLewis, Crow, CrowAMSAA, HPP, GRP
+from .parametric import Duane, CoxLewis, Crow, CrowAMSAA, HPP
 from .nonparametric import NonParametricCounting
 
