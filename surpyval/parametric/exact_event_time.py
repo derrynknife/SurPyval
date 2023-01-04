@@ -60,7 +60,7 @@ class ExactEventTime_():
 
         T = (max_r + min_l) / 2.
 
-        model = Parametric(self, "from_params", {}, False, False, False)
+        model = Parametric(self, "MLE", {}, False, False, False)
         model.params = [T]
         return model
 
