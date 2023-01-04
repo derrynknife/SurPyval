@@ -796,8 +796,7 @@ class ParametricFitter():
             detail = msg_base.format(k=self.k, dist=self.name)
             raise ValueError(detail)
 
-        if gamma is not None and self.name in ['Normal', 'Beta', 'Uniform',
-                                               'Gumbel', 'Logistic']:
+        if gamma is not None and np.isinf(self.support).all():
             msg_base = '{dist} distribution cannot be offset'
             detail = msg_base.format(dist=self.name)
             raise ValueError(detail)
@@ -829,7 +828,7 @@ class ParametricFitter():
         model.support = self.support
 
         if offset:
-            model.support[0] = gamma
+            model.support = (gamma, model.support[1])
         elif np.isnan(self.support).any():
             model.support = np.array(model.params)
 
