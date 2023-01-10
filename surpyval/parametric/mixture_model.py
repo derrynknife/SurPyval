@@ -5,7 +5,6 @@ from scipy.special import ndtri as z
 
 import surpyval
 from surpyval import np
-from surpyval import parametric as para
 
 
 class MixtureModel:
@@ -14,7 +13,7 @@ class MixtureModel:
     https://www.sciencedirect.com/science/article/pii/S0307904X12002545
     """
 
-    def __init__(self, x, dist=para.Weibull, **kwargs):
+    def __init__(self, x, dist, **kwargs):
         self.m = kwargs.pop("m", 2)
         raw_data = {}
         c = kwargs.pop("c", None)

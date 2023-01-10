@@ -1,7 +1,7 @@
 import autograd.numpy as np
 from scipy.stats import uniform
 
-from surpyval import fsli_to_xcn
+from surpyval.utils import fsli_to_xcn
 
 
 class Regression:
