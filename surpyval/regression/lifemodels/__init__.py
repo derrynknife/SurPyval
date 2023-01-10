@@ -1,8 +1,8 @@
-from .power import InversePower, Power
-from .exponential import InverseExponential, Exponential
-from .linear import Linear
-from .eyring import Eyring, InverseEyring
 from .dual_exponential import DualExponential
 from .dual_power import DualPower
-from .power_exponential import PowerExponential
+from .exponential import Exponential, InverseExponential
+from .eyring import Eyring, InverseEyring
 from .general_log_linear import GeneralLogLinear
+from .linear import Linear
+from .power import InversePower, Power
+from .power_exponential import PowerExponential

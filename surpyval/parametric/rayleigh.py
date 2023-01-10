@@ -1,15 +1,11 @@
-from surpyval import np
-from scipy.stats import uniform
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
-from scipy.special import ndtri as z
+from scipy.stats import uniform
 
-from surpyval import parametric as para
+from surpyval import nonparametric as nonp
+from surpyval import np
 from surpyval.parametric.parametric_fitter import ParametricFitter
 
-from .fitters.mpp import mpp
-from surpyval import nonparametric as nonp
-import warnings
 
 class Rayleigh_(ParametricFitter):
     def __init__(self, name):
@@ -18,21 +14,38 @@ class Rayleigh_(ParametricFitter):
         self.k = 1
         self.bounds = ((0, None),)
         self.support = (0, np.inf)
-        self.plot_x_scale = 'linear'
-        self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
-            0.003, 0.005, 0.05, 
-            0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
-            0.9, 0.95, 0.99, 0.999, 0.9999]
-        self.param_names = ['sigma']
-        self.param_map = {
-            'sigma' : 0
-        }
+        self.plot_x_scale = "linear"
+        self.y_ticks = [
+            0.0001,
+            0.0002,
+            0.0003,
+            0.001,
+            0.002,
+            0.003,
+            0.005,
+            0.05,
+            0.1,
+            0.2,
+            0.3,
+            0.4,
+            0.5,
+            0.6,
+            0.7,
+            0.8,
+            0.9,
+            0.95,
+            0.99,
+            0.999,
+            0.9999,
+        ]
+        self.param_names = ["sigma"]
+        self.param_map = {"sigma": 0}
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         if offset:
-            return 1., np.min(x) - 1
+            return 1.0, np.min(x) - 1
         else:
-            return 1.
+            return 1.0
 
     def sf(self, x, sigma):
         r"""
@@ -46,7 +59,7 @@ class Rayleigh_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
         beta : numpy array or scalar
@@ -55,7 +68,7 @@ class Rayleigh_(ParametricFitter):
         Returns
         -------
 
-        sf : scalar or numpy array 
+        sf : scalar or numpy array
             The value(s) of the reliability function at x.
 
         Examples
@@ -81,7 +94,7 @@ class Rayleigh_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
         beta : numpy array or scalar
@@ -90,7 +103,7 @@ class Rayleigh_(ParametricFitter):
         Returns
         -------
 
-        sf : scalar or numpy array 
+        sf : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -115,7 +128,7 @@ class Rayleigh_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
         beta : numpy array or scalar
@@ -124,7 +137,7 @@ class Rayleigh_(ParametricFitter):
         Returns
         -------
 
-        cs : scalar or numpy array 
+        cs : scalar or numpy array
             The value(s) of the conditional survival function at x.
 
         Examples
@@ -144,13 +157,14 @@ class Rayleigh_(ParametricFitter):
         Density function for the Weibull Distribution:
 
         .. math::
-            f(x) = \frac{\beta}{\alpha} \frac{x}{\alpha}^{\beta - 1} e^{-\left ( \frac{x}{\alpha} \right )^\beta}
+            f(x) = \frac{\beta}{\alpha} \frac{x}{\alpha}^{\beta - 1} e^{-\left
+            ( \frac{x}{\alpha} \right )^\beta}
 
         Parameters
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
         beta : numpy array or scalar
@@ -159,7 +173,7 @@ class Rayleigh_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the conditional survival function at x.
 
         Examples
@@ -178,13 +192,14 @@ class Rayleigh_(ParametricFitter):
         Instantaneous hazard rate for the Weibull Distribution:
 
         .. math::
-            h(x) = \frac{\beta}{\alpha} \left ( \frac{x}{\alpha} \right )^{\beta - 1}
+            h(x) = \frac{\beta}{\alpha} \left ( \frac{x}{\alpha} \right
+            )^{\beta - 1}
 
         Parameters
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
         beta : numpy array or scalar
@@ -193,7 +208,7 @@ class Rayleigh_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the instantaneous hazard rate at x.
 
         Examples
@@ -218,7 +233,7 @@ class Rayleigh_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
         beta : numpy array or scalar
@@ -227,7 +242,7 @@ class Rayleigh_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the cumulative hazard rate at x.
 
         Examples
@@ -246,7 +261,8 @@ class Rayleigh_(ParametricFitter):
         Quantile function for the Weibull distribution:
 
         .. math::
-            q(p) = \alpha \left ( -\ln \left ( 1 - p \right ) \right )^{1/ \beta}
+            q(p) = \alpha \left ( -\ln \left ( 1 - p \right ) \right )^{1/
+            \beta}
 
         Parameters
         ----------
@@ -261,7 +277,7 @@ class Rayleigh_(ParametricFitter):
         Returns
         -------
 
-        q : scalar or numpy array 
+        q : scalar or numpy array
             The quantiles for the Weibull distribution at each value p
 
         Examples
@@ -272,7 +288,7 @@ class Rayleigh_(ParametricFitter):
         >>> Weibull.qf(p, 3, 4)
         array([1.70919151, 2.06189877, 2.31840554, 2.5362346 , 2.73733292])
         """
-        return sigma * np.sqrt(2 * np.log(1/(1 - p)))
+        return sigma * np.sqrt(2 * np.log(1 / (1 - p)))
 
     def mean(self, sigma):
         r"""
@@ -293,7 +309,7 @@ class Rayleigh_(ParametricFitter):
         Returns
         -------
 
-        mean : scalar or numpy array 
+        mean : scalar or numpy array
             The mean(s) of the Weibull distribution
 
         Examples
@@ -325,7 +341,7 @@ class Rayleigh_(ParametricFitter):
         Returns
         -------
 
-        mean : scalar or numpy array 
+        mean : scalar or numpy array
             The moment(s) of the Weibull distribution
 
         Examples
@@ -334,10 +350,10 @@ class Rayleigh_(ParametricFitter):
         >>> Weibull.moment(2, 3, 4)
         7.976042329074821
         """
-        return (sigma**n) * (2**(n/2)) * gamma_func(1 + n/2)
+        return (sigma**n) * (2 ** (n / 2)) * gamma_func(1 + n / 2)
 
-    def entropy(self, alpha, beta):
-        return euler_gamma / 2 + 1 + np.log(sigma/(np.sqrt(2)))
+    def entropy(self, sigma):
+        return euler_gamma / 2 + 1 + np.log(sigma / (np.sqrt(2)))
 
     def random(self, size, sigma):
         r"""
@@ -357,7 +373,7 @@ class Rayleigh_(ParametricFitter):
         Returns
         -------
 
-        random : scalar or numpy array 
+        random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
 
         Examples
@@ -376,57 +392,64 @@ class Rayleigh_(ParametricFitter):
         """
         U = uniform.rvs(size=size)
         return self.qf(U, sigma)
-    
-    def mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False, offset=False):
-        assert rr in ['x', 'y']
-        x_pp, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+
+    def mpp(
+        self,
+        x,
+        c=None,
+        n=None,
+        heuristic="Nelson-Aalen",
+        rr="y",
+        on_d_is_0=False,
+        offset=False,
+    ):
+        assert rr in ["x", "y"]
+        x_pp, r, d, F = nonp.plotting_positions(
+            x, c=c, n=n, heuristic=heuristic
+        )
 
         if not on_d_is_0:
             x_pp = x_pp[d > 0]
-            F    = F[d > 0]
-        
+            F = F[d > 0]
+
         # Linearise
         y_pp = self.mpp_y_transform(F)
         x_pp = self.mpp_x_transform(x_pp)
 
         # mask = np.isinfinite(y_pp)
         # if mask.any():
-        #     warnings.warn("Some Infinite values encountered in plotting points and have been ignored.", stacklevel=2)
+        #     warnings.warn("Some Infinite values encountered in plotting
+        # points and have been ignored.", stacklevel=2)
         #     y_pp = y_pp[mask]
         #     x_pp = x_pp[mask]
 
         if offset:
-            if   rr == 'y':
+            if rr == "y":
                 params = np.polyfit(x_pp, y_pp, 1)
-                sigma = (np.sqrt(0.5) * (1. / params[0]))
+                sigma = np.sqrt(0.5) * (1.0 / params[0])
                 gamma = -params[1] / params[0]
                 params = [sigma]
-            elif rr == 'x':
+            elif rr == "x":
                 params = np.polyfit(y_pp, x_pp, 1)
                 sigma = np.sqrt(0.5) * (params[0])
                 gamma = params[1]
                 params = [sigma]
 
-            return {
-                "params": params,
-                "gamma": gamma
-            }
+            return {"params": params, "gamma": gamma}
 
         else:
-            if rr == 'y':
-                x_pp = x_pp[:,np.newaxis]
+            if rr == "y":
+                x_pp = x_pp[:, np.newaxis]
                 gradient = np.linalg.lstsq(x_pp, y_pp, rcond=None)[0]
                 sigma = np.sqrt(0.5) * (1 / gradient[0])
-            elif rr == 'x':
-                y_pp = y_pp[:,np.newaxis]
+            elif rr == "x":
+                y_pp = y_pp[:, np.newaxis]
                 gradient = np.linalg.lstsq(y_pp, x_pp, rcond=None)[0]
-                sigma = (np.sqrt(0.5) * (gradient[0]))
-            
+                sigma = np.sqrt(0.5) * (gradient[0])
+
             params = [sigma]
-        
-            return {
-                "params": params
-            }
+
+            return {"params": params}
 
     def mpp_x_transform(self, x):
         return x
@@ -435,13 +458,14 @@ class Rayleigh_(ParametricFitter):
         return x - gamma
 
     def mpp_y_transform(self, y, *params):
-        mask = (y == 0)
+        mask = y == 0
         out = np.zeros_like(y)
-        out[~mask] = np.sqrt(-np.log((1 - y[~mask])))
+        out[~mask] = np.sqrt(-np.log(1 - y[~mask]))
         out[mask] = np.nan
         return out
 
     def mpp_inv_y_transform(self, y, *params):
         return 1 - np.exp(-(y**2))
 
-Rayleigh = Rayleigh_('Rayleigh')
+
+Rayleigh = Rayleigh_("Rayleigh")

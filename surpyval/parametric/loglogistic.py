@@ -1,29 +1,48 @@
-from surpyval import np
 from scipy.stats import uniform
-from numpy import euler_gamma
-from scipy.special import gamma as gamma_func
-from scipy.special import ndtri as z
 
-from surpyval import xcn_handler
-from surpyval import parametric as para
+from surpyval import np
 from surpyval.parametric.parametric_fitter import ParametricFitter
+from surpyval.utils import xcn_handler
+
 
 class LogLogistic_(ParametricFitter):
     def __init__(self, name):
         self.name = name
         self.k = 2
-        self.bounds = ((0, None), (0, None),)
+        self.bounds = (
+            (0, None),
+            (0, None),
+        )
         self.support = (0, np.inf)
-        self.plot_x_scale = 'log'
-        self.y_ticks = [0.0001, 0.0002, 0.0003, 0.001, 0.002, 
-            0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 
-            0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
-            0.9, 0.95, 0.99, 0.999, 0.9999]
-        self.param_names = ['alpha', 'beta']
-        self.param_map = {
-            'alpha' : 0,
-            'beta' : 1
-        }
+        self.plot_x_scale = "log"
+        self.y_ticks = [
+            0.0001,
+            0.0002,
+            0.0003,
+            0.001,
+            0.002,
+            0.003,
+            0.005,
+            0.01,
+            0.02,
+            0.03,
+            0.05,
+            0.1,
+            0.2,
+            0.3,
+            0.4,
+            0.5,
+            0.6,
+            0.7,
+            0.8,
+            0.9,
+            0.95,
+            0.99,
+            0.999,
+            0.9999,
+        ]
+        self.param_names = ["alpha", "beta"]
+        self.param_map = {"alpha": 0, "beta": 1}
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         if offset:
@@ -32,9 +51,9 @@ class LogLogistic_(ParametricFitter):
             flag = (c == 0).astype(int)
             value_range = np.max(x) - np.min(x)
             gamma_init = np.min(x) - value_range / 10
-            return gamma_init, x.sum() / (n * flag).sum(), 2., 1.
+            return gamma_init, x.sum() / (n * flag).sum(), 2.0, 1.0
         else:
-            return self.fit(x, c, n, t, how='MPP').params
+            return self.fit(x, c, n, t, how="MPP").params
             # x, c, n = surpyval.xcn_handler(x, c, n)
             # flag = (c == 0).astype(int)
             # return x.sum() / (n * flag).sum(), 2.
@@ -51,7 +70,7 @@ class LogLogistic_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the LogLogistic distribution
         beta : numpy array or scalar
@@ -60,7 +79,7 @@ class LogLogistic_(ParametricFitter):
         Returns
         -------
 
-        sf : scalar or numpy array 
+        sf : scalar or numpy array
             The value(s) of the reliability function at x.
 
         Examples
@@ -96,7 +115,7 @@ class LogLogistic_(ParametricFitter):
         Returns
         -------
 
-        cs : scalar or numpy array 
+        cs : scalar or numpy array
             The value(s) of the conditional survival function at x.
 
         Examples
@@ -112,7 +131,8 @@ class LogLogistic_(ParametricFitter):
     def ff(self, x, alpha, beta):
         r"""
 
-        Failure (CDF or unreliability) function for the LogLogistic Distribution:
+        Failure (CDF or unreliability) function for the LogLogistic
+        Distribution:
 
         .. math::
             F(x) = \frac{1}{1 + \left ( x /\alpha \right )^{-\beta}}
@@ -121,7 +141,7 @@ class LogLogistic_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the LogLogistic distribution
         beta : numpy array or scalar
@@ -130,7 +150,7 @@ class LogLogistic_(ParametricFitter):
         Returns
         -------
 
-        ff : scalar or numpy array 
+        ff : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -141,7 +161,7 @@ class LogLogistic_(ParametricFitter):
         >>> LogLogistic.ff(x, 3, 4)
         array([0.01219512, 0.16494845, 0.5       , 0.75964392, 0.88526912])
         """
-        return 1. / (1 + (x/alpha)**-beta)
+        return 1.0 / (1 + (x / alpha) ** -beta)
 
     def df(self, x, alpha, beta):
         r"""
@@ -149,13 +169,15 @@ class LogLogistic_(ParametricFitter):
         Density function for the LogLogistic Distribution:
 
         .. math::
-            f(x) = \frac{\left ( \beta / \alpha \right ) \left ( x / \alpha \right )^{\beta - 1}}{\left ( 1 + \left ( x / \alpha \right )^{-\beta} \right )^2}
+            f(x) = \frac{\left ( \beta / \alpha \right ) \left ( x / \alpha
+            \right )^{\beta - 1}}{\left ( 1 + \left ( x / \alpha
+            \right )^{-\beta} \right )^2}
 
         Parameters
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the LogLogistic distribution
         beta : numpy array or scalar
@@ -164,7 +186,7 @@ class LogLogistic_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -175,7 +197,9 @@ class LogLogistic_(ParametricFitter):
         >>> LogLogistic.df(x, 3, 4)
         array([0.0481856 , 0.27548092, 0.33333333, 0.18258504, 0.08125416])
         """
-        return ((beta/alpha)*(x/alpha)**(beta-1.))/((1. + (x/alpha)**beta)**2.)
+        return ((beta / alpha) * (x / alpha) ** (beta - 1.0)) / (
+            (1.0 + (x / alpha) ** beta) ** 2.0
+        )
 
     def hf(self, x, alpha, beta):
         r"""
@@ -189,7 +213,7 @@ class LogLogistic_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the LogLogistic distribution
         beta : numpy array or scalar
@@ -198,7 +222,7 @@ class LogLogistic_(ParametricFitter):
         Returns
         -------
 
-        hf : scalar or numpy array 
+        hf : scalar or numpy array
             The value(s) of the instantaneous hazard rate at x.
 
         Examples
@@ -223,7 +247,7 @@ class LogLogistic_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the LogLogistic distribution
         beta : numpy array or scalar
@@ -232,7 +256,7 @@ class LogLogistic_(ParametricFitter):
         Returns
         -------
 
-        Hf : scalar or numpy array 
+        Hf : scalar or numpy array
             The value(s) of the cumulative hazard rate at x.
 
         Examples
@@ -266,7 +290,7 @@ class LogLogistic_(ParametricFitter):
         Returns
         -------
 
-        q : scalar or numpy array 
+        q : scalar or numpy array
             The quantiles for the LogLogistic distribution at each value p
 
         Examples
@@ -277,7 +301,7 @@ class LogLogistic_(ParametricFitter):
         >>> LogLogistic.qf(p, 3, 4)
         array([1.73205081, 2.12132034, 2.42732013, 2.71080601, 3.        ])
         """
-        return alpha * (p/(1 - p))**(1./beta)
+        return alpha * (p / (1 - p)) ** (1.0 / beta)
 
     def mean(self, alpha, beta):
         r"""
@@ -298,7 +322,7 @@ class LogLogistic_(ParametricFitter):
         Returns
         -------
 
-        mean : scalar or numpy array 
+        mean : scalar or numpy array
             The mean(s) of the LogLogistic distribution
 
         Examples
@@ -308,7 +332,7 @@ class LogLogistic_(ParametricFitter):
         3
         """
         if beta > 1:
-            return (alpha * np.pi / beta) / (np.sin(np.pi/beta))
+            return (alpha * np.pi / beta) / (np.sin(np.pi / beta))
         else:
             return np.nan
 
@@ -330,7 +354,7 @@ class LogLogistic_(ParametricFitter):
         Returns
         -------
 
-        random : scalar or numpy array 
+        random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
 
         Examples
@@ -354,22 +378,23 @@ class LogLogistic_(ParametricFitter):
         return np.log(x - gamma)
 
     def mpp_y_transform(self, y, *params):
-        mask = ((y == 0) | (y == 1))
+        mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
-        out[~mask] = -np.log(1./y[~mask] - 1)
+        out[~mask] = -np.log(1.0 / y[~mask] - 1)
         out[mask] = np.nan
         return out
 
     def mpp_inv_y_transform(self, y, *params):
-        return 1./(np.exp(-y) + 1)
+        return 1.0 / (np.exp(-y) + 1)
 
     def unpack_rr(self, params, rr):
-        if rr == 'y':
-            beta  = params[0]
-            alpha = np.exp(params[1]/-beta)
-        elif rr == 'x':
-            beta  = 1./params[0]
+        if rr == "y":
+            beta = params[0]
+            alpha = np.exp(params[1] / -beta)
+        elif rr == "x":
+            beta = 1.0 / params[0]
             alpha = np.exp(params[1] / (beta * params[0]))
         return alpha, beta
 
-LogLogistic = LogLogistic_('LogLogistic')
+
+LogLogistic = LogLogistic_("LogLogistic")

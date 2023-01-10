@@ -1,9 +1,10 @@
 from autograd import numpy as np
 
-class DualPower_():
+
+class DualPower_:
     def __init__(self):
-        self.name = 'DualPower'
-        self.phi_param_map = {'c' : 0, 'm' : 1, 'n' : 2}
+        self.name = "DualPower"
+        self.phi_param_map = {"c": 0, "m": 1, "n": 2}
         self.phi_bounds = ((0, None), (None, None), (None, None))
 
     def phi(self, Z, *params):
@@ -21,5 +22,6 @@ class DualPower_():
         y = np.log(life)
         c, m, n = np.linalg.lstsq(A, y, rcond=None)[0]
         return [np.exp(c), m, n]
+
 
 DualPower = DualPower_()

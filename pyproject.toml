@@ -1,0 +1,22 @@
+# For Black pre-commit hook
+[tool.black]
+line-length = 79
+
+# So isort is compatible with black
+[tool.isort]
+profile = "black"
+
+# For mypy to better analyse numpy type hints
+[mypy]
+plugins = "numpy.typing.mypy_plugin"
+
+# Coverage
+[tool.coverage.run]
+source = ["repyability"]
+
+# Flake8
+[tool.flake8]
+ignore = ['E203', 'W503', 'E741']
+per-file-ignores = [
+    '*/__init__.py:F401',
+]

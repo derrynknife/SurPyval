@@ -71,6 +71,28 @@ model.plot();
 
 SurPyval is well documented, and improving, at the main [documentation](https://surpyval.readthedocs.io/en/latest/).
 
+# Development
+## Dependencies
+```pip install -r requirements_dev.txt```
+
+## Testing
+Run the testing suite by simply executing:
+```bash
+pytest
+```
+or use coverage to get a coverage report:
+```bash
+coverage run -m pytest  # Run pytest under coverage's watch
+coverage report         # Print coverage report
+coverage html           # Make a html coverage report (really useful), open htmlcov/index.html
+```
+
+## Pre-commit
+- Pip install `pre-commit` (it's in `requirements_dev.txt` anyways)
+- Run `pre-commit install` which sets up the git hook scripts
+- If you'd like, run `pre-commit run --all-files` to run the hooks on all files
+- When you go to commit, it will only proceed after all the hooks succeed
+
 
 # Contact
 

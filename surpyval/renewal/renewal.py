@@ -1,7 +1,9 @@
 from collections import defaultdict
+
 import numpy as np
 
-class Renewal():
+
+class Renewal:
     def __init__(self, model):
         self.model = model
 
@@ -18,19 +20,18 @@ class Renewal():
         while counted < N:
             try:
                 xi = x.pop()
-            except:
+            except Exception:
                 # For now, assume 2 events in the window
                 x = self.model.random(2 * N).tolist()
                 xi = x.pop()
-        
+
             running += xi
-            
+
             if running > T:
                 running = 0
                 counted += 1
             else:
                 aggregate_timeline[running] += 1
-
 
         timeline_arr = np.array(list(aggregate_timeline.items()))
         timeline_arr = timeline_arr[timeline_arr[:, 0].argsort()]
@@ -38,7 +39,10 @@ class Renewal():
         timeline_arr[:, 1] = (timeline_arr[:, 1] / N).cumsum()
         timeline = timeline_arr[:, 0]
         exp_n = timeline_arr[:, 1]
-        cif = lambda x: np.interp(x, timeline, exp_n)
+
+        def cif(x):
+            return np.interp(x, timeline, exp_n)
+
         self._cif = cif
 
     def reset(self):

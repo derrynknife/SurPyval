@@ -1,5 +1,6 @@
 from surpyval import np
 
+
 def pass_through(x):
     return x
 
@@ -24,6 +25,7 @@ def bounds_convert(x, bounds):
     funcs = []
     inv_f = []
     for i, (lower, upper) in enumerate(bounds):
+
         def add_to_funcs(low, upp, i):
             if (low is None) and (upp is None):
                 funcs.append(lambda x: pass_through(x))
@@ -32,15 +34,16 @@ def bounds_convert(x, bounds):
                 D = 10
                 funcs.append(lambda x: D * np.arctanh((2 * x) - 1))
                 inv_f.append(lambda x: (np.tanh(x / D) + 1) / 2)
-            elif (upp is None):
+            elif upp is None:
                 funcs.append(lambda x: (inv_adj_relu(x - low)))
                 inv_f.append(lambda x: (adj_relu(x) + low))
-            elif (low is None):
+            elif low is None:
                 funcs.append(lambda x: inv_rev_adj_relu(x - np.copy(upp)))
                 inv_f.append(lambda x: np.copy(upp) + rev_adj_relu(x))
             else:
                 funcs.append(lambda x: pass_through(x))
                 inv_f.append(lambda x: pass_through(x))
+
         add_to_funcs(lower, upper, i)
 
     def transform(params):

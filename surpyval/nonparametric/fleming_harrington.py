@@ -1,11 +1,12 @@
 import numpy as np
+
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 
 def fh_h(r_i, d_i):
     out = 0
     while d_i > 1:
-        out += 1. / r_i
+        out += 1.0 / r_i
         r_i -= 1
         d_i -= 1
     out += d_i / r_i
@@ -41,8 +42,9 @@ class FlemingHarrington_(NonParametricFitter):
     >>> model.R
     array([0.81873075, 0.63762815, 0.45688054, 0.27711205, 0.10194383])
     """
+
     def __init__(self):
-        self.how = 'Fleming-Harrington'
+        self.how = "Fleming-Harrington"
 
 
 FlemingHarrington = FlemingHarrington_()

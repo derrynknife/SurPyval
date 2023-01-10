@@ -1,17 +1,21 @@
-import autograd.numpy as np
-from autograd import jacobian, hessian, elementwise_grad
-from scipy.optimize import minimize
-import surpyval
 import inspect
+
+import autograd.numpy as np
+from scipy.optimize import minimize
+
+import surpyval
 
 from ..parametric.fitters import bounds_convert, fix_idx_and_function
 from .regression import Regression
 
-class AcceleratedFailureTimeFitter():
+
+class AcceleratedFailureTimeFitter:
     def __init__(self, name, distribution, acc_model):
 
-        if str(inspect.signature(acc_model.phi)) != '(Z, *params)':
-            raise ValueError('PH function must have the signature \'(Z, *params)\'')
+        if str(inspect.signature(acc_model.phi)) != "(Z, *params)":
+            raise ValueError(
+                "PH function must have the signature '(Z, *params)'"
+            )
 
         self.name = name
         self.dist = distribution
@@ -20,7 +24,7 @@ class AcceleratedFailureTimeFitter():
         self.bounds = self.dist.bounds
         self.support = self.dist.support
         self.param_names = self.dist.param_names
-        self.param_map = {v : i for i, v in enumerate(self.dist.param_names)}
+        self.param_map = {v: i for i, v in enumerate(self.dist.param_names)}
         self.phi = acc_model.phi
         self.Hf_dist = self.dist.Hf
         self.hf_dist = self.dist.hf
@@ -29,13 +33,13 @@ class AcceleratedFailureTimeFitter():
         self.df_dist = self.dist.df
 
     def Hf(self, x, Z, *params):
-        dist_params = np.array(params[0:self.k_dist])
-        phi_params = np.array(params[self.k_dist:])
+        dist_params = np.array(params[0 : self.k_dist])
+        phi_params = np.array(params[self.k_dist :])
         return self.Hf_dist(self.phi(Z, *phi_params) * x, *dist_params)
 
     def hf(self, x, Z, *params):
-        dist_params = np.array(params[0:self.k_dist])
-        phi_params = np.array(params[self.k_dist:])
+        dist_params = np.array(params[0 : self.k_dist])
+        phi_params = np.array(params[self.k_dist :])
         return self.hf_dist(self.phi(Z, *phi_params) * x, *dist_params)
 
     def df(self, x, Z, *params):
@@ -53,11 +57,11 @@ class AcceleratedFailureTimeFitter():
             if (low is None) & (high is None):
                 out.append(0)
             elif high is None:
-                out.append(low + 1.)
+                out.append(low + 1.0)
             elif low is None:
-                out.append(high - 1.)
+                out.append(high - 1.0)
             else:
-                out.append((high + low)/2.)
+                out.append((high + low) / 2.0)
 
         return out
 
@@ -65,9 +69,6 @@ class AcceleratedFailureTimeFitter():
         return y
 
     def mpp_y_transform(self, y, *params):
-        return y
-
-    def mpp_inv_y_transform(self, y, *params):
         return y
 
     def mpp_x_transform(self, x, gamma=0):
@@ -86,46 +87,57 @@ class AcceleratedFailureTimeFitter():
         params = np.array(params)
 
         like = np.zeros_like(x).astype(float)
-        like = np.where(c ==  0, self.log_df(x, Z, *params), like)
-        like = np.where(c ==  1, self.log_sf(x, Z, *params), like)
-        like = np.where(c ==  -1, self.log_ff(x, Z, *params), like)
+        like = np.where(c == 0, self.log_df(x, Z, *params), like)
+        like = np.where(c == 1, self.log_sf(x, Z, *params), like)
+        like = np.where(c == -1, self.log_ff(x, Z, *params), like)
 
         like = np.multiply(n, like)
         return -np.sum(like)
 
     def random(self, size, Z, *params):
-        dist_params = np.array(params[0:self.k_dist])
-        phi_params = np.array(params[self.k_dist:])
+        dist_params = np.array(params[0 : self.k_dist])
+        phi_params = np.array(params[self.k_dist :])
 
         x = []
         Z_out = []
 
         for stress in np.unique(Z):
             U = np.random.uniform(0, 1, size)
-            x.append(self.dist.qf(U, *dist_params)/self.phi(stress, *phi_params))
+            x.append(
+                self.dist.qf(U, *dist_params) / self.phi(stress, *phi_params)
+            )
             Z_out.append(np.ones(size) * stress)
         return np.concatenate(x), np.concatenate(Z_out)
 
     def fit(self, Z, x, c=None, n=None, t=None, init=[], fixed={}):
-        x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t, group_and_sort=False)
+        x, c, n, t = surpyval.xcnt_handler(
+            x=x, c=c, n=n, t=t, group_and_sort=False
+        )
 
         if init == []:
             stress_data = np.unique(Z, axis=0)
             params_at_Z = []
             for s in stress_data:
-                params_at_Z.append(self.dist.fit(x[Z == s], c[Z == s], n[Z == s]).params)
+                params_at_Z.append(
+                    self.dist.fit(x[Z == s], c[Z == s], n[Z == s]).params
+                )
 
             params_at_Z = np.array(params_at_Z)
             dist_init = params_at_Z.mean(axis=0)
 
-            acc_parameter_data = params_at_Z[:, self.param_map[self.fixed_parameter]]
-            acc_parameter_data = self.acc_parameter_relationship(acc_parameter_data)
+            acc_parameter_data = params_at_Z[
+                :, self.param_map[self.fixed_parameter]
+            ]
+            acc_parameter_data = self.acc_parameter_relationship(
+                acc_parameter_data
+            )
 
             if callable(self.acc_model.phi_init):
-                phi_init = self.acc_model.phi_init(acc_parameter_data, stress_data)
+                phi_init = self.acc_model.phi_init(
+                    acc_parameter_data, stress_data
+                )
             else:
                 phi_init = self.acc_model.phi_init
-
 
             init = np.array([*dist_init, *phi_init])
         else:
@@ -145,20 +157,28 @@ class AcceleratedFailureTimeFitter():
         else:
             phi_param_map = self.acc_model.phi_param_map
 
-        param_map = {**self.param_map, **{k : v + len(self.param_map) for k, v in phi_param_map.items()}}
+        param_map = {
+            **self.param_map,
+            **{k: v + len(self.param_map) for k, v in phi_param_map.items()},
+        }
 
         transform, inv_trans, funcs, inv_f = bounds_convert(x, bounds)
-        const, fixed_idx, not_fixed = fix_idx_and_function(fixed, param_map, funcs)
+        const, fixed_idx, not_fixed = fix_idx_and_function(
+            fixed, param_map, funcs
+        )
 
         init = transform(init)[not_fixed]
 
-        with np.errstate(all='ignore'):
-            fun  = lambda params : self.neg_ll(Z, x, c, n, *inv_trans(const(params)))
+        with np.errstate(all="ignore"):
+
+            def fun(params):
+                return self.neg_ll(Z, x, c, n, *inv_trans(const(params)))
+
             # fun  = lambda params : self.neg_ll(Z, x, c, n, *params)
             # jac = jacobian(fun)
             # hess = hessian(fun)
             res = minimize(fun, init)
-            res = minimize(fun, res.x, method='TNC')
+            res = minimize(fun, res.x, method="TNC")
             # res = minimize(fun, init, jac=jac, method='BFGS')
             # res = minimize(fun, init, method='Newton-CG', jac=jac)
 
@@ -170,16 +190,11 @@ class AcceleratedFailureTimeFitter():
         model.distribution = self.dist
         model.params = np.array(params)
         model.res = res
-        model._neg_ll = res['fun']
+        model._neg_ll = res["fun"]
         model.fixed = self.fixed
         model.k_dist = self.k_dist
         model.k = len(bounds)
 
-        model.data = {
-            'x' : x,
-            'c' : c,
-            'n' : n,
-            't' : t
-        }
+        model.data = {"x": x, "c": c, "n": n, "t": t}
 
         return model

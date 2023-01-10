@@ -1,11 +1,12 @@
 import numpy as np
+
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 
 def kaplan_meier(r, d):
     R = 1 - (d / r)
     R[np.isnan(R)] = 0
-    old_err_state = np.seterr(under='raise')
+    old_err_state = np.seterr(under="raise")
 
     try:
         R = np.cumprod(R)
@@ -35,8 +36,9 @@ class KaplanMeier_(NonParametricFitter):
     >>> model.R
     array([0.8, 0.6, 0.4, 0.2, 0. ])
     """
+
     def __init__(self):
-        self.how = 'Kaplan-Meier'
+        self.how = "Kaplan-Meier"
 
 
 KaplanMeier = KaplanMeier_()

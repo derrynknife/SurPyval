@@ -1,9 +1,10 @@
 import numpy as np
+
 from surpyval import nonparametric as nonp
 from surpyval.utils import xcnt_handler, xcnt_to_xrd, xrd_handler
 
 
-class NonParametricFitter():
+class NonParametricFitter:
     def _create_non_p_model(self, x, r, d, estimator, data=None):
         out = nonp.NonParametric()
         if data is not None:
@@ -14,23 +15,32 @@ class NonParametricFitter():
         out.R = nonp.FIT_FUNCS[estimator](r, d)
         out.model = self.how
         out.F = 1 - out.R
-        with np.errstate(all='ignore'):
+        with np.errstate(all="ignore"):
             out.H = -np.log(out.R)
 
         out.greenwood = self._compute_var(out.R, r, d)
         return out
 
     def _compute_var(self, R, r, d):
-        with np.errstate(all='ignore'):
+        with np.errstate(all="ignore"):
             var = d / (r * (r - d))
             var = np.where(np.isfinite(var), var, np.nan)
             greenwood = np.cumsum(var)
         return greenwood
 
-    def fit(self, x=None, c=None, n=None, t=None,
-            xl=None, xr=None, tl=None, tr=None,
-            turnbull_estimator='Fleming-Harrington',
-            set_lower_limit=None):
+    def fit(
+        self,
+        x=None,
+        c=None,
+        n=None,
+        t=None,
+        xl=None,
+        xr=None,
+        tl=None,
+        tr=None,
+        turnbull_estimator="Fleming-Harrington",
+        set_lower_limit=None,
+    ):
         r"""
 
         The central feature to SurPyval's capability. This function aimed to
@@ -110,18 +120,18 @@ class NonParametricFitter():
         Model            : Turnbull
         Estimator        : Kaplan-Meier
         """
-        x, c, n, t = xcnt_handler(x=x, c=c, n=n, t=t,
-                                  tl=tl, tr=tr,
-                                  xl=xl, xr=xr)
+        x, c, n, t = xcnt_handler(
+            x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
+        )
 
         data = {}
-        data['x'] = x
-        data['c'] = c
-        data['n'] = n
-        data['t'] = t
+        data["x"] = x
+        data["c"] = c
+        data["n"] = n
+        data["t"] = t
 
-        if self.how == 'Turnbull':
-            data['estimator'] = turnbull_estimator
+        if self.how == "Turnbull":
+            data["estimator"] = turnbull_estimator
             out = nonp.NonParametric()
             t_obj = nonp.turnbull(x, c, n, t, turnbull_estimator)
             for k, v in t_obj.items():
@@ -139,8 +149,9 @@ class NonParametricFitter():
             r = np.hstack([[r[0]], r])
             d = np.hstack([[0], d])
 
-        return self._create_non_p_model(x, r, d, estimator=estimator,
-                                        data=data)
+        return self._create_non_p_model(
+            x, r, d, estimator=estimator, data=data
+        )
 
     def from_xrd(self, x, r, d):
         r"""
@@ -185,7 +196,7 @@ class NonParametricFitter():
         =============================
         Model            : Nelson-Aalen
         """
-        if self.how == 'Turnbull':
+        if self.how == "Turnbull":
             raise ValueError("Can't use from_xrd with Turnbull estimator")
 
         x, r, d = xrd_handler(x, r, d)

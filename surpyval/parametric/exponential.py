@@ -1,15 +1,13 @@
-from surpyval import np
-from scipy.stats import uniform
-from scipy.special import ndtri as z
-
-from surpyval import xcn_handler
-from surpyval import nonparametric as nonp
-from surpyval import parametric as para
-from surpyval.parametric.parametric_fitter import ParametricFitter
-from scipy.special import factorial
-from .fitters.mpp import mpp
-
 import warnings
+
+from scipy.special import factorial
+from scipy.special import ndtri as z
+from scipy.stats import uniform
+
+from surpyval import nonparametric as nonp
+from surpyval import np
+from surpyval.parametric.parametric_fitter import ParametricFitter
+
 
 class Exponential_(ParametricFitter):
     r"""
@@ -21,24 +19,36 @@ class Exponential_(ParametricFitter):
         from surpyval import Exponential
 
     """
+
     def __init__(self, name):
         self.name = name
         self.k = 1
         self.bounds = ((0, None),)
         self.support = (0, np.inf)
-        self.plot_x_scale = 'linear'
-        self.y_ticks = [0.05, 0.4, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999, 0.9999]
-        self.param_names = ['lambda']
+        self.plot_x_scale = "linear"
+        self.y_ticks = [
+            0.05,
+            0.4,
+            0.6,
+            0.7,
+            0.8,
+            0.9,
+            0.95,
+            0.99,
+            0.999,
+            0.9999,
+        ]
+        self.param_names = ["lambda"]
         self.param_map = {
-            'lambda' : 0,
+            "lambda": 0,
         }
 
     def _parameter_initialiser(self, x, c=None, n=None, offset=False):
         # x, c, n = xcn_handler(x, c, n)
         # c = (c == 0).astype(np.int64)
-        rate = 1./x[np.isfinite(x)].mean()
+        rate = 1.0 / x[np.isfinite(x)].mean()
         if offset:
-            return np.min(x) - (np.max(x) - np.min(x))/10., rate
+            return np.min(x) - (np.max(x) - np.min(x)) / 10.0, rate
         else:
             return np.array([rate])
 
@@ -54,15 +64,18 @@ class Exponential_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
 
         Returns
         -------
 
-        sf : scalar or numpy array 
-            The scalar value of the survival function of the distribution if a scalar was passed. If an array like object was passed then a numpy array is returned with the value of the survival function at each corresponding value in the input array.
+        sf : scalar or numpy array
+            The scalar value of the survival function of the distribution if a
+            scalar was passed. If an array like object was passed then a numpy
+            array is returned with the value of the survival function at each
+            corresponding value in the input array.
 
         Examples
         --------
@@ -83,7 +96,8 @@ class Exponential_(ParametricFitter):
         .. math::
             R(x) = e^{-\lambda x}
 
-        The Exponential distribution is memoryless, and hence is the same as the regular survival distribution.
+        The Exponential distribution is memoryless, and hence is the same as
+        the regular survival distribution.
 
         Parameters
         ----------
@@ -98,7 +112,7 @@ class Exponential_(ParametricFitter):
         Returns
         -------
 
-        cs : scalar or numpy array 
+        cs : scalar or numpy array
             the conditional survival probability.
 
         Examples
@@ -115,7 +129,8 @@ class Exponential_(ParametricFitter):
     def ff(self, x, failure_rate):
         r"""
 
-        CDF (or unreliability or failure) function for the Exponential Distribution:
+        CDF (or unreliability or failure) function for the Exponential
+        Distribution:
 
         .. math::
             F(x) = 1 - e^{-\lambda x}
@@ -124,14 +139,14 @@ class Exponential_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
 
         Returns
         -------
 
-        ff : scalar or numpy array 
+        ff : scalar or numpy array
             The value(s) of the CDF for each value of x.
 
         Examples
@@ -156,14 +171,14 @@ class Exponential_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
 
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The density of the Exponential distribution for each value of x.
 
         Examples
@@ -185,21 +200,23 @@ class Exponential_(ParametricFitter):
         .. math::
             f(x) = \lambda
 
-        The failure rate for the exponential distribution is constant. So this function only returns the input failure rate in the same shape as x.
+        The failure rate for the exponential distribution is constant. So this
+        function only returns the input failure rate in the same shape as x.
 
         Parameters
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
 
         Returns
         -------
 
-        hf : scalar or numpy array 
-            The instantaneous hazard rate of the Exponential distribution for each value of x.
+        hf : scalar or numpy array
+            The instantaneous hazard rate of the Exponential distribution for
+            each value of x.
 
         Examples
         --------
@@ -223,15 +240,16 @@ class Exponential_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
 
         Returns
         -------
 
-        hf : scalar or numpy array 
-            The cumulative hazard rate of the Exponential distribution for each value of x.
+        hf : scalar or numpy array
+            The cumulative hazard rate of the Exponential distribution for each
+            value of x.
 
         Examples
         --------
@@ -255,14 +273,14 @@ class Exponential_(ParametricFitter):
         ----------
 
         p : numpy array or scalar
-            The percentiles at which the quantile will be calculated 
+            The percentiles at which the quantile will be calculated
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
 
         Returns
         -------
 
-        q : scalar or numpy array 
+        q : scalar or numpy array
             The quantiles for the Exponential distribution at each value p.
 
         Examples
@@ -273,12 +291,13 @@ class Exponential_(ParametricFitter):
         >>> Exponential.qf(p, 3)
         array([0.76752836, 0.5364793 , 0.40132427, 0.30543024, 0.23104906])
         """
-        return -np.log(p)/failure_rate
+        return -np.log(p) / failure_rate
 
     def mean(self, failure_rate):
         r"""
 
-        Calculates the mean of the Exponential distribution with given parameters.
+        Calculates the mean of the Exponential distribution with given
+        parameters.
 
         .. math::
             E = \frac{1}{\lambda}
@@ -292,8 +311,8 @@ class Exponential_(ParametricFitter):
         Returns
         -------
 
-        mean : scalar or numpy array 
-            The mean(s) of the Exponential distribution 
+        mean : scalar or numpy array
+            The mean(s) of the Exponential distribution
 
         Examples
         --------
@@ -301,7 +320,7 @@ class Exponential_(ParametricFitter):
         >>> Exponential.mean(3)
         0.3333333333333333
         """
-        return 1. / failure_rate
+        return 1.0 / failure_rate
 
     def moment(self, n, failure_rate):
         r"""
@@ -322,7 +341,7 @@ class Exponential_(ParametricFitter):
         Returns
         -------
 
-        moment : scalar or numpy array 
+        moment : scalar or numpy array
             The moment(s) of the Exponential distribution
 
         Examples
@@ -331,7 +350,7 @@ class Exponential_(ParametricFitter):
         >>> Exponential.moment(2, 3)
         0.2222222222222222
         """
-        return factorial(n) / (failure_rate ** n)
+        return factorial(n) / (failure_rate**n)
 
     def entropy(self, failure_rate):
         r"""
@@ -350,7 +369,7 @@ class Exponential_(ParametricFitter):
         Returns
         -------
 
-        entropy : scalar or numpy array 
+        entropy : scalar or numpy array
             The entropy(ies) of the Exponential distribution
 
         Examples
@@ -377,7 +396,7 @@ class Exponential_(ParametricFitter):
         Returns
         -------
 
-        random : scalar or numpy array 
+        random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
 
         Examples
@@ -401,7 +420,7 @@ class Exponential_(ParametricFitter):
         return x - gamma
 
     def mpp_y_transform(self, y, *params):
-        mask = ((y == 0) | (y == 1))
+        mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
         out[~mask] = -np.log(1 - y[~mask])
         out[mask] = np.nan
@@ -410,46 +429,65 @@ class Exponential_(ParametricFitter):
     def mpp_inv_y_transform(self, y, *params):
         return 1 - np.exp(y)
 
-    def mpp(self, x, c=None, n=None, heuristic="Nelson-Aalen", rr='y', on_d_is_0=False, offset=False):
-        assert rr in ['x', 'y']
-        x_pp, r, d, F = nonp.plotting_positions(x, c=c, n=n, heuristic=heuristic)
+    def mpp(
+        self,
+        x,
+        c=None,
+        n=None,
+        heuristic="Nelson-Aalen",
+        rr="y",
+        on_d_is_0=False,
+        offset=False,
+    ):
+        assert rr in ["x", "y"]
+        x_pp, r, d, F = nonp.plotting_positions(
+            x, c=c, n=n, heuristic=heuristic
+        )
 
         if not on_d_is_0:
             x_pp = x_pp[d > 0]
-            F    = F[d > 0]
-        
+            F = F[d > 0]
+
         # Linearise
         y_pp = self.mpp_y_transform(F)
 
         mask = np.isfinite(y_pp)
         if mask.any():
-            warnings.warn("Some Infinite values encountered in plotting points and have been ignored.", stacklevel=2)
+            warnings.warn(
+                "Some Infinite values encountered in plotting points and have \
+                been ignored.",
+                stacklevel=2,
+            )
             y_pp = y_pp[mask]
             x_pp = x_pp[mask]
 
         if offset:
-            if   rr == 'y':
+            if rr == "y":
                 params = np.polyfit(x_pp, y_pp, 1)
-            elif rr == 'x':
+            elif rr == "x":
                 params = np.polyfit(y_pp, x_pp, 1)
             failure_rate = params[0]
-            offset = -params[1] * (1./failure_rate)
+            offset = -params[1] * (1.0 / failure_rate)
             return tuple([offset, failure_rate])
         else:
-            if   rr == 'y':
-                x_pp = x_pp[:,np.newaxis]
+            if rr == "y":
+                x_pp = x_pp[:, np.newaxis]
                 failure_rate = np.linalg.lstsq(x_pp, y_pp, rcond=None)[0]
-            elif rr == 'x':
-                y_pp = y_pp[:,np.newaxis]
+            elif rr == "x":
+                y_pp = y_pp[:, np.newaxis]
                 mttf = np.linalg.lstsq(y_pp, x_pp, rcond=None)[0]
-                failure_rate = 1. / mttf
+                failure_rate = 1.0 / mttf
             return tuple([failure_rate[0]])
 
     def lambda_cb(self, x, failure_rate, cv_matrix, alpha_ci=0.05):
-        return failure_rate * np.exp(np.array([-1, 1]).reshape(2, 1) * (z(alpha_ci/2) * 
-                                    np.sqrt(cv_matrix.item()) / failure_rate))
+        return failure_rate * np.exp(
+            np.array([-1, 1]).reshape(2, 1)
+            * (z(alpha_ci / 2) * np.sqrt(cv_matrix.item()) / failure_rate)
+        )
 
     # def R_cb(self, x, failure_rate, cv_matrix, alpha_ci=0.05):
-        # return np.exp(-self.lambda_cb(x, failure_rate, cv_matrix, alpha_ci=alpha_ci) * x).T
+    # return np.exp(-self.lambda_cb(x, failure_rate, cv_matrix,
+    # alpha_ci=alpha_ci) * x).T
 
-Exponential = Exponential_('Exponential')
+
+Exponential = Exponential_("Exponential")

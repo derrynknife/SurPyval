@@ -1,9 +1,11 @@
-from surpyval import np
 from autograd import elementwise_grad
+
 import surpyval as surv
+from surpyval import np
 from surpyval import parametric as p
 
-class ParallelModel(object):
+
+class ParallelModel:
     def __or__(self, other):
         if type(other) == surv.Parametric:
             return p.SeriesModel([*self.models, other])

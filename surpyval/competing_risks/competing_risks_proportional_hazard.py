@@ -1,29 +1,27 @@
 """
-This code was created for and sponsored by Cartiga (www.cartiga.com). 
-Cartiga makes no representations or warranties in connection with the code 
-and waives any and all liability in connection therewith. Your use of the 
+This code was created for and sponsored by Cartiga (www.cartiga.com).
+Cartiga makes no representations or warranties in connection with the code
+and waives any and all liability in connection therewith. Your use of the
 code constitutes acceptance of these terms.
 
 Copyright 2022 Cartiga LLC
 """
 
 import numpy as np
-from .fine_gray import FineGray
-from surpyval import CoxPH
-from surpyval.utils import _get_idx
-from surpyval.utils import (
-    validate_fine_gray_inputs, 
-    _scale
-)
-from scipy.optimize import minimize
 
-class CompetingRiskProportionalHazard():
+from surpyval import CoxPH
+from surpyval.utils import _get_idx, _scale, validate_fine_gray_inputs
+
+from .fine_gray import FineGray
+
+
+class CompetingRiskProportionalHazard:
     """
     TODO: Time-Varying Implementation
     TODO: Change this to SemiParametricCompetingRiskProportionalHazard ??
     """
 
-    def _f(self, arr, x, Z, event=None, interp='step'):
+    def _f(self, arr, x, Z, event=None, interp="step"):
         idx, rev = _get_idx(self.x, x)
 
         if event is not None and event not in self.event_idx_map:
@@ -35,21 +33,22 @@ class CompetingRiskProportionalHazard():
             e_i = self.event_idx_map.get(event, None)
             return (arr[e_i, idx] * self.phi_e(Z, e_i))[rev]
 
-    def hf(self, x, Z, event=None, interp='step'):
+    def hf(self, x, Z, event=None, interp="step"):
         return self._f(self.h0_e, x, Z, event=event, interp=interp)
 
-    def Hf(self, x, Z, event=None, interp='step'):
+    def Hf(self, x, Z, event=None, interp="step"):
         return self._f(self.H0_e, x, Z, event=event, interp=interp)
 
-    def sf(self, x, Z, event=None, interp='step'):
+    def sf(self, x, Z, event=None, interp="step"):
         return np.exp(-self.Hf(x, Z, event=event, interp=interp))
 
-    def ff(self, x, Z, event=None, interp='step'):
+    def ff(self, x, Z, event=None, interp="step"):
         return 1 - self.sf(x, Z, event=event, interp=interp)
 
-    def df(self, x, Z, event=None, interp='step'):
-        return (self.hf(x, Z, event=event, interp=interp)
-                * self.sf(x, Z, event=event, interp=interp))
+    def df(self, x, Z, event=None, interp="step"):
+        return self.hf(x, Z, event=event, interp=interp) * self.sf(
+            x, Z, event=event, interp=interp
+        )
 
     def cif(self, x, Z, event):
         # Index and reverse index
@@ -62,31 +61,31 @@ class CompetingRiskProportionalHazard():
         # iif = instantaneous incidence function
         iif = lambda_e * S
         cif = iif.cumsum()
-        
+
         return cif[idx][rev]
 
-    
     @classmethod
     def cox_risk_set_indices(cls, x_i, e_i, x, e):
-        return (x >= x_i)
+        return x >= x_i
 
     @classmethod
     def fine_gray_risk_set_indices(cls, x_i, e_i, x, e):
-        return ((x >= x_i) | (e != e_i))
+        return (x >= x_i) | (e != e_i)
 
     @classmethod
-    def partial_log_like(cls, beta, x, c, n, Z, e, 
-                         event, how='Cox', scale=False):
+    def partial_log_like(
+        cls, beta, x, c, n, Z, e, event, how="Cox", scale=False
+    ):
         """
         This is the Breslow implementation
-        TODO: 
+        TODO:
         - Efron, and
         - Kalbfleisch and Prentice (This is what we need!)
         """
         # print(beta)
-        if how == 'Cox':
+        if how == "Cox":
             risk_set_indices = cls.cox_risk_set_indices
-        elif how == 'Fine-Gray':
+        elif how == "Fine-Gray":
             risk_set_indices = cls.fine_gray_risk_set_indices
         N = len(x)
 
@@ -98,7 +97,7 @@ class CompetingRiskProportionalHazard():
                 continue
             elif e[i] != event:
                 continue
-            # This is the key insight: 
+            # This is the key insight:
             # all non e failures are still at risk!
             at_risk = risk_set_indices(x_i, event, x, e)
             Z_ri = Z[at_risk, :]
@@ -136,8 +135,8 @@ class CompetingRiskProportionalHazard():
     @classmethod
     def fit(cls, x, Z, e, c=None, n=None, how="Cox", tie_method="efron"):
         r"""
-        This function aimed to have an API to mimic the simplicity 
-        of the scipy API. That is, to use a simple :code:`fit()` call, 
+        This function aimed to have an API to mimic the simplicity
+        of the scipy API. That is, to use a simple :code:`fit()` call,
         with as many or as few parameters as are needed.
 
         API is plaigiarised from surpyval (which I also authored :) )
@@ -150,7 +149,7 @@ class CompetingRiskProportionalHazard():
 
         Z : ndarray like
             Array of covariates for each random variable, x.
-        
+
         e : array like
             Array of events that corresponds to each x.
 
@@ -166,7 +165,7 @@ class CompetingRiskProportionalHazard():
             observation is 1.
 
         method : str, optional
-            String which declares method which is used to estimate the 
+            String which declares method which is used to estimate the
             baseline survival function. Can be either 'Nelson-Aalen' or
             'Kaplan-Meier'. Default is 'Nelson-Aalen'.
 
@@ -180,7 +179,7 @@ class CompetingRiskProportionalHazard():
         Examples
         --------
         >>> from cartiga import CRPH
-        
+
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 
@@ -190,7 +189,7 @@ class CompetingRiskProportionalHazard():
 
         n_event_types = len(unique_e)
 
-        event_idx_map = {state : i for i, state in enumerate(unique_e)}
+        event_idx_map = {state: i for i, state in enumerate(unique_e)}
 
         betas = np.zeros((len(unique_e), Z.shape[1]))
         unique_x = np.unique(x)
@@ -204,26 +203,28 @@ class CompetingRiskProportionalHazard():
         model.event_idx_map = event_idx_map
         model.how = how
 
-        if how == 'Cox':
+        if how == "Cox":
             # The Cox method is just assuming the other methods
             # are right censored.
             results = []
             for i, event in enumerate(unique_e):
                 c_e = np.where(e == event, 0, 1)
-            
-                res = CoxPH.fit(x, Z, c_e, n,
-                                method=tie_method,
-                                with_hess=False).res
-                                
+
+                res = CoxPH.fit(
+                    x, Z, c_e, n, method=tie_method, with_hess=False
+                ).res
+
                 results.append(res)
                 betas[i, :] = res.x
                 baselines[i, :] = cls.baseline(res.x, x, c, n, Z, e, event)
 
-        elif how == 'Fine-Gray':
+        elif how == "Fine-Gray":
             results, unique_e = FineGray.fit(x, Z, e, c, n)
             for i, res in enumerate(results):
                 betas[i, :] = res.x
-                baselines[i, :] = cls.baseline(res.x, x, c, n, Z, e, unique_e[i])
+                baselines[i, :] = cls.baseline(
+                    res.x, x, c, n, Z, e, unique_e[i]
+                )
         else:
             raise ValueError("`how` must be either 'Cox' or 'Fine-Gray")
 
@@ -236,5 +237,6 @@ class CompetingRiskProportionalHazard():
         model.H0_e = baselines.cumsum(axis=1)
         model.x = unique_x
         return model
+
 
 CRPH = CompetingRiskProportionalHazard

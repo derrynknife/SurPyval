@@ -1,17 +1,15 @@
-import numpy as np
-from scipy.stats import t, norm
-from scipy.interpolate import interp1d
-
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+from scipy.interpolate import interp1d
+from scipy.stats import norm, t
 
 
 def interp_function(x, y, kind):
-    return interp1d(x, y, kind=kind,
-                    bounds_error=False,
-                    fill_value=np.nan)
+    return interp1d(x, y, kind=kind, bounds_error=False, fill_value=np.nan)
 
-class NonParametric():
+
+class NonParametric:
     """
     Result of ``.fit()`` method for every non-parametric
     surpyval distribution. This means that each of the
@@ -19,20 +17,23 @@ class NonParametric():
     from the ``NelsonAalen``, ``KaplanMeier``,
     ``FlemingHarrington``, or ``Turnbull`` estimators.
     """
-    def __repr__(self):
-        out = ('Non-Parametric SurPyval Model'
-               + '\n============================='
-               + '\nModel            : {dist}'
-               ).format(dist=self.model)
 
-        if hasattr(self, 'data'):
-            if 'estimator' in self.data:
-                out += '\nEstimator        : {turnbull}'.format(
-                    turnbull=self.data['estimator'])
+    def __repr__(self):
+        out = (
+            "Non-Parametric SurPyval Model"
+            + "\n============================="
+            + "\nModel            : {dist}"
+        ).format(dist=self.model)
+
+        if hasattr(self, "data"):
+            if "estimator" in self.data:
+                out += "\nEstimator        : {turnbull}".format(
+                    turnbull=self.data["estimator"]
+                )
 
         return out
 
-    def sf(self, x, interp='step'):
+    def sf(self, x, interp="step"):
         r"""
 
         Surival (or Reliability) function with the
@@ -66,8 +67,8 @@ class NonParametric():
         idx = np.argsort(x)
         rev = np.argsort(idx)
         x = x[idx]
-        if interp == 'step':
-            idx = np.searchsorted(self.x, x, side='right') - 1
+        if interp == "step":
+            idx = np.searchsorted(self.x, x, side="right") - 1
             R = self.R[idx]
             R = np.where(idx < 0, 1, R)
             R = np.where(np.isposinf(x), 0, R)
@@ -81,7 +82,7 @@ class NonParametric():
         # R = np.where(x > self.x.max(), np.nan, R)
         return R
 
-    def ff(self, x, interp='step'):
+    def ff(self, x, interp="step"):
         r"""
 
         CDF (failure or unreliability) function with the
@@ -113,7 +114,7 @@ class NonParametric():
         """
         return 1 - self.sf(x, interp=interp)
 
-    def hf(self, x, interp='step'):
+    def hf(self, x, interp="step"):
         r"""
 
         Instantaneous hazard function with the non-parametric
@@ -147,15 +148,18 @@ class NonParametric():
         idx = np.argsort(x)
         rev = np.argsort(idx)
         x = x[idx]
-        hf = np.diff(np.hstack([self.Hf(x[0], interp=interp),
-                                self.Hf(x, interp=interp)]))
+        hf = np.diff(
+            np.hstack(
+                [self.Hf(x[0], interp=interp), self.Hf(x, interp=interp)]
+            )
+        )
         hf[0] = hf[1]
         hf = pd.Series(hf)
         hf[hf == 0] = np.nan
         hf = hf.ffill().values
         return hf[rev]
 
-    def df(self, x, interp='step'):
+    def df(self, x, interp="step"):
         r"""
 
         Density function with the non-parametric estimates
@@ -191,7 +195,7 @@ class NonParametric():
         """
         return self.hf(x, interp=interp) * np.exp(-self.Hf(x, interp=interp))
 
-    def Hf(self, x, interp='step'):
+    def Hf(self, x, interp="step"):
         r"""
 
         Cumulative hazard rate with the non-parametric estimates
@@ -226,8 +230,16 @@ class NonParametric():
         """
         return -np.log(self.sf(x, interp=interp))
 
-    def cb(self, x, on='sf', bound='two-sided', interp='step',
-           alpha_ci=0.05, bound_type='exp', dist='z'):
+    def cb(
+        self,
+        x,
+        on="sf",
+        bound="two-sided",
+        interp="step",
+        alpha_ci=0.05,
+        bound_type="exp",
+        dist="z",
+    ):
         r"""
 
         Confidence bounds of the ``on`` function at the
@@ -287,72 +299,82 @@ class NonParametric():
         http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
         """
-        if on in ['df', 'hf']:
-            raise ValueError("NonParametric cannot do confidence bounds on "
-                             + "density or hazard rate functions. Try Hf, "
-                             + "ff, or sf")
+        if on in ["df", "hf"]:
+            raise ValueError(
+                "NonParametric cannot do confidence bounds on "
+                + "density or hazard rate functions. Try Hf, "
+                + "ff, or sf"
+            )
 
-        old_err_state = np.seterr(all='ignore')
+        old_err_state = np.seterr(all="ignore")
 
         # Reverse for ff and F
-        if on in ['ff', 'F', 'Hf', 'hf', 'df'] and bound == 'lower':
-            bound = 'upper'
-        elif on in ['ff', 'F', 'Hf', 'hf', 'df'] and bound == 'upper':
-            bound = 'lower'
+        if on in ["ff", "F", "Hf", "hf", "df"] and bound == "lower":
+            bound = "upper"
+        elif on in ["ff", "F", "Hf", "hf", "df"] and bound == "upper":
+            bound = "lower"
 
-        cb = self.R_cb(x,
-                       bound=bound,
-                       interp=interp,
-                       alpha_ci=alpha_ci,
-                       bound_type=bound_type,
-                       dist=dist
-                       )
+        cb = self.R_cb(
+            x,
+            bound=bound,
+            interp=interp,
+            alpha_ci=alpha_ci,
+            bound_type=bound_type,
+            dist=dist,
+        )
 
-        if (on == 'ff') or (on == 'F'):
-            cb = 1. - cb
+        if (on == "ff") or (on == "F"):
+            cb = 1.0 - cb
 
-        elif on == 'Hf':
+        elif on == "Hf":
             cb = -np.log(cb)
 
-        elif (on == 'sf') or (on == 'R'):
-            if bound == 'two-sided':
+        elif (on == "sf") or (on == "R"):
+            if bound == "two-sided":
                 cb = np.fliplr(cb)
 
         np.seterr(**old_err_state)
 
         return cb
 
-    def R_cb(self, x, bound='two-sided', interp='step', alpha_ci=0.05,
-             bound_type='exp', dist='z'):
+    def R_cb(
+        self,
+        x,
+        bound="two-sided",
+        interp="step",
+        alpha_ci=0.05,
+        bound_type="exp",
+        dist="z",
+    ):
 
-        if bound_type not in ['exp', 'normal']:
+        if bound_type not in ["exp", "normal"]:
             return ValueError("'bound_type' must be in ['exp', 'normal']")
-        if dist not in ['t', 'z']:
+        if dist not in ["t", "z"]:
             return ValueError("'dist' must be in ['t', 'z']")
 
-        confidence = 1. - alpha_ci
+        confidence = 1.0 - alpha_ci
 
-        old_err_state = np.seterr(all='ignore')
+        old_err_state = np.seterr(all="ignore")
 
         x = np.atleast_1d(x)
-        if bound in ['upper', 'lower']:
-            if dist == 't':
+        if bound in ["upper", "lower"]:
+            if dist == "t":
                 stat = t.ppf(1 - confidence, self.r - 1)
             else:
                 stat = norm.ppf(1 - confidence, 0, 1)
-            if bound == 'upper':
+            if bound == "upper":
                 stat = -stat
-        elif bound == 'two-sided':
-            if dist == 't':
+        elif bound == "two-sided":
+            if dist == "t":
                 stat = t.ppf((1 - confidence) / 2, self.r - 1)
             else:
                 stat = norm.ppf((1 - confidence) / 2, 0, 1)
             stat = np.array([-1, 1]).reshape(2, 1) * stat
 
-        if bound_type == 'exp':
+        if bound_type == "exp":
             # Exponential Greenwood confidence
             # print(self.greenwood)
-            R_out = self.greenwood * 1. / (np.log(self.R)**2)
+            R_out = self.greenwood * 1.0 / (np.log(self.R) ** 2)
             R_out = np.log(-np.log(self.R)) - stat * np.sqrt(R_out)
             R_out = np.exp(-np.exp(R_out))
             R_out = np.where(self.greenwood == 0, 1, R_out)
@@ -362,19 +384,19 @@ class NonParametric():
 
         # Allows for confidence bound to be estimated up to the last value.
         # only used in event that there is no right censoring.
-        if bound == 'upper':
+        if bound == "upper":
             R_out = np.where(np.isfinite(R_out), R_out, np.nanmin(R_out))
-        elif bound == 'lower':
+        elif bound == "lower":
             R_out = np.where(np.isfinite(R_out), R_out, 0)
         else:
-            R_out[0, :] = np.where(np.isfinite(R_out[0, :]),
-                                   R_out[0, :],
-                                   np.nanmin(R_out[0, :]))
+            R_out[0, :] = np.where(
+                np.isfinite(R_out[0, :]), R_out[0, :], np.nanmin(R_out[0, :])
+            )
             R_out[1, :] = np.where(np.isfinite(R_out[1, :]), R_out[1, :], 0)
 
-        if interp == 'step':
-            idx = np.searchsorted(self.x, x, side='right') - 1
-            if bound == 'two-sided':
+        if interp == "step":
+            idx = np.searchsorted(self.x, x, side="right") - 1
+            if bound == "two-sided":
                 R_out = R_out[:, idx]
                 R_out = np.where(idx < 0, 1, R_out)
             else:
@@ -382,7 +404,7 @@ class NonParametric():
                 R_out = np.where(idx < 0, 1, R_out)
 
         else:
-            if bound == 'two-sided':
+            if bound == "two-sided":
                 R1 = interp_function(self.x, R_out[0, :], kind=interp)(x)
                 R2 = interp_function(self.x, R_out[1, :], kind=interp)(x)
                 R_out = np.vstack([R1, R2])
@@ -394,7 +416,7 @@ class NonParametric():
         mask = (x < self.x.min()) | (x > self.x.max())
         R_out = np.where(mask, np.nan, R_out)
 
-        if bound == 'two-sided':
+        if bound == "two-sided":
             R_out = R_out.T
 
         np.seterr(**old_err_state)
@@ -419,14 +441,14 @@ class NonParametric():
         cbs = self.R_cb(self.x, **kwargs)
 
         return {
-            'x_scale_min': x_scale_min,
-            'x_scale_max': x_scale_max,
-            'y_scale_min': y_scale_min,
-            'y_scale_max': y_scale_max,
-            'cbs': cbs,
-            'x_': self.x,
-            'R': self.R,
-            'F': self.F
+            "x_scale_min": x_scale_min,
+            "x_scale_max": x_scale_max,
+            "y_scale_min": y_scale_min,
+            "y_scale_max": y_scale_max,
+            "cbs": cbs,
+            "x_": self.x,
+            "R": self.R,
+            "F": self.F,
         }
 
     def plot(self, ax=None, **kwargs):
@@ -436,44 +458,46 @@ class NonParametric():
         if ax is None:
             ax = plt.gcf().gca()
 
-        plot_bounds = kwargs.pop('plot_bounds', True)
-        interp = kwargs.pop('interp', 'step')
-        bound = kwargs.pop('bound', 'two-sided')
-        alpha_ci = kwargs.pop('alpha_ci', 0.05)
-        bound_type = kwargs.pop('bound_type', 'exp')
-        dist = kwargs.pop('dist', 'z')
+        plot_bounds = kwargs.pop("plot_bounds", True)
+        interp = kwargs.pop("interp", "step")
+        bound = kwargs.pop("bound", "two-sided")
+        alpha_ci = kwargs.pop("alpha_ci", 0.05)
+        bound_type = kwargs.pop("bound_type", "exp")
+        dist = kwargs.pop("dist", "z")
 
-        d = self.get_plot_data(interp=interp,
-                               bound=bound,
-                               alpha_ci=alpha_ci,
-                               bound_type=bound_type,
-                               dist=dist)
+        d = self.get_plot_data(
+            interp=interp,
+            bound=bound,
+            alpha_ci=alpha_ci,
+            bound_type=bound_type,
+            dist=dist,
+        )
         # MAKE THE PLOT
         # Set the y limits
-        ax.set_ylim([d['y_scale_min'], d['y_scale_max']])
+        ax.set_ylim([d["y_scale_min"], d["y_scale_max"]])
 
         # Label it
-        ax.set_title('Model Survival Plot')
-        ax.set_ylabel('R')
-        if interp != 'step':
-            ax.plot(d['x_'], d['R'])
+        ax.set_title("Model Survival Plot")
+        ax.set_ylabel("R")
+        if interp != "step":
+            ax.plot(d["x_"], d["R"])
             if plot_bounds:
-                ax.plot(d['x_'], d['cbs'], color='r')
+                ax.plot(d["x_"], d["cbs"], color="r")
         else:
-            ax.step(d['x_'], d['R'], where='post')
+            ax.step(d["x_"], d["R"], where="post")
             if plot_bounds:
-                ax.step(d['x_'], d['cbs'], color='r', where='post')
+                ax.step(d["x_"], d["cbs"], color="r", where="post")
 
         return ax
 
     @classmethod
     def fit_from_ecdf(cls, x, R):
         out = cls()
-        out.model = 'from_ecdf'
+        out.model = "from_ecdf"
         out.R = R
         out.x = x
         out.F = 1 - out.R
-        with np.errstate(all='ignore'):
+        with np.errstate(all="ignore"):
             out.H = -np.log(out.R)
 
         return out
