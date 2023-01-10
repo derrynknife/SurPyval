@@ -1,6 +1,7 @@
 import numpy as np
 import numpy_indexed as npi
 
+
 def handle_xicn(x, i=None, c=None, n=None):
     x = np.array(x)
 
@@ -28,9 +29,12 @@ def handle_xicn(x, i=None, c=None, n=None):
         xi = x[i == ii]
         if 1 in ci:
             if np.any(xi[ci == 1] <= xi[ci != 1]):
-                raise ValueError("Item {} has censored value lower than an event value".format(ii))
+                raise ValueError(
+                    f"Item {ii} has censored value lower than an event value"
+                )
 
     return x, i, c, n
+
 
 def xicn_to_xrd(x, i, c, n):
     # This function assumes that it has been handled by the above
@@ -43,5 +47,3 @@ def xicn_to_xrd(x, i, c, n):
     x, d = gb_x.sum(n * (c == 0).astype(int))
 
     return x, r, d
-
-

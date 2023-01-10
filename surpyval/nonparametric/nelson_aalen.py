@@ -1,4 +1,5 @@
 import numpy as np
+
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
 
 
@@ -27,8 +28,9 @@ class NelsonAalen_(NonParametricFitter):
     >>> model.R
     array([0.81873075, 0.63762815, 0.45688054, 0.27711205, 0.10194383])
     """
+
     def __init__(self):
-        self.how = 'Nelson-Aalen'
+        self.how = "Nelson-Aalen"
 
 
 NelsonAalen = NelsonAalen_()

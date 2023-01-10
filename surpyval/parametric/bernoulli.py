@@ -1,23 +1,21 @@
-from surpyval import np
 from scipy.stats import uniform
-from scipy.special import ndtri as z
 
-from surpyval import parametric as para
+import surpyval
+from surpyval import np
+
 from .parametric import Parametric
 
-from .fitters.mpp import mpp
-import surpyval
 
-class Bernoulli_():
+class Bernoulli_:
     def __init__(self, name):
         self.name = name
         # Set 'k', the number of parameters
         self.k = 1
         self.bounds = ((0, 1),)
         self.support = (0, 1)
-        self.param_names = ['p']
+        self.param_names = ["p"]
         self.param_map = {
-            'p' : 0,
+            "p": 0,
         }
 
     def sf(self, x, p):
@@ -32,7 +30,7 @@ class Bernoulli_():
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
         beta : numpy array or scalar
@@ -41,7 +39,7 @@ class Bernoulli_():
         Returns
         -------
 
-        sf : scalar or numpy array 
+        sf : scalar or numpy array
             The value(s) of the reliability function at x.
 
         Examples
@@ -53,7 +51,7 @@ class Bernoulli_():
         array([9.87730216e-01, 8.20754808e-01, 3.67879441e-01, 4.24047953e-02,
                4.45617596e-04])
         """
-        return 1. - self.ff(x, p)
+        return 1.0 - self.ff(x, p)
 
     def ff(self, x, p):
         r"""
@@ -67,7 +65,7 @@ class Bernoulli_():
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
         beta : numpy array or scalar
@@ -76,7 +74,7 @@ class Bernoulli_():
         Returns
         -------
 
-        sf : scalar or numpy array 
+        sf : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -87,7 +85,7 @@ class Bernoulli_():
         >>> Weibull.ff(x, 3, 4)
         array([0.01226978, 0.17924519, 0.63212056, 0.9575952 , 0.99955438])
         """
-        return np.ones_like(x).astype(float) *  p
+        return np.ones_like(x).astype(float) * p
 
     def moment(self, n, p):
         r"""
@@ -110,7 +108,7 @@ class Bernoulli_():
         Returns
         -------
 
-        mean : scalar or numpy array 
+        mean : scalar or numpy array
             The moment(s) of the Weibull distribution
 
         Examples
@@ -122,7 +120,7 @@ class Bernoulli_():
         return p
 
     def entropy(self, p):
-        return -(1 - p)*np.log(1 - p) - p * np.log(p)
+        return -(1 - p) * np.log(1 - p) - p * np.log(p)
 
     def random(self, size, p):
         r"""
@@ -142,7 +140,7 @@ class Bernoulli_():
         Returns
         -------
 
-        random : scalar or numpy array 
+        random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
 
         Examples
@@ -188,5 +186,5 @@ class Bernoulli_():
         return model
 
 
-Bernoulli = Bernoulli_('Bernoulli')
-FixedEventProbability = Bernoulli_('Bernoulli')
+Bernoulli = Bernoulli_("Bernoulli")
+FixedEventProbability = Bernoulli_("Bernoulli")

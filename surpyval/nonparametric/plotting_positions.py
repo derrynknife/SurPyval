@@ -1,12 +1,19 @@
-from surpyval import xcnt_handler
-from surpyval import nonparametric as nonp
-from pandas import Series
 import numpy as np
+from pandas import Series
+
+from surpyval import nonparametric as nonp
+from surpyval import xcnt_handler
 from surpyval.utils import xcnt_to_xrd
 
 
-def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
-                       turnbull_estimator='Fleming-Harrington'):
+def plotting_positions(
+    x,
+    c=None,
+    n=None,
+    t=None,
+    heuristic="Blom",
+    turnbull_estimator="Fleming-Harrington",
+):
     r"""
     This function takes in data in the xcnt format and outputs an approximation
     of the CDF. This function can be used to produce estimates of F using the
@@ -78,40 +85,51 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
     if heuristic not in nonp.PLOTTING_METHODS:
         raise ValueError("Must use available heuristic")
 
-    if ((-1 in c) or (2 in c)) & (heuristic != 'Turnbull'):
-        raise ValueError("Left or interval censored data requires "
-                         + "the use of the Turnbull estimator")
+    if ((-1 in c) or (2 in c)) & (heuristic != "Turnbull"):
+        raise ValueError(
+            "Left or interval censored data requires "
+            + "the use of the Turnbull estimator"
+        )
 
-    if (np.isfinite(t[:, 0]).any()) & (heuristic not in ['Nelson-Aalen',
-                                                         'Kaplan-Meier',
-                                                         'Fleming-Harrington',
-                                                         'Turnbull']):
-        raise ValueError("Left truncated data can only be used with "
-                         + "'Nelson-Aalen', 'Kaplan-Meier', "
-                         + "'Fleming-Harrington', and 'Turnbull' estimators")
+    if (np.isfinite(t[:, 0]).any()) & (
+        heuristic
+        not in [
+            "Nelson-Aalen",
+            "Kaplan-Meier",
+            "Fleming-Harrington",
+            "Turnbull",
+        ]
+    ):
+        raise ValueError(
+            "Left truncated data can only be used with "
+            + "'Nelson-Aalen', 'Kaplan-Meier', "
+            + "'Fleming-Harrington', and 'Turnbull' estimators"
+        )
 
-    if (np.isfinite(t[:, 1]).any()) & (heuristic != 'Turnbull'):
-        raise ValueError("Right truncated data can only be used with "
-                         + "'Turnbull' estimator")
+    if (np.isfinite(t[:, 1]).any()) & (heuristic != "Turnbull"):
+        raise ValueError(
+            "Right truncated data can only be used with "
+            + "'Turnbull' estimator"
+        )
 
     N = n.sum()
 
-    if heuristic == 'Filliben':
+    if heuristic == "Filliben":
         # Needs work
         out = nonp.filliben(x, c, n)
-    elif heuristic == 'Nelson-Aalen':
+    elif heuristic == "Nelson-Aalen":
         x, r, d = xcnt_to_xrd(x, c, n, t)
         R = nonp.nelson_aalen(r, d)
         return x, r, d, 1 - R
-    elif heuristic == 'Kaplan-Meier':
+    elif heuristic == "Kaplan-Meier":
         x, r, d = xcnt_to_xrd(x, c, n, t)
         R = nonp.kaplan_meier(r, d)
         return x, r, d, 1 - R
-    elif heuristic == 'Fleming-Harrington':
+    elif heuristic == "Fleming-Harrington":
         x, r, d = xcnt_to_xrd(x, c, n, t)
         R = nonp.fleming_harrington(r, d)
         return x, r, d, 1 - R
-    elif heuristic == 'Turnbull':
+    elif heuristic == "Turnbull":
         out = nonp.turnbull(x, c, n, t, estimator=turnbull_estimator)
     else:
         # Reformat for plotting point style
@@ -119,11 +137,11 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
         c = np.repeat(c, n)
         n = np.ones_like(x_)
 
-        idx = np.argsort(c, kind='stable')
+        idx = np.argsort(c, kind="stable")
         x_ = x_[idx]
         c = c[idx]
 
-        idx2 = np.argsort(x_, kind='stable')
+        idx2 = np.argsort(x_, kind="stable")
         x_ = x_[idx2]
         c = c[idx2]
 
@@ -160,16 +178,16 @@ def plotting_positions(x, c=None, n=None, t=None, heuristic="Blom",
         elif heuristic == "Larsen":
             A, B = 0.567, -0.134
         elif heuristic == "Tukey":
-            A, B = 1. / 3., 1. / 3.
+            A, B = 1.0 / 3.0, 1.0 / 3.0
         elif heuristic == "DPW":
             A, B = 1.0, 0.0
 
         F = (ranks - A) / (N + B)
         R = 1 - Series(F).ffill().fillna(0).values
         out = {}
-        out['x'] = x_
-        out['r'] = r
-        out['d'] = d
-        out['R'] = R
+        out["x"] = x_
+        out["r"] = r
+        out["d"] = d
+        out["R"] = R
 
-    return out['x'], out['r'], out['d'], 1 - out['R']
+    return out["x"], out["r"], out["d"], 1 - out["R"]

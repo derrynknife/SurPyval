@@ -1,30 +1,26 @@
-from surpyval import np
-from scipy.stats import uniform
-from scipy.special import ndtri as z
-
-from autograd import hessian
-from autograd.numpy.linalg import pinv
 from scipy.optimize import minimize
+from scipy.stats import uniform
 
-from surpyval import parametric as para
+from surpyval import np
 from surpyval.parametric.parametric_fitter import ParametricFitter
+
 
 class Uniform_(ParametricFitter):
     def __init__(self, name):
         self.name = name
         # Set 'k', the number of parameters
         self.k = 2
-        self.bounds = ((None, None), (None, None),)
+        self.bounds = (
+            (None, None),
+            (None, None),
+        )
         self.support = (np.nan, np.nan)
         self.y_ticks = np.linspace(0, 1, 21)[1:-1]
-        self.param_names = ['a', 'b']
-        self.param_map = {
-            'a' : 0,
-            'b' : 1
-        }
+        self.param_names = ["a", "b"]
+        self.param_map = {"a": 0, "b": 1}
 
     def _parameter_initialiser(self, x, c=None, n=None):
-        return np.min(x) - 1., np.max(x) + 1.
+        return np.min(x) - 1.0, np.max(x) + 1.0
 
     def sf(self, x, a, b):
         r"""
@@ -38,7 +34,7 @@ class Uniform_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
         b : numpy array or scalar
@@ -47,7 +43,7 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        sf : scalar or numpy array 
+        sf : scalar or numpy array
             The value(s) of the survival function at x.
 
         Examples
@@ -72,7 +68,7 @@ class Uniform_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
         b : numpy array or scalar
@@ -81,7 +77,7 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        cs : scalar or numpy array 
+        cs : scalar or numpy array
             The value(s) of the conditional survival function at x.
 
         Examples
@@ -106,7 +102,7 @@ class Uniform_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
         b : numpy array or scalar
@@ -115,7 +111,7 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        ff : scalar or numpy array 
+        ff : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -129,7 +125,7 @@ class Uniform_(ParametricFitter):
         f = np.zeros_like(x)
         f = np.where(x < a, 0, f)
         f = np.where(x > b, 1, f)
-        f = np.where(((x <= b) & (x >= a)), (x - a)/(b - a), f)
+        f = np.where(((x <= b) & (x >= a)), (x - a) / (b - a), f)
         return f
 
     def df(self, x, a, b):
@@ -144,7 +140,7 @@ class Uniform_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
         b : numpy array or scalar
@@ -153,7 +149,7 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the density function at x.
 
         Examples
@@ -167,7 +163,7 @@ class Uniform_(ParametricFitter):
         d = np.zeros_like(x)
         d = np.where(x < a, 0, d)
         d = np.where(x > b, 0, d)
-        d = np.where(((x <= b) & (x >= a)), 1./(b - a), d)
+        d = np.where(((x <= b) & (x >= a)), 1.0 / (b - a), d)
         return d
 
     def hf(self, x, a, b):
@@ -182,7 +178,7 @@ class Uniform_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
         b : numpy array or scalar
@@ -191,7 +187,7 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        hf : scalar or numpy array 
+        hf : scalar or numpy array
             The value(s) of the instantaneous hazard rate at x.
 
         Examples
@@ -216,7 +212,7 @@ class Uniform_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
         b : numpy array or scalar
@@ -225,7 +221,7 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        hf : scalar or numpy array 
+        hf : scalar or numpy array
             The value(s) of the instantaneous hazard rate at x.
 
         Examples
@@ -250,7 +246,7 @@ class Uniform_(ParametricFitter):
         ----------
 
         p : numpy array or scalar
-            The percentiles at which the quantile will be calculated 
+            The percentiles at which the quantile will be calculated
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
         b : numpy array or scalar
@@ -259,7 +255,7 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        q : scalar or numpy array 
+        q : scalar or numpy array
             The quantiles for the Uniform distribution at each value p.
 
         Examples
@@ -270,7 +266,7 @@ class Uniform_(ParametricFitter):
         >>> Uniform.qf(p, 0, 6)
         array([0.6, 1.2, 1.8, 2.4, 3. ])
         """
-        return a + p*(b - a)
+        return a + p * (b - a)
 
     def mean(self, a, b):
         r"""
@@ -291,7 +287,7 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        mean : scalar or numpy array 
+        mean : scalar or numpy array
             The mean(s) of the Uniform distribution
 
         Examples
@@ -323,7 +319,7 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        moment : scalar or numpy array 
+        moment : scalar or numpy array
             The moment(s) of the Uniform distribution
 
         Examples
@@ -337,11 +333,11 @@ class Uniform_(ParametricFitter):
         else:
             out = np.zeros(n)
             for i in range(n):
-                out[i] = a**i * b**(n-i)
-            return np.sum(out)/(n + 1)
+                out[i] = a**i * b ** (n - i)
+            return np.sum(out) / (n + 1)
 
     def p(self, c, n):
-        return 1 - 2 * (1 + c)**(1. - n) + (1 + 2*c)**(1. - n)
+        return 1 - 2 * (1 + c) ** (1.0 - n) + (1 + 2 * c) ** (1.0 - n)
 
     def random(self, size, a, b):
         r"""
@@ -361,7 +357,7 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        random : scalar or numpy array 
+        random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
 
         Examples
@@ -386,14 +382,17 @@ class Uniform_(ParametricFitter):
         # https://mathoverflow.net/questions/278675/confidence-intervals-for-the-endpoints-of-the-uniform-distribution
         #
         sample_range = np.max(x) - np.min(x)
-        fun = lambda c : self.p(c, N)
-        c_hat = minimize(fun, 1.).x
-        return a - c_hat*sample_range, b + c_hat*sample_range
+
+        def fun(c):
+            return self.p(c, N)
+
+        c_hat = minimize(fun, 1.0).x
+        return a - c_hat * sample_range, b + c_hat * sample_range
 
     def mle(self, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
         params = np.array([np.min(x), np.max(x)])
         results = {}
-        results['params'] = params
+        results["params"] = params
         return results
 
     def mpp_x_transform(self, x):
@@ -406,10 +405,10 @@ class Uniform_(ParametricFitter):
         return y
 
     def unpack_rr(self, params, rr):
-        if rr == 'y':
-            a = -params[1]/params[0]
-            b = (1 - params[1])/params[0]
-        if rr == 'x':
+        if rr == "y":
+            a = -params[1] / params[0]
+            b = (1 - params[1]) / params[0]
+        if rr == "x":
             a = params[1]
             b = params[0] + params[1]
 
@@ -424,4 +423,5 @@ class Uniform_(ParametricFitter):
         b = mu_1 + d
         return a, b
 
-Uniform = Uniform_('Uniform')
+
+Uniform = Uniform_("Uniform")

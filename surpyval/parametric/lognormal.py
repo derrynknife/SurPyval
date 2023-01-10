@@ -1,29 +1,43 @@
-from surpyval import np
-from scipy.stats import uniform
-from scipy.special import ndtri as z
 from autograd.scipy.stats import norm
+from scipy.special import ndtri as z
 from scipy.stats import norm as scipy_norm
-from surpyval import nonparametric as nonp
+
+from surpyval import np
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter
+
 
 class LogNormal_(ParametricFitter):
     def __init__(self, name):
         self.name = name
         self.k = 2
-        self.bounds = ((0, None), (0, None),)
+        self.bounds = (
+            (0, None),
+            (0, None),
+        )
         self.support = (0, np.inf)
-        self.plot_x_scale = 'log'
-        self.y_ticks = [0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999]
-        self.param_names = ['mu', 'sigma']
-        self.param_map = {
-            'mu'    : 0,
-            'sigma' : 1
-        }
+        self.plot_x_scale = "log"
+        self.y_ticks = [
+            0.001,
+            0.01,
+            0.1,
+            0.2,
+            0.3,
+            0.4,
+            0.5,
+            0.6,
+            0.7,
+            0.8,
+            0.9,
+            0.99,
+            0.999,
+        ]
+        self.param_names = ["mu", "sigma"]
+        self.param_map = {"mu": 0, "sigma": 1}
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         # Need an offset mpp function here
-        norm_mod = para.Normal.fit(np.log(x), c=c, n=n, t=t, how='MLE')
+        norm_mod = para.Normal.fit(np.log(x), c=c, n=n, t=t, how="MLE")
         mu, sigma = norm_mod.params
         return mu, sigma
 
@@ -39,7 +53,7 @@ class LogNormal_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         mu : numpy array or scalar
             The location parameter for the LogNormal distribution
         sigma : numpy array or scalar
@@ -48,7 +62,7 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        sf : scalar or numpy array 
+        sf : scalar or numpy array
             The value(s) of the survival function at x.
 
         Examples
@@ -84,7 +98,7 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        cs : scalar or numpy array 
+        cs : scalar or numpy array
             the conditional survival probability at x
 
         Examples
@@ -109,7 +123,7 @@ class LogNormal_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         mu : numpy array or scalar
             The location parameter for the LogNormal distribution
         sigma : numpy array or scalar
@@ -118,7 +132,7 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        ff : scalar or numpy array 
+        ff : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -137,13 +151,14 @@ class LogNormal_(ParametricFitter):
         Density function for the LogNormal Distribution:
 
         .. math::
-            f(x) = \frac{1}{x \sigma \sqrt{2\pi}}e^{-\frac{1}{2}\left ( \frac{\ln x - \mu}{\sigma} \right )^{2}}
+            f(x) = \frac{1}{x \sigma \sqrt{2\pi}}e^{-\frac{1}{2}\left (
+                \frac{\ln x - \mu}{\sigma} \right )^{2}}
 
         Parameters
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         mu : numpy array or scalar
             The location parameter for the LogNormal distribution
         sigma : numpy array or scalar
@@ -152,7 +167,7 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array 
+        df : scalar or numpy array
             The value(s) of the density function at x.
 
         Examples
@@ -163,7 +178,7 @@ class LogNormal_(ParametricFitter):
         >>> LogNormal.df(x, 3, 4)
         array([0.07528436, 0.04222769, 0.02969364, 0.02298522, 0.01877747])
         """
-        return 1./x * norm.pdf(np.log(x), mu, sigma)
+        return 1.0 / x * norm.pdf(np.log(x), mu, sigma)
 
     def hf(self, x, mu, sigma):
         r"""
@@ -177,7 +192,7 @@ class LogNormal_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         mu : numpy array or scalar
             The location parameter for the LogNormal distribution
         sigma : numpy array or scalar
@@ -186,7 +201,7 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        hf : scalar or numpy array 
+        hf : scalar or numpy array
             The value(s) of the instantaneous hazard rate at x.
 
         Examples
@@ -211,7 +226,7 @@ class LogNormal_(ParametricFitter):
         ----------
 
         x : numpy array or scalar
-            The values at which the function will be calculated 
+            The values at which the function will be calculated
         mu : numpy array or scalar
             The location parameter for the LogNormal distribution
         sigma : numpy array or scalar
@@ -220,7 +235,7 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        Hf : scalar or numpy array 
+        Hf : scalar or numpy array
             The value(s) of the cumulative hazard rate at x.
 
         Examples
@@ -245,7 +260,7 @@ class LogNormal_(ParametricFitter):
         ----------
 
         p : numpy array or scalar
-            The percentiles at which the quantile will be calculated 
+            The percentiles at which the quantile will be calculated
         mu : numpy array or scalar
             The location parameter for the LogNormal distribution
         sigma : numpy array or scalar
@@ -254,7 +269,7 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        q : scalar or numpy array 
+        q : scalar or numpy array
             The quantiles for the LogNormal distribution at each value p.
 
         Examples
@@ -263,7 +278,8 @@ class LogNormal_(ParametricFitter):
         >>> from surpyval import LogNormal
         >>> p = np.array([.1, .2, .3, .4, .5])
         >>> LogNormal.qf(p, 3, 4)
-        array([ 0.11928899,  0.69316658,  2.46550819,  7.29078766, 20.08553692])
+        array([ 0.11928899,  0.69316658,  2.46550819,  7.29078766,
+                20.08553692])
         """
         return np.exp(scipy_norm.ppf(p, mu, sigma))
 
@@ -279,7 +295,7 @@ class LogNormal_(ParametricFitter):
         ----------
 
         p : numpy array or scalar
-            The percentiles at which the quantile will be calculated 
+            The percentiles at which the quantile will be calculated
         mu : numpy array or scalar
             The location parameter for the LogNormal distribution
         sigma : numpy array or scalar
@@ -288,7 +304,7 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        q : scalar or numpy array 
+        q : scalar or numpy array
             The quantiles for the LogNormal distribution at each value p.
 
         Examples
@@ -297,7 +313,7 @@ class LogNormal_(ParametricFitter):
         >>> LogNormal.mean(3, 4)
         59874.14171519782
         """
-        return np.exp(mu + (sigma**2)/2)
+        return np.exp(mu + (sigma**2) / 2)
 
     def moment(self, n, mu, sigma):
         r"""
@@ -320,7 +336,7 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        moment : scalar or numpy array 
+        moment : scalar or numpy array
             The moment(s) of the LogNormal distribution
 
         Examples
@@ -329,7 +345,7 @@ class LogNormal_(ParametricFitter):
         >>> LogNormal.moment(2, 3, 4)
         3.1855931757113756e+16
         """
-        return np.exp(n*mu + (n**2 * sigma**2)/2)
+        return np.exp(n * mu + (n**2 * sigma**2) / 2)
 
     def random(self, size, mu, sigma):
         r"""
@@ -349,7 +365,7 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        random : scalar or numpy array 
+        random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
 
         Examples
@@ -384,34 +400,41 @@ class LogNormal_(ParametricFitter):
         return para.Normal.ff(y, 0, 1)
 
     def unpack_rr(self, params, rr):
-        if rr == 'y':
+        if rr == "y":
             sigma, mu = params
-            mu = -mu/sigma
-            sigma = 1./sigma
-        elif rr == 'x':
+            mu = -mu / sigma
+            sigma = 1.0 / sigma
+        elif rr == "x":
             sigma, mu = params
         return mu, sigma
 
     def var_z(self, x, mu, sigma, cv_matrix):
-        z_hat = (x - mu)/sigma
-        var_z = (1./sigma)**2 * (cv_matrix[0, 0] + z_hat**2 * cv_matrix[1, 1] + 
-            2 * z_hat * cv_matrix[0, 1])
+        z_hat = (x - mu) / sigma
+        var_z = (1.0 / sigma) ** 2 * (
+            cv_matrix[0, 0]
+            + z_hat**2 * cv_matrix[1, 1]
+            + 2 * z_hat * cv_matrix[0, 1]
+        )
         return var_z
 
     def z_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
-        z_hat = (x - mu)/sigma
+        z_hat = (x - mu) / sigma
         var_z = self.var_z(x, mu, sigma, cv_matrix)
-        bounds = z_hat + np.array([1., -1.]).reshape(2, 1) * z(alpha_ci/2) * np.sqrt(var_z)
+        bounds = z_hat + np.array([1.0, -1.0]).reshape(2, 1) * z(
+            alpha_ci / 2
+        ) * np.sqrt(var_z)
         return bounds
 
     # def R_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
-        # t = np.log(x)
-        # return para.Normal.sf(self.z_cb(t, mu, sigma, cv_matrix, alpha_ci=alpha_ci), 0, 1).T
+    # t = np.log(x)
+    # return para.Normal.sf(self.z_cb(t, mu, sigma, cv_matrix,
+    # alpha_ci=alpha_ci), 0, 1).T
 
     def _mom(self, x):
-        norm_mod = para.Normal.fit(np.log(x), how='MOM')
+        norm_mod = para.Normal.fit(np.log(x), how="MOM")
         mu, sigma = norm_mod.params
         return mu, sigma
 
-LogNormal = LogNormal_('LogNormal')
-Galton = LogNormal_('Galton')
+
+LogNormal = LogNormal_("LogNormal")
+Galton = LogNormal_("Galton")

@@ -1,11 +1,13 @@
 import numpy as np
+
 from surpyval.nonparametric.nonparametric_fitter import NonParametricFitter
-from .nelson_aalen import nelson_aalen as na
-from .kaplan_meier import kaplan_meier as km
+
 from .fleming_harrington import fleming_harrington as fh
+from .kaplan_meier import kaplan_meier as km
+from .nelson_aalen import nelson_aalen as na
 
 
-def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
+def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
     bounds = np.sort(np.concatenate([bounds, np.unique(x[c == 0])]))
     N = n.sum()
@@ -54,7 +56,7 @@ def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
                 idx = np.where(bounds == x1)[0][0]
                 alpha[i, idx] = 0
 
-        beta[i, :] = (((bounds >= t1) & (bounds < t2)).astype(int))
+        beta[i, :] = ((bounds >= t1) & (bounds < t2)).astype(int)
 
     beta[:, M - 1] = 1
     n = n.reshape(-1, 1)
@@ -64,27 +66,31 @@ def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
     iters = 0
     p_prev = np.zeros_like(p)
 
-    if estimator == 'Kaplan-Meier':
+    if estimator == "Kaplan-Meier":
         func = km
-    elif estimator == 'Nelson-Aalen':
+    elif estimator == "Nelson-Aalen":
         func = na
     else:
         func = fh
 
-    old_err_state = np.seterr(all='ignore')
+    old_err_state = np.seterr(all="ignore")
 
-    while (iters < 1000) & (not np.allclose(p,
-                                            p_prev,
-                                            rtol=1e-30,
-                                            atol=1e-30)):
+    while (iters < 1000) & (
+        not np.allclose(p, p_prev, rtol=1e-30, atol=1e-30)
+    ):
         p_prev = p
         iters += 1
         ap = alpha * p
         # Observed deaths (left, right, or intervally 'observed')
         mu = alpha * ap / ap.sum(axis=1, keepdims=True)
         # Expected additional failures due to truncation
-        nu = (n * (1 - beta) * (1 - beta) * p
-              / (beta * p).sum(axis=1, keepdims=True))
+        nu = (
+            n
+            * (1 - beta)
+            * (1 - beta)
+            * p
+            / (beta * p).sum(axis=1, keepdims=True)
+        )
 
         # Deaths/Failures
         d = (nu + mu).sum(axis=0)
@@ -101,14 +107,14 @@ def turnbull(x, c, n, t, estimator='Fleming-Harrington'):
         # p = (nu + mu).sum(axis=0)/(nu + mu).sum()
 
     out = {}
-    out['x'] = bounds[1:-1]
-    out['r'] = r[1:-1]
-    out['d'] = d[1:-1]
-    out['R'] = R[0:-2]
-    out['R_upper'] = R[0:-2]
-    out['R_lower'] = R[1:-1]
-    out['alpha'] = alpha
-    out['bounds'] = bounds
+    out["x"] = bounds[1:-1]
+    out["r"] = r[1:-1]
+    out["d"] = d[1:-1]
+    out["R"] = R[0:-2]
+    out["R_upper"] = R[0:-2]
+    out["R_lower"] = R[1:-1]
+    out["alpha"] = alpha
+    out["bounds"] = bounds
 
     np.seterr(**old_err_state)
 
@@ -133,7 +139,7 @@ class Turnbull_(NonParametricFitter):
     """
 
     def __init__(self):
-        self.how = 'Turnbull'
+        self.how = "Turnbull"
 
 
 Turnbull = Turnbull_()

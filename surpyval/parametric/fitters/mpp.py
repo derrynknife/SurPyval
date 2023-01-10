@@ -1,7 +1,8 @@
-from surpyval import np
-from scipy.stats import pearsonr
-from surpyval.nonparametric import plotting_positions
 from scipy.optimize import minimize
+from scipy.stats import pearsonr
+
+from surpyval import np
+from surpyval.nonparametric import plotting_positions
 
 
 def mpp(model):
@@ -13,25 +14,41 @@ def mpp(model):
     the line of best fit.
     """
     dist = model.dist
-    x, c, n, t = (model.data['x'], model.data['c'],
-                  model.data['n'], model.data['t'])
+    x, c, n, t = (
+        model.data["x"],
+        model.data["c"],
+        model.data["n"],
+        model.data["t"],
+    )
 
-    heuristic = model.fitting_info['heuristic']
-    on_d_is_0 = model.fitting_info['on_d_is_0']
+    heuristic = model.fitting_info["heuristic"]
+    on_d_is_0 = model.fitting_info["on_d_is_0"]
     offset = model.offset
-    rr = model.fitting_info['rr']
-    turnbull_estimator = model.fitting_info['turnbull_estimator']
+    rr = model.fitting_info["rr"]
+    turnbull_estimator = model.fitting_info["turnbull_estimator"]
 
-    if rr not in ['x', 'y']:
+    if rr not in ["x", "y"]:
         raise ValueError("rr must be either 'x' or 'y'")
 
-    if hasattr(dist, 'mpp'):
-        return dist.mpp(x, c, n, heuristic=heuristic, rr=rr,
-                        on_d_is_0=on_d_is_0, offset=offset)
+    if hasattr(dist, "mpp"):
+        return dist.mpp(
+            x,
+            c,
+            n,
+            heuristic=heuristic,
+            rr=rr,
+            on_d_is_0=on_d_is_0,
+            offset=offset,
+        )
 
-    x_, r, d, F = plotting_positions(x=x, c=c, n=n, t=t,
-                                     heuristic=heuristic,
-                                     turnbull_estimator=turnbull_estimator)
+    x_, r, d, F = plotting_positions(
+        x=x,
+        c=c,
+        n=n,
+        t=t,
+        heuristic=heuristic,
+        turnbull_estimator=turnbull_estimator,
+    )
 
     x_mask = np.isfinite(x_)
     x_ = x_[x_mask]
@@ -60,15 +77,15 @@ def mpp(model):
             out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
             return out
 
-        res = minimize(fun, 0.)
+        res = minimize(fun, 0.0)
         gamma = x_min - np.exp(-res.x[0])
         x_pp = x_pp - gamma
 
     x_pp = dist.mpp_x_transform(x_pp)
 
-    if rr == 'y':
+    if rr == "y":
         params = np.polyfit(x_pp, y_pp, 1)
-    elif rr == 'x':
+    elif rr == "x":
         params = np.polyfit(y_pp, x_pp, 1)
 
     params = np.array(dist.unpack_rr(params, rr))
@@ -76,9 +93,9 @@ def mpp(model):
     results = {}
 
     if offset:
-        results['gamma'] = gamma
+        results["gamma"] = gamma
 
-    results['params'] = params
-    results['rr'] = rr
+    results["params"] = params
+    results["rr"] = rr
 
     return results

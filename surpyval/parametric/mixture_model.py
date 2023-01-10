@@ -1,26 +1,27 @@
-import surpyval
-from surpyval import np
+from autograd import hessian, jacobian
 from scipy.linalg import inv
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
 
-from autograd import jacobian, hessian
+import surpyval
+from surpyval import np
 from surpyval import parametric as para
 
 
-class MixtureModel():
+class MixtureModel:
     """
     Generalised from algorithm found here
     https://www.sciencedirect.com/science/article/pii/S0307904X12002545
     """
+
     def __init__(self, x, dist=para.Weibull, **kwargs):
-        self.m = kwargs.pop('m', 2)
+        self.m = kwargs.pop("m", 2)
         raw_data = {}
-        c = kwargs.pop('c', None)
-        n = kwargs.pop('n', None)
-        raw_data['x'] = x
-        raw_data['c'] = c
-        raw_data['n'] = n
+        c = kwargs.pop("c", None)
+        n = kwargs.pop("n", None)
+        raw_data["x"] = x
+        raw_data["c"] = c
+        raw_data["n"] = n
         self.raw_data = raw_data
         self.dist = dist
 
@@ -38,8 +39,9 @@ class MixtureModel():
         params = np.zeros(shape=(self.m, self.dist.k))
 
         for i in range(self.m):
-            params[i, :] = self.dist.fit(x=splits_x[i], c=splits_c[i],
-                                         n=splits_n[i]).params
+            params[i, :] = self.dist.fit(
+                x=splits_x[i], c=splits_c[i], n=splits_n[i]
+            ).params
         self.params = params
         self.w = np.ones(shape=(self.m)) / self.m
         self.p = np.ones(shape=(self.m, len(self.x))) / self.m
@@ -91,7 +93,7 @@ class MixtureModel():
             f1 = self.loglike
             i += 1
         if i >= 1000:
-            print('Max iterations reached')
+            print("Max iterations reached")
 
     def neg_ll(self, x, c, n, *params):
         f = np.zeros_like(self.p)
@@ -109,7 +111,6 @@ class MixtureModel():
         return f
 
     def _mle(self):
-
         def fun(x):
             return self.neg_ll(self.x, self.c, self.n, *x)
 
@@ -119,30 +120,30 @@ class MixtureModel():
         def w_sums_to_1(x):
             xx = np.reshape(x, (self.m, self.dist.k + 1))
             return xx[:, 0].sum() - 1
-        cons = {'type': 'eq', 'fun': w_sums_to_1}
+
+        cons = {"type": "eq", "fun": w_sums_to_1}
         jac = jacobian(fun)
         hess = hessian(fun)
-        res = minimize(fun, init.flatten(),
-                       jac=jac, bounds=bounds,
-                       constraints=[cons])
+        res = minimize(
+            fun, init.flatten(), jac=jac, bounds=bounds, constraints=[cons]
+        )
         self.hess_inv = inv(hess(res.x))
         self.res = res
         self.params = np.reshape(res.x, (self.m, self.dist.k + 1))[:, 1::]
         self.w = np.reshape(res.x, (self.m, self.dist.k + 1))[:, 0]
 
-    def fit(self, how='EM'):
-        if how == 'EM':
+    def fit(self, how="EM"):
+        if how == "EM":
             self._em()
-            self.method = 'EM'
-        elif how == 'MLE':
+            self.method = "EM"
+        elif how == "MLE":
             self._mle()
-            self.method = 'MLE'
+            self.method = "MLE"
 
     def ll(self):
         return self.loglike
 
     def R_cb(self, t, cb=0.05):
-
         def ssf(params):
             params = np.reshape(params, (self.m, self.dist.k + 1))
             F = np.zeros_like(t)
@@ -151,7 +152,7 @@ class MixtureModel():
             return 1 - F
 
         pvars = self.hess_inv[np.triu_indices(self.hess_inv.shape[0])]
-        with np.errstate(all='ignore'):
+        with np.errstate(all="ignore"):
             jac = jacobian(ssf)(self.res.x)
 
         var_u = []
@@ -159,10 +160,13 @@ class MixtureModel():
             j = np.atleast_2d(j).T * j
             j = j[np.triu_indices(j.shape[0])]
             var_u.append(np.sum(j * pvars))
-        diff = (z(cb/2) * np.sqrt(np.array(var_u))
-                * np.array([1., -1.]).reshape(2, 1))
+        diff = (
+            z(cb / 2)
+            * np.sqrt(np.array(var_u))
+            * np.array([1.0, -1.0]).reshape(2, 1)
+        )
         R_hat = self.sf(t)
-        exponent = diff/(R_hat*(1 - R_hat))
+        exponent = diff / (R_hat * (1 - R_hat))
         R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
         return R_cb.T
 
@@ -177,7 +181,7 @@ class MixtureModel():
         rvs = np.zeros(size)
         s_last = 0
         for i, s in enumerate(sizes):
-            rvs[s_last:s+s_last] = self.dist.random(s, *self.params[i, :])
+            rvs[s_last : s + s_last] = self.dist.random(s, *self.params[i, :])
             s_last = s
         np.random.shuffle(rvs)
         return rvs

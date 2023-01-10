@@ -1,4 +1,5 @@
 import numpy as np
+
 from surpyval import nonparametric as nonp
 from surpyval import xcnt_handler
 
@@ -16,11 +17,11 @@ def filliben(x, c, n, t):
     c = np.repeat(c, n)
     n = np.ones_like(x)
 
-    idx = np.argsort(c, kind='stable')
+    idx = np.argsort(c, kind="stable")
     x = x[idx]
     c = c[idx]
 
-    idx2 = np.argsort(x, kind='stable')
+    idx2 = np.argsort(x, kind="stable")
     x = x[idx2]
     c = c[idx2]
     N = len(x)
@@ -30,9 +31,9 @@ def filliben(x, c, n, t):
     r = np.linspace(N, 1, num=N)
 
     F = (ranks - 0.3175) / (N + 0.365)
-    F[0] = 1 - (0.5 ** (1. / N))
-    F[-1] = 0.5 ** (1. / N)
+    F[0] = 1 - (0.5 ** (1.0 / N))
+    F[-1] = 0.5 ** (1.0 / N)
 
-    out = {k: v for k, v in zip(['x', 'r', 'd'], (x, r, d))}
-    out['R'] = 1 - F
+    out = {k: v for k, v in zip(["x", "r", "d"], (x, r, d))}
+    out["R"] = 1 - F
     return out

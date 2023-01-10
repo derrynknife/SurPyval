@@ -2,7 +2,7 @@ import pandas as pd
 from pkg_resources import resource_filename
 
 
-class BoforsSteel_():
+class BoforsSteel_:
     r"""
     A Class with a Pandas DataFrame containing the data of
     the tensile strenght of Bofors Steel from the Weibull paper [1]_.
@@ -48,11 +48,13 @@ class BoforsSteel_():
            Vol. 18, No. 3, pp 293-297 (1951).
 
     """
+
     def __init__(self):
-        self.data = pd.read_csv(resource_filename("surpyval",
-                                                "datasets/bofors_steel.csv"),
-                              engine="python")
-    
+        self.data = pd.read_csv(
+            resource_filename("surpyval", "datasets/bofors_steel.csv"),
+            engine="python",
+        )
+
     def __repr__(self):
         return """
         Data from:
@@ -63,19 +65,42 @@ class BoforsSteel_():
         """
 
 
-class Boston_():
+class Boston_:
     def __init__(self):
-        self.data = pd.read_csv(resource_filename("surpyval",
-                                                "datasets/boston.csv"),
-                              engine="python")
+        self.data = pd.read_csv(
+            resource_filename("surpyval", "datasets/boston.csv"),
+            engine="python",
+        )
 
 
-class Bearing_():
+class Bearing_:
     def __init__(self):
-        x = [17.88, 28.92, 33, 41.52, 42.12, 45.6, 48.4, 51.84,
-             51.96, 54.12, 55.56, 67.8, 68.64, 68.64, 68.88, 84.12,
-             93.12, 98.64, 105.12, 105.84, 127.92, 128.04, 173.4]
-        self.data = pd.DataFrame({'Cycles to Failure (millions)': x})
+        x = [
+            17.88,
+            28.92,
+            33,
+            41.52,
+            42.12,
+            45.6,
+            48.4,
+            51.84,
+            51.96,
+            54.12,
+            55.56,
+            67.8,
+            68.64,
+            68.64,
+            68.88,
+            84.12,
+            93.12,
+            98.64,
+            105.12,
+            105.84,
+            127.92,
+            128.04,
+            173.4,
+        ]
+        self.data = pd.DataFrame({"Cycles to Failure (millions)": x})
 
     def __repr__(self):
         return """
@@ -86,53 +111,61 @@ class Bearing_():
         http://dx.doi.org/10.6028/jres.057.033
         """
 
-class Heart_():
-  def __init__(self):
-    self.data = pd.read_csv(resource_filename("surpyval",
-                                                "datasets/heart.csv"),
-                              engine="python")
-  
-  def __repr__(self):
-    return """
+
+class Heart_:
+    def __init__(self):
+        self.data = pd.read_csv(
+            resource_filename("surpyval", "datasets/heart.csv"),
+            engine="python",
+        )
+
+    def __repr__(self):
+        return """
     Data from:
     Heart transplant data
     """
 
-class Lung_():
-  def __init__(self):
-    self.data = pd.read_csv(resource_filename("surpyval",
-                                                "datasets/lung.csv"),
-                              engine="python")
-  
-  def __repr__(self):
-    return """
+
+class Lung_:
+    def __init__(self):
+        self.data = pd.read_csv(
+            resource_filename("surpyval", "datasets/lung.csv"), engine="python"
+        )
+
+    def __repr__(self):
+        return """
     Data from:
     Lung data...
     """
 
-class Rossi_():
-  def __init__(self):
-    self.data = pd.read_csv(resource_filename("surpyval",
-                                                "datasets/rossi.csv"),
-                              engine="python")
-    self.time_varying_data = pd.read_csv(resource_filename("surpyval",
-                                                "datasets/rossi_tv.csv"),
-                              engine="python")
-  
-  def __repr__(self):
-    return """
+
+class Rossi_:
+    def __init__(self):
+        self.data = pd.read_csv(
+            resource_filename("surpyval", "datasets/rossi.csv"),
+            engine="python",
+        )
+        self.time_varying_data = pd.read_csv(
+            resource_filename("surpyval", "datasets/rossi_tv.csv"),
+            engine="python",
+        )
+
+    def __repr__(self):
+        return """
     Data from:
     Rossi
     """
 
-class Tires_():
-  def __init__(self):
-    self.data = pd.read_csv(resource_filename("surpyval",
-                                              "datasets/tires.csv"),
-                            engine="python")
-  
-  def __repr__(self):
-    return """
+
+class Tires_:
+    def __init__(self):
+        self.data = pd.read_csv(
+            resource_filename("surpyval", "datasets/tires.csv"),
+            engine="python",
+        )
+
+    def __repr__(self):
+        return """
     Data from:
     V.V Krivtsov, D.E Tananko, T.P Davis,
     Regression Approach to Tire Reliability Analysis,

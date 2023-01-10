@@ -1,46 +1,49 @@
 """
-This code was created for and sponsored by Cartiga (www.cartiga.com). 
-Cartiga makes no representations or warranties in connection with the code 
-and waives any and all liability in connection therewith. Your use of the 
+This code was created for and sponsored by Cartiga (www.cartiga.com).
+Cartiga makes no representations or warranties in connection with the code
+and waives any and all liability in connection therewith. Your use of the
 code constitutes acceptance of these terms.
 
 Copyright 2022 Cartiga LLC
 """
 
-import surpyval as surv
-
-from surpyval.utils import (
-    _get_idx,
-    validate_cr_inputs,
-    # validate_cr_df_inputs,
-    validate_event,
-    validate_cif_event
-)
 import textwrap
 
-from surpyval.nonparametric.nelson_aalen import nelson_aalen as na
-from surpyval.nonparametric.kaplan_meier import kaplan_meier as km
+import numpy as np
 
-class CompetingRisks():
+import surpyval as surv
+from surpyval.nonparametric.kaplan_meier import kaplan_meier as km
+from surpyval.nonparametric.nelson_aalen import nelson_aalen as na
+from surpyval.utils import (
+    _get_idx,
+    validate_cif_event,
+    validate_cr_df_inputs,
+    validate_cr_inputs,
+    validate_event,
+)
+
+
+class CompetingRisks:
     def __repr__(self):
         out = """\
         Competing Risk model with events:
         {events}
-        """.format(events=list(self.event_idx_map.keys()))
+        """.format(
+            events=list(self.event_idx_map.keys())
+        )
         return textwrap.dedent(out)
-
 
     def _f(self, f, x, event):
         validate_event(self.event_idx_map, event)
         idx, rev = _get_idx(self.x, x)
 
-        if f == 'h':
+        if f == "h":
             arr = self.h0_e
-        elif f == 'H':
+        elif f == "H":
             arr = self.H0_e
         elif f == "IIF":
             arr = self.IIF
-        elif f =="CIF":
+        elif f == "CIF":
             arr = self.CIF
 
         if event is None:
@@ -50,10 +53,10 @@ class CompetingRisks():
             return arr[e, idx][rev]
 
     def hf(self, x, event=None):
-        return self._f('h', x, event)
+        return self._f("h", x, event)
 
     def Hf(self, x, event=None):
-        return self._f('H', x, event)
+        return self._f("H", x, event)
 
     def sf(self, x, event=None):
         return np.exp(-self.Hf(x, event=event))
@@ -74,7 +77,7 @@ class CompetingRisks():
         Instantaneous Incidence Function
         """
         validate_cif_event(event)
-        return self._f('IIF', x, event)
+        return self._f("IIF", x, event)
 
     def cif(self, x, event):
         """
@@ -82,14 +85,14 @@ class CompetingRisks():
         """
         validate_cif_event(event)
 
-        return self._f('CIF', x, event)
+        return self._f("CIF", x, event)
 
     @classmethod
-    def fit_from_df(cls, df, x_col, e_col, c_col=None, 
-                    n_col=None, method="Nelson-Aalen"):
+    def fit_from_df(
+        cls, df, x_col, e_col, c_col=None, n_col=None, method="Nelson-Aalen"
+    ):
 
-        x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, 
-                                           c_col, n_col)
+        x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
         model = cls.fit(x, e, c, n, method)
         model.df = df
         return model
@@ -112,7 +115,7 @@ class CompetingRisks():
         # Count number of unique event types.
         # Ordering is stable over repeats due to sort.
         n_event_types = len(unique_e)
-        event_idx_map = {state : i for i, state in enumerate(sorted(unique_e))}
+        event_idx_map = {state: i for i, state in enumerate(sorted(unique_e))}
 
         # Get the x, r, d format agnostic of event.
         unique_x, r, d = surv.xcn_to_xrd(x, c, n)

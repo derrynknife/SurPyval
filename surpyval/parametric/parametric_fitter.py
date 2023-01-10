@@ -1,30 +1,22 @@
-from surpyval import np
-from scipy.integrate import quad
-
-from ..nonparametric import plotting_positions as pp
-
-import surpyval
-from .parametric import Parametric
-
-import pandas as pd
 from copy import copy
 
-from .fitters.mom import mom
+import pandas as pd
+from scipy.integrate import quad
+
+import surpyval
+from surpyval import np
+
+from ..nonparametric import plotting_positions as pp
+from .fitters import bounds_convert, fix_idx_and_function
 from .fitters.mle import mle
+from .fitters.mom import mom
+from .fitters.mpp import mpp
 from .fitters.mps import mps
 from .fitters.mse import mse
-from .fitters.mpp import mpp
+from .parametric import Parametric
 
-from .fitters import bounds_convert, fix_idx_and_function
-
-PARA_METHODS = ['MPP', 'MLE', 'MPS', 'MSE', 'MOM']
-METHOD_FUNC_DICT = {
-    'MPP': mpp,
-    'MOM': mom,
-    'MLE': mle,
-    'MPS': mps,
-    'MSE': mse
-}
+PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
+METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
 
 
 def init_from_bounds(dist):
@@ -33,16 +25,16 @@ def init_from_bounds(dist):
         if (low is None) & (high is None):
             out.append(0)
         elif high is None:
-            out.append(low + 1.)
+            out.append(low + 1.0)
         elif low is None:
-            out.append(high - 1.)
+            out.append(high - 1.0)
         else:
-            out.append((high + low)/2.)
+            out.append((high + low) / 2.0)
 
     return out
 
 
-class ParametricFitter():
+class ParametricFitter:
     def log_df(self, x, *params):
         return np.log(self.hf(x, *params)) - self.Hf(x, *params)
 
@@ -68,40 +60,43 @@ class ParametricFitter():
             if p == 1:
                 like = np.where(c == 1, self.log_sf(x, *params), like)
             else:
-                like = np.where(c == 1,
-                                np.log(1 - (p * self.ff(x, *params))),
-                                like)
+                like = np.where(
+                    c == 1, np.log(1 - (p * self.ff(x, *params))), like
+                )
         else:
-            like = np.where(c == 0,
-                            np.log(1 - f0) + np.log(p) +
-                            self.log_df(x, *params),
-                            like)
-            like = np.where(c == -1,
-                            np.log(1 - f0) + np.log(p) +
-                            self.log_ff(x, *params),
-                            like)
+            like = np.where(
+                c == 0,
+                np.log(1 - f0) + np.log(p) + self.log_df(x, *params),
+                like,
+            )
+            like = np.where(
+                c == -1,
+                np.log(1 - f0) + np.log(p) + self.log_ff(x, *params),
+                like,
+            )
             like = np.where((c == 0) & (x == 0), np.log(f0), like)
             if p == 1:
-                like = np.where(c == 1,
-                                np.log(1 - f0) + self.log_sf(x, *params),
-                                like)
+                like = np.where(
+                    c == 1, np.log(1 - f0) + self.log_sf(x, *params), like
+                )
             else:
-                like = np.where(c == 1,
-                                np.log(1 - f0) +
-                                np.log(1 - (p * self.ff(x, *params))),
-                                like)
+                like = np.where(
+                    c == 1,
+                    np.log(1 - f0) + np.log(1 - (p * self.ff(x, *params))),
+                    like,
+                )
 
         return like
 
     def log_like_i(self, x, c, n, inf_c_flags, p, f0, *params):
-        ir = np.where(inf_c_flags[:, 1] == 1,
-                      1,
-                      (1 - f0) * p * self.ff(x[:, 1], *params))
-        il = np.where(inf_c_flags[:, 0] == 1,
-                      0,
-                      (1 - f0) * p * self.ff(x[:, 0], *params))
+        ir = np.where(
+            inf_c_flags[:, 1] == 1, 1, (1 - f0) * p * self.ff(x[:, 1], *params)
+        )
+        il = np.where(
+            inf_c_flags[:, 0] == 1, 0, (1 - f0) * p * self.ff(x[:, 0], *params)
+        )
         like_i = ir - il
-        like_i = np.where(c != 2, 1., like_i)
+        like_i = np.where(c != 2, 1.0, like_i)
         return np.log(like_i)
 
     def like_i(self, x, c, n, inf_c_flags, *params):
@@ -116,8 +111,8 @@ class ParametricFitter():
     def like_t(self, t, t_flags, *params):
         # Needs to be updated to work with zi and ds models.
         # until then, can prevent it working in the `fit` method
-        tr_denom = np.where(t_flags[:, 1] == 1, self.ff(t[:, 1], *params), 1.)
-        tl_denom = np.where(t_flags[:, 0] == 1, self.ff(t[:, 0], *params), 0.)
+        tr_denom = np.where(t_flags[:, 1] == 1, self.ff(t[:, 1], *params), 1.0)
+        tl_denom = np.where(t_flags[:, 0] == 1, self.ff(t[:, 0], *params), 0.0)
         t_denom = tr_denom - tl_denom
         return t_denom
 
@@ -147,13 +142,13 @@ class ParametricFitter():
         if np.isfinite(tl):
             F_tl = self.ff(tl, *params)
         else:
-            F_tl = 0.
-        
+            F_tl = 0.0
+
         if np.isfinite(tr):
             F_tr = self.ff(tr, *params)
         else:
-            F_tr = 1.
-        
+            F_tr = 1.0
+
         F = self.ff(x_obs, *params)
 
         all_F = np.hstack([F_tl, F, F_tr])
@@ -177,9 +172,9 @@ class ParametricFitter():
             ll_n = np.concatenate([n[c == -1], n[c == 1]])
 
         M = np.log(D)
-        M = -np.sum(M)/(M.shape[0])
+        M = -np.sum(M) / (M.shape[0])
 
-        LL = -(np.log(LL) * ll_n).sum()/(n.sum() - n_obs.sum() + n_ties)
+        LL = -(np.log(LL) * ll_n).sum() / (n.sum() - n_obs.sum() + n_ties)
         return M + LL
 
     def _moment(self, n, *params, offset=False):
@@ -192,7 +187,7 @@ class ParametricFitter():
 
             m = quad(fun, gamma, np.inf)[0]
         else:
-            if hasattr(self, 'moment'):
+            if hasattr(self, "moment"):
                 m = self.moment(n, *params)
             else:
 
@@ -213,11 +208,27 @@ class ParametricFitter():
             moments[i] = self._moment(n, *params, offset=offset)
         return moments
 
-    def fit(self, x=None, c=None, n=None, t=None, how='MLE',
-            offset=False, zi=False, lfp=False, tl=None, tr=None,
-            xl=None, xr=None, fixed=None, heuristic='Turnbull',
-            init=[], rr='y', on_d_is_0=False,
-            turnbull_estimator='Fleming-Harrington'):
+    def fit(
+        self,
+        x=None,
+        c=None,
+        n=None,
+        t=None,
+        how="MLE",
+        offset=False,
+        zi=False,
+        lfp=False,
+        tl=None,
+        tr=None,
+        xl=None,
+        xr=None,
+        fixed=None,
+        heuristic="Turnbull",
+        init=[],
+        rr="y",
+        on_d_is_0=False,
+        turnbull_estimator="Fleming-Harrington",
+    ):
 
         r"""
 
@@ -369,37 +380,44 @@ class ParametricFitter():
 
         if offset and (self.support[0] != 0):
             # self.name in ['Normal', 'Beta', 'Uniform', 'Gumbel', 'Logistic']:
-            detail = '{} distribution cannot be offset'.format(self.name)
+            detail = "{} distribution cannot be offset".format(self.name)
             raise ValueError(detail)
 
         if how not in PARA_METHODS:
             raise ValueError('"how" must be one of: ' + str(PARA_METHODS))
 
-        if how == 'MPP' and self.name == 'ExpoWeibull':
-            detail = 'ExpoWeibull distribution does not work' + \
-                     ' with probability plot fitting'
+        if how == "MPP" and self.name == "ExpoWeibull":
+            detail = (
+                "ExpoWeibull distribution does not work"
+                + " with probability plot fitting"
+            )
             raise ValueError(detail)
 
-        if t is not None and how == 'MSE':
-            detail = 'Mean square error doesn\'t yet support tuncation'
+        if t is not None and how == "MSE":
+            detail = "Mean square error doesn't yet support tuncation"
             raise NotImplementedError(detail)
 
-        if t is not None and how == 'MOM':
-            detail = 'Maximum product spacing doesn\'t support tuncation'
+        if t is not None and how == "MOM":
+            detail = "Maximum product spacing doesn't support tuncation"
             raise ValueError(detail)
 
-        if (lfp or zi) & (how != 'MLE'):
-            detail = 'Limited failure or zero-inflated models' + \
-                     ' can only be made with MLE'
+        if (lfp or zi) & (how != "MLE"):
+            detail = (
+                "Limited failure or zero-inflated models"
+                + " can only be made with MLE"
+            )
             raise ValueError(detail)
 
-        if (zi & (self.support[0] != 0)):
-            detail = "zero-inflated models can only work" + \
-                     "with models starting at 0"
+        if zi & (self.support[0] != 0):
+            detail = (
+                "zero-inflated models can only work"
+                + "with models starting at 0"
+            )
             raise ValueError()
 
-        x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t,
-                                           tl=tl, tr=tr, xl=xl, xr=xr)
+        x, c, n, t = surpyval.xcnt_handler(
+            x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
+        )
 
         if (c == 1).all():
             raise ValueError("Cannot have only right censored data")
@@ -407,19 +425,25 @@ class ParametricFitter():
         if (c == -1).all():
             raise ValueError("Cannot have only left censored data")
 
-        if surpyval.utils.check_no_censoring(c) and (how == 'MOM'):
-            raise ValueError('Method of moments doesn\'t support censoring')
+        if surpyval.utils.check_no_censoring(c) and (how == "MOM"):
+            raise ValueError("Method of moments doesn't support censoring")
 
-        if (surpyval.utils.no_left_or_int(c)) and \
-           (how == 'MPP') and \
-           (not heuristic == 'Turnbull'):
-            detail = 'Probability plotting estimation with left or ' + \
-                     'interval censoring only works with Turnbull heuristic'
+        if (
+            (surpyval.utils.no_left_or_int(c))
+            and (how == "MPP")
+            and (not heuristic == "Turnbull")
+        ):
+            detail = (
+                "Probability plotting estimation with left or "
+                + "interval censoring only works with Turnbull heuristic"
+            )
             raise ValueError()
 
-        if (heuristic == 'Turnbull') and \
-           (not ((-1 in c) or (2 in c))) and \
-           ((~np.isfinite(t[:, 1])).any()):
+        if (
+            (heuristic == "Turnbull")
+            and (not ((-1 in c) or (2 in c)))
+            and ((~np.isfinite(t[:, 1])).any())
+        ):
             # The Turnbull method is extremely memory intensive.
             # So if no left or interval censoring and no right-truncation
             # then this is equivalent.
@@ -435,86 +459,90 @@ class ParametricFitter():
 
             if x.ndim == 2:
                 if ((x[:, 0] <= self.support[0]) & (c == 0)).any():
-                    detail = detail_template.format(lower=self.support[0],
-                                                    upper=self.support[1])
+                    detail = detail_template.format(
+                        lower=self.support[0], upper=self.support[1]
+                    )
                     raise ValueError(detail)
                 elif ((x[:, 1] >= self.support[1]) & (c == 0)).any():
-                    detail = detail_template.format(lower=self.support[0],
-                                                    upper=self.support[1])
+                    detail = detail_template.format(
+                        lower=self.support[0], upper=self.support[1]
+                    )
                     raise ValueError(detail)
             else:
                 if ((x <= self.support[0]) & (c == 0)).any():
-                    detail = detail_template.format(lower=self.support[0],
-                                                    upper=self.support[1])
+                    detail = detail_template.format(
+                        lower=self.support[0], upper=self.support[1]
+                    )
                     raise ValueError(detail)
                 elif ((x >= self.support[1]) & (c == 0)).any():
-                    detail = detail_template.format(lower=self.support[0],
-                                                    upper=self.support[1])
+                    detail = detail_template.format(
+                        lower=self.support[0], upper=self.support[1]
+                    )
                     raise ValueError(detail)
 
         # Unpack the truncation
         tl = t[:, 0]
         tr = t[:, 1]
 
-        if (tl[0] != tl).any() and how == 'MPS':
-            raise ValueError("Left truncated value can only be single number \
-                              when using MPS")
+        if (tl[0] != tl).any() and how == "MPS":
+            raise ValueError(
+                "Left truncated value can only be single number \
+                              when using MPS"
+            )
 
-        if (tr[0] != tr).any() and how == 'MPS':
-            raise ValueError("Right truncated value can only be single number \
-                              when using MPS")
+        if (tr[0] != tr).any() and how == "MPS":
+            raise ValueError(
+                "Right truncated value can only be single number \
+                              when using MPS"
+            )
 
         # Ensure truncation values move to edge where support is not
         # -np.inf to np.inf
         if np.isfinite(self.support[0]):
             tl = np.where(tl < self.support[0], self.support[0], tl)
-        
+
         if np.isfinite(self.support[1]):
             tr = np.where(tl > self.support[1], self.support[1], tr)
 
         # Passed checks
-        data = {
-            'x': x,
-            'c': c,
-            'n': n,
-            't': t
-        }
+        data = {"x": x, "c": c, "n": n, "t": t}
 
         model = Parametric(self, how, data, offset, lfp, zi)
         fitting_info = {}
 
-        if how == 'MPS':
+        if how == "MPS":
             # Need to set the scalar truncation values
             # if the MPS method is used.
             model.tl = tl[0]
             model.tr = tr[0]
 
-        if how != 'MPP':
-            transform, inv_trans, funcs, inv_f = bounds_convert(x,
-                                                                model.bounds)
-            const, fixed_idx, not_fixed = fix_idx_and_function(fixed,
-                                                               model.param_map,
-                                                               funcs)
+        if how != "MPP":
+            transform, inv_trans, funcs, inv_f = bounds_convert(
+                x, model.bounds
+            )
+            const, fixed_idx, not_fixed = fix_idx_and_function(
+                fixed, model.param_map, funcs
+            )
 
-            fitting_info['transform'] = transform
-            fitting_info['inv_trans'] = inv_trans
-            fitting_info['funcs'] = funcs
-            fitting_info['inv_f'] = inv_f
+            fitting_info["transform"] = transform
+            fitting_info["inv_trans"] = inv_trans
+            fitting_info["funcs"] = funcs
+            fitting_info["inv_f"] = inv_f
 
-            fitting_info['const'] = const
-            fitting_info['fixed_idx'] = fixed_idx
-            fitting_info['not_fixed'] = not_fixed
+            fitting_info["const"] = const
+            fitting_info["fixed_idx"] = fixed_idx
+            fitting_info["not_fixed"] = not_fixed
 
             if init == []:
                 # this needs to be more general.
-                if self.name in ['Gumbel', 'Beta', 'Normal', 'Uniform']:
-                    with np.errstate(all='ignore'):
+                if self.name in ["Gumbel", "Beta", "Normal", "Uniform"]:
+                    with np.errstate(all="ignore"):
                         init = np.array(self._parameter_initialiser(x, c, n))
                 else:
-                    with np.errstate(all='ignore'):
+                    with np.errstate(all="ignore"):
                         if x.ndim == 2:
                             # If x has 2 dims, then there is intervally
-                            # censored data. Simply take the midpoint to 
+                            # censored data. Simply take the midpoint to
                             # get the initial estimate.
                             x_init = x.mean(axis=1)
                             c_init = np.copy(c)
@@ -526,10 +554,10 @@ class ParametricFitter():
                         # Remove x where x is out of support
                         # This is if data for a zi or lfp model is given
                         if not offset:
-                            in_support_mask = (x_init > self.support[0]) \
-                                              & (x_init < self.support[1])
+                            in_support_mask = (x_init > self.support[0]) & (
+                                x_init < self.support[1]
+                            )
 
-                        
                             # Reduce x, c, and n to the case where it is in the
                             # support of the distribution
                             x_init = x_init[in_support_mask]
@@ -539,18 +567,18 @@ class ParametricFitter():
                             n_init = np.copy(n)
 
                         # Create an initial estimate with the new points
-                        init = self._parameter_initialiser(x_init,
-                                                           c_init,
-                                                           n_init,
-                                                           offset=offset)
+                        init = self._parameter_initialiser(
+                            x_init, c_init, n_init, offset=offset
+                        )
                         init = np.array(init)
 
                         if offset:
-                            init[0] = x.min() - 1.
+                            init[0] = x.min() - 1.0
 
                 if lfp:
-                    _, _, _, F = pp(x_init, c_init, n_init,
-                                    heuristic='Nelson-Aalen')
+                    _, _, _, F = pp(
+                        x_init, c_init, n_init, heuristic="Nelson-Aalen"
+                    )
 
                     max_F = np.max(F)
 
@@ -568,20 +596,20 @@ class ParametricFitter():
                     n_0 = n[c == 0]
                     total_failures_at_zero = n_0[x_0 == 0].sum()
 
-                    f_0_init = total_failures_at_zero/n.sum()
+                    f_0_init = total_failures_at_zero / n.sum()
                     init = np.concatenate([init, [f_0_init]])
 
             init = np.atleast_1d(init)
             init = transform(init)
             init = init[not_fixed]
-            fitting_info['init'] = init
+            fitting_info["init"] = init
         else:
             # Probability plotting method does not need an initial estimate
-            fitting_info['rr'] = rr
-            fitting_info['heuristic'] = heuristic
-            fitting_info['on_d_is_0'] = on_d_is_0
-            fitting_info['turnbull_estimator'] = turnbull_estimator
-            fitting_info['init'] = None
+            fitting_info["rr"] = rr
+            fitting_info["heuristic"] = heuristic
+            fitting_info["on_d_is_0"] = on_d_is_0
+            fitting_info["turnbull_estimator"] = turnbull_estimator
+            fitting_info["init"] = None
 
         model.fitting_info = fitting_info
 
@@ -594,7 +622,7 @@ class ParametricFitter():
         # as a numpy array... which ought to be fixed.
         model.params = np.atleast_1d(model.params)
 
-        if hasattr(model, 'params'):
+        if hasattr(model, "params"):
             for k, v in zip(self.param_names, model.params):
                 setattr(model, k, v)
 
@@ -610,7 +638,6 @@ class ParametricFitter():
             # TODO: More general support setting. i.e. 4 parameter Beta
             left = model.params[0]
 
-
         if np.isfinite(self.support[1]):
             right = self.support[1]
         elif self.support[1] == np.inf:
@@ -622,9 +649,18 @@ class ParametricFitter():
 
         return model
 
-    def fit_from_df(self, df, x=None, c=None, n=None,
-                    xl=None, xr=None, tl=None, tr=None,
-                    **fit_options):
+    def fit_from_df(
+        self,
+        df,
+        x=None,
+        c=None,
+        n=None,
+        xl=None,
+        xr=None,
+        tl=None,
+        tr=None,
+        **fit_options
+    ):
         r"""
         The central feature to SurPyval's capability. This function aimed to
         have an API to mimic the simplicity of the scipy API. That is, to use
@@ -724,7 +760,7 @@ class ParametricFitter():
             elif np.isscalar(tl):
                 tl = (np.ones(df.shape[0]) * tl).astype(float)
             else:
-                raise ValueError('`tl` must be scalar or column label string')
+                raise ValueError("`tl` must be scalar or column label string")
         else:
             tl = np.ones(df.shape[0]) * -np.inf
 
@@ -797,7 +833,7 @@ class ParametricFitter():
             raise ValueError(detail)
 
         if gamma is not None and np.isinf(self.support).all():
-            msg_base = '{dist} distribution cannot be offset'
+            msg_base = "{dist} distribution cannot be offset"
             detail = msg_base.format(dist=self.name)
             raise ValueError(detail)
 
@@ -819,8 +855,7 @@ class ParametricFitter():
             zi = False
             f0 = 0
 
-        model = Parametric(self, 'given parameters',
-                           None, offset, lfp, zi)
+        model = Parametric(self, "given parameters", None, offset, lfp, zi)
         model.gamma = gamma
         model.p = p
         model.f0 = f0
@@ -831,7 +866,6 @@ class ParametricFitter():
             model.support = (gamma, model.support[1])
         elif np.isnan(self.support).any():
             model.support = np.array(model.params)
-
 
         for i, (low, upp) in enumerate(self.bounds):
             if low is None:
@@ -844,7 +878,7 @@ class ParametricFitter():
                 upper_limit = upp
 
             if not ((lower_limit < params[i]) & (params[i] < upper_limit)):
-                params = ', '.join(self.param_names)
+                params = ", ".join(self.param_names)
                 base = "Params {params} must be in bounds {bounds}"
                 detail = base.format(params=params, bounds=self.bounds)
                 raise ValueError(detail)

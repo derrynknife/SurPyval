@@ -1,1 +1,1 @@
-from .nhpp import Duane, CoxLewis, Crow, CrowAMSAA, HPP
+from .nhpp import HPP, CoxLewis, Crow, CrowAMSAA, Duane
