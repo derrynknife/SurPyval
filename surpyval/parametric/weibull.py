@@ -55,7 +55,9 @@ class Weibull_(ParametricFitter):
             heuristic = "Fleming-Harrington"
 
         if offset:
-            m = self.fit(x, c, n, offset=offset, how="MPP", heuristic=heuristic)
+            m = self.fit(
+                x, c, n, offset=offset, how="MPP", heuristic=heuristic
+            )
             return (m.gamma, *m.params)
         else:
             log_x = np.log(x)
