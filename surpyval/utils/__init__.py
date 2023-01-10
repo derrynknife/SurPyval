@@ -250,6 +250,23 @@ def xcn_handler(x, c=None, n=None):
         # Do check here for groupby and binning
         n = np.ones(x.shape[0])
 
+    if x.ndim == 2:
+        if np.isinf(x).all(axis=1).any():
+            raise ValueError(
+                "Interval censored entry has no info: in range (-inf, inf)"
+            )
+        # Convert interval censored from (v, to inf) to
+        # a right censored point
+        mask = np.isinf(x[:, 1])
+        x[mask, 1] = x[mask, 0]
+        c[mask] = 1
+
+        # Convert interval censored from (-inf to v) to
+        # a left censored point
+        mask = np.isinf(x[:, 0])
+        x[mask, 0] = x[mask, 1]
+        c[mask] = -1
+
     n = n.astype(int)
     c = c.astype(int)
 
@@ -677,6 +694,23 @@ def xcnt_handler(
                 "All right truncated values must be greater than the \
                     respective observed values"
             )
+
+    if x.ndim == 2:
+        if np.isinf(x).all(axis=1).any():
+            raise ValueError(
+                "Interval censored entry has no info: in range (-inf, inf)"
+            )
+        # Convert interval censored from (v, to inf) to
+        # a right censored point
+        mask = np.isinf(x[:, 1])
+        x[mask, 1] = x[mask, 0]
+        c[mask] = 1
+
+        # Convert interval censored from (-inf to v) to
+        # a left censored point
+        mask = np.isinf(x[:, 0])
+        x[mask, 0] = x[mask, 1]
+        c[mask] = -1
 
     x = x.astype(float)
     c = c.astype(int)
