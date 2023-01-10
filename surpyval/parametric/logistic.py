@@ -1,7 +1,8 @@
 from scipy.stats import uniform
 
-from surpyval import np, xcn_handler
+from surpyval import np
 from surpyval.parametric.parametric_fitter import ParametricFitter
+from surpyval.utils import xcn_handler
 
 
 class Logistic_(ParametricFitter):

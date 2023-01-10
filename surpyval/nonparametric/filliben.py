@@ -1,7 +1,7 @@
 import numpy as np
 
 from surpyval import nonparametric as nonp
-from surpyval import xcnt_handler
+from surpyval.utils import xcnt_handler
 
 
 def filliben(x, c, n, t):

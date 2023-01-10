@@ -9,9 +9,9 @@ from scipy.special import ndtri as z
 from scipy.stats import uniform
 
 import surpyval as surv
-from surpyval import fsli_to_xcn
 from surpyval import nonparametric as nonp
-from surpyval import np, round_sig
+from surpyval import np
+from surpyval.utils import fsli_to_xcn, round_sig
 
 CB_COLOUR = "#e94c54"
 

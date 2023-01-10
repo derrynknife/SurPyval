@@ -2,8 +2,7 @@ import numpy as np
 from pandas import Series
 
 from surpyval import nonparametric as nonp
-from surpyval import xcnt_handler
-from surpyval.utils import xcnt_to_xrd
+from surpyval.utils import xcnt_handler, xcnt_to_xrd
 
 
 def plotting_positions(
