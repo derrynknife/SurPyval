@@ -49,27 +49,17 @@ class Weibull_(ParametricFitter):
         self.param_map = {"alpha": 0, "beta": 1}
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        log_x = np.log(x)
-        log_x[np.isnan(log_x)] = -np.inf
         if (2 in c) or (-1 in c):
             heuristic = "Turnbull"
         else:
             heuristic = "Fleming-Harrington"
 
-        data = {"x": x, "c": c, "n": n, "t": t}
-        model = para.Parametric(self, "MPP", data, offset, False, False)
-        fitting_info = {}
-        fitting_info["rr"] = "x"
-        fitting_info["heuristic"] = heuristic
-        fitting_info["on_d_is_0"] = True
-        fitting_info["turnbull_estimator"] = "Fleming-Harrington"
-        fitting_info["init"] = None
-
-        model.fitting_info = fitting_info
         if offset:
-            m = self.fit(x, c, n, offset=offset, how="MPP")
+            m = self.fit(x, c, n, offset=offset, how="MPP", heuristic=heuristic)
             return (m.gamma, *m.params)
         else:
+            log_x = np.log(x)
+            log_x[np.isnan(log_x)] = -np.inf
             gumb = para.Gumbel.fit(log_x, c, n, t, how="MLE")
             if not gumb.res.success:
                 gumb = para.Gumbel.fit(
