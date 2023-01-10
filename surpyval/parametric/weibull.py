@@ -7,8 +7,6 @@ from surpyval import np
 from surpyval import parametric as para
 from surpyval.parametric.parametric_fitter import ParametricFitter
 
-from .fitters.mpp import mpp
-
 
 class Weibull_(ParametricFitter):
     def __init__(self, name):
@@ -68,10 +66,9 @@ class Weibull_(ParametricFitter):
         fitting_info["init"] = None
 
         model.fitting_info = fitting_info
-
         if offset:
-            results = mpp(model)
-            return (results["gamma"], *results["params"])
+            m = self.fit(x, c, n, offset=offset, how="MPP")
+            return (m.gamma, *m.params)
         else:
             gumb = para.Gumbel.fit(log_x, c, n, t, how="MLE")
             if not gumb.res.success:
