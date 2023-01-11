@@ -187,4 +187,4 @@ class Bernoulli_:
 
 
 Bernoulli = Bernoulli_("Bernoulli")
-FixedEventProbability = Bernoulli_("Bernoulli")
+FixedEventProbability = Bernoulli_("FixedEventProbability")
