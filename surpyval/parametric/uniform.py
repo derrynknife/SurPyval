@@ -15,6 +15,7 @@ class Uniform_(ParametricFitter):
             (None, None),
         )
         self.support = (np.nan, np.nan)
+        self.plot_x_scale = "linear"
         self.y_ticks = np.linspace(0, 1, 21)[1:-1]
         self.param_names = ["a", "b"]
         self.param_map = {"a": 0, "b": 1}
@@ -390,6 +391,33 @@ class Uniform_(ParametricFitter):
         return a - c_hat * sample_range, b + c_hat * sample_range
 
     def mle(self, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
+        if (c[x == x.max()] == 1).all():
+            raise ValueError(
+                "Uniform distribution cannot be estimated using MLE when"
+                + " the highest value is right censored"
+            )
+
+        if (c[x == x.min()] == -1).all():
+            raise ValueError(
+                "Uniform distribution cannot be estimated using MLE when"
+                + " the lowest value is left censored"
+            )
+
+        tl = t[:, 0]
+        tr = t[:, 1]
+
+        if np.isfinite(tr[x == x.max()]).all():
+            raise ValueError(
+                "Uniform distribution cannot be estimated using MLE when"
+                + " the highest value is right truncated"
+            )
+
+        if np.isfinite(tl[x == x.min()]).all():
+            raise ValueError(
+                "Uniform distribution cannot be estimated using MLE when"
+                + " the lowest value is left truncated"
+            )
+
         params = np.array([np.min(x), np.max(x)])
         results = {}
         results["params"] = params
