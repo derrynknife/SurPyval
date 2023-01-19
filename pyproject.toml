@@ -12,7 +12,7 @@ plugins = "numpy.typing.mypy_plugin"
 
 # Coverage
 [tool.coverage.run]
-source = ["repyability"]
+source = ["surpyval"]
 
 # Flake8
 [tool.flake8]
