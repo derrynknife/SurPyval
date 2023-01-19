@@ -2,8 +2,6 @@ __version__ = "0.10.10"
 
 from autograd import numpy as np
 
-from .fit_best import fit_best
-
 from surpyval.nonparametric import (
     FlemingHarrington,
     KaplanMeier,
@@ -48,6 +46,8 @@ from surpyval.utils import (
     xcnt_to_xrd,
     xrd_to_xcn,
 )
+
+from .fit_best import fit_best
 
 NUM = np.float64
 TINIEST = np.finfo(np.float64).tiny

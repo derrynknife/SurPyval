@@ -765,10 +765,10 @@ class ParametricFitter:
         return self.fit(x=x, c=c, n=n, t=t, **fit_options)
 
     def fit_from_ecdf(self, x, F):
-        model = Parametric(self, 'given ecdf', None, False, False, False)
+        model = Parametric(self, "given ecdf", None, False, False, False)
         res = mpp_from_ecfd(self, x, F)
         model.dist = self
-        model.params = np.array(res['params'])
+        model.params = np.array(res["params"])
         model.support = self.support
 
         return model

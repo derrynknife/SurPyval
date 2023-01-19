@@ -1,10 +1,11 @@
+from copy import copy
+
 from scipy.optimize import minimize
 from scipy.stats import pearsonr
 
 from surpyval import np
 from surpyval.nonparametric import plotting_positions
 
-from copy import copy
 
 def mpp_from_ecfd(dist, x, F):
     old_err_state = np.seterr(all="ignore")
@@ -20,7 +21,7 @@ def mpp_from_ecfd(dist, x, F):
 
     params = np.polyfit(x_pp, y_pp, 1)
 
-    params = np.array(dist.unpack_rr(params, 'y'))
+    params = np.array(dist.unpack_rr(params, "y"))
 
     results = {}
     results["params"] = params
