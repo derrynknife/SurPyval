@@ -2,6 +2,8 @@ __version__ = "0.10.10"
 
 from autograd import numpy as np
 
+from .fit_best import fit_best
+
 from surpyval.nonparametric import (
     FlemingHarrington,
     KaplanMeier,
