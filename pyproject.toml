@@ -6,10 +6,6 @@ line-length = 79
 [tool.isort]
 profile = "black"
 
-# For mypy to better analyse numpy type hints
-[mypy]
-plugins = "numpy.typing.mypy_plugin"
-
 # Coverage
 [tool.coverage.run]
 source = ["surpyval"]
