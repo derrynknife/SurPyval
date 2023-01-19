@@ -1186,8 +1186,12 @@ class Parametric:
             ax.set_xticks(d["x_minor_ticks"], minor=True)
             ax.set_xticklabels([], minor=True)
 
-        ax.grid(b=True, which="major", color="g", alpha=0.4, linestyle="-")
-        ax.grid(b=True, which="minor", color="g", alpha=0.1, linestyle="-")
+        ax.grid(
+            visible=True, which="major", color="g", alpha=0.4, linestyle="-"
+        )
+        ax.grid(
+            visible=True, which="minor", color="g", alpha=0.1, linestyle="-"
+        )
 
         ax.set_title("{} Probability Plot".format(self.dist.name))
         ax.set_ylabel("CDF")
