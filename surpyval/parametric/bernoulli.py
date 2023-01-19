@@ -21,55 +21,51 @@ class Bernoulli_:
     def sf(self, x, p):
         r"""
 
-        Survival (or reliability) function for the Weibull Distribution:
+        Survival (or reliability) function for the Bernoulli Distribution:
 
         .. math::
-            R(x) = e^{-\left ( \frac{x}{\alpha} \right )^\beta}
+            R(x) = 1 - p
 
         Parameters
         ----------
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            scale parameter for the Weibull distribution
-        beta : numpy array or scalar
-            shape parameter for the Weibull distribution
+        p : float
+            The probability of failure of the thing
 
         Returns
         -------
 
         sf : scalar or numpy array
-            The value(s) of the reliability function at x.
+            The value(s) of the reliability function at x. Which for this
+            distribution is constant
 
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import Weibull
+        >>> from surpyval import Bernoulli
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Weibull.sf(x, 3, 4)
-        array([9.87730216e-01, 8.20754808e-01, 3.67879441e-01, 4.24047953e-02,
-               4.45617596e-04])
+        >>> Bernoulli.sf(x, 0.5)
+        array([0.5, 0.5, 0.5, 0.5, 0.5])
         """
         return 1.0 - self.ff(x, p)
 
     def ff(self, x, p):
         r"""
 
-        Failure (CDF or unreliability) function for the Weibull Distribution:
+        Failure (CDF or unreliability) function for the Bernoulli Distribution:
 
         .. math::
-            F(x) = 1 - e^{-\left ( \frac{x}{\alpha} \right )^\beta}
+            F(x) = p
 
         Parameters
         ----------
 
         x : numpy array or scalar
             The values at which the function will be calculated
-        alpha : numpy array or scalar
-            scale parameter for the Weibull distribution
-        beta : numpy array or scalar
-            shape parameter for the Weibull distribution
+        p : float
+            The probability of failure of the thing
 
         Returns
         -------
@@ -80,42 +76,40 @@ class Bernoulli_:
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import Weibull
+        >>> from surpyval import Bernoulli
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Weibull.ff(x, 3, 4)
-        array([0.01226978, 0.17924519, 0.63212056, 0.9575952 , 0.99955438])
+        >>> Bernoulli.sf(x, 0.5)
+        array([0.5, 0.5, 0.5, 0.5, 0.5])
         """
         return np.ones_like(x).astype(float) * p
 
     def moment(self, n, p):
         r"""
 
-        n-th moment of the Weibull distribution
+        n-th moment of the Bernoulli distribution
 
         .. math::
-            M(n) = \alpha^n \Gamma \left ( 1 + \frac{n}{\beta} \right )
+            M(n) = p
 
         Parameters
         ----------
 
         n : integer or numpy array of integers
             The ordinal of the moment to calculate
-        alpha : numpy array or scalar
-            scale parameter for the Weibull distribution
-        beta : numpy array or scalar
-            shape parameter for the Weibull distribution
+        p : float
+            The probability of failure of the thing
 
         Returns
         -------
 
         mean : scalar or numpy array
-            The moment(s) of the Weibull distribution
+            The moment(s) of the Bernoulli distribution
 
         Examples
         --------
-        >>> from surpyval import Weibull
-        >>> Weibull.moment(2, 3, 4)
-        7.976042329074821
+        >>> from surpyval import Bernoulli
+        >>> Bernoulli.moment(2, 0.5)
+        0.5
         """
         return p
 
@@ -132,10 +126,8 @@ class Bernoulli_:
 
         size : integer or tuple of positive integers
             Shape or size of the random draw
-        alpha : numpy array or scalar
-            scale parameter for the Weibull distribution
-        beta : numpy array or scalar
-            shape parameter for the Weibull distribution
+        p : float
+            The probability of failure of the thing
 
         Returns
         -------
@@ -143,19 +135,6 @@ class Bernoulli_:
         random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
 
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Weibull
-        >>> Weibull.random(10, 3, 4)
-        array([1.79782451, 1.7143211 , 2.84778674, 3.12226231, 2.61000839,
-               3.05456332, 3.00280851, 2.61910071, 1.37991527, 4.17488394])
-        >>> Weibull.random((5, 5), 3, 4)
-        array([[1.64782514, 2.79157632, 1.85500681, 2.91908736, 2.46089933],
-               [1.85880127, 0.96787742, 2.29677031, 2.42394129, 2.63889601],
-               [2.14351859, 3.90677225, 2.24013855, 2.49467774, 3.43755278],
-               [3.24417396, 1.40775181, 2.49584969, 3.07603353, 2.54679499],
-               [1.98330076, 2.95002633, 3.35402601, 3.11429283, 3.45706789]])
         """
         U = uniform.rvs(size=size)
         return (U <= p).astype(int)
