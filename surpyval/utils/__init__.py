@@ -10,6 +10,21 @@ COX_PH_METHODS = ["breslow", "efron"]
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
 
 
+def init_from_bounds(dist):
+    out = []
+    for low, high in dist.bounds:
+        if (low is None) & (high is None):
+            out.append(0)
+        elif high is None:
+            out.append(low + 1.0)
+        elif low is None:
+            out.append(high - 1.0)
+        else:
+            out.append((high + low) / 2.0)
+
+    return out
+
+
 def check_no_censoring(c):
     return any(c != 0)
 
