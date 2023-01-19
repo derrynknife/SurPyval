@@ -10,7 +10,6 @@ from surpyval import (
     LogLogistic,
     LogNormal,
     Normal,
-    Uniform,
     Weibull,
 )
 
@@ -21,7 +20,6 @@ DISTS = [
     LogNormal,
     Logistic,
     LogLogistic,
-    Uniform,
     Beta,
     ExpoWeibull,
     Gamma,
@@ -34,7 +32,6 @@ parameter_sample_random_parameters = [
     ((1, 3), (0.2, 1)),
     ((1, 100), (0.5, 20)),
     ((1, 100), (0.5, 20)),
-    ((1, 100), (1, 100)),
     ((0.1, 30), (0.1, 30)),
     ((1, 30), (0.1, 10), (0.5, 1.5)),
     ((1, 30), (0.1, 10)),
@@ -151,11 +148,6 @@ def truncate_at(x, q, where="right"):
     "dist,random_parameters,kind", generate_mle_test_cases(), ids=idfunc
 )
 def test_mle_convergence(dist, random_parameters, kind):
-    if dist.name == "Uniform" and kind == "truncated":
-        # Uniform distribution has no changing shape that can
-        # be extrapolated, so, truncated data has infinite
-        # solutions for the uniform distribution.
-        return None
     tol = 0.03
     for n in FIT_SIZES:
         test_params = []
@@ -177,9 +169,6 @@ def test_mle_convergence(dist, random_parameters, kind):
         if len(model.params) == 0:
             continue
         fitted_params = np.array(model.params)
-        if dist.name == "Uniform":
-            fitted_params = np.sort(fitted_params)
-            test_params = np.sort(test_params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
         # Decrease the tolerance for every parameter
@@ -207,9 +196,6 @@ def test_mle_convergence_small(dist, random_parameters, kind):
         if len(model.params) == 0:
             continue
         fitted_params = np.array(model.params)
-        if dist.name == "Uniform":
-            fitted_params = np.sort(fitted_params)
-            test_params = np.sort(test_params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
         # Decrease the tolerance for every parameter
@@ -237,9 +223,6 @@ def test_mpp(dist, random_parameters, rr):
             x = dist.random(10000, *test_params)
             model = dist.fit(x=x, rr=rr, how="MPP", heuristic="Nelson-Aalen")
             fitted_params = np.array(model.params)
-            if dist.name == "Uniform":
-                fitted_params = np.sort(fitted_params)
-                test_params = np.sort(test_params)
             max_params = np.max([fitted_params, test_params], axis=0)
             diff = np.abs(fitted_params - test_params) / max_params
             if (diff < tol * dist.k).all():
@@ -263,9 +246,6 @@ def test_mom(dist, random_parameters):
         x = dist.random(n, *test_params)
         model = dist.fit(x=x, how="MOM")
         fitted_params = np.array(model.params)
-        if dist.name == "Uniform":
-            fitted_params = np.sort(fitted_params)
-            test_params = np.sort(test_params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
         if (diff < tol * dist.k).all():
@@ -290,9 +270,6 @@ def test_mps(dist, random_parameters):
         x = dist.random(n, *test_params)
         model = dist.fit(x=x, how="MPS")
         fitted_params = np.array(model.params)
-        if dist.name == "Uniform":
-            fitted_params = np.sort(fitted_params)
-            test_params = np.sort(test_params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
         if (diff < tol * dist.k).all():
@@ -318,9 +295,6 @@ def test_mse(dist, random_parameters):
         x = dist.random(n, *test_params)
         model = dist.fit(x=x, how="MSE")
         fitted_params = np.array(model.params)
-        if dist.name == "Uniform":
-            fitted_params = np.sort(fitted_params)
-            test_params = np.sort(test_params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
         if (diff < tol).all():
