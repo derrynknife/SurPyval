@@ -1,5 +1,5 @@
+import importlib_resources
 import pandas as pd
-from pkg_resources import resource_filename
 
 
 class BoforsSteel_:
@@ -50,10 +50,14 @@ class BoforsSteel_:
     """
 
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/bofors_steel.csv"),
-            engine="python",
+        ref = (
+            importlib_resources.files("surpyval") / "datasets/bofors_steel.csv"
         )
+        with importlib_resources.as_file(ref) as path:
+            self.data = pd.read_csv(
+                path,
+                engine="python",
+            )
 
     def __repr__(self):
         return """
@@ -67,10 +71,12 @@ class BoforsSteel_:
 
 class Boston_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/boston.csv"),
-            engine="python",
-        )
+        ref = importlib_resources.files("surpyval") / "datasets/boston.csv"
+        with importlib_resources.as_file(ref) as path:
+            self.data = pd.read_csv(
+                path,
+                engine="python",
+            )
 
 
 class Bearing_:
@@ -114,10 +120,12 @@ class Bearing_:
 
 class Heart_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/heart.csv"),
-            engine="python",
-        )
+        ref = importlib_resources.files("surpyval") / "datasets/heart.csv"
+        with importlib_resources.as_file(ref) as path:
+            self.data = pd.read_csv(
+                path,
+                engine="python",
+            )
 
     def __repr__(self):
         return """
@@ -128,9 +136,12 @@ class Heart_:
 
 class Lung_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/lung.csv"), engine="python"
-        )
+        ref = importlib_resources.files("surpyval") / "datasets/lung.csv"
+        with importlib_resources.as_file(ref) as path:
+            self.data = pd.read_csv(
+                path,
+                engine="python",
+            )
 
     def __repr__(self):
         return """
@@ -141,14 +152,19 @@ class Lung_:
 
 class Rossi_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/rossi.csv"),
-            engine="python",
-        )
-        self.time_varying_data = pd.read_csv(
-            resource_filename("surpyval", "datasets/rossi_tv.csv"),
-            engine="python",
-        )
+        ref = importlib_resources.files("surpyval") / "datasets/rossi.csv"
+        with importlib_resources.as_file(ref) as path:
+            self.data = pd.read_csv(
+                path,
+                engine="python",
+            )
+
+        ref = importlib_resources.files("surpyval") / "datasets/rossi_tv.csv"
+        with importlib_resources.as_file(ref) as path:
+            self.time_varying_data = pd.read_csv(
+                path,
+                engine="python",
+            )
 
     def __repr__(self):
         return """
@@ -159,10 +175,12 @@ class Rossi_:
 
 class Tires_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/tires.csv"),
-            engine="python",
-        )
+        ref = importlib_resources.files("surpyval") / "datasets/tires.csv"
+        with importlib_resources.as_file(ref) as path:
+            self.data = pd.read_csv(
+                path,
+                engine="python",
+            )
 
     def __repr__(self):
         return """

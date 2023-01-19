@@ -4,3 +4,7 @@ lifelines==0.27.4
 numba==0.56.4
 numpy-indexed==0.3.5
 reliability==0.8.6
+
+# More efficient, and typed, alternative to pkg_resources.resource_filename
+# (for datasets)
+importlib-resources==5.10.2
