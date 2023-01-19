@@ -8,7 +8,7 @@ env:
   SRC: surpyval # Source directory to run jobs on
 
 jobs:
-  repyability_ci:
+  surpyval_ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -42,7 +42,7 @@ jobs:
         run: flake8 $SRC
       
       - name: mypy
-        run: mypy
+        run: mypy $SRC
       
       - name: black
         run:
