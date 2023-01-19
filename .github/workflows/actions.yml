@@ -1,6 +1,6 @@
 name: actions
 
-run-name: RePyability CI
+run-name: SurPyval CI
 
 on: [push]
 
