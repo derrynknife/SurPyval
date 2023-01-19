@@ -10,28 +10,13 @@ from ..nonparametric import plotting_positions as pp
 from .fitters import bounds_convert, fix_idx_and_function
 from .fitters.mle import mle
 from .fitters.mom import mom
-from .fitters.mpp import mpp
+from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mse import mse
 from .parametric import Parametric
 
 PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
-
-
-def init_from_bounds(dist):
-    out = []
-    for low, high in dist.bounds:
-        if (low is None) & (high is None):
-            out.append(0)
-        elif high is None:
-            out.append(low + 1.0)
-        elif low is None:
-            out.append(high - 1.0)
-        else:
-            out.append((high + low) / 2.0)
-
-    return out
 
 
 class ParametricFitter:
@@ -778,6 +763,19 @@ class ParametricFitter:
         t = np.vstack([tl, tr]).T
 
         return self.fit(x=x, c=c, n=n, t=t, **fit_options)
+
+    def fit_from_ecdf(self, x, F):
+        model = Parametric(self, 'given ecdf', None, False, False, False)
+        res = mpp_from_ecfd(self, x, F)
+        model.dist = self
+        model.params = np.array(res['params'])
+        model.support = self.support
+
+        return model
+
+    def fit_from_non_parametric(self, non_parametric_model):
+        x, F = non_parametric_model.x, 1 - non_parametric_model.R
+        return self.fit_from_ecdf(x, F)
 
     def from_params(self, params, gamma=None, p=None, f0=None):
         r"""
