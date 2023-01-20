@@ -8,6 +8,21 @@ profile = "black"
 
 # mypy
 [tool.mypy]
+[[tool.mypy.overrides]]
+module = [
+    'scipy.*',
+    'autograd.*',
+    'pandas',
+    'numpy_indexed',
+    'formulaic',
+    'matplotlib.*',
+    'autograd_gamma',
+    'numba',
+    'lifelines',
+    'reliability',
+    'sphinx_rtd_theme',
+    'setuptools'
+]
 ignore_missing_imports = true
 
 # Coverage
