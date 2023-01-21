@@ -2,6 +2,7 @@ __version__ = "0.10.10"
 
 from autograd import numpy as np
 
+from surpyval.distribution import Distribution
 from surpyval.nonparametric import (
     FlemingHarrington,
     KaplanMeier,
@@ -12,7 +13,6 @@ from surpyval.nonparametric import (
 from surpyval.parametric import (
     Bernoulli,
     Beta,
-    Distribution,
     ExactEventTime,
     Exponential,
     ExpoWeibull,
@@ -27,6 +27,7 @@ from surpyval.parametric import (
     MixtureModel,
     Normal,
     Parametric,
+    ParametricDistribution,
     Rayleigh,
     Uniform,
     Weibull,

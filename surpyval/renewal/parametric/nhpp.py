@@ -195,8 +195,8 @@ Duane = NHPP(
     duane_iif,
 )
 
-Duane.rocof = duane_rocof
-Duane.inv_cif = duane_inv_cif
+Duane.rocof = duane_rocof  # type: ignore
+Duane.inv_cif = duane_inv_cif  # type: ignore
 
 # Cox-Lewis
 cox_lewis_param_names = ["alpha", "beta"]
@@ -237,8 +237,8 @@ CoxLewis = NHPP(
     cox_lewis_iif,
 )
 
-CoxLewis.rocof = cox_lewis_rocof
-CoxLewis.inv_cif = cox_lewis_inv_cif
+CoxLewis.rocof = cox_lewis_rocof  # type: ignore
+CoxLewis.inv_cif = cox_lewis_inv_cif  # type: ignore
 
 # Crow
 
@@ -275,8 +275,8 @@ Crow = NHPP(
     "Crow", crow_param_names, crow_bounds, crow_support, crow_cif, crow_iif
 )
 
-Crow.rocof = crow_rocof
-Crow.inv_cif = crow_inv_cif
+Crow.rocof = crow_rocof  # type: ignore
+Crow.inv_cif = crow_inv_cif  # type: ignore
 
 # Crow
 
@@ -318,8 +318,8 @@ CrowAMSAA = NHPP(
     crow_amsaa_iif,
 )
 
-CrowAMSAA.rocof = crow_amsaa_rocof
-CrowAMSAA.inv_cif = crow_amsaa_inv_cif
+CrowAMSAA.rocof = crow_amsaa_rocof  # type: ignore
+CrowAMSAA.inv_cif = crow_amsaa_inv_cif  # type: ignore
 
 # Homogeneous Poisson Process
 hpp_param_names = ["lambda"]
@@ -349,5 +349,5 @@ def hpp_inv_cif(cif, *params):
 
 HPP = NHPP("HPP", hpp_param_names, hpp_bounds, hpp_support, hpp_cif, hpp_iif)
 
-HPP.rocof = hpp_rocof
-HPP.inv_cif = hpp_inv_cif
+HPP.rocof = hpp_rocof  # type: ignore
+HPP.inv_cif = hpp_inv_cif  # type: ignore

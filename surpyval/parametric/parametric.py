@@ -117,12 +117,15 @@ class Parametric:
         out["distribution"] = self.dist.name
         out["how"] = self.method
         out["param_names"] = self.dist.param_names
-        out["data"] = {
-            "x": self.data["x"].tolist(),
-            "c": self.data["c"].tolist(),
-            "n": self.data["n"].tolist(),
-            "t": self.data["t"].tolist(),
-        }
+
+        data_dict = {}
+        for ch in ["x", "c", "n", "t"]:
+            print(self.data)
+            if self.data[ch] is None:
+                data_dict[ch] = []
+            else:
+                data_dict[ch] = self.data[ch].tolist()
+        out["data"] = data_dict
 
         out["params"] = np.array(self.params).tolist()
         out["lfp"] = self.lfp

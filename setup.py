@@ -32,5 +32,6 @@ setuptools.setup(
         "formulaic",
     ],
     include_package_data=True,
-    package_data={"": ["datasets/*.csv"]},
+    package_data={"": ["datasets/*.csv", "py.typed"]},
+    zip_safe=False,
 )
