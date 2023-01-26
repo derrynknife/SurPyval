@@ -521,4 +521,4 @@ class Weibull_(ParametricFitter):
         return -np.array([dll_dalpha, dll_dbeta])
 
 
-Weibull = Weibull_("Weibull")
+Weibull: ParametricFitter = Weibull_("Weibull")

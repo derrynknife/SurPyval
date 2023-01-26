@@ -396,4 +396,4 @@ class GumbelLEV_(ParametricFitter):
     # 0, 1).T
 
 
-GumbelLEV = GumbelLEV_("GumbelLEV")
+GumbelLEV: ParametricFitter = GumbelLEV_("GumbelLEV")

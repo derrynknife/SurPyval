@@ -436,5 +436,5 @@ class LogNormal_(ParametricFitter):
         return mu, sigma
 
 
-LogNormal = LogNormal_("LogNormal")
-Galton = LogNormal_("Galton")
+LogNormal: ParametricFitter = LogNormal_("LogNormal")
+Galton: ParametricFitter = LogNormal_("Galton")

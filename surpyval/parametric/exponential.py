@@ -490,4 +490,4 @@ class Exponential_(ParametricFitter):
     # alpha_ci=alpha_ci) * x).T
 
 
-Exponential = Exponential_("Exponential")
+Exponential: ParametricFitter = Exponential_("Exponential")

@@ -468,4 +468,4 @@ class Rayleigh_(ParametricFitter):
         return 1 - np.exp(-(y**2))
 
 
-Rayleigh = Rayleigh_("Rayleigh")
+Rayleigh: ParametricFitter = Rayleigh_("Rayleigh")

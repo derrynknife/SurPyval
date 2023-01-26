@@ -1,9 +1,9 @@
 import warnings
+from typing import List
 
 import numpy as np
 
 from surpyval.parametric import (
-    Bernoulli,
     Beta,
     Exponential,
     ExpoWeibull,
@@ -13,13 +13,13 @@ from surpyval.parametric import (
     LogLogistic,
     LogNormal,
     Normal,
+    ParametricFitter,
     Rayleigh,
     Uniform,
     Weibull,
 )
 
-distributions = [
-    Bernoulli,
+distributions: List[ParametricFitter] = [
     Beta,
     Exponential,
     ExpoWeibull,

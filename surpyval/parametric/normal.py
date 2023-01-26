@@ -443,5 +443,5 @@ class Normal_(ParametricFitter):
     # 1).T
 
 
-Normal = Normal_("Normal")
-Gauss = Normal_("Gauss")
+Normal: ParametricFitter = Normal_("Normal")
+Gauss: ParametricFitter = Normal_("Gauss")

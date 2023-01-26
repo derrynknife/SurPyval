@@ -369,4 +369,4 @@ class ExpoWeibull_(ParametricFitter):
         return alpha, beta, 1.0
 
 
-ExpoWeibull = ExpoWeibull_("ExpoWeibull")
+ExpoWeibull: ParametricFitter = ExpoWeibull_("ExpoWeibull")

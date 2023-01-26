@@ -452,4 +452,4 @@ class Uniform_(ParametricFitter):
         return a, b
 
 
-Uniform = Uniform_("Uniform")
+Uniform: ParametricFitter = Uniform_("Uniform")

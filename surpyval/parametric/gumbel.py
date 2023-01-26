@@ -395,5 +395,5 @@ class Gumbel_(ParametricFitter):
     # 0, 1).T
 
 
-Gumbel = Gumbel_("Gumbel")
-GumbelSEV = Gumbel_("GumbelSEV")
+Gumbel: ParametricFitter = Gumbel_("Gumbel")
+GumbelSEV: ParametricFitter = Gumbel_("GumbelSEV")

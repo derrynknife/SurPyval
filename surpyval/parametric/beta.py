@@ -440,4 +440,4 @@ class Beta_(ParametricFitter):
         return var_r
 
 
-Beta = Beta_("Beta")
+Beta: ParametricFitter = Beta_("Beta")

@@ -361,4 +361,4 @@ class Logistic_(ParametricFitter):
         return mu, sigma
 
 
-Logistic = Logistic_("Logistic")
+Logistic: ParametricFitter = Logistic_("Logistic")

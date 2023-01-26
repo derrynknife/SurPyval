@@ -397,4 +397,4 @@ class LogLogistic_(ParametricFitter):
         return alpha, beta
 
 
-LogLogistic = LogLogistic_("LogLogistic")
+LogLogistic: ParametricFitter = LogLogistic_("LogLogistic")

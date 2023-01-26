@@ -9,6 +9,7 @@ from scipy.special import ndtri as z
 from scipy.stats import uniform
 
 import surpyval as surv
+from surpyval import Distribution
 from surpyval import nonparametric as nonp
 from surpyval import np
 from surpyval.utils import fsli_to_xcn, round_sig
@@ -26,7 +27,7 @@ def _round_vals(x):
     return x_ticks
 
 
-class Parametric:
+class Parametric(Distribution):
     """
     Result of ``.fit()`` or ``.from_params()`` method for every parametric
     surpyval distribution.

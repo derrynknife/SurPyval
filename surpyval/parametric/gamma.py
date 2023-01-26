@@ -579,4 +579,4 @@ class Gamma_(ParametricFitter):
         return R_cb.T
 
 
-Gamma = Gamma_("Gamma")
+Gamma: ParametricFitter = Gamma_("Gamma")
