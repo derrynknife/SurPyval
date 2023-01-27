@@ -1,13 +1,18 @@
 from autograd import numpy as np
+from numpy import ndarray
+
+from surpyval.regression.lifemodels.lifemodel import LifeModel
 
 
-class PowerExponential_:
+class PowerExponential_(LifeModel):
     def __init__(self):
-        self.name = "PowerExponential"
-        self.phi_param_map = {"c": 0, "a": 1, "n": 2}
-        self.phi_bounds = ((0, None), (None, None), (None, None))
+        super().__init__(
+            "PowerExponential",
+            {"c": 0, "a": 1, "n": 2},
+            ((0, None), (None, None), (None, None)),
+        )
 
-    def phi(self, Z, *params):
+    def phi(self, Z: ndarray, *params: float) -> ndarray:
         Z = np.atleast_2d(Z)
         Z1 = Z[:, 0]
         Z2 = Z[:, 1]
@@ -16,7 +21,7 @@ class PowerExponential_:
         n = params[2]
         return c * np.exp(a / Z1) * Z2**n
 
-    def phi_init(self, life, Z):
+    def phi_init(self, life: float, Z: ndarray) -> list[float]:
         A = np.atleast_2d(Z)
         A = np.hstack([np.ones(Z.shape[0]).reshape(-1, 1), Z])
         A[:, 1] = 1.0 / A[:, 1]

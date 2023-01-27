@@ -1,5 +1,3 @@
-import inspect
-
 import autograd.numpy as np
 from scipy.optimize import minimize
 
@@ -11,12 +9,6 @@ from .regression import Regression
 
 class AcceleratedFailureTimeFitter:
     def __init__(self, name, distribution, acc_model):
-
-        if str(inspect.signature(acc_model.phi)) != "(Z, *params)":
-            raise ValueError(
-                "PH function must have the signature '(Z, *params)'"
-            )
-
         self.name = name
         self.dist = distribution
         self.acc_model = acc_model

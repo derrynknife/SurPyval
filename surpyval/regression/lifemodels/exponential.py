@@ -1,21 +1,23 @@
 from autograd import numpy as np
+from numpy import ndarray
+
+from surpyval.regression.lifemodels.lifemodel import LifeModel
 
 
-class InverseExponential_:
+class InverseExponential_(LifeModel):
     def __init__(self):
-        self.name = "InverseExponential"
-        self.phi_param_map = {"a": 0, "b": 1}
-        self.phi_bounds = (
-            (None, None),
-            (0, None),
+        super().__init__(
+            "InverseExponential",
+            {"a": 0, "b": 1},
+            ((None, None), (0, None)),
         )
 
-    def phi(self, Z, *params):
+    def phi(self, Z: ndarray, *params: float) -> ndarray:
         a = params[0]
         b = params[1]
         return 1.0 / (b * np.exp(a / Z))
 
-    def phi_init(self, life, Z):
+    def phi_init(self, life: float, Z: ndarray) -> list[float]:
         Z = Z.flatten()
         a, b = np.polyfit(1.0 / Z, np.log(1.0 / life), 1)
         return [a, np.exp(b)]
@@ -24,21 +26,20 @@ class InverseExponential_:
 InverseExponential = InverseExponential_()
 
 
-class Exponential_:
+class Exponential_(LifeModel):
     def __init__(self):
-        self.name = "Exponential"
-        self.phi_param_map = {"a": 0, "b": 1}
-        self.phi_bounds = (
-            (None, None),
-            (0, None),
+        super().__init__(
+            "Exponential",
+            {"a": 0, "b": 1},
+            ((None, None), (0, None)),
         )
 
-    def phi(self, Z, *params):
+    def phi(self, Z: ndarray, *params: float) -> ndarray:
         a = params[0]
         b = params[1]
         return b * np.exp(a / Z)
 
-    def phi_init(self, life, Z):
+    def phi_init(self, life: float, Z: ndarray) -> list[float]:
         Z = Z.flatten()
         a, b = np.polyfit(1.0 / Z, np.log(life), 1)
         return [a, np.exp(b)]

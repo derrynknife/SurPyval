@@ -1,9 +1,11 @@
 from collections import defaultdict
-from typing import Callable, Hashable
+from typing import Any, Callable, Hashable
 
 import autograd.numpy as np
 
 import surpyval as surv
+from surpyval.parametric.parametric_fitter import ParametricFitter
+from surpyval.regression.lifemodels.lifemodel import LifeModel
 
 from ..parametric import Gumbel, Logistic, LogNormal, Normal, Weibull
 from .accelerated_failure_time import AcceleratedFailureTimeFitter
@@ -30,9 +32,16 @@ from .proportional_hazards import ProportionalHazardsFitter
 # Semi-Parametric Proportional Hazard
 # CoxPH = CoxProportionalHazardsFitter()
 
-DISTS = [surv.Exponential, Normal, Weibull, Gumbel, Logistic, LogNormal]
+DISTS: list[ParametricFitter] = [
+    surv.Exponential,
+    Normal,
+    Weibull,
+    Gumbel,
+    Logistic,
+    LogNormal,
+]
 LIFE_PARAMS = ["lambda", "mu", "alpha", "mu", "mu", "mu"]
-LIFE_MODELS = [
+LIFE_MODELS: list[LifeModel] = [
     Power,
     InversePower,
     Exponential,
@@ -45,10 +54,12 @@ LIFE_MODELS = [
     PowerExponential,
 ]
 
-life_parameter_transform: dict[Hashable, Callable] = defaultdict(lambda: None)
-life_parameter_inverse_transform: dict[Hashable, Callable] = defaultdict(
+life_parameter_transform: dict[Hashable, Callable | None] = defaultdict(
     lambda: None
 )
+life_parameter_inverse_transform: dict[
+    Hashable, Callable | None
+] = defaultdict(lambda: None)
 
 life_parameter_transform["LogNormal"] = lambda x: np.log(x)
 life_parameter_transform["Exponential"] = lambda x: 1.0 / x

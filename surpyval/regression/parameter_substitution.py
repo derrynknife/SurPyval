@@ -22,12 +22,6 @@ class ParameterSubstitutionFitter:
         param_transform=None,
         inverse_param_transform=None,
     ):
-
-        if str(inspect.signature(life_model.phi)) != "(Z, *params)":
-            raise ValueError(
-                "PH function must have the signature '(Z, *params)'"
-            )
-
         if type(baseline) != list:
             # Baseline used if using a function that deviates from some number,
             # e.g. np.exp(np.dot(Z, beta))
