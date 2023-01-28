@@ -33,7 +33,7 @@ class Distribution(ABC):
     @abstractmethod
     def random(self, size: ArrayLike, *args, **kwargs) -> ArrayLike:
         ...
-    
+
     @abstractmethod
     def to_dict(self) -> dict:
         ...
