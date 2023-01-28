@@ -6,7 +6,7 @@ from .parametric import Parametric
 
 class ExactEventTime_:
     def __init__(self, name):
-        super().__init__(name)
+        self.name = name
         # Set 'k', the number of parameters
         self.k = 1
         self.bounds = ((-np.inf, np.inf),)
