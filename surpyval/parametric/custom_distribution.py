@@ -35,7 +35,7 @@ class CustomDistribution(ParametricFitter):
                 detail = "Can't name a parameter after a function"
                 raise ValueError(detail)
 
-        self.name = name
+        super().__init__(name)
         self.k = len(param_names)
         self.bounds = bounds
         self.support = support

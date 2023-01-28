@@ -21,7 +21,7 @@ class Exponential_(ParametricFitter):
     """
 
     def __init__(self, name):
-        self.name = name
+        super().__init__(name)
         self.k = 1
         self.bounds = ((0, None),)
         self.support = (0, np.inf)

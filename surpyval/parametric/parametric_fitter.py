@@ -20,6 +20,9 @@ METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
 
 
 class ParametricFitter:
+    def __init__(self, name: str):
+        self.name: str = name
+
     def log_df(self, x, *params):
         return np.log(self.hf(x, *params)) - self.Hf(x, *params)
 

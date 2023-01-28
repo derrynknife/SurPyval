@@ -10,7 +10,7 @@ from surpyval.parametric.parametric_fitter import ParametricFitter
 
 class Weibull_(ParametricFitter):
     def __init__(self, name):
-        self.name = name
+        super().__init__(name)
         # Set 'k', the number of parameters
         self.k = 2
         self.bounds = (

@@ -20,7 +20,7 @@ class Normal_(ParametricFitter):
     """
 
     def __init__(self, name):
-        self.name = name
+        super().__init__(name)
         self.k = 2
         self.bounds = (
             (None, None),

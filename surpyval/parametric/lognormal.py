@@ -9,7 +9,7 @@ from surpyval.parametric.parametric_fitter import ParametricFitter
 
 class LogNormal_(ParametricFitter):
     def __init__(self, name):
-        self.name = name
+        super().__init__(name)
         self.k = 2
         self.bounds = (
             (0, None),
