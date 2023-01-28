@@ -15,9 +15,7 @@ class LifeModel(ABC):
         self.phi_bounds = phi_bounds
 
     @abstractmethod
-    def phi(
-        self, Z: ndarray, *params: float
-    ) -> ndarray:
+    def phi(self, Z: ndarray, *params: float) -> ndarray:
         ...
 
     @abstractmethod
