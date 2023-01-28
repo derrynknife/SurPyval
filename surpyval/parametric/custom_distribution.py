@@ -6,7 +6,7 @@ from surpyval import np
 from surpyval.parametric.parametric_fitter import ParametricFitter
 
 
-class ParametricDistribution(ParametricFitter):
+class CustomDistribution(ParametricFitter):
     def __init__(self, name, fun, param_names, bounds, support):
         if str(inspect.signature(fun)) != "(x, *params)":
             detail = "Function must have the signature '(x, *params)'"

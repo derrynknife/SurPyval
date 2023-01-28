@@ -13,6 +13,7 @@ from surpyval.nonparametric import (
 from surpyval.parametric import (
     Bernoulli,
     Beta,
+    CustomDistribution,
     ExactEventTime,
     Exponential,
     ExpoWeibull,
@@ -27,7 +28,6 @@ from surpyval.parametric import (
     MixtureModel,
     Normal,
     Parametric,
-    ParametricDistribution,
     Rayleigh,
     Uniform,
     Weibull,

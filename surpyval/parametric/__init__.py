@@ -14,7 +14,7 @@ from surpyval import nonparametric as nonp
 
 from .bernoulli import Bernoulli, FixedEventProbability
 from .beta import Beta
-from .dist_from_hazard import ParametricDistribution
+from .custom_distribution import CustomDistribution
 from .exact_event_time import ExactEventTime
 from .expo_weibull import ExpoWeibull
 from .exponential import Exponential
@@ -26,6 +26,7 @@ from .lognormal import Galton, LogNormal
 from .mixture_model import MixtureModel
 from .normal import Gauss, Normal
 from .parametric import Parametric
+from .parametric_distribution import ParametricDistribution
 from .parametric_fitter import ParametricFitter
 from .rayleigh import Rayleigh
 from .uniform import Uniform
