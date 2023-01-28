@@ -25,42 +25,41 @@ class Gamma_(ParametricFitter):
     """
 
     def __init__(self, name):
-        super().__init__(name)
-        self.k = 2
-        self.bounds = (
-            (0, None),
-            (0, None),
+        super().__init__(
+            name=name,
+            k=2,
+            bounds=((0, None), (0, None)),
+            support=(0, np.inf),
+            param_names=["alpha", "beta"],
+            param_map={"alpha": 0, "beta": 1},
+            plot_x_scale="linear",
+            y_ticks=[
+                0.0001,
+                0.0002,
+                0.0003,
+                0.001,
+                0.002,
+                0.003,
+                0.005,
+                0.01,
+                0.02,
+                0.03,
+                0.05,
+                0.1,
+                0.2,
+                0.3,
+                0.4,
+                0.5,
+                0.6,
+                0.7,
+                0.8,
+                0.9,
+                0.95,
+                0.99,
+                0.999,
+                0.9999,
+            ],
         )
-        self.support = (0, np.inf)
-        self.plot_x_scale = "linear"
-        self.y_ticks = [
-            0.0001,
-            0.0002,
-            0.0003,
-            0.001,
-            0.002,
-            0.003,
-            0.005,
-            0.01,
-            0.02,
-            0.03,
-            0.05,
-            0.1,
-            0.2,
-            0.3,
-            0.4,
-            0.5,
-            0.6,
-            0.7,
-            0.8,
-            0.9,
-            0.95,
-            0.99,
-            0.999,
-            0.9999,
-        ]
-        self.param_names = ["alpha", "beta"]
-        self.param_map = {"alpha": 0, "beta": 1}
 
     def _parameter_initialiser(self, x, c=None, n=None, offset=False):
         # These equations are truly magical

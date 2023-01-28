@@ -35,14 +35,16 @@ class CustomDistribution(ParametricFitter):
                 detail = "Can't name a parameter after a function"
                 raise ValueError(detail)
 
-        super().__init__(name)
-        self.k = len(param_names)
-        self.bounds = bounds
-        self.support = support
-        self.plot_x_scale = "linear"
-        self.y_ticks = np.linspace(0, 1, 11)
-        self.param_names = param_names
-        self.param_map = {v: i for i, v in enumerate(param_names)}
+        super().__init__(
+            name=name,
+            k=len(param_names),
+            bounds=bounds,
+            support=support,
+            param_names=param_names,
+            param_map={v: i for i, v in enumerate(param_names)},
+            plot_x_scale="linear",
+            y_ticks=np.linspace(0, 1, 11),
+        )
         self.Hf = fun
         self.hf = lambda x, *params: elementwise_grad(self.Hf)(x, *params)
         self.sf = lambda x, *params: np.exp(-self.Hf(x, *params))
