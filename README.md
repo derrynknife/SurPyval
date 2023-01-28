@@ -2,6 +2,7 @@
 
 # SurPyval - Survival Analysis in Python
 
+[![actions](https://github.com/derrynknife/SurPyval/actions/workflows/actions.yml/badge.svg)](https://github.com/derrynknife/SurPyval/actions/workflows/actions.yml)
 [![PyPI version](https://badge.fury.io/py/surpyval.svg)](https://badge.fury.io/py/surpyval)
 ![PyPI - Python Version](https://img.shields.io/badge/python-3.6%20%7C%203.7%20%7C%203.8%20%7C%203.9-blue)
 [![Documentation Status](https://readthedocs.org/projects/surpyval/badge/?version=latest)](https://surpyval.readthedocs.io/en/latest/?badge=latest)
