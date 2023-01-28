@@ -7,18 +7,16 @@ from surpyval.parametric.parametric_fitter import ParametricFitter
 
 class Uniform_(ParametricFitter):
     def __init__(self, name):
-        self.name = name
-        # Set 'k', the number of parameters
-        self.k = 2
-        self.bounds = (
-            (None, None),
-            (None, None),
+        super().__init__(
+            name=name,
+            k=2,
+            bounds=((None, None), (None, None)),
+            support=(np.nan, np.nan),
+            param_names=["a", "b"],
+            param_map={"a": 0, "b": 1},
+            plot_x_scale="linear",
+            y_ticks=np.linspace(0, 1, 21)[1:-1],
         )
-        self.support = (np.nan, np.nan)
-        self.plot_x_scale = "linear"
-        self.y_ticks = np.linspace(0, 1, 21)[1:-1]
-        self.param_names = ["a", "b"]
-        self.param_map = {"a": 0, "b": 1}
 
     def _parameter_initialiser(self, x, c=None, n=None):
         return np.min(x) - 1.0, np.max(x) + 1.0
@@ -452,4 +450,4 @@ class Uniform_(ParametricFitter):
         return a, b
 
 
-Uniform = Uniform_("Uniform")
+Uniform: ParametricFitter = Uniform_("Uniform")

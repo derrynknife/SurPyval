@@ -9,31 +9,30 @@ from surpyval.parametric.parametric_fitter import ParametricFitter
 
 class LogNormal_(ParametricFitter):
     def __init__(self, name):
-        self.name = name
-        self.k = 2
-        self.bounds = (
-            (0, None),
-            (0, None),
+        super().__init__(
+            name=name,
+            k=2,
+            bounds=((0, None), (0, None)),
+            support=(0, np.inf),
+            param_names=["mu", "sigma"],
+            param_map={"mu": 0, "sigma": 1},
+            plot_x_scale="log",
+            y_ticks=[
+                0.001,
+                0.01,
+                0.1,
+                0.2,
+                0.3,
+                0.4,
+                0.5,
+                0.6,
+                0.7,
+                0.8,
+                0.9,
+                0.99,
+                0.999,
+            ],
         )
-        self.support = (0, np.inf)
-        self.plot_x_scale = "log"
-        self.y_ticks = [
-            0.001,
-            0.01,
-            0.1,
-            0.2,
-            0.3,
-            0.4,
-            0.5,
-            0.6,
-            0.7,
-            0.8,
-            0.9,
-            0.99,
-            0.999,
-        ]
-        self.param_names = ["mu", "sigma"]
-        self.param_map = {"mu": 0, "sigma": 1}
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         # Need an offset mpp function here
@@ -436,5 +435,5 @@ class LogNormal_(ParametricFitter):
         return mu, sigma
 
 
-LogNormal = LogNormal_("LogNormal")
-Galton = LogNormal_("Galton")
+LogNormal: ParametricFitter = LogNormal_("LogNormal")
+Galton: ParametricFitter = LogNormal_("Galton")

@@ -1,5 +1,5 @@
 import pandas as pd
-from pkg_resources import resource_filename
+from pkg_resources import resource_filename  # type: ignore
 
 
 class BoforsSteel_:

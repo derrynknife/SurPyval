@@ -9,6 +9,7 @@ from scipy.special import ndtri as z
 from scipy.stats import uniform
 
 import surpyval as surv
+from surpyval import Distribution
 from surpyval import nonparametric as nonp
 from surpyval import np
 from surpyval.utils import fsli_to_xcn, round_sig
@@ -26,7 +27,7 @@ def _round_vals(x):
     return x_ticks
 
 
-class Parametric:
+class Parametric(Distribution):
     """
     Result of ``.fit()`` or ``.from_params()`` method for every parametric
     surpyval distribution.
@@ -117,12 +118,15 @@ class Parametric:
         out["distribution"] = self.dist.name
         out["how"] = self.method
         out["param_names"] = self.dist.param_names
-        out["data"] = {
-            "x": self.data["x"].tolist(),
-            "c": self.data["c"].tolist(),
-            "n": self.data["n"].tolist(),
-            "t": self.data["t"].tolist(),
-        }
+
+        data_dict = {}
+        for ch in ["x", "c", "n", "t"]:
+            print(self.data)
+            if self.data[ch] is None:
+                data_dict[ch] = []
+            else:
+                data_dict[ch] = self.data[ch].tolist()
+        out["data"] = data_dict
 
         out["params"] = np.array(self.params).tolist()
         out["lfp"] = self.lfp
@@ -1186,8 +1190,12 @@ class Parametric:
             ax.set_xticks(d["x_minor_ticks"], minor=True)
             ax.set_xticklabels([], minor=True)
 
-        ax.grid(b=True, which="major", color="g", alpha=0.4, linestyle="-")
-        ax.grid(b=True, which="minor", color="g", alpha=0.1, linestyle="-")
+        ax.grid(
+            visible=True, which="major", color="g", alpha=0.4, linestyle="-"
+        )
+        ax.grid(
+            visible=True, which="minor", color="g", alpha=0.1, linestyle="-"
+        )
 
         ax.set_title("{} Probability Plot".format(self.dist.name))
         ax.set_ylabel("CDF")

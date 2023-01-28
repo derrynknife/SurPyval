@@ -14,7 +14,7 @@ from surpyval import nonparametric as nonp
 
 from .bernoulli import Bernoulli, FixedEventProbability
 from .beta import Beta
-from .dist_from_hazard import Distribution
+from .custom_distribution import CustomDistribution
 from .exact_event_time import ExactEventTime
 from .expo_weibull import ExpoWeibull
 from .exponential import Exponential

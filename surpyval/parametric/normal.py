@@ -20,31 +20,30 @@ class Normal_(ParametricFitter):
     """
 
     def __init__(self, name):
-        self.name = name
-        self.k = 2
-        self.bounds = (
-            (None, None),
-            (0, None),
+        super().__init__(
+            name=name,
+            k=2,
+            bounds=((None, None), (0, None)),
+            support=(-np.inf, np.inf),
+            param_names=["mu", "sigma"],
+            param_map={"mu": 0, "sigma": 1},
+            plot_x_scale="linear",
+            y_ticks=[
+                0.001,
+                0.01,
+                0.1,
+                0.2,
+                0.3,
+                0.4,
+                0.5,
+                0.6,
+                0.7,
+                0.8,
+                0.9,
+                0.99,
+                0.999,
+            ],
         )
-        self.support = (-np.inf, np.inf)
-        self.plot_x_scale = "linear"
-        self.y_ticks = [
-            0.001,
-            0.01,
-            0.1,
-            0.2,
-            0.3,
-            0.4,
-            0.5,
-            0.6,
-            0.7,
-            0.8,
-            0.9,
-            0.99,
-            0.999,
-        ]
-        self.param_names = ["mu", "sigma"]
-        self.param_map = {"mu": 0, "sigma": 1}
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None):
         return para.Normal.fit(x, c, n, t, how="MPP").params
@@ -443,5 +442,5 @@ class Normal_(ParametricFitter):
     # 1).T
 
 
-Normal = Normal_("Normal")
-Gauss = Normal_("Gauss")
+Normal: ParametricFitter = Normal_("Normal")
+Gauss: ParametricFitter = Normal_("Gauss")

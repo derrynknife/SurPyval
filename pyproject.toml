@@ -6,13 +6,28 @@ line-length = 79
 [tool.isort]
 profile = "black"
 
-# For mypy to better analyse numpy type hints
-[mypy]
-plugins = "numpy.typing.mypy_plugin"
+# mypy
+[tool.mypy]
+[[tool.mypy.overrides]]
+module = [
+    'scipy.*',
+    'autograd.*',
+    'pandas',
+    'numpy_indexed',
+    'formulaic',
+    'matplotlib.*',
+    'autograd_gamma',
+    'numba',
+    'lifelines',
+    'reliability',
+    'sphinx_rtd_theme',
+    'setuptools'
+]
+ignore_missing_imports = true
 
 # Coverage
 [tool.coverage.run]
-source = ["repyability"]
+source = ["surpyval"]
 
 # Flake8
 [tool.flake8]

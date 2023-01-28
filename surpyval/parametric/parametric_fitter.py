@@ -20,6 +20,26 @@ METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
 
 
 class ParametricFitter:
+    def __init__(
+        self,
+        name: str,
+        k: int,
+        bounds: tuple[tuple[int | float | None, int | float | None], ...],
+        support: tuple[int | float, int | float],
+        param_names: list[str],
+        param_map: dict[str, int],
+        plot_x_scale: str,
+        y_ticks: list[float],
+    ):
+        self.name: str = name
+        self.k = k
+        self.bounds = bounds
+        self.support = support
+        self.param_names = param_names
+        self.param_map = param_map
+        self.plot_x_scale = plot_x_scale
+        self.y_ticks = y_ticks
+
     def log_df(self, x, *params):
         return np.log(self.hf(x, *params)) - self.Hf(x, *params)
 
