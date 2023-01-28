@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+
 from numpy.typing import ArrayLike
 
 
@@ -11,28 +11,29 @@ class Distribution(ABC):
     - .ff()
     """
 
+    def __init__(self, name: str):
+        self.name = name
+
     @abstractmethod
-    def sf(this, x: Optional[ArrayLike]) -> ArrayLike:
-        """Survival (or Reliability) function for the Exponential Distribution:
+    def sf(self, x: ArrayLike, *args, **kwargs) -> ArrayLike:
+        ...
 
-        Parameters
-        ----------
-        this : _type_
-            _description_
-        x : Optional[ArrayLike]
-            _description_
+    @abstractmethod
+    def ff(self, x: ArrayLike, *args, **kwargs) -> ArrayLike:
+        ...
 
-        Returns
-        -------
-        ArrayLike
-            _description_
-        """
-        pass
+    @abstractmethod
+    def entropy(self, *args, **kwargs) -> ArrayLike:
+        ...
+
+    @abstractmethod
+    def moment(self, n: ArrayLike, *args, **kwargs) -> ArrayLike:
+        ...
+
+    @abstractmethod
+    def random(self, size: ArrayLike, *args, **kwargs) -> ArrayLike:
+        ...
     
     @abstractmethod
-    def ff(this, x: Optional[ArrayLike]) -> ArrayLike:
-        pass
-
-    @abstractmethod
-    def to_dict(this) -> dict:
-        pass
+    def to_dict(self) -> dict:
+        ...
