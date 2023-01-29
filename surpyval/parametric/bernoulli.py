@@ -151,8 +151,7 @@ class Bernoulli_:
         return model
 
     def from_params(self, p):
-        if type(p) == list:
-            p = p[0]
+        p = np.atleast_1d(p)
 
         if p > 1:
             raise ValueError("'p' must be less than 1")
@@ -161,7 +160,7 @@ class Bernoulli_:
             raise ValueError("'p' must be greater than 0")
 
         model = Parametric(self, "given parameters", {}, False, False, False)
-        model.params = [p]
+        model.params = p.tolist()
         return model
 
 
