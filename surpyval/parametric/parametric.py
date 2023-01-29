@@ -1,3 +1,4 @@
+import json
 import re
 import warnings
 from copy import copy, deepcopy
@@ -79,6 +80,11 @@ class Parametric(Distribution):
         self.param_map = param_map
 
     @classmethod
+    def from_json(cls, fp):
+        with open(fp, "r+") as f:
+            return cls.from_dict(json.load(f))
+
+    @classmethod
     def from_dict(cls, model_dict):
         if model_dict["parameterization"] != "parametric":
             raise ValueError(
@@ -87,7 +93,10 @@ class Parametric(Distribution):
 
         dist = getattr(surv, model_dict["distribution"])
         how = model_dict["how"]
-        data = model_dict["data"]
+        if "data" in model_dict:
+            data = model_dict["data"]
+        else:
+            data = None
         offset = model_dict["offset"]
         lfp = model_dict["lfp"]
         zi = model_dict["zi"]
@@ -112,7 +121,7 @@ class Parametric(Distribution):
 
         return out
 
-    def to_dict(self):
+    def to_dict(self, with_data=False):
         out = {}
         out["parameterization"] = "parametric"
         out["distribution"] = self.dist.name
@@ -120,13 +129,14 @@ class Parametric(Distribution):
         out["param_names"] = self.dist.param_names
 
         data_dict = {}
-        for ch in ["x", "c", "n", "t"]:
-            print(self.data)
-            if self.data[ch] is None:
-                data_dict[ch] = []
-            else:
-                data_dict[ch] = self.data[ch].tolist()
-        out["data"] = data_dict
+        if with_data:
+            if self.data is not None:
+                for ch in ["x", "c", "n", "t"]:
+                    if self.data[ch] is None:
+                        data_dict[ch] = []
+                    else:
+                        data_dict[ch] = self.data[ch].tolist()
+                out["data"] = data_dict
 
         out["params"] = np.array(self.params).tolist()
         out["lfp"] = self.lfp
@@ -157,6 +167,10 @@ class Parametric(Distribution):
             out["_neg_ll"] = self._neg_ll
 
         return out
+
+    def to_json(self, fp):
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
 
     def __repr__(self):
         if hasattr(self, "params"):
