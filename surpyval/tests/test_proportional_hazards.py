@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from surpyval import CoxPH
+from surpyval import CoxPH, ExponentialPH, WeibullPH
 
 
 def test_cox_ph_hospital():
@@ -21,7 +21,7 @@ def test_cox_ph_hospital():
     model = CoxPH.fit(x=T, Z=X, c=C)
 
     # beta_0 should be 2.12
-    assert pytest.approx(2.12, abs=0.01) == model.parameters[0]
+    assert pytest.approx(2.12, abs=0.01) == model.params[0]
 
 
 def test_cox_ph_company_death():
@@ -39,11 +39,11 @@ def test_cox_ph_company_death():
     # Fit model
     model = CoxPH.fit(x=T, Z=P_on_E, c=C)
 
-    # beta_0 should be 2.12
-    assert pytest.approx(-0.34, abs=0.01) == model.parameters[0]
+    # beta_0 should be -0.34
+    assert pytest.approx(-0.34, abs=0.01) == model.params[0]
 
 
-def test_cox_ph_sim_example():
+def test_cox_ph_sim():
     """
     Generates samples randomly and tests convergence.
     """
@@ -76,4 +76,84 @@ def test_cox_ph_sim_example():
     model = CoxPH.fit(x=x, Z=Z_repeated, c=[0] * len(x))
 
     # Parameters should be approximately equal to the beta vector
-    assert pytest.approx(beta, abs=0.05) == model.parameters
+    assert pytest.approx(beta, abs=0.05) == model.params
+
+
+def test_exponential_ph_sim():
+    """
+    Same as test_cox_ph_sim_example but for ExponentialPH, checking the
+    baseline hazard rate is fitted correctly.
+    """
+    # Instantiate random number generator
+    rng = np.random.default_rng()
+
+    # Construct covariant (Z) matrix
+    n_samples = 100
+    n_covariants = 3
+    Z = rng.normal(size=(n_samples, n_covariants))
+
+    # Baseline hazard function (i.e. an exponential survival function)
+    baseline_hazard_rate = 0.01
+
+    # Covariant coefficients
+    beta = [0.1, -0.5, 0.8]
+
+    # Take 20 samples per covariant sample for adequate fitting
+    # Have to repeat Z for this
+    samples_per_covariant_sample = 50
+    Z_repeated = np.repeat(Z, samples_per_covariant_sample, axis=0)
+
+    # Fill x samples
+    x = np.zeros(n_samples * samples_per_covariant_sample)
+    for i, Z_i in enumerate(Z_repeated):
+        Z_i_hazard_rate = baseline_hazard_rate * np.exp(np.dot(Z_i, beta))
+        x[i] = rng.exponential(1 / Z_i_hazard_rate)
+
+    # Fit model
+    model = ExponentialPH.fit(x=x, Z=Z_repeated, c=[0] * len(x))
+
+    # Parameters should be approximately equal to the baseline hazard + the
+    # beta vector
+    assert (
+        pytest.approx([baseline_hazard_rate] + beta, abs=0.05) == model.params
+    )
+
+
+def test_weibull_ph_sim():
+    """
+    Same as test_cox_ph_sim_example but with a Weibull baseline hazard, and
+    testing WeibullPH can get the Weibull and covariant parameters correct.
+    """
+    # Instantiate random number generator
+    rng = np.random.default_rng()
+
+    # Construct covariant (Z) matrix
+    n_samples = 100
+    n_covariants = 3
+    Z = rng.normal(size=(n_samples, n_covariants))
+
+    # Baseline hazard function (i.e. a Weibull survival function)
+    # For numpy, alpha_w is 'lambda', and beta_w is 'a'
+    alpha_w = 0.7
+    beta_w = 1.3
+
+    # Covariant coefficients
+    beta = [0.1, -0.5, 0.8]
+
+    # Take 50 samples per covariant sample for adequate fitting
+    # Have to repeat Z for this
+    samples_per_covariant_sample = 50
+    Z_repeated = np.repeat(Z, samples_per_covariant_sample, axis=0)
+
+    # Fill x samples
+    x = np.zeros(n_samples * samples_per_covariant_sample)
+    for i, Z_i in enumerate(Z_repeated):
+        alpha_w_i = alpha_w * np.exp(-np.dot(Z_i, beta) / beta_w)
+        x[i] = alpha_w_i * rng.weibull(beta_w)
+
+    # Fit model
+    model = WeibullPH.fit(x=x, Z=Z_repeated, c=[0] * len(x))
+
+    # Parameters should be approximately equal to the Weibull params + the
+    # beta vector
+    assert pytest.approx([alpha_w, beta_w] + beta, abs=0.05) == model.params
