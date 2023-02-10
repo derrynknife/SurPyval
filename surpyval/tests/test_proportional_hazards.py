@@ -61,9 +61,9 @@ def test_cox_ph_sim():
     # Covariant coefficients
     beta = [0.1, -0.5, 0.8]
 
-    # Take 20 samples per covariant sample for adequate fitting
+    # Take 50 samples per covariant sample for adequate fitting
     # Have to repeat Z for this
-    samples_per_covariant_sample = 20
+    samples_per_covariant_sample = 50
     Z_repeated = np.repeat(Z, samples_per_covariant_sample, axis=0)
 
     # Fill x samples
@@ -98,7 +98,7 @@ def test_exponential_ph_sim():
     # Covariant coefficients
     beta = [0.1, -0.5, 0.8]
 
-    # Take 20 samples per covariant sample for adequate fitting
+    # Take 50 samples per covariant sample for adequate fitting
     # Have to repeat Z for this
     samples_per_covariant_sample = 50
     Z_repeated = np.repeat(Z, samples_per_covariant_sample, axis=0)
