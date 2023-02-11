@@ -32,7 +32,7 @@ from surpyval.parametric import (
     Uniform,
     Weibull,
 )
-from surpyval.regression import CoxPH
+from surpyval.regression import CoxPH, ExponentialPH, WeibullPH
 from surpyval.utils import (
     fs_to_xcn,
     fs_to_xrd,

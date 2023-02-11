@@ -435,7 +435,7 @@ class CoxPH_:
         model.res = res
         model.beta = copy(res.x)
         model.phi = lambda Z: np.exp(Z @ model.beta)
-        model.parameters = res.x
+        model.params = res.x
 
         x, r, d = self.baseline(model.beta, x, c, n, Z)
         model.x = x
