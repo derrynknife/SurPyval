@@ -32,7 +32,12 @@ from surpyval.parametric import (
     Uniform,
     Weibull,
 )
-from surpyval.regression import CoxPH, ExponentialPH, WeibullPH
+from surpyval.regression import (
+    CoxPH,
+    ExponentialPH,
+    RandomSurvivalForest,
+    WeibullPH,
+)
 from surpyval.utils import (
     fs_to_xcn,
     fs_to_xrd,
