@@ -10,6 +10,7 @@ from surpyval.regression.lifemodels.lifemodel import LifeModel
 from ..parametric import Gumbel, Logistic, LogNormal, Normal, Weibull
 from .accelerated_failure_time import AcceleratedFailureTimeFitter
 from .cox_ph import CoxPH
+from .forest.forest import RandomSurvivalForest
 from .lifemodels import (
     DualExponential,
     DualPower,
