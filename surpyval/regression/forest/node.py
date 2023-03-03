@@ -12,12 +12,13 @@ class Node:
         c: ArrayLike,
         curr_depth: int,
         max_depth: int | float,
+        min_leaf_samples: int
     ):
         # Choose the best feature-value pair
         (
             self.split_feature_index,
             self.split_value,
-        ) = log_rank_split(x, Z, c)
+        ) = log_rank_split(x, Z, c, min_leaf_samples)
         self.left_node = LeafNode(x=x, Z=Z, c=c)
         self.right_node = LeafNode(x=x, Z=Z, c=c)
 
