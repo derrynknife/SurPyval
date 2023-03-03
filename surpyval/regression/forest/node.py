@@ -1,7 +1,7 @@
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval import Weibull
-from log_rank_split import log_rank_split
+from .log_rank_split import log_rank_split
 
 
 class Node:

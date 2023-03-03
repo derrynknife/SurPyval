@@ -15,6 +15,7 @@ class Tree_:
         Z: NDArray,
         c: ArrayLike,
         max_depth: int | float = float("inf"),
+        min_leaf_samples: int = 6
     ):
         x = np.array(x)
         c = np.array(c)
