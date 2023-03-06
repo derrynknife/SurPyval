@@ -346,7 +346,6 @@ class NonParametric:
         bound_type="exp",
         dist="z",
     ):
-
         if bound_type not in ["exp", "normal"]:
             return ValueError("'bound_type' must be in ['exp', 'normal']")
         if dist not in ["t", "z"]:

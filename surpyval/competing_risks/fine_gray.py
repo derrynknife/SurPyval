@@ -127,7 +127,6 @@ class FineGray_:
     #     return log_like, jac, hess
 
     def fit(self, x, Z, e, c=None, n=None):
-
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 
         unique_e = list(set(e))

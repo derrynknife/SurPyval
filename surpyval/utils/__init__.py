@@ -1184,7 +1184,6 @@ def validate_tv_coxph(id, tl, x, Z, c, n):
 def validate_tv_coxph_df_inputs(
     df, id_col, tl_col, x_col, Z_cols, c_col, n_col, formula
 ):
-
     # TODO: Create count of dropped rows
 
     if x_col is None:
@@ -1277,7 +1276,6 @@ def validate_coxph(x, c, n, Z, tl, method):
 
 
 def validate_fine_gray_inputs(x, Z, e, c, n):
-
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
     e = np.array(e)

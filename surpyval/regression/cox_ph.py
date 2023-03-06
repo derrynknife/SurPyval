@@ -457,7 +457,6 @@ class CoxPH_:
         formula=None,
         method="efron",
     ):
-
         x, c, n, Z, form = validate_coxph_df_inputs(
             df, x_col, c_col, n_col, Z_cols, formula
         )

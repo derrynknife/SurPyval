@@ -10,7 +10,6 @@ from surpyval.utils.counting_utils import handle_xicn, xicn_to_xrd
 
 class ParametricCountingModel:
     def __repr__(self):
-
         return "Parametric Counting Model with {} CIF".format(self.dist.name)
 
     def cif(self, x):
@@ -47,7 +46,6 @@ class NHPP:
         iif=None,
         parameter_initialiser=None,
     ):
-
         self.name = name
         self.param_names = param_names
         self.bounds = param_bounds

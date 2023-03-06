@@ -91,7 +91,6 @@ class CompetingRisks:
     def fit_from_df(
         cls, df, x_col, e_col, c_col=None, n_col=None, method="Nelson-Aalen"
     ):
-
         x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
         model = cls.fit(x, e, c, n, method)
         model.df = df

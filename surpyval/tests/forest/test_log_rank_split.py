@@ -1,4 +1,5 @@
 import numpy as np
+
 from surpyval.regression.forest.log_rank_split import log_rank_split
 
 

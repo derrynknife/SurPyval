@@ -1,18 +1,19 @@
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
 from surpyval import Weibull
+
 from .log_rank_split import log_rank_split
 
 
 class Node:
     def __init__(
         self,
-        x: ArrayLike,
+        x: NDArray,
         Z: NDArray,
-        c: ArrayLike,
+        c: NDArray,
         curr_depth: int,
         max_depth: int | float,
-        min_leaf_samples: int
+        min_leaf_samples: int,
     ):
         # Choose the best feature-value pair
         (
@@ -30,8 +31,8 @@ class LeafNode(Node):
 
     def __init__(
         self,
-        x: ArrayLike,
+        x: NDArray,
         Z: NDArray,
-        c: ArrayLike,
+        c: NDArray,
     ):
         self.model = Weibull.fit(x=x, c=c)

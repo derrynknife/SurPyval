@@ -70,7 +70,6 @@ class ProportionalHazardsFitter:
         fixed={},
         phi_init=None,
     ):
-
         if str(inspect.signature(phi)) != "(Z, *params)":
             raise ValueError(
                 "PH function must have the signature '(Z, *params)'"

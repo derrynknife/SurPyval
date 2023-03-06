@@ -452,7 +452,6 @@ class Gamma_(ParametricFitter):
         on_d_is_0=False,
         offset=False,
     ):
-
         x_pp, r, d, F = nonp.plotting_positions(
             x, c=c, n=n, heuristic=heuristic
         )

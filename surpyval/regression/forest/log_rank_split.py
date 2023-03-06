@@ -1,4 +1,5 @@
 from math import sqrt
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -127,7 +128,7 @@ def log_rank(
     t: NDArray,
     d: NDArray,
     Y: NDArray,
-    m: int
+    m: int,
 ) -> float:
     """Returns L(u, v)."""
 

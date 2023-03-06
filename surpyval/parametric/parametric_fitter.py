@@ -234,7 +234,6 @@ class ParametricFitter:
         on_d_is_0=False,
         turnbull_estimator="Fleming-Harrington",
     ):
-
         r"""
 
         The central feature to SurPyval's capability. This function aimed to
