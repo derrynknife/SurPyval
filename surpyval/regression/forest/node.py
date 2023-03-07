@@ -1,11 +1,21 @@
+from abc import ABC, abstractmethod
+
+import numpy as np
 from numpy.typing import NDArray
 
 from surpyval import Weibull
+from surpyval.regression.forest.log_rank_split import log_rank_split
 
-from .log_rank_split import log_rank_split
+
+class Node(ABC):
+    """The common methods between IntermediateNode and LeafNode."""
+
+    @abstractmethod
+    def sf(self, x: float, Z: NDArray) -> NDArray:
+        ...
 
 
-class Node:
+class IntermediateNode(Node):
     def __init__(
         self,
         x: NDArray,
@@ -14,25 +24,100 @@ class Node:
         curr_depth: int,
         max_depth: int | float,
         min_leaf_samples: int,
+        n_features_split: int,
+        split_feature_index: int,
+        split_feature_value: float,
+        feature_indices_in: NDArray,
     ):
-        # Choose the best feature-value pair
-        (
-            self.split_feature_index,
-            self.split_value,
-        ) = log_rank_split(x, Z, c, min_leaf_samples)
-        self.left_node = LeafNode(x=x, Z=Z, c=c)
-        self.right_node = LeafNode(x=x, Z=Z, c=c)
+        # Set split attributes
+        self.split_feature_index = split_feature_index
+        self.split_feature_value = split_feature_value
+        self.feature_indices_in = feature_indices_in
+
+        # Get left/right indices
+        left_indices = (
+            Z[:, self.split_feature_index] <= self.split_feature_value
+        )
+        right_indices = np.logical_not(left_indices)
+
+        # Build left and right nodes
+        self.left_child = build_tree(
+            x[left_indices],
+            Z[left_indices],
+            c[left_indices],
+            curr_depth=curr_depth + 1,
+            max_depth=max_depth,
+            min_leaf_samples=min_leaf_samples,
+            n_features_split=n_features_split,
+        )
+        self.right_child = build_tree(
+            x[right_indices],
+            Z[right_indices],
+            c[right_indices],
+            curr_depth=curr_depth + 1,
+            max_depth=max_depth,
+            min_leaf_samples=min_leaf_samples,
+            n_features_split=n_features_split,
+        )
+
+    def sf(self, x: float, Z: NDArray) -> NDArray:
+        # Determine which node, left/right, to call sf() on
+        if Z[self.split_feature_index] <= self.split_feature_value:
+            return self.left_child.sf(x, Z)
+        return self.right_child.sf(x, Z)
 
 
-class LeafNode(Node):
+class TerminalNode(Node):
+    def __init__(self, x: NDArray, c: NDArray):
+        self.model = Weibull.fit(x, c)
+
+    def sf(self, x: float, _):
+        return self.model.sf(x)
+
+
+def build_tree(
+    x: NDArray,
+    Z: NDArray,
+    c: NDArray,
+    curr_depth: int,
+    max_depth: int | float,
+    min_leaf_samples: int,
+    n_features_split: int,
+) -> Node:
     """
-    Same as Node, but stores the model fitted on the leaf samples.
+    Node factory. Decides to return IntermediateNode object, or its
+    sibling TerminalNode.
     """
+    # If max_depth has been reached, return a TerminalNode
+    if curr_depth == max_depth:
+        return TerminalNode(x, c)
 
-    def __init__(
-        self,
-        x: NDArray,
-        Z: NDArray,
-        c: NDArray,
-    ):
-        self.model = Weibull.fit(x=x, c=c)
+    # Choose the random n_features_split subset of features, without
+    # replacement
+    feature_indices_in = np.unique(
+        np.random.choice(Z.shape[1], size=n_features_split, replace=False)
+    )
+
+    # Figure out best feature-value split
+    split_feature_index, split_feature_value = log_rank_split(
+        x, Z, c, min_leaf_samples, feature_indices_in
+    )
+
+    # If log_rank_split() can't suggest a feature-value split, return a
+    # TerminalNode
+    if split_feature_index == -1 and split_feature_value == float("-Inf"):
+        return TerminalNode(x, c)
+
+    # Else, return an IntermediateNode, with the suggested feature-value split
+    return IntermediateNode(
+        x=x,
+        Z=Z,
+        c=c,
+        curr_depth=curr_depth,
+        max_depth=max_depth,
+        min_leaf_samples=min_leaf_samples,
+        n_features_split=n_features_split,
+        split_feature_index=split_feature_index,
+        split_feature_value=split_feature_value,
+        feature_indices_in=feature_indices_in,
+    )

@@ -1,31 +1,63 @@
+from math import log2, sqrt
+
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from .node import Node
+from surpyval.regression.forest.node import build_tree
 
 
 class Tree:
     """
-    TODO
+    A Survival Tree, for use in `RandomSurvivalForest`.
+
+    The Tree is built on initialisation.
     """
 
     def __init__(
         self,
         x: ArrayLike,
-        Z: NDArray,
+        Z: ArrayLike | NDArray,
         c: ArrayLike,
         max_depth: int | float = float("inf"),
         min_leaf_samples: int = 6,
-        bootstrap: bool = True,
+        n_features_split: int | float | str = "sqrt",
     ):
-        x = np.array(x)
-        c = np.array(c)
-        Z = np.array(Z)
-        self._root = Node(
-            x=x,
-            Z=Z,
-            c=c,
+        self.x = np.array(x)
+        self.Z = np.array(Z)
+        if self.Z.ndim == 1:
+            self.Z = np.reshape(Z, (1, -1)).transpose()
+        self.c = np.array(c)
+
+        self.n_features_split = parse_n_features_split(
+            n_features_split, self.Z.shape[1]
+        )
+
+        self._root = build_tree(
+            x=self.x,
+            Z=self.Z,
+            c=self.c,
             curr_depth=0,
             max_depth=max_depth,
             min_leaf_samples=min_leaf_samples,
+            n_features_split=self.n_features_split,
+        )
+
+
+def parse_n_features_split(
+    n_features_split: int | float | str, n_features: int
+) -> int:
+    if isinstance(n_features_split, int):
+        return n_features_split
+    if isinstance(n_features_split, float):
+        return int(n_features_split * n_features)
+    if n_features_split == "sqrt":
+        return int(sqrt(n_features))
+    if n_features_split == "log2":
+        return int(log2(n_features))
+    if n_features_split == "all":
+        return n_features
+    else:
+        raise ValueError(
+            f"n_features_split={n_features_split} is invalid. See\
+                         `Tree` docstring for valid values."
         )

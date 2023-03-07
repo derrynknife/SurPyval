@@ -1,27 +1,29 @@
 from math import sqrt
+from typing import Iterable
 
 import numpy as np
 from numpy.typing import NDArray
 
 
 def log_rank_split(
-    x: NDArray, Z: NDArray, c: NDArray, min_leaf_samples: int
+    x: NDArray,
+    Z: NDArray,
+    c: NDArray,
+    min_leaf_samples: int,
+    feature_indices_in: Iterable[int],
 ) -> tuple[int, float]:
     r"""
     Returns the best feature index and value according to the Log-Rank split
     criterion.
 
-    Assumes there are at least (2 * min_leaf_samples) samples so the
-    min_leaf_samples constraint can be respected.
-
     That is, it returns
 
     .. math::
 
-        (u^*, v^*) = {\arg \max}_{0 \leq u < k, v \in Z_u}\left( |L(u, v)|
+        (u^*, v^*) = {\arg \max}_{u \in feature_indices_in,
+        v \in Z_u}\left( |L(u, v)|
         \right )
 
-    where :math:`k` = the number of features in Z (`Z.shape()[1]`),
     i.e. the feature index :math:`u^*` and value :math:`v^*` which maximises
     the :math:`|L(u, v)|` where
 
@@ -86,7 +88,6 @@ def log_rank_split(
     Y = np.array([len(x[x >= t_j]) for t_j in t])
 
     # Now let's find the best (u, v) pair
-    k = Z.shape[1]  # Number of features
     max_log_rank_magnitude = float("-inf")
     best_u = -1  # Placeholder value
     best_v = -float("inf")  # Placeholder value
@@ -103,7 +104,7 @@ def log_rank_split(
             return True
         return False
 
-    for u in range(k):
+    for u in feature_indices_in:
         for v in Z[:, u]:
             # Discard the (u, v) pair if it means a leaf will
             # have < min_leaf_samples samples

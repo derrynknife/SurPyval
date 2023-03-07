@@ -12,7 +12,7 @@ def test_log_rank_split_one_binary_feature():
     Z = np.array([0] * 10 + [1] * 10)
     c = np.array([0] * len(x))
 
-    lrs = log_rank_split(x, Z, c, min_leaf_samples=6)
+    lrs = log_rank_split(x, Z, c, min_leaf_samples=6, feature_indices_in=[0])
 
     # Assert feature 0 (the only feature) is returned
     assert lrs[0] == 0
@@ -26,7 +26,7 @@ def test_log_rank_split_one_feature_four_samples():
     Z = np.array([0, 0.2] + [15.1, 15])
     c = np.array([0] * len(x))
 
-    lrs = log_rank_split(x, Z, c, min_leaf_samples=1)
+    lrs = log_rank_split(x, Z, c, min_leaf_samples=1, feature_indices_in=[0])
 
     assert lrs[0] == 0
     assert lrs[1] == 0
@@ -41,7 +41,9 @@ def test_log_rank_split_two_features_two_samples():
     Z = np.array([[0.3, 1], [0.3, 3]])  # Feature 1 should be selected
     c = np.array([0] * len(x))
 
-    lrs = log_rank_split(x, Z, c, min_leaf_samples=1)
+    lrs = log_rank_split(
+        x, Z, c, min_leaf_samples=1, feature_indices_in=[0, 1]
+    )
 
     assert lrs[0] == 1
     assert lrs[1] == 1
