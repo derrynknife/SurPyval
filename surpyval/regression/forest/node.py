@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 from surpyval import Weibull
 from surpyval.regression.forest.log_rank_split import log_rank_split
@@ -11,7 +11,12 @@ class Node(ABC):
     """The common methods between IntermediateNode and LeafNode."""
 
     @abstractmethod
-    def sf(self, x: float, Z: NDArray) -> NDArray:
+    def apply_model_function(
+        self,
+        function_name: str,
+        x: NDArray,
+        Z: NDArray,
+    ) -> NDArray:
         ...
 
 
@@ -60,19 +65,29 @@ class IntermediateNode(Node):
             n_features_split=n_features_split,
         )
 
-    def sf(self, x: float, Z: NDArray) -> NDArray:
+    def apply_model_function(
+        self,
+        function_name: str,
+        x: NDArray,
+        Z: NDArray,
+    ) -> NDArray:
         # Determine which node, left/right, to call sf() on
         if Z[self.split_feature_index] <= self.split_feature_value:
-            return self.left_child.sf(x, Z)
-        return self.right_child.sf(x, Z)
+            return self.left_child.apply_model_function(function_name, x, Z)
+        return self.right_child.apply_model_function(function_name, x, Z)
 
 
 class TerminalNode(Node):
     def __init__(self, x: NDArray, c: NDArray):
         self.model = Weibull.fit(x, c)
 
-    def sf(self, x: float, _):
-        return self.model.sf(x)
+    def apply_model_function(
+        self,
+        function_name: str,
+        x: int | float | ArrayLike,
+        _: NDArray,
+    ) -> NDArray:
+        return getattr(self.model, function_name)(x)
 
 
 def build_tree(

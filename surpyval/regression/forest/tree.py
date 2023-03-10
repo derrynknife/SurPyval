@@ -42,6 +42,14 @@ class Tree:
             n_features_split=self.n_features_split,
         )
 
+    def apply_model_function(
+        self,
+        function_name: str,
+        x: NDArray,
+        Z: NDArray,
+    ) -> NDArray:
+        return self._root.apply_model_function(function_name, x, Z)
+
 
 def parse_n_features_split(
     n_features_split: int | float | str, n_features: int

@@ -9,3 +9,4 @@ mypy
 pytest
 coverage
 pre-commit
+scikit-survival
