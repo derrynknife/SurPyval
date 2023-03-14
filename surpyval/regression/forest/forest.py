@@ -21,7 +21,7 @@ class RandomSurvivalForest:
         c: ArrayLike,
         n_trees: int = 100,
         max_depth: int | float = float("inf"),
-        min_leaf_samples: int = 6,
+        min_leaf_failures: int = 6,
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
     ):
@@ -48,7 +48,7 @@ class RandomSurvivalForest:
                     Z=self.Z[bootstrap_indices],
                     c=self.c[bootstrap_indices],
                     max_depth=max_depth,
-                    min_leaf_samples=min_leaf_samples,
+                    min_leaf_failures=min_leaf_failures,
                     n_features_split=n_features_split,
                 )
             )

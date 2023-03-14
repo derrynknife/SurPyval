@@ -19,7 +19,7 @@ class Tree:
         Z: ArrayLike | NDArray,
         c: ArrayLike,
         max_depth: int | float = float("inf"),
-        min_leaf_samples: int = 6,
+        min_leaf_failures: int = 6,
         n_features_split: int | float | str = "sqrt",
     ):
         self.x = np.array(x)
@@ -38,7 +38,7 @@ class Tree:
             c=self.c,
             curr_depth=0,
             max_depth=max_depth,
-            min_leaf_samples=min_leaf_samples,
+            min_leaf_failures=min_leaf_failures,
             n_features_split=self.n_features_split,
         )
 

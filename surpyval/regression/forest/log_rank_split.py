@@ -9,7 +9,7 @@ def log_rank_split(
     x: NDArray,
     Z: NDArray,
     c: NDArray,
-    min_leaf_samples: int,
+    min_leaf_failures: int,
     feature_indices_in: Iterable[int],
 ) -> tuple[int, float]:
     r"""
@@ -60,7 +60,7 @@ def log_rank_split(
     tuple[int, float]
         The feature index and value of the maximal Log-Rank split, these will
         be (-1, -Inf) if insufficient samples were provided to satisfy the
-        min_leaf_samples constraint.
+        min_leaf_failures constraint.
     """
     # Sort x, Z, and c, in x, making sure Z is 2d (required for future calcs)
     sort_idxs = np.argsort(x)
@@ -92,14 +92,18 @@ def log_rank_split(
     best_u = -1  # Placeholder value
     best_v = -float("inf")  # Placeholder value
 
-    # Inner function used in ensuring the min_leaf_samples constraint is
+    # Inner function used in ensuring the min_leaf_failures constraint is
     # respected
-    def breaks_min_leaf_samples_constraint():
-        left_child_samples = len(np.where(Z[:, u] <= v)[0])
-        right_child_samples = len(x) - left_child_samples
+    def breaks_min_leaf_failures_constraint():
+        left_child_samples = len(
+            np.where(np.logical_and(Z[:, u] <= v, c == 0))[0]
+        )
+        right_child_samples = len(
+            np.where(np.logical_and(Z[:, u] > v, c == 0))[0]
+        )
         if (
-            left_child_samples < min_leaf_samples
-            or right_child_samples < min_leaf_samples
+            left_child_samples < min_leaf_failures
+            or right_child_samples < min_leaf_failures
         ):
             return True
         return False
@@ -107,8 +111,8 @@ def log_rank_split(
     for u in feature_indices_in:
         for v in Z[:, u]:
             # Discard the (u, v) pair if it means a leaf will
-            # have < min_leaf_samples samples
-            if breaks_min_leaf_samples_constraint():
+            # have < min_leaf_failures samples
+            if breaks_min_leaf_failures_constraint():
                 continue
 
             abs_log_rank = abs(log_rank(u, v, x, Z, c, t, d, Y, m))

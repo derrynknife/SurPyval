@@ -28,7 +28,7 @@ class IntermediateNode(Node):
         c: NDArray,
         curr_depth: int,
         max_depth: int | float,
-        min_leaf_samples: int,
+        min_leaf_failures: int,
         n_features_split: int,
         split_feature_index: int,
         split_feature_value: float,
@@ -52,7 +52,7 @@ class IntermediateNode(Node):
             c[left_indices],
             curr_depth=curr_depth + 1,
             max_depth=max_depth,
-            min_leaf_samples=min_leaf_samples,
+            min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
         )
         self.right_child = build_tree(
@@ -61,7 +61,7 @@ class IntermediateNode(Node):
             c[right_indices],
             curr_depth=curr_depth + 1,
             max_depth=max_depth,
-            min_leaf_samples=min_leaf_samples,
+            min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
         )
 
@@ -96,7 +96,7 @@ def build_tree(
     c: NDArray,
     curr_depth: int,
     max_depth: int | float,
-    min_leaf_samples: int,
+    min_leaf_failures: int,
     n_features_split: int,
 ) -> Node:
     """
@@ -115,7 +115,7 @@ def build_tree(
 
     # Figure out best feature-value split
     split_feature_index, split_feature_value = log_rank_split(
-        x, Z, c, min_leaf_samples, feature_indices_in
+        x, Z, c, min_leaf_failures, feature_indices_in
     )
 
     # If log_rank_split() can't suggest a feature-value split, return a
@@ -130,7 +130,7 @@ def build_tree(
         c=c,
         curr_depth=curr_depth,
         max_depth=max_depth,
-        min_leaf_samples=min_leaf_samples,
+        min_leaf_failures=min_leaf_failures,
         n_features_split=n_features_split,
         split_feature_index=split_feature_index,
         split_feature_value=split_feature_value,
