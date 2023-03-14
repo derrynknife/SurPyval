@@ -1,7 +1,16 @@
 import numpy as np
+import pandas as pd
 import pytest
+from numpy.typing import NDArray
+from sklearn.preprocessing import OrdinalEncoder
+
+# For scikit-survival test
+from sksurv.datasets import load_gbsg2
+from sksurv.preprocessing import OneHotEncoder
+from sksurv.tree.tree import SurvivalTree as sksurv_SurvivalTree
 
 from surpyval import Weibull
+from surpyval.regression.forest.node import TerminalNode
 from surpyval.regression.forest.tree import Tree
 
 
@@ -123,3 +132,93 @@ def test_tree_one_split_two_features_n_features_split():
         x=x, Z=Z, c=c, max_depth=1, n_features_split="all"
     )
     assert len(tree_two_features_all._root.feature_indices_in) == 2
+
+
+def test_tree_scikit_survival_reference_splits():
+    """
+    Scikit-survival's SurvivalTree is a reference implementation for surpyval's
+    Tree. Here the log-rank splitter is tested to make sure the decision tree
+    is identical between the two.
+    """
+    # Prep data input
+    X, y = load_gbsg2()
+
+    grade_str = X.loc[:, "tgrade"].astype(object).values[:, np.newaxis]
+    grade_num = OrdinalEncoder(categories=[["I", "II", "III"]]).fit_transform(
+        grade_str
+    )
+
+    X_no_grade = X.drop("tgrade", axis=1)
+    Xt = OneHotEncoder().fit_transform(X_no_grade)
+    Xt.loc[:, "tgrade"] = grade_num
+
+    # Fit a sksurv SurvivalTree for min samples per leaf of 15, and no
+    # randomisation of features for splitting
+    sksurv_tree = sksurv_SurvivalTree(
+        min_samples_split=2, min_samples_leaf=15, max_features=None
+    )
+    sksurv_tree.fit(Xt[:100], y[:100])
+
+    # Prep and fit a surpyval Tree
+    def sksurv_Xy_to_surv_xZc(X: pd.DataFrame, y: NDArray):
+        return y["time"], X.to_numpy(), np.logical_not(y["cens"]).astype(int)
+
+    x, Z, c = sksurv_Xy_to_surv_xZc(Xt, y)
+
+    surv_tree = Tree(
+        x=x[:100],
+        Z=Z[:100, :],
+        c=c[:100],
+        n_features_split="all",
+        min_leaf_failures=15,
+    )
+
+    assert_trees_equal(surv_tree, sksurv_tree)
+
+
+def assert_trees_equal(surv_tree: Tree, sksurv_tree: sksurv_SurvivalTree):
+    # Get the scikit-survival underlying Tree object (actually from
+    # scikit-learn)
+    sklearn_tree = sksurv_tree.tree_
+
+    # Get the current node
+    surv_curr_node = surv_tree._root
+    sksurv_curr_node: int = 0
+
+    def dfs_assert_trees_equal(
+        surv_curr_node,
+        sksurv_curr_node: int,
+    ):
+        # If surv_curr_node is a TerminalNode, assert sksurv_curr_node is also
+        # a leaf node
+        if isinstance(surv_curr_node, TerminalNode):
+            assert (
+                sklearn_tree.children_left[sksurv_curr_node]
+                == sklearn_tree.children_right[sksurv_curr_node]
+                == -1
+            )
+            return
+
+        # Else, it's an intermediate node, which needs its feature-value split
+        # checked
+        assert (
+            surv_curr_node.split_feature_index
+            == sklearn_tree.feature[sksurv_curr_node]
+        )
+        assert (
+            pytest.approx(surv_curr_node.split_feature_value)
+            == sklearn_tree.threshold[sksurv_curr_node]
+        )
+
+        # And continue the DFS
+        dfs_assert_trees_equal(
+            surv_curr_node.left_child,
+            sklearn_tree.children_left[sksurv_curr_node],
+        )
+        dfs_assert_trees_equal(
+            surv_curr_node.right_child,
+            sklearn_tree.children_right[sksurv_curr_node],
+        )
+
+    # Begin DFS
+    dfs_assert_trees_equal(surv_curr_node, sksurv_curr_node)

@@ -129,12 +129,3 @@ def test_forest_all_functions(
 
     Hf = forest.Hf(x=1, Z=[0.5, 0.5])
     assert len(Hf) == 1 and isinstance(Hf[0], float)
-
-
-def test_forest_gbcsg2():
-    """
-    Validation vs. scikit-survival's guide example, accessed at:
-    https://scikit-survival.readthedocs.io/en/stable/user_guide/random-survival-forest.html
-    """
-
-    assert False
