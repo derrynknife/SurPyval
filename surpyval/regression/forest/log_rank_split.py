@@ -2,7 +2,13 @@ from math import sqrt
 from typing import Iterable
 
 import numpy as np
+import pytest
 from numpy.typing import NDArray
+from sksurv.compare import compare_survival
+
+from surpyval.utils.surv_sksurv_transformations import (  # sksurv's log-rank
+    surv_xZc_to_sksurv_Xy,
+)
 
 
 def log_rank_split(
@@ -11,6 +17,7 @@ def log_rank_split(
     c: NDArray,
     min_leaf_failures: int,
     feature_indices_in: Iterable[int],
+    assert_reference: bool = False,
 ) -> tuple[int, float]:
     r"""
     Returns the best feature index and value according to the Log-Rank split
@@ -109,13 +116,29 @@ def log_rank_split(
         return False
 
     for u in feature_indices_in:
-        for v in Z[:, u]:
+        for v in np.unique(Z[:, u])[:-1]:
             # Discard the (u, v) pair if it means a leaf will
             # have < min_leaf_failures samples
             if breaks_min_leaf_failures_constraint():
                 continue
 
             abs_log_rank = abs(log_rank(u, v, x, Z, c, t, d, Y, m))
+
+            if assert_reference:
+                reference_abs_log_rank, _ = compare_survival(
+                    surv_xZc_to_sksurv_Xy(x, Z, c)[1],
+                    (Z[:, u] <= v).astype(int),
+                )
+                try:
+                    assert (
+                        pytest.approx(abs_log_rank) == reference_abs_log_rank
+                    )
+                except AssertionError:
+                    raise AssertionError(
+                        f"abs_log_rank={abs_log_rank:.3f} != "
+                        f"reference_abs_log_rank={reference_abs_log_rank:.3f}"
+                    )
+
             if abs_log_rank > max_log_rank_magnitude:
                 max_log_rank_magnitude = abs_log_rank
                 best_u = u

@@ -12,7 +12,14 @@ def test_log_rank_split_one_binary_feature():
     Z = np.array([0] * 10 + [1] * 10)
     c = np.array([0] * len(x))
 
-    lrs = log_rank_split(x, Z, c, min_leaf_failures=6, feature_indices_in=[0])
+    lrs = log_rank_split(
+        x,
+        Z,
+        c,
+        min_leaf_failures=6,
+        feature_indices_in=[0],
+        assert_reference=True,
+    )
 
     # Assert feature 0 (the only feature) is returned
     assert lrs[0] == 0
@@ -26,7 +33,14 @@ def test_log_rank_split_one_feature_four_samples():
     Z = np.array([0, 0.2] + [15.1, 15])
     c = np.array([0] * len(x))
 
-    lrs = log_rank_split(x, Z, c, min_leaf_failures=1, feature_indices_in=[0])
+    lrs = log_rank_split(
+        x,
+        Z,
+        c,
+        min_leaf_failures=1,
+        feature_indices_in=[0],
+        assert_reference=True,
+    )
 
     assert lrs[0] == 0
     assert lrs[1] == 0
@@ -42,7 +56,12 @@ def test_log_rank_split_two_features_two_samples():
     c = np.array([0] * len(x))
 
     lrs = log_rank_split(
-        x, Z, c, min_leaf_failures=1, feature_indices_in=[0, 1]
+        x,
+        Z,
+        c,
+        min_leaf_failures=1,
+        feature_indices_in=[0, 1],
+        assert_reference=True,
     )
 
     assert lrs[0] == 1
@@ -61,7 +80,12 @@ def test_log_rank_split_min_leaf_failures():
     c_A = np.array([0] * len(x))
 
     lrsA = log_rank_split(
-        x, Z, c_A, min_leaf_failures=min_leaf_failures, feature_indices_in=[0]
+        x,
+        Z,
+        c_A,
+        min_leaf_failures=min_leaf_failures,
+        feature_indices_in=[0],
+        assert_reference=True,
     )
     assert lrsA[0] == 0
     assert lrsA[1] == 0.1
