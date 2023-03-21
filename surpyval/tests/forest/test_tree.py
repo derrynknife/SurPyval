@@ -164,20 +164,9 @@ def assert_trees_equal(surv_tree: Tree, sksurv_tree: sksurv_SurvivalTree):
             == sklearn_tree.feature[sksurv_curr_node]
         )
 
-        # Assert surpyval_value <= scikit_value < next_biggest_value
-        # as these would represent/result in the same split. It seems
-        # that scikit-survival doesn't use samples exactly but may get a median
-        next_biggest_value = min(
-            surv_curr_node.Z[
-                surv_curr_node.Z[:, surv_curr_node.split_feature_index]
-                > surv_curr_node.split_feature_value,
-                surv_curr_node.split_feature_index,
-            ]
-        )
         assert (
-            surv_curr_node.split_feature_value
-            <= sklearn_tree.threshold[sksurv_curr_node]
-            < next_biggest_value
+            pytest.approx(surv_curr_node.split_feature_value)
+            == sklearn_tree.threshold[sksurv_curr_node]
         )
 
         # And continue the DFS
@@ -248,11 +237,6 @@ def test_tree_reference_split_one_split_two_features():
 
 
 def test_tree_reference_splits_gbsg2():
-    """
-    Scikit-survival's SurvivalTree is a reference implementation for surpyval's
-    Tree. Here the log-rank splitter is tested to make sure the decision tree
-    is identical between the two.
-    """
     # Prep data input
     X, y = load_gbsg2()
 
@@ -271,9 +255,9 @@ def test_tree_reference_splits_gbsg2():
         min_samples_split=2,
         min_samples_leaf=15,
         max_features=None,
-        max_depth=1,
+        max_depth=2,
     )
-    sksurv_tree.fit(np.array(Xt[:100]["tgrade"], ndmin=2).transpose(), y[:100])
+    sksurv_tree.fit(Xt, y)
 
     # Prep and fit a surpyval Tree
     def sksurv_Xy_to_surv_xZc(X: pd.DataFrame, y: NDArray):
@@ -282,12 +266,12 @@ def test_tree_reference_splits_gbsg2():
     x, Z, c = sksurv_Xy_to_surv_xZc(Xt, y)
 
     surv_tree = Tree(
-        x=x[:100],
-        Z=Z[:100, 0],
-        c=c[:100],
+        x=x,
+        Z=Z,
+        c=c,
         n_features_split="all",
         min_leaf_failures=15,
-        max_depth=1,
+        max_depth=2,
     )
 
     assert_trees_equal(surv_tree, sksurv_tree)

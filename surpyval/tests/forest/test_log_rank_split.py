@@ -18,14 +18,13 @@ def test_log_rank_split_one_binary_feature():
         c,
         min_leaf_failures=6,
         feature_indices_in=[0],
-        assert_reference=True,
     )
 
     # Assert feature 0 (the only feature) is returned
     assert lrs[0] == 0
 
-    # Assert feature 0 value 0 (left children have Z_0 <= 0)
-    assert lrs[1] == 0
+    # Assert feature 0 value 0.5 (left children have Z_0 <= 0)
+    assert lrs[1] == 0.5
 
 
 def test_log_rank_split_one_feature_four_samples():
@@ -39,11 +38,10 @@ def test_log_rank_split_one_feature_four_samples():
         c,
         min_leaf_failures=1,
         feature_indices_in=[0],
-        assert_reference=True,
     )
 
     assert lrs[0] == 0
-    assert lrs[1] == 0
+    assert lrs[1] == 0.1
 
 
 def test_log_rank_split_two_features_two_samples():
@@ -61,11 +59,10 @@ def test_log_rank_split_two_features_two_samples():
         c,
         min_leaf_failures=1,
         feature_indices_in=[0, 1],
-        assert_reference=True,
     )
 
     assert lrs[0] == 1
-    assert lrs[1] == 1
+    assert lrs[1] == 2
 
 
 def test_log_rank_split_min_leaf_failures():
@@ -85,10 +82,9 @@ def test_log_rank_split_min_leaf_failures():
         c_A,
         min_leaf_failures=min_leaf_failures,
         feature_indices_in=[0],
-        assert_reference=True,
     )
     assert lrsA[0] == 0
-    assert lrsA[1] == 0.1
+    assert lrsA[1] == 1.55
 
     # Case B: all samples are censored, a split is not possible
     c_B = np.array([1] * len(x))
