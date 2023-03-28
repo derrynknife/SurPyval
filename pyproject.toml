@@ -23,7 +23,8 @@ module = [
     'sphinx_rtd_theme',
     'setuptools',
     'sklearn.*',
-    'sksurv.*'
+    'sksurv.*',
+    'joblib.*'
 ]
 ignore_missing_imports = true
 

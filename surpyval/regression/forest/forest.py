@@ -1,4 +1,5 @@
 import numpy as np
+from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.regression.forest.tree import Tree
@@ -34,28 +35,55 @@ class RandomSurvivalForest:
         self.n_trees = n_trees
         self.bootstrap = bootstrap
 
-        # Create trees
-        self.trees = []
-        bootstrap_indices = np.array(range(len(self.x)))  # Defaults to normal
-        for _ in range(self.n_trees):
-            if self.bootstrap:
-                bootstrap_indices = np.random.choice(
-                    len(self.x), len(self.x), replace=True
-                )
-            self.trees.append(
-                Tree(
-                    x=self.x[bootstrap_indices],
-                    Z=self.Z[bootstrap_indices],
-                    c=self.c[bootstrap_indices],
-                    max_depth=max_depth,
-                    min_leaf_failures=min_leaf_failures,
-                    n_features_split=n_features_split,
-                )
+        # Create Trees
+        if self.bootstrap:
+            bootstrap_indices = [
+                np.random.choice(len(self.x), len(self.x), replace=True)
+                for _ in range(self.n_trees)
+            ]
+        else:
+            bootstrap_indices = [np.array(range(len(self.x)))] * self.n_trees
+
+        self.trees = Parallel(prefer="threads", verbose=1)(  # Parallelise
+            delayed(Tree)(
+                x=self.x[bootstrap_indices[i]],
+                Z=self.Z[bootstrap_indices[i]],
+                c=self.c[bootstrap_indices[i]],
+                max_depth=max_depth,
+                min_leaf_failures=min_leaf_failures,
+                n_features_split=n_features_split,
             )
+            for i in range(self.n_trees)
+        )
 
     def sf(
-        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+        self,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
+        ensemble_method: str = "sf",
     ) -> NDArray:
+        """Returns the ensemble survival function
+
+        Parameters
+        ----------
+        x : int | float | ArrayLike
+            Time samples
+        Z : ArrayLike | NDArray
+            Covariant matrix
+        ensemble_method : str, optional
+            Determines whether to average across terminal nodes the terminal
+            node survival functions or cumulative hazard functions.
+            For these respectively, ensemble_method must be "sf" or
+            "Hf". Defaults to "sf".
+
+        Returns
+        -------
+        NDArray
+            Survival function of x as 1D array
+        """
+        if ensemble_method == "Hf":
+            Hf = self._apply_model_function_to_trees("Hf", x, Z)
+            return np.exp(-Hf)
         return self._apply_model_function_to_trees("sf", x, Z)
 
     def ff(

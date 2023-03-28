@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from functools import cached_property
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -79,7 +80,12 @@ class IntermediateNode(Node):
 
 class TerminalNode(Node):
     def __init__(self, x: NDArray, c: NDArray):
-        self.model = Weibull.fit(x, c)
+        self.x = x
+        self.c = c
+
+    @cached_property
+    def model(self):
+        return Weibull.fit(self.x, self.c)
 
     def apply_model_function(
         self,
