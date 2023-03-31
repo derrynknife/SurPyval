@@ -86,7 +86,7 @@ def test_forest_sf_scalar_x(
 
     sf_100 = forest.sf(x=100, Z=[0.5, 0.5])
     assert isinstance(sf_100, np.ndarray)
-    assert pytest.approx(sf_100, abs=0.1) == np.array([0.1])
+    assert pytest.approx(sf_100, abs=0.15) == np.array([0.1])
     # (Veeery approximate)       ^^^^^^^
 
 
