@@ -78,21 +78,24 @@ def score(
         x_hat_1 = predict(i_1, x_1, Z_1)
         x_hat_2 = predict(i_2, x_2, Z_2)
 
-        if x_1 < x_2:
-            if x_hat_1 < x_hat_2:
+        if x_1 != x_2:
+            if x_hat_1 > x_hat_2:
                 concordance += 1
             elif isclose(x_hat_1, x_hat_2, abs_tol=tie_tol):
                 concordance += 0.5
+        elif x_1 == x_2:
+            if c_1 == 0 and c_2 == 0:
+                if isclose(x_hat_1, x_hat_2, abs_tol=tie_tol):
+                    concordance += 1
+                else:
+                    concordance += 0.5
             else:
-                concordance += 0.5
-        else:
-            # x_1 == x_2 and one is a death
-            if (c_1 == 0 and x_hat_1 < x_hat_2) or (
-                c_2 == 0 and x_hat_2 < x_hat_1
-            ):
-                concordance += 1
-            else:
-                concordance += 0.5
+                if c_1 == 0 and x_hat_1 > x_hat_2:
+                    concordance += 1
+                elif c_2 == 0 and x_hat_2 > x_hat_1:
+                    concordance += 1
+                else:
+                    concordance += 0.5
 
     return concordance / n_permissible_pairs
 
