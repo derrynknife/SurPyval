@@ -1,3 +1,5 @@
+from itertools import combinations
+
 import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
@@ -120,3 +122,90 @@ class RandomSurvivalForest:
         for tree in self.trees:
             res += tree.apply_model_function(function_name, x, Z)
         return res / self.n_trees
+
+    def score(
+        self, x: ArrayLike, Z: ArrayLike | NDArray, c: ArrayLike
+    ) -> float:
+        """Returns the concordance index of the model
+
+        Parameters
+        ----------
+        x : ArrayLike
+            Time samples
+        Z : ArrayLike | NDArray
+            Covariant matrix
+
+        Returns
+        -------
+        float
+            Concordance index (c-index)
+        """
+        # Steps:
+        # 1. Form all pairs of samples
+        # 2. Omit pairs where earlier time sample is censored
+        #   (the number of permissible pairs, n_permissible_pairs, is the
+        #    number of pairs after the above omission)
+        # 3. If x_1 < x_2 and x_hat_1 < x_hat_2 => concordance += 1
+        # 4. If x_1 < x_2 and x_hat_1 == x_hat_2 => concordance += 0.5
+        # 4. If x_1 == x_2 and both are deaths,
+        #   if x_hat_1 == x_hat_2 => concordance += 1
+        #   else concordance += 0.5
+        # c-index = concordance / n_permissible_pairs
+
+        # Correct input
+        x = np.array(x, ndmin=1)
+        c = np.array(c, ndmin=1)
+        Z = np.array(Z, ndmin=2)
+
+        # Package xcZ together
+        xcZ = []
+        for i in range(len(x)):
+            xcZ.append((i, x[i], c[i], Z[i]))
+
+        pairs = combinations(xcZ, 2)
+
+        def predict(i, x, Z):
+            """Inner function to get memoised prediction if available,
+            otherwise compute, memoise, and return it."""
+            # Already memoised
+            if memoised_predictions[i] is not None:
+                return memoised_predictions[i]
+
+            # Need to calculate it
+            memoised_predictions[i] = self.sf(x, Z)
+            return memoised_predictions[i]
+
+        memoised_predictions = {i: None for i in range(len(x))}
+        concordance = 0.0
+        n_permissible_pairs = 0
+
+        for tup_1, tup_2 in pairs:
+            # Get right ordering
+            if tup_1[1] > tup_1[1]:
+                tup_1, tup_2 = tup_2, tup_1
+
+            # Unpack tuple
+            i_1, x_1, c_1, Z_1 = tup_1
+            i_2, x_2, c_2, Z_2 = tup_2
+
+            # Omit pair if x_1 is censored
+            if c_1 == 1:
+                continue
+
+            n_permissible_pairs += 1
+
+            x_hat_1 = predict(i_1, x_1, Z_1)
+            x_hat_2 = predict(i_2, x_2, Z_2)
+
+            if x_1 < x_2:
+                if x_hat_1 < x_hat_2:
+                    concordance += 1
+                elif x_hat_1 == x_hat_2:
+                    concordance += 0.5
+            elif c_1 == c_2 == 0:
+                if x_hat_1 == x_hat_2:
+                    concordance += 1
+                else:
+                    concordance += 0.5
+
+        return concordance / n_permissible_pairs
