@@ -48,9 +48,6 @@ class Normal_(ParametricFitter):
     def _parameter_initialiser(self, x, c=None, n=None, t=None):
         return para.Normal.fit(x, c, n, t, how="MPP").params
 
-    def log_df(self, x, mu, sigma):
-        return np.log(self.df(x, mu, sigma))
-
     def sf(self, x, mu, sigma):
         r"""
 
@@ -401,6 +398,15 @@ class Normal_(ParametricFitter):
         """
         U = uniform.rvs(size=size)
         return self.qf(U, mu, sigma)
+
+    def log_df(self, x, mu, sigma):
+        return norm.logpdf(x, mu, sigma)
+
+    def log_sf(self, x, mu, sigma):
+        return norm.logsf(x, mu, sigma)
+
+    def log_ff(self, x, mu, sigma):
+        return norm.logcdf(x, mu, sigma)
 
     def mpp_x_transform(self, x):
         return x
