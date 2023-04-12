@@ -1,5 +1,8 @@
+import importlib.resources
+
 import pandas as pd
-from pkg_resources import resource_filename  # type: ignore
+
+data_module = importlib.import_module("surpyval.datasets")
 
 
 class BoforsSteel_:
@@ -50,10 +53,10 @@ class BoforsSteel_:
     """
 
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/bofors_steel.csv"),
-            engine="python",
-        )
+        with importlib.resources.path(
+            data_module, "bofors_steel.csv"
+        ) as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
 
     def __repr__(self):
         return """
@@ -67,10 +70,8 @@ class BoforsSteel_:
 
 class Boston_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/boston.csv"),
-            engine="python",
-        )
+        with importlib.resources.path(data_module, "boston.csv") as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
 
 
 class Bearing_:
@@ -114,10 +115,8 @@ class Bearing_:
 
 class Heart_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/heart.csv"),
-            engine="python",
-        )
+        with importlib.resources.path(data_module, "heart.csv") as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
 
     def __repr__(self):
         return """
@@ -128,9 +127,8 @@ class Heart_:
 
 class Lung_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/lung.csv"), engine="python"
-        )
+        with importlib.resources.path(data_module, "lung.csv") as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
 
     def __repr__(self):
         return """
@@ -141,14 +139,12 @@ class Lung_:
 
 class Rossi_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/rossi.csv"),
-            engine="python",
-        )
-        self.time_varying_data = pd.read_csv(
-            resource_filename("surpyval", "datasets/rossi_tv.csv"),
-            engine="python",
-        )
+        with importlib.resources.path(data_module, "rossi.csv") as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
+        with importlib.resources.path(
+            data_module, "rossi_tv.csv"
+        ) as data_path:
+            self.time_varying_data = pd.read_csv(data_path, engine="python")
 
     def __repr__(self):
         return """
@@ -159,10 +155,8 @@ class Rossi_:
 
 class Tires_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/tires.csv"),
-            engine="python",
-        )
+        with importlib.resources.path(data_module, "tires.csv") as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
 
     def __repr__(self):
         return """
