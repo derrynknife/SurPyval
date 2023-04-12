@@ -350,6 +350,13 @@ class Gumbel_(ParametricFitter):
         U = uniform.rvs(size=size)
         return self.qf(U, mu, sigma)
 
+    def log_df(self, x, mu, sigma):
+        z = (x - mu) / sigma
+        return z - np.exp(z) - np.log(sigma)
+
+    def log_sf(self, x, mu, sigma):
+        return -np.exp((x - mu) / sigma)
+
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
 
@@ -388,10 +395,6 @@ class Gumbel_(ParametricFitter):
             alpha_ci / 2
         ) * np.sqrt(var_z)
         return bounds
-
-    # def R_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
-    # return self.sf(self.z_cb(x, mu, sigma, cv_matrix, alpha_ci=alpha_ci),
-    # 0, 1).T
 
 
 Gumbel: ParametricFitter = Gumbel_("Gumbel")
