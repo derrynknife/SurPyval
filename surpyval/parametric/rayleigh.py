@@ -394,6 +394,12 @@ class Rayleigh_(ParametricFitter):
         U = uniform.rvs(size=size)
         return self.qf(U, sigma)
 
+    def log_df(self, x, sigma):
+        return np.log(x) - 2 * np.log(sigma) - 0.5 * (x / sigma) ** 2
+
+    def log_sf(self, x, sigma):
+        return -0.5 * (x / sigma) ** 2
+
     def mpp(
         self,
         x,
