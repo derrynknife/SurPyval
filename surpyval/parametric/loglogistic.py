@@ -406,6 +406,19 @@ class LogLogistic_(ParametricFitter):
         U = uniform.rvs(size=size)
         return self.qf(U, alpha, beta)
 
+    def log_df(self, x, alpha, beta):
+        return (
+            np.log(beta / alpha)
+            + (beta - 1) * np.log(x / alpha)
+            - 2 * np.log(1 + (x / alpha) ** beta)
+        )
+
+    def log_sf(self, x, alpha, beta):
+        return beta * np.log(alpha) - np.log(alpha**beta + x**beta)
+
+    def log_ff(self, x, alpha, beta):
+        return beta * np.log(x) - np.log(alpha**beta + x**beta)
+
     def mpp_x_transform(self, x, gamma=0):
         return np.log(x - gamma)
 
