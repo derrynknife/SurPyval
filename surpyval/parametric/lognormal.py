@@ -389,6 +389,15 @@ class LogNormal_(ParametricFitter):
         """
         return np.exp(para.Normal.random(size, mu, sigma))
 
+    def log_df(self, x, mu, sigma):
+        return -np.log(x) + norm.logpdf(np.log(x), mu, sigma)
+
+    def log_ff(self, x, mu, sigma):
+        return norm.logcdf(np.log(x), mu, sigma)
+
+    def log_sf(self, x, mu, sigma):
+        return norm.logsf(np.log(x), mu, sigma)
+
     def mpp_x_transform(self, x, gamma=0):
         return np.log(x - gamma)
 
