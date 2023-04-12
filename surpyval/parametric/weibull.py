@@ -423,6 +423,18 @@ class Weibull_(ParametricFitter):
         U = uniform.rvs(size=size)
         return self.qf(U, alpha, beta)
 
+    def log_df(self, x, alpha, beta):
+        scaled = x / alpha
+        return (
+            np.log(beta)
+            - np.log(alpha)
+            + (beta - 1) * np.log(scaled)
+            - (scaled) ** beta
+        )
+
+    def log_sf(self, x, alpha, beta):
+        return -((x / alpha) ** beta)
+
     def mpp_x_transform(self, x):
         return np.log(x)
 
