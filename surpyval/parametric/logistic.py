@@ -1,3 +1,5 @@
+from autograd import grad
+from autograd.scipy.special import beta as abeta
 from scipy.stats import uniform
 
 from surpyval import np
@@ -351,6 +353,15 @@ class Logistic_(ParametricFitter):
     def log_ff(self, x, mu, sigma):
         z = (x - mu) / sigma
         return -np.log(1 + np.exp(-z))
+
+    def mgf(self, t, mu, sigma):
+        return np.exp(mu * t) * abeta(1 + sigma * t, 1 - sigma * t)
+
+    def moment(self, n, mu, sigma):
+        d = self.mgf
+        for i in range(n):
+            d = grad(d)
+        return d(np.array([0]), mu, sigma)
 
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma

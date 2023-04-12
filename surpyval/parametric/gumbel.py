@@ -1,3 +1,5 @@
+from autograd import grad
+from autograd.scipy.special import gamma as agamma
 from numpy import euler_gamma
 from scipy.special import ndtri as z
 from scipy.stats import uniform
@@ -356,6 +358,15 @@ class Gumbel_(ParametricFitter):
 
     def log_sf(self, x, mu, sigma):
         return -np.exp((x - mu) / sigma)
+
+    def mgf(self, t, mu, sigma):
+        return np.exp(mu * t) * agamma(1 - sigma * t)
+
+    def moment(self, n, mu, sigma):
+        d = self.mgf
+        for i in range(n):
+            d = grad(d)
+        return d(np.array([0]), mu, sigma)
 
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
