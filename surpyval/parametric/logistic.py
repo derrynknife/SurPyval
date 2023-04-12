@@ -340,6 +340,18 @@ class Logistic_(ParametricFitter):
         U = uniform.rvs(size=size)
         return self.qf(U, mu, sigma)
 
+    def log_df(self, x, mu, sigma):
+        z = (x - mu) / sigma
+        return -(z + np.log(sigma) + 2 * np.log(1 + np.exp(-z)))
+
+    def log_sf(self, x, mu, sigma):
+        z = (x - mu) / sigma
+        return -(z + np.log(1 + np.exp(-z)))
+
+    def log_ff(self, x, mu, sigma):
+        z = (x - mu) / sigma
+        return -np.log(1 + np.exp(-z))
+
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
 
