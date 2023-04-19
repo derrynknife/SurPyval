@@ -9,6 +9,7 @@ from .nelson_aalen import nelson_aalen as na
 
 
 def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
+    any_truncated = np.isfinite(t).any()
     # Find all unique bounding points
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
     # Add the times at which there was an observation again since
@@ -41,9 +42,7 @@ def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
     N = xl.size
 
     alpha = dok_matrix((N, M), dtype="int32")
-    # alpha = np.zeros(shape=(N, M))
     beta = dok_matrix((N, M), dtype="int32")
-    # beta = np.ones(shape=(N, M))
 
     for i in range(0, N):
         x1, x2 = xl[i], xr[i]
@@ -63,11 +62,12 @@ def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
                 idx = np.searchsorted(bounds, x1)
                 alpha[i, idx] = 0
         # Find the indices of the bounds that are outside the interval
-        where_truncated = np.multiply((bounds < t1), (bounds >= t2))
-        # Assign a value of 1 in the sparse matrix for the intervals where
-        # the observation window is truncated
-        for j in np.where(where_truncated == x1)[0]:
-            beta[i, j] = 1
+        if any_truncated:
+            where_truncated = np.multiply((bounds < t1), (bounds >= t2))
+            # Assign a value of 1 in the sparse matrix for the intervals where
+            # the observation window is truncated
+            for j in np.where(where_truncated == x1)[0]:
+                beta[i, j] = 1
 
     n = n.reshape(-1, 1)
     d = np.zeros(M)
@@ -94,29 +94,30 @@ def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
         # TODO: Change this so that it does row iterations on sparse matrices
         # Row wise should, in the majority of cases, be more memory efficient
         denominator = np.zeros(N)
-        beta_denominator = np.zeros(N)
 
         for (i, j), v in zip(alpha.keys(), alpha.values()):
             denominator[i] += v * p[j]
             expected[i, j] = v**2 * p[j]
 
-        for (i, j), v in zip(beta.keys(), beta.values()):
-            beta_denominator[i] += (1 - v) * p[j]
-        beta_denominator = np.where(beta_denominator == 0, 1, beta_denominator)
-
-        d_observed = np.zeros(M)
-        d_ghosts = np.zeros(M)
-
         d_observed = np.array(
             expected.multiply(1 / denominator[:, np.newaxis]).sum(0)
         ).ravel()
 
-        d_ghosts = np.array(
-            beta.power(2)
-            .multiply(n * p)
-            .multiply(1 / beta_denominator[:, np.newaxis])
-            .sum(0)
-        ).ravel()
+        d_ghosts = np.zeros(M)
+        if any_truncated:
+            beta_denominator = np.zeros(N)
+            for (i, j), v in zip(beta.keys(), beta.values()):
+                beta_denominator[i] += (1 - v) * p[j]
+            beta_denominator = np.where(
+                beta_denominator == 0, 1, beta_denominator
+            )
+
+            d_ghosts = np.array(
+                beta.power(2)
+                .multiply(n * p)
+                .multiply(1 / beta_denominator[:, np.newaxis])
+                .sum(0)
+            ).ravel()
 
         # Deaths/Failures/Events
         d = d_ghosts + d_observed
