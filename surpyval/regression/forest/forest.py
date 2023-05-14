@@ -3,6 +3,7 @@ from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.regression.forest.tree import Tree
+from surpyval.utils import xcnt_handler
 from surpyval.utils.score import score
 
 
@@ -21,6 +22,8 @@ class RandomSurvivalForest:
         x: ArrayLike,
         Z: ArrayLike | NDArray,
         c: ArrayLike,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
         n_trees: int = 100,
         max_depth: int | float = float("inf"),
         min_leaf_failures: int = 6,
@@ -28,11 +31,12 @@ class RandomSurvivalForest:
         bootstrap: bool = True,
     ):
         # Parse data
-        self.x = np.array(x)
-        self.Z = np.array(Z)
-        if self.Z.ndim == 1:
-            self.Z = np.reshape(Z, (1, -1)).transpose()
-        self.c = np.array(c)
+        x_, c_, n_, t_ = xcnt_handler(x, c, n, t, group_and_sort=False)
+        self.x: NDArray = x_
+        self.Z: NDArray = np.array(Z, ndmin=2)
+        self.c: NDArray = c_
+        self.n: NDArray = n_
+        self.t: NDArray = t_
         self.n_trees = n_trees
         self.bootstrap = bootstrap
 
@@ -107,6 +111,12 @@ class RandomSurvivalForest:
     ) -> NDArray:
         return self._apply_model_function_to_trees("Hf", x, Z)
 
+    def mortality(
+        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+    ) -> ArrayLike:
+        mortality = self.Hf(x, Z).sum(1)
+        return np.clip(mortality, 0, np.finfo(np.float64).max)
+
     def _apply_model_function_to_trees(
         self,
         function_name: str,
@@ -118,15 +128,16 @@ class RandomSurvivalForest:
         Z = np.array(Z, ndmin=2)
 
         # If there are multiple covariant vector samples, ?
-        if Z.shape[0] > 1 and x.ndim == 1:
-            x = np.array(x, ndmin=2).transpose()
+        # if Z.shape[0] > 1 and x.ndim == 1:
+        #     x = np.array(x, ndmin=2).transpose()
 
-        res = np.zeros_like(x, dtype=float)
+        res = np.zeros((Z.shape[0], x.size)).astype(np.float64)
         for i_covariant_vector in range(Z.shape[0]):
             for tree in self.trees:
-                res[i_covariant_vector] += tree.apply_model_function(
-                    function_name, x[i_covariant_vector], Z[i_covariant_vector]
+                values = tree.apply_model_function(
+                    function_name, x, Z[i_covariant_vector, :]
                 )
+                res[i_covariant_vector, :] += values
         return res / self.n_trees
 
     def score(
@@ -136,4 +147,6 @@ class RandomSurvivalForest:
         c: ArrayLike,
         tie_tol: float = 1e-8,
     ) -> float:
-        return score(x, Z, c, self.Hf)
+        scores: ArrayLike = self.mortality(x, Z)
+        tol: float = 1e-8
+        return score(x, c, scores, tol)

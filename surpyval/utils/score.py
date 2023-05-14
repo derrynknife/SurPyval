@@ -1,16 +1,15 @@
-from collections import defaultdict
 from itertools import combinations
 from math import isclose
+from typing import Any, List, Tuple
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import ArrayLike
 
 
 def score(
     x: ArrayLike,
-    Z: ArrayLike | NDArray,
     c: ArrayLike,
-    predict_handle,
+    scores: ArrayLike,
     tie_tol: float = 1e-8,
 ) -> float:
     # Steps:
@@ -32,27 +31,15 @@ def score(
     # Correct input
     x = np.array(x, ndmin=1)
     c = np.array(c, ndmin=1)
-    Z = np.array(Z, ndmin=2)
+    scores = np.array(scores, ndmin=1)
 
-    # Package xcZ together
-    ixcZ = []
+    # Package i, c, x, and score together
+    ixc: List[Tuple[Any, Any, Any]] = []
     for i in range(len(x)):
-        ixcZ.append((i, x[i], c[i], Z[i]))
+        ixc.append((x[i], c[i], scores[i]))
 
-    pairs = combinations(ixcZ, 2)
+    pairs = combinations(ixc, 2)
 
-    def predict(i, x, Z):
-        """Inner function to get memoised prediction if available,
-        otherwise compute, memoise, and return it."""
-        # Already memoised
-        if memoised_predictions[i] is not None:
-            return memoised_predictions[i]
-
-        # Need to calculate it
-        memoised_predictions[i] = predict_handle(x, Z)
-        return memoised_predictions[i]
-
-    memoised_predictions: dict[int, None | float] = defaultdict(lambda: None)
     concordance = 0.0
     n_permissible_pairs = 0
 
@@ -62,8 +49,8 @@ def score(
             tup_1, tup_2 = tup_2, tup_1
 
         # Unpack tuple
-        i_1, x_1, c_1, Z_1 = tup_1
-        i_2, x_2, c_2, Z_2 = tup_2
+        x_1, c_1, x_hat_1 = tup_1
+        x_2, c_2, x_hat_2 = tup_2
 
         # Omit pair if x_1 is censored and x_1 != x_2
         if c_1 == 1 and x_1 != x_2:
@@ -74,9 +61,6 @@ def score(
             continue
 
         n_permissible_pairs += 1
-
-        x_hat_1 = predict(i_1, x_1, Z_1)
-        x_hat_2 = predict(i_2, x_2, Z_2)
 
         if x_1 != x_2:
             if x_hat_1 > x_hat_2:
@@ -98,14 +82,3 @@ def score(
                     concordance += 0.5
 
     return concordance / n_permissible_pairs
-
-    # If you want to debug:
-    # return {
-    #     "c_index": concordance / n_permissible_pairs,
-    #     "n_concordant_pairs": n_concordant_pairs,
-    #     "n_discordant_pairs": n_discordant_pairs,
-    #     "n_tied_predictions": n_tied_predictions,
-    #     "n_tied_time_samples": n_tied_time_samples,
-    #     "concordance": concordance,
-    #     "n_permissible_pairs": n_permissible_pairs,
-    # }
