@@ -1,5 +1,7 @@
 from autograd.scipy.special import beta as abeta
+from autograd.scipy.special import betaln as abetaln
 from autograd_gamma import betainc as abetainc
+from autograd_gamma import betaincln as abetaincln
 from scipy.special import betaincinv
 from scipy.special import gamma as gamma_func
 from scipy.stats import uniform
@@ -393,6 +395,16 @@ class Beta_(ParametricFitter):
         """
         U = uniform.rvs(size=size)
         return self.qf(U, alpha, beta)
+
+    def log_df(self, x, alpha, beta):
+        return (
+            (alpha - 1) * np.log(x)
+            + (beta - 1) * np.log(1 - x)
+            - abetaln(alpha, beta)
+        )
+
+    def log_ff(self, x, alpha, beta):
+        return abetaincln(alpha, beta, x)
 
     def mpp_y_transform(self, y, alpha, beta):
         return self.qf(y, alpha, beta)

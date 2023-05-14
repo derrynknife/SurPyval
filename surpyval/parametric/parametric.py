@@ -262,11 +262,11 @@ class Parametric(Distribution):
         """
         if type(x) == list:
             x = np.array(x)
-        if self.p == 1:
-            sf = self.dist.sf(x - self.gamma, *self.params)
-        else:
-            sf = 1 - self.p * self.dist.ff(x - self.gamma, *self.params)
-        return (1.0 - self.f0) * sf
+        return (
+            1
+            - self.p
+            + (self.p - self.f0) * self.dist.sf(x - self.gamma, *self.params)
+        )
 
     def ff(self, x):
         r"""
@@ -303,8 +303,8 @@ class Parametric(Distribution):
         if type(x) == list:
             x = np.array(x)
 
-        return self.f0 + (
-            (1 - self.f0) * self.p * self.dist.ff(x - self.gamma, *self.params)
+        return self.f0 + (self.p - self.f0) * self.dist.ff(
+            x - self.gamma, *self.params
         )
 
     def df(self, x):

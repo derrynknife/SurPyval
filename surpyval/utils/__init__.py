@@ -6,8 +6,27 @@ import numpy as np
 from formulaic import Formula
 from pandas import Series
 
+from surpyval.utils.surpyval_data import SurpyvalData
+
 COX_PH_METHODS = ["breslow", "efron"]
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
+
+
+def check_x_not_empty(func):
+    """
+    Checks that an "x" input to a function is not empty
+    """
+
+    def wrap(obj, x, *args, **kwargs):
+        x = np.array(x)
+        if x.size == 0:
+            return 0
+        # Make sure we are using a numpy array (of 1D)
+        x = np.atleast_1d(x)
+        result = func(obj, x, *args, **kwargs)
+        return result
+
+    return wrap
 
 
 def init_from_bounds(dist):
@@ -483,6 +502,7 @@ def xcnt_handler(
     tl=None,
     tr=None,
     group_and_sort=True,
+    as_surpyval_dataset=False,
 ):
     """
     Main handler that ensures any input to a surpyval fitter meets the
@@ -735,6 +755,9 @@ def xcnt_handler(
     if group_and_sort:
         x, c, n, t = group_xcnt(x, c, n, t)
         x, c, n, t = xcnt_sort(x, c, n, t)
+
+    if as_surpyval_dataset:
+        return SurpyvalData(x, c, n, t)
 
     return x, c, n, t
 

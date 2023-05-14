@@ -2,9 +2,11 @@ from copy import copy
 
 import pandas as pd
 from scipy.integrate import quad
+from scipy.special import expit
 
 import surpyval
 from surpyval import np
+from surpyval.utils import check_x_not_empty
 
 from ..nonparametric import plotting_positions as pp
 from .fitters import bounds_convert, fix_idx_and_function
@@ -121,7 +123,78 @@ class ParametricFitter:
         t_denom = tr_denom - tl_denom
         return t_denom
 
+    @check_x_not_empty
+    def ll_observed(self, x, n, *params):
+        *params, gamma, f0, p = params
+        x = x - gamma
+        n_zeros = np.sum(n[x == 0])
+        zero_weight = n_zeros * np.log(f0) if n_zeros != 0 else 0
+        non_zero_mask = x != 0
+        N = np.sum(n[non_zero_mask])
+        return (
+            (n[non_zero_mask] * self.log_df(x[non_zero_mask], *params)).sum()
+            + zero_weight
+            + N * np.log(p - f0)
+        )
+
+    @check_x_not_empty
+    def ll_right_censored(self, x, n, *params):
+        *params, gamma, f0, p = params
+        x = x - gamma
+        if p == 1:
+            return np.sum(n * (np.log(1 - f0) + self.log_sf(x, *params)))
+        else:
+            F = self.ff(x, *params)
+            # ALso could be:
+            # np.sum(n * np.log((1 - p + (p - f0)*self.sf(x, *params))))
+            return np.sum(n * np.log(1 - f0 - (p - f0) * F))
+
+    @check_x_not_empty
+    def ll_left_censored(self, x, n, *params):
+        *params, gamma, f0, p = params
+        x = x - gamma
+        if f0 == 1:
+            return np.sum(n * self.log_ff(x, *params)) + n.sum() * np.log(p)
+        else:
+            return np.sum(n * np.log(f0 + (p - f0) * self.ff(x, *params)))
+
+    @check_x_not_empty
+    def ll_interval_or_truncated(self, xl, xr, n, *params):
+        *params, gamma, f0, p = params
+        xr = xr - gamma
+        xl = xl - gamma
+        right = np.where(np.isfinite(xr), self.ff(xr, *params), 1)
+        left = np.where(np.isfinite(xl), self.ff(xl, *params), 0)
+        return np.sum(n * np.log(right - left)) + n.sum() * np.log(p - f0)
+
+    def parameter_transform(self, x_min, params):
+        *params, gamma, f0, p = params
+        p = expit(p)
+        f0 = expit(f0)
+        gamma = x_min - np.exp(gamma) if gamma < 0 else x_min - 1 - gamma
+        params = self._parameter_transform(*params)
+        return (*params, gamma, f0, p)
+
+    def _neg_ll_func(self, data, *params):
+        # params = self.parameter_transform(data.x_min, *params)
+        return -(
+            self.ll_observed(data.x_o, data.n_o, *params)
+            + self.ll_right_censored(data.x_r, data.n_r, *params)
+            + self.ll_left_censored(data.x_l, data.n_l, *params)
+            + self.ll_interval_or_truncated(
+                data.x_il, data.x_ir, data.n_i, *params
+            )
+            - self.ll_interval_or_truncated(
+                data.x_tl, data.x_tr, data.n_t, *params
+            )
+        )
+
     def neg_ll(self, x, c, n, inf_c_flags, t, t_flags, gamma, p, f0, *params):
+        """
+        This is absolutely awful and needs to be replaced with the
+        above function.
+        """
+
         x = copy(x) - gamma
 
         if 2 in c:
@@ -419,9 +492,18 @@ class ParametricFitter:
             )
             raise ValueError()
 
-        x, c, n, t = surpyval.xcnt_handler(
-            x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
+        surv_data = surpyval.xcnt_handler(
+            x=x,
+            c=c,
+            n=n,
+            t=t,
+            tl=tl,
+            tr=tr,
+            xl=xl,
+            xr=xr,
+            as_surpyval_dataset=True,
         )
+        x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
 
         if (c == 1).all():
             raise ValueError("Cannot have only right censored data")
@@ -512,6 +594,7 @@ class ParametricFitter:
         data = {"x": x, "c": c, "n": n, "t": t}
 
         model = Parametric(self, how, data, offset, lfp, zi)
+        model.surv_data = surv_data
         fitting_info = {}
 
         if how == "MPS":

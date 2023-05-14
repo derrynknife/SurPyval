@@ -416,6 +416,12 @@ class Exponential_(ParametricFitter):
         U = uniform.rvs(size=size)
         return self.qf(U, failure_rate)
 
+    def log_df(self, x, failure_rate):
+        return np.log(failure_rate) - failure_rate * x
+
+    def log_sf(self, x, failure_rate):
+        return -failure_rate * x
+
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
 

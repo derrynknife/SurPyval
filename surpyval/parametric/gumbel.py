@@ -1,3 +1,5 @@
+from autograd import grad
+from autograd.scipy.special import gamma as agamma
 from numpy import euler_gamma
 from scipy.special import ndtri as z
 from scipy.stats import uniform
@@ -350,6 +352,22 @@ class Gumbel_(ParametricFitter):
         U = uniform.rvs(size=size)
         return self.qf(U, mu, sigma)
 
+    def log_df(self, x, mu, sigma):
+        z = (x - mu) / sigma
+        return z - np.exp(z) - np.log(sigma)
+
+    def log_sf(self, x, mu, sigma):
+        return -np.exp((x - mu) / sigma)
+
+    def mgf(self, t, mu, sigma):
+        return np.exp(mu * t) * agamma(1 - sigma * t)
+
+    def moment(self, n, mu, sigma):
+        d = self.mgf
+        for i in range(n):
+            d = grad(d)
+        return d(np.array([0]), mu, sigma)
+
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
 
@@ -388,10 +406,6 @@ class Gumbel_(ParametricFitter):
             alpha_ci / 2
         ) * np.sqrt(var_z)
         return bounds
-
-    # def R_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
-    # return self.sf(self.z_cb(x, mu, sigma, cv_matrix, alpha_ci=alpha_ci),
-    # 0, 1).T
 
 
 Gumbel: ParametricFitter = Gumbel_("Gumbel")

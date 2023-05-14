@@ -2,7 +2,10 @@ import warnings
 
 from autograd import jacobian
 from autograd.scipy.special import gamma as agamma
+from autograd.scipy.special import gammaln as agammaln
 from autograd_gamma import gammainc as agammainc
+from autograd_gamma import gammainccln as agammainccln
+from autograd_gamma import gammaincln as agammaincln
 from scipy.optimize import minimize
 from scipy.special import gammaincinv
 from scipy.special import ndtri as z
@@ -430,6 +433,46 @@ class Gamma_(ParametricFitter):
         """
         U = uniform.rvs(size=size)
         return self.qf(U, alpha, beta)
+
+    def log_df(self, x, alpha, beta):
+        r"""
+
+        Calculates the log of the density function of the Gamma distribution
+        at x.
+
+        .. math::
+            \log f(x) = \log \left ( \frac{\lambda^{\alpha}}{\Gamma(\alpha)}
+            x^{\alpha - 1}e^{-\lambda x} \right )
+
+        Parameters
+        ----------
+
+        x : numpy array or scalar
+            The values at which the function will be calculated
+        alpha : numpy array or scalar
+            The shape parameter for the Gamma distribution
+        beta : numpy array or scalar
+            The scale parameter for the Gamma distribution
+
+        Returns
+        -------
+
+        log_df : scalar or numpy array
+            The log of the density function of the Gamma distribution at x
+
+        """
+        return (
+            alpha * np.log(beta)
+            + (alpha - 1) * np.log(x)
+            - beta * x
+            - agammaln(alpha)
+        )
+
+    def log_ff(self, x, alpha, beta):
+        return agammaincln(alpha, beta * x)
+
+    def log_sf(self, x, alpha, beta):
+        return agammainccln(alpha, beta * x)
 
     def mpp_y_transform(self, y, *params):
         alpha = params[0]

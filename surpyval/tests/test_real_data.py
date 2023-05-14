@@ -260,7 +260,7 @@ def params_with_xcn_data_rel(data, surpyval_fitter, rel_fitter):
     else:
         x = data.x
     f, s = surv.xcn_to_fs(x, data.c, data.n)
-    if s == []:
+    if s.size == 0:
         s = None
     rel_model = rel_fitter(f, s)
     if surpyval_fitter.name == "Exponential":

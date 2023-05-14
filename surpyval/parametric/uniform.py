@@ -388,35 +388,35 @@ class Uniform_(ParametricFitter):
         c_hat = minimize(fun, 1.0).x
         return a - c_hat * sample_range, b + c_hat * sample_range
 
-    def mle(self, x, c, n, t, const, trans, inv_fs, init, fixed_idx, offset):
-        if (c[x == x.max()] == 1).all():
+    def mle(self, data):
+        if (data.c[data.x == data.x.max()] == 1).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
                 + " the highest value is right censored"
             )
 
-        if (c[x == x.min()] == -1).all():
+        if (data.c[data.x == data.x.min()] == -1).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
                 + " the lowest value is left censored"
             )
 
-        tl = t[:, 0]
-        tr = t[:, 1]
+        tl = data.t[:, 0]
+        tr = data.t[:, 1]
 
-        if np.isfinite(tr[x == x.max()]).all():
+        if np.isfinite(tr[data.x == data.x.max()]).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
                 + " the highest value is right truncated"
             )
 
-        if np.isfinite(tl[x == x.min()]).all():
+        if np.isfinite(tl[data.x == data.x.min()]).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
                 + " the lowest value is left truncated"
             )
 
-        params = np.array([np.min(x), np.max(x)])
+        params = np.array([np.min(data.x), np.max(data.x)])
         results = {}
         results["params"] = params
         return results
