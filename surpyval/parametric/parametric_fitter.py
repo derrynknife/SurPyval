@@ -286,6 +286,128 @@ class ParametricFitter:
             moments[i] = self._moment(n, *params, offset=offset)
         return moments
 
+    def _validate_fit_inputs(
+        self, surv_data, how, offset, lfp, zi, heuristic, turnbull_estimator
+    ):
+        if offset and (self.support[0] != 0):
+            detail = "{} distribution cannot be offset".format(self.name)
+            raise ValueError(detail)
+
+        if how not in PARA_METHODS:
+            raise ValueError('"how" must be one of: ' + str(PARA_METHODS))
+
+        if how == "MPP" and self.name == "ExpoWeibull":
+            detail = (
+                "ExpoWeibull distribution does not work"
+                + " with probability plot fitting"
+            )
+            raise ValueError(detail)
+
+        if np.isfinite(surv_data.t).any() and how == "MSE":
+            detail = "Mean square error doesn't yet support tuncation"
+            raise NotImplementedError(detail)
+
+        if np.isfinite(surv_data.t).any() and how == "MOM":
+            detail = "Maximum product spacing doesn't support tuncation"
+            raise ValueError(detail)
+
+        if (lfp or zi) & (how != "MLE"):
+            detail = (
+                "Limited failure or zero-inflated models"
+                + " can only be made with MLE"
+            )
+            raise ValueError(detail)
+
+        if zi & (self.support[0] != 0):
+            detail = (
+                "zero-inflated models can only work"
+                + "with models starting at 0"
+            )
+            raise ValueError()
+
+        if (surv_data.c == 1).all():
+            raise ValueError("Cannot have only right censored data")
+
+        if (surv_data.c == -1).all():
+            raise ValueError("Cannot have only left censored data")
+
+        if surpyval.utils.check_no_censoring(surv_data.c) and (how == "MOM"):
+            raise ValueError("Method of moments doesn't support censoring")
+
+        if (
+            (surpyval.utils.no_left_or_int(surv_data.c))
+            and (how == "MPP")
+            and (not heuristic == "Turnbull")
+        ):
+            detail = (
+                "Probability plotting estimation with left or "
+                + "interval censoring only works with Turnbull heuristic"
+            )
+            raise ValueError()
+
+        if (
+            (heuristic == "Turnbull")
+            and (not ((-1 in surv_data.c) or (2 in surv_data.c)))
+            and ((~np.isfinite(surv_data.tr)).any())
+        ):
+            # The Turnbull method is extremely memory intensive.
+            # So if no left or interval censoring and no right-truncation
+            # then this is equivalent.
+            heuristic = turnbull_estimator
+
+        if (not offset) & (not zi):
+            detail_template = """
+            Some of your data is outside support of distribution, observed
+            values must be within [{lower}, {upper}].
+
+            Are some of your observed values 0, -Inf, or Inf?
+            """
+
+            if surv_data.x.ndim == 2:
+                if (
+                    (surv_data.x[:, 0] <= self.support[0]) & (surv_data.c == 0)
+                ).any():
+                    detail = detail_template.format(
+                        lower=self.support[0], upper=self.support[1]
+                    )
+                    raise ValueError(detail)
+                elif (
+                    (surv_data.x[:, 1] >= self.support[1]) & (surv_data.c == 0)
+                ).any():
+                    detail = detail_template.format(
+                        lower=self.support[0], upper=self.support[1]
+                    )
+                    raise ValueError(detail)
+            else:
+                if (
+                    (surv_data.x <= self.support[0]) & (surv_data.c == 0)
+                ).any():
+                    detail = detail_template.format(
+                        lower=self.support[0], upper=self.support[1]
+                    )
+                    raise ValueError(detail)
+                elif (
+                    (surv_data.x >= self.support[1]) & (surv_data.c == 0)
+                ).any():
+                    detail = detail_template.format(
+                        lower=self.support[0], upper=self.support[1]
+                    )
+                    raise ValueError(detail)
+
+        if (surv_data.tl[0] != surv_data.tl).any() and how == "MPS":
+            raise ValueError(
+                "Left truncated value can only be single number \
+                              when using MPS"
+            )
+
+        if (surv_data.tr[0] != surv_data.tr).any() and how == "MPS":
+            raise ValueError(
+                "Right truncated value can only be single number \
+                              when using MPS"
+            )
+
+        return True
+
     def fit(
         self,
         x=None,
@@ -455,43 +577,6 @@ class ParametricFitter:
               beta: 4.9886821457305865
         """
 
-        if offset and (self.support[0] != 0):
-            # self.name in ['Normal', 'Beta', 'Uniform', 'Gumbel', 'Logistic']:
-            detail = "{} distribution cannot be offset".format(self.name)
-            raise ValueError(detail)
-
-        if how not in PARA_METHODS:
-            raise ValueError('"how" must be one of: ' + str(PARA_METHODS))
-
-        if how == "MPP" and self.name == "ExpoWeibull":
-            detail = (
-                "ExpoWeibull distribution does not work"
-                + " with probability plot fitting"
-            )
-            raise ValueError(detail)
-
-        if t is not None and how == "MSE":
-            detail = "Mean square error doesn't yet support tuncation"
-            raise NotImplementedError(detail)
-
-        if t is not None and how == "MOM":
-            detail = "Maximum product spacing doesn't support tuncation"
-            raise ValueError(detail)
-
-        if (lfp or zi) & (how != "MLE"):
-            detail = (
-                "Limited failure or zero-inflated models"
-                + " can only be made with MLE"
-            )
-            raise ValueError(detail)
-
-        if zi & (self.support[0] != 0):
-            detail = (
-                "zero-inflated models can only work"
-                + "with models starting at 0"
-            )
-            raise ValueError()
-
         surv_data = surpyval.xcnt_handler(
             x=x,
             c=c,
@@ -503,238 +588,19 @@ class ParametricFitter:
             xr=xr,
             as_surpyval_dataset=True,
         )
-        x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
-
-        if (c == 1).all():
-            raise ValueError("Cannot have only right censored data")
-
-        if (c == -1).all():
-            raise ValueError("Cannot have only left censored data")
-
-        if surpyval.utils.check_no_censoring(c) and (how == "MOM"):
-            raise ValueError("Method of moments doesn't support censoring")
-
-        if (
-            (surpyval.utils.no_left_or_int(c))
-            and (how == "MPP")
-            and (not heuristic == "Turnbull")
-        ):
-            detail = (
-                "Probability plotting estimation with left or "
-                + "interval censoring only works with Turnbull heuristic"
-            )
-            raise ValueError()
-
-        if (
-            (heuristic == "Turnbull")
-            and (not ((-1 in c) or (2 in c)))
-            and ((~np.isfinite(t[:, 1])).any())
-        ):
-            # The Turnbull method is extremely memory intensive.
-            # So if no left or interval censoring and no right-truncation
-            # then this is equivalent.
-            heuristic = turnbull_estimator
-
-        if (not offset) & (not zi):
-            detail_template = """
-            Some of your data is outside support of distribution, observed
-            values must be within [{lower}, {upper}].
-
-            Are some of your observed values 0, -Inf, or Inf?
-            """
-
-            if x.ndim == 2:
-                if ((x[:, 0] <= self.support[0]) & (c == 0)).any():
-                    detail = detail_template.format(
-                        lower=self.support[0], upper=self.support[1]
-                    )
-                    raise ValueError(detail)
-                elif ((x[:, 1] >= self.support[1]) & (c == 0)).any():
-                    detail = detail_template.format(
-                        lower=self.support[0], upper=self.support[1]
-                    )
-                    raise ValueError(detail)
-            else:
-                if ((x <= self.support[0]) & (c == 0)).any():
-                    detail = detail_template.format(
-                        lower=self.support[0], upper=self.support[1]
-                    )
-                    raise ValueError(detail)
-                elif ((x >= self.support[1]) & (c == 0)).any():
-                    detail = detail_template.format(
-                        lower=self.support[0], upper=self.support[1]
-                    )
-                    raise ValueError(detail)
-
-        # Unpack the truncation
-        tl = t[:, 0]
-        tr = t[:, 1]
-
-        if (tl[0] != tl).any() and how == "MPS":
-            raise ValueError(
-                "Left truncated value can only be single number \
-                              when using MPS"
-            )
-
-        if (tr[0] != tr).any() and how == "MPS":
-            raise ValueError(
-                "Right truncated value can only be single number \
-                              when using MPS"
-            )
-
-        # Ensure truncation values move to edge where support is not
-        # -np.inf to np.inf
-        if np.isfinite(self.support[0]):
-            tl = np.where(tl < self.support[0], self.support[0], tl)
-
-        if np.isfinite(self.support[1]):
-            tr = np.where(tl > self.support[1], self.support[1], tr)
-
-        # Passed checks
-        data = {"x": x, "c": c, "n": n, "t": t}
-
-        model = Parametric(self, how, data, offset, lfp, zi)
-        model.surv_data = surv_data
-        fitting_info = {}
-
-        if how == "MPS":
-            # Need to set the scalar truncation values
-            # if the MPS method is used.
-            model.tl = tl[0]
-            model.tr = tr[0]
-
-        if how != "MPP":
-            transform, inv_trans, funcs, inv_f = bounds_convert(
-                x, model.bounds
-            )
-            const, fixed_idx, not_fixed = fix_idx_and_function(
-                fixed, model.param_map, funcs
-            )
-
-            fitting_info["transform"] = transform
-            fitting_info["inv_trans"] = inv_trans
-            fitting_info["funcs"] = funcs
-            fitting_info["inv_f"] = inv_f
-
-            fitting_info["const"] = const
-            fitting_info["fixed_idx"] = fixed_idx
-            fitting_info["not_fixed"] = not_fixed
-
-            if init == []:
-                # this needs to be more general.
-                if self.name in ["Gumbel", "Beta", "Normal", "Uniform"]:
-                    with np.errstate(all="ignore"):
-                        init = np.array(self._parameter_initialiser(x, c, n))
-                else:
-                    with np.errstate(all="ignore"):
-                        if x.ndim == 2:
-                            # If x has 2 dims, then there is intervally
-                            # censored data. Simply take the midpoint to
-                            # get the initial estimate.
-                            x_init = x.mean(axis=1)
-                            c_init = np.copy(c)
-                            c_init[c_init == 2] = 0
-                        else:
-                            x_init = np.copy(x)
-                            c_init = np.copy(c)
-
-                        # Remove x where x is out of support
-                        # This is if data for a zi or lfp model is given
-                        if not offset:
-                            in_support_mask = (x_init > self.support[0]) & (
-                                x_init < self.support[1]
-                            )
-
-                            # Reduce x, c, and n to the case where it is in the
-                            # support of the distribution
-                            x_init = x_init[in_support_mask]
-                            c_init = c_init[in_support_mask]
-                            n_init = n[in_support_mask]
-                        else:
-                            n_init = np.copy(n)
-
-                        # Create an initial estimate with the new points
-                        init = self._parameter_initialiser(
-                            x_init, c_init, n_init, offset=offset
-                        )
-                        init = np.array(init)
-
-                        if offset:
-                            init[0] = x.min() - 1.0
-
-                if lfp:
-                    _, _, _, F = pp(
-                        x_init, c_init, n_init, heuristic="Nelson-Aalen"
-                    )
-
-                    max_F = np.max(F)
-
-                    if max_F > 0.5:
-                        init = np.concatenate([init, [0.99]])
-                    else:
-                        init = np.concatenate([init, [max_F]])
-
-                if zi:
-                    if x.ndim == 2:
-                        x_0 = x[c == 0, 0]
-                    else:
-                        x_0 = x[c == 0]
-
-                    n_0 = n[c == 0]
-                    total_failures_at_zero = n_0[x_0 == 0].sum()
-
-                    f_0_init = total_failures_at_zero / n.sum()
-                    init = np.concatenate([init, [f_0_init]])
-
-            init = np.atleast_1d(init)
-            init = transform(init)
-            init = init[not_fixed]
-            fitting_info["init"] = init
-        else:
-            # Probability plotting method does not need an initial estimate
-            fitting_info["rr"] = rr
-            fitting_info["heuristic"] = heuristic
-            fitting_info["on_d_is_0"] = on_d_is_0
-            fitting_info["turnbull_estimator"] = turnbull_estimator
-            fitting_info["init"] = None
-
-        model.fitting_info = fitting_info
-
-        results = METHOD_FUNC_DICT[how](model)
-
-        for k, v in results.items():
-            setattr(model, k, v)
-
-        # Only needed since not all models return the params
-        # as a numpy array... which ought to be fixed.
-        model.params = np.atleast_1d(model.params)
-
-        if hasattr(model, "params"):
-            for k, v in zip(self.param_names, model.params):
-                setattr(model, k, v)
-
-        # Set the support of the distribution.
-        if offset:
-            left = model.gamma
-        elif np.isfinite(self.support[0]):
-            left = self.support[0]
-        elif self.support[0] == -np.inf:
-            left = -np.inf
-        elif np.isnan(self.support[0]):
-            # This only works for the uniform dist
-            # TODO: More general support setting. i.e. 4 parameter Beta
-            left = model.params[0]
-
-        if np.isfinite(self.support[1]):
-            right = self.support[1]
-        elif self.support[1] == np.inf:
-            right = np.inf
-        elif np.isnan(self.support[1]):
-            right = model.params[1]
-
-        model.support = np.array([left, right])
-
-        return model
+        return self.fit_from_surpyval_data(
+            surv_data,
+            how=how,
+            offset=offset,
+            zi=zi,
+            lfp=lfp,
+            fixed=fixed,
+            heuristic=heuristic,
+            init=init,
+            rr=rr,
+            on_d_is_0=on_d_is_0,
+            turnbull_estimator=turnbull_estimator,
+        )
 
     def fit_from_df(
         self,
@@ -878,6 +744,333 @@ class ParametricFitter:
     def fit_from_non_parametric(self, non_parametric_model):
         x, F = non_parametric_model.x, 1 - non_parametric_model.R
         return self.fit_from_ecdf(x, F)
+
+    def fit_from_surpyval_data(
+        self,
+        surv_data,
+        how="MLE",
+        offset=False,
+        zi=False,
+        lfp=False,
+        fixed=None,
+        heuristic="Turnbull",
+        init=[],
+        rr="y",
+        on_d_is_0=False,
+        turnbull_estimator="Fleming-Harrington",
+    ):
+        r"""
+
+        The central feature to SurPyval's capability. This function aimed to
+        have an API to mimic the simplicity of the scipy API. That is, to use
+        a simple :code:`fit()` call, with as many or as few parameters as
+        is needed.
+
+        Parameters
+        ----------
+
+        x : array like, optional
+            Array of observations of the random variables. If x is
+            :code:`None`, xl and xr must be provided.
+        c : array like, optional
+            Array of censoring flag. -1 is left censored, 0 is observed, 1 is
+            right censored, and 2 is intervally censored. If not provided
+            will assume all values are observed.
+        n : array like, optional
+            Array of counts for each x. If data is proivded as counts, then
+            this can be provided. If :code:`None` will assume each
+            observation is 1.
+        t : 2D-array like, optional
+            2D array like of the left and right values at which the
+            respective observation was truncated. If not provided it assumes
+            that no truncation occurs.
+        how : {'MLE', 'MPP', 'MOM', 'MSE', 'MPS'}, optional
+            Method to estimate parameters, these are:
+
+                - MLE : Maximum Likelihood Estimation
+                - MPP : Method of Probability Plotting
+                - MOM : Method of Moments
+                - MSE : Mean Square Error
+                - MPS : Maximum Product Spacing
+
+        offset : boolean, optional
+            If :code:`True` finds the shifted distribution. If not provided
+            assumes not a shifted distribution. Only works with distributions
+            that are supported on the half-real line.
+
+        tl : array like or scalar, optional
+            Values of left truncation for observations. If it is a scalar
+            value assumes each observation is left truncated at the value.
+            If an array, it is the respective 'late entry' of the observation
+
+        tr : array like or scalar, optional
+            Values of right truncation for observations. If it is a scalar
+            value assumes each observation is right truncated at the value.
+            If an array, it is the respective right truncation value for each
+            observation
+
+        xl : array like, optional
+            Array like of the left array for 2-dimensional input of x. This
+            is useful for data that is all intervally censored. Must be used
+            with the :code:`xr` input.
+
+        xr : array like, optional
+            Array like of the right array for 2-dimensional input of x. This
+            is useful for data that is all intervally censored. Must be used
+            with the :code:`xl` input.
+
+        fixed : dict, optional
+            Dictionary of parameters and their values to fix. Fixes parameter
+            by name.
+
+        heuristic : {'"Blom", "Median", "ECDF", "Modal", "Midpoint", "Mean",
+                      "Weibull", "Benard", "Beard", "Hazen", "Gringorten",
+                      "None", "Tukey", "DPW", "Fleming-Harrington",
+                      "Kaplan-Meier", "Nelson-Aalen", "Filliben",
+                      "Larsen", "Turnbull"}
+            Plotting method to use, if using the probability plotting,
+            MPP, method.
+
+        init : array like, optional
+            initial guess of parameters. Useful if method is failing.
+
+        rr : ('y', 'x')
+            The dimension on which to minimise the spacing between the line
+            and the observation. If 'y' the mean square error between the
+            line and vertical distance to each point is minimised. If 'x' the
+            mean square error between the line and horizontal distance to each
+            point is minimised.
+
+        on_d_is_0 : boolean, optional
+            For the case when using MPP and the highest value is right
+            censored, you can choosed to include this value into the
+            regression analysis or not. That is, if :code:`False`, all values
+            where there are 0 deaths are excluded from the regression. If
+            :code:`True` all values regardless of whether there is a death
+            or not are included in the regression.
+
+        turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier', or
+                              'Fleming-Harrington'), str, optional
+            If using the Turnbull heuristic, you can elect to use either the
+            KM, NA, or FH estimator with the Turnbull estimates of r, and d.
+            Defaults to FH.
+
+        Returns
+        -------
+
+        model : Parametric
+            A parametric model with the fitted parameters and methods for
+            all functions of the distribution using the fitted parameters.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> import numpy as np
+        >>> x = Weibull.random(100, 10, 4)
+        >>> model = Weibull.fit(x)
+        >>> print(model)
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MLE
+        Parameters          :
+             alpha: 10.551521182640098
+              beta: 3.792549834495306
+        >>> Weibull.fit(x, how='MPS', fixed={'alpha' : 10})
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MPS
+        Parameters          :
+             alpha: 10.0
+              beta: 3.4314657446866836
+        >>> Weibull.fit(xl=x-1, xr=x+1, how='MPP')
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MPP
+        Parameters          :
+             alpha: 9.943092756713078
+              beta: 8.613016934518258
+        >>> c = np.zeros_like(x)
+        >>> c[x > 13] = 1
+        >>> x[x > 13] = 13
+        >>> c = c[x > 6]
+        >>> x = x[x > 6]
+        >>> Weibull.fit(x=x, c=c, tl=6)
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MLE
+        Parameters          :
+             alpha: 10.363725328793413
+              beta: 4.9886821457305865
+        """
+        x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
+        # Unpack the truncation
+        tl = t[:, 0]
+        tr = t[:, 1]
+
+        # Ensure truncation values move to edge where support is not
+        # -np.inf to np.inf
+        if np.isfinite(self.support[0]):
+            tl = np.where(tl < self.support[0], self.support[0], tl)
+
+        if np.isfinite(self.support[1]):
+            tr = np.where(tl > self.support[1], self.support[1], tr)
+
+        # Validate inputs
+        self._validate_fit_inputs(
+            surv_data, how, offset, lfp, zi, heuristic, turnbull_estimator
+        )
+
+        # Passed checks
+        data = {"x": x, "c": c, "n": n, "t": t}
+
+        model = Parametric(self, how, data, offset, lfp, zi)
+        model.surv_data = surv_data
+        fitting_info = {}
+
+        if how == "MPS":
+            # Need to set the scalar truncation values
+            # if the MPS method is used.
+            # since it has already been checked that they are all the same
+            # we need only get the first item of each truncation array.
+            model.tl = tl[0]
+            model.tr = tr[0]
+
+        if how != "MPP":
+            transform, inv_trans, funcs, inv_f = bounds_convert(
+                x, model.bounds
+            )
+            const, fixed_idx, not_fixed = fix_idx_and_function(
+                fixed, model.param_map, funcs
+            )
+
+            fitting_info["transform"] = transform
+            fitting_info["inv_trans"] = inv_trans
+            fitting_info["funcs"] = funcs
+            fitting_info["inv_f"] = inv_f
+
+            fitting_info["const"] = const
+            fitting_info["fixed_idx"] = fixed_idx
+            fitting_info["not_fixed"] = not_fixed
+
+            if init == []:
+                # this needs to be more general.
+                if self.name in ["Gumbel", "Beta", "Normal", "Uniform"]:
+                    with np.errstate(all="ignore"):
+                        init = np.array(self._parameter_initialiser(x, c, n))
+                else:
+                    with np.errstate(all="ignore"):
+                        if x.ndim == 2:
+                            # If x has 2 dims, then there is intervally
+                            # censored data. Simply take the midpoint to
+                            # get the initial estimate.
+                            x_init = x.mean(axis=1)
+                            c_init = np.copy(c)
+                            c_init[c_init == 2] = 0
+                        else:
+                            x_init = np.copy(x)
+                            c_init = np.copy(c)
+
+                        # Remove x where x is out of support
+                        # This is if data for a zi or lfp model is given
+                        if not offset:
+                            in_support_mask = (x_init > self.support[0]) & (
+                                x_init < self.support[1]
+                            )
+
+                            # Reduce x, c, and n to the case where it is in the
+                            # support of the distribution
+                            x_init = x_init[in_support_mask]
+                            c_init = c_init[in_support_mask]
+                            n_init = n[in_support_mask]
+                        else:
+                            n_init = np.copy(n)
+
+                        # Create an initial estimate with the new points
+                        init = self._parameter_initialiser(
+                            x_init, c_init, n_init, offset=offset
+                        )
+                        init = np.array(init)
+
+                        if offset:
+                            init[0] = x.min() - 1.0
+
+                if lfp:
+                    _, _, _, F = pp(
+                        x_init, c_init, n_init, heuristic="Nelson-Aalen"
+                    )
+
+                    max_F = np.max(F)
+
+                    if max_F > 0.5:
+                        init = np.concatenate([init, [0.99]])
+                    else:
+                        init = np.concatenate([init, [max_F]])
+
+                if zi:
+                    if x.ndim == 2:
+                        x_0 = x[c == 0, 0]
+                    else:
+                        x_0 = x[c == 0]
+
+                    n_0 = n[c == 0]
+                    total_failures_at_zero = n_0[x_0 == 0].sum()
+
+                    f_0_init = total_failures_at_zero / n.sum()
+                    init = np.concatenate([init, [f_0_init]])
+
+            init = np.atleast_1d(init)
+            init = transform(init)
+            init = init[not_fixed]
+            fitting_info["init"] = init
+        else:
+            # Probability plotting method does not need an initial estimate
+            fitting_info["rr"] = rr
+            fitting_info["heuristic"] = heuristic
+            fitting_info["on_d_is_0"] = on_d_is_0
+            fitting_info["turnbull_estimator"] = turnbull_estimator
+            fitting_info["init"] = None
+
+        model.fitting_info = fitting_info
+
+        results = METHOD_FUNC_DICT[how](model)
+
+        for k, v in results.items():
+            setattr(model, k, v)
+
+        # Only needed since not all models return the params
+        # as a numpy array... which ought to be fixed.
+        model.params = np.atleast_1d(model.params)
+
+        if hasattr(model, "params"):
+            for k, v in zip(self.param_names, model.params):
+                setattr(model, k, v)
+
+        # Set the support of the distribution.
+        if offset:
+            left = model.gamma
+        elif np.isfinite(self.support[0]):
+            left = self.support[0]
+        elif self.support[0] == -np.inf:
+            left = -np.inf
+        elif np.isnan(self.support[0]):
+            # This only works for the uniform dist
+            # TODO: More general support setting. i.e. 4 parameter Beta
+            left = model.params[0]
+
+        if np.isfinite(self.support[1]):
+            right = self.support[1]
+        elif self.support[1] == np.inf:
+            right = np.inf
+        elif np.isnan(self.support[1]):
+            right = model.params[1]
+
+        model.support = np.array([left, right])
+
+        return model
 
     def from_params(self, params, gamma=None, p=None, f0=None):
         r"""
