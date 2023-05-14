@@ -4,7 +4,8 @@ from functools import cached_property
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval import Weibull
+from surpyval import Exponential, Weibull
+from surpyval.parametric import NeverOccurs
 from surpyval.regression.forest.log_rank_split import log_rank_split
 
 
@@ -49,7 +50,7 @@ class IntermediateNode(Node):
         # Build left and right nodes
         self.left_child = build_tree(
             x[left_indices],
-            Z[left_indices],
+            Z[left_indices, :],
             c[left_indices],
             curr_depth=curr_depth + 1,
             max_depth=max_depth,
@@ -58,7 +59,7 @@ class IntermediateNode(Node):
         )
         self.right_child = build_tree(
             x[right_indices],
-            Z[right_indices],
+            Z[right_indices, :],
             c[right_indices],
             curr_depth=curr_depth + 1,
             max_depth=max_depth,
@@ -80,12 +81,17 @@ class IntermediateNode(Node):
 
 class TerminalNode(Node):
     def __init__(self, x: NDArray, c: NDArray):
-        self.x = x
-        self.c = c
+        self.x = np.copy(x)
+        self.c = np.copy(c)
 
     @cached_property
     def model(self):
-        return Weibull.fit(self.x, self.c)
+        if (self.c == 1).all():
+            return NeverOccurs
+        elif len(self.x[self.c == 0]) == 1:
+            return Exponential.fit(self.x, self.c)
+        else:
+            return Weibull.fit(self.x, self.c)
 
     def apply_model_function(
         self,
