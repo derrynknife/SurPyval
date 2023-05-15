@@ -1,5 +1,7 @@
 import numpy as np
 
+import surpyval
+
 
 class SurpyvalData:
     def __init__(self, x, c, n, t):
@@ -27,6 +29,15 @@ class SurpyvalData:
             self.t[truncated_mask, 1],
             self.n[truncated_mask],
         )
+
+    def to_xrd(self, estimator="Nelson-Aalen"):
+        if np.isfinite(self.t[:, 1]).any() | (2 in self.c) | (-1 in self.c):
+            data = surpyval.nonparametric.turnbull(
+                self.x, self.c, self.n, self.t, estimator=estimator
+            )
+            return data["x"], data["r"], data["d"]
+        else:
+            return surpyval.utils.xcnt_to_xrd(self.x, self.c, self.n, self.t)
 
     def _split_by_mask(self, mask, x=None):
         if x is None:

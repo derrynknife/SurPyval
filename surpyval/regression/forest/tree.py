@@ -1,9 +1,9 @@
 from math import log2, sqrt
 
-import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
 from surpyval.regression.forest.node import build_tree
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Tree:
@@ -15,27 +15,22 @@ class Tree:
 
     def __init__(
         self,
-        x: ArrayLike,
-        Z: ArrayLike | NDArray,
-        c: ArrayLike,
+        data: SurpyvalData,
+        Z: NDArray,
         max_depth: int | float = float("inf"),
         min_leaf_failures: int = 6,
         n_features_split: int | float | str = "sqrt",
     ):
-        self.x = np.array(x)
-        self.Z = np.array(Z)
-        if self.Z.ndim == 1:
-            self.Z = np.reshape(Z, (1, -1)).transpose()
-        self.c = np.array(c)
+        self.data = data
+        self.Z = Z
 
         self.n_features_split = parse_n_features_split(
             n_features_split, self.Z.shape[1]
         )
 
         self._root = build_tree(
-            x=self.x,
+            data=self.data,
             Z=self.Z,
-            c=self.c,
             curr_depth=0,
             max_depth=max_depth,
             min_leaf_failures=min_leaf_failures,

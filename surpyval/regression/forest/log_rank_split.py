@@ -4,7 +4,7 @@ from typing import Iterable
 import numpy as np
 from numpy.typing import NDArray
 
-from surpyval.utils import xcnt_to_xrd
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 # Inner function used in ensuring the min_leaf_failures constraint is
@@ -21,9 +21,8 @@ def breaks_min_leaf_failures_constraint(Z, u, v, c, min_leaf_failures):
 
 
 def log_rank_split(
-    x: NDArray,
+    data: SurpyvalData,
     Z: NDArray,
-    c: NDArray,
     min_leaf_failures: int,
     feature_indices_in: Iterable[int],
 ) -> tuple[int, float]:
@@ -93,7 +92,7 @@ def log_rank_split(
             elif Z_u[Z_u > v].size < min_leaf_failures:
                 continue
 
-            abs_log_rank = log_rank(u, v, x, Z, c)
+            abs_log_rank = log_rank(u, v, data, Z)
 
             if abs_log_rank > max_log_rank_magnitude:
                 max_log_rank_magnitude = abs_log_rank
@@ -106,21 +105,20 @@ def log_rank_split(
 def log_rank(
     u: int,
     v: float,
-    x: NDArray,
+    data: SurpyvalData,
     Z: NDArray,
-    c: NDArray,
 ) -> float:
     """Returns L(u, v)."""
 
     # Get sample-indices (i) of those that would end up in the left child
     left_child_indices = np.where(Z[:, u] <= v)[0]
-    left_child_x = x[left_child_indices]
-    left_child_c = c[left_child_indices]
+    left_child_x = data.x[left_child_indices]
+    left_child_c = data.c[left_child_indices]
 
     left_child_x, idx = np.unique(left_child_x, return_inverse=True)
     d_L = np.bincount(idx, weights=1 - left_child_c)
     do_L = np.bincount(idx, weights=left_child_c)
-    all_x, Y, d = xcnt_to_xrd(x, c)
+    all_x, Y, d = data.to_xrd()
 
     # expand d_L to match all_x
     expanded_d_L = np.zeros_like(all_x)

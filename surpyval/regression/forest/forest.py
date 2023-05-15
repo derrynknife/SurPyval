@@ -5,6 +5,7 @@ from numpy.typing import ArrayLike, NDArray
 from surpyval.regression.forest.tree import Tree
 from surpyval.utils import xcnt_handler
 from surpyval.utils.score import score
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class RandomSurvivalForest:
@@ -31,29 +32,31 @@ class RandomSurvivalForest:
         bootstrap: bool = True,
     ):
         # Parse data
-        x_, c_, n_, t_ = xcnt_handler(x, c, n, t, group_and_sort=False)
-        self.x: NDArray = x_
+        data = xcnt_handler(
+            x, c, n, t, group_and_sort=False, as_surpyval_dataset=True
+        )
+        self.data: SurpyvalData = data
         self.Z: NDArray = np.array(Z, ndmin=2)
-        self.c: NDArray = c_
-        self.n: NDArray = n_
-        self.t: NDArray = t_
         self.n_trees = n_trees
         self.bootstrap = bootstrap
 
         # Create Trees
         if self.bootstrap:
             bootstrap_indices = [
-                np.random.choice(len(self.x), len(self.x), replace=True)
+                np.random.choice(
+                    len(self.data.x), len(self.data.x), replace=True
+                )
                 for _ in range(self.n_trees)
             ]
         else:
-            bootstrap_indices = [np.array(range(len(self.x)))] * self.n_trees
+            bootstrap_indices = [
+                np.array(range(len(self.data.x)))
+            ] * self.n_trees
 
         self.trees: list[Tree] = Parallel(prefer="threads", verbose=1)(
             delayed(Tree)(
-                x=self.x[bootstrap_indices[i]],
+                data=self.data[bootstrap_indices[i]],
                 Z=self.Z[bootstrap_indices[i]],
-                c=self.c[bootstrap_indices[i]],
                 max_depth=max_depth,
                 min_leaf_failures=min_leaf_failures,
                 n_features_split=n_features_split,

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from functools import cached_property
 
 import numpy as np
@@ -7,6 +8,7 @@ from numpy.typing import ArrayLike, NDArray
 from surpyval import Exponential, Weibull
 from surpyval.parametric import NeverOccurs
 from surpyval.regression.forest.log_rank_split import log_rank_split
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Node(ABC):
@@ -25,9 +27,8 @@ class Node(ABC):
 class IntermediateNode(Node):
     def __init__(
         self,
-        x: NDArray,
+        data: SurpyvalData,
         Z: NDArray,
-        c: NDArray,
         curr_depth: int,
         max_depth: int | float,
         min_leaf_failures: int,
@@ -49,18 +50,16 @@ class IntermediateNode(Node):
 
         # Build left and right nodes
         self.left_child = build_tree(
-            x[left_indices],
+            data[left_indices],
             Z[left_indices, :],
-            c[left_indices],
             curr_depth=curr_depth + 1,
             max_depth=max_depth,
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
         )
         self.right_child = build_tree(
-            x[right_indices],
+            data[right_indices],
             Z[right_indices, :],
-            c[right_indices],
             curr_depth=curr_depth + 1,
             max_depth=max_depth,
             min_leaf_failures=min_leaf_failures,
@@ -80,18 +79,18 @@ class IntermediateNode(Node):
 
 
 class TerminalNode(Node):
-    def __init__(self, x: NDArray, c: NDArray):
-        self.x = np.copy(x)
-        self.c = np.copy(c)
+    def __init__(self, data: SurpyvalData):
+        self.data = deepcopy(data)
 
     @cached_property
     def model(self):
-        if (self.c == 1).all():
+        events = self.data.to_xrd()[2].sum()
+        if events == 0:
             return NeverOccurs
-        elif len(self.x[self.c == 0]) == 1:
-            return Exponential.fit(self.x, self.c)
+        elif events <= 1:
+            return Exponential.fit_from_surpyval_data(self.data)
         else:
-            return Weibull.fit(self.x, self.c)
+            return Weibull.fit_from_surpyval_data(self.data)
 
     def apply_model_function(
         self,
@@ -103,9 +102,8 @@ class TerminalNode(Node):
 
 
 def build_tree(
-    x: NDArray,
+    data: SurpyvalData,
     Z: NDArray,
-    c: NDArray,
     curr_depth: int,
     max_depth: int | float,
     min_leaf_failures: int,
@@ -117,7 +115,7 @@ def build_tree(
     """
     # If max_depth has been reached, return a TerminalNode
     if curr_depth == max_depth:
-        return TerminalNode(x, c)
+        return TerminalNode(data)
 
     # Choose the random n_features_split subset of features, without
     # replacement
@@ -127,19 +125,18 @@ def build_tree(
 
     # Figure out best feature-value split
     split_feature_index, split_feature_value = log_rank_split(
-        x, Z, c, min_leaf_failures, feature_indices_in
+        data, Z, min_leaf_failures, feature_indices_in
     )
 
     # If log_rank_split() can't suggest a feature-value split, return a
     # TerminalNode
     if split_feature_index == -1 and split_feature_value == float("-Inf"):
-        return TerminalNode(x, c)
+        return TerminalNode(data)
 
     # Else, return an IntermediateNode, with the suggested feature-value split
     return IntermediateNode(
-        x=x,
+        data=data,
         Z=Z,
-        c=c,
         curr_depth=curr_depth,
         max_depth=max_depth,
         min_leaf_failures=min_leaf_failures,
