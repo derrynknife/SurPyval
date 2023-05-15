@@ -65,7 +65,7 @@ class SurvivalTree:
     ) -> NDArray:
         # Prep input - make sure numpy array
         x = np.array(x, ndmin=1)
-        Z = np.array(Z, ndmin=2)
+        Z = np.array(Z, ndmin=1)
 
         return self._root.apply_model_function(function_name, x, Z)
 
