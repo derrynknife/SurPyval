@@ -1,12 +1,14 @@
 from math import log2, sqrt
 
-from numpy.typing import NDArray
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 from surpyval.regression.forest.node import build_tree
+from surpyval.utils import xcnt_handler
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
-class Tree:
+class SurvivalTree:
     """
     A Survival Tree, for use in `RandomSurvivalForest`.
 
@@ -36,6 +38,24 @@ class Tree:
             min_leaf_failures=min_leaf_failures,
             n_features_split=self.n_features_split,
         )
+
+    @classmethod
+    def fit(
+        cls,
+        x: ArrayLike,
+        Z: ArrayLike | NDArray,
+        c: ArrayLike,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
+        max_depth: int | float = float("inf"),
+        min_leaf_failures: int = 6,
+        n_features_split: int | float | str = "sqrt",
+    ):
+        data = xcnt_handler(
+            x, c, n, t, group_and_sort=False, as_surpyval_dataset=True
+        )
+        Z = np.array(Z, ndmin=2)
+        return cls(data, Z, max_depth, min_leaf_failures, n_features_split)
 
     def apply_model_function(
         self,

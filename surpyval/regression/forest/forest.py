@@ -2,7 +2,7 @@ import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval.regression.forest.tree import Tree
+from surpyval.regression.forest.tree import SurvivalTree
 from surpyval.utils import xcnt_handler
 from surpyval.utils.score import score
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -20,21 +20,14 @@ class RandomSurvivalForest:
 
     def __init__(
         self,
-        x: ArrayLike,
-        Z: ArrayLike | NDArray,
-        c: ArrayLike,
-        n: ArrayLike | None = None,
-        t: ArrayLike | None = None,
+        data: SurpyvalData,
+        Z: NDArray,
         n_trees: int = 100,
         max_depth: int | float = float("inf"),
         min_leaf_failures: int = 6,
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
     ):
-        # Parse data
-        data = xcnt_handler(
-            x, c, n, t, group_and_sort=False, as_surpyval_dataset=True
-        )
         self.data: SurpyvalData = data
         self.Z: NDArray = np.array(Z, ndmin=2)
         self.n_trees = n_trees
@@ -53,8 +46,8 @@ class RandomSurvivalForest:
                 np.array(range(len(self.data.x)))
             ] * self.n_trees
 
-        self.trees: list[Tree] = Parallel(prefer="threads", verbose=1)(
-            delayed(Tree)(
+        self.trees: list[SurvivalTree] = Parallel(prefer="threads", verbose=1)(
+            delayed(SurvivalTree)(
                 data=self.data[bootstrap_indices[i]],
                 Z=self.Z[bootstrap_indices[i]],
                 max_depth=max_depth,
@@ -62,6 +55,34 @@ class RandomSurvivalForest:
                 n_features_split=n_features_split,
             )
             for i in range(self.n_trees)
+        )
+
+    @classmethod
+    def fit(
+        cls,
+        x: ArrayLike,
+        Z: ArrayLike | NDArray,
+        c: ArrayLike,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
+        n_trees: int = 100,
+        max_depth: int | float = float("inf"),
+        min_leaf_failures: int = 6,
+        n_features_split: int | float | str = "sqrt",
+        bootstrap: bool = True,
+    ):
+        data = xcnt_handler(
+            x, c, n, t, group_and_sort=False, as_surpyval_dataset=True
+        )
+        Z = np.array(Z, ndmin=2)
+        return cls(
+            data,
+            Z,
+            n_trees,
+            max_depth,
+            min_leaf_failures,
+            n_features_split,
+            bootstrap,
         )
 
     def sf(

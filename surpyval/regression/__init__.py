@@ -11,6 +11,7 @@ from ..parametric import Gumbel, Logistic, LogNormal, Normal, Weibull
 from .accelerated_failure_time import AcceleratedFailureTimeFitter
 from .cox_ph import CoxPH
 from .forest.forest import RandomSurvivalForest
+from .forest.tree import SurvivalTree
 from .lifemodels import (
     DualExponential,
     DualPower,

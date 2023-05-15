@@ -6,7 +6,7 @@ from sksurv.tree.tree import SurvivalTree as sksurv_SurvivalTree
 
 from surpyval import Weibull
 from surpyval.regression.forest.node import TerminalNode
-from surpyval.regression.forest.tree import Tree
+from surpyval.regression.forest.tree import SurvivalTree
 
 
 def test_tree_no_split():
@@ -20,7 +20,7 @@ def test_tree_no_split():
 
     exp_weibull = Weibull.fit(x=x, c=c)
 
-    tree = Tree(x=x, Z=Z, c=c, max_depth=0)
+    tree = SurvivalTree(x=x, Z=Z, c=c, max_depth=0)
 
     actual_weibull = tree._root.model
 
@@ -44,7 +44,7 @@ def test_tree_one_split_one_feature():
     exp_right_weibull = Weibull.fit(x=x[8:], c=c[8:])
 
     # Actual
-    tree = Tree(x=x, Z=Z, c=c, max_depth=1)
+    tree = SurvivalTree(x=x, Z=Z, c=c, max_depth=1)
 
     # Assert Weibull models
     left_weibull = tree._root.left_child.model
@@ -75,7 +75,7 @@ def test_tree_one_split_two_features():
     c = [0] * len(x)
 
     # Actual
-    tree = Tree(x=x, Z=Z, c=c, max_depth=1, n_features_split="all")
+    tree = SurvivalTree(x=x, Z=Z, c=c, max_depth=1, n_features_split="all")
 
     # Assert feature 1 was selected
     assert tree._root.split_feature_index == 1
@@ -102,34 +102,40 @@ def test_tree_one_split_two_features_n_features_split():
     c = [0] * len(x)
 
     # Different n_features_split
-    tree_one_feature = Tree(x=x, Z=Z, c=c, max_depth=1, n_features_split=1)
+    tree_one_feature = SurvivalTree(
+        x=x, Z=Z, c=c, max_depth=1, n_features_split=1
+    )
     assert len(tree_one_feature._root.feature_indices_in) == 1
 
-    tree_two_features = Tree(x=x, Z=Z, c=c, max_depth=1, n_features_split=2)
+    tree_two_features = SurvivalTree(
+        x=x, Z=Z, c=c, max_depth=1, n_features_split=2
+    )
     assert len(tree_two_features._root.feature_indices_in) == 2
 
-    tree_one_feature_float = Tree(
+    tree_one_feature_float = SurvivalTree(
         x=x, Z=Z, c=c, max_depth=1, n_features_split=0.5
     )
     assert len(tree_one_feature_float._root.feature_indices_in) == 1
 
-    tree_one_feature_sqrt = Tree(
+    tree_one_feature_sqrt = SurvivalTree(
         x=x, Z=Z, c=c, max_depth=1, n_features_split="sqrt"
     )
     assert len(tree_one_feature_sqrt._root.feature_indices_in) == 1
 
-    tree_one_feature_log2 = Tree(
+    tree_one_feature_log2 = SurvivalTree(
         x=x, Z=Z, c=c, max_depth=1, n_features_split="log2"
     )
     assert len(tree_one_feature_log2._root.feature_indices_in) == 1
 
-    tree_two_features_all = Tree(
+    tree_two_features_all = SurvivalTree(
         x=x, Z=Z, c=c, max_depth=1, n_features_split="all"
     )
     assert len(tree_two_features_all._root.feature_indices_in) == 2
 
 
-def assert_trees_equal(surv_tree: Tree, sksurv_tree: sksurv_SurvivalTree):
+def assert_trees_equal(
+    surv_tree: SurvivalTree, sksurv_tree: sksurv_SurvivalTree
+):
     # Get the scikit-survival underlying Tree object (actually from
     # scikit-learn)
     sklearn_tree = sksurv_tree.tree_

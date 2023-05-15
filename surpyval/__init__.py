@@ -38,6 +38,7 @@ from surpyval.regression import (
     CoxPH,
     ExponentialPH,
     RandomSurvivalForest,
+    SurvivalTree,
     WeibullPH,
 )
 from surpyval.utils import (
