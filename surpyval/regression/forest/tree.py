@@ -60,10 +60,39 @@ class SurvivalTree:
     def apply_model_function(
         self,
         function_name: str,
-        x: NDArray,
-        Z: NDArray,
+        x: int | float | ArrayLike,
+        Z: ArrayLike | NDArray,
     ) -> NDArray:
+        # Prep input - make sure numpy array
+        x = np.array(x, ndmin=1)
+        Z = np.array(Z, ndmin=2)
+
         return self._root.apply_model_function(function_name, x, Z)
+
+    def sf(
+        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+    ) -> NDArray:
+        return self.apply_model_function("ff", x, Z)
+
+    def ff(
+        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+    ) -> NDArray:
+        return self.apply_model_function("ff", x, Z)
+
+    def df(
+        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+    ) -> NDArray:
+        return self.apply_model_function("df", x, Z)
+
+    def hf(
+        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+    ) -> NDArray:
+        return self.apply_model_function("hf", x, Z)
+
+    def Hf(
+        self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
+    ) -> NDArray:
+        return self.apply_model_function("Hf", x, Z)
 
 
 def parse_n_features_split(

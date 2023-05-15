@@ -18,7 +18,7 @@ class Node(ABC):
     def apply_model_function(
         self,
         function_name: str,
-        x: NDArray,
+        x: int | float | ArrayLike,
         Z: NDArray,
     ) -> NDArray:
         ...
@@ -69,7 +69,7 @@ class IntermediateNode(Node):
     def apply_model_function(
         self,
         function_name: str,
-        x: NDArray,
+        x: int | float | ArrayLike,
         Z: NDArray,
     ) -> NDArray:
         # Determine which node, left/right, to call sf() on
