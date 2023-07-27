@@ -31,13 +31,22 @@ class SurpyvalData:
         )
 
     def to_xrd(self, estimator="Nelson-Aalen"):
-        if np.isfinite(self.t[:, 1]).any() | (2 in self.c) | (-1 in self.c):
-            data = surpyval.nonparametric.turnbull(
-                self.x, self.c, self.n, self.t, estimator=estimator
-            )
-            return data["x"], data["r"], data["d"]
-        else:
-            return surpyval.utils.xcnt_to_xrd(self.x, self.c, self.n, self.t)
+        if not hasattr(self, "xrd"):
+            if (
+                np.isfinite(self.t[:, 1]).any()
+                | (2 in self.c)
+                | (-1 in self.c)
+            ):
+                data = surpyval.nonparametric.turnbull(
+                    self.x, self.c, self.n, self.t, estimator=estimator
+                )
+                xrd = data["x"], data["r"], data["d"]
+            else:
+                xrd = surpyval.utils.xcnt_to_xrd(
+                    self.x, self.c, self.n, self.t
+                )
+            self.xrd = xrd
+        return self.xrd
 
     def _split_by_mask(self, mask, x=None):
         if x is None:
