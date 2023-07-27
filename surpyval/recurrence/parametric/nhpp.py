@@ -1,38 +1,11 @@
 from inspect import signature
 
-import numpy_indexed as npi
 from autograd import elementwise_grad, jacobian
 from autograd import numpy as np
 from scipy.optimize import minimize
 
-from surpyval.utils.counting_utils import handle_xicn, xicn_to_xrd
-
-
-class ParametricCountingModel:
-    def __repr__(self):
-        return "Parametric Counting Model with {} CIF".format(self.dist.name)
-
-    def cif(self, x):
-        return self.dist.cif(x, *self.params)
-
-    def iif(self, x):
-        return self.dist.iif(x, *self.params)
-
-    def rocof(self, x):
-        if hasattr(self.dist, "rocof"):
-            return self.dist.rocof(x, *self.params)
-        else:
-            raise ValueError("rocof undefined for {}".format(self.dist.name))
-
-    def inv_cif(self, x):
-        if hasattr(self.dist, "inv_cif"):
-            return self.dist.inv_cif(x, *self.params)
-        else:
-            raise ValueError(
-                "Inverse cif undefined for {}".format(self.dist.name)
-            )
-
-    # TODO: random, to T, and to N
+from surpyval.recurrence.parametric import ParametricRecurrenceModel
+from surpyval.utils.recurrent_utils import handle_xicn
 
 
 class NHPP:
@@ -113,10 +86,10 @@ class NHPP:
         else:
             param_init = np.array(init)
 
-        model = ParametricCountingModel()
+        model = ParametricRecurrenceModel()
 
-        x, i, c, n = handle_xicn(x, i, c, n)
-        x_unqiue, r, d = xicn_to_xrd(x, i, c, n)
+        data = handle_xicn(x, i, c, n, as_recurrent_data=True)
+        x_unqiue, r, d = data.to_xrd()
 
         mcf_hat = np.cumsum(d / r)
 
@@ -131,17 +104,9 @@ class NHPP:
 
         elif how == "MLE":
             ll_func = self.create_ll_func(x, i, c, n)
-            if self.name == "HPP":
-                # Homogeneous Poisson Process has a simple, closed form
-                # solution.
-                total = npi.group_by(i).max(x)[1].sum()
-                d = (n * (c == 0).astype(int)).sum()
-                params = np.array([d / total])
-                res = None
-            else:
-                jac = jacobian(ll_func)
-                res = minimize(ll_func, res.x, jac=jac, method="TNC")
-                params = res.x
+            jac = jacobian(ll_func)
+            res = minimize(ll_func, res.x, jac=jac, method="TNC")
+            params = res.x
 
             model._neg_ll = ll_func(params)
         model.res = res
@@ -152,7 +117,7 @@ class NHPP:
         return model
 
     def from_params(self, params):
-        model = ParametricCountingModel()
+        model = ParametricRecurrenceModel()
         model.params = params
         model.dist = self
         model.how = "from_params"
@@ -318,34 +283,3 @@ CrowAMSAA = NHPP(
 
 CrowAMSAA.rocof = crow_amsaa_rocof  # type: ignore
 CrowAMSAA.inv_cif = crow_amsaa_inv_cif  # type: ignore
-
-# Homogeneous Poisson Process
-hpp_param_names = ["lambda"]
-hpp_bounds = ((0, None),)
-hpp_support = (0.0, np.inf)
-
-
-def hpp_iif(x, *params):
-    rate = params[0]
-    return np.ones_like(x) * rate
-
-
-def hpp_cif(x, *params):
-    rate = params[0]
-    return rate * x
-
-
-def hpp_rocof(x, *params):
-    rate = params[0]
-    return np.ones_like(x) * rate
-
-
-def hpp_inv_cif(cif, *params):
-    rate = params[0]
-    return cif / rate
-
-
-HPP = NHPP("HPP", hpp_param_names, hpp_bounds, hpp_support, hpp_cif, hpp_iif)
-
-HPP.rocof = hpp_rocof  # type: ignore
-HPP.inv_cif = hpp_inv_cif  # type: ignore
