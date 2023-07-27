@@ -5,45 +5,73 @@ from .recurrent_event_data import RecurrentEventData
 
 
 def handle_xicn(x, i=None, c=None, n=None, as_recurrent_data=True):
-    x = np.array(x)
+    if type(x) == list:
+        if any([type(v) == list for v in x]):
+            x_ndarray = np.empty(shape=(len(x), 2))
+            for idx, val in enumerate(x):
+                x_ndarray[idx, :] = np.array(val)
+            x = x_ndarray
+            if (x[0, :] > x[1, :]).any():
+                raise ValueError("x values must be monotonically increasing")
+        else:
+            x = np.array(x)
 
     if i is None:
-        i = np.ones_like(x)
+        i = np.ones(x.shape[0])
     else:
         i = np.array(i)
 
     if n is None:
-        n = np.ones_like(x)
+        n = np.ones(x.shape[0])
     else:
         n = np.array(n)
 
     if c is None:
-        c = np.zeros_like(x)
+        c = np.zeros(x.shape[0])
     else:
         c = np.array(c)
+
+    if x.shape[0] != i.shape[0]:
+        raise ValueError("x and i must have the same length")
+    if x.shape[0] != c.shape[0]:
+        raise ValueError("x and c must have the same length")
+    if x.shape[0] != n.shape[0]:
+        raise ValueError("x and n must have the same length")
 
     if npi.group_by(i).sum((c == 1).astype(int))[1].max() > 1:
         raise ValueError("An item is censored more than once.")
 
+    if np.any((n > 1) & (c != 2)):
+        raise ValueError("Counts greater than 1 must be intervally censored")
+
     # Check that if censored, it is the highest value
     for ii in set(i):
         ci = c[i == ii]
-        xi = x[i == ii]
-        if 1 in ci:
-            if np.any(xi[ci == 1] <= xi[ci != 1]):
-                raise ValueError(
-                    f"Item {ii} has censored value lower than an event value"
-                )
+        if len(ci[ci == 1]) > 1:
+            raise ValueError(f"Item {ii} is right censored more than once.")
+        if len(ci[ci == -1]) > 1:
+            raise ValueError(f"Item {ii} is left censored more than once.")
 
     # sort by item and x
-    sort_order = np.lexsort((x, i))
+    if x.ndim == 2:
+        # Order 2D by the midpoint
+        sort_order = np.lexsort((x.mean(axis=1), i))
+    else:
+        sort_order = np.lexsort((x, i))
+
     x, i, c, n = x[sort_order], i[sort_order], c[sort_order], n[sort_order]
 
     # Check that the x values for each item are monotonically increasing
     for ii in set(i):
         xi = x[i == ii]
-        if np.any(np.diff(xi) < 0):
-            raise ValueError(f"Item {ii} has non-monotonic x values")
+        ci = c[i == ii]
+        if xi.ndim == 2:
+            for first, second in zip(xi[:-1], xi[1:]):
+                if first[1] > second[0]:
+                    raise ValueError(f"Item {ii} has overlapping intervals")
+        else:
+            if np.any(np.diff(xi) < 0):
+                raise ValueError(f"Item {ii} has non-monotonic x values")
 
     if as_recurrent_data:
         return RecurrentEventData(x, i, c, n)
