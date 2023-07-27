@@ -62,7 +62,8 @@ class SurpyvalData:
         )
 
     def __iter__(self):
-        return self
+        # allows for unpacking in a function, i.e. fun(*data)
+        return [self.x, self.c, self.n, self.t].__iter__()
 
     def __next__(self):
         if self._index < len(self.x):
