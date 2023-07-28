@@ -1,10 +1,13 @@
 from inspect import signature
 
-from autograd import elementwise_grad, jacobian
+from autograd import elementwise_grad
 from autograd import numpy as np
 from scipy.optimize import minimize
+from scipy.special import gammaln
 
-from surpyval.recurrence.parametric import ParametricRecurrenceModel
+from surpyval.recurrence.parametric.parametric_recurrence import (
+    ParametricRecurrenceModel,
+)
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -43,34 +46,60 @@ class NHPP:
         else:
             self.parameter_initialiser = parameter_initialiser
 
-    def create_ll_func(self, x, i, c, n):
-        """
-        Need to allow for multiple items, i.
-        """
-        ll_dict = {}
+    def create_negll_func(self, x, i, c, n):
+        def negll_func(params):
+            ll = 0
 
-        for ii in set(i):
-            T = x[i == ii].max()
-            mask = (i == ii) & (c == 0)
-            xi = x[mask]
-            ni = n[mask]
-            ll_dict[ii] = {"T": T, "x": xi, "n": ni}
+            for item in set(i):
+                mask_item = i == item
+                x_item = np.atleast_1d(x[mask_item])
+                c_item = np.atleast_1d(c[mask_item])
+                n_item = np.atleast_1d(n[mask_item])
+                x_prev = 0
 
-        def ll_func(params):
-            rv = 0
-            for i in ll_dict.keys():
-                rv += (
-                    self.cif(ll_dict[i]["T"], *params)
-                    - (
-                        ll_dict[i]["n"]
-                        * np.log(self.iif(ll_dict[i]["x"], *params))
-                    ).sum()
-                )
-            return rv
+                for j in range(0, len(x_item)):
+                    if x_item.ndim == 1:
+                        x_j = x_item[j]
+                    else:
+                        x_j = x_item[j][0]
+                        x_jr = x_item[j][1]
 
-        return ll_func
+                    if c_item[j] == 0:
+                        ll += (
+                            np.log(self.iif(x_j, *params))
+                            - self.cif(x_j, *params)
+                            + self.cif(x_prev, *params)
+                        )
+                        x_prev = x_j
+                    elif c_item[j] == 1:
+                        ll += self.cif(x_prev, *params) - self.cif(
+                            x_j, *params
+                        )
+                        x_prev = x_j
+                    elif c_item[j] == 2:
+                        delta_cif = self.cif(x_jr, *params) - self.cif(
+                            x_j, *params
+                        )
+                        ll += (
+                            n_item[j] * np.log(delta_cif)
+                            - (delta_cif)
+                            - gammaln(n_item[j] + 1)
+                        )
+                        x_prev = x_jr
+                    elif c_item[j] == -1:
+                        delta_cif = self.cif(x_j, *params)
+                        ll += (
+                            n_item[j] * np.log(delta_cif)
+                            - (delta_cif)
+                            - gammaln(n_item[j] + 1)
+                        )
+                        x_prev = x_j
 
-    def fit(self, x, i=None, c=None, n=None, how="MSE", init=None):
+            return -ll
+
+        return negll_func
+
+    def fit(self, x, i=None, c=None, n=None, how="MLE", init=None):
         """
         Format for counting processes...
         Thinking x, i, n.
@@ -78,7 +107,6 @@ class NHPP:
         i is the identity.
 
         n is counts ... maybe
-
         """
 
         if init is None:
@@ -89,6 +117,7 @@ class NHPP:
         model = ParametricRecurrenceModel()
 
         data = handle_xicn(x, i, c, n, as_recurrent_data=True)
+
         x_unqiue, r, d = data.to_xrd()
 
         mcf_hat = np.cumsum(d / r)
@@ -96,22 +125,24 @@ class NHPP:
         def fun(params):
             return np.sum((self.cif(x_unqiue, *params) - mcf_hat) ** 2)
 
-        res = minimize(fun, param_init)
+        res = minimize(fun, param_init, bounds=self.bounds)
         model.mcf_hat = mcf_hat
+        param_init = res.x
 
         if how == "MSE":
             params = res.x
 
         elif how == "MLE":
-            ll_func = self.create_ll_func(x, i, c, n)
-            jac = jacobian(ll_func)
-            res = minimize(ll_func, res.x, jac=jac, method="TNC")
+            ll_func = self.create_negll_func(data.x, data.i, data.c, data.n)
+            res = minimize(
+                ll_func, param_init, method="Nelder-Mead", bounds=self.bounds
+            )
             params = res.x
-
             model._neg_ll = ll_func(params)
+
         model.res = res
         model.params = params
-        model.x = x_unqiue
+        model.data = data
         model.dist = self
         model.how = how
         return model
@@ -170,25 +201,25 @@ cox_lewis_support = (0.0, np.inf)
 def cox_lewis_cif(x, *params):
     alpha = params[0]
     beta = params[1]
-    return (np.exp(alpha + beta * x) - np.exp(alpha)) / beta
+    return np.exp(alpha + beta * x)
 
 
 def cox_lewis_iif(x, *params):
     alpha = params[0]
     beta = params[1]
-    return (np.exp(alpha + beta * x) - np.exp(alpha)) / beta
+    return beta * np.exp(alpha + beta * x)
 
 
 def cox_lewis_inv_cif(cif, *params):
     alpha = params[0]
     beta = params[1]
-    return (np.log((cif * beta) + np.exp(alpha)) - alpha) / beta
+    return (np.log(cif) - alpha) / beta
 
 
 def cox_lewis_rocof(x, *params):
     alpha = params[0]
     beta = params[1]
-    return np.exp(alpha + beta * x)
+    return beta * np.exp(alpha + beta * x)
 
 
 CoxLewis = NHPP(
@@ -263,13 +294,13 @@ def crow_amsaa_iif(x, *params):
 def crow_amsaa_rocof(x, *params):
     alpha = params[0]
     beta = params[1]
-    return (beta / alpha) * x ** (beta - 1.0)
+    return (beta / alpha**beta) * (x ** (beta - 1))
 
 
 def crow_amsaa_inv_cif(mcf, *params):
     alpha = params[0]
     beta = params[1]
-    return (alpha * mcf) ** (1.0 / beta)
+    return alpha * (mcf ** (1.0 / beta))
 
 
 CrowAMSAA = NHPP(
