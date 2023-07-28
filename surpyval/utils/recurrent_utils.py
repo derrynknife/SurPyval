@@ -1,5 +1,4 @@
 import numpy as np
-import numpy_indexed as npi
 
 from .recurrent_event_data import RecurrentEventData
 
@@ -38,11 +37,10 @@ def handle_xicn(x, i=None, c=None, n=None, as_recurrent_data=True):
     if x.shape[0] != n.shape[0]:
         raise ValueError("x and n must have the same length")
 
-    if npi.group_by(i).sum((c == 1).astype(int))[1].max() > 1:
-        raise ValueError("An item is censored more than once.")
-
-    if np.any((n > 1) & (c != 2)):
-        raise ValueError("Counts greater than 1 must be intervally censored")
+    if np.any((n > 1) & ((c == 0) | (c == 1))):
+        raise ValueError(
+            "Counts greater than 1 must be intervally or left censored"
+        )
 
     # Check that if censored, it is the highest value
     for ii in set(i):
