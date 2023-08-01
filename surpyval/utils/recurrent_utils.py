@@ -3,7 +3,7 @@ import numpy as np
 from .recurrent_event_data import RecurrentEventData
 
 
-def handle_xicn(x, i=None, c=None, n=None, as_recurrent_data=True):
+def handle_xicn(x, i=None, c=None, n=None, Z=None, as_recurrent_data=True):
     if type(x) == list:
         if any([type(v) == list for v in x]):
             x_ndarray = np.empty(shape=(len(x), 2))
@@ -30,12 +30,21 @@ def handle_xicn(x, i=None, c=None, n=None, as_recurrent_data=True):
     else:
         c = np.array(c)
 
+    if Z is not None:
+        Z = np.array(Z, ndmin=2)
+    # TODO: Z as a dict where the keys are the item numbers and the arrays
+    # are the covariates for each i at all times (x)
+
     if x.shape[0] != i.shape[0]:
         raise ValueError("x and i must have the same length")
     if x.shape[0] != c.shape[0]:
         raise ValueError("x and c must have the same length")
     if x.shape[0] != n.shape[0]:
         raise ValueError("x and n must have the same length")
+
+    if Z is not None:
+        if x.shape[0] != Z.shape[0]:
+            raise ValueError("x and Z must have the same length")
 
     if np.any((n > 1) & ((c == 0) | (c == 1))):
         raise ValueError(
@@ -59,6 +68,9 @@ def handle_xicn(x, i=None, c=None, n=None, as_recurrent_data=True):
 
     x, i, c, n = x[sort_order], i[sort_order], c[sort_order], n[sort_order]
 
+    if Z is not None:
+        Z = Z[sort_order]
+
     # Check that the x values for each item are monotonically increasing
     for ii in set(i):
         xi = x[i == ii]
@@ -72,6 +84,8 @@ def handle_xicn(x, i=None, c=None, n=None, as_recurrent_data=True):
                 raise ValueError(f"Item {ii} has non-monotonic x values")
 
     if as_recurrent_data:
-        return RecurrentEventData(x, i, c, n)
+        data = RecurrentEventData(x, i, c, n)
+        data.Z = Z
+        return data
     else:
         return x, i, c, n
