@@ -21,7 +21,10 @@ module = [
     'lifelines',
     'reliability',
     'sphinx_rtd_theme',
-    'setuptools'
+    'setuptools',
+    'sklearn.*',
+    'sksurv.*',
+    'joblib.*'
 ]
 ignore_missing_imports = true
 

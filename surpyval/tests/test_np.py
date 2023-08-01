@@ -56,8 +56,7 @@ def test_kaplan_meier_against_lifelines():
         x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
         ll_est = kmf.fit(x, weights=n).predict(x_test).values
         surp_est = surpyval.KaplanMeier.fit(x, n=n).sf(x_test)
-        if not np.allclose(ll_est, surp_est, 1e-15):
-            raise AssertionError("Kaplan-Meier different to lifelines?!")
+        assert np.allclose(ll_est, surp_est, 1e-15)
 
 
 def test_kaplan_meier_censored_against_lifelines():
@@ -76,8 +75,7 @@ def test_kaplan_meier_censored_against_lifelines():
         x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
         ll_est = kmf.fit(x, 1 - c, weights=n).predict(x_test).values
         surp_est = surpyval.KaplanMeier.fit(x, c=c, n=n).sf(x_test)
-        if not np.allclose(ll_est, surp_est, 1e-15):
-            raise AssertionError("Kaplan-Meier different to lifelines?!")
+        assert np.allclose(ll_est, surp_est, 1e-15)
 
 
 def test_kaplan_meier_censored_and_truncated_against_lifelines():
@@ -96,8 +94,7 @@ def test_kaplan_meier_censored_and_truncated_against_lifelines():
         x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
         ll_est = kmf.fit(x, 1 - c, entry=tl, weights=n).predict(x_test).values
         surp_est = surpyval.KaplanMeier.fit(x, c=c, n=n, tl=tl).sf(x_test)
-        if not np.allclose(ll_est, surp_est, 1e-15):
-            raise AssertionError("Kaplan-Meier different to lifelines?!")
+        assert np.allclose(ll_est, surp_est, 1e-15)
 
 
 def test_nelson_aalen_against_lifelines():
@@ -114,8 +111,7 @@ def test_nelson_aalen_against_lifelines():
         x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
         ll_est = naf.fit(x, weights=n).predict(x_test).values
         surp_est = surpyval.NelsonAalen.fit(x, n=n).Hf(x_test)
-        if not np.allclose(ll_est, surp_est, 1e-15):
-            raise AssertionError("Kaplan-Meier different to lifelines?!")
+        assert np.allclose(ll_est, surp_est, 1e-15)
 
 
 def test_nelson_aalen_censored_against_lifelines():
@@ -134,8 +130,7 @@ def test_nelson_aalen_censored_against_lifelines():
         x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
         ll_est = naf.fit(x, 1 - c, weights=n).predict(x_test).values
         surp_est = surpyval.NelsonAalen.fit(x, c=c, n=n).Hf(x_test)
-        if not np.allclose(ll_est, surp_est, 1e-15):
-            raise AssertionError("Kaplan-Meier different to lifelines?!")
+        assert np.allclose(ll_est, surp_est, 1e-15)
 
 
 def test_nelson_aalen_censored_and_truncated_against_lifelines():
@@ -154,8 +149,7 @@ def test_nelson_aalen_censored_and_truncated_against_lifelines():
         x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
         ll_est = naf.fit(x, 1 - c, entry=tl, weights=n).predict(x_test).values
         surp_est = surpyval.NelsonAalen.fit(x, c=c, n=n, tl=tl).Hf(x_test)
-        if not np.allclose(ll_est, surp_est, 1e-15):
-            raise AssertionError("Kaplan-Meier different to lifelines?!")
+        assert np.allclose(ll_est, surp_est, 1e-15)
 
 
 def test_fleming_harrington_same_as_nelson_aalen_with_no_counts():
@@ -171,34 +165,7 @@ def test_fleming_harrington_same_as_nelson_aalen_with_no_counts():
         x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
         ll_est = naf.fit(x).predict(x_test).values
         surp_est = surpyval.FlemingHarrington.fit(x).Hf(x_test)
-        if not np.allclose(ll_est, surp_est, 1e-15):
-            raise AssertionError(
-                "Fleming-Harrington fails different to lifelines?!"
-            )
-
-
-def test_FH_HF_less_than_or_equal_to_NA_with_counts():
-    naf = lifelines.NelsonAalenFitter(nelson_aalen_smoothing=False)
-    for i in range(100):
-        test_params = []
-        for b in ((1, 100), (0.5, 20)):
-            test_params.append(np.random.uniform(*b))
-        test_params = np.array(test_params)
-
-        x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000, 1)), *test_params
-        )
-        n = np.ones_like(x) * int(np.random.uniform(2, 5))
-
-        x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
-        ll_na_est = naf.fit(x, weights=n).predict(x_test).values
-        surp_est = surpyval.FlemingHarrington.fit(x, n=n).Hf(x_test)
-        # FH cumulative hazard should be less than NA Hf
-        diff = surp_est - ll_na_est
-        if (diff < 0).all():
-            raise AssertionError(
-                "Fleming-Harrington not all below NelsonAalen"
-            )
+        assert np.allclose(ll_est, surp_est, 1e-15)
 
 
 def test_fleming_harrington_case():

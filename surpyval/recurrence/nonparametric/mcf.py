@@ -1,7 +1,8 @@
 from autograd import numpy as np
+from matplotlib import pyplot as plt
 from scipy.stats import norm, t
 
-from surpyval.utils.counting_utils import handle_xicn, xicn_to_xrd
+from surpyval.utils.recurrent_utils import handle_xicn
 
 
 class NonParametricCounting:
@@ -82,16 +83,30 @@ class NonParametricCounting:
             mcf_cb[np.where(x > self.x.max())] = np.nan
         return mcf_cb
 
+    def plot(self, confidence=0.95, plot_bounds=True, ax=None):
+        if ax is None:
+            ax = plt.gcf().gca()
+
+        ax.step(self.x, self.mcf_hat, where="post", label="MCF")
+        if plot_bounds:
+            if self.var is not None:
+                ax.step(
+                    self.x,
+                    self.mcf_cb(
+                        self.x, bound="two-sided", confidence=confidence
+                    ),
+                    where="post",
+                    label=f"{confidence * 100}% Confidence Bounds",
+                    color="red",
+                )
+        return ax
+
     @classmethod
-    def fit(cls, x, i=None, c=None, n=None):
+    def fit_from_recurrent_data(cls, data):
         out = cls()
-
-        xicn = handle_xicn(x, i, c, n)
-        x, r, d = xicn_to_xrd(*xicn)
-
-        out.x = x
-        out.r = r
-        out.d = d
+        out.data = data
+        x, r, d = data.to_xrd()
+        out.x, out.r, out.d = data.to_xrd()
 
         out.mcf_hat = np.cumsum(d / r)
         var = (
@@ -103,3 +118,8 @@ class NonParametricCounting:
         out.var = np.cumsum(var)
 
         return out
+
+    @classmethod
+    def fit(cls, x, i=None, c=None, n=None):
+        data = handle_xicn(x, i, c, n, as_recurrent_data=True)
+        return cls.fit_from_recurrent_data(data)

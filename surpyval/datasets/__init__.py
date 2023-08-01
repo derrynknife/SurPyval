@@ -1,5 +1,11 @@
+import importlib.resources
+
+import numpy as np
 import pandas as pd
-from pkg_resources import resource_filename  # type: ignore
+
+from surpyval.utils.recurrent_utils import handle_xicn
+
+data_module = importlib.import_module("surpyval.datasets")
 
 
 class BoforsSteel_:
@@ -50,10 +56,10 @@ class BoforsSteel_:
     """
 
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/bofors_steel.csv"),
-            engine="python",
-        )
+        with importlib.resources.path(
+            data_module, "bofors_steel.csv"
+        ) as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
 
     def __repr__(self):
         return """
@@ -67,10 +73,8 @@ class BoforsSteel_:
 
 class Boston_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/boston.csv"),
-            engine="python",
-        )
+        with importlib.resources.path(data_module, "boston.csv") as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
 
 
 class Bearing_:
@@ -114,10 +118,8 @@ class Bearing_:
 
 class Heart_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/heart.csv"),
-            engine="python",
-        )
+        with importlib.resources.path(data_module, "heart.csv") as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
 
     def __repr__(self):
         return """
@@ -128,9 +130,8 @@ class Heart_:
 
 class Lung_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/lung.csv"), engine="python"
-        )
+        with importlib.resources.path(data_module, "lung.csv") as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
 
     def __repr__(self):
         return """
@@ -141,14 +142,12 @@ class Lung_:
 
 class Rossi_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/rossi.csv"),
-            engine="python",
-        )
-        self.time_varying_data = pd.read_csv(
-            resource_filename("surpyval", "datasets/rossi_tv.csv"),
-            engine="python",
-        )
+        with importlib.resources.path(data_module, "rossi.csv") as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
+        with importlib.resources.path(
+            data_module, "rossi_tv.csv"
+        ) as data_path:
+            self.time_varying_data = pd.read_csv(data_path, engine="python")
 
     def __repr__(self):
         return """
@@ -159,10 +158,8 @@ class Rossi_:
 
 class Tires_:
     def __init__(self):
-        self.data = pd.read_csv(
-            resource_filename("surpyval", "datasets/tires.csv"),
-            engine="python",
-        )
+        with importlib.resources.path(data_module, "tires.csv") as data_path:
+            self.data = pd.read_csv(data_path, engine="python")
 
     def __repr__(self):
         return """
@@ -176,6 +173,86 @@ class Tires_:
     """
 
 
+class RecurrentDataExample1_:
+    def __init__(self):
+        x = np.array(
+            [
+                2227.08,
+                2733.229,
+                3524.214,
+                5568.634,
+                5886.165,
+                5946.301,
+                6018.219,
+                7202.724,
+                8760,
+                772.9542,
+                1034.458,
+                3011.114,
+                3121.458,
+                3624.158,
+                3758.296,
+                5000,
+                900.9855,
+                1289.95,
+                2689.878,
+                3928.824,
+                4328.317,
+                4704.24,
+                5052.586,
+                5473.171,
+                6200,
+                411.407,
+                1122.74,
+                1300,
+                688.897,
+                915.101,
+                2650,
+                105.824,
+                500,
+            ]
+        )
+
+        c = (
+            [0] * 8
+            + [1]
+            + [0] * 6
+            + [1]
+            + [0] * 8
+            + [1]
+            + [0] * 2
+            + [1]
+            + [0] * 2
+            + [1]
+            + [0] * 1
+            + [1]
+        )
+        i = [1] * 9 + [2] * 7 + [3] * 9 + [4] * 3 + [5] * 3 + [6] * 2
+        n = np.ones_like(x)
+        self.data = handle_xicn(x, i, c, n, as_recurrent_data=True)
+
+    def __repr__(self):
+        return """
+        Data from:
+        "Modeling and Analysis of Repairable Systems with General Repair."
+        Mettas and Zhao (2005).
+        """.strip()
+
+
+class RecurrentDataExample2_:
+    def __init__(self):
+        x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
+
+        self.data = handle_xicn(x, as_recurrent_data=True)
+
+    def __repr__(self):
+        return """
+        Data from:
+        "G1-Renewal Process as Repairable System Model."
+        Kaminskiy and Krivtsov (2010).
+        """.strip()
+
+
 BoforsSteel = BoforsSteel_()
 Bearing = Bearing_()
 Boston = Boston_()
@@ -183,3 +260,5 @@ Heart = Heart_()
 Lung = Lung_()
 Rossi = Rossi_()
 Tires = Tires_()
+RecurrentDataExample1 = RecurrentDataExample1_()
+RecurrentDataExample2 = RecurrentDataExample2_()

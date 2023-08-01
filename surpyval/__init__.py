@@ -22,17 +22,25 @@ from surpyval.parametric import (
     Gamma,
     Gauss,
     Gumbel,
+    InstantlyOccurs,
     Logistic,
     LogLogistic,
     LogNormal,
     MixtureModel,
+    NeverOccurs,
     Normal,
     Parametric,
     Rayleigh,
     Uniform,
     Weibull,
 )
-from surpyval.regression import CoxPH, ExponentialPH, WeibullPH
+from surpyval.regression import (
+    CoxPH,
+    ExponentialPH,
+    RandomSurvivalForest,
+    SurvivalTree,
+    WeibullPH,
+)
 from surpyval.utils import (
     fs_to_xcn,
     fs_to_xrd,

@@ -13,7 +13,7 @@ import numpy as np
 import numpy.ma as ma
 import numpy_indexed as npi
 from numba import njit
-from numpy.linalg import inv
+from numpy.linalg import inv, pinv
 from scipy.optimize import root
 from scipy.stats import norm
 
@@ -417,7 +417,12 @@ class CoxPH_:
         if hess:
             # Finds the p-value for the null hypothesis
             # that the coefficient is 0.
-            var = np.diag(inv(jac(res.x)[1]))
+            hessian_matrix = jac(res.x)[1]
+            var = np.diag(inv(hessian_matrix))
+            # Use the pseudo-inverse if the hessian does not have a
+            # diagonal that is all positive.
+            if np.any(var <= 0):
+                var = np.diag(pinv(hessian_matrix))
             z_score = res.x / np.sqrt(var)
             p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
         else:
@@ -457,7 +462,6 @@ class CoxPH_:
         formula=None,
         method="efron",
     ):
-
         x, c, n, Z, form = validate_coxph_df_inputs(
             df, x_col, c_col, n_col, Z_cols, formula
         )

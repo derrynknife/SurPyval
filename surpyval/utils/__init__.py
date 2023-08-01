@@ -815,7 +815,8 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     x: array
         sorted array of values of variable for which observations were made.
     r: array
-        array of count of units/people at risk at time x.
+        array of count of units/people at risk at time x (including if it had
+        an event at 'x').
     d: array
         array of the count of failures/deaths at each time x.
     """
@@ -837,20 +838,20 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
             censoring"
         )
 
-    x = np.repeat(x, n)
-    c = np.repeat(c, n)
-    t = np.repeat(t[:, 0], n)
-    n = np.ones_like(x).astype(int)
-
+    tl = t[:, 0]
     x, idx = np.unique(x, return_inverse=True)
-
-    d = np.bincount(idx, weights=1 - c)
-    le = (t.reshape(-1, 1) <= x).sum(axis=0)
-    # do is drop outs
-    do = np.bincount(idx, weights=c)
-    r = le + d - d.cumsum() + do - do.cumsum()
+    # d is the number of deaths (events) at each x
+    d = np.bincount(idx, weights=n * (1 - c))
+    # do is drop outs - i.e right censored
+    do = np.bincount(idx, weights=n * c)
+    # e is the number of items that have entered observation by each x
+    e = e = ((tl[:, np.newaxis] <= x[np.newaxis, :]) * n[:, np.newaxis]).sum(0)
+    # r is the number of people at risk at each x
+    r = e + d - d.cumsum() + do - do.cumsum()
+    # change to correct data types
     r = r.astype(int)
     d = d.astype(int)
+    x = x.astype(float)
     return x, r, d
 
 
@@ -885,15 +886,11 @@ def xcn_to_xrd(x, c=None, n=None):
             "xrd format can't handle left (c=-1) or interval (c=2) censoring"
         )
 
-    x = np.repeat(x, n)
-    c = np.repeat(c, n)
-    n = np.ones_like(x).astype(int)
-
     x, idx = np.unique(x, return_inverse=True)
 
-    d = np.bincount(idx, weights=1 - c)
+    d = np.bincount(idx, weights=n * (1 - c))
     # do is drop outs
-    do = np.bincount(idx, weights=c)
+    do = np.bincount(idx, weights=n * c)
     r = n.sum() + d - d.cumsum() + do - do.cumsum()
     r = r.astype(int)
     d = d.astype(int)
@@ -1207,7 +1204,6 @@ def validate_tv_coxph(id, tl, x, Z, c, n):
 def validate_tv_coxph_df_inputs(
     df, id_col, tl_col, x_col, Z_cols, c_col, n_col, formula
 ):
-
     # TODO: Create count of dropped rows
 
     if x_col is None:
@@ -1300,7 +1296,6 @@ def validate_coxph(x, c, n, Z, tl, method):
 
 
 def validate_fine_gray_inputs(x, Z, e, c, n):
-
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
     e = np.array(e)
