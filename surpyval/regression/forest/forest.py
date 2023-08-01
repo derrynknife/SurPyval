@@ -24,14 +24,17 @@ class RandomSurvivalForest:
         Z: NDArray,
         n_trees: int = 100,
         max_depth: int | float = float("inf"),
-        min_leaf_failures: int = 6,
+        min_leaf_samples: int = 5,
+        min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
+        parametric: bool = True,
     ):
         self.data: SurpyvalData = data
         self.Z: NDArray = np.array(Z, ndmin=2)
         self.n_trees = n_trees
         self.bootstrap = bootstrap
+        self.parametric = parametric
 
         # Create Trees
         if self.bootstrap:
@@ -51,8 +54,10 @@ class RandomSurvivalForest:
                 data=self.data[bootstrap_indices[i]],
                 Z=self.Z[bootstrap_indices[i]],
                 max_depth=max_depth,
+                min_leaf_samples=min_leaf_samples,
                 min_leaf_failures=min_leaf_failures,
                 n_features_split=n_features_split,
+                parametric=parametric,
             )
             for i in range(self.n_trees)
         )
@@ -67,10 +72,14 @@ class RandomSurvivalForest:
         t: ArrayLike | None = None,
         n_trees: int = 100,
         max_depth: int | float = float("inf"),
-        min_leaf_failures: int = 6,
+        min_leaf_samples: int = 5,
+        min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
+        leaf_type: str = "parametric",
     ):
+        parametric = parse_leaf_type(leaf_type)
+
         data = xcnt_handler(
             x, c, n, t, group_and_sort=False, as_surpyval_dataset=True
         )
@@ -80,9 +89,11 @@ class RandomSurvivalForest:
             Z,
             n_trees,
             max_depth,
+            min_leaf_samples,
             min_leaf_failures,
             n_features_split,
             bootstrap,
+            parametric,
         )
 
     def sf(
@@ -151,10 +162,6 @@ class RandomSurvivalForest:
         x = np.array(x, ndmin=1)
         Z = np.array(Z, ndmin=2)
 
-        # If there are multiple covariant vector samples, ?
-        # if Z.shape[0] > 1 and x.ndim == 1:
-        #     x = np.array(x, ndmin=2).transpose()
-
         res = np.zeros((Z.shape[0], x.size)).astype(np.float64)
         for i_covariant_vector in range(Z.shape[0]):
             for tree in self.trees:
@@ -169,8 +176,20 @@ class RandomSurvivalForest:
         x: ArrayLike,
         Z: ArrayLike | NDArray,
         c: ArrayLike,
-        tie_tol: float = 1e-8,
+        tie_tol: float = 1e-15,
     ) -> float:
         scores: ArrayLike = self.mortality(x, Z)
         tol: float = 1e-8
         return score(x, c, scores, tol)
+
+
+def parse_leaf_type(leaf_type: str):
+    if leaf_type.lower() == "non-parametric":
+        return False
+    elif leaf_type.lower() == "parametric":
+        return True
+    else:
+        raise ValueError(
+            f"leaf_type={leaf_type} is invalid. Must\
+            'parametric' or 'non-parametric'"
+        )

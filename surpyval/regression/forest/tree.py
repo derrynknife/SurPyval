@@ -20,23 +20,31 @@ class SurvivalTree:
         data: SurpyvalData,
         Z: NDArray,
         max_depth: int | float = float("inf"),
-        min_leaf_failures: int = 6,
+        min_leaf_samples: int = 5,
+        min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
+        parametric: str = "non-parametric",
     ):
         self.data = data
         self.Z = Z
 
-        self.n_features_split = parse_n_features_split(
+        n_features: int = parse_n_features_split(
             n_features_split, self.Z.shape[1]
         )
+
+        self.n_features_split = n_features
+
+        is_parametric: bool = parse_leaf_type(parametric)
 
         self._root = build_tree(
             data=self.data,
             Z=self.Z,
             curr_depth=0,
             max_depth=max_depth,
+            min_leaf_samples=min_leaf_samples,
             min_leaf_failures=min_leaf_failures,
-            n_features_split=self.n_features_split,
+            n_features_split=n_features,
+            parametric=is_parametric,
         )
 
     @classmethod
@@ -48,14 +56,19 @@ class SurvivalTree:
         n: ArrayLike | None = None,
         t: ArrayLike | None = None,
         max_depth: int | float = float("inf"),
-        min_leaf_failures: int = 6,
+        min_leaf_samples: int = 5,
+        min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
+        leaf_type: str = "parametric",
     ):
         data = xcnt_handler(
             x, c, n, t, group_and_sort=False, as_surpyval_dataset=True
         )
         Z = np.array(Z, ndmin=2)
-        return cls(data, Z, max_depth, min_leaf_failures, n_features_split)
+        n_features: int = parse_n_features_split(n_features_split, Z.shape[1])
+        return cls(
+            data, Z, max_depth, min_leaf_failures, n_features, leaf_type
+        )
 
     def apply_model_function(
         self,
@@ -112,4 +125,16 @@ def parse_n_features_split(
         raise ValueError(
             f"n_features_split={n_features_split} is invalid. See\
                          `Tree` docstring for valid values."
+        )
+
+
+def parse_leaf_type(leaf_type: str):
+    if leaf_type.lower() == "non-parametric":
+        return False
+    elif leaf_type.lower() == "parametric":
+        return True
+    else:
+        raise ValueError(
+            f"leaf_type={leaf_type} is invalid. Must\
+            'parametric' or 'non-parametric'"
         )

@@ -5,7 +5,7 @@ from functools import cached_property
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval import Exponential, Weibull
+from surpyval import Exponential, NelsonAalen, Weibull
 from surpyval.parametric import NeverOccurs
 from surpyval.regression.forest.log_rank_split import log_rank_split
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -31,11 +31,13 @@ class IntermediateNode(Node):
         Z: NDArray,
         curr_depth: int,
         max_depth: int | float,
+        min_leaf_samples: int,
         min_leaf_failures: int,
         n_features_split: int,
         split_feature_index: int,
         split_feature_value: float,
         feature_indices_in: NDArray,
+        parametric: bool = True,
     ):
         # Set split attributes
         self.split_feature_index = split_feature_index
@@ -54,16 +56,20 @@ class IntermediateNode(Node):
             Z[left_indices, :],
             curr_depth=curr_depth + 1,
             max_depth=max_depth,
+            min_leaf_samples=min_leaf_samples,
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
+            parametric=parametric,
         )
         self.right_child = build_tree(
             data[right_indices],
             Z[right_indices, :],
             curr_depth=curr_depth + 1,
             max_depth=max_depth,
+            min_leaf_samples=min_leaf_samples,
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
+            parametric=parametric,
         )
 
     def apply_model_function(
@@ -79,18 +85,23 @@ class IntermediateNode(Node):
 
 
 class TerminalNode(Node):
-    def __init__(self, data: SurpyvalData):
+    def __init__(self, data: SurpyvalData, parametric: bool = True):
         self.data = deepcopy(data)
+        self.paramettric = parametric
 
     @cached_property
     def model(self):
-        events = self.data.to_xrd()[2].sum()
-        if events == 0:
-            return NeverOccurs
-        elif events <= 1:
-            return Exponential.fit_from_surpyval_data(self.data)
+        if self.paramettric:
+            if self.data.to_xrd()[2].sum() == 0:
+                return NeverOccurs
+            elif self.data.to_xrd()[2].sum() <= 1:
+                return Exponential.fit_from_surpyval_data(self.data)
+            else:
+                return Weibull.fit_from_surpyval_data(self.data)
         else:
-            return Weibull.fit_from_surpyval_data(self.data)
+            return NelsonAalen.fit(
+                self.data.x, self.data.c, self.data.n, self.data.t
+            )
 
     def apply_model_function(
         self,
@@ -106,8 +117,10 @@ def build_tree(
     Z: NDArray,
     curr_depth: int,
     max_depth: int | float,
+    min_leaf_samples: int,
     min_leaf_failures: int,
     n_features_split: int,
+    parametric: bool = True,
 ) -> Node:
     """
     Node factory. Decides to return IntermediateNode object, or its
@@ -125,23 +138,25 @@ def build_tree(
 
     # Figure out best feature-value split
     split_feature_index, split_feature_value = log_rank_split(
-        data, Z, min_leaf_failures, feature_indices_in
+        data, Z, min_leaf_samples, min_leaf_failures, feature_indices_in
     )
 
     # If log_rank_split() can't suggest a feature-value split, return a
     # TerminalNode
     if split_feature_index == -1 and split_feature_value == float("-Inf"):
-        return TerminalNode(data)
+        return TerminalNode(data, parametric)
 
-    # Else, return an IntermediateNode, with the suggested feature-value split
+    # Else, return an IntermediateNode, with the best feature-value split
     return IntermediateNode(
         data=data,
         Z=Z,
         curr_depth=curr_depth,
         max_depth=max_depth,
+        min_leaf_samples=min_leaf_samples,
         min_leaf_failures=min_leaf_failures,
         n_features_split=n_features_split,
         split_feature_index=split_feature_index,
         split_feature_value=split_feature_value,
         feature_indices_in=feature_indices_in,
+        parametric=parametric,
     )

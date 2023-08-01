@@ -7,22 +7,17 @@ from numpy.typing import NDArray
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
-# Inner function used in ensuring the min_leaf_failures constraint is
-# respected
-def breaks_min_leaf_failures_constraint(Z, u, v, c, min_leaf_failures):
-    left_child_samples = len(*np.where(np.logical_and(Z[:, u] <= v, c == 0)))
-    right_child_samples = len(np.where(np.logical_and(Z[:, u] > v, c == 0))[0])
-    if (
-        left_child_samples < min_leaf_failures
-        or right_child_samples < min_leaf_failures
-    ):
-        return True
-    return False
+def numpy_fill(arr):
+    mask = np.isnan(arr)
+    idx = np.where(~mask, np.arange(mask.shape[0]), 0)
+    np.maximum.accumulate(idx, out=idx)
+    return arr[idx]
 
 
 def log_rank_split(
     data: SurpyvalData,
     Z: NDArray,
+    min_leaf_samples: int,
     min_leaf_failures: int,
     feature_indices_in: Iterable[int],
 ) -> tuple[int, float]:
@@ -87,9 +82,14 @@ def log_rank_split(
         for v in np.unique(Z_u):
             # Discard the (u, v) pair if it means a leaf will
             # have < min_leaf_failures samples
-            if Z_u[Z_u <= v].size < min_leaf_failures:
+            mask = Z_u <= v
+            if Z_u[mask].size < min_leaf_samples:
                 continue
-            elif Z_u[Z_u > v].size < min_leaf_failures:
+            elif Z_u[~mask].size < min_leaf_samples:
+                continue
+            elif (data.c[mask] != 1).sum() <= min_leaf_failures:
+                continue
+            elif (data.c[~mask] != 1).sum() <= min_leaf_failures:
                 continue
 
             abs_log_rank = log_rank(u, v, data, Z)
@@ -112,26 +112,59 @@ def log_rank(
 
     # Get sample-indices (i) of those that would end up in the left child
     left_child_indices = np.where(Z[:, u] <= v)[0]
-    left_child_x = data.x[left_child_indices]
-    left_child_c = data.c[left_child_indices]
+    data_left_child = data[left_child_indices]
+    # left_child_x = data.x[left_child_indices]
+    # left_child_c = data.c[left_child_indices]
 
-    left_child_x, idx = np.unique(left_child_x, return_inverse=True)
-    d_L = np.bincount(idx, weights=1 - left_child_c)
-    do_L = np.bincount(idx, weights=left_child_c)
+    # left_child_x, idx = np.unique(left_child_x, return_inverse=True)
+    # d_L = np.bincount(idx, weights=1 - left_child_c)
+    # do_L = np.bincount(idx, weights=left_child_c)
+    x_left, Y_L, d_L = data_left_child.to_xrd()
     all_x, Y, d = data.to_xrd()
 
     # expand d_L to match all_x
+    # idx = np.searchsorted(x_left, all_x, side="right") - 1
     expanded_d_L = np.zeros_like(all_x)
-    expanded_do_L = np.zeros_like(all_x)
-    x_l_indices = np.in1d(all_x, left_child_x).nonzero()[0]
+    expanded_Y_L = np.empty_like(all_x)
+    expanded_Y_L.fill(np.nan)
+    # expanded_do_L = np.zeros_like(all_x)
+    # x_l_indices = np.in1d(all_x, left_child_x).nonzero()[0]
+    x_l_indices = np.in1d(all_x, data_left_child.x).nonzero()[0]
     expanded_d_L[x_l_indices] = d_L
-    expanded_do_L[x_l_indices] = do_L
-    d_L = expanded_d_L
-    do_L = expanded_do_L
+    expanded_Y_L[x_l_indices] = Y_L
+    # expanded_do_L[x_l_indices] = do_L
 
+    (index,) = np.where(~np.isnan(expanded_Y_L))
+    first_non_nan = index[0]
+    last_non_nan = index[-1]
+    expanded_Y_L[first_non_nan:last_non_nan] = numpy_fill(
+        expanded_Y_L[first_non_nan:last_non_nan]
+    )
+    if first_non_nan != 0:
+        expanded_Y_L[:first_non_nan] = expanded_Y_L[first_non_nan]
+        # expanded_Y_L[:first_non_nan] = 0
+
+    if last_non_nan != expanded_Y_L.size - 1:
+        # expanded_Y_L[last_non_nan+1:] = 0
+        expanded_Y_L[last_non_nan + 1 :] = (
+            expanded_Y_L[last_non_nan] - expanded_d_L[last_non_nan]
+        )
+
+    Y_L = expanded_Y_L
+    d_L = expanded_d_L
+
+    # Y_L = expanded_Y_L[first_non_nan:last_non_nan+1:]
+    # d_L = expanded_d_L[first_non_nan:last_non_nan+1:]
+    # Y = Y[first_non_nan:last_non_nan+1:]
+    # d = d[first_non_nan:last_non_nan+1:]
+
+    # do_L = expanded_do_L
+
+    # raise ValueError("STOP")
     # Find the risk set from the expanded d_L and do_L
     # These are the event and censored counts at each x
-    Y_L = (d_L.sum() + do_L.sum()) - d_L.cumsum() + d_L - do_L.cumsum() + do_L
+    # Y_L = (d_L.sum() + do_L.sum()) - d_L.cumsum()
+    # + d_L - do_L.cumsum() + do_L
 
     # Filter to where Y > 1
     mask = Y > 1
