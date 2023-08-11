@@ -63,6 +63,19 @@ class RecurrentEventData:
             prev_x = xi
         return np.atleast_1d(interarrival_times)
 
+    def find_x_previous(self):
+        unique_items = np.unique(self.i)
+        x_previous = []
+        for item in unique_items:
+            mask_item = self.i == item
+            x_item = self.x[mask_item]
+            x_prev_item = np.roll(x_item, shift=1, axis=0)
+            # Replace the first value with 0
+            x_prev_item[0] = 0
+            x_previous.append(x_prev_item)
+
+        return np.concatenate(x_previous)
+
     def get_events_for_item(self, item):
         mask = self.i == item
         return self.x[mask], self.c[mask], self.n[mask]
