@@ -12,9 +12,11 @@ class RecurrentEventData:
         self.items = list(set(self.i))
 
         if self.x.ndim == 1:
-            self.interarrival_times = self.find_interarrival_times(x, i)
+            self.interarrival_times = self.find_interarrival_times()
         else:
-            self.midpoints = self.x.mean(axis=1)
+            x_midpoints = self.x.copy()
+            x_midpoints[self.c == -1, 0] = 0
+            self.midpoints = x_midpoints.mean(axis=1)
         self._index = 0
 
     def to_xrd(self, estimator="Nelson-Aalen"):
@@ -27,10 +29,15 @@ class RecurrentEventData:
 
             x_unique = np.unique(x_out)
 
+            # TODO: consider having the presence of left-censored
+            # data use the midpoints instead of the end value of the left
+            # censored interval.
+
             d = np.array(
                 [
                     self.n[
-                        (x_out == xi) & ((self.c == 0) | (self.c == 2))
+                        (x_out == xi)
+                        & ((self.c == 0) | (self.c == 2) | (self.c == -1))
                     ].sum()
                     for xi in x_unique
                 ]
@@ -49,19 +56,11 @@ class RecurrentEventData:
             self.xrd = x_unique, r, d
         return self.xrd
 
-    def find_interarrival_times(self, x, i):
-        interarrival_times = []
-        prev_i = None
-        prev_x = 0
-        for xi, ii in zip(x, i):
-            if ii != prev_i:
-                interarrival_times.append(xi)
-                prev_i = ii
-            else:
-                interarrival_times.append(xi - prev_x)
-
-            prev_x = xi
-        return np.atleast_1d(interarrival_times)
+    def find_interarrival_times(self):
+        _, idx = np.unique(self.i, return_index=True)
+        arrival_times = np.split(self.x, idx)[1:]
+        interarrival_times = [np.diff(arr, prepend=0) for arr in arrival_times]
+        return np.concatenate(interarrival_times)
 
     def find_x_previous(self):
         unique_items = np.unique(self.i)
