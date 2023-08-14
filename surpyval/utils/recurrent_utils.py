@@ -31,7 +31,10 @@ def handle_xicn(x, i=None, c=None, n=None, Z=None, as_recurrent_data=True):
         c = np.array(c)
 
     if Z is not None:
-        Z = np.array(Z, ndmin=2)
+        if isinstance(Z, dict):
+            Z = np.array([Z[ii] for ii in i])
+        else:
+            Z = np.array(Z, ndmin=2)
     # TODO: Z as a dict where the keys are the item numbers and the arrays
     # are the covariates for each i at all times (x)
 
