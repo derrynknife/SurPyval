@@ -7,6 +7,25 @@ from surpyval.recurrence.nonparametric import NonParametricCounting
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
+def kijima_ii_from_prev_interarrival(previous_interarrival_times, q):
+    """
+    Takes the interarrival times from the previous event for a given item
+    and returns the virtual age for each interarrival time.
+
+    Assumes that the virtual age is 0 at the start of the observation and that
+    the values are in ascending order.
+
+    The Kijima-II is defined as:
+    Vn = q * (Vn-1 + Xn)
+    Where Vn is the virtual age at the nth event and Xn is the interarrival
+    time between the n-1th and nth event.
+    """
+    v = 0
+    return np.array(
+        [v := q * (v + x) for x in previous_interarrival_times]  # noqa
+    )
+
+
 class GeneralizedRenewal:
     def __init__(self, model, q, kijima_type="i"):
         self.model = model
@@ -111,41 +130,62 @@ class GeneralizedRenewal:
         return model
 
     @classmethod
-    def create_negll_func(cls, x, i, c, n, dist, kijima="i"):
+    def create_negll_func(cls, data, dist, kijima="i"):
+        """
+        The negative log-likelihood function for the generalized renewal model
+        cannot account for left or interval censored data.
+        """
+        _, idx = np.unique(data.i, return_index=True)
+        c = data.c
+        x_interarrival = data.find_interarrival_times()
+
         if kijima == "i":
-            virtual_age_function = cls.kijima_i
+            arrival_times = np.split(data.x, idx)[1:]
+            cumulative_previous = [
+                np.concatenate([[0], arr[:-1]]) for arr in arrival_times
+            ]
+            cumulative_previous = np.concatenate(cumulative_previous)
+
         elif kijima == "ii":
-            virtual_age_function = cls.kijima_ii
+            prev_x_interarrival = np.concatenate(
+                [
+                    np.concatenate([[0], np.atleast_1d(arr)])[:-1]
+                    for arr in np.split(x_interarrival, idx)[1:]
+                ]
+            )
 
         def negll_func(params):
-            ll = 0
-            # print(params)
             q = params[0]
             params = params[1:]
 
-            for item in set(i):
-                mask_item = i == item
-                virtual_age = 0
-                x_item = np.atleast_1d(x[mask_item])
-                c_item = np.atleast_1d(c[mask_item])
-                n_item = np.atleast_1d(n[mask_item])
+            if kijima == "i":
+                # Kijima-I is defined by:
+                # Vn+1 = Vn + q * Xn
+                # Where Vn is the virtual age at the nth event and Xn is the
+                # interarrival time between the n-1th and nth event.
+                # Kijima-I is much simpler to implement than Kijima-II
+                virtual_ages = q * cumulative_previous
+            else:
+                virtual_ages = np.concatenate(
+                    [
+                        kijima_ii_from_prev_interarrival(arr, q)
+                        for arr in np.split(prev_x_interarrival, idx)[1:]
+                    ]
+                )
 
-                for j in range(0, len(x_item)):
-                    x_j = x_item[j] + virtual_age
-                    if c_item[j] == 0:
-                        ll += n_item[j] * (
-                            dist.log_df(x_j, *params)
-                            - dist.log_sf(virtual_age, *params)
-                        )
-                    elif c_item[j] == 1:
-                        ll += n_item[j] * (
-                            dist.log_sf(x_j, *params)
-                            - dist.log_sf(virtual_age, *params)
-                        )
-                    virtual_age = virtual_age_function(
-                        virtual_age, x_item[j], q
-                    )
-            return -ll
+            x_new = x_interarrival + virtual_ages
+
+            ll_o = dist.log_df(x_new, *params) - dist.log_sf(
+                virtual_ages, *params
+            )
+            ll = np.where(c == 0, ll_o, 0)
+
+            ll_right = dist.log_sf(x_new, *params) - dist.log_sf(
+                virtual_ages, *params
+            )
+            ll = np.where(c == 1, ll_right, ll)
+
+            return -ll.sum()
 
         return negll_func
 
@@ -166,14 +206,7 @@ class GeneralizedRenewal:
                     first_events.n,
                 ).params
 
-        neg_ll = cls.create_negll_func(
-            data.interarrival_times,
-            data.i,
-            data.c,
-            data.n,
-            dist,
-            kijima=kijima,
-        )
+        neg_ll = cls.create_negll_func(data, dist, kijima=kijima)
 
         if init is None:
             # Iterate over different initial values for q
