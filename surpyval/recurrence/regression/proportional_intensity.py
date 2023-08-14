@@ -1,10 +1,11 @@
 # from autograd import elementwise_grad
 import numpy as np
 import numpy_indexed as npi
+from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
-from surpyval.recurrence.parametric import Duane
+from surpyval.recurrence.parametric import CrowAMSAA
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -18,7 +19,7 @@ class ProportionalIntensityModel:
         return self.dist.cif(x, *self.params) * np.exp(Z @ self.coeffs)
 
     def iif(self, x, Z):
-        return self.dist.iif(x, *self.params) * np.exp(Z @ self.coefs)
+        return self.dist.iif(x, *self.params) * np.exp(Z @ self.coeffs)
 
     def inv_cif(self, x, Z):
         if hasattr(self.dist, "inv_cif"):
@@ -27,6 +28,18 @@ class ProportionalIntensityModel:
             raise ValueError(
                 "Inverse cif undefined for {}".format(self.dist.name)
             )
+
+    def plot(self, ax=None):
+        x, r, d = self.data.to_xrd()
+        if ax is None:
+            ax = plt.gcf().gca()
+
+        x_plot = np.linspace(0, self.data.x.max(), 1000)
+        Z_0 = self.data.Z.mean(axis=0)
+
+        ax.step(x, (d / r).cumsum(), color="r", where="post")
+        ax.plot(x_plot, self.cif(x_plot, Z_0), color="b")
+        return ax
 
     # TODO: random, to T, and to N
 
@@ -45,55 +58,125 @@ class ProportionalIntensityHPP:
         return cif / rate
 
     @classmethod
-    def create_negll_func(cls, x, i, c, n, Z):
+    def create_negll_func(cls, data):
+        x, c, n = data.x, data.c, data.n
+        Z = data.Z
+        x_prev = data.find_x_previous()
+
+        has_observed = True if 0 in c else False
+        has_right_censoring = True if 1 in c else False
+        has_left_censoring = True if -1 in c else False
+        has_interval_censoring = True if x.ndim == 2 else False
+
+        x_l = x if x.ndim == 1 else x[:, 0]
+        x_r = x[:, 1] if x.ndim == 2 else None
+        x_prev_r = x_prev[:, 1] if x_prev.ndim == 2 else x_prev
+
+        # This code splits each observation type, if it exists, into its own
+        # array. This is done to avoid having to simplify the log-likelihood
+        # function to account for the different types of observations.
+
+        # Further by calculating the sum of the needed arrays, we can avoid
+        # having to do array sums in the log-likelihood function. This will be
+        # faster, especially for large datasets.
+
+        # Although this code is a bit more complex it results in a longer time
+        # to create the log-likelihood function, but a faster time to evaluate
+        # the log-likelihood function.
+
+        # In conclusion, this is a ridiculous optimisation that is probably
+        # not worth the effort that went into it.
+        if has_observed:
+            x_o = x_l[c == 0]
+            x_prev_o = x_prev_r[c == 0]
+            len_observed = len(x_o)
+            # Don't change the order of the subtraction
+            # Doing the analytic simplification of the log-likelihood
+            # shows that this is the correct order when using "+" for the
+            # specific term.
+            x_o = x_prev_o - x_o
+            Z_o = Z[c == 0]
+        else:
+            x_o = 0.0
+            len_observed = 0.0
+            Z_o = np.zeros((1, Z.shape[1]))
+
+        if has_right_censoring:
+            x_right = x_l[c == 1]
+            x_right_prev = x_prev_r[c == 1]
+            x_right = x_right_prev - x_right
+            Z_right = Z[c == 1]
+        else:
+            Z_right = np.zeros((1, Z.shape[1]))
+            x_right = 0.0
+
+        if has_left_censoring:
+            x_left = x_l[c == -1]
+            n_left = n[c == -1]
+            log_xl = np.log(x_left)
+            n_log_x_left = n_left * log_xl
+            n_log_x_left_sum = n_log_x_left.sum()
+            n_left_sum = n_left.sum()
+            n_l_factorial = gammaln(n_left + 1)
+            n_l_factorial_sum = n_l_factorial.sum()
+        else:
+            n_log_x_left_sum = 0.0
+            x_left = 0.0
+            n_left_sum = 0.0
+            n_left = 0.0
+            n_l_factorial_sum = 0.0
+            Z_left = np.zeros((1, Z.shape[1]))
+
+        if has_interval_censoring:
+            x_i_l = x_l[c == 2]
+            x_i_r = x_r[c == 2]
+            delta_xi = x_i_r - x_i_l
+
+            n_interval = n[c == 2]
+            n_interval_sum = n_interval.sum()
+
+            n_log_x_interval_sum = (n_interval * np.log(delta_xi)).sum()
+            n_i_factorial_sum = gammaln(n_interval + 1).sum()
+        else:
+            n_interval = 0.0
+            n_interval_sum = 0.0
+            n_log_x_interval_sum = 0.0
+            n_i_factorial_sum = 0.0
+            Z_i = np.zeros((1, Z.shape[1]))
+            delta_xi = 0.0
+
         def negll_func(params):
-            rate = np.exp(params[0])
+            log_rate = params[0]
+            rate = np.exp(log_rate)
             beta_coeffs = params[1:]
-            ll = 0
 
-            for item in set(i):
-                mask_item = i == item
-                x_item = np.atleast_1d(x[mask_item])
-                c_item = np.atleast_1d(c[mask_item])
-                n_item = np.atleast_1d(n[mask_item])
-                Z_item = np.atleast_2d(Z[mask_item])
-                x_prev = 0
+            phi_exponent_observed = np.dot(Z_o, beta_coeffs)
+            ll = (
+                phi_exponent_observed.sum()
+                + len_observed * log_rate
+                + rate * (x_o * np.exp(phi_exponent_observed)).sum()
+            )
 
-                for j in range(0, len(x_item)):
-                    phi_exponent = Z_item[j] @ beta_coeffs
-                    phi = np.exp(phi_exponent)
-                    if x_item.ndim == 1:
-                        x_j = x_item[j]
-                    else:
-                        x_j = x_item[j][0]
-                        x_jr = x_item[j][1]
-                    if c_item[j] == 0:
-                        ll += (
-                            np.log(rate)
-                            + phi_exponent
-                            + (phi * rate) * (x_prev - x_j)
-                            # If this becomes time varying, will need to
-                            # use phi_prev
-                        )
-                        x_prev = x_j
-                    elif c_item[j] == 1:
-                        ll += rate * phi * (x_prev - x_j)
-                        x_prev = x_j
-                    elif c_item[j] == 2:
-                        delta_x = x_jr - x_j
-                        ll += (
-                            n_item[j] * (np.log(rate * delta_x) + phi_exponent)
-                            - (phi * rate * delta_x)
-                            - gammaln(n_item[j] + 1)
-                        )
-                        x_prev = x_jr
-                    elif c_item[j] == -1:
-                        ll += (
-                            n_item[j] * (np.log(rate * x_j) + phi_exponent)
-                            - (phi * rate * x_j)
-                            - gammaln(n_item[j] + 1)
-                        )
-                        x_prev = x_j
+            phi_right = np.exp(np.dot(Z_right, beta_coeffs))
+            ll += rate * (x_right * phi_right).sum()
+
+            phi_exponent_left = np.dot(Z_left, beta_coeffs)
+            ll += (
+                (n_left * phi_exponent_left).sum()
+                + log_rate * n_left_sum
+                + n_log_x_left_sum
+                - rate * (np.exp(phi_exponent_left) * x_left).sum()
+                - n_l_factorial_sum
+            )
+
+            phi_exponent_interval = np.dot(Z_i, beta_coeffs)
+            ll += (
+                (n_interval * phi_exponent_interval).sum()
+                + log_rate * n_interval_sum
+                + n_log_x_interval_sum
+                - rate * (np.exp(phi_exponent_interval) * delta_xi).sum()
+                - n_i_factorial_sum
+            )
 
             return -ll
 
@@ -119,7 +202,7 @@ class ProportionalIntensityHPP:
         num_covariates = Z.shape[1]
         init = np.append(np.log(init), np.zeros(num_covariates))
 
-        neg_ll = cls.create_negll_func(data.x, data.i, data.c, data.n, data.Z)
+        neg_ll = cls.create_negll_func(data)
 
         res = minimize(
             neg_ll,
@@ -147,96 +230,131 @@ class ProportionalIntensityNHPP:
         return cif / rate
 
     @classmethod
-    def create_negll_func(cls, x, i, c, n, Z, dist):
+    def create_negll_func(self, data, dist):
+        x, c, n = data.x, data.c, data.n
+        Z = data.Z
+        # Covariates
+        x_prev = data.find_x_previous()
+
+        has_interval_censoring = True if 2 in c else False
+        has_observed = True if 0 in c else False
+        has_left_censoing = True if -1 in c else False
+        has_right_censoring = True if 1 in c else False
+
+        x_l = x if x.ndim == 1 else x[:, 0]
+        x_r = x[:, 1] if x.ndim == 2 else None
+
+        x_prev_l = x_prev if x_prev.ndim == 1 else x[:, 0]
+        x_prev_r = x_prev[:, 1] if x_prev.ndim == 2 else None
+
+        # Untangle the observed data
+        x_o = x_l[c == 0] if has_observed else np.array([])
+        if has_interval_censoring:
+            x_o_prev = x_prev_r[c == 0] if has_observed else np.array([])
+        else:
+            x_o_prev = x_prev_l[c == 0] if has_observed else np.array([])
+        Z_o = Z[c == 0] if has_observed else np.zeros((1, Z.shape[1]))
+
+        # Untangle the right censored data
+        x_right = x_l[c == 1] if has_right_censoring else np.array([])
+        if has_interval_censoring:
+            x_right_prev = (
+                x_prev_r[c == 1] if has_right_censoring else np.array([])
+            )
+        else:
+            x_right_prev = (
+                x_prev_l[c == 1] if has_right_censoring else np.array([])
+            )
+        Z_right = (
+            Z[c == 1] if has_right_censoring else np.zeros((1, Z.shape[1]))
+        )
+
+        # Untangle the left censored data
+        x_left = x_l[c == -1] if has_left_censoing else np.array([])
+        n_left = n[c == -1] if has_left_censoing else np.array([])
+        Z_left = Z[c == -1] if has_left_censoing else np.zeros((1, Z.shape[1]))
+
+        # Untangle the interval censored data
+        x_i_l = x_l[c == 2] if has_interval_censoring else np.array([])
+        x_i_r = x_r[c == 2] if has_interval_censoring else np.array([])
+        n_i = n[c == 2] if has_interval_censoring else np.array([])
+        Z_i = (
+            Z[c == 2] if has_interval_censoring else np.zeros((1, Z.shape[1]))
+        )
+
+        # Using the empty arrays avoids the need for if statements in the
+        # likelihood function. It also means that the likelihood function
+        # will not encounter any invalid values since taking the log of 0
+        # will not occur.
+
         def negll_func(params):
             dist_params = params[: len(dist.param_names)]
             beta_coeffs = params[len(dist.param_names) :]
-            ll = 0
+            # ll of directly observed
+            phi_exponents_observed = np.dot(Z_o, beta_coeffs)
+            delta_cif_o = dist.cif(x_o_prev, *dist_params) - dist.cif(
+                x_o, *dist_params
+            )
+            # TODO: Implement log_iif functions
+            ll = (
+                np.log(dist.iif(x_o, *dist_params))
+                + phi_exponents_observed
+                + (np.exp(phi_exponents_observed) * delta_cif_o)
+            ).sum()
 
-            for item in set(i):
-                mask_item = i == item
-                x_item = np.atleast_1d(x[mask_item])
-                c_item = np.atleast_1d(c[mask_item])
-                n_item = np.atleast_1d(n[mask_item])
-                Z_item = np.atleast_2d(Z[mask_item])
-                x_prev = 0
+            # ll of right censored
+            phi_right = np.exp(np.dot(Z_right, beta_coeffs))
+            delta_cif_right = dist.cif(x_right_prev, *dist_params) - dist.cif(
+                x_right, *dist_params
+            )
+            ll += (phi_right * delta_cif_right).sum()
 
-                for j in range(0, len(x_item)):
-                    phi_exponent = Z_item[j] @ beta_coeffs
-                    phi = np.exp(phi_exponent)
-                    if x_item.ndim == 1:
-                        x_j = x_item[j]
-                    else:
-                        x_j = x_item[j][0]
-                        x_jr = x_item[j][1]
+            # ll of left censored
+            delta_cif_left = dist.cif(x_left, *dist_params)
+            phi_exponents_left = np.dot(Z_left, beta_coeffs)
+            phi_left = np.exp(phi_exponents_left)
+            ll += (
+                n_left * phi_exponents_left
+                + n_left * np.log(delta_cif_left)
+                - phi_left * delta_cif_left
+                - gammaln(n_left + 1)
+            ).sum()
 
-                    if c_item[j] == 0:
-                        ll += (
-                            np.log(dist.iif(x_j, *dist_params))
-                            + phi_exponent
-                            + phi
-                            * (
-                                dist.cif(x_prev, *dist_params)
-                                - dist.cif(x_j, *dist_params)
-                            )
-                        )
-                        x_prev = x_j
-                    elif c_item[j] == 1:
-                        ll += phi * (
-                            dist.cif(x_prev, *dist_params)
-                            - dist.cif(x_j, *dist_params)
-                        )
-                        x_prev = x_j
-                    elif c_item[j] == 2:
-                        delta_cif = phi * (
-                            dist.cif(x_jr, *dist_params)
-                            - dist.cif(x_j, *dist_params)
-                        )
-                        ll += (
-                            n_item[j] * np.log(delta_cif)
-                            + phi_exponent
-                            - (delta_cif)
-                            - gammaln(n_item[j] + 1)
-                        )
-                        x_prev = x_jr
-                    elif c_item[j] == -1:
-                        delta_cif = phi * dist.cif(x_j, *params)
-                        ll += (
-                            n_item[j] * np.log(delta_cif)
-                            - (delta_cif)
-                            - gammaln(n_item[j] + 1)
-                        )
-                        x_prev = x_j
+            # ll of interval censored
+            delta_cif_interval = dist.cif(x_i_r, *dist_params) - dist.cif(
+                x_i_l, *dist_params
+            )
+            phi_exponents_interval = np.dot(Z_i, beta_coeffs)
+            phi_interval = np.exp(phi_exponents_interval)
+
+            ll += (
+                n_i * phi_exponents_interval
+                + n_i * np.log(delta_cif_interval)
+                - phi_interval * delta_cif_interval
+                - gammaln(n_i + 1)
+            ).sum()
 
             return -ll
 
         return negll_func
 
     @classmethod
-    def fit(cls, x, Z, i=None, c=None, n=None, dist=Duane, init=None):
-        data = handle_xicn(x, i, c, n, Z=Z, as_recurrent_data=True)
-
+    def fit_from_recurrent_data(cls, data, dist, init=None):
         out = ProportionalIntensityModel()
         out.dist = dist
         out.data = data
 
-        out.param_names = ["lambda"]
-        out.bounds = ((0, None),)
-        out.support = (0.0, np.inf)
-        out.name = "Homogeneous Poisson Process"
-
         init = np.ones(len(dist.param_names))
 
-        num_covariates = Z.shape[1]
+        num_covariates = data.Z.shape[1]
         init = np.append(init, np.zeros(num_covariates))
 
-        neg_ll = cls.create_negll_func(
-            data.x, data.i, data.c, data.n, data.Z, dist
-        )
+        neg_ll = cls.create_negll_func(data, dist)
 
         res = minimize(
             neg_ll,
             [init],
+            method="Nelder-Mead",
         )
         out.res = res
         out.params = res.x[: len(dist.param_names)]
@@ -244,3 +362,8 @@ class ProportionalIntensityNHPP:
         out.name = "Non-Homogeneous Poisson Process"
 
         return out
+
+    @classmethod
+    def fit(cls, x, Z, i=None, c=None, n=None, dist=CrowAMSAA, init=None):
+        data = handle_xicn(x, i, c, n, Z=Z, as_recurrent_data=True)
+        return cls.fit_from_recurrent_data(data, dist, init)
