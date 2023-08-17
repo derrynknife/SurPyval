@@ -242,3 +242,8 @@ class GeneralizedRenewal:
     def fit(cls, x, i, c, n, dist=Weibull, kijima="i", init=None):
         data = handle_xicn(x, i, c, n, as_recurrent_data=True)
         return cls.fit_from_recurrent_data(data, dist, kijima, init=init)
+
+    @classmethod
+    def fit_from_parameters(cls, params, q, kijima="i", dist=Weibull):
+        model = dist.from_params(params)
+        return cls(model, q, kijima)
