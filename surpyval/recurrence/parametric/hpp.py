@@ -1,7 +1,7 @@
 import numpy as np
-from autograd import jacobian
+from autograd import hessian, jacobian
 from autograd import numpy as anp
-from scipy.optimize import minimize
+from scipy.optimize import root
 from scipy.special import gammaln
 
 from surpyval.recurrence.parametric.parametric_recurrence import (
@@ -58,8 +58,9 @@ class HPP:
         # In conclusion, this is a ridiculous optimisation that is probably
         # not worth the effort that went into it.
         if has_observed:
-            x_o = x_l[c == 0]
-            x_prev_o = x_prev_r[c == 0]
+            observed_mask = c == 0
+            x_o = x_l[observed_mask]
+            x_prev_o = x_prev_r[observed_mask]
             len_observed = len(x_o)
             observed_time = (x_prev_o - x_o).sum()
         else:
@@ -67,8 +68,9 @@ class HPP:
             observed_time = 0.0
 
         if has_left_censoring:
-            x_left = x_l[c == -1]
-            n_left = n[c == -1]
+            left_mask = c == -1
+            x_left = x_l[left_mask]
+            n_left = n[left_mask]
             log_xl = np.log(x_left)
             n_log_x_left = n_left * log_xl
             n_log_x_left_sum = n_log_x_left.sum()
@@ -83,15 +85,17 @@ class HPP:
             n_l_factorial_sum = 0.0
 
         if has_right_censoring:
-            x_right = x_l[c == 1]
-            x_right_prev = x_prev_r[c == 1]
+            right_mask = c == 1
+            x_right = x_l[right_mask]
+            x_right_prev = x_prev_r[right_mask]
             right_censored_time = (x_right_prev - x_right).sum()
         else:
             right_censored_time = 0.0
 
         if has_interval_censoring:
-            x_i_l = x_l[c == 2]
-            x_i_r = x_r[c == 2]
+            interval_mask = c == 2
+            x_i_l = x_l[interval_mask]
+            x_i_r = x_r[interval_mask]
             delta_xi = x_i_r - x_i_l
 
             x_interval_sum = delta_xi.sum()
@@ -126,7 +130,7 @@ class HPP:
                 - n_i_factorial_sum
             )
 
-            return -ll
+            return -ll[0]
 
         return negll_func
 
@@ -143,13 +147,14 @@ class HPP:
 
         neg_ll = cls.create_negll_func(data)
         jac = jacobian(neg_ll)
+        hess = hessian(neg_ll)
 
         if init is None:
             init = [0.0]
         else:
             init = np.atleast_1d(np.log(init))
 
-        res = minimize(neg_ll, init, jac=jac, bounds=((None, None),))
+        res = root(jac, init, jac=hess)
         out.res = res
         out.params = np.exp(res.x)
 
