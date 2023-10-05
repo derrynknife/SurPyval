@@ -6,6 +6,7 @@ from surpyval import (
     ExpoWeibull,
     Gamma,
     Gumbel,
+    GumbelLEV,
     Logistic,
     LogLogistic,
     LogNormal,
@@ -15,6 +16,7 @@ from surpyval import (
 
 DISTS = [
     Gumbel,
+    GumbelLEV,
     Normal,
     Weibull,
     LogNormal,
@@ -26,6 +28,7 @@ DISTS = [
 ]
 
 parameter_sample_random_parameters = [
+    ((1, 20), (0.5, 5)),
     ((1, 20), (0.5, 5)),
     ((1, 100), (0.5, 100)),
     ((1, 100), (0.5, 20)),
@@ -68,6 +71,14 @@ def generate_mom_test_cases():
 
 def generate_mps_test_cases():
     for idx, dist in enumerate(DISTS):
+        random_parameters = parameter_sample_random_parameters[idx]
+        yield dist, random_parameters
+
+
+def generate_mps_trunc_test_cases():
+    for idx, dist in enumerate(DISTS):
+        if dist.name in ["ExpoWeibull"]:
+            continue
         random_parameters = parameter_sample_random_parameters[idx]
         yield dist, random_parameters
 
@@ -205,7 +216,8 @@ def test_mle_convergence_small(dist, random_parameters, kind):
             break
     else:
         raise AssertionError(
-            "MLE fit for small data not good for %s\n" % dist.name
+            "MLE fit for small data not good for "
+            + f"{dist.name}: {fitted_params} :: {test_params}\n"
         )
 
 
@@ -269,6 +281,28 @@ def test_mps(dist, random_parameters):
         test_params = np.array(test_params)
         x = dist.random(n, *test_params)
         model = dist.fit(x=x, how="MPS")
+        fitted_params = np.array(model.params)
+        max_params = np.max([fitted_params, test_params], axis=0)
+        diff = np.abs(fitted_params - test_params) / max_params
+        if (diff < tol * dist.k).all():
+            break
+    else:
+        raise AssertionError("MPS fit not very good in %s\n" % dist.name)
+
+
+@pytest.mark.parametrize(
+    "dist,random_parameters", generate_mps_trunc_test_cases(), ids=idfunc
+)
+def test_mps_truncated(dist, random_parameters):
+    for n in [2_000]:
+        test_params = []
+        tol = 0.1
+        for b in random_parameters:
+            test_params.append(np.random.uniform(*b))
+        test_params = np.array(test_params)
+        x = dist.random(n, *test_params)
+        x, tl, tr = truncate_at(x, 0.05, "both")
+        model = dist.fit(x=x, tl=tl, tr=tr, how="MPS")
         fitted_params = np.array(model.params)
         max_params = np.max([fitted_params, test_params], axis=0)
         diff = np.abs(fitted_params - test_params) / max_params
