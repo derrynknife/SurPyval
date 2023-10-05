@@ -1,10 +1,10 @@
-# from autograd import elementwise_grad
 import numpy as np
 import numpy_indexed as npi
 from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.recurrence.nonparametric import NonParametricCounting
 from surpyval.recurrence.parametric import CrowAMSAA
 from surpyval.utils.recurrent_utils import handle_xicn
 
@@ -41,7 +41,83 @@ class ProportionalIntensityModel:
         ax.plot(x_plot, self.cif(x_plot, Z_0), color="b")
         return ax
 
-    # TODO: random, to T, and to N
+    def count_terminated_simulation(self, events, Z, items=1):
+        self.initialize_simulation()
+
+        xicn = {"x": [], "i": [], "c": [], "n": []}
+
+        for i in range(0, items):
+            running = 0
+            j = 0
+            x_prev = 0
+            for j in range(0, events + 1):
+                ui = self.get_uniform_random_number()
+                u_adj = ui * np.exp(-self.cif(x_prev, Z))
+                xi = self.inv_cif(-np.log(u_adj), Z) - x_prev
+                running += xi
+                x_prev = running
+                xicn["i"].append(i + 1)
+                xicn["n"].append(1)
+                xicn["x"].append(running)
+                xicn["c"].append(0)
+
+        self.clear_simulation()
+
+        model = NonParametricCounting.fit(**xicn)
+
+        if self.dist.name == "CoxLewis":
+            model.mcf_hat += np.exp(self.params[0])
+
+        mask = model.mcf_hat <= events
+        model.x = model.x[mask]
+        model.mcf_hat = model.mcf_hat[mask]
+        model.var = None
+        return model
+
+    def time_terminated_simulation(self, T, Z, items=1, tol=1e-5):
+        self.initialize_simulation()
+        convergence_problem = False
+
+        xicn = {"x": [], "i": [], "c": [], "n": []}
+
+        for i in range(0, items):
+            running = 0
+            j = 0
+            x_prev = 0
+            while True:
+                ui = self.get_uniform_random_number()
+                u_adj = ui * np.exp(-self.cif(x_prev, Z))
+                xi = self.inv_cif(-np.log(u_adj), Z) - x_prev
+                running += xi
+                x_prev = running
+                xicn["i"].append(i + 1)
+                xicn["n"].append(1)
+                if running > T:
+                    xicn["x"].append(T)
+                    xicn["c"].append(1)
+                    break
+                elif xi < tol:
+                    convergence_problem = True
+                    xicn["x"].append(running)
+                    xicn["c"].append(0)
+                    break
+                else:
+                    xicn["x"].append(running)
+                    xicn["c"].append(0)
+                    j += 1
+
+        self.clear_simulation()
+
+        if convergence_problem:
+            print("Maybe...")
+
+        model = NonParametricCounting.fit(**xicn)
+
+        if self.dist.name == "CoxLewis":
+            model.mcf_hat += np.exp(self.params[0])
+        model.var = None
+
+        return model
 
 
 class ProportionalIntensityHPP:
@@ -204,10 +280,7 @@ class ProportionalIntensityHPP:
 
         neg_ll = cls.create_negll_func(data)
 
-        res = minimize(
-            neg_ll,
-            [init],
-        )
+        res = minimize(neg_ll, [init])
         out.res = res
         out.params = np.atleast_1d(np.exp(res.x[0]))
         out.coeffs = np.atleast_1d(res.x[1:])
@@ -297,7 +370,7 @@ class ProportionalIntensityNHPP:
             )
             # TODO: Implement log_iif functions
             ll = (
-                np.log(dist.iif(x_o, *dist_params))
+                dist.log_iif(x_o, *dist_params)
                 + phi_exponents_observed
                 + (np.exp(phi_exponents_observed) * delta_cif_o)
             ).sum()

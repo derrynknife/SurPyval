@@ -46,9 +46,11 @@ class NHPP:
         else:
             self.parameter_initialiser = parameter_initialiser
 
+    def log_iif(self, x, *params):
+        return np.log(self.iif(x, *params))
+
     def create_negll_func(self, data):
         x, c, n = data.x, data.c, data.n
-        # Covariates
         x_prev = data.find_x_previous()
 
         has_interval_censoring = True if 2 in c else False
@@ -93,7 +95,7 @@ class NHPP:
         def negll_func(params):
             # ll of directly observed
             ll = (
-                np.log(self.iif(x_o, *params))
+                self.log_iif(x_o, *params)
                 + self.cif(x_o_prev, *params)
                 - self.cif(x_o, *params)
             ).sum()
@@ -115,6 +117,7 @@ class NHPP:
             interval_delta_cif = self.cif(x_i_r, *params) - self.cif(
                 x_i_l, *params
             )
+
             ll += (
                 n_i * np.log(interval_delta_cif)
                 - (interval_delta_cif)
@@ -199,6 +202,10 @@ def duane_iif(x, *params):
     return params[0] * params[1] * x ** (params[0] - 1.0)
 
 
+def duane_log_iif(x, *params):
+    return np.log(params[0]) + np.log(params[1]) + (params[0] - 1) * np.log(x)
+
+
 def duane_rocof(x, *params):
     return (1.0 / params[1]) * x ** (-params[0])
 
@@ -218,6 +225,7 @@ Duane = NHPP(
 
 Duane.rocof = duane_rocof  # type: ignore
 Duane.inv_cif = duane_inv_cif  # type: ignore
+Duane.log_iif = duane_log_iif  # type: ignore
 
 # Cox-Lewis
 cox_lewis_param_names = ["alpha", "beta"]
@@ -235,6 +243,12 @@ def cox_lewis_iif(x, *params):
     alpha = params[0]
     beta = params[1]
     return beta * np.exp(alpha + beta * x)
+
+
+def cox_lewis_log_iif(x, *params):
+    alpha = params[0]
+    beta = params[1]
+    return np.log(beta) + alpha + beta * x
 
 
 def cox_lewis_inv_cif(cif, *params):
@@ -260,6 +274,7 @@ CoxLewis = NHPP(
 
 CoxLewis.rocof = cox_lewis_rocof  # type: ignore
 CoxLewis.inv_cif = cox_lewis_inv_cif  # type: ignore
+CoxLewis.log_iif = cox_lewis_log_iif  # type: ignore
 
 # Crow
 
@@ -280,6 +295,12 @@ def crow_iif(x, *params):
     return (beta / alpha) * (x ** (beta - 1))
 
 
+def crow_log_iif(x, *params):
+    alpha = params[0]
+    beta = params[1]
+    return np.log(beta) - np.log(alpha) + (beta - 1) * np.log(x)
+
+
 def crow_rocof(x, *params):
     alpha = params[0]
     beta = params[1]
@@ -298,6 +319,7 @@ Crow = NHPP(
 
 Crow.rocof = crow_rocof  # type: ignore
 Crow.inv_cif = crow_inv_cif  # type: ignore
+Crow.log_iif = crow_log_iif  # type: ignore
 
 # Crow
 
@@ -316,6 +338,12 @@ def crow_amsaa_iif(x, *params):
     alpha = params[0]
     beta = params[1]
     return (beta / alpha**beta) * (x ** (beta - 1))
+
+
+def crow_amsaa_log_iif(x, *params):
+    alpha = params[0]
+    beta = params[1]
+    return np.log(beta) - beta * np.log(alpha) + (beta - 1) * np.log(x)
 
 
 def crow_amsaa_rocof(x, *params):
@@ -341,3 +369,4 @@ CrowAMSAA = NHPP(
 
 CrowAMSAA.rocof = crow_amsaa_rocof  # type: ignore
 CrowAMSAA.inv_cif = crow_amsaa_inv_cif  # type: ignore
+CrowAMSAA.log_iif = crow_amsaa_log_iif  # type: ignore
