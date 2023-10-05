@@ -5,8 +5,8 @@ import autograd.numpy as np
 from scipy.optimize import minimize
 
 import surpyval
+from surpyval.univariate.parametric.fitters import bounds_convert
 
-from ..parametric.fitters import bounds_convert, fix_idx_and_function
 from .regression import Regression
 
 
@@ -288,9 +288,8 @@ class ParameterSubstitutionFitter:
         }
         self.param_map = param_map
 
-        transform, inv_trans, funcs, inv_f = bounds_convert(x, bounds)
-        const, fixed_idx, not_fixed = fix_idx_and_function(
-            fixed, param_map, funcs
+        transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
+            x, bounds, fixed, param_map
         )
 
         init = transform(init)[not_fixed]

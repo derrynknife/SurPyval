@@ -3,14 +3,14 @@ __version__ = "0.10.10"
 from autograd import numpy as np
 
 from surpyval.distribution import Distribution
-from surpyval.nonparametric import (
+from surpyval.univariate.nonparametric import (
     FlemingHarrington,
     KaplanMeier,
     NelsonAalen,
     NonParametric,
     Turnbull,
 )
-from surpyval.parametric import (
+from surpyval.univariate.parametric import (
     Bernoulli,
     Beta,
     CustomDistribution,
@@ -22,6 +22,7 @@ from surpyval.parametric import (
     Gamma,
     Gauss,
     Gumbel,
+    GumbelLEV,
     InstantlyOccurs,
     Logistic,
     LogLogistic,
@@ -33,13 +34,6 @@ from surpyval.parametric import (
     Rayleigh,
     Uniform,
     Weibull,
-)
-from surpyval.regression import (
-    CoxPH,
-    ExponentialPH,
-    RandomSurvivalForest,
-    SurvivalTree,
-    WeibullPH,
 )
 from surpyval.utils import (
     fs_to_xcn,
@@ -57,6 +51,14 @@ from surpyval.utils import (
 )
 
 from .fit_best import fit_best
+
+from surpyval.regression import (  # isort: skip
+    CoxPH,
+    ExponentialPH,
+    RandomSurvivalForest,
+    SurvivalTree,
+    WeibullPH,
+)
 
 NUM = np.float64
 TINIEST = np.finfo(np.float64).tiny

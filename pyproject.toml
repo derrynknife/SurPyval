@@ -5,6 +5,7 @@ line-length = 79
 # So isort is compatible with black
 [tool.isort]
 profile = "black"
+skip = ["__init__.py"]
 
 # mypy
 [tool.mypy]

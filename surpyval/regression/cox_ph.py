@@ -17,12 +17,13 @@ from numpy.linalg import inv, pinv
 from scipy.optimize import root
 from scipy.stats import norm
 
-from ..nonparametric import (
+from surpyval.univariate.nonparametric import (
     FlemingHarrington,
     KaplanMeier,
     NelsonAalen,
     Turnbull,
 )
+
 from ..utils import validate_coxph, validate_coxph_df_inputs
 from .proportional_hazards import ProportionalHazardsModel
 from .regression import Regression

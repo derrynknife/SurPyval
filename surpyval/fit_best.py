@@ -3,7 +3,7 @@ from typing import List
 
 import numpy as np
 
-from surpyval.parametric import (
+from surpyval.univariate.parametric import (
     Beta,
     Exponential,
     ExpoWeibull,

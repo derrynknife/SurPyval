@@ -6,8 +6,8 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval import Exponential, NelsonAalen, Weibull
-from surpyval.parametric import NeverOccurs
 from surpyval.regression.forest.log_rank_split import log_rank_split
+from surpyval.univariate.parametric import NeverOccurs
 from surpyval.utils.surpyval_data import SurpyvalData
 
 

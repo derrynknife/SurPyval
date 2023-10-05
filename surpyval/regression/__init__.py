@@ -4,10 +4,16 @@ from typing import Any, Callable, Hashable
 import autograd.numpy as np
 
 import surpyval as surv
-from surpyval.parametric.parametric_fitter import ParametricFitter
 from surpyval.regression.lifemodels.lifemodel import LifeModel
+from surpyval.univariate.parametric import (
+    Gumbel,
+    Logistic,
+    LogNormal,
+    Normal,
+    Weibull,
+)
+from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
-from ..parametric import Gumbel, Logistic, LogNormal, Normal, Weibull
 from .accelerated_failure_time import AcceleratedFailureTimeFitter
 from .cox_ph import CoxPH
 from .forest.forest import RandomSurvivalForest
