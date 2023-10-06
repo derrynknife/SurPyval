@@ -482,39 +482,5 @@ class Weibull_(ParametricFitter):
             -np.exp(self.u_cb(x, alpha, beta, cv_matrix, alpha_ci, bound))
         ).T
 
-    def _jacobian(self, x, alpha, beta, c=None, n=None):
-        f = c == 0
-        l = c == -1
-        r = c == 1
-        dll_dbeta = (
-            1.0 / beta * np.sum(n[f])
-            + np.sum(n[f] * np.log(x[f] / alpha))
-            - np.sum(n[f] * (x[f] / alpha) ** beta * np.log(x[f] / alpha))
-            - np.sum(n[r] * (x[r] / alpha) ** beta * np.log(x[r] / alpha))
-            + np.sum(
-                n[l]
-                * (x[l] / alpha) ** beta
-                * np.log(x[l] / alpha)
-                * np.exp(-((x[l] / alpha) ** beta))
-                / (1 - np.exp(-((x[l] / alpha) ** beta)))
-            )
-        )
-
-        dll_dalpha = (
-            0
-            - beta / alpha * np.sum(n[f])
-            + beta / alpha * np.sum(n[f] * (x[f] / alpha) ** beta)
-            + beta / alpha * np.sum(n[r] * (x[r] / alpha) ** beta)
-            - beta
-            / alpha
-            * np.sum(
-                n[l]
-                * (x[l] / alpha) ** beta
-                * np.exp(-((x[l] / alpha) ** beta))
-                / (1 - np.exp(-((x[l] / alpha) ** beta)))
-            )
-        )
-        return -np.array([dll_dalpha, dll_dbeta])
-
 
 Weibull: ParametricFitter = Weibull_("Weibull")
