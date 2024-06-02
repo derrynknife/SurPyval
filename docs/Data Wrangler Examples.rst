@@ -23,8 +23,14 @@ Lets just say we have a list of right censored data and a list of failures. How 
 
 .. code:: text
 
-	[ 1  2  2  3  4  5  6  7  8  9 10] [1 0 1 0 0 0 0 0 0 0 1] [1 1 1 1 1 1 1 1 2 1 1]
-	Parametric Surpyval model with Weibull distribution fitted by MLE yielding parameters (7.200723109183674, 2.474773882227539)
+	[ 1.  2.  2.  3.  4.  5.  6.  7.  8.  9. 10.] [1 0 1 0 0 0 0 0 0 0 1] [1 1 1 1 1 1 1 1 2 1 1]
+	Parametric SurPyval Model
+	=========================
+	Distribution        : Weibull
+	Fitted by           : MLE
+	Parameters          :
+		alpha: 7.200701456317226
+		beta: 2.4747607084135774
 
 
 You can even bring in your left censored data as well:

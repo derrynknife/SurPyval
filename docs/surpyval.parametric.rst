@@ -1,37 +1,45 @@
 Parametric
 ==========
 
-Distribution Classes
---------------------
-
-.. toctree::
-
-   exponential
-   gamma
-   gumbel
-   logistic
-   loglogistic
-   lognormal
-   normal
-   uniform
-   weibull
-   expoweibull
 
 Parametric Class
 ----------------
 
-.. autoclass:: surpyval.parametric.parametric.Parametric
-   :members:
+.. toctree::
+   :maxdepth: 1
 
-Parametric Fitter
+   univariate/parametric_class
+
+
+Distribution Classes
+--------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   univariate/exponential
+   univariate/weibull
+   univariate/expo_weibull
+   univariate/gumbel
+   univariate/gamma
+   univariate/normal
+   univariate/lognormal
+   univariate/logistic
+   univariate/loglogistic
+   univariate/uniform
+
+Custom Distributions
+--------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   univariate/custom
+
+Mixture Modelling
 -----------------
 
-.. autoclass:: surpyval.parametric.parametric_fitter.ParametricFitter
-   :members:
+.. toctree::
+   :maxdepth: 1
 
-Parametric Mixture Model
-------------------------
-
-.. automodule:: surpyval.parametric.mixture_model
-   :members:
-   :show-inheritance:
+   univariate/mixture

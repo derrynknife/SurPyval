@@ -18,7 +18,7 @@ On consideration, one can see that there are no houses above $50,000 and that th
 
     import surpyval as surv
     x = Boston.df['medv'].values
-    x, c, n = surv.xcn_handler(x)
+    x, c, n, _ = surv.xcnt_handler(x)
 
     model = surv.Weibull.fit(x, c, n)
     print(model)
@@ -47,7 +47,7 @@ From the above plot you can see that near 50, the parametric model diverges subs
 
     import surpyval as surv
     x = Boston.df['medv'].values
-    x, c, n = surv.xcn_handler(x)
+    x, c, n, _ = surv.xcnt_handler(x)
     # Right censor the highest value
     c[-1] = 1
 
@@ -77,7 +77,7 @@ We can see that the model has changed slightly, however, there appears to be a '
 
     import surpyval as surv
     x = Boston.df['medv'].values
-    x, c, n = surv.xcn_handler(x)
+    x, c, n, _ = surv.xcnt_handler(x)
     # Right censor the highest value
     c[-1] = 1
 
@@ -108,7 +108,7 @@ This appears to be a much better fit, however, there is still quite a bit of dif
 
     import surpyval as surv
     x = Boston.df['medv'].values
-    x, c, n = surv.xcn_handler(x)
+    x, c, n, _ = surv.xcnt_handler(x)
     # Right censor the highest value
     c[-1] = 1
 
@@ -483,8 +483,6 @@ References
 ----------
 
 .. [TC] Tadeu Cristino, C., Żebrowski, P., & Wildemeersch, M. (2020). Assessing the time intervals between economic recessions. PloS one, 15(5), e0232615.
-
-.. [Cole] Cole SR, Hudgens MG. Survival analysis in infectious disease research: describing events in time. AIDS. 2010;24(16):2423-31.
 
 .. [Duwe] Duwe, G., Sanders, N. E., Rocque, M., & Fox, J. A. (2021). Forecasting the Severity of Mass Public Shootings in the United States. Journal of Quantitative Criminology, 1-39.
 

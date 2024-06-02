@@ -87,8 +87,6 @@ Contents:
    Conventions
    Handy References - Aide-mémoire
    Data Wrangler Examples
-   Datasets
-
 
 .. toctree::
    :maxdepth: 2
@@ -97,6 +95,8 @@ Contents:
    Non-Parametric Estimation
    Parametric Estimation
    regression analysis
+   Recurrent Event Analysis
+   Recurrent Event Regression Analysis
 
 .. toctree::
    :maxdepth: 2
@@ -105,6 +105,8 @@ Contents:
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
    Regression Modelling with SurPyval
+   Recurrent Event Modelling with SurPyval
+   Recurrent Event Regression Modelling with SurPyval
    applications
 
 .. toctree::

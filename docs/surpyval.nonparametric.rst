@@ -1,36 +1,33 @@
 Non-Parametric
 ==============
 
+Non-Parametric Class
+--------------------
 
-.. autoclass:: surpyval.nonparametric.nonparametric.NonParametric
-   :members:
-   :show-inheritance:
+.. toctree::
+   :maxdepth: 1
 
-.. autoclass:: surpyval.nonparametric.kaplan_meier.KaplanMeier_
-   :members:
-   :show-inheritance:
+   univariate/non_parametric_class
 
-.. autoclass:: surpyval.nonparametric.nelson_aalen.NelsonAalen_
-   :members:
-   :show-inheritance:
 
-.. autoclass:: surpyval.nonparametric.fleming_harrington.FlemingHarrington_
-   :members:
-   :show-inheritance:
+Non-Parametric Estimators
+-------------------------
 
-.. autoclass:: surpyval.nonparametric.turnbull.Turnbull_
-   :members:
-   :show-inheritance:
+.. toctree::
+   :maxdepth: 1
 
-.. automodule:: surpyval.nonparametric.success_run
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   univariate/kaplan_meier
+   univariate/nelson_aalen
+   univariate/fleming_harrington
+   univariate/turnbull
 
-.. automodule:: surpyval.nonparametric.plotting_positions
-   :members:
-   :undoc-members:
-   :show-inheritance:
+Other Non-Parametric Functions
+------------------------------
 
+.. toctree:: 
+   :maxdepth: 1
+
+   univariate/success_run
+   univariate/plotting_positions
 
 

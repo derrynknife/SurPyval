@@ -6,7 +6,8 @@ The time until some event happens will, almost certainly, be impacted by factors
 
 Regression analysis is the process of capturing the effect that covariates have on the item. That is, we use data on other factors to 'regress' onto the survival distribution. The purpose of this type of regression is so that you can ask, and answer, questions like "what effect will increasing X have on the survival time?"
 
-Surpyval covers three types of regression models. These are:
+Surpyval covers three types of regression models, these are:
+
  - Proportional Hazards,
  - Accelerated Time, and
  - Accelerated Life.
@@ -128,31 +129,31 @@ Where :math:`\Phi` is the CDF of the standard normal distribution. In this case 
 
 An accelerated life model is, therefore, simply a model where the life parameter of a distribution is substituted with a function of the covariates, that is, it 'accelerates' the expected life, as opposed to accelerating time as per an accelerated time model. For each of the distributions in Surpyval their life parameter that varies is as per the following table:
 
-+--------------+------------+
-| Distribution | Life Param |
-+--------------+------------+
-| Weibull      | alpha      |
-+--------------+------------+
-| Exponential  | 1./lambda  |
-+--------------+------------+
-| Normal       | mu         |
-+--------------+------------+
-| LogNormal    | mu         |
-+--------------+------------+
-| Gamma        | alpha      |
-+--------------+------------+
-| Gumbel       | mu         |
-+--------------+------------+
-| Logistic     | mu         |
-+--------------+------------+
-| LogLogistic  | alpha      |
-+--------------+------------+
-| ExpoWeibull  | Not Avail  |
-+--------------+------------+
-| Uniform      | Not Avail  |
-+--------------+------------+
-| Beta         | Not Avail  |
-+--------------+------------+
++------------------+----------------+
+| **Distribution** | **Life Param** |
++------------------+----------------+
+| Weibull          | alpha          |
++------------------+----------------+
+| Exponential      | 1./lambda      |
++------------------+----------------+
+| Normal           | mu             |
++------------------+----------------+
+| LogNormal        | mu             |
++------------------+----------------+
+| Gamma            | alpha          |
++------------------+----------------+
+| Gumbel           | mu             |
++------------------+----------------+
+| Logistic         | mu             |
++------------------+----------------+
+| LogLogistic      | alpha          |
++------------------+----------------+
+| ExpoWeibull      | Not Avail      |
++------------------+----------------+
+| Uniform          | Not Avail      |
++------------------+----------------+
+| Beta             | Not Avail      |
++------------------+----------------+
 
 Given the simple substitution into the life parameter, surpyval uses MLE to calculate the parameters.
 
