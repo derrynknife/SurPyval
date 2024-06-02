@@ -1,9 +1,12 @@
+import warnings
+
 import numpy as np
 from scipy.optimize import minimize
 from scipy.stats import uniform
 
 from surpyval import Weibull
 from surpyval.recurrence.nonparametric import NonParametricCounting
+from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -27,13 +30,78 @@ def kijima_ii_from_prev_interarrival(previous_interarrival_times, q):
 
 
 class GeneralizedRenewal:
+    """
+    A class to handle the generalized renewal process with different Kijima
+    models.
+
+    Since the Generalised Renewal Process does not have closed form solutions
+    for the instantaneous intensity function and the cumulative intensity
+    function these values cannot be calculated directly with this class.
+    Instead, the model can be used to simulate recurrence data which is
+    fitted to a ``NonParametricCounting`` model. This model can then be used
+    to calculate the cumulative intensity function.
+
+    Examples
+    --------
+    >>> from surpyval import GeneralizedRenewal, Weibull
+    >>> import numpy as np
+    >>>
+    >>> x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
+    >>>
+    >>> model = GeneralizedRenewal.fit(x, dist=Weibull)
+    >>> model
+    Generalized Renewal SurPyval Model
+    ==================================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Kijima Type         : i
+    Restoration Factor  : 0.1573211400037486
+    Parameters          :
+        alpha: 1.261338468404201
+        beta: 8.93900788677076
+    >>>
+    >>> np.random.seed(0)
+    >>> np_model = model.count_terminated_simulation(len(x), 5000)
+    >>> np_model.mcf(np.array([1, 2, 3, 4, 5, 6]))
+    array([0.116     , 1.1804    , 2.4032    , 3.9166    , 5.81163625,
+           8.77859347])
+    """
+
     def __init__(self, model, q, kijima_type="i"):
         self.model = model
         self.q = q
+        self.kijima_type = kijima_type
         if kijima_type == "i":
             self.virtual_age_function = self.kijima_i
         elif kijima_type == "ii":
             self.virtual_age_function = self.kijima_ii
+
+    def __repr__(self):
+        out = (
+            "Generalized Renewal SurPyval Model"
+            + "\n=================================="
+            + f"\nDistribution        : {self.model.dist.name}"
+            + "\nFitted by           : MLE"
+            + f"\nKijima Type         : {self.kijima_type}"
+            + f"\nRestoration Factor  : {self.q}"
+        )
+
+        param_string = "\n".join(
+            [
+                "{:>10}".format(name) + ": " + str(p)
+                for p, name in zip(
+                    self.model.params, self.model.dist.param_names
+                )
+            ]
+        )
+
+        out = (
+            out
+            + "\nParameters          :\n"
+            + "{params}".format(params=param_string)
+        )
+
+        return out
 
     def initialize_simulation(self):
         self.us = uniform.rvs(size=100_000).tolist()
@@ -57,6 +125,23 @@ class GeneralizedRenewal:
         return q * (v + x)
 
     def count_terminated_simulation(self, events, items=1):
+        """
+        Simulate count-terminated recurrence data based on the fitted model.
+
+        Parameters
+        ----------
+
+        events: int
+            Number of events to simulate.
+        items: int, optional
+            Number of items (or sequences) to simulate. Default is 1.
+
+        Returns
+        -------
+
+        NonParametricCounting
+            An NonParametricCounting model built from the simulated data.
+        """
         q = self.q
         self.initialize_simulation()
 
@@ -88,6 +173,33 @@ class GeneralizedRenewal:
         return model
 
     def time_terminated_simulation(self, T, items=1, tol=1e-2):
+        """
+        Simulate time-terminated recurrence data based on the fitted model.
+
+        Parameters
+        ----------
+
+        T: float
+            Time termination value.
+        items: int, optional
+            Number of items (or sequences) to simulate. Default is 1.
+        tol: float, optional
+            Tolerance for interarrival times to stop an individual sequence.
+
+        Returns
+        -------
+
+        NonParametricCounting
+            An NonParametricCounting model built from the simulated data.
+
+        Warnings
+        --------
+
+        If any of the simulated sequences seem to not reach the time
+        termination value T due to possible asymptote, a warning message will
+        be printed to notify the user about potential convergence problems in
+        the simulation.
+        """
         q = self.q
         self.initialize_simulation()
         convergence_problem = False
@@ -124,20 +236,16 @@ class GeneralizedRenewal:
         self.clear_simulation()
 
         if convergence_problem:
-            print("Warning: Convergence Problem")
+            warnings.warn("Warning: Convergence Problem")
         model = NonParametricCounting.fit(**xicn)
         model.var = None
         return model
 
     @classmethod
     def create_negll_func(cls, data, dist, kijima="i"):
-        """
-        The negative log-likelihood function for the generalized renewal model
-        cannot account for left or interval censored data.
-        """
         _, idx = np.unique(data.i, return_index=True)
         c = data.c
-        x_interarrival = data.find_interarrival_times()
+        x_interarrival = data.get_interarrival_times()
 
         if kijima == "i":
             arrival_times = np.split(data.x, idx)[1:]
@@ -193,57 +301,212 @@ class GeneralizedRenewal:
     def fit_from_recurrent_data(
         cls, data, dist=Weibull, kijima="i", init=None
     ):
+        """
+        Fit the generalized renewal model from recurrent data.
+
+        Parameters
+        ----------
+
+        data : RecurrentData
+            Data containing the recurrence details.
+        dist : Distribution, optional
+            A surpyval distribution object. Default is Weibull.
+        kijima : str, optional
+            Type of Kijima model to use, either "i" or "ii". Default is "i".
+        init : list, optional
+            Initial parameters for the optimization algorithm.
+
+        Returns
+        -------
+
+        GeneralizedRenewal
+            A fitted GeneralizedRenewal object.
+
+        Example
+        -------
+
+        >>> from surpyval import GeneralizedRenewal, Weibull, handle_xicn
+        >>> import numpy as np
+        >>>
+        >>> x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+        >>> c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 , 1])
+        >>> i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+        >>>
+        >>> recurrent_data = handle_xicn(x, i, c)
+        >>>
+        >>> model = GeneralizedRenewal.fit_from_recurrent_data(recurrent_data)
+        >>> model
+        Generalized Renewal SurPyval Model
+        ==================================
+        Distribution        : Weibull
+        Fitted by           : MLE
+        Kijima Type         : i
+        Restoration Factor  : 1.594694243423234e-11
+        Parameters          :
+            alpha: 2.399029078569064
+            beta: 2.753920439616154
+        """
         first_events = data.get_times_to_first_events()
         if init is None:
-            try:
+            if len(first_events.x) < 2:
+                dist_params = None
+            else:
+                try:
+                    dist_params = dist.fit(
+                        first_events.x, first_events.c, first_events.n
+                    ).params
+                    if dist_params.isna().any():
+                        dist_params = None
+                except Exception:
+                    dist_params = None
+
+            if dist_params is None:
                 dist_params = dist.fit(
-                    first_events.x, first_events.c, first_events.n
-                ).params
-            except Exception:
-                dist_params = dist.fit(
-                    first_events.interarrival_times,
-                    first_events.c,
-                    first_events.n,
+                    data.interarrival_times,
+                    data.c,
+                    data.n,
                 ).params
 
-        neg_ll = cls.create_negll_func(data, dist, kijima=kijima)
+        param_map = {"q": 0, **dist.param_map}
+        transform, inv_trans, _, _, not_fixed = bounds_convert(
+            data.x, [(0, None), *dist.bounds], {}, param_map
+        )
+
+        neg_ll_bounded = cls.create_negll_func(data, dist, kijima=kijima)
+        neg_ll_unbounded = lambda params: neg_ll_bounded(  # noqa: E731
+            inv_trans(params)
+        )
 
         if init is None:
             # Iterate over different initial values for q
             # result is (very!!) sensitive to initial value of q
             results = []
             for q_init in [0.0001, 1.0, 2.0]:
-                init = [q_init, *dist_params]
+                init = transform(np.array([1, *dist_params]))
                 res = minimize(
-                    neg_ll,
+                    neg_ll_unbounded,
                     init,
-                    bounds=[(0, None), *dist.bounds],
                     method="Nelder-Mead",
                 )
                 if res.success:
                     results.append(res)
             res = results[np.argmin([res.fun for res in results])]
         else:
+            init = transform(np.array(init))
             res = minimize(
-                neg_ll,
+                neg_ll_unbounded,
                 init,
-                bounds=[(0, None), *dist.bounds],
                 method="Nelder-Mead",
             )
 
-        model = dist.from_params(list(res.x[1:]))
-        q = res.x[0]
+        q, *dist_params = inv_trans(res.x)
+        q = q
+        model = dist.from_params(list(dist_params))
         out = cls(model, q, kijima)
         out.res = res
+        out.data = data
 
         return out
 
     @classmethod
-    def fit(cls, x, i, c, n, dist=Weibull, kijima="i", init=None):
+    def fit(
+        cls, x, i=None, c=None, n=None, dist=Weibull, kijima="i", init=None
+    ):
+        """
+        Fit the generalized renewal model.
+
+        Parameters
+        ----------
+
+        x : array_like
+            An array of event times.
+        i : array_like, optional
+            An array of item indices.
+        c : array_like, optional
+            An array of censoring indicators.
+        n : array_like, optional
+            An array of counts.
+        dist : object, optional
+            A surpyval distribution object. Default is Weibull.
+        kijima : str, optional
+            Type of Kijima model to use, either "i" or "ii". Default is "i".
+        init : list, optional
+            Initial parameters for the optimization algorithm.
+
+        Returns
+        -------
+
+        GeneralizedRenewal
+            A fitted GeneralizedRenewal object.
+
+        Example
+        -------
+
+        >>> from surpyval import GeneralizedRenewal, Weibull
+        >>> import numpy as np
+        >>>
+        >>> x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+        >>> c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 , 1])
+        >>> i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+        >>>
+        >>> model = GeneralizedRenewal.fit(x, i, c=c)
+        >>> model
+        Generalized Renewal SurPyval Model
+        ==================================
+        Distribution        : Weibull
+        Fitted by           : MLE
+        Kijima Type         : i
+        Restoration Factor  : 1.594694243423234e-11
+        Parameters          :
+            alpha: 2.399029078569064
+            beta: 2.753920439616154
+        """
         data = handle_xicn(x, i, c, n, as_recurrent_data=True)
         return cls.fit_from_recurrent_data(data, dist, kijima, init=init)
 
     @classmethod
     def fit_from_parameters(cls, params, q, kijima="i", dist=Weibull):
+        """
+        Fit the generalized renewal model from given parameters.
+
+        Parameters
+        ----------
+
+        params : list
+            A list of parameters for the survival analysis distribution.
+        q : float
+            Restoration factor used in the Kijima models.
+        kijima : str, optional
+            Type of Kijima model to use, either "i" or "ii". Default is "i".
+        dist : object, optional
+            A surpyval distribution object. Default is Weibull.
+
+        Returns
+        -------
+
+        GeneralizedRenewal
+            A fitted GeneralizedRenewal object.
+
+        Example
+        -------
+
+        >>> from surpyval import GeneralizedRenewal, Normal
+        >>>
+        >>> model = GeneralizedRenewal.fit_from_parameters(
+            [10, 2],
+            0.2,
+            dist=Normal
+        )
+        >>> model
+        Generalized Renewal SurPyval Model
+        ==================================
+        Distribution        : Normal
+        Fitted by           : MLE
+        Kijima Type         : i
+        Restoration Factor  : 0.2
+        Parameters          :
+                mu: 10
+            sigma: 2
+        """
         model = dist.from_params(params)
         return cls(model, q, kijima)

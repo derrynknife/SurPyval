@@ -11,10 +11,72 @@ from surpyval.utils.recurrent_utils import handle_xicn
 DT_WARN = "Small increment encountered, may have trouble reaching T."
 
 
-class G1Renewal:
+class GeneralizedOneRenewal:
+    """
+    A class to handle the generalized renewal process with different Kijima
+    models.
+
+    Since the Generalised One Renewal Process does not have closed form
+    solutions for the instantaneous intensity function and the cumulative
+    intensity function these values cannot be calculated directly with this
+    class. Instead, the model can be used to simulate recurrence data which is
+    fitted to a ``NonParametricCounting`` model. This model can then be used
+    to calculate the cumulative intensity function.
+
+    Examples
+    --------
+    >>> from surpyval import GeneralizedOneRenewal, Weibull
+    >>> import numpy as np
+    >>>
+    >>> x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
+    >>>
+    >>> model = GeneralizedOneRenewal.fit(x, dist=Weibull)
+    >>> model
+    G1 Renewal SurPyval Model
+    =========================
+    Distribution        : Weibull
+    Fitted by           : MLE
+    Restoration Factor  : -0.1730184624683848
+    Parameters          :
+        alpha: 1.3919045967886952
+         beta: 5.0088611892336115
+    >>>
+    >>> np.random.seed(0)
+    >>> np_model = model.count_terminated_simulation(len(x), 5000)
+    >>> np_model.mcf(np.array([1, 2, 3, 4, 5, 6]))
+    array([0.1696    , 1.181     , 2.287     , 3.6694    , 5.58237925,
+           8.54474531])
+    """
+
     def __init__(self, model, q):
         self.model = model
         self.q = q
+
+    def __repr__(self):
+        out = (
+            "G1 Renewal SurPyval Model"
+            + "\n========================="
+            + f"\nDistribution        : {self.model.dist.name}"
+            + "\nFitted by           : MLE"
+            + f"\nRestoration Factor  : {self.q}"
+        )
+
+        param_string = "\n".join(
+            [
+                "{:>10}".format(name) + ": " + str(p)
+                for p, name in zip(
+                    self.model.params, self.model.dist.param_names
+                )
+            ]
+        )
+
+        out = (
+            out
+            + "\nParameters          :\n"
+            + "{params}".format(params=param_string)
+        )
+
+        return out
 
     def initialize_simulation(self):
         self.us = uniform.rvs(size=100_000).tolist()
@@ -30,6 +92,23 @@ class G1Renewal:
             return self.us.pop()
 
     def count_terminated_simulation(self, events, items=1):
+        """
+        Simulate count-terminated recurrence data based on the fitted model.
+
+        Parameters
+        ----------
+
+        events: int
+            Number of events to simulate.
+        items: int, optional
+            Number of items (or sequences) to simulate. Default is 1.
+
+        Returns
+        -------
+
+        NonParametricCounting
+            An NonParametricCounting model built from the simulated data.
+        """
         life, *scale = self.model.params
         q = self.q
         self.initialize_simulation()
@@ -61,6 +140,33 @@ class G1Renewal:
         return model
 
     def time_terminated_simulation(self, T, items=1, tol=1e-5):
+        """
+        Simulate time-terminated recurrence data based on the fitted model.
+
+        Parameters
+        ----------
+
+        T: float
+            Time termination value.
+        items: int, optional
+            Number of items (or sequences) to simulate. Default is 1.
+        tol: float, optional
+            Tolerance for interarrival times to stop an individual sequence.
+
+        Returns
+        -------
+
+        NonParametricCounting
+            An NonParametricCounting model built from the simulated data.
+
+        Warnings
+        --------
+
+        If any of the simulated sequences seem to not reach the time
+        termination value T due to possible asymptote, a warning message will
+        be printed to notify the user about potential convergence problems in
+        the simulation.
+        """
         life, *scale = self.model.params
         q = self.q
         self.initialize_simulation()
@@ -136,6 +242,50 @@ class G1Renewal:
 
     @classmethod
     def fit_from_recurrent_data(cls, data, dist=Weibull, init=None):
+        """
+        Fit the generalized renewal model from recurrent data.
+
+        Parameters
+        ----------
+
+        data : RecurrentData
+            Data containing the recurrence details.
+        dist : Distribution, optional
+            A surpyval distribution object. Default is Weibull.
+        kijima : str, optional
+            Type of Kijima model to use, either "i" or "ii". Default is "i".
+        init : list, optional
+            Initial parameters for the optimization algorithm.
+
+        Returns
+        -------
+
+        GeneralizedOneRenewal
+            A fitted GeneralizedOneRenewal object.
+
+        Example
+        -------
+
+        >>> from surpyval import GeneralizedOneRenewal, handle_xicn
+        >>> import numpy as np
+        >>>
+        >>> x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+        >>> c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 , 1])
+        >>> i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+        >>>
+        >>> rec_data = handle_xicn(x, i, c)
+        >>>
+        >>> model = GeneralizedOneRenewal.fit_from_recurrent_data(rec_data)
+        >>> model
+        G1 Renewal SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MLE
+        Restoration Factor  : 0.4270960618530103
+        Parameters          :
+            alpha: 1.3494830373118245
+             beta: 2.7838386997223212
+        """
         if init is None:
             dist_params = dist.fit(
                 data.interarrival_times, data.c, data.n
@@ -183,8 +333,100 @@ class G1Renewal:
         return out
 
     @classmethod
-    def fit(cls, x, i, c, n, dist=Weibull, init=None):
-        # Wrangle data
-        # Rest of the data assumes values are in ascending order.
+    def fit(cls, x, i=None, c=None, n=None, dist=Weibull, init=None):
+        """
+        Fit the generalized renewal model.
+
+        Parameters
+        ----------
+
+        x : array_like
+            An array of event times.
+        i : array_like, optional
+            An array of item indices.
+        c : array_like, optional
+            An array of censoring indicators.
+        n : array_like, optional
+            An array of counts.
+        dist : object, optional
+            A surpyval distribution object. Default is Weibull.
+        kijima : str, optional
+            Type of Kijima model to use, either "i" or "ii". Default is "i".
+        init : list, optional
+            Initial parameters for the optimization algorithm.
+
+        Returns
+        -------
+
+        GeneralizedOneRenewal
+            A fitted GeneralizedOneRenewal object.
+
+        Example
+        -------
+
+        >>> from surpyval import GeneralizedOneRenewal
+        >>> import numpy as np
+        >>>
+        >>> x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+        >>> c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0 , 1])
+        >>> i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+        >>>
+        >>> model = GeneralizedOneRenewal.fit(x, i, c=c)
+        >>> model
+        G1 Renewal SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : MLE
+        Restoration Factor  : 0.4270960618530103
+        Parameters          :
+            alpha: 1.3494830373118245
+             beta: 2.7838386997223212
+        """
         data = handle_xicn(x, i, c, n, as_recurrent_data=True)
         return cls.fit_from_recurrent_data(data, dist=dist, init=init)
+
+    @classmethod
+    def fit_from_parameters(cls, params, q, dist=Weibull):
+        """
+        Fit the generalized renewal model from given parameters.
+
+        Parameters
+        ----------
+
+        params : list
+            A list of parameters for the survival analysis distribution.
+        q : float
+            Restoration factor used in the Kijima models.
+        kijima : str, optional
+            Type of Kijima model to use, either "i" or "ii". Default is "i".
+        dist : object, optional
+            A surpyval distribution object. Default is Weibull.
+
+        Returns
+        -------
+
+        GeneralizedOneRenewal
+            A fitted GeneralizedOneRenewal object.
+
+        Example
+        -------
+
+        >>> from surpyval import GeneralizedOneRenewal, Normal
+        >>>
+        >>> model = GeneralizedOneRenewal.fit_from_parameters(
+            [10, 2],
+            0.2,
+            dist=Normal
+        )
+        >>> model
+        G1 Renewal SurPyval Model
+        =========================
+        Distribution        : Normal
+        Fitted by           : MLE
+        Restoration Factor  : 0.2
+        Parameters          :
+                mu: 10
+             sigma: 2
+        """
+        model = dist.from_params(params)
+        return cls(model, q)
