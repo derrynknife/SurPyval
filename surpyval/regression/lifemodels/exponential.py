@@ -26,7 +26,7 @@ class InverseExponential_(LifeModel):
 InverseExponential = InverseExponential_()
 
 
-class Exponential_(LifeModel):
+class ExponentialLifeModel_(LifeModel):
     def __init__(self):
         super().__init__(
             "Exponential",
@@ -45,4 +45,4 @@ class Exponential_(LifeModel):
         return [a, np.exp(b)]
 
 
-Exponential = Exponential_()
+ExponentialLifeModel = ExponentialLifeModel_()

@@ -184,6 +184,7 @@ class Gamma_(ParametricFitter):
         >>> Gamma.ff(x, 3, 2)
         array([0.32332358, 0.76189669, 0.9380312 , 0.98624603, 0.9972306 ])
         """
+        x = np.array(x)
         return agammainc(alpha, beta * x)
 
     def df(self, x, alpha, beta):

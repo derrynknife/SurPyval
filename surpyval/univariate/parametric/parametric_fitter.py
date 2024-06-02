@@ -4,7 +4,8 @@ from scipy.special import expit
 
 import surpyval
 from surpyval import np
-from surpyval.utils import check_x_not_empty
+from surpyval.utils import _check_x_not_empty
+from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..nonparametric import plotting_positions as pp
 from .fitters import bounds_convert
@@ -49,7 +50,7 @@ class ParametricFitter:
     def log_ff(self, x, *params):
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
-    @check_x_not_empty
+    @_check_x_not_empty
     def ll_observed(self, x, n, *params):
         *params, gamma, f0, p = params
         x = x - gamma
@@ -63,7 +64,7 @@ class ParametricFitter:
             + N * np.log(p - f0)
         )
 
-    @check_x_not_empty
+    @_check_x_not_empty
     def ll_right_censored(self, x, n, *params):
         *params, gamma, f0, p = params
         x = x - gamma
@@ -75,7 +76,7 @@ class ParametricFitter:
             # np.sum(n * np.log((1 - p + (p - f0)*self.sf(x, *params))))
             return np.sum(n * np.log(1 - f0 - (p - f0) * F))
 
-    @check_x_not_empty
+    @_check_x_not_empty
     def ll_left_censored(self, x, n, *params):
         *params, gamma, f0, p = params
         x = x - gamma
@@ -84,7 +85,7 @@ class ParametricFitter:
         else:
             return np.sum(n * np.log(f0 + (p - f0) * self.ff(x, *params)))
 
-    @check_x_not_empty
+    @_check_x_not_empty
     def ll_interval_or_truncated(self, xl, xr, n, *params):
         *params, gamma, f0, p = params
         xr = xr - gamma
@@ -335,7 +336,7 @@ class ParametricFitter:
         on_d_is_0=False,
         turnbull_estimator="Fleming-Harrington",
     ):
-        r"""
+        """
 
         The central feature to SurPyval's capability. This function aimed to
         have an API to mimic the simplicity of the scipy API. That is, to use
@@ -363,11 +364,11 @@ class ParametricFitter:
         how : {'MLE', 'MPP', 'MOM', 'MSE', 'MPS'}, optional
             Method to estimate parameters, these are:
 
-                - MLE : Maximum Likelihood Estimation
-                - MPP : Method of Probability Plotting
-                - MOM : Method of Moments
-                - MSE : Mean Square Error
-                - MPS : Maximum Product Spacing
+                - MLE, Maximum Likelihood Estimation
+                - MPP, Method of Probability Plotting
+                - MOM, Method of Moments
+                - MSE, Mean Square Error
+                - MPS, Maximum Product Spacing
 
         offset : boolean, optional
             If :code:`True` finds the shifted distribution. If not provided
@@ -399,18 +400,20 @@ class ParametricFitter:
             Dictionary of parameters and their values to fix. Fixes parameter
             by name.
 
-        heuristic : {'"Blom", "Median", "ECDF", "Modal", "Midpoint", "Mean",
-                      "Weibull", "Benard", "Beard", "Hazen", "Gringorten",
-                      "None", "Tukey", "DPW", "Fleming-Harrington",
-                      "Kaplan-Meier", "Nelson-Aalen", "Filliben",
-                      "Larsen", "Turnbull"}
+        heuristic : {"Blom", "Median", "ECDF", "Modal", "Midpoint", "Mean",\
+            "Weibull", "Benard", "Beard", "Hazen", "Gringorten",\
+            "None", "Tukey", "DPW", "Fleming-Harrington",\
+            "Kaplan-Meier", "Nelson-Aalen", "Filliben",\
+            "Larsen", "Turnbull"}, str, optional.
             Plotting method to use, if using the probability plotting,
             MPP, method.
 
         init : array like, optional
-            initial guess of parameters. Useful if method is failing.
+            initial guess of parameters. Instead of finding an initial guess
+            for the optimization you can provide one. Can be useful to see if
+            optimization is failing due to poor initial guess.
 
-        rr : ('y', 'x')
+        rr : {'y', 'x'}, str, optional
             The dimension on which to minimise the spacing between the line
             and the observation. If 'y' the mean square error between the
             line and vertical distance to each point is minimised. If 'x' the
@@ -419,14 +422,14 @@ class ParametricFitter:
 
         on_d_is_0 : boolean, optional
             For the case when using MPP and the highest value is right
-            censored, you can choosed to include this value into the
+            censored, you can choose to include this value into the
             regression analysis or not. That is, if :code:`False`, all values
             where there are 0 deaths are excluded from the regression. If
             :code:`True` all values regardless of whether there is a death
             or not are included in the regression.
 
-        turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier', or
-                              'Fleming-Harrington'), str, optional
+        turnbull_estimator : {'Nelson-Aalen', 'Kaplan-Meier', or\
+            'Fleming-Harrington'), str, optional
             If using the Turnbull heuristic, you can elect to use either the
             KM, NA, or FH estimator with the Turnbull estimates of r, and d.
             Defaults to FH.
@@ -434,7 +437,7 @@ class ParametricFitter:
         Returns
         -------
 
-        model : Parametric
+        Parametric
             A parametric model with the fitted parameters and methods for
             all functions of the distribution using the fitted parameters.
 
@@ -483,16 +486,8 @@ class ParametricFitter:
               beta: 4.9886821457305865
         """
 
-        surv_data = surpyval.xcnt_handler(
-            x=x,
-            c=c,
-            n=n,
-            t=t,
-            tl=tl,
-            tr=tr,
-            xl=xl,
-            xr=xr,
-            as_surpyval_dataset=True,
+        surv_data = SurpyvalData(
+            x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
         )
         return self.fit_from_surpyval_data(
             surv_data,
@@ -573,7 +568,7 @@ class ParametricFitter:
         Returns
         -------
 
-        model : Parametric
+        Parametric
             A parametric model with the fitted parameters and methods for
             all functions of the distribution using the fitted parameters.
 
@@ -581,7 +576,7 @@ class ParametricFitter:
         Examples
         --------
         >>> import surpyval as surv
-        >>> df = surv.datasets.BoforsSteel.df
+        >>> df = surv.datasets.BoforsSteel.data
         >>> model = surv.Weibull.fit_from_df(df, x='x', n='n', offset=True)
         >>> print(model)
         Parametric SurPyval Model
@@ -665,7 +660,7 @@ class ParametricFitter:
         on_d_is_0=False,
         turnbull_estimator="Fleming-Harrington",
     ):
-        r"""
+        """
 
         The central feature to SurPyval's capability. This function aimed to
         have an API to mimic the simplicity of the scipy API. That is, to use
@@ -675,142 +670,19 @@ class ParametricFitter:
         Parameters
         ----------
 
-        x : array like, optional
-            Array of observations of the random variables. If x is
-            :code:`None`, xl and xr must be provided.
-        c : array like, optional
-            Array of censoring flag. -1 is left censored, 0 is observed, 1 is
-            right censored, and 2 is intervally censored. If not provided
-            will assume all values are observed.
-        n : array like, optional
-            Array of counts for each x. If data is proivded as counts, then
-            this can be provided. If :code:`None` will assume each
-            observation is 1.
-        t : 2D-array like, optional
-            2D array like of the left and right values at which the
-            respective observation was truncated. If not provided it assumes
-            that no truncation occurs.
-        how : {'MLE', 'MPP', 'MOM', 'MSE', 'MPS'}, optional
-            Method to estimate parameters, these are:
+        surv_data : SurpyvalData
+            Survival data in the SurpyvalData class.
 
-                - MLE : Maximum Likelihood Estimation
-                - MPP : Method of Probability Plotting
-                - MOM : Method of Moments
-                - MSE : Mean Square Error
-                - MPS : Maximum Product Spacing
 
-        offset : boolean, optional
-            If :code:`True` finds the shifted distribution. If not provided
-            assumes not a shifted distribution. Only works with distributions
-            that are supported on the half-real line.
-
-        tl : array like or scalar, optional
-            Values of left truncation for observations. If it is a scalar
-            value assumes each observation is left truncated at the value.
-            If an array, it is the respective 'late entry' of the observation
-
-        tr : array like or scalar, optional
-            Values of right truncation for observations. If it is a scalar
-            value assumes each observation is right truncated at the value.
-            If an array, it is the respective right truncation value for each
-            observation
-
-        xl : array like, optional
-            Array like of the left array for 2-dimensional input of x. This
-            is useful for data that is all intervally censored. Must be used
-            with the :code:`xr` input.
-
-        xr : array like, optional
-            Array like of the right array for 2-dimensional input of x. This
-            is useful for data that is all intervally censored. Must be used
-            with the :code:`xl` input.
-
-        fixed : dict, optional
-            Dictionary of parameters and their values to fix. Fixes parameter
-            by name.
-
-        heuristic : {'"Blom", "Median", "ECDF", "Modal", "Midpoint", "Mean",
-                      "Weibull", "Benard", "Beard", "Hazen", "Gringorten",
-                      "None", "Tukey", "DPW", "Fleming-Harrington",
-                      "Kaplan-Meier", "Nelson-Aalen", "Filliben",
-                      "Larsen", "Turnbull"}
-            Plotting method to use, if using the probability plotting,
-            MPP, method.
-
-        init : array like, optional
-            initial guess of parameters. Useful if method is failing.
-
-        rr : ('y', 'x')
-            The dimension on which to minimise the spacing between the line
-            and the observation. If 'y' the mean square error between the
-            line and vertical distance to each point is minimised. If 'x' the
-            mean square error between the line and horizontal distance to each
-            point is minimised.
-
-        on_d_is_0 : boolean, optional
-            For the case when using MPP and the highest value is right
-            censored, you can choosed to include this value into the
-            regression analysis or not. That is, if :code:`False`, all values
-            where there are 0 deaths are excluded from the regression. If
-            :code:`True` all values regardless of whether there is a death
-            or not are included in the regression.
-
-        turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier', or
-                              'Fleming-Harrington'), str, optional
-            If using the Turnbull heuristic, you can elect to use either the
-            KM, NA, or FH estimator with the Turnbull estimates of r, and d.
-            Defaults to FH.
+        For other input options see :code:`fit` method.
 
         Returns
         -------
 
-        model : Parametric
+        Parametric
             A parametric model with the fitted parameters and methods for
             all functions of the distribution using the fitted parameters.
 
-        Examples
-        --------
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> x = Weibull.random(100, 10, 4)
-        >>> model = Weibull.fit(x)
-        >>> print(model)
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MLE
-        Parameters          :
-             alpha: 10.551521182640098
-              beta: 3.792549834495306
-        >>> Weibull.fit(x, how='MPS', fixed={'alpha' : 10})
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MPS
-        Parameters          :
-             alpha: 10.0
-              beta: 3.4314657446866836
-        >>> Weibull.fit(xl=x-1, xr=x+1, how='MPP')
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MPP
-        Parameters          :
-             alpha: 9.943092756713078
-              beta: 8.613016934518258
-        >>> c = np.zeros_like(x)
-        >>> c[x > 13] = 1
-        >>> x[x > 13] = 13
-        >>> c = c[x > 6]
-        >>> x = x[x > 6]
-        >>> Weibull.fit(x=x, c=c, tl=6)
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MLE
-        Parameters          :
-             alpha: 10.363725328793413
-              beta: 4.9886821457305865
         """
         x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
         # Unpack the truncation
@@ -878,7 +750,7 @@ class ParametricFitter:
 
                 # check if the one support is -inf or inf and the other is
                 # finite. If it isn't, then the distribution cannot be offset.
-                # i.e if both finite or both infinite, then cannot be offset.,
+                # i.e if both finite or both infinite, then cannot be offset,
                 # zero-inflated, or limited failure.
                 if np.all(np.isinf(self.support)) or np.all(
                     np.isfinite(self.support)
@@ -917,11 +789,7 @@ class ParametricFitter:
                     )
 
                     max_F = np.max(F)
-
-                    if max_F > 0.5:
-                        init = np.concatenate([init, [0.99]])
-                    else:
-                        init = np.concatenate([init, [max_F]])
+                    init = np.concatenate([init, [min(0.6, max_F)]])
 
                 if zi:
                     if x.ndim == 2:
@@ -1000,14 +868,21 @@ class ParametricFitter:
             offset value for the distribution. If not provided will fit a
             regular, unshifted/not offset, distribution.
 
+        p : scalar, optional
+            The proportion of the population that will never die or fail. If
+            used it must be a value between 0 and 1. If None will assume 1,
+            i.e. no proportion of the population will never die or fail.
+
+        f0 : scalar, optional
+            The proportion of the population that will die or fail at time 0.
+            If used it must be a value between 0 and 1. If None will assume 0,
+            i.e. no proportion of the population will die or fail at time 0.
 
         Returns
         -------
 
-        model : Parametric
-            A parametric model with the fitted parameters and methods for all
-            functions of the distribution using the
-            fitted parameters.
+        Parametric
+            A parametric model with the parameters provided.
 
 
         Examples

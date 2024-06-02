@@ -1,6 +1,6 @@
 from .dual_exponential import DualExponential
 from .dual_power import DualPower
-from .exponential import Exponential, InverseExponential
+from .exponential import ExponentialLifeModel, InverseExponential
 from .eyring import Eyring, InverseEyring
 from .general_log_linear import GeneralLogLinear
 from .linear import Linear

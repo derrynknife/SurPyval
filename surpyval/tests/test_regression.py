@@ -9,9 +9,8 @@ Copyright 2022 Cartiga LLC
 
 import numpy as np
 
+from surpyval.datasets import load_lung, load_rossi_static
 from surpyval.regression import CoxPH
-
-from ..datasets import Lung, Rossi
 
 
 def test_coxph_against_ll_rossi_static():
@@ -27,7 +26,7 @@ def test_coxph_against_ll_rossi_static():
         ]
     )
 
-    rossi = Rossi.data
+    rossi = load_rossi_static()
     model = CoxPH.fit_from_df(
         rossi,
         x_col="week",
@@ -46,7 +45,7 @@ def test_coxph_against_ll_rossi_static():
 def test_coxph_against_r_lung_1():
     r_answer = np.array([-0.5310235])
 
-    lung = Lung.data
+    lung = load_lung()
     x = lung["time"].values
     c = lung["status"].values
     Z = lung[["sex"]].values
@@ -59,7 +58,7 @@ def test_coxph_against_r_lung_1():
 def test_coxph_against_r_lung_2():
     r_answer = np.array([0.01106676, -0.55261240, 0.46372848])
 
-    lung = Lung.data
+    lung = load_lung()
     model = CoxPH.fit_from_df(
         lung,
         x_col="time",

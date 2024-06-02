@@ -1,13 +1,14 @@
 import autograd.numpy as np
+from matplotlib import pyplot as plt
 from scipy.stats import uniform
 
-from surpyval.utils import fsli_to_xcn
+from surpyval.utils import fsli_to_xcnt
 
 
-class Regression:
+class ParametricRegressionModel:
     """
-    Result of ``.fit()`` or ``.from_params()`` method for every parametric
-    surpyval distribution.
+    Result of ``.fit()`` or ``.from_params()`` method for parametric
+    regression modelling.
 
     Instances of this class are very useful when a user needs the other
     functions of a distribution for plotting, optimizations, monte carlo
@@ -22,7 +23,6 @@ class Regression:
             [
                 "{:>10}".format(name) + ": " + str(p)
                 for p, name in zip(dist_params, self.distribution.param_names)
-                if name not in self.fixed
             ]
         )
 
@@ -298,7 +298,7 @@ class Regression:
             )
             s = np.ones(np.array(size) - n_obs) * np.max(f) + 1
 
-            return fsli_to_xcn(f, s)
+            return fsli_to_xcnt(f, s)
 
         elif (self.p == 1) and (self.f0 != 0):
             n_doa = np.random.binomial(size, self.f0)
@@ -327,7 +327,7 @@ class Regression:
             s = np.ones(n_cens) * np.max(f) + 1
             # raise NotImplementedError("Combo zero-inflated and lfp model not
             # yet supported")
-            return fsli_to_xcn(f, s)
+            return fsli_to_xcnt(f, s)
 
     def neg_ll(self):
         r"""
@@ -479,3 +479,23 @@ class Regression:
             n = self.data["n"].sum()
             self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
             return self._aic_c
+
+    def plot(self, ax=None):
+        r"""
+
+        A method to plot the survival function, cumulative hazard function,
+        hazard function and density function of the distribution using the
+        parameters found in the ``.params`` attribute.
+
+        """
+
+        if ax is None:
+            ax = plt.gca()
+
+        x, r, d = self.data.to_xrd()
+        x_plot = np.linspace(self.data.x.min(), self.data.x.max(), 1000)
+
+        ax.step(x, np.exp(-(d / r).cumsum()), color="r", where="post")
+        sf = self.sf(x_plot, self.data.Z.mean(axis=0))
+        ax.plot(x_plot, sf, color="b")
+        return ax

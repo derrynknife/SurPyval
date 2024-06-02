@@ -12,19 +12,9 @@ from scipy.stats import uniform
 import surpyval as surv
 from surpyval import Distribution, np
 from surpyval.univariate.nonparametric import plotting_positions
-from surpyval.utils import fsli_to_xcn, round_sig
+from surpyval.utils import _round_vals, fsli_to_xcnt
 
 CB_COLOUR = "#e94c54"
-
-
-def _round_vals(x):
-    not_different = True
-    i = 1
-    while not_different:
-        x_ticks = np.array(round_sig(x, i))
-        not_different = (np.diff(x_ticks) == 0).any()
-        i += 1
-    return x_ticks
 
 
 class Parametric(Distribution):
@@ -394,7 +384,7 @@ class Parametric(Distribution):
             return 1 - self.p * self.dist.ff(x - self.gamma, *self.params)
 
     def Hf(self, x):
-        r"""
+        """
         The cumulative hazard function for a distribution using the
         parameters found in the ``.params`` attribute.
 
@@ -582,7 +572,7 @@ class Parametric(Distribution):
             )
             s = np.ones(np.array(size) - n_obs) * np.max(f) + 1
 
-            return fsli_to_xcn(f, s)
+            return fsli_to_xcnt(f, s)
 
         elif (self.p == 1) and (self.f0 != 0):
             n_doa = np.random.binomial(size, self.f0)
@@ -612,7 +602,7 @@ class Parametric(Distribution):
 
             f = np.concatenate([x, x0])
             s = np.ones(n_cens) * np.max(f) + 1
-            return fsli_to_xcn(f, s)
+            return fsli_to_xcnt(f, s)
 
     def mean(self):
         r"""
@@ -650,10 +640,6 @@ class Parametric(Distribution):
         -------
         moment[n] : float
             Returns the n-th moment of the distribution
-
-        References
-        ----------
-        INSERT WIKIPEDIA HERE
 
         Examples
         --------
@@ -884,8 +870,8 @@ class Parametric(Distribution):
         >>> model.bic()
         534.2640532196908
 
-        References:
-        -----------
+        References
+        ----------
 
         `Bayesian Information Criterion for Censored Survival Models
         <https://www.jstor.org/stable/2677130>`_.
@@ -961,18 +947,19 @@ class Parametric(Distribution):
             return self._aic_c
 
     def get_plot_data(self, heuristic="Nelson-Aalen", alpha_ci=0.05):
-        r"""
+        """
 
         A method to gather plot data
 
         Parameters
         ----------
-        heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean',
-        'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None', 'Tukey',
-        'DPW', 'Fleming-Harrington', 'Kaplan-Meier', 'Nelson-Aalen',
-        'Filliben', 'Larsen', 'Turnbull'}, optional
+
+        heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean',\
+            'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None',\
+            'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier',\
+            'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
             The method that the plotting point on the probablility plot will
-            be calculated.
+            be calculated. Default is "Nelson-Aalen".
 
         alpha_ci : float, optional
             The confidence with which the confidence bounds, if able, will
@@ -980,6 +967,7 @@ class Parametric(Distribution):
 
         Returns
         -------
+
         data : dict
             Returns dictionary containing the data needed to do a plot.
 
@@ -1119,15 +1107,16 @@ class Parametric(Distribution):
         alpha_ci=0.05,
         ax=None,
     ):
-        r"""
+        """
         A method to do a probability plot
 
         Parameters
         ----------
-        heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean',
-        'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None', 'Tukey',
-        'DPW', 'Fleming-Harrington', 'Kaplan-Meier', 'Nelson-Aalen',
-        'Filliben', 'Larsen', 'Turnbull'}, optional
+
+        heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean', \
+            'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None',\
+            'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier',\
+            'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
             The method that the plotting point on the probablility plot will
             be calculated.
 
@@ -1145,11 +1134,13 @@ class Parametric(Distribution):
 
         Returns
         -------
+
         plot : list
             list of a matplotlib plot object
 
         Examples
         --------
+
         >>> from surpyval import Weibull
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)

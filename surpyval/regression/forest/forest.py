@@ -3,7 +3,6 @@ from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.regression.forest.tree import SurvivalTree
-from surpyval.utils import xcnt_handler
 from surpyval.utils.score import score
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -80,9 +79,7 @@ class RandomSurvivalForest:
     ):
         parametric = parse_leaf_type(leaf_type)
 
-        data = xcnt_handler(
-            x, c, n, t, group_and_sort=False, as_surpyval_dataset=True
-        )
+        data = SurpyvalData(x, c, n, t, group_and_sort=False)
         Z = np.array(Z, ndmin=2)
         return cls(
             data,

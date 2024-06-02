@@ -1,11 +1,10 @@
-"""
-This code was created for and sponsored by Cartiga (www.cartiga.com).
-Cartiga makes no representations or warranties in connection with the code
-and waives any and all liability in connection therewith. Your use of the
-code constitutes acceptance of these terms.
+# This code was created for and sponsored by Cartiga (www.cartiga.com).
+# Cartiga makes no representations or warranties in connection with the code
+# and waives any and all liability in connection therewith. Your use of the
+# code constitutes acceptance of these terms.
 
-Copyright 2022 Cartiga LLC
-"""
+# Copyright 2022 Cartiga LLC
+
 
 from copy import copy
 
@@ -25,8 +24,7 @@ from surpyval.univariate.nonparametric import (
 )
 
 from ..utils import validate_coxph, validate_coxph_df_inputs
-from .proportional_hazards import ProportionalHazardsModel
-from .regression import Regression
+from .semi_parametric_regression_model import SemiParametricRegressionModel
 
 nonparametric_dists = {
     "Nelson-Aalen": NelsonAalen,
@@ -65,13 +63,12 @@ def efron_jit(n_d, Ri, Di, out):
 
 
 def efron_jac(n_d, Ri, ZRi, Di, ZDi, masked_array):
-    """
-    Vectorised implementation of term two of the efron ll
-    jacobian.
+    # Vectorised implementation of term two of the efron ll
+    # jacobian.
 
-    This implementation runs the risk of large memory usage
-    given the 3D array that is created.
-    """
+    # This implementation runs the risk of large memory usage
+    # given the 3D array that is created.
+
     r = masked_array / n_d
 
     denom = Ri - Di * r
@@ -121,16 +118,13 @@ def at_risk_beta_Z(arr, n, gb_x):
 
 
 class CoxPH_:
-    """
-    Best reference I can find that covers all the
-    possibilities for estimating betas
-    http://www-personal.umich.edu/~yili/lect4notes.pdf
-    """
+    # Best reference I can find that covers all the
+    # possibilities for estimating betas
+    # http://www-personal.umich.edu/~yili/lect4notes.pdf
 
     def baseline(self, beta, x, c, n, Z):
-        """
-        Uses the Breslow method to compute the baseline hazard.
-        """
+        # Uses the Breslow method to compute the baseline hazard.
+
         unique_x = np.unique(x)
 
         d = np.zeros_like(unique_x)
@@ -150,10 +144,8 @@ class CoxPH_:
     def create_efron_ll_jac_hess(
         self, x, Z, c, n, tl, with_jac=True, with_hess=True
     ):
-        """
-        The reference used to compute the jacobian and hessian
-        was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
-        """
+        # The reference used to compute the jacobian and hessian
+        # was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
         # TODO: Incorporate left-truncation... somehow.
         # left truncation allows for implementation of time-varying covariates
 
@@ -283,10 +275,9 @@ class CoxPH_:
         return log_like, jac_hess, False
 
     def create_breslow_ll_jac_hess(self, x, Z, c, n, tl):
-        """
-        The reference used to compute the jacobian and hessian
-        was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
-        """
+        # The reference used to compute the jacobian and hessian
+        # was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
+
         # TODO: Incorporate left-truncation... somehow.
         # left truncation allows for implementation of time-varying covariates
 
@@ -394,7 +385,31 @@ class CoxPH_:
 
     def fit(self, x, Z, c=None, n=None, tl=None, method="breslow", tol=1e-10):
         """
-        Need to add shape checking of x, c, n
+        Fits Cox Proportional Hazards model to the provided data.
+
+        Parameters
+        ----------
+
+        x: array-like
+            The observed times of the events.
+        Z: array-like
+            The covariates of the model.
+        c: array-like, optional
+            The censoring indicator. 1 if observed, 0 if censored.
+        n: array-like, optional
+            The number of observations at each time point.
+        tl: array-like, optional
+            The left-truncation times of the observations.
+        method: str, optional
+            The method to use for tie handling. Either 'efron' or 'breslow'.
+        tol: float, optional
+            The tolerance for the root finding algorithm.
+
+        Returns
+        -------
+
+        model: SemiParametricProportionalHazardsModel
+            The fitted model.
         """
         x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, method)
 
@@ -429,8 +444,7 @@ class CoxPH_:
         else:
             p_values = None
 
-        model = Regression()
-        model = ProportionalHazardsModel("Cox", "Semi-Parametric")
+        model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values
         model.neg_ll = neg_ll
@@ -463,6 +477,34 @@ class CoxPH_:
         formula=None,
         method="efron",
     ):
+        """
+        Fits a Cox PH model using a pandas dataframe as the input.
+
+        Parameters
+        ----------
+
+        df: pandas.DataFrame
+            The dataframe containing the data.
+        x_col: str
+            The column name of the observed times.
+        Z_cols: list, optional
+            The column names of the covariates.
+        c_col: str, optional
+            The column name of the censoring indicator.
+        n_col: str, optional
+            The column name of the number of observations at each time point.
+        formula: str, optional
+            The formula to use for the model. If not provided, the column names
+            will be used.
+        method: str, optional
+            The method to use for tie handling. Either 'efron' or 'breslow'.
+
+        Returns
+        -------
+
+        model: SemiParametricProportionalHazardsModel
+            The fitted model.
+        """
         x, c, n, Z, form = validate_coxph_df_inputs(
             df, x_col, c_col, n_col, Z_cols, formula
         )

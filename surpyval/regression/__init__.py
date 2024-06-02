@@ -6,6 +6,8 @@ import autograd.numpy as np
 import surpyval as surv
 from surpyval.regression.lifemodels.lifemodel import LifeModel
 from surpyval.univariate.parametric import (
+    Exponential,
+    Gamma,
     Gumbel,
     Logistic,
     LogNormal,
@@ -21,7 +23,7 @@ from .forest.tree import SurvivalTree
 from .lifemodels import (
     DualExponential,
     DualPower,
-    Exponential,
+    ExponentialLifeModel,
     Eyring,
     GeneralLogLinear,
     InverseExponential,
@@ -32,7 +34,7 @@ from .lifemodels import (
     PowerExponential,
 )
 from .parameter_substitution import ParameterSubstitutionFitter
-from .proportional_hazards import ProportionalHazardsFitter
+from .proportional_hazards_fitter import ProportionalHazardsFitter
 
 # Useful for proportional odds
 # https://data.princeton.edu/pop509/parametricsurvival.pdf
@@ -41,18 +43,19 @@ from .proportional_hazards import ProportionalHazardsFitter
 # CoxPH = CoxProportionalHazardsFitter()
 
 DISTS: list[ParametricFitter] = [
-    surv.Exponential,
+    Exponential,
     Normal,
     Weibull,
     Gumbel,
     Logistic,
     LogNormal,
+    Gamma,
 ]
-LIFE_PARAMS = ["lambda", "mu", "alpha", "mu", "mu", "mu"]
+LIFE_PARAMS = ["lambda", "mu", "alpha", "mu", "mu", "mu", "beta"]
 LIFE_MODELS: list[LifeModel] = [
     Power,
     InversePower,
-    Exponential,
+    ExponentialLifeModel,
     InverseExponential,
     Eyring,
     InverseEyring,
@@ -93,39 +96,27 @@ for dist, parameter in zip(DISTS, LIFE_PARAMS):
 
 # I think the baseline feature should be removed
 # I think the logic behind it was flawed from the start.
-for dist, parameter in zip(DISTS, LIFE_PARAMS):
-    name = dist.name + life_model.name + "AL"
-    vars()[name] = ParameterSubstitutionFitter(
-        "Accelerated Life",
-        name,
-        dist,
-        GeneralLogLinear,
-        parameter,
-        baseline=[parameter],
-        param_transform=life_parameter_transform[dist.name],
-        inverse_param_transform=life_parameter_inverse_transform[dist.name],
-    )
+# for dist, parameter in zip(DISTS, LIFE_PARAMS):
+#     name = dist.name + "GeneralLogLinearAL"
+#     vars()[name] = ParameterSubstitutionFitter(
+#         "Accelerated Life",
+#         name,
+#         dist,
+#         GeneralLogLinear,
+#         parameter,
+#         baseline=[parameter],
+#         param_transform=life_parameter_transform[dist.name],
+#         inverse_param_transform=life_parameter_inverse_transform[dist.name],
+#     )
 
 # Parametric Proportional Hazard
-ExponentialPH = ProportionalHazardsFitter(
-    "ExponentialPH",
-    surv.Exponential,
-    lambda Z, *params: np.exp(np.dot(Z, np.array(params))),
-    lambda Z: (((None, None),) * Z.shape[1]),
-    phi_param_map=lambda Z: {"beta_" + str(i): i for i in range(Z.shape[1])},
-    baseline=[],
-    phi_init=lambda Z: np.zeros(Z.shape[1]),
+ExponentialPH = ProportionalHazardsFitter.create_general_log_linear_fitter(
+    "ExponentialPH", Exponential
 )
 
 # Parametric Proportional Hazard
-WeibullPH = ProportionalHazardsFitter(
-    "WeibullPH",
-    surv.Weibull,
-    lambda Z, *params: np.exp(np.dot(Z, np.array(params))),
-    lambda Z: (((None, None),) * Z.shape[1]),
-    phi_param_map=lambda Z: {"beta_" + str(i): i for i in range(Z.shape[1])},
-    baseline=[],
-    phi_init=lambda Z: np.zeros(Z.shape[1]),
+WeibullPH = ProportionalHazardsFitter.create_general_log_linear_fitter(
+    "WeibullPH", Weibull
 )
 
 

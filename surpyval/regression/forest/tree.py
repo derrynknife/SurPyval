@@ -4,7 +4,6 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.regression.forest.node import build_tree
-from surpyval.utils import xcnt_handler
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -61,9 +60,7 @@ class SurvivalTree:
         n_features_split: int | float | str = "sqrt",
         leaf_type: str = "parametric",
     ):
-        data = xcnt_handler(
-            x, c, n, t, group_and_sort=False, as_surpyval_dataset=True
-        )
+        data = SurpyvalData(x, c, n, t, group_and_sort=False)
         Z = np.array(Z, ndmin=2)
         n_features: int = parse_n_features_split(n_features_split, Z.shape[1])
         return cls(

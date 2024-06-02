@@ -2,7 +2,7 @@ from scipy.stats import fisk, uniform
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
-from surpyval.utils import xcn_handler
+from surpyval.utils import xcnt_handler
 
 
 class LogLogistic_(ParametricFitter):
@@ -78,25 +78,21 @@ class LogLogistic_(ParametricFitter):
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         if offset:
-            # return *self.fit(x, c, n, t, how='MPP').params, 1.
-            x, c, n = xcn_handler(x, c, n)
+            x, c, n, _ = xcnt_handler(x, c, n, t)
             flag = (c == 0).astype(int)
             value_range = np.max(x) - np.min(x)
             gamma_init = np.min(x) - value_range / 10
             return gamma_init, x.sum() / (n * flag).sum(), 2.0, 1.0
         else:
             return self.fit(x, c, n, how="MPP").params
-            # x, c, n = surpyval.xcn_handler(x, c, n)
-            # flag = (c == 0).astype(int)
-            # return x.sum() / (n * flag).sum(), 2.
 
     def sf(self, x, alpha, beta):
-        r"""
+        """
 
         Survival (or reliability) function for the LogLogistic Distribution:
 
         .. math::
-            R(x) = 1 - \frac{1}{1 + \left ( x /\alpha \right )^{-\beta}}
+            R(x) = 1 - \frac{1}{1 + \\left ( x /\alpha \right )^{-\beta}}
 
         Parameters
         ----------
@@ -122,7 +118,7 @@ class LogLogistic_(ParametricFitter):
         >>> LogLogistic.sf(x, 3, 4)
         array([0.62245933, 0.5621765 , 0.5       , 0.4378235 , 0.37754067])
         """
-        exp_term = (x / alpha) ** beta
+        exp_term = (x / alpha) ** -beta
         return exp_term / (1 + exp_term)
 
     def cs(self, x, X, alpha, beta):

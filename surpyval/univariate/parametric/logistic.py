@@ -4,7 +4,7 @@ from scipy.stats import uniform
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
-from surpyval.utils import xcn_handler
+from surpyval.utils import xcnt_handler
 
 
 class Logistic_(ParametricFitter):
@@ -50,7 +50,7 @@ class Logistic_(ParametricFitter):
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         return self.fit(x, c, n, how="MPP").params
-        x, c, n = xcn_handler(x, c, n)
+        x, c, n, _ = xcnt_handler(x, c, n, t)
         flag = (c == 0).astype(int)
         if offset:
             return x.sum() / (n * flag).sum(), 1.0, 1.0
@@ -58,12 +58,13 @@ class Logistic_(ParametricFitter):
             return x.sum() / (n * flag).sum(), 1.0
 
     def sf(self, x, mu, sigma):
-        r"""
+        """
 
         Survival (or reliability) function for the Logistic Distribution:
 
         .. math::
-            R(x) = 1 - \frac{1}{1 + e^{- \left ( x - \mu \right )/ \sigma}}
+            R(x) = 1 - \\frac{1}{1 + e^{- \\left (
+                x - \\mu \\right )/ \\sigma}}
 
         Parameters
         ----------
@@ -96,12 +97,12 @@ class Logistic_(ParametricFitter):
         return self.sf(x + X, mu, sigma) / self.sf(X, mu, sigma)
 
     def ff(self, x, mu, sigma):
-        r"""
+        """
 
         Failure (CDF or unreliability) function for the Logistic Distribution:
 
         .. math::
-            F(x) = \frac{1}{1 + e^{- \left ( x - \mu \right )/ \sigma}}
+            F(x) = \\frac{1}{1 + e^{- \\left ( x - \\mu \\right )/ \\sigma}}
 
         Parameters
         ----------
@@ -131,13 +132,13 @@ class Logistic_(ParametricFitter):
         return 1.0 / (1 + np.exp(-z))
 
     def df(self, x, mu, sigma):
-        r"""
+        """
 
         Failure (CDF or unreliability) function for the Logistic Distribution:
 
         .. math::
-            f(x) = \frac{e^{-\left ( x - \mu \right ) / \sigma}}{\sigma
-            \left ( 1 + e^{-\left ( x - \mu \right )/ \sigma}\right )^2}
+            f(x) = \\frac{e^{-\\left ( x - \\mu \\right ) / \\sigma}}{\\sigma
+            \\left ( 1 + e^{-\\left ( x - \\mu \\right )/ \\sigma}\\right )^2}
 
         Parameters
         ----------
@@ -157,6 +158,7 @@ class Logistic_(ParametricFitter):
 
         Examples
         --------
+
         >>> import numpy as np
         >>> from surpyval import Logistic
         >>> x = np.array([1, 2, 3, 4, 5])
@@ -167,12 +169,12 @@ class Logistic_(ParametricFitter):
         return np.exp(-z) / (sigma * (1 + np.exp(-z)) ** 2)
 
     def hf(self, x, mu, sigma):
-        r"""
+        """
 
         Instantaneous hazard rate for the Logistic Distribution:
 
         .. math::
-            h(x) = \frac{f(x)}{R(x)}
+            h(x) = \\frac{f(x)}{R(x)}
 
         Parameters
         ----------
@@ -201,12 +203,12 @@ class Logistic_(ParametricFitter):
         return self.df(x, mu, sigma) / self.sf(x, mu, sigma)
 
     def Hf(self, x, mu, sigma):
-        r"""
+        """
 
         Cumulative hazard rate for the Logistic distribution:
 
         .. math::
-            h(x) = -\ln \left ( R(x) \right )
+            H(x) = -\\ln \\left( R(x) \\right)
 
         Parameters
         ----------
@@ -235,12 +237,12 @@ class Logistic_(ParametricFitter):
         return -np.log(self.sf(x, mu, sigma))
 
     def qf(self, p, mu, sigma):
-        r"""
+        """
 
         Quantile function for the Logistic distribution:
 
         .. math::
-            q(p) = \mu + \sigma \ln \left ( \frac{p}{1 - p} \right)
+            q(p) = \\mu + \\sigma \\ln \\left ( \\frac{p}{1 - p} \\right)
 
         Parameters
         ----------
@@ -299,7 +301,7 @@ class Logistic_(ParametricFitter):
         return mu
 
     def random(self, size, mu, sigma):
-        r"""
+        """
 
         Draws random samples from the distribution in shape `size`
 

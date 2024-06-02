@@ -13,7 +13,7 @@ def plotting_positions(
     heuristic="Blom",
     turnbull_estimator="Fleming-Harrington",
 ):
-    r"""
+    """
     This function takes in data in the xcnt format and outputs an approximation
     of the CDF. This function can be used to produce estimates of F using the
     Nelson-Aalen, Kaplan-Meier, Fleming-Harrington, and the Turnbull estimates.
@@ -45,9 +45,9 @@ def plotting_positions(
         2D array like of the left and right values at which the respective
         observation was truncated. If not provided it assumes that no
         truncation occurs.
-    heuristic : ("Blom", "Median", "ECDF", "ECDF_Adj", "Modal", "Midpoint",
-    "Mean", "Weibull", "Benard", "Beard", "Hazen", "Gringorten", "None",
-    "Larsen", "Tukey", "DPW"), str, optional
+    heuristic : ("Blom", "Median", "ECDF", "ECDF_Adj", "Modal", "Midpoint",\
+        "Mean", "Weibull", "Benard", "Beard", "Hazen", "Gringorten", "None",\
+        "Larsen", "Tukey", "DPW"). str, optional
         Method to use to compute the heuristic of F. See details of each
         heursitic in the probability plotting section.
     turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier'), str, optional

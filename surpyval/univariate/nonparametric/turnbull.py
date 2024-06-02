@@ -140,10 +140,13 @@ def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
     out["r"] = r[1:-1]
     out["d"] = d[1:-1]
     out["R"] = R[0:-2]
+    out["F"] = 1 - R[0:-2]
     out["R_upper"] = R[0:-2]
     out["R_lower"] = R[1:-1]
     out["alpha"] = alpha
     out["bounds"] = bounds
+    out["model"] = "Turnbull"
+    out["turnbull_estimator"] = estimator
 
     np.seterr(**old_err_state)
 

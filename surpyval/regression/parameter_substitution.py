@@ -4,10 +4,10 @@ import warnings
 import autograd.numpy as np
 from scipy.optimize import minimize
 
-import surpyval
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.utils.surpyval_data import SurpyvalData
 
-from .regression import Regression
+from .parametric_regression_model import ParametricRegressionModel
 
 
 class ParameterSubstitutionFitter:
@@ -128,7 +128,7 @@ class ParameterSubstitutionFitter:
             Z = np.ones_like(x) * Z
         else:
             Z = np.array(Z)
-        return 1 - np.exp(-self.Hf(x, Z, *params))
+        return -np.expm1(-self.Hf(x, Z, *params))
 
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
         out = []
@@ -191,50 +191,47 @@ class ParameterSubstitutionFitter:
             Z_out.append(np.ones((size, cols)) * stress)
         return np.array(x).flatten(), np.concatenate(Z_out)
 
-    def neg_ll(self, Z, x, c, n, *params, verbose=False):
+    def neg_ll(self, Z, x, c, n, *params):
         like = np.zeros_like(x).astype(float)
         like = np.where(c == 0, self.log_df(x, Z, *params), like)
         like = np.where(c == 1, self.log_sf(x, Z, *params), like)
         like = np.where(c == -1, self.log_ff(x, Z, *params), like)
         like = np.multiply(n, like)
         like = -np.sum(like)
-        if verbose:
-            print("   " * 100, end="\r")
-            print(like, ": ", params, end="\r")
         return like
 
-    def fit(
-        self, Z, x, c=None, n=None, t=None, init=[], fixed={}, verbose=False
-    ):
-        x, c, n, t = surpyval.xcnt_handler(
-            x=x, c=c, n=n, t=t, group_and_sort=False
-        )
-
+    def fit(self, Z, x, c=None, n=None, t=None, init=[], fixed={}):
+        data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
+        data.add_covariates(Z)
+        life_parameter_idx = self.param_map[self.life_parameter]
         if init == []:
             stress_data = []
             params_at_Z = []
 
             # How do I make this work when there is only one failure per
             # stress?
-            for s in np.unique(Z, axis=0):
-                mask = (Z == s).all(axis=1)
+            base_line_dist_init = self.dist.fit_from_surpyval_data(data).params
+
+            for s in np.unique(data.Z, axis=0):
+                mask = (data.Z == s).all(axis=1)
                 with warnings.catch_warnings():
                     warnings.filterwarnings("error")
                     try:
-                        params_at_Z.append(
-                            self.dist.fit(x[mask], c[mask], n[mask]).params
-                        )
-                        stress_data.append(s)
-                    except np.RankWarning:
-                        pass
+                        params_at_s = self.dist.fit_from_surpyval_data(
+                            data[mask]
+                        ).params
+                        params_at_Z.append(params_at_s)
+                    except:  # noqa: E722
+                        params_at_s = np.copy(base_line_dist_init)
+                        params_at_s[life_parameter_idx] = x[mask].mean()
+                        params_at_Z.append(params_at_s)
                     finally:
-                        pass
+                        stress_data.append(s)
 
             params_at_Z = np.array(params_at_Z)
-            stress_data = np.array(stress_data)
             dist_init = params_at_Z.mean(axis=0)
 
-            i = self.param_map[self.life_parameter]
+            stress_data = np.array(stress_data)
 
             if len(params_at_Z) < 2:
                 raise ValueError(
@@ -242,7 +239,7 @@ class ParameterSubstitutionFitter:
                     setting initial guess using `init` keyword in `fit`"
                 )
 
-            parameter_data = params_at_Z[:, i]
+            parameter_data = params_at_Z[:, life_parameter_idx]
 
             parameter_data = self.inverse_param_transform(parameter_data)
 
@@ -255,13 +252,12 @@ class ParameterSubstitutionFitter:
                     )
             else:
                 phi_init = self.life_model.phi_init
-
             init = np.array([*dist_init, *phi_init])
         else:
             init = np.array(init)
 
         if self.baseline != []:
-            baseline_model = self.dist.fit(x, c, n, t)
+            baseline_model = self.dist.fit_from_surpyval_data(data)
             baseline_fixed = {
                 k: baseline_model.params[baseline_model.param_map[k]]
                 for k in self.baseline
@@ -273,12 +269,12 @@ class ParameterSubstitutionFitter:
 
         # Dynamic or static bounds determination
         if callable(self.life_model.phi_bounds):
-            bounds = (*self.bounds, *self.life_model.phi_bounds(Z))
+            bounds = (*self.bounds, *self.life_model.phi_bounds(data.Z))
         else:
             bounds = (*self.bounds, *self.life_model.phi_bounds)
 
         if callable(self.life_model.phi_param_map):
-            phi_param_map = self.life_model.phi_param_map(Z)
+            phi_param_map = self.life_model.phi_param_map(data.Z)
         else:
             phi_param_map = self.life_model.phi_param_map
 
@@ -296,23 +292,31 @@ class ParameterSubstitutionFitter:
 
         with np.errstate(all="ignore"):
 
-            def fun(params, verbose):
+            def fun(params):
                 return self.neg_ll(
-                    Z, x, c, n, *inv_trans(const(params)), verbose=verbose
+                    data.Z, data.x, data.c, data.n, *inv_trans(const(params))
                 )
 
-            # jac = jacobian(fun)
-            # hess = hessian(fun)
-            res = minimize(fun, init, args=(verbose))
-            res = minimize(fun, res.x, args=(verbose), method="TNC")
-            # res = minimize(fun, init, jac=jac, method='BFGS')
-            # res = minimize(fun, init, method='Newton-CG', jac=jac)
+            res1 = minimize(
+                fun, init, method="Nelder-Mead", options={"maxiter": 1000}
+            )
+            res2 = minimize(
+                fun,
+                res1.x,
+                method="TNC",
+                # tol=1e-20,
+                # options={"maxiter": 1000},
+            )
+            if not res2.success:
+                res = res1
+            else:
+                res = res2
 
         params = inv_trans(const(res.x))
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
 
-        model = Regression()
+        model = ParametricRegressionModel()
         model.model = self
         model.kind = self.kind
         model.distribution = self.dist
@@ -321,12 +325,14 @@ class ParameterSubstitutionFitter:
         model.dist_params = dist_params
         model.phi_params = phi_params
         model.res = res
-        model._neg_ll = res["fun"]
+        model._neg_ll = res.fun
         model.fixed = self.fixed
         model.k_dist = self.k_dist
+        model.fun = fun
 
         model.k = len(bounds)
 
         model.data = {"x": x, "c": c, "n": n, "t": t}
+        model.data = data
 
         return model

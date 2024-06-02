@@ -4,7 +4,7 @@ from scipy.optimize import minimize
 import surpyval
 from surpyval.univariate.parametric.fitters import bounds_convert
 
-from .regression import Regression
+from .parametric_regression_model import ParametricRegressionModel
 
 
 class AcceleratedFailureTimeFitter:
@@ -110,12 +110,19 @@ class AcceleratedFailureTimeFitter:
             stress_data = np.unique(Z, axis=0)
             params_at_Z = []
             for s in stress_data:
-                params_at_Z.append(
-                    self.dist.fit(x[Z == s], c[Z == s], n[Z == s]).params
-                )
+                x_at_s = x[Z == s]
+                if len(x_at_s) < 2:
+                    pass
+                else:
+                    params_at_Z.append(
+                        self.dist.fit(x[Z == s], c[Z == s], n[Z == s]).params
+                    )
 
-            params_at_Z = np.array(params_at_Z)
-            dist_init = params_at_Z.mean(axis=0)
+            if params_at_Z == []:
+                dist_init = self._parameter_initialiser_dist(x, c, n, t)
+            else:
+                params_at_Z = np.array(params_at_Z)
+                dist_init = params_at_Z.mean(axis=0)
 
             acc_parameter_data = params_at_Z[
                 :, self.param_map[self.fixed_parameter]
@@ -168,13 +175,15 @@ class AcceleratedFailureTimeFitter:
             # fun  = lambda params : self.neg_ll(Z, x, c, n, *params)
             # jac = jacobian(fun)
             # hess = hessian(fun)
-            res = minimize(fun, init)
-            res = minimize(fun, res.x, method="TNC")
+            res = minimize(fun, init, method="Nelder-Mead")
+            if not res.success:
+                res = minimize(fun, res.x, method="TNC")
+
             # res = minimize(fun, init, jac=jac, method='BFGS')
             # res = minimize(fun, init, method='Newton-CG', jac=jac)
 
         params = inv_trans(const(res.x))
-        model = Regression()
+        model = ParametricRegressionModel()
         model.model = self
         model.reg_model = self.acc_model
         model.kind = "Accelerated Failure Time"

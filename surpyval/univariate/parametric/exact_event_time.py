@@ -42,8 +42,8 @@ class ExactEventTime_:
     def random(self, size, T):
         return np.ones(size) * T
 
-    def fit(self, x, c=None, n=None):
-        x, c, n = surpyval.xcn_handler(x=x, c=c, n=n)
+    def fit(self, x, c=None, n=None, t=None):
+        x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t)
 
         if 0 in c:
             raise ValueError(

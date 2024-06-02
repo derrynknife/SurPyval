@@ -1,6 +1,5 @@
 from scipy.stats import uniform
 
-import surpyval
 from surpyval import np
 
 from .parametric import Parametric
@@ -140,7 +139,8 @@ class Bernoulli_:
         return (U <= p).astype(int)
 
     def fit(self, x, n=None):
-        x, _, n = surpyval.xcn_handler(x=x, c=None, n=n)
+        x = np.atleast_1d(x)
+        n = np.atleast_1d(n)
 
         if not np.equal(x, np.array([0, 1])).all():
             raise ValueError("'x' must be either 0 or 1")

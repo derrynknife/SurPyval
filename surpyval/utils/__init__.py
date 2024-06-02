@@ -6,17 +6,31 @@ import numpy as np
 from formulaic import Formula
 from pandas import Series
 
-from surpyval.utils.surpyval_data import SurpyvalData
-
 COX_PH_METHODS = ["breslow", "efron"]
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
 
 
-def check_x_not_empty(func):
-    """
-    Checks that an "x" input to a function is not empty
-    """
+def _round_vals(x):
+    not_different = True
+    i = 1
+    while not_different:
+        x_ticks = np.array(round_sig(x, i))
+        not_different = (np.diff(x_ticks) == 0).any()
+        i += 1
+    return x_ticks
 
+
+def round_sig(points, sig=2):
+    # Used to round to sig significant figures.
+    places = sig - np.floor(np.log10(np.abs(points))) - 1
+    output = []
+    for p, i in zip(points, places):
+        output.append(np.round(p, int(i)))
+    return output
+
+
+def _check_x_not_empty(func):
+    # Decorator to check that x is not empty
     def wrap(obj, x, *args, **kwargs):
         x = np.array(x)
         if x.size == 0:
@@ -53,66 +67,27 @@ def no_left_or_int(c):
 
 
 def surv_tolist(x):
-    """
-    supplement to the .tolist() function where there is mixed scalars and
-    arrays.
-
-    Survival data can be confusing sometimes. I'm probably not helping by
-    trying
-    to make it fit with one input.
-    """
     if x.ndim == 2:
         return [v[0] if v[0] == v[1] else v.tolist() for v in x]
     else:
         return x.tolist()
 
 
-def check_and_convert_expected_float_array(a, name):
-    if a is None:
-        a = np.array([])
+def check_and_convert_expected_float_array(arr, name):
+    if arr is None:
+        arr = np.array([])
     else:
         try:
-            a = np.array(a).astype(float, casting="safe")
+            arr = np.array(arr, dtype=np.float64)
         except Exception:
             raise ValueError(
-                f"'{name}' must be an array of scalar numbers \
-                with real values."
+                f"'{name}' must be an array of scalar numbers"
+                + "with real values."
             )
-    return a
-
-
-def group_xcn(x, c, n):
-    """
-    Ensures that all unique combinations of x and c are grouped. This should
-    reduce the chance of having arrays that are too long for the MLE fit.
-    """
-
-    # TODO: Change to numpy index
-    grouped = defaultdict(lambda: defaultdict(int))
-    if x.ndim == 2:
-        for vx, vc, vn in zip(x, c, n):
-            grouped[tuple(vx)][vc] += vn
-    else:
-        for vx, vc, vn in zip(x, c, n):
-            grouped[vx][vc] += vn
-
-    x_out = []
-    c_out = []
-    n_out = []
-
-    for k, v in grouped.items():
-        for cv, nv in v.items():
-            x_out.append(k)
-            c_out.append(cv)
-            n_out.append(nv)
-    return np.array(x_out), np.array(c_out), np.array(n_out)
+    return arr
 
 
 def group_xcnt(x, c, n, t):
-    """
-    Ensures that all unique combinations of x and c are grouped. This should
-    reduce the chance of having arrays that are too long for the MLE fit.
-    """
     grouped = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     if x.ndim == 2:
         for vx, vc, vn, vt in zip(x, c, n, t):
@@ -136,213 +111,7 @@ def group_xcnt(x, c, n, t):
     return np.array(x_out), np.array(c_out), np.array(n_out), np.array(t_out)
 
 
-def xcn_sort(x, c, n):
-    """
-    Sorts the x, c, and n arrays so that x is increasing, and where there are
-    ties they are ordered as left censored, failure, right censored, then
-    intervally censored.
-
-    Parameters
-    ----------
-    x: array
-        array of values of variable for which observations were made.
-    c: array
-        array of censoring values (-1, 0, 1, 2) corrseponding to x
-    n: array
-        array of count of observations at each x and with censoring c
-
-    Returns
-    ----------
-    x: array
-        sorted array of values of variable for which observations were made.
-    c: array
-        sorted array of censoring values (-1, 0, 1, 2) corrseponding to
-        rearranged x
-    n: array
-        array of count of observations at each rearranged x and with censoring
-        c
-    """
-
-    idx_c = np.argsort(c, kind="stable")
-    x = x[idx_c]
-    c = c[idx_c]
-    n = n[idx_c]
-
-    if x.ndim == 1:
-        idx = np.argsort(x, kind="stable")
-    else:
-        idx = np.argsort(x[:, 0], kind="stable")
-
-    x = x[idx]
-    c = c[idx]
-    n = n[idx]
-    return x, c, n
-
-
-def xcn_handler(x, c=None, n=None):
-    """
-    Main handler that ensures any input to a surpyval fitter meets the
-    requirements to be used in one of the parametric or nonparametric fitters.
-
-    Parameters
-    ----------
-    x: array
-        array of values of variable for which observations were made.
-    c: array, optional (default: None)
-        array of censoring values (-1, 0, 1, 2) corrseponding to x
-    n: array, optional (default: None)
-        array of count of observations at each x and with censoring c
-
-    Returns
-    ----------
-
-    x: array
-        sorted array of values of variable for which observations were made.
-    c: array
-        array of censoring values (-1, 0, 1, 2) corrseponding to output array
-        x. If c was None, defaults to creating array of zeros the length of x.
-    n: array
-        array of count of observations at to output array x and with censoring
-        c. If n was None, count array assumed to be all one observation.
-    """
-    if type(x) == list:
-        if any([list == type(v) for v in x]):
-            x_ndarray = np.empty(shape=(len(x), 2))
-            for idx, val in enumerate(x):
-                x_ndarray[idx, :] = np.array(val)
-            x = x_ndarray
-        else:
-            x = np.array(x).astype(float)
-    elif type(x) == Series:
-        x = np.array(x)
-
-    if x.ndim > 2:
-        raise ValueError("Variable (x) array must be one or two dimensional")
-
-    if x.ndim == 2:
-        if x.shape[1] != 2:
-            raise ValueError(
-                "Dimension 1 must be equalt to 2, try transposing data, or do \
-                you have a 1d array in a 2d array?"
-            )
-
-        if not (x[:, 0] <= x[:, 1]).all():
-            raise ValueError(
-                "All left intervals must be less than right intervals"
-            )
-
-    if c is not None:
-        c = np.array(c)
-        if c.ndim != 1:
-            raise ValueError("censoring array must be one dimensional")
-
-        if c.shape[0] != x.shape[0]:
-            raise ValueError(
-                "censoring array must be same length as variable array"
-            )
-
-        if x.ndim == 2:
-            if any(c[x[:, 0] == x[:, 1]] == 2):
-                raise ValueError(
-                    "Censor flag indicates interval censored but only has one \
-                    failure time"
-                )
-
-            if not all(c[x[:, 0] != x[:, 1]] == 2):
-                raise ValueError(
-                    "Censor flag provided, but case where interval flagged as \
-                    non interval censoring"
-                )
-
-            if any((c != 0) & (c != 1) & (c != -1) & (c != 2)):
-                raise ValueError(
-                    "Censoring value must only be one of -1, 0, 1, or 2"
-                )
-
-        else:
-            if any((c != 0) & (c != 1) & (c != -1)):
-                raise ValueError(
-                    "Censoring value must only be one of -1, 0, 1 for single \
-                    dimension input"
-                )
-    else:
-        c = np.zeros(x.shape[0])
-        if x.ndim != 1:
-            c[x[:, 0] != x[:, 1]] = 2
-
-    if n is not None:
-        n = np.array(n)
-        if n.ndim != 1:
-            raise ValueError("Count array must be one dimensional")
-        if n.shape[0] != x.shape[0]:
-            raise ValueError(
-                "count array must be same length as variable array."
-            )
-        if not (n > 0).all():
-            raise ValueError("count array can't be 0")
-    else:
-        # Do check here for groupby and binning
-        n = np.ones(x.shape[0])
-
-    if x.ndim == 2:
-        if np.isinf(x).all(axis=1).any():
-            raise ValueError(
-                "Interval censored entry has no info: in range (-inf, inf)"
-            )
-        # Convert interval censored from (v, to inf) to
-        # a right censored point
-        mask = np.isinf(x[:, 1])
-        x[mask, 1] = x[mask, 0]
-        c[mask] = 1
-
-        # Convert interval censored from (-inf to v) to
-        # a left censored point
-        mask = np.isinf(x[:, 0])
-        x[mask, 0] = x[mask, 1]
-        c[mask] = -1
-
-    n = n.astype(int)
-    c = c.astype(int)
-
-    x, c, n = group_xcn(x, c, n)
-    x, c, n = xcn_sort(x, c, n)
-
-    return x, c, n
-
-
 def xcnt_sort(x, c, n, t):
-    """
-    Sorts the x, c, and n arrays so that x is increasing, and where there are
-    ties they are ordered as left censored, failure, right censored, then
-    intervally censored.
-
-    Parameters
-    ----------
-    x: array
-        array of values of variable for which observations were made.
-    c: array
-        array of censoring values (-1, 0, 1, 2) corrseponding to x
-    n: array
-        array of count of observations at each x and with censoring c
-    t: array, optional (default: None)
-        array of values with shape (?, 2) with the left and right value of
-        truncation
-
-    Returns
-    ----------
-    x: array
-        sorted array of values of variable for which observations were made.
-    c: array
-        sorted array of censoring values (-1, 0, 1, 2) corrseponding to
-        rearranged x
-    n: array
-        array of count of observations at each rearranged x and with censoring
-        c
-    t: array, optional (default: None)
-        array of values with shape (?, 2) with the left and right value of
-        truncation
-    """
-
     idx_c = np.argsort(c, kind="stable")
     x = x[idx_c]
     c = c[idx_c]
@@ -373,22 +142,23 @@ def xcnt_sort(x, c, n, t):
 
 def fsli_handler(f=None, s=None, l=None, i=None):
     """
-    Converts the fsli format to the xcn format. This ensures is so that the
-    data can be passed to one of the parametric or nonparametric fitters.
+    Takes in the fsli format and ensures that the data is correctly defined.
+    Takes an assorted combination of f, s, l, and i and returns them in the
+    correct format as numpy arrays.
 
     Parameters
     ----------
-    f: array
+    f: array-like, optional (default: None)
         array of values for which the failure/death was observed
-    s: array
+    s: array-like, optional (default: None)
         array of right censored observation values
-    l: array
+    l: array-like, optional (default: None)
         array of left censored observation values
-    i: array
-        array of interval censored data
+    i: array-like, optional (default: None)
+        array of length 2 arrays interval censored data
 
     Returns
-    ----------
+    -------
     f: array
         array of values for which the failure/death was observed that have
         been checked for correctness
@@ -400,11 +170,33 @@ def fsli_handler(f=None, s=None, l=None, i=None):
         for correctness
     i: array
         array of interval censored data that have been checked for correctness
+
+
+    Examples
+    --------
+
+    >>> from surpyval import fsli_handler
+    >>> f = [1, 2, 3, 4, 5, 6]
+    >>> s = [1, 2, 3]
+    >>> l = [4, 5, 6]
+    >>> i = [[1, 2], [3, 4]]
+    >>> fsli_handler(f, s, l, i)
+    (array([1., 2., 3., 4., 5., 6.]),
+    array([1., 2., 3.]),
+    array([4., 5., 6.]),
+    array([[1., 2.],
+            [3., 4.]]))
     """
     f = check_and_convert_expected_float_array(f, "f")
     s = check_and_convert_expected_float_array(s, "s")
     l = check_and_convert_expected_float_array(l, "l")
     i = check_and_convert_expected_float_array(i, "i")
+
+    if (f is None) & (s is None) & (l is None) & (i is None):
+        raise ValueError("Must enter some data!")
+
+    if (len(f) == 0) & (len(s) == 0) & (len(l) == 0) & (len(i) == 0):
+        raise ValueError("Must enter some data!")
 
     if f.ndim != 1:
         raise ValueError("'f' array must be one-dimensional")
@@ -415,6 +207,10 @@ def fsli_handler(f=None, s=None, l=None, i=None):
 
     if (i.ndim != 2) & (i.size != 0):
         raise ValueError("'i' array must be one-dimensional")
+
+    if len(i) > 0:
+        if i.shape[1] != 2:
+            raise ValueError("'i' array must be of shape (?, 2)")
 
     if i.size != 0:
         if (i[:, 0] >= i[:, 1]).any():
@@ -431,6 +227,10 @@ def xrd_handler(x, r, d):
     Takes a combination of 'x', 'r', and 'd' arrays and ensures that the data
     is feasible.
 
+    Does not check for the case where r is always decreasing as this is
+    possible in some cases, i.e. when there is left truncation, a.k.a late
+    entry.
+
     Parameters
     ----------
     x: array
@@ -449,10 +249,25 @@ def xrd_handler(x, r, d):
         array of at risk items at each value of x
     d: array
         array of failures / deaths at each value of x
+
+    Examples
+    --------
+
+    >>> from surpyval import xrd_handler
+    >>> x = [1, 2, 3, 4, 5]
+    >>> r = [5, 4, 3, 2, 1]
+    >>> d = [1, 1, 1, 1, 1]
+    >>> x, r, d = xrd_handler(x, r, d)
+    >>> x
+    array([1., 2., 3., 4., 5.])
+    >>> r
+    array([5, 4, 3, 2, 1])
+    >>> d
+    array([1, 1, 1, 1, 1]))
     """
 
     try:
-        x = np.array(x).astype(float)
+        x = np.array(x, dtype=np.float64)
     except Exception:
         raise ValueError(
             "'x' must be an array of scalar numbers with real values."
@@ -502,7 +317,6 @@ def xcnt_handler(
     tl=None,
     tr=None,
     group_and_sort=True,
-    as_surpyval_dataset=False,
 ):
     """
     Main handler that ensures any input to a surpyval fitter meets the
@@ -519,6 +333,14 @@ def xcnt_handler(
     t: array, optional (default: None)
         array of values with shape (?, 2) with the left and right value of
         truncation
+    xl: array or scalar, optional (default: None)
+        array of the values of the left interval of interval censored data.
+        Cannot be used with 'x' parameter, must be used with the 'xr'
+        parameter
+    xr: array or scalar, optional (default: None)
+        array of the values of the right interval of interval censored data.
+        Cannot be used with 'x' parameter, must be used with the 'xl'
+        parameter
     tl: array or scalar, optional (default: None)
         array of values of the left value of truncation. If scalar, all values
         will be treated as left truncated by that value
@@ -529,6 +351,10 @@ def xcnt_handler(
         values will be treated as right truncated by that value
         cannot be used with 't' parameter but can be used with the 'tl'
         parameter
+    group_and_sort: bool, optional (default: True)
+        whether to group and sort the data. If False, the data will be returned
+        in the order it was entered. This is useful for when validating
+        survival data for which you also have covariates.
 
     Returns
     ----------
@@ -544,29 +370,86 @@ def xcnt_handler(
     t: array
         array of truncation values of observations at output array x and with
         censoring c.
+
+    Examples
+    --------
+
+    >>> from surpyval import xcnt_handler
+    >>> x = [1, 2, 3, 4, 5]
+    >>> c = [0, 0, 1, 1, 1]
+    >>> n = [1, 1, 1, 1, 1]
+    >>> t = [[0, 5], [0, 5], [0, 5], [0, 5], [0, 5]]
+    >>> xcnt_handler(x, c, n, t)
+    (array([1., 2., 3., 4., 5.]),
+    array([0, 0, 1, 1, 1]),
+    array([1, 1, 1, 1, 1]),
+    array([[0., 5.],
+            [0., 5.],
+            [0., 5.],
+            [0., 5.],
+            [0., 5.]]))
+    >>> xcnt_handler(x, c, n, tl=0, tr=5)
+    (array([1., 2., 3., 4., 5.]),
+    array([0, 0, 1, 1, 1]),
+    array([1, 1, 1, 1, 1]),
+    array([[0., 5.],
+            [0., 5.],
+            [0., 5.],
+            [0., 5.],
+            [0., 5.]]))
+    >>> xl = [1, 2, 3, 4, 5]
+    >>> xr = [2, 3, 4, 5, 6]
+    >>> xcnt_handler(xl=xl, xr=xr)
+    (array([[1., 2.],
+            [2., 3.],
+            [3., 4.],
+            [4., 5.],
+            [5., 6.]]),
+    array([2, 2, 2, 2, 2]),
+    array([1, 1, 1, 1, 1]),
+    array([[-inf,  inf],
+            [-inf,  inf],
+            [-inf,  inf],
+            [-inf,  inf],
+            [-inf,  inf]]))
     """
 
     if (x is None) & (xl is None) & (xr is None):
         raise ValueError(
-            "Must enter some data! Use either 'x' of both 'xl and 'xr'"
+            "Must enter some data! Use either 'x' or both 'xl and 'xr'"
         )
 
     if (x is not None) & ((xl is not None) | (xr is not None)):
-        raise ValueError("Must use either 'x' of both 'xl and 'xr'")
+        raise ValueError("Must use either 'x' or both 'xl and 'xr'")
 
     if (x is None) & ((xl is None) | (xr is None)):
-        raise ValueError("Must use either 'x' of both 'xl and 'xr'")
+        raise ValueError("Must use either 'x' or both 'xl and 'xr'")
 
     if x is None:
-        xl = np.array(xl).astype(float)
-        xr = np.array(xr).astype(float)
-        x = np.vstack([xl, xr]).T
+        try:
+            xl = np.array(xl, dtype=np.float64)
+            xr = np.array(xr, dtype=np.float64)
+        except Exception:
+            raise ValueError(
+                "'xl' and 'xr' must be an array of scalar numbers with real"
+                + " values."
+            )
+        try:
+            x = np.vstack([xl, xr]).T
+        except Exception:
+            raise ValueError("'xl' and 'xr' must be the same length")
 
     if type(x) == list:
         if any([type(v) == list for v in x]):
             x_ndarray = np.empty(shape=(len(x), 2))
             for idx, val in enumerate(x):
-                x_ndarray[idx, :] = np.array(val)
+                val_arr = np.atleast_1d(val)
+                if len(val_arr) > 2:
+                    raise ValueError(
+                        "Each element of 'x' must be either scalar or"
+                        + " array-like of no more than length 2"
+                    )
+                x_ndarray[idx, :] = val_arr
             x = x_ndarray
         else:
             x = np.array(x)
@@ -574,19 +457,19 @@ def xcnt_handler(
         x = np.array(x)
 
     if x.ndim > 2:
-        raise ValueError("Variable (x) array must be one or two dimensional")
+        raise ValueError("Variable 'x' array must be one or two dimensional")
 
     if x.ndim == 2:
         if x.shape[1] != 2:
             raise ValueError(
-                "Dimension 1 must be equalt to 2, try transposing data, or do \
-                you have a 1d array in a 2d array?"
+                "Dimension 1 must be equal to 2, try transposing data, or do"
+                + " you have a 1d array in a 2d array?"
             )
 
         if not (x[:, 0] <= x[:, 1]).all():
             raise ValueError(
-                "All left intervals must be less than (or equal to) right \
-                intervals"
+                "All left intervals must be less than or equal to right"
+                + " intervals"
             )
 
     if c is not None:
@@ -602,14 +485,14 @@ def xcnt_handler(
         if x.ndim == 2:
             if any(c[x[:, 0] == x[:, 1]] == 2):
                 raise ValueError(
-                    "Censor flag indicates interval censored but only has one \
-                        failure time"
+                    "Censor flag indicates interval censored but only has one"
+                    + " failure time"
                 )
 
             if any((c == 2) & (x[:, 0] == x[:, 1])):
                 raise ValueError(
-                    "Censor flag provided, but case where interval flagged as \
-                        non interval censoring"
+                    "Censor flag provided, but case where interval flagged as"
+                    + " non interval censoring"
                 )
 
             if any((c != 0) & (c != 1) & (c != -1) & (c != 2)):
@@ -620,8 +503,8 @@ def xcnt_handler(
         else:
             if any((c != 0) & (c != 1) & (c != -1)):
                 raise ValueError(
-                    "Censoring value must only be one of -1, 0, 1 for single \
-                        dimension input"
+                    "Censoring value must only be one of -1, 0, 1 for single"
+                    + " dimension input"
                 )
 
     else:
@@ -645,8 +528,8 @@ def xcnt_handler(
 
     if t is not None and ((tl is not None) or (tr is not None)):
         raise ValueError(
-            "Cannot use 't' with 'tl' or 'tr'. Use either 't' or any \
-                combination of 'tl' and 'tr'"
+            "Cannot use 't' with 'tl' or 'tr'. Use either 't' or any"
+            + " combination of 'tl' and 'tr'"
         )
 
     elif (t is None) & (tl is None) & (tr is None):
@@ -670,13 +553,13 @@ def xcnt_handler(
 
         if tl.ndim > 1:
             raise ValueError(
-                "Left truncation array must be one dimensional, did you mean \
-                    to use 't'"
+                "Left truncation array must be one dimensional, did you mean"
+                + " to use 't'"
             )
         if tr.ndim > 1:
             raise ValueError(
-                "Left truncation array must be one dimensional, did you mean \
-                    to use 't'"
+                "Left truncation array must be one dimensional, did you mean"
+                + " to use 't'"
             )
         if tl.shape[0] != x.shape[0]:
             raise ValueError(
@@ -688,8 +571,8 @@ def xcnt_handler(
             )
         if tl.shape != tr.shape:
             raise ValueError(
-                "Left truncation array and right truncation array must be the \
-                    same length"
+                "Left truncation array and right truncation array must be the"
+                + " same length"
             )
         t = np.vstack([tl, tr]).T
 
@@ -704,30 +587,30 @@ def xcnt_handler(
 
     if (t[:, 1] <= t[:, 0]).any():
         raise ValueError(
-            "All left truncated values must be less than right truncated \
-                values"
+            "All left truncated values must be less than right truncated"
+            + " values"
         )
     if x.ndim == 2:
         if ((t[:, 0] > x[:, 0]) & (np.isfinite(t[:, 0]))).any():
             raise ValueError(
-                "All left truncated values must be less than the respective \
-                    observed values"
+                "All left truncated values must be less than the respective"
+                + " observed values"
             )
         elif ((t[:, 1] < x[:, 1]) & (np.isfinite(t[:, 1]))).any():
             raise ValueError(
-                "All right truncated values must be greater than the \
-                    respective observed values"
+                "All right truncated values must be greater than the"
+                + " respective observed values"
             )
     else:
         if (t[:, 0] > x).any():
             raise ValueError(
-                "All left truncated values must be less than the respective \
-                    observed values"
+                "All left truncated values must be less than the respective"
+                + " observed values"
             )
         elif (t[:, 1] < x).any():
             raise ValueError(
-                "All right truncated values must be greater than the \
-                    respective observed values"
+                "All right truncated values must be greater than the"
+                + " respective observed values"
             )
 
     if x.ndim == 2:
@@ -756,13 +639,49 @@ def xcnt_handler(
         x, c, n, t = group_xcnt(x, c, n, t)
         x, c, n, t = xcnt_sort(x, c, n, t)
 
-    if as_surpyval_dataset:
-        return SurpyvalData(x, c, n, t)
-
     return x, c, n, t
 
 
 def xcn_to_fsl(x, c=None, n=None):
+    """
+    Converts the xcn format to the fsl format.
+
+    Parameters
+    ----------
+
+    x: array
+        array of values of variable for which observations were made.
+    c: array, optional (default: None)
+        array of censoring values (-1, 0, 1, 2) corrseponding to x. If None, an
+        array of 0s is created corresponding to each x.
+    n: array, optional (default: None)
+        array of count of observations at each x and with censoring c. If None,
+        an array of ones is created.
+
+    Returns
+    -------
+
+    f: array
+        array of values for which the failure/death was observed
+    s: array
+        array of right censored observation values
+    l: array
+        array of left censored observation values
+
+    Examples
+    --------
+    >>> x = np.array([1, 2, 3, 4, 5])
+    >>> c = np.array([0, 1, 1, 0, 0])
+    >>> n = np.array([1, 1, 1, 1, 1])
+    >>> f, s, l = xcn_to_fsl(x, c, n)
+    >>> f
+    array([1, 4, 5])
+    >>> s
+    array([2, 3])
+    >>> l
+    array([], dtype=float64)
+    """
+
     x = np.array(x)
     if c is None:
         c = np.zeros_like(x)
@@ -819,6 +738,29 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
         an event at 'x').
     d: array
         array of the count of failures/deaths at each time x.
+
+    Examples
+    --------
+    >>> x = np.array([1, 2, 3, 4, 5])
+    >>> c = np.array([0, 1, 1, 0, 0])
+    >>> n = np.array([1, 1, 1, 1, 1])
+    >>> x, r, d = xcnt_to_xrd(x, c, n)
+    >>> x
+    array([1, 2, 3, 4, 5])
+    >>> r
+    array([5, 4, 3, 2, 1])
+    >>> d
+    array([1, 0, 0, 1, 1])
+    >>> # Using left truncated data
+    >>> x = np.array([1, 2, 3, 4, 5])
+    >>> tl = np.array([0, 1, 2, 3, 4])
+    >>> x, r, d = xcnt_to_xrd(x, tl=tl)
+    >>> x
+    array([1., 2., 3., 4., 5.])
+    >>> r
+    array([2, 2, 2, 2, 1])
+    >>> d
+    array([1, 1, 1, 1, 1])
     """
     x, c, n, t = xcnt_handler(x, c, n, t, **kwargs)
 
@@ -826,16 +768,15 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
         raise ValueError("xrd format can't be used right truncated data")
 
     if (t[:, 0] == t[0, 0]).all() & np.isfinite(t[0, 0]):
-        print(
-            "Ignoring left truncated values as all observations truncated at \
-            same value",
-            file=sys.stderr,
+        warnings.warn(
+            "Ignoring left truncated values as all observations truncated at"
+            + " same value"
         )
 
     if ((c != 1) & (c != 0)).any():
         raise ValueError(
-            "xrd format can't be used with left (c=-1) or interval (c=2) \
-            censoring"
+            "xrd format can't be used with left (c=-1) or interval (c=2)"
+            + " censoring"
         )
 
     tl = t[:, 0]
@@ -845,7 +786,7 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     # do is drop outs - i.e right censored
     do = np.bincount(idx, weights=n * c)
     # e is the number of items that have entered observation by each x
-    e = e = ((tl[:, np.newaxis] <= x[np.newaxis, :]) * n[:, np.newaxis]).sum(0)
+    e = ((tl[:, np.newaxis] <= x[np.newaxis, :]) * n[:, np.newaxis]).sum(0)
     # r is the number of people at risk at each x
     r = e + d - d.cumsum() + do - do.cumsum()
     # change to correct data types
@@ -855,52 +796,52 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     return x, r, d
 
 
-def xcn_to_xrd(x, c=None, n=None):
+def xrd_to_xcnt(x, r, d):
+    # TODO: make it work with left truncation
     """
-    Converts the xcn format to the xrd format.
+    Converts the xrd format to the xcn format. Assumes that there is no
+    right truncation or left censoring.
 
     Parameters
     ----------
+
     x: array
         array of values of variable for which observations were made.
-    c: array, optional (default: None)
-        array of censoring values (-1, 0, 1, 2) corrseponding to x. If None, an
-        array of 0s is created corresponding to each x.
-    n: array, optional (default: None)
-        array of count of observations at each x and with censoring c. If None,
-        an array of ones is created.
+    r: array
+        array of at risk items at each value of x
+    d: array
+        array of failures / deaths at each value of x
 
     Returns
-    ----------
+    -------
     x: array
-        sorted array of values of variable for which observations were made.
-    r: array
-        array of count of units/people at risk at time x.
-    d: array
-        array of the count of failures/deaths at each time x.
-    """
-    x, c, n = xcn_handler(x, c, n)
+        array of values of variable for which observations were made.
+    c: array
+        array of censoring values (-1, 0, 1, 2) corrseponding to x
+    n: array
+        array of count of observations at each x and with censoring c
+    t: array
+        array of values with shape (?, 2) with the left and right value of
+        truncation
 
-    if ((c != 1) & (c != 0)).any():
-        raise ValueError(
-            "xrd format can't handle left (c=-1) or interval (c=2) censoring"
-        )
-
-    x, idx = np.unique(x, return_inverse=True)
-
-    d = np.bincount(idx, weights=n * (1 - c))
-    # do is drop outs
-    do = np.bincount(idx, weights=n * c)
-    r = n.sum() + d - d.cumsum() + do - do.cumsum()
-    r = r.astype(int)
-    d = d.astype(int)
-    return x, r, d
-
-
-def xrd_to_xcn(x, r, d):
-    """
-    Exact inverse of the xcn_to_xrd function.
-    ONLY USE IF YOU HAVE NO TRUNCATION
+    Examples
+    --------
+    >>> x = np.array([1, 2, 3, 4, 5])
+    >>> r = np.array([5, 4, 3, 2, 1])
+    >>> d = np.array([1, 0, 0, 1, 1])
+    >>> x, c, n, t = xrd_to_xcnt(x, r, d)
+    >>> x, c, n, t
+    array([1, 2, 3, 4, 5])
+    >>> c
+    array([0, 1, 1, 0, 0])
+    >>> n
+    array([1, 1, 1, 1, 1])
+    >>> t
+    array([[-inf,  inf],
+           [-inf,  inf],
+           [-inf,  inf],
+           [-inf,  inf],
+           [-inf,  inf]]))
     """
     n_f = np.copy(d)
     x_f = np.copy(x)
@@ -917,10 +858,10 @@ def xrd_to_xcn(x, r, d):
     x_f = np.repeat(x_f, n_f)
     x_s = np.repeat(x_s, n_s)
 
-    return fs_to_xcn(x_f, x_s)
+    return fs_to_xcnt(x_f, x_s)
 
 
-def fsli_to_xcn(f=None, s=None, l=None, i=None):
+def fsli_to_xcnt(f=None, s=None, l=None, i=None):
     """
     Converts the fsli format to the xcn format. This ensures is so that the
     data can be passed to one of the parametric or nonparametric fitters.
@@ -934,7 +875,7 @@ def fsli_to_xcn(f=None, s=None, l=None, i=None):
     l: array
         array of left censored observation values
     i: array
-        array of interval censored data
+        array of length 2 arrays interval censored data
 
     Returns
     ----------
@@ -946,13 +887,38 @@ def fsli_to_xcn(f=None, s=None, l=None, i=None):
     n: array
         array of count of observations at to output array x and with censoring
         c.
+    t: ndarray
+        ndarray of truncation values of observations at output array x and with
+        censoring c.
+
+    Examples
+    --------
+
+    >>> from surpyval import fsli_to_xcnt
+    >>> f = [1, 4, 5]
+    >>> s = [2, 3]
+    >>> l = []
+    >>> i = []
+    >>> x, c, n, t = fsli_to_xcnt(f, s, l, i)
+    >>> x
+    array([1, 2, 3, 4, 5])
+    >>> c
+    array([0, 1, 1, 0, 0])
+    >>> n
+    array([1, 1, 1, 1, 1])
+    >>> t
+    array([[-inf,  inf],
+           [-inf,  inf],
+           [-inf,  inf],
+           [-inf,  inf],
+           [-inf,  inf]])
     """
 
     f, s, l, i = fsli_handler(f, s, l, i)
-    x, c, n = fsl_to_xcn(f, s, l)
+    x, c, n, t = fsl_to_xcnt(f, s, l)
 
     if i.size == 0:
-        return x, c, n
+        return x, c, n, t
     else:
         x_i, n_i = np.unique(i, axis=0, return_counts=True)
         c_i = np.ones(x_i.shape[0]) * 2
@@ -961,13 +927,21 @@ def fsli_to_xcn(f=None, s=None, l=None, i=None):
         x = np.concatenate([x_two, x_i]).astype(float)
         c = np.hstack([c, c_i]).astype(int)
         n = np.hstack([n, n_i]).astype(int)
+        t = np.vstack([np.ones_like(c) * -np.inf, np.ones_like(c) * np.inf]).T
 
-        x, c, n = xcn_sort(x, c, n)
+        x, c, n, t = xcnt_sort(x, c, n, t)
 
-        return x, c, n
+        return x, c, n, t
 
 
-def fsl_to_xcn(f=[], s=[], l=[]):
+def fsl_to_xcnt(f=None, s=None, l=None):
+    if f is None:
+        f = []
+    if s is None:
+        s = []
+    if l is None:
+        l = []
+
     x_f, n_f = np.unique(f, return_counts=True)
     c_f = np.zeros_like(x_f)
 
@@ -980,14 +954,15 @@ def fsl_to_xcn(f=[], s=[], l=[]):
     x = np.hstack([x_f, x_s, x_l])
     c = np.hstack([c_f, c_s, c_l]).astype(int)
     n = np.hstack([n_f, n_s, n_l]).astype(int)
+    t = np.vstack([np.ones_like(x) * -np.inf, np.ones_like(x) * np.inf]).T
 
-    x, c, n = xcn_sort(x, c, n)
+    x, c, n, t = xcnt_sort(x, c, n, t)
 
-    return x, c, n
+    return x, c, n, t
 
 
-def fs_to_xcn(f=[], s=[]):
-    return fsl_to_xcn(f, s, [])
+def fs_to_xcnt(f=[], s=[]):
+    return fsl_to_xcnt(f, s, [])
 
 
 def _scale(ll, n, scale):
@@ -1095,9 +1070,7 @@ def validate_cr_df_inputs(df, x_col, e_col, c_col=None, n_col=None):
 
 
 def validate_cr_inputs(x, c, n, e, method):
-    """
-    Validates the inputs prior to be used by the CoxPH model.
-    """
+    # Validates the inputs prior to be used by the CoxPH model.
     # Use existing surpyval validator. But don't group and sort
     # so as to put it out of order of the event array, e.
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
@@ -1122,7 +1095,7 @@ def validate_cr_inputs(x, c, n, e, method):
         )
 
     # Two baselines
-    # TODO: Add fh
+    # TODO: Add fleming-harrington
     if method not in ["Nelson-Aalen", "Kaplan-Meier"]:
         raise ValueError("Unrecognised baseline method")
 
@@ -1139,14 +1112,11 @@ def validate_cif_event(event):
         raise ValueError("CIF needs event type, not None")
 
 
-def check_an_ids_tl_and_x(id, tl, x):
-    """
-    This function checks that, for a given item, id, the history
-    of the item is complete. That is, the timeline provided in the
-    steps from tl[0] > x[0] == tl[1] > x[1] == ... tl[-1] > x[-1]
-    This ensures there are no overlaps nor are there any gaps.
-    # TODO: Consider allowing gaps in timeline, but not overlaps!
-    """
+def _check_an_ids_tl_and_x(id, tl, x):
+    # This function checks that, for a given item, id, the history
+    # of the item is complete. That is, the timeline provided in the
+    # steps from tl[0] > x[0] == tl[1] > x[1] == ... tl[-1] > x[-1]
+    # This ensures there are no overlaps nor are there any gaps.
     if len(tl) != len(x):
         raise ValueError(
             "Item {id} has differing lengths of the tl and x vectors".format(
@@ -1189,7 +1159,7 @@ def validate_tv_coxph(id, tl, x, Z, c, n):
         for i in id:
             tl_i = tl[id == i]
             x_i = x[id == i]
-            check_an_ids_tl_and_x(i, tl_i, x_i)
+            _check_an_ids_tl_and_x(i, tl_i, x_i)
 
     Z, mask = wrangle_Z(Z)
     x, c, n = (arr[mask] for arr in (x, c, n))
@@ -1232,7 +1202,7 @@ def validate_tv_coxph_df_inputs(
         for i, s in df.groupby(id_col):
             tl = s[tl_col].values
             x = s[x_col].values
-            check_an_ids_tl_and_x(i, tl, x)
+            _check_an_ids_tl_and_x(i, tl, x)
 
     Z, mask, form = wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
 
@@ -1313,56 +1283,37 @@ def validate_fine_gray_inputs(x, Z, e, c, n):
     return x, Z, e, c, n
 
 
-def tl_tr_to_t(tl=None, tr=None):
-    if tl is not None:
-        tl = np.array(tl)
-    if tr is not None:
-        tr = np.array(tr)
-
-    if (tl is None) & (tr is None):
-        raise ValueError("One input must not be None")
-    elif (tl is not None) and (tr is not None):
-        if tl.shape != tr.shape:
-            raise ValueError(
-                "Left array must be the same shape as right array"
-            )
-    elif tl is None:
-        tl = np.ones_like(tr) * -np.inf
-    elif tr is None:
-        tr = np.ones_like(tl) * np.inf
-
-    if (tr < tl).any():
-        raise ValueError(
-            "All left truncated values must be less than right truncated \
-                values"
-        )
-
-    t = np.vstack([tl, tr]).T
-    return t
-
-
 def fs_to_xrd(f, s):
     """
-    Chain of the fs_to_xrd and xrd_to_xcn functions.
-    """
-    x, c, n = fs_to_xcn(f, s)
-    return xcn_to_xrd(x, c, n)
+    Converts the fs format to the xrd format.
 
+    Parameters
+    ----------
+    f: array
+        array of values for which the failure/death was observed
+    s: array
+        array of right censored observation values
 
-def fsl_to_xrd(f, s, l):
-    """
-    Chain of the fsl_to_xrd and xrd_to_xcn functions.
-    """
-    x, c, n = fsl_to_xcn(f, s, l)
-    return xcn_to_xrd(x, c, n)
+    Returns
+    -------
 
+    x: array
+        sorted array of values of variable for which observations were made.
+    r: array
+        array of count of units/people at risk at time x (including if it had
+        an event at 'x').
+    d: array
+        array of the count of failures/deaths at each time x.
 
-def round_sig(points, sig=2):
+    Examples
+    --------
+
+    >>> from surpyval import fs_to_xrd
+    >>> f = [1, 4, 5]
+    >>> s = [2, 3]
+    >>> x, r, d = fs_to_xrd(f, s)
+    >>> x, r, d
+    (array([1, 2, 3, 4, 5]), array([5, 4, 3, 2, 1]), array([1, 0, 0, 1, 1]))
     """
-    Used to round to sig significant figures.
-    """
-    places = sig - np.floor(np.log10(np.abs(points))) - 1
-    output = []
-    for p, i in zip(points, places):
-        output.append(np.round(p, int(i)))
-    return output
+    x, c, n, _ = fs_to_xcnt(f, s)
+    return xcnt_to_xrd(x, c, n)

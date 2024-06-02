@@ -44,8 +44,6 @@ class Exponential_(ParametricFitter):
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, offset=False):
-        # x, c, n = xcn_handler(x, c, n)
-        # c = (c == 0).astype(np.int64)
         rate = 1.0 / x[np.isfinite(x)].mean()
         if offset:
             return np.min(x) - (np.max(x) - np.min(x)) / 10.0, rate
@@ -259,6 +257,7 @@ class Exponential_(ParametricFitter):
         >>> Exponential.Hf(x, 3)
         array([ 3,  6,  9, 12, 15])
         """
+        x = np.array(x)
         return failure_rate * x
 
     def qf(self, p, failure_rate):
