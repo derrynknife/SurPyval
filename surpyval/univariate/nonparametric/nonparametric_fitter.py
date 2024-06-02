@@ -135,6 +135,10 @@ class NonParametricFitter:
             data["estimator"] = turnbull_estimator
             out = NonParametric()
             t_obj = self._fit(x, c, n, t, turnbull_estimator)
+
+            out.greenwood = self._compute_var(
+                t_obj["R"], t_obj["r"], t_obj["d"]
+            )
             for k, v in t_obj.items():
                 setattr(out, k, v)
 
