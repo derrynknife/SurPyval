@@ -138,6 +138,8 @@ class Weibull_(ParametricFitter):
 
         x : numpy array or scalar
             The values at which the function will be calculated
+        X : numpy array or scalar
+            The values at which the item is known to have survived
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
         beta : numpy array or scalar
