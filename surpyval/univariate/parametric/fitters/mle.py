@@ -2,6 +2,7 @@ import sys
 
 from autograd import hessian, jacobian
 from autograd.numpy.linalg import inv
+from numdifftools import Hessian  # type: ignore
 from scipy.optimize import minimize
 
 from surpyval import np
@@ -65,6 +66,8 @@ def mle(model):
     jac = jacobian(fun)
     hess = hessian(fun)
 
+    best = np.inf
+    best_result = None
     # Try easiest, to most complex optimisations
     for method, jac_i, hess_i in [
         ("Nelder-Mead", None, None),
@@ -80,9 +83,14 @@ def mle(model):
             method=method,
             jac=jac_i,
             hess=hess_i,
+            options={"maxiter": 1000},
         )
         if res.success:
-            break
+            if res.fun < best:
+                best_result = res
+                best = res.fun
+        if best_result:
+            res = best_result
 
     if "Desired error not necessarily" in res["message"]:
         print(
@@ -138,13 +146,23 @@ def mle(model):
     results["p"] = p
     results["params"] = params
     # Do not account for variation of gamma, f0, p in confidence bounds.
-    results["hess_inv"] = inv(
-        hess(params, *(False, False, False, False, gamma, f0, p))
-    )
+    try:
+        hess_inv = inv(
+            hess(params, *(False, False, False, False, gamma, f0, p))
+        )
+        if np.isnan(hess_inv).any():
+            hess_inv_approx = Hessian(
+                lambda x: fun(x, False, False, False, False)
+            )
+            hess_inv = inv(hess_inv_approx(params))
+    except np.linalg.LinAlgError:
+        hess_inv = None
+
+    results["hess_inv"] = hess_inv
     results["_neg_ll"] = res["fun"]
     results["log_likelihood"] = -res["fun"]
     results["res"] = res
-    results["method"] = method
+    results["optimizer"] = method
 
     np.seterr(**old_err_state)
 
