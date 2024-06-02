@@ -11,7 +11,8 @@ class Uniform_(ParametricFitter):
             name=name,
             k=2,
             bounds=((None, None), (None, None)),
-            support=(np.nan, np.nan),
+            # I don't like this being -Inf to +Inf, but it works well.
+            support=(-np.inf, np.inf),
             param_names=["a", "b"],
             param_map={"a": 0, "b": 1},
             plot_x_scale="linear",
