@@ -32,12 +32,20 @@ author = "Derryn Knife"
 # ones.
 # extensions = ['sphinx.ext.autodoc']
 extensions = [
+    "sphinx.ext.napoleon",
     "sphinx.ext.coverage",
     "sphinx.ext.mathjax",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosectionlabel",
-    "sphinx.ext.napoleon",
+    "sphinx_copybutton",
 ]
+
+# copybutton_prompt_text = ">>> "
+copybutton_prompt_text = (
+    r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
+)
+copybutton_prompt_is_regexp = True
+
 master_doc = "index"
 
 # Add any paths that contain templates here, relative to this directory.
