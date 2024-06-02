@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.stats import uniform
@@ -6,8 +8,36 @@ from surpyval.recurrence.nonparametric import NonParametricCounting
 
 
 class ParametricRecurrenceModel:
+    """
+    A class for holding the parameters, data, and usefult methods for a
+    fitted parametric recurrence model. This is the result of the ``fit`` calls
+    from the counting distributions.
+
+    Example
+    -------
+
+    >>> from surpyval import HPP, Exponential
+    >>> import numpy as np
+    >>> np.random.seed(1)
+    >>> x = Exponential.random(10, 1e-3).cumsum()
+    >>> model = HPP.fit(x)
+    """
+
     def __repr__(self):
-        return "Parametric Counting Model with {} CIF".format(self.dist.name)
+        param_string = "\n".join(
+            [
+                "{:>10}".format(name) + ": " + str(p)
+                for p, name in zip(self.params, self.dist.param_names)
+            ]
+        )
+        return (
+            "Parametric Recurrence SurPyval Model"
+            + "\n=================================="
+            + f"\nProcess             : {self.dist.name}"
+            + "\nFitted by           : MLE"
+            + "\nParameters          :\n"
+            + param_string
+        )
 
     def initialize_simulation(self):
         self.us = uniform.rvs(size=100_000).tolist()
@@ -23,6 +53,23 @@ class ParametricRecurrenceModel:
             return self.us.pop()
 
     def count_terminated_simulation(self, events, items=1):
+        """
+        Simulate count-terminated recurrence data based on the fitted model.
+
+        Parameters
+        ----------
+
+        events: int
+            Number of events to simulate.
+        items: int, optional
+            Number of items (or sequences) to simulate. Default is 1.
+
+        Returns
+        -------
+
+        NonParametricCounting
+            An NonParametricCounting model built from the simulated data.
+        """
         self.initialize_simulation()
 
         xicn = {"x": [], "i": [], "c": [], "n": []}
@@ -56,6 +103,33 @@ class ParametricRecurrenceModel:
         return model
 
     def time_terminated_simulation(self, T, items=1, tol=1e-5):
+        """
+        Simulate time-terminated recurrence data based on the fitted model.
+
+        Parameters
+        ----------
+
+        T: float
+            Time termination value.
+        items: int, optional
+            Number of items (or sequences) to simulate. Default is 1.
+        tol: float, optional
+            Tolerance for interarrival times to stop an individual sequence.
+
+        Returns
+        -------
+
+        NonParametricCounting
+            An NonParametricCounting model built from the simulated data.
+
+        Warnings
+        --------
+
+        If any of the simulated sequences seem to not reach the time
+        termination value T due to possible asymptote, a warning message will
+        be printed to notify the user about potential convergence problems in
+        the simulation.
+        """
         self.initialize_simulation()
         convergence_problem = False
 
@@ -90,7 +164,9 @@ class ParametricRecurrenceModel:
         self.clear_simulation()
 
         if convergence_problem:
-            print("Maybe...")
+            warnings.warng(
+                "Some timelines unable to reach T due to possible asymptote"
+            )
 
         model = NonParametricCounting.fit(**xicn)
 
@@ -101,18 +177,48 @@ class ParametricRecurrenceModel:
         return model
 
     def cif(self, x):
+        """
+        Compute the cumulative incidence function (CIF) based on the fitted
+        model. No need to pass parameters as it uses the parameters of the
+        fitted model.
+
+        Parameters
+        ----------
+
+        x: array_like
+            Values at which to compute the CIF.
+
+        Returns
+        -------
+
+        array_like
+            Computed cumulative intensity function values.
+        """
+        x = np.array(x)
         return self.dist.cif(x, *self.params)
 
     def iif(self, x):
+        """
+        Compute the intensity function based on the fitted model. No need to
+        pass parameters as it uses the parameters of the fitted model.
+
+        Parameters
+        ----------
+
+        x: array_like
+            Values at which to compute the intensity.
+
+        Returns
+        -------
+
+        array_like
+            Computed instantaneous intensity functions values.
+        """
+        x = np.array(x)
         return self.dist.iif(x, *self.params)
 
-    def rocof(self, x):
-        if hasattr(self.dist, "rocof"):
-            return self.dist.rocof(x, *self.params)
-        else:
-            raise ValueError("rocof undefined for {}".format(self.dist.name))
-
     def inv_cif(self, x):
+        x = np.array(x)
         if hasattr(self.dist, "inv_cif"):
             return self.dist.inv_cif(x, *self.params)
         else:
@@ -121,6 +227,23 @@ class ParametricRecurrenceModel:
             )
 
     def plot(self, ax=None):
+        """
+        Compute the inverse of the cumulative incidence function (CIF) based
+        on the fitted model, if it's defined for the distribution.
+
+        Parameters
+        ----------
+
+        ax: matplotlib axes, optional
+            An axes object to draw the plot on. Creates a new one if not
+            provided.
+
+        Returns
+        -------
+
+        matplotlib axes
+            An axes object with the plot.
+        """
         x, r, d = self.data.to_xrd()
         if ax is None:
             ax = plt.gcf().gca()
@@ -128,6 +251,5 @@ class ParametricRecurrenceModel:
         x_plot = np.linspace(0, self.data.x.max(), 1000)
 
         ax.step(x, (d / r).cumsum(), color="r", where="post")
-        return ax.plot(x_plot, self.cif(x_plot), color="b")
-
-    # TODO: random, to T, and to N
+        ax.plot(x_plot, self.cif(x_plot), color="b")
+        return ax

@@ -11,28 +11,123 @@ from surpyval.utils.recurrent_utils import handle_xicn
 
 
 class HPP:
+    """
+    Represents the Homogeneous Poisson Process (HPP) model.
+    This class includes methods to evaluate various statistical functions of
+    the model and perform parameter estimation based on input data.
+
+    Examples
+    --------
+
+    >>> from surpyval import HPP, Exponential
+    >>> import numpy as np
+    >>> np.random.seed(1)
+    >>> x = Exponential.random(10, 1e-3).cumsum()
+    >>> model = HPP.fit(x)
+    >>> print(model)
+    Parametric Recurrence SurPyval Model
+    ==================================
+    Process             : Homogeneous Poisson Process
+    Fitted by           : MLE
+    Parameters          :
+        lambda: 0.000498450145693719
+    >>> model.cif([1, 2, 3, 4, 5, 6])
+    array([0.00049845, 0.0009969 , 0.00149535, 0.0019938 , 0.00249225,
+           0.0029907 ])
+    >>>
+    >>> model.iif([1, 2, 3, 4, 5, 6])
+    array([0.00049845, 0.00049845, 0.00049845, 0.00049845, 0.00049845,
+           0.00049845])
+    >>>
+    >>> model.inv_cif([1, 2, 3, 4, 5, 6])
+    array([ 2006.21869336,  4012.43738672,  6018.65608009,  8024.87477345,
+           10031.09346681, 12037.31216017])
+    """
+
     def __init__(self):
-        self.hpp_param_names = ["lambda"]
-        self.hpp_bounds = ((0, None),)
-        self.hpp_support = (0.0, np.inf)
+        self.param_names = ["lambda"]
+        self.bounds = ((0, None),)
+        self.support = (0.0, np.inf)
         self.name = "Homogeneous Poisson Process"
 
     def iif(self, x, rate):
+        """
+        Instantaneous intensity function (IIF) or the failure rate of the
+        HPP model.
+
+        Parameters
+        ----------
+        x : array_like
+            The values at which IIF is evaluated.
+        rate : float
+            The rate parameter of the HPP model.
+
+        Returns
+        -------
+        ndarray
+            The IIF values at specified x.
+        """
         return np.ones_like(x) * rate
+
+    def log_iif(self, x, rate):
+        """
+        Natural logarithm of the instantaneous intensity function (IIF) of
+        the HPP model.
+
+        Parameters
+        ----------
+        x : array_like
+            The values at which log(IIF) is evaluated.
+        rate : float
+            The rate parameter of the HPP model.
+
+        Returns
+        -------
+        ndarray
+            The log(IIF) values at specified x.
+        """
+        return np.log(rate) * np.ones_like(x)
 
     def cif(self, x, rate):
-        return rate * x
+        """
+        Cumulative intensity function (CIF) of the HPP model.
 
-    def rocof(self, x, rate):
-        return np.ones_like(x) * rate
+        Parameters
+        ----------
+        x : array_like
+            The values at which CIF is evaluated.
+        rate : float
+            The rate parameter of the HPP model.
+
+        Returns
+        -------
+        ndarray
+            The CIF values at specified x.
+        """
+        return rate * np.array(x)
 
     def inv_cif(self, cif, rate):
-        return cif / rate
+        """
+        Inverse of the cumulative intensity function (CIF) of the HPP model.
+
+        Parameters
+        ----------
+        cif : array_like
+            The CIF values to be inverted.
+        rate : float
+            The rate parameter of the HPP model.
+
+        Returns
+        -------
+        ndarray
+            The inverted CIF values.
+        """
+        return np.array(cif) / rate
 
     @classmethod
     def create_negll_func(cls, data):
         x, c, n = data.x, data.c, data.n
-        x_prev = data.find_x_previous()
+        x_prev = data.get_previous_x()
 
         has_observed = True if 0 in c else False
         has_right_censoring = True if 1 in c else False
@@ -136,6 +231,21 @@ class HPP:
 
     @classmethod
     def fit_from_recurrent_data(cls, data, init=None):
+        """
+        Fits the HPP model to recurrent data and returns the fitted model.
+
+        Parameters
+        ----------
+        data : object
+            An object containing the recurrent data.
+        init : array_like, optional
+            Initial parameter values for the optimization.
+
+        Returns
+        -------
+        ParametricRecurrenceModel
+            An object containing the fitted model and related information.
+        """
         out = ParametricRecurrenceModel()
         out.dist = cls()
         out.data = data
@@ -162,5 +272,26 @@ class HPP:
 
     @classmethod
     def fit(cls, x, i=None, c=None, n=None, init=None):
+        """
+        Fits the HPP model to the provided data and returns the fitted model.
+
+        Parameters
+        ----------
+        x : array_like
+            The data values.
+        i : array_like, optional
+            identity of the observation for each x.
+        c : array_like, optional
+            Censoring indicators at each x.
+        n : array_like, optional
+            count of the data at each x.
+        init : array_like, optional
+            Initial parameter estimates for the optimization.
+
+        Returns
+        -------
+        object
+            An object containing the fitted model and related information.
+        """
         data = handle_xicn(x, i, c, n, as_recurrent_data=True)
         return cls.fit_from_recurrent_data(data, init=init)
