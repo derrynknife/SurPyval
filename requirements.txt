@@ -5,3 +5,6 @@ numba==0.56.4
 numpy-indexed==0.3.5
 reliability==0.8.6
 matplotlib==3.6
+numpy>=1.22.2 # not directly required, pinned by Snyk to avoid a vulnerability
+setuptools>=70.0.0 # not directly required, pinned by Snyk to avoid a vulnerability
+zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability
