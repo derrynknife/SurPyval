@@ -30,6 +30,7 @@ setuptools.setup(
         "numpy_indexed",
         "numba",
         "formulaic",
+        "numdifftools",
     ],
     include_package_data=True,
     package_data={"": ["datasets/*.csv", "py.typed"]},
