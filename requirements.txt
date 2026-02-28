@@ -1,6 +1,6 @@
 # Production requirements
 # For development, use requirements_dev.txt instead
-lifelines==0.27.4
+lifelines>=0.28.0
 numba==0.56.4
 numpy-indexed==0.3.5
 reliability==0.8.6
