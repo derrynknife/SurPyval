@@ -16,6 +16,31 @@ from surpyval.utils import _round_vals, fsli_to_xcnt
 
 CB_COLOUR = "#e94c54"
 
+ALLOWED_DISTRIBUTIONS = [
+    "Bernoulli",
+    "Beta",
+    "ExactEventTime",
+    "Exponential",
+    "ExpoWeibull",
+    "FixedEventProbability",
+    "Galton",
+    "Gamma",
+    "Gauss",
+    "Gumbel",
+    "GumbelLEV",
+    "InstantlyOccurs",
+    "Logistic",
+    "LogLogistic",
+    "LogNormal",
+    "MixtureModel",
+    "NeverOccurs",
+    "Normal",
+    "Parametric",
+    "Rayleigh",
+    "Uniform",
+    "Weibull",
+]
+
 
 class Parametric(Distribution):
     """
@@ -78,6 +103,11 @@ class Parametric(Distribution):
         if model_dict["parameterization"] != "parametric":
             raise ValueError(
                 "Must create parametric model from parametric model dict"
+            )
+
+        if model_dict["distribution"] not in ALLOWED_DISTRIBUTIONS:
+            raise ValueError(
+                f"Invalid distribution: {model_dict['distribution']}"
             )
 
         dist = getattr(surv, model_dict["distribution"])
