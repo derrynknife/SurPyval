@@ -3,5 +3,6 @@
 lifelines==0.27.4
 numba==0.56.4
 numpy-indexed==0.3.5
+numdifftools
 reliability==0.8.6
 matplotlib==3.6
