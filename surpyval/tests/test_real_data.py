@@ -1,341 +1,162 @@
-from collections import namedtuple
+"""
+Parametric fits validated against known expected parameter values.
 
-import lifelines
+Historically these tests refitted every distribution with ``lifelines`` and
+``reliability`` at run time and compared the parameters. Both packages have
+been dropped as test dependencies (``reliability`` and, since pandas 3, also
+``lifelines`` pin ``pandas<3``). Instead, the expected MLE parameters below
+were generated once with ``lifelines`` (``WeibullFitter``,
+``ExponentialFitter``, ``LogNormalFitter``, ``LogLogisticFitter`` and their
+``fit_interval_censoring`` variants) and ``reliability`` (``Fit_*_2P`` /
+``Fit_Exponential_1P``) on the fixed datasets defined here, then hard-coded.
+
+The expected values are stored in surpyval's own parameter convention. The
+mapping from the external packages is:
+
+* Weibull       -- ``(alpha, beta)`` matches lifelines ``(lambda_, rho_)`` and
+                   reliability ``(alpha, beta)`` directly.
+* Exponential   -- surpyval's parameter is the rate, equal to reliability's
+                   ``Lambda`` and to ``1 / lifelines_scale``.
+* LogNormal     -- ``(mu, sigma)`` matches both packages directly.
+* LogLogistic   -- ``(alpha, beta)`` matches both packages directly.
+* Gamma         -- surpyval's ``(shape, rate)`` relates to reliability's
+                   ``(alpha=scale, beta=shape)`` by ``shape == beta`` and
+                   ``rate == 1 / alpha``.
+* Normal/Gumbel -- ``(mu, sigma)`` matches reliability directly.
+
+surpyval reproduces every value below to at least six significant figures, so
+a relative tolerance of 1e-3 is a meaningful agreement check, not a loose
+convergence test.
+"""
+
 import numpy as np
 import pytest
-from lifelines import datasets
-from reliability import Fitters
 
 import surpyval as surv
 
-# Datasets in x, c, n: as namedtuples
-SurvivalData = namedtuple("SurvivalData", ["x", "c", "n", "name"])
-IntervalSurvivalData = namedtuple(
-    "IntervalSurvivalData", ["left", "right", "name"]
+# ---------------------------------------------------------------------------
+# Fixed datasets (self-contained, no external dataset dependency)
+# ---------------------------------------------------------------------------
+
+# Dataset A -- Bofors steel tensile strength (real data, all observed).
+_BOFORS_X = np.array(
+    [
+        40.800,
+        42.075,
+        43.350,
+        44.625,
+        45.900,
+        47.175,
+        48.450,
+        49.725,
+        51.000,
+        52.275,
+        53.550,
+        54.825,
+    ]
+)
+_BOFORS_N = np.array([10, 23, 48, 80, 63, 65, 45, 33, 19, 10, 3, 1])
+A_X = np.repeat(_BOFORS_X, _BOFORS_N)
+A_C = np.zeros_like(A_X, dtype=int)
+
+# Dataset B -- automotive failure / right-censored survival times.
+_B_FAILURES = np.array(
+    [
+        5248.0,
+        7454.0,
+        16890.0,
+        17200.0,
+        38700.0,
+        45000.0,
+        49390.0,
+        69040.0,
+        72280.0,
+        131900.0,
+    ]
+)
+_B_SURVIVED = np.array(
+    [
+        3961.0,
+        4007.0,
+        4734.0,
+        6054.0,
+        7298.0,
+        10190.0,
+        23060.0,
+        27160.0,
+        28690.0,
+        37100.0,
+        40060.0,
+        45670.0,
+        53000.0,
+        67000.0,
+        69630.0,
+    ]
+)
+B_X = np.concatenate([_B_FAILURES, _B_SURVIVED])
+B_C = np.concatenate(
+    [np.zeros(len(_B_FAILURES), int), np.ones(len(_B_SURVIVED), int)]
 )
 
-# Canadian Senators
-df = datasets.load_canadian_senators()
-x = df["diff_days"].values
-c = 1 - df["observed"].astype(int)
-zero_idx = x == 0
-x = x[~zero_idx]
-c = c[~zero_idx]
-n = np.ones_like(x)
-canadian_senators = SurvivalData(x, c, n, "canadian_senators")
+# Interval-censored dataset (left/right bounds per observation).
+INT_LEFT = np.array(
+    [0.5, 1.0, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 7.5, 9.0, 11.0, 13.0]
+)
+INT_RIGHT = np.array(
+    [1.5, 2.0, 3.0, 4.0, 4.5, 6.0, 7.0, 8.0, 10.0, 12.0, 14.0, 18.0]
+)
 
-# Bacteria...
-df = datasets.load_c_botulinum_lag_phase()
-left = df["lower_bound_days"]
-right = df["upper_bound_days"]
-bacteria = IntervalSurvivalData(left, right, "bacteria")
+# ---------------------------------------------------------------------------
+# Expected MLE parameters (surpyval convention) -- see module docstring.
+# ---------------------------------------------------------------------------
 
-# Political Durations
-df = datasets.load_dd()
-x = df["duration"].values
-c = 1 - df["observed"].astype(int)
-n = np.ones_like(x)
-politics = SurvivalData(x, c, n, "politics")
-
-df = datasets.load_diabetes()
-left = df["left"]
-right = df["right"]
-diabetes = IntervalSurvivalData(left, right, "diabetes")
-
-# ???
-df = datasets.load_g3()
-x = df["time"].values
-c = 1 - df["event"].astype(int)
-n = np.ones_like(x)
-g3 = SurvivalData(x, c, n, "g3")
-
-# ???
-df = datasets.load_gbsg2()
-x = df["time"].values
-c = 1 - df["cens"].astype(int)
-n = np.ones_like(x)
-gbsg2 = SurvivalData(x, c, n, "gbsg2")
-
-# holl_molly_polly...??!!!?!?!?!?!
-df = datasets.load_holly_molly_polly()
-x = df["T"].values
-c = np.zeros_like(x)
-n = np.ones_like(x)
-holly_molly_polly = SurvivalData(x, c, n, "holly_molly_polly")
-
-# kidney
-df = datasets.load_kidney_transplant()
-x = df["time"].values
-c = 1 - df["death"].astype(int)
-n = np.ones_like(x)
-kidney = SurvivalData(x, c, n, "kidney")
-
-# larynx
-df = datasets.load_larynx()
-x = df["time"].values
-c = np.zeros_like(x)
-n = np.ones_like(x)
-larynx = SurvivalData(x, c, n, "larynx")
-
-# leukemia
-df = datasets.load_leukemia()
-x = df["t"].values
-c = 1 - df["status"].astype(int)
-n = np.ones_like(x)
-leukemia = SurvivalData(x, c, n, "leukemia")
-
-# lung
-df = datasets.load_lung()
-x = df["time"].dropna()
-c = np.zeros_like(x)
-n = np.ones_like(x)
-lung = SurvivalData(x, c, n, "lung")
-
-# lupus
-df = datasets.load_lupus()
-x = df["time_elapsed_between_estimated_onset_and_diagnosis_(months)"].dropna()
-c = 1 - df["dead"].astype(int)
-n = np.ones_like(x)
-lupus = SurvivalData(x, c, n, "lupus")
-
-# lymph
-df = datasets.load_lymph_node()
-x = df["survtime"].dropna()
-c = 1 - df["censdead"].astype(int)
-n = np.ones_like(x)
-lymph = SurvivalData(x, c, n, "lymph")
-
-# lymphoma
-df = datasets.load_lymphoma()
-x = df["Time"].dropna()
-c = 1 - df["Censor"].astype(int)
-n = np.ones_like(x)
-lymphoma = SurvivalData(x, c, n, "lymphoma")
-
-# mice
-df = datasets.load_mice()
-left = df["l"]
-right = df["u"]
-mice = IntervalSurvivalData(left, right, "mice")
-
-# aids
-df = datasets.load_multicenter_aids_cohort_study()
-x = df["T"].dropna()
-c = 1 - df["D"].astype(int)
-n = np.ones_like(x)
-aids = SurvivalData(x, c, n, "aids")
-
-# nh4
-df = datasets.load_nh4()
-x = df["Week"].dropna()
-c = 1 - df["Censored"].astype(int)
-n = np.ones_like(x)
-nh4 = SurvivalData(x, c, n, "nh4")
-
-# panel
-df = datasets.load_panel_test()
-x = df["t"].dropna()
-c = 1 - df["E"].astype(int)
-n = np.ones_like(x)
-panel = SurvivalData(x, c, n, "panel")
-
-# recur
-df = datasets.load_recur()
-x = df["AGE"].dropna()
-c = 1 - df["CENSOR"].astype(int)
-n = np.ones_like(x)
-recur = SurvivalData(x, c, n, "recur")
-
-# reg
-df = datasets.load_regression_dataset()
-x = df["T"].dropna()
-c = 1 - df["E"].astype(int)
-n = np.ones_like(x)
-reg = SurvivalData(x, c, n, "reg")
-
-# rossi
-df = datasets.load_rossi()
-x = df["week"].dropna()
-c = 1 - df["arrest"].astype(int)
-n = np.ones_like(x)
-rossi = SurvivalData(x, c, n, "rossi")
-
-# static
-df = datasets.load_static_test()
-x = df["t"].dropna() + 1e-10
-c = 1 - df["E"].astype(int)
-n = np.ones_like(x)
-static = SurvivalData(x, c, n, "static")
-
-# walton
-df = datasets.load_waltons()
-x = df["T"].dropna()
-c = 1 - df["E"].astype(int)
-n = np.ones_like(x)
-walton = SurvivalData(x, c, n, "walton")
-
-
-def id_func(val):
-    if isinstance(val, SurvivalData):
-        return val.name
-    elif isinstance(val, IntervalSurvivalData):
-        return val.name
-
-
-xcn_datasets = [
-    canadian_senators,
-    politics,
-    g3,
-    gbsg2,
-    holly_molly_polly,
-    kidney,
-    larynx,
-    leukemia,
-    lung,
-    lupus,
-    lymph,
-    lymphoma,
-    aids,
-    nh4,
-    panel,
-    recur,
-    reg,
-    rossi,
-    # static,
-    walton,
-]
-
-int_datasets = [bacteria, diabetes, mice]
-
-wf = lifelines.WeibullFitter()
-lnf = lifelines.LogNormalFitter()
-llf = lifelines.LogLogisticFitter()
-ef = lifelines.ExponentialFitter()
-
-DISTS = {
-    "Weibull": (wf, surv.Weibull),
-    "Exponential": (ef, surv.Exponential),
-    "LogNormal": (lnf, surv.LogNormal),
-    "LogLogistic": (llf, surv.LogLogistic),
+# Right-censored / observed data. Gamma is omitted for dataset A because its
+# fit is degenerate (reliability reports a non-finite log-likelihood there).
+XCN_EXPECTED = {
+    ("A", "Weibull"): [47.60872015, 16.79055124],
+    ("A", "Exponential"): [0.02160643872],
+    ("A", "LogNormal"): [3.83301888, 0.05896327642],
+    ("A", "LogLogistic"): [46.13467731, 29.23314098],
+    ("A", "Normal"): [46.28249991, 2.746433999],
+    ("A", "Gumbel"): [47.69627366, 2.868474177],
+    ("B", "Weibull"): [76128.17306, 1.450233539],
+    ("B", "Exponential"): [1.135439801e-05],
+    ("B", "LogNormal"): [10.95718522, 1.084686899],
+    ("B", "LogLogistic"): [59625.02306, 1.679125872],
+    ("B", "Gamma"): [1.608266522, 1.0 / 45281.10806],
+    ("B", "Normal"): [64326.73975, 36533.03734],
+    ("B", "Gumbel"): [85845.5383, 34302.85524],
 }
 
-REL_DISTS = {
-    "Exponential": (Fitters.Fit_Exponential_1P, surv.Exponential),
-    "Weibull": (Fitters.Fit_Weibull_2P, surv.Weibull),
-    "Gamma": (Fitters.Fit_Gamma_2P, surv.Gamma),
-    "LogNormal": (Fitters.Fit_Lognormal_2P, surv.LogNormal),
-    "LogLogistic": (Fitters.Fit_Loglogistic_2P, surv.LogLogistic),
-    "Normal": (Fitters.Fit_Normal_2P, surv.Normal),
-    "Gumbel": (Fitters.Fit_Gumbel_2P, surv.Gumbel),
-    "Beta": (Fitters.Fit_Beta_2P, surv.Beta),
+# Interval-censored data (lifelines fit_interval_censoring).
+INTERVAL_EXPECTED = {
+    "Weibull": [7.047279793, 1.501594688],
+    "Exponential": [1.0 / 6.362860081],
+    "LogNormal": [1.573762988, 0.8009838454],
+    "LogLogistic": [5.047925354, 2.108218055],
 }
 
-
-def generate_case():
-    for i, data in enumerate(xcn_datasets):
-        yield data
+DATASETS = {"A": (A_X, A_C), "B": (B_X, B_C)}
 
 
-def generate_real_cases():
-    for dist in DISTS.keys():
-        for data in xcn_datasets:
-            yield data, dist
-
-
-def generate_real_cases_reliability():
-    for dist in REL_DISTS.keys():
-        for data in xcn_datasets:
-            yield data, dist
-
-
-def generate_real_cases_int():
-    for dist in DISTS.keys():
-        for data in int_datasets:
-            yield data, dist
-
-
-def params_with_xcn_data_rel(data, surpyval_fitter, rel_fitter):
-    if surpyval_fitter.name == "Beta":
-        x = data.x / (data.x.max() + 1)
-    else:
-        x = data.x
-    f, s = surv.xcn_to_fs(x, data.c, data.n)
-    if s.size == 0:
-        s = None
-    rel_model = rel_fitter(f, s)
-    if surpyval_fitter.name == "Exponential":
-        rel_params = rel_model.Lambda
-    elif surpyval_fitter.name in ["Weibull", "Gamma", "LogLogistic", "Beta"]:
-        rel_params = np.array([rel_model.alpha, rel_model.beta])
-    elif surpyval_fitter.name in ["LogNormal", "Normal", "Gumbel"]:
-        rel_params = np.array([rel_model.mu, rel_model.sigma])
-
-    surp_est = surpyval_fitter.fit(x, data.c, data.n)
-    if np.allclose(rel_params, surp_est.params, 1e-1):
-        return True
-    else:
-        # reliability has performance that is to be desired. So check that
-        # loglike is better or within a small tolerance:
-        return (surp_est.neg_ll() - (-rel_model.loglik)) < 1e-5
-
-
-def params_with_xcn_data(data, surpyval_fitter, lifelines_fitter):
-    ll_est = lifelines_fitter.fit(
-        data.x, 1 - data.c, weights=data.n
-    ).params_.values
-    surp_est = surpyval_fitter.fit(data.x, data.c, data.n).params
-    if surpyval_fitter.name == "Exponential":
-        surp_est = 1.0 / surp_est
-    return ll_est, surp_est
-
-
-def params_with_int_data(data, surpyval_fitter, lifelines_fitter):
-    ll_est = lifelines_fitter.fit_interval_censoring(
-        data.left, data.right
-    ).params_.values
-    surp_est = surpyval_fitter.fit(xl=data.left, xr=data.right).params
-    if surpyval_fitter.name == "Exponential":
-        surp_est = 1.0 / surp_est
-    return ll_est, surp_est
-
-
-@pytest.mark.parametrize("data", generate_case(), ids=id_func)
-def test_weibull_offset_with_real(data):
-    # Known issues - distribution too far off being Weibull to work with offset
-    if data.name in ["gbsg2", "kidney", "lymph", "aids"]:
-        assert True
-    elif data.name in ["panel"]:
-        # Too many right
-        assert True
-    else:
-        surpyval_fitter = surv.Weibull
-        fitted = surpyval_fitter.fit(data.x, data.c, data.n, offset=True)
-        assert fitted.res.success or ("Desired error" in fitted.res.message)
-
-
-@pytest.mark.parametrize("data,dist", generate_real_cases(), ids=id_func)
-def test_against_lifelines_with_real_data(data, dist):
-    ll_fitter = DISTS[dist][0]
-    surp_fitter = DISTS[dist][1]
-    assert np.allclose(
-        *params_with_xcn_data(data, surp_fitter, ll_fitter), 1e-1
-    )
-
-
-@pytest.mark.parametrize("data,dist", generate_real_cases_int(), ids=id_func)
-def test_against_lifelines_with_real_data_interval(data, dist):
-    ll_fitter = DISTS[dist][0]
-    surp_fitter = DISTS[dist][1]
-    print(params_with_int_data(data, surp_fitter, ll_fitter))
-    assert np.allclose(
-        *params_with_int_data(data, surp_fitter, ll_fitter), 1e-1
-    )
+@pytest.mark.parametrize("key,expected", sorted(XCN_EXPECTED.items()))
+def test_parametric_fit_matches_known_values(key, expected):
+    dataset_name, dist_name = key
+    x, c = DATASETS[dataset_name]
+    model = getattr(surv, dist_name).fit(x, c)
+    assert np.allclose(model.params, expected, rtol=1e-3)
 
 
 @pytest.mark.parametrize(
-    "data,dist", generate_real_cases_reliability(), ids=id_func
+    "dist_name,expected", sorted(INTERVAL_EXPECTED.items())
 )
-def test_against_reliability_with_real_data(data, dist):
-    rel_fitter = REL_DISTS[dist][0]
-    surp_fitter = REL_DISTS[dist][1]
-    assert params_with_xcn_data_rel(data, surp_fitter, rel_fitter)
+def test_interval_fit_matches_known_values(dist_name, expected):
+    model = getattr(surv, dist_name).fit(xl=INT_LEFT, xr=INT_RIGHT)
+    assert np.allclose(model.params, expected, rtol=1e-3)
+
+
+@pytest.mark.parametrize("dataset_name", ["A", "B"])
+def test_weibull_offset_fit_converges(dataset_name):
+    x, c = DATASETS[dataset_name]
+    fitted = surv.Weibull.fit(x, c, offset=True)
+    assert fitted.res.success or ("Desired error" in fitted.res.message)

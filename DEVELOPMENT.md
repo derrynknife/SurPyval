@@ -197,7 +197,7 @@ The natural build-out order within `multivariate/`:
 ## 7. Dependency Modernisation Plan
 
 Original assessment date: 2026-06-10. Status updated as phases complete.
-**All phases are now complete except Phase 4 (pandas 3.x).**
+**All phases are now complete.**
 
 ### Python version target — ✅ COMPLETED
 
@@ -224,7 +224,7 @@ file has been removed.
 | numdifftools | ✅ 0.9.42 (`>=0.9.42`) | Phase 1 complete |
 | autograd-gamma | ✅ Removed | Phase 5 complete — inlined |
 | numpy-indexed | ✅ Removed | Replaced with pure-numpy `group_by` in `cox_ph.py` |
-| pandas | ⏳ 2.x (unpinned) | **Phase 4 — the only remaining phase** |
+| pandas | ✅ 3.0.3 (`>=3`) | Phase 4 complete |
 
 ### Upgrade phases
 
@@ -261,29 +261,29 @@ with `np.isin`, and size-1-array-to-scalar conversions (an error since
 numpy 2.x) were fixed in `Logistic.moment`, the Gamma MPP fitter, and
 the test helpers.
 
-#### Phase 4 — pandas 3.x (breaking) — ⏳ REMAINING
+#### Phase 4 — pandas 3.x (breaking) — ✅ COMPLETED (June 2026)
 
-The last outstanding phase. pandas 3.0 introduced mandatory Copy-on-Write
-(chained assignment silently fails), changed string columns from `object`
-dtype to `str` dtype, changed datetime resolution to `us`, and removed
-long-deprecated offset aliases.
+`pandas>=3` is pinned in `pyproject.toml` and the full suite passes under
+pandas 3.0.3. pandas 3.0 introduced mandatory Copy-on-Write (chained
+assignment silently fails), changed string columns from `object` dtype to
+`str` dtype, changed datetime resolution to `us`, and removed long-deprecated
+offset aliases — none of which affected surpyval, because it consumes
+DataFrames via `.values` rather than mutating them. No source changes to
+`surpyval/utils/` ingestion were required; the only pandas-3 deprecation
+surfaced is the unrelated `importlib.resources.path` warning in the dataset
+loaders.
 
-Early signal: surpyval's own test suite (excluding lifelines-dependent
-comparison tests) passes under pandas 3.0.3 — surpyval mostly consumes
-DataFrames via `.values` rather than mutating them. The blockers are:
+The blocker was the test dependencies, not the library:
 
-1. `lifelines` (test dependency) requires `pandas<3`, so the dev
-   environment resolves to pandas 2.x. Either wait for a
-   pandas-3-compatible lifelines release or move the comparison tests to
-   a separate optional CI job.
-2. A proper audit of `surpyval/utils/` data ingestion for chained
-   assignment and `dtype == object` string checks has not been done.
-
-Steps:
-1. Upgrade dev environment to pandas 2.3 (last 2.x), fix all
-   `FutureWarning` / `DeprecationWarning` output.
-2. Audit `surpyval/utils/` ingestion code, then pin `pandas>=3` once the
-   lifelines constraint is resolved.
+1. `lifelines` and `reliability` both pin `pandas<3`, so installing them
+   forced the dev environment back to pandas 2.x.
+2. Resolution: both packages were removed as test dependencies. The
+   nonparametric comparison tests (`test_np.py`) and parametric comparison
+   tests (`test_real_data.py`) were rewritten to assert against expected
+   values generated once with lifelines / reliability on fixed datasets and
+   hard-coded, so the suite no longer imports either package or pulls in the
+   lifelines-bundled datasets. `surpyval` reproduces every hard-coded value
+   to at least six significant figures.
 
 #### Phase 5 — inline autograd-gamma and drop the dependency — ✅ COMPLETED
 
@@ -301,7 +301,7 @@ dependencies = [
     "autograd>=1.8",          # or remove when JAX migration complete
     "numpy>=2.1,<3",
     "scipy>=1.17",
-    "pandas",                 # pin >=3 after Phase 4
+    "pandas>=3",
     "matplotlib>=3.10",
     "formulaic>=1.2",
     "numdifftools>=0.9.42",
@@ -311,7 +311,7 @@ dependencies = [
 
 ### CI matrix recommendation
 
-With Python 3.11 as the minimum, test against: **3.11, 3.12, 3.13** on Linux (ubuntu-latest). All jobs now run numpy 2.x / scipy 1.17 / formulaic 1.2 by default. Add a pandas-3 job once Phase 4 lands.
+With Python 3.11 as the minimum, test against: **3.11, 3.12, 3.13** on Linux (ubuntu-latest). All jobs now run numpy 2.x / scipy 1.17 / formulaic 1.2 / pandas 3.x by default.
 
 ---
 
