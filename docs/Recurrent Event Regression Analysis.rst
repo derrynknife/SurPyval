@@ -1,9 +1,9 @@
-Counting Process Regression Analysis
+Recurrent Event Regression Analysis
 ====================================
 
 In the same way that we want to understand the relationship between a
 single event outcome and a set of covariates, we may want to understand the
-relationship between a counting process and a set of covariates. For example,
+relationship between a recurrent event process and a set of covariates. For example,
 we may want to understand the relationship between the number of times an
 item needs repairing based on the environment, the duty cycle, and the
 types of inputs it receives. For example, an electric motor in a hot and humid
@@ -11,11 +11,11 @@ environment may need more repairs than one in a cool and dry environment.
 Additionally, a motor that is used more often may need more repairs than one
 that is used less often. Finally, a motor that is used in a factory that
 produces a lot of dust may need more repairs than one that is used in a
-cleaner environment. We can use counting process regression to understand
+cleaner environment. We can use recurrent event regression to understand
 the relationship between these covariates and the number of repairs that
 a motor needs.
 
-We can start with the simplest version of counting progress regression, a 
+We can start with the simplest version of recurrent event regression, a
 Homogeneous Poisson Process Regression. In this case we have a regular
 Homogeneous Poisson Process given by:
 
@@ -44,11 +44,13 @@ rate even during optimisation. That is, our model will be:
     N(t) = e^{X \beta} \lambda t
 
 
-It is that simple... In fact, it 
+This is the proportional intensity HPP model. The log-linear (exponential)
+link function :math:`e^{X\beta}` is the standard choice because it guarantees
+a positive rate regardless of the sign of :math:`\beta`, mirrors the Cox model
+for single events, and gives regression coefficients a direct multiplicative
+interpretation on the rate.
 
-
-
-A notable example within counting process regression is the Duane process, 
+A notable example within recurrent event regression is the Duane process,
 which is particularly relevant in reliability engineering. The Duane model is 
 a form of non-homogeneous Poisson process (NHPP) that describes the improvement 
 in reliability of a system or component over time, typically as a result of 
@@ -69,7 +71,7 @@ given by the result of the equation.
 
 
 
-In addition to specific models like the Duane process, counting process 
+In addition to specific models like the Duane process, recurrent event
 regression encompasses the broader class of proportional intensity models. 
 These models, often used in the context of survival analysis, assume that 
 the intensity function (or hazard function) for an individual's time to the next
@@ -82,20 +84,33 @@ under different conditions easy and interpretable.
 
 1. The traditional Duane model's cumulative number of failures as a function of time:
 
+.. math::
+
+    N(t) = \alpha t^\beta
 
 2. The failure intensity function derived from the Duane model:
-\[ \lambda(t) = \frac{dN(t)}{dt} = \alpha \beta t^{\beta - 1} \]
 
-3. The Proportional Intensity model incorporating a covariate (\(x\)):
-\[ \lambda(t|x) = \lambda_0(t) \exp(\gamma x) \]
+.. math::
+
+    \lambda(t) = \frac{dN(t)}{dt} = \alpha \beta t^{\beta - 1}
+
+3. The Proportional Intensity model incorporating a covariate :math:`x`:
+
+.. math::
+
+    \lambda(t \mid x) = \lambda_0(t) \exp(\gamma x)
 
 4. The adjusted failure intensity function with the covariate effect in the context of the Duane model:
-\[ \lambda(t|x) = \alpha \beta t^{\beta - 1} \exp(\gamma x) \]
 
-These equations outline the framework for modeling the reliability growth of a system, incorporating the effects of covariates on the failure intensity.
+.. math::
 
-These methods form a comprehensive toolkit for researchers and practitioners 
-working with event time data, enabling detailed analysis and prediction of 
+    \lambda(t \mid x) = \alpha \beta t^{\beta - 1} \exp(\gamma x)
+
+These equations outline the framework for modelling the reliability growth of a
+system, incorporating the effects of covariates on the failure intensity.
+
+These methods form a comprehensive toolkit for researchers and practitioners
+working with recurrent event data, enabling detailed analysis and prediction of
 event occurrences.
 
 

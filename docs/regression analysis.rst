@@ -65,7 +65,7 @@ Surpyval uses MLE to estimate the parameters for proportional hazards models. Th
 
 It is therefore relatively simple to adjust the MLE methods to accommodate propotional hazard models.
 
-The details on fitting proportional hazards model is detailed more in the surpyval analysis section.
+The details on fitting proportional hazards model is detailed more in the SurPyval Modelling section.
 
 Semi-Parametric
 ^^^^^^^^^^^^^^^
@@ -157,4 +157,4 @@ An accelerated life model is, therefore, simply a model where the life parameter
 
 Given the simple substitution into the life parameter, surpyval uses MLE to calculate the parameters.
 
-For examples on how to do regression analysis, see the entry in the 'SurPyval Analysis' section of the docs.
+For examples on how to do regression analysis, see the entry in the SurPyval Modelling section of the docs.

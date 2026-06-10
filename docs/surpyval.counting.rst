@@ -1,8 +1,8 @@
-Counting Models
-===============
+Recurrent Event Models
+======================
 
-Recurrence Models
------------------
+Recurrent Event (Poisson Process) Models
+-----------------------------------------
 
 .. toctree::
     :maxdepth: 1
@@ -23,8 +23,8 @@ Renewal Models
     counting/grp.rst
     counting/g1_rp.rst
 
-Recurrence Regression Models
-----------------------------
+Recurrent Event Regression Models
+----------------------------------
 
 .. toctree::
     :maxdepth: 1

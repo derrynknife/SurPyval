@@ -95,19 +95,21 @@ Contents:
    Non-Parametric Estimation
    Parametric Estimation
    regression analysis
+   Competing Risks Analysis
    Recurrent Event Analysis
    Recurrent Event Regression Analysis
 
 .. toctree::
    :maxdepth: 2
-   :caption: SurPyval Analysis
-   
+   :caption: SurPyval Modelling
+
    Non-Parametric SurPyval Modelling
    Parametric SurPyval Modelling
    Regression Modelling with SurPyval
+   applications
+   Competing Risks SurPyval Modelling
    Recurrent Event Modelling with SurPyval
    Recurrent Event Regression Modelling with SurPyval
-   applications
 
 .. toctree::
    :maxdepth: 2

@@ -1,5 +1,5 @@
-Counting Process Modelling with SurPyval
-========================================
+Recurrent Event Modelling with SurPyval
+=======================================
 
 This section is aims to show how you can use SurPyval to model counting
 processes.

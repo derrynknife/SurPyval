@@ -87,12 +87,12 @@ class LogLogistic_(ParametricFitter):
             return self.fit(x, c, n, how="MPP").params
 
     def sf(self, x, alpha, beta):
-        """
+        r"""
 
         Survival (or reliability) function for the LogLogistic Distribution:
 
         .. math::
-            R(x) = 1 - \frac{1}{1 + \\left ( x /\alpha \right )^{-\beta}}
+            R(x) = 1 - \frac{1}{1 + \left ( x / \alpha \right )^{-\beta}}
 
         Parameters
         ----------

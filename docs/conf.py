@@ -71,13 +71,14 @@ html_static_path = ["_static"]
 
 html_logo = "_static/logo.png"
 
+autosectionlabel_prefix_document = True  # prevent label clashes across pages
+
 autoclass_content = "both"  # include both class docstring and __init__
-autodoc_default_flags = [
-    # Make sure that any autodoc declarations show the right members
-    "members",
-    "inherited-members",
-    "show-inheritance",
-]
+autodoc_default_options = {
+    "members": True,
+    "inherited-members": True,
+    "show-inheritance": True,
+}
 autosummary_generate = True  # Make _autosummary files and include them
 
 html_theme_options = {

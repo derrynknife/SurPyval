@@ -1,30 +1,30 @@
-Counting Process Analysis
-=========================
+Recurrent Event Analysis
+========================
 
-This section is about those events that occur but do not "kill" the subject. 
+This section is about those events that occur but do not "kill" the subject.
 For example, in engineering an item may fail and be repaired instead of replaced.
 In medicine, a patient may have multiple heart attacks which are not fatal.
 In these cases, the event of interest is the time between events, which is the
-subject of single event survival analysis. In single event survival analysis
-one is interested in only the time to the first, and only, event. In counting
-process analysis one is interested in the time to the first, second, third, etc.
+subject of single-event survival analysis. In single-event (univariate) analysis
+one is interested in only the time to the first, and only, event. In recurrent
+event analysis one is interested in the time to the first, second, third, etc.
 event. We therefore need a way to describe how many events have occurred by time t.
-To do this we use a counting process.
 
-Recurrent events are also known as counting models or point processes. This is because
-the model is based on the number of events that occur in a given time period. i.e. 
-it counts the number of times an event of interest will repeatedly occur in a given time period.
+Recurrent events are modelled using counting processes and point processes.
+The underlying mathematical framework — martingale theory and stochastic
+integrals — is known as the counting-process formulation, but that is an
+implementation detail. Users navigate by their data type: "do my subjects
+experience repeated events?" If yes, this section applies.
 
 This section is split into two subsections:
 
     1. Recurrent Event Modelling
     2. Renewal Modelling
 
-These are both types of counting models but they are different in their methods.
-It is therefore worth splitting them into two sections. In a recurrent event model
-the inter-arrival time is based on some underlying hazrd rate, whereas for a renewal
-model there is an underlying distribution where, after each event, the apparent
-age of the subject is changed.
+These are both types of recurrent event models but they differ in their methods.
+In a recurrent event model the inter-arrival time is based on some underlying
+hazard rate, whereas in a renewal model there is an underlying distribution where,
+after each event, the apparent age of the subject is changed.
 
 Recurrent Event Modelling
 -------------------------
@@ -55,7 +55,7 @@ The MCF function is the non-parametric estimator of the number of events that
 will occur up to x. So once we fit a model we can then estimate the expected
 number of events that will occur up to time x by using the MCF function.
 
-Non-Parametric estimation in counting processes has the same limitations as does
+Non-Parametric estimation for recurrent events has the same limitations as does
 single event survival analysis. The main one being that it is not possible to
 extrapolate an estimate of the MCF function beyond the last observed event. This
 is because when doing non-parametric analysis we make no assumptions about the
@@ -87,7 +87,7 @@ See the API documentation to see the details of each of these models. The key
 point is that each of these are a parametric representation of the hazard rate
 of the process.
 
-Parametric counting processes can be estimated in similar ways to single event
+Parametric recurrent event models can be estimated in similar ways to single event
 survival analysis. That is, we can use a simple mean square error estimation
 or, more powerfully, we can use maximum likelihood estimation. The latter is
 the default in SurPyval.
@@ -245,12 +245,24 @@ is that you have to do a monte carlo simulation for each set of parameters. This
 can get quite time consuming and expensive. But it does work.
 
 Maximum Likelihood Estimation also provides an excellent way to estimate
-parameters. It is a relatively straight forward logical step from single 
+parameters. It is a relatively straight forward logical step from single
 event survival analysis to multiple events. For the first event, the likelihood
-of that particular event is the same as for regular survival analysis. For 
+of that particular event is the same as for regular survival analysis. For
 recurrent events we tend to use the hazard rate, as this captures the full
-nature of the circumstances, to define the model. The likelihood therefore is:
+nature of the circumstances, to define the model. The log-likelihood for a
+non-homogeneous Poisson process observed over :math:`[0, T]` with events at
+times :math:`x_1, x_2, \ldots, x_n` is:
 
 .. math::
 
-    \ell = 
+    \ell(\theta) = \sum_{i=1}^{n} \ln h(x_i \mid \theta) - \int_0^T h(u \mid \theta)\, du
+
+where :math:`h(t \mid \theta)` is the intensity (hazard) function of the
+process and the integral is the expected number of events over the observation
+window. For a homogeneous Poisson process :math:`h` is constant and the
+integral reduces to :math:`\lambda T`.
+
+.. note::
+
+    Full derivations for each parametric model (Crow-AMSAA, Duane, Cox-Lewis)
+    are in the API docstrings. 
