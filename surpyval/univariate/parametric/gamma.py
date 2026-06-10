@@ -3,9 +3,6 @@ import warnings
 from autograd import jacobian
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
-from autograd_gamma import gammainc as agammainc
-from autograd_gamma import gammainccln as agammainccln
-from autograd_gamma import gammaincln as agammaincln
 from scipy.optimize import minimize
 from scipy.special import gammaincinv
 from scipy.special import ndtri as z
@@ -14,6 +11,9 @@ from scipy.stats import pearsonr, uniform
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.utils.autograd_gamma_compat import gammainc as agammainc
+from surpyval.utils.autograd_gamma_compat import gammainccln as agammainccln
+from surpyval.utils.autograd_gamma_compat import gammaincln as agammaincln
 
 
 class Gamma_(ParametricFitter):

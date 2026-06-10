@@ -51,6 +51,11 @@ All tests generate random parameters and samples with no `np.random.seed()` call
 | `AcceleratedFailureTime` regression variants | `surpyval/regression/` |
 | Serialization (`to_dict` / `from_dict`) | `test_to_dict.py` is 0 bytes |
 
+### `test_mps_truncated[Beta]` consistently fails
+**File:** `surpyval/tests/test_fit.py::test_mps_truncated[Beta-random_parameters]`
+
+The MPS truncated fit for the Beta distribution consistently fails its 10 % convergence tolerance at n=2000. Root cause is unclear without a fixed seed — it may be a genuine convergence problem in the MPS fitter for Beta under truncation (CDF values are close together, spacing objective is ill-conditioned), or the tolerance is too tight for the sample size. Before investing in the fitter: add a seed, establish a baseline, and check whether the fit converges at n=100 000. If it still diverges, the MPS optimiser path for Beta needs attention; if it passes at a larger n, widen the tolerance or increase the sample size.
+
 ### Tests only check statistical convergence, not mathematical correctness
 The current tests only check statistical convergence. Add `tests/test_distributions_math.py` with closed-form checks: verify `sf(x) + ff(x) == 1`, `qf(0.5)` matches the known median, and `random()` samples have expected mean/variance for each distribution (with a fixed seed).
 

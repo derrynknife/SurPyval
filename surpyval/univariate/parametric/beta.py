@@ -1,13 +1,13 @@
 from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
-from autograd_gamma import betainc as abetainc
-from autograd_gamma import betaincln as abetaincln
 from scipy.special import betaincinv
 from scipy.special import gamma as gamma_func
 from scipy.stats import uniform
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.utils.autograd_gamma_compat import betainc as abetainc
+from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
 
 
 class Beta_(ParametricFitter):

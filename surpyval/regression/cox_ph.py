@@ -10,7 +10,6 @@ from copy import copy
 
 import numpy as np
 import numpy.ma as ma
-import numpy_indexed as npi
 from numpy.linalg import inv, pinv
 from scipy.optimize import root
 from scipy.stats import norm
@@ -31,6 +30,31 @@ nonparametric_dists = {
     "Fleming-Harrington": FlemingHarrington,
     "Turnbull": Turnbull,
 }
+
+
+class _GroupBy:
+    """Pure-NumPy grouped aggregation, replacing numpy_indexed.group_by."""
+
+    def __init__(self, keys):
+        self.unique, self._inv = np.unique(keys, return_inverse=True)
+        self._n = len(self.unique)
+
+    def sum(self, values):
+        values = np.asarray(values)
+        if values.ndim == 1:
+            result = np.bincount(
+                self._inv, weights=values.astype(float), minlength=self._n
+            )
+        else:
+            result = np.zeros((self._n,) + values.shape[1:], dtype=float)
+            np.add.at(result, self._inv, values)
+        return self.unique, result
+
+    def max(self, values):
+        values = np.asarray(values)
+        result = np.full(self._n, -np.inf)
+        np.maximum.at(result, self._inv, values)
+        return self.unique, result
 
 
 def efron_jit(n_d, Ri, Di, out):
@@ -149,8 +173,8 @@ class CoxPH_:
         # Ri - TRi.. that's it!
 
         # Groupby object for repeated use
-        gb_x = npi.group_by(x)
-        gb_tl = npi.group_by(tl)
+        gb_x = _GroupBy(x)
+        gb_tl = _GroupBy(tl)
         n_d_x = np.where(c == 0, n, 0)
         n_d = gb_x.sum(n_d_x)[1]
         n_d_x = n_d_x.reshape(-1, 1)
@@ -276,8 +300,8 @@ class CoxPH_:
         # TODO: Incorporate left-truncation... somehow.
         # left truncation allows for implementation of time-varying covariates
 
-        gb_x = npi.group_by(x)
-        gb_tl = npi.group_by(tl)
+        gb_x = _GroupBy(x)
+        gb_tl = _GroupBy(tl)
         n_d_x = np.where(c == 0, n, 0)
         n_d = gb_x.sum(n_d_x)[1]
         n_d_x = n_d_x.reshape(-1, 1)

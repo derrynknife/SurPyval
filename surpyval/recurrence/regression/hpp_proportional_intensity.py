@@ -1,5 +1,4 @@
 import numpy as np
-import numpy_indexed as npi
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
@@ -223,9 +222,10 @@ class ProportionalIntensityHPP:
         out.bounds = ((0, None),)
         out.support = (0.0, np.inf)
 
-        init = (data.n[data.c == 0]).sum() / npi.group_by(data.i).max(data.x)[
-            1
-        ].sum()
+        _, _inv = np.unique(data.i, return_inverse=True)
+        _max_x = np.full(_inv.max() + 1, -np.inf)
+        np.maximum.at(_max_x, _inv, data.x)
+        init = (data.n[data.c == 0]).sum() / _max_x.sum()
 
         num_covariates = Z.shape[1]
         init = np.append(np.log(init), np.zeros(num_covariates))
