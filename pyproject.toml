@@ -64,7 +64,7 @@ module = [
     'pandas',
     'formulaic',
     'matplotlib.*',
-    'numba',
+
     'lifelines',
     'reliability',
     'sphinx_rtd_theme',

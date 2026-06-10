@@ -67,23 +67,22 @@ The MPS truncated fit for the Beta distribution consistently fails its 10 % conv
 
 ---
 
-## 3. Packaging
+## 3. Packaging ✓ Complete
 
-### Incomplete numba removal
-**Files:** `setup.py:31`, `requirements.txt:3`, `surpyval/regression/cox_ph.py:14`, `pyproject.toml:28`
+### ~~Incomplete numba removal~~ ✓ Done
+No live numba import remains. `from numba import njit` and `@njit` decorators
+are commented out in `cox_ph.py`; numba removed from `install_requires`,
+`requirements.txt`, and mypy overrides in `pyproject.toml`.
 
-The "removed numba" commit left numba in `install_requires`, `requirements.txt`, a live `from numba import njit` in CoxPH, and a mypy override entry. Users on Python 3.11+ get an installation conflict; users without numba get `ImportError` from CoxPH. The two `@njit` functions (`efron_jit`, `efron_hess_jit`) are straightforward to rewrite as NumPy vectorizations.
+### ~~Wrong `python_requires`~~ ✓ Done
+Updated to `>=3.11` in `pyproject.toml`.
 
-### Wrong `python_requires`
-**Files:** `setup.py:22`, `surpyval/renewal/generalized_renewal.py:28`
+### ~~`requirements.txt` pins exact production dependency versions~~ ✓ Done
+Production deps moved to `pyproject.toml` with loose bounds. `requirements.txt`
+is now a redirect comment only. `requirements_dev.txt` uses `-e .[tests]`.
 
-Declared as `>=3.6` but the walrus operator (`:=`) at `generalized_renewal.py:28` requires Python 3.8. Change to `>=3.8`.
-
-### `requirements.txt` pins exact production dependency versions
-`lifelines==0.27.4`, `numba==0.56.4`, `matplotlib==3.6` belong in a lock file. `requirements.txt` should use loose bounds consistent with `setup.py install_requires`.
-
-### `pyproject.toml` has no `[build-system]` or `[project]` table
-PEP 517/518 require `[build-system]` for non-legacy builds. Package metadata should be migrated from `setup.py` to `[project]` in `pyproject.toml`.
+### ~~`pyproject.toml` has no `[build-system]` or `[project]` table~~ ✓ Done
+Fully migrated from `setup.py` to `pyproject.toml`. `setup.py` deleted.
 
 ---
 
