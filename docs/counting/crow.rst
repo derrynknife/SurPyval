@@ -1,6 +1,6 @@
 Crow
 ====
 
-.. autoclass:: surpyval.recurrence.parametric.crow.Crow_
+.. autoclass:: surpyval.recurrent.parametric.crow.Crow_
    :members:
    :inherited-members:

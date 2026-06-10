@@ -56,37 +56,12 @@ from surpyval.utils.recurrent_event_data import (  # isort: skip
     RecurrentEventData,
 )
 
-
-from surpyval.regression import (  # isort: skip
-    CoxPH,
-    ExponentialPH,
-    RandomSurvivalForest,
-    SurvivalTree,
-    WeibullPH,
-)
-
-from surpyval.recurrence import NonParametricCounting  # isort: skip
-
-from surpyval.recurrence.regression.hpp_proportional_intensity import (  # isort: skip # noqa: E501
-    ProportionalIntensityHPP,
-)
-
-from surpyval.recurrence.regression.nhpp_proportional_intensity import (  # isort: skip # noqa: E501
-    ProportionalIntensityNHPP,
-)
-
-from surpyval.renewal import (  # isort: skip
-    GeneralizedOneRenewal,
-    GeneralizedRenewal,
-)
-
-from surpyval.recurrence.parametric import (  # isort: skip
-    HPP,
-    Duane,
-    CoxLewis,
-    Crow,
-    CrowAMSAA,
-)
+# The univariate regression models (CoxPH, WeibullPH, the accelerated
+# life models, etc.) are importable directly from `surpyval`. Everything
+# else (competing risks, recurrent events, experimental features) is
+# imported from its package, e.g. `surpyval.recurrent` or
+# `surpyval.experimental`.
+from surpyval.univariate.regression import *  # isort: skip # noqa: F401,F403,E501
 
 from surpyval.utils.surpyval_data import SurpyvalData  # isort: skip
 from surpyval.utils.recurrent_utils import handle_xicn  # isort: skip

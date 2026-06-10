@@ -108,7 +108,7 @@ In the above example we used a semi-parametric model where the 'baseline' hazard
 
 
     >>> from surpyval.datasets import load_tires_data
-    >>> from surpyval.regression import WeibullPH
+    >>> from surpyval import WeibullPH
     >>>
     >>> tires = load_tires_data()
     >>> x = tires['Survival']
@@ -170,7 +170,7 @@ multiple linear regression model as the life model, you could do the following:
 .. code:: python
 
     >>> from surpyval import Weibull
-    >>> from surpyval.regression import Linear
+    >>> from surpyval import Linear
     >>>
     >>> life_model = Linear()
     >>> dist = Weibull(life_model=life_model)

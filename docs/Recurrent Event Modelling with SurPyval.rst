@@ -18,7 +18,7 @@ pass it to the ``fit`` call of the ``NonParametricCounting`` class.
 
 .. code-block:: python
 
-    >>> from surpyval import NonParametricCounting
+    >>> from surpyval.recurrent import NonParametricCounting
     >>> import numpy as np
     >>> 
     >>> x = [1, 2, 3, 4, 5, 6, 7]
@@ -42,7 +42,7 @@ of the array. For example:
 
 .. code-block:: python
 
-    >>> from surpyval import NonParametricCounting
+    >>> from surpyval.recurrent import NonParametricCounting
     >>> import numpy as np
 
     >>> interarrival_times = [1, 1, 2, 4, 3, 1, 2, 1]
@@ -56,7 +56,7 @@ after 10 units of time. We can do this by using the ``mcf`` method of the model.
 
 .. code-block:: python
 
-    >>> from surpyval import NonParametricCounting
+    >>> from surpyval.recurrent import NonParametricCounting
     >>> import numpy as np
 
     >>> interarrival_times = [1, 1, 2, 4, 3, 1, 2, 1]
@@ -73,7 +73,7 @@ observed until the last event. Let's do some modelling.
 
 .. code-block:: python
 
-    >>> from surpyval import NonParametricCounting
+    >>> from surpyval.recurrent import NonParametricCounting
     >>> import numpy as np
 
     >>> x = [1, 2, 3, 4, 5, 6, 7, 1, 4, 6, 9, 2, 7, 8, 9]
@@ -98,7 +98,7 @@ Let's look at how we can use right censoring.
 
 .. code-block:: python
 
-    >>> from surpyval import NonParametricCounting
+    >>> from surpyval.recurrent import NonParametricCounting
     >>> import numpy as np
 
     >>> x = [1, 2, 3, 4, 5, 6, 7, 1, 4, 6, 9, 2, 7, 8, 9]
@@ -140,7 +140,7 @@ Let's fit a parametric model.
 
 .. code-block:: python
 
-    >>> from surpyval import HPP
+    >>> from surpyval.recurrent import HPP
     >>> import numpy as np
     >>> 
     >>> x = [1, 2, 3, 4, 5, 6, 7, 1, 4, 6, 9, 2, 7, 8, 9]
@@ -183,7 +183,7 @@ made a poor assumption in using the HPP model. Let's try another one.
 
 .. code-block:: python
 
-    >>> from surpyval import Duane
+    >>> from surpyval.recurrent import Duane
     >>> x = [1, 5, 8, 10, 12, 13, 13, 14]
     >>> 
     >>> model = HPP.fit(x, i=i, c=c)
@@ -211,7 +211,8 @@ Generalized Renewal Process modelling is simple with SurPyval:
 
 .. code-block:: python
 
-    >>> from surpyval import GeneralizedRenewal, Weibull, NonParametricCounting
+    >>> from surpyval import Weibull
+    >>> from surpyval.recurrent import GeneralizedRenewal, NonParametricCounting
     >>> import numpy as np
     >>>
     >>> x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
@@ -266,7 +267,8 @@ Kijima Type ii and see what happens.
 
 .. code-block:: python
 
-    >>> from surpyval import GeneralizedRenewal, Weibull, NonParametricCounting
+    >>> from surpyval import Weibull
+    >>> from surpyval.recurrent import GeneralizedRenewal, NonParametricCounting
     >>> import numpy as np
     >>>
     >>> x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
@@ -292,7 +294,8 @@ G1 Modelling can easily be done with SurPyval:
 
 .. code-block:: python
 
-    >>> from surpyval import GeneralizedOneRenewal, Exponential
+    >>> from surpyval import Exponential
+    >>> from surpyval.recurrent import GeneralizedOneRenewal
     >>> import numpy as np
     >>> x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
     >>>
@@ -319,7 +322,8 @@ distribution. Let's use the same data with a Weibull G1 Renewal Process.
 
 .. code-block:: python
 
-    >>> from surpyval import GeneralizedOneRenewal, Weibull, NonParametricCounting
+    >>> from surpyval import Weibull
+    >>> from surpyval.recurrent import GeneralizedOneRenewal, NonParametricCounting
     >>> import numpy as np
     >>> x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
     >>>

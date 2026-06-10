@@ -40,5 +40,5 @@ Custom PH Models
 
 
 
-.. autoclass:: surpyval.regression.proportional_hazards_fitter.ProportionalHazardsFitter
+.. autoclass:: surpyval.univariate.regression.proportional_hazards.proportional_hazards_fitter.ProportionalHazardsFitter
     :members:
