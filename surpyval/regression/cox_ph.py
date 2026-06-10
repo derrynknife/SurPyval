@@ -11,7 +11,6 @@ from copy import copy
 import numpy as np
 import numpy.ma as ma
 import numpy_indexed as npi
-from numba import njit
 from numpy.linalg import inv, pinv
 from scipy.optimize import root
 from scipy.stats import norm
@@ -34,17 +33,14 @@ nonparametric_dists = {
 }
 
 
-@njit
 def efron_jit(n_d, Ri, Di, out):
     for i in range(len(n_d)):
-        val = 0.0
         if n_d[i] == 0:
             continue
-        for j in range(int(n_d[i])):
-            c = j / n_d[i]
-            v = Ri[i] - (c * Di[i])
-            val += np.log(v)[0]
-        out[i] = val
+        j_vals = np.arange(int(n_d[i]))
+        c_vals = j_vals / n_d[i]
+        v = Ri[i] - c_vals[:, np.newaxis] * Di[i]
+        out[i] = np.log(v).sum()
     return out
 
 
@@ -83,7 +79,6 @@ def efron_jac(n_d, Ri, ZRi, Di, ZDi, masked_array):
     return out
 
 
-@njit
 def efron_hess_jit(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di, out):
     # TODO: Vectorised implementation like for the jacobian above
     # Not sure my brain can handle that many dimensions.

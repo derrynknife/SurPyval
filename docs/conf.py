@@ -33,6 +33,7 @@ author = "Derryn Knife"
 # extensions = ['sphinx.ext.autodoc']
 extensions = [
     "sphinx.ext.napoleon",
+    # 'sphinx.ext.doctest',
     "sphinx.ext.coverage",
     "sphinx.ext.mathjax",
     "sphinx.ext.autodoc",

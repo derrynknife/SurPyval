@@ -19,7 +19,7 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.6",
+    python_requires=">=3.8",
     install_requires=[
         "autograd",
         "numpy",
@@ -28,9 +28,16 @@ setuptools.setup(
         "autograd_gamma",
         "matplotlib",
         "numpy_indexed",
-        "numba",
         "formulaic",
+        "numdifftools",
     ],
+    extras_require={
+        "tests": [
+            "lifelines==0.27.4",
+            "reliability==0.8.6",
+            "pytest",
+        ],
+    },
     include_package_data=True,
     package_data={"": ["datasets/*.csv", "py.typed"]},
     zip_safe=False,
