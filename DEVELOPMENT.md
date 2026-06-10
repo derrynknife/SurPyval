@@ -196,119 +196,122 @@ The natural build-out order within `multivariate/`:
 
 ## 7. Dependency Modernisation Plan
 
-Assessment date: 2026-06-10. All installed versions are from the current development environment.
+Original assessment date: 2026-06-10. Status updated as phases complete.
+**All phases are now complete except Phase 4 (pandas 3.x).**
 
-### Python version target
+### Python version target — ✅ COMPLETED
+
+`requires-python = ">=3.11"` is set in `pyproject.toml` and the
+3.11/3.12/3.13 classifiers are declared. The stale `.python-version`
+file has been removed.
 
 | Version | Status as of Jun 2026 | Verdict |
 |---------|----------------------|---------|
-| 3.8 | EOL Oct 2024 | **Drop** |
-| 3.9 | EOL Oct 2025 | **Drop** |
-| 3.10 | Security-only, EOL Oct 2026 | **Drop** — EOL in months |
-| 3.11 | Security-only, EOL Oct 2027 | **Support** — new minimum |
-| 3.12 | Security-only, EOL Oct 2028 | **Support** |
-| 3.13 | Active bugfix, EOL Oct 2029 | **Support** |
-| 3.14 | Active bugfix, EOL Oct 2030 | **Support** |
+| 3.8–3.10 | EOL / EOL in months | Dropped |
+| 3.11 | Security-only, EOL Oct 2027 | **Supported** — new minimum |
+| 3.12 | Security-only, EOL Oct 2028 | **Supported** |
+| 3.13 | Active bugfix, EOL Oct 2029 | **Supported** |
 
-**Action:** change `python_requires=">=3.8"` → `">=3.11"` in `setup.py`. Update `.python-version` from 3.10.4 to 3.13.x for local development.
+### Dependency status
 
-### Dependency audit
-
-| Package | Installed | Latest | Risk | Notes |
-|---------|-----------|--------|------|-------|
-| numpy | 1.23.5 | 2.4.6 | **High** | Major ABI/API break at 2.0 |
-| pandas | 1.5.3 | 3.0.3 | **High** | Two major versions behind |
-| autograd-gamma | 0.5.0 | 0.5.0 | **High** | Abandoned since 2020; no numpy 2.x testing |
-| autograd | 1.5 | 1.8.0 | Medium | numpy 2.x support added in 1.7; low-activity maintenance |
-| formulaic | 0.5.2 | 1.2.2 | Medium | Pre-1.0 → 1.2; API redesigned at 1.0 |
-| scipy | 1.10.0 | 1.17.1 | Medium | 7 minor versions behind; needs numpy ≥1.26 |
-| numpy-indexed | 0.3.5 | 0.3.7 | Low | Dormant; no numpy 2.x CI |
-| matplotlib | 3.7.1 | 3.10.9 | Low | Deprecation cleanups only |
-| numdifftools | 0.9.41 | 0.9.42 | Low | One patch release |
+| Package | Status | Notes |
+|---------|--------|-------|
+| numpy | ✅ 2.4.6 (`>=2.1,<3`) | Phase 3 complete |
+| scipy | ✅ 1.17.1 (`>=1.17`) | Phase 2 complete |
+| formulaic | ✅ 1.2.2 (`>=1.2`) | Phase 2 complete |
+| autograd | ✅ 1.8.0 (`>=1.8`) | Phase 1 complete |
+| matplotlib | ✅ 3.10.9 (`>=3.10`) | Phase 1 complete |
+| numdifftools | ✅ 0.9.42 (`>=0.9.42`) | Phase 1 complete |
+| autograd-gamma | ✅ Removed | Phase 5 complete — inlined |
+| numpy-indexed | ✅ Removed | Replaced with pure-numpy `group_by` in `cox_ph.py` |
+| pandas | ⏳ 2.x (unpinned) | **Phase 4 — the only remaining phase** |
 
 ### Upgrade phases
 
-#### Phase 1 — Low-hanging fruit (no breaking changes expected)
+#### Phase 1 — Low-hanging fruit — ✅ COMPLETED
 
-- `numdifftools`: 0.9.41 → 0.9.42
-- `matplotlib`: 3.7.1 → 3.10.9
-- `autograd`: 1.5 → 1.8.0 (numpy 2.x compat patch)
-- `numpy-indexed`: 0.3.5 → 0.3.7
+`numdifftools>=0.9.42`, `matplotlib>=3.10`, and `autograd>=1.8` (numpy 2.x
+compat) are set in `pyproject.toml`. `numpy-indexed` was not bumped but
+removed entirely — its only use (`group_by` in `cox_ph.py`) was replaced
+with a pure-numpy implementation.
 
-These are safe to bump in a single PR. Run the existing test suite to confirm.
+#### Phase 2 — scipy and formulaic — ✅ COMPLETED (June 2026)
 
-#### Phase 2 — scipy and formulaic
-
-- `scipy`: 1.10.0 → 1.17.1. Requires numpy ≥1.26 — do this after Phase 3.
-- `formulaic`: 0.5.2 → 1.2.2. The `SimpleFormula`/`StructuredFormula` redesign (v1.0) and the `ModelSpec.required_variables` change (v1.2) will affect the regression formula parsing in `surpyval/regression/`. Audit all `formulaic` call sites before bumping.
+- `scipy`: now `>=1.17` (tested against 1.17.1). All scipy usage in the
+  codebase (`optimize.minimize`/`root`, `special`, `stats`,
+  `interpolate.interp1d`, `sparse.dok_matrix`, `integrate.quad`) is
+  stable API; no code changes were required. Smoke tests with
+  `DeprecationWarning` raised as an error pass on the interp1d,
+  dok_matrix, and pearsonr paths. Note `interp1d` is classed as
+  *legacy* by scipy — if it is ever removed, migrate
+  `univariate/nonparametric/nonparametric.py` to
+  `scipy.interpolate.make_interp_spline` or `np.interp`.
+- `formulaic`: now `>=1.2` (tested against 1.2.2). The only call site,
+  `wrangle_and_check_form_and_Z_cols` in `surpyval/utils/__init__.py`
+  (`Formula(...)` + `get_model_matrix(df, na_action="ignore")`), works
+  unchanged under the 1.x API, including categorical encoding and NA
+  masking. The full regression test suite (`test_regression.py`,
+  including `test_formula_interface_matches_Z_cols`) passes.
 
 #### Phase 3 — numpy 2.x (breaking) — ✅ COMPLETED (June 2026)
 
-Completed: the codebase now runs on numpy 2.4.6 with the full test suite
-passing. `numpy>=2.1,<3` is pinned in `pyproject.toml`, `np.in1d` was
-replaced with `np.isin`, and size-1-array-to-scalar conversions (an error
-since numpy 2.x) were fixed in `Logistic.moment`, the Gamma MPP fitter,
-and the test helpers.
+The codebase runs on numpy 2.4.6 with the full test suite passing.
+`numpy>=2.1,<3` is pinned in `pyproject.toml`, `np.in1d` was replaced
+with `np.isin`, and size-1-array-to-scalar conversions (an error since
+numpy 2.x) were fixed in `Logistic.moment`, the Gamma MPP fitter, and
+the test helpers.
 
-numpy 2.0 removed ~100 deprecated aliases (`np.bool`, `np.int`, `np.float`, `np.complex`, `np.object`, `np.str` → use Python built-ins), moved `np.core` to private `np._core`, and changed scalar type promotion rules. This will break code in surpyval and possibly in `autograd` (see §5).
+#### Phase 4 — pandas 3.x (breaking) — ⏳ REMAINING
 
-Steps:
-1. Run `ruff check --select NPY201 .` to auto-fix removed type aliases.
-2. Audit `np.core` usage (none expected in surpyval itself, but check via `grep -r "np\.core" .`).
-3. Pin `numpy>=2.0,<3` in `install_requires` once verified.
-4. Re-run the full test suite under numpy 2.x — pay attention to scalar promotion differences in log-likelihood computations.
+The last outstanding phase. pandas 3.0 introduced mandatory Copy-on-Write
+(chained assignment silently fails), changed string columns from `object`
+dtype to `str` dtype, changed datetime resolution to `us`, and removed
+long-deprecated offset aliases.
 
-Do Phase 3 before Phase 2 (scipy 1.17 requires numpy ≥1.26 and is compatible with numpy 2.x).
+Early signal: surpyval's own test suite (excluding lifelines-dependent
+comparison tests) passes under pandas 3.0.3 — surpyval mostly consumes
+DataFrames via `.values` rather than mutating them. The blockers are:
 
-#### Phase 4 — pandas 3.x (breaking)
-
-pandas 3.0 introduced mandatory Copy-on-Write (chained assignment silently fails), changed string columns from `object` dtype to `str` dtype, changed datetime resolution to `us`, and removed long-deprecated offset aliases.
-
-Steps:
-1. First upgrade to pandas 2.3 (last 2.x), fix all `FutureWarning` / `DeprecationWarning` output.
-2. Then upgrade to 3.0.3.
-3. Audit all `surpyval/utils/` data ingestion code for chained assignment patterns and `dtype == object` string checks.
-
-#### Phase 5 — inline autograd-gamma and drop the dependency (HIGH PRIORITY)
-
-`autograd-gamma` has had no release since October 2020 and has no numpy 2.x testing. It is a small package: it registers custom VJPs for the incomplete gamma function (`scipy.special.gammainc` / `gammaincc`) with autograd's `primitive` system. The math is known in closed form.
-
-**Plan: inline the gradients, remove the package.**
-
-The gradient of the regularised lower incomplete gamma function `P(a, x) = gammainc(a, x)` is:
-
-- ∂P/∂x = exp(-x) * x^(a-1) / Γ(a)  — straightforward
-- ∂P/∂a = ∂/∂a of the series — this is the hard part; it requires the derivative of the regularised incomplete gamma w.r.t. the shape parameter, which can be computed via the series expansion from Batir (2008) or approximated numerically with `scipy.special.polygamma`
-
-The simplest correct implementation registers two `autograd.primitive` wrappers (one for `gammainc`, one for `gammaincc`) with their `defvjp` calls. This is ~50–80 lines and has no external dependencies beyond `autograd` and `scipy.special`.
+1. `lifelines` (test dependency) requires `pandas<3`, so the dev
+   environment resolves to pandas 2.x. Either wait for a
+   pandas-3-compatible lifelines release or move the comparison tests to
+   a separate optional CI job.
+2. A proper audit of `surpyval/utils/` data ingestion for chained
+   assignment and `dtype == object` string checks has not been done.
 
 Steps:
-1. Create `surpyval/utils/autograd_gamma_compat.py` with the inlined primitives.
-2. Replace all `from autograd_gamma import ...` imports across the codebase with imports from the new module.
-3. Remove `autograd_gamma` from `install_requires` in `setup.py`.
-4. Pin `autograd>=1.8` — autograd 1.8 has numpy 2.x support, so this also unblocks Phase 3.
+1. Upgrade dev environment to pandas 2.3 (last 2.x), fix all
+   `FutureWarning` / `DeprecationWarning` output.
+2. Audit `surpyval/utils/` ingestion code, then pin `pandas>=3` once the
+   lifelines constraint is resolved.
 
-Until this is done, pin `autograd-gamma==0.5.0` explicitly and do not bump numpy past 1.x.
+#### Phase 5 — inline autograd-gamma and drop the dependency — ✅ COMPLETED
 
-### Target `install_requires` after full upgrade
+`surpyval/utils/autograd_gamma_compat.py` now provides the
+`gammainc`/`gammaincc`/`betainc` primitives (and their `ln` variants)
+with `defvjp` registrations, replacing the abandoned `autograd-gamma`
+package. All imports across the codebase point at the compat module and
+`autograd-gamma` is no longer a dependency. (It can still appear in dev
+environments as a transitive dependency of `lifelines`.)
 
-```python
-install_requires=[
+### Current `[project.dependencies]` (pyproject.toml)
+
+```toml
+dependencies = [
     "autograd>=1.8",          # or remove when JAX migration complete
-    "numpy>=2.0,<3",
+    "numpy>=2.1,<3",
     "scipy>=1.17",
-    "pandas>=3.0",
+    "pandas",                 # pin >=3 after Phase 4
     "matplotlib>=3.10",
     "formulaic>=1.2",
     "numdifftools>=0.9.42",
-    # numpy_indexed and autograd_gamma: replace or inline (see above)
-],
-python_requires=">=3.11",
+    "joblib",
+]
 ```
 
 ### CI matrix recommendation
 
-Once Python 3.11 is the minimum, test against: **3.11, 3.12, 3.13** on Linux (ubuntu-latest). Add a numpy-2.x job as soon as Phase 3 is underway. Drop macOS-only local dev assumption from `.python-version`.
+With Python 3.11 as the minimum, test against: **3.11, 3.12, 3.13** on Linux (ubuntu-latest). All jobs now run numpy 2.x / scipy 1.17 / formulaic 1.2 by default. Add a pandas-3 job once Phase 4 lands.
 
 ---
 

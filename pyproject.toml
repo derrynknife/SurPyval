@@ -23,10 +23,10 @@ classifiers = [
 dependencies = [
     "autograd>=1.8",
     "numpy>=2.1,<3",
-    "scipy",
+    "scipy>=1.17",
     "pandas",
     "matplotlib>=3.10",
-    "formulaic",
+    "formulaic>=1.2",
     "numdifftools>=0.9.42",
     "joblib",
 ]
