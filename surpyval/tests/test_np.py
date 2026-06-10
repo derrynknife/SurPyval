@@ -1,177 +1,150 @@
-import lifelines
 import numpy as np
-import pytest
 
 import surpyval
 
-
-@pytest.fixture(autouse=True)
-def set_random_seed():
-    np.random.seed(42)
-
-
-def right_censor(x, tl, frac):
-    c = np.random.binomial(1, frac, x.shape)
-    x_out = np.copy(x)
-    for i, (trunc, value) in enumerate(zip(tl, x)):
-        if c[i] == 0:
-            continue
-        if np.isfinite(trunc):
-            x_out[i] = np.random.uniform(trunc, value)
-        else:
-            x_out[i] = value - np.abs(value * np.random.uniform(0, 1))
-    return x_out, c
+# The expected survival/hazard values below were generated once with
+# lifelines (KaplanMeierFitter / NelsonAalenFitter with
+# nelson_aalen_smoothing=False) on the fixed datasets defined in each test,
+# then hard-coded here so the suite no longer depends on lifelines at run
+# time. surpyval's convention is c == 1 for right-censored observations,
+# which maps to lifelines' event indicator 1 - c and entry= for the left
+# truncation times.
 
 
-def left_truncate(x, dist, frac, params):
-    t = np.random.binomial(1, frac, x.shape)
-    # Find a lower value
-    tl = np.where(
-        (t == 1) & (x > 0), x * np.random.uniform(0, 1, x.size), -np.inf
-    )
-    tl = np.where(
-        (t == 1) & (x < 0), x - np.abs(x * np.random.uniform(0, 1, x.size)), tl
-    )
-    drop_due_to_truncation = dist.ff(tl, *params)
-    drop_due_to_truncation[~np.isfinite(drop_due_to_truncation)] = 0
-
-    keep = np.ones_like(x)
-    for i, p in enumerate(drop_due_to_truncation):
-        if p == 0:
-            continue
-        else:
-            keep[i] = np.random.binomial(1, p)
-
-    mask = keep == 1
-    tl = tl[mask]
-    x = x[mask]
-    return x, tl
+def test_kaplan_meier_against_known_values():
+    # KaplanMeier survival function with integer weights, no censoring.
+    x = np.array([3.0, 5.0, 5.0, 8.0, 12.0, 12.0, 12.0, 20.0, 25.0, 30.0])
+    n = np.array([2, 1, 3, 2, 1, 4, 2, 1, 5, 1])
+    x_test = np.array([1.0, 4.0, 5.0, 6.0, 12.0, 19.0, 25.0, 31.0])
+    expected = [
+        1.0,
+        0.909090909091,
+        0.727272727273,
+        0.727272727273,
+        0.318181818182,
+        0.318181818182,
+        0.045454545455,
+        0.0,
+    ]
+    model = surpyval.KaplanMeier.fit(x, n=n)
+    assert np.allclose(model.sf(x_test), expected, atol=1e-9)
 
 
-def test_kaplan_meier_against_lifelines():
-    kmf = lifelines.KaplanMeierFitter()
-    for i in range(100):
-        test_params = []
-        for b in ((1, 100), (0.5, 20)):
-            test_params.append(np.random.uniform(*b))
-        test_params = np.array(test_params)
-        x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000)), *test_params
-        )
-        n = np.ones_like(x) * int(np.random.uniform(1, 5))
-        x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
-        ll_est = kmf.fit(x, weights=n).predict(x_test).values
-        surp_est = surpyval.KaplanMeier.fit(x, n=n).sf(x_test)
-        assert np.allclose(ll_est, surp_est, 1e-15)
+def test_kaplan_meier_censored_against_known_values():
+    # KaplanMeier with right-censored observations (c == 1) and weights.
+    x = np.array([4.0, 7.0, 9.0, 13.0, 16.0, 21.0, 28.0, 33.0, 41.0, 50.0])
+    c = np.array([0, 0, 1, 0, 0, 1, 0, 1, 0, 0])
+    n = np.array([1, 2, 1, 3, 1, 2, 1, 1, 4, 1])
+    x_test = np.array([2.0, 7.0, 10.0, 16.0, 28.0, 41.0, 55.0])
+    expected = [
+        1.0,
+        0.823529411765,
+        0.823529411765,
+        0.570135746606,
+        0.488687782805,
+        0.097737556561,
+        0.0,
+    ]
+    model = surpyval.KaplanMeier.fit(x, c=c, n=n)
+    assert np.allclose(model.sf(x_test), expected, atol=1e-9)
 
 
-def test_kaplan_meier_censored_against_lifelines():
-    kmf = lifelines.KaplanMeierFitter()
-    for i in range(100):
-        test_params = []
-        for b in ((1, 100), (0.5, 20)):
-            test_params.append(np.random.uniform(*b))
-        test_params = np.array(test_params)
-        x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000)), *test_params
-        )
-        c = np.random.binomial(1, np.random.uniform(0, 1, 1), x.shape)
-        x = x - np.abs(x * np.random.uniform(0, 1, x.shape))
-        n = np.ones_like(x) * int(np.random.uniform(1, 5))
-        x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
-        ll_est = kmf.fit(x, 1 - c, weights=n).predict(x_test).values
-        surp_est = surpyval.KaplanMeier.fit(x, c=c, n=n).sf(x_test)
-        assert np.allclose(ll_est, surp_est, 1e-15)
+def test_kaplan_meier_censored_and_truncated_against_known_values():
+    # KaplanMeier with right censoring, left truncation, and weights.
+    x = np.array([6.0, 9.0, 14.0, 18.0, 22.0, 27.0, 33.0, 40.0, 48.0, 55.0])
+    tl = np.array([0.0, 2.0, 5.0, 5.0, 10.0, 12.0, 0.0, 20.0, 25.0, 30.0])
+    c = np.array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0])
+    n = np.array([1, 1, 2, 1, 1, 3, 1, 1, 2, 1])
+    x_test = np.array([3.0, 9.0, 18.0, 27.0, 40.0, 55.0, 60.0])
+    expected = [
+        1.0,
+        0.833333333333,
+        0.520833333333,
+        0.297619047619,
+        0.238095238095,
+        0.0,
+        0.0,
+    ]
+    model = surpyval.KaplanMeier.fit(x, c=c, n=n, tl=tl)
+    assert np.allclose(model.sf(x_test), expected, atol=1e-9)
 
 
-def test_kaplan_meier_censored_and_truncated_against_lifelines():
-    kmf = lifelines.KaplanMeierFitter()
-    for i in range(100):
-        test_params = []
-        for b in ((1, 100), (0.5, 20)):
-            test_params.append(np.random.uniform(*b))
-        test_params = np.array(test_params)
-        x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000)), *test_params
-        )
-        x, tl = left_truncate(x, surpyval.Weibull, 0.1, test_params)
-        x, c = right_censor(x, tl, 0.2)
-        n = np.ones_like(x) * int(np.random.uniform(1, 5))
-        x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
-        ll_est = kmf.fit(x, 1 - c, entry=tl, weights=n).predict(x_test).values
-        surp_est = surpyval.KaplanMeier.fit(x, c=c, n=n, tl=tl).sf(x_test)
-        assert np.allclose(ll_est, surp_est, 1e-15)
+def test_nelson_aalen_against_known_values():
+    # NelsonAalen cumulative hazard with integer weights, no censoring.
+    x = np.array([3.0, 5.0, 5.0, 8.0, 12.0, 12.0, 12.0, 20.0, 25.0, 30.0])
+    n = np.array([2, 1, 3, 2, 1, 4, 2, 1, 5, 1])
+    x_test = np.array([1.0, 4.0, 5.0, 6.0, 12.0, 19.0, 25.0, 31.0])
+    expected = [
+        0.0,
+        0.090909090909,
+        0.290909090909,
+        0.290909090909,
+        0.915909090909,
+        0.915909090909,
+        1.892099567100,
+        2.892099567100,
+    ]
+    model = surpyval.NelsonAalen.fit(x, n=n)
+    assert np.allclose(model.Hf(x_test), expected, atol=1e-9)
 
 
-def test_nelson_aalen_against_lifelines():
-    naf = lifelines.NelsonAalenFitter(nelson_aalen_smoothing=False)
-    for i in range(100):
-        test_params = []
-        for b in ((1, 100), (0.5, 20)):
-            test_params.append(np.random.uniform(*b))
-        test_params = np.array(test_params)
-        x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000)), *test_params
-        )
-        n = np.ones_like(x) * int(np.random.uniform(1, 5))
-        x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
-        ll_est = naf.fit(x, weights=n).predict(x_test).values
-        surp_est = surpyval.NelsonAalen.fit(x, n=n).Hf(x_test)
-        assert np.allclose(ll_est, surp_est, 1e-15)
+def test_nelson_aalen_censored_against_known_values():
+    # NelsonAalen with right-censored observations (c == 1) and weights.
+    x = np.array([4.0, 7.0, 9.0, 13.0, 16.0, 21.0, 28.0, 33.0, 41.0, 50.0])
+    c = np.array([0, 0, 1, 0, 0, 1, 0, 1, 0, 0])
+    n = np.array([1, 2, 1, 3, 1, 2, 1, 1, 4, 1])
+    x_test = np.array([2.0, 7.0, 10.0, 16.0, 28.0, 41.0, 55.0])
+    expected = [
+        0.0,
+        0.183823529412,
+        0.183823529412,
+        0.514592760181,
+        0.657449903038,
+        1.457449903038,
+        2.457449903038,
+    ]
+    model = surpyval.NelsonAalen.fit(x, c=c, n=n)
+    assert np.allclose(model.Hf(x_test), expected, atol=1e-9)
 
 
-def test_nelson_aalen_censored_against_lifelines():
-    naf = lifelines.NelsonAalenFitter(nelson_aalen_smoothing=False)
-    for i in range(100):
-        test_params = []
-        for b in ((1, 100), (0.5, 20)):
-            test_params.append(np.random.uniform(*b))
-        test_params = np.array(test_params)
-        x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000)), *test_params
-        )
-        c = np.random.binomial(1, np.random.uniform(0, 1, 1), x.shape)
-        x = x - np.abs(x * np.random.uniform(0, 1, x.shape))
-        n = np.ones_like(x) * int(np.random.uniform(1, 5))
-        x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
-        ll_est = naf.fit(x, 1 - c, weights=n).predict(x_test).values
-        surp_est = surpyval.NelsonAalen.fit(x, c=c, n=n).Hf(x_test)
-        assert np.allclose(ll_est, surp_est, 1e-15)
-
-
-def test_nelson_aalen_censored_and_truncated_against_lifelines():
-    naf = lifelines.NelsonAalenFitter(nelson_aalen_smoothing=False)
-    for i in range(100):
-        test_params = []
-        for b in ((1, 100), (0.5, 20)):
-            test_params.append(np.random.uniform(*b))
-        test_params = np.array(test_params)
-        x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000)), *test_params
-        )
-        x, tl = left_truncate(x, surpyval.Weibull, 0.1, test_params)
-        x, c = right_censor(x, tl, 0.2)
-        n = np.ones_like(x) * int(np.random.uniform(1, 5))
-        x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
-        ll_est = naf.fit(x, 1 - c, entry=tl, weights=n).predict(x_test).values
-        surp_est = surpyval.NelsonAalen.fit(x, c=c, n=n, tl=tl).Hf(x_test)
-        assert np.allclose(ll_est, surp_est, 1e-15)
+def test_nelson_aalen_censored_and_truncated_against_known_values():
+    # NelsonAalen with right censoring, left truncation, and weights.
+    x = np.array([6.0, 9.0, 14.0, 18.0, 22.0, 27.0, 33.0, 40.0, 48.0, 55.0])
+    tl = np.array([0.0, 2.0, 5.0, 5.0, 10.0, 12.0, 0.0, 20.0, 25.0, 30.0])
+    c = np.array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0])
+    n = np.array([1, 1, 2, 1, 1, 3, 1, 1, 2, 1])
+    x_test = np.array([3.0, 9.0, 18.0, 27.0, 40.0, 55.0, 60.0])
+    expected = [
+        0.0,
+        0.166666666667,
+        0.583333333333,
+        1.011904761905,
+        1.211904761905,
+        2.878571428571,
+        2.878571428571,
+    ]
+    model = surpyval.NelsonAalen.fit(x, c=c, n=n, tl=tl)
+    assert np.allclose(model.Hf(x_test), expected, atol=1e-9)
 
 
 def test_fleming_harrington_same_as_nelson_aalen_with_no_counts():
-    naf = lifelines.NelsonAalenFitter(nelson_aalen_smoothing=False)
-    for i in range(100):
-        test_params = []
-        for b in ((1, 100), (0.5, 20)):
-            test_params.append(np.random.uniform(*b))
-        test_params = np.array(test_params)
-        x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000)), *test_params
-        )
-        x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
-        ll_est = naf.fit(x).predict(x_test).values
-        surp_est = surpyval.FlemingHarrington.fit(x).Hf(x_test)
-        assert np.allclose(ll_est, surp_est, 1e-15)
+    # With no ties and no counts the Fleming-Harrington and Nelson-Aalen
+    # cumulative hazards coincide; the expected values are the lifelines
+    # Nelson-Aalen estimates for this dataset.
+    x = np.array([2.0, 4.0, 6.0, 8.0, 9.0, 13.0, 17.0, 22.0, 30.0, 45.0])
+    x_test = np.array([1.0, 4.0, 6.0, 10.0, 22.0, 50.0])
+    expected = [
+        0.0,
+        0.211111111111,
+        0.336111111111,
+        0.645634920635,
+        1.428968253968,
+        2.928968253968,
+    ]
+    fh = surpyval.FlemingHarrington.fit(x)
+    na = surpyval.NelsonAalen.fit(x)
+    assert np.allclose(fh.Hf(x_test), expected, atol=1e-9)
+    assert np.allclose(fh.Hf(x_test), na.Hf(x_test), atol=1e-9)
 
 
 def test_fleming_harrington_case():
