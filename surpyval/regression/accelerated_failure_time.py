@@ -17,6 +17,9 @@ class AcceleratedFailureTimeFitter:
         self.support = self.dist.support
         self.param_names = self.dist.param_names
         self.param_map = {v: i for i, v in enumerate(self.dist.param_names)}
+        self.fixed_parameter = self.param_names[0]
+        self.acc_parameter_relationship = lambda x: x
+        self.fixed = {}
         self.phi = acc_model.phi
         self.Hf_dist = self.dist.Hf
         self.hf_dist = self.dist.hf

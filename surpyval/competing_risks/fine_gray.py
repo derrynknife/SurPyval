@@ -7,13 +7,6 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
-import numpy as np
-
-# import numpy_indexed as npi
-from scipy.optimize import minimize
-
-from surpyval.utils import validate_fine_gray_inputs
-
 # from numba import njit
 # from scipy.optimize import root
 
@@ -127,31 +120,10 @@ class FineGray_:
     #     return log_like, jac, hess
 
     def fit(self, x, Z, e, c=None, n=None):
-        x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
-
-        unique_e = list(set(e))
-        if None in unique_e:
-            unique_e.remove(None)
-
-        # Best initial assumption is to assume there is no risk
-        beta_init = np.zeros(Z.shape[1])
-
-        results = []
-        for i, event in enumerate(unique_e):
-            mask = e == event
-            neg_ll, jac, hess = self.create_breslow_ll_jac_hess(
-                x, Z, c, n, e, mask, with_jac=False, with_hess=False
-            )
-
-            # Have found that root finding is faster than minimization!
-            # res = root(jac, beta_init, jac=hess, tol=tol)
-            # fun = lambda beta: -self.partial_log_like(beta, x, c_e, n, Z, e,
-            # event)
-            res = minimize(neg_ll, beta_init)
-
-            results.append(res)
-
-        return results, unique_e
+        raise NotImplementedError(
+            "FineGray.fit() is not yet implemented. "
+            "The log-likelihood computation is incomplete."
+        )
 
 
 FineGray = FineGray_()

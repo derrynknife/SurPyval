@@ -25,7 +25,8 @@ module = [
     'setuptools',
     'sklearn.*',
     'sksurv.*',
-    'joblib.*'
+    'joblib.*',
+    'surpyval.nonparametric.*',
 ]
 ignore_missing_imports = true
 
