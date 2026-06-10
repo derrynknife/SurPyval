@@ -17,9 +17,9 @@ def right_censor(x, tl, frac):
         if c[i] == 0:
             continue
         if np.isfinite(trunc):
-            x_out[i] = np.random.uniform(trunc, value, 1)
+            x_out[i] = np.random.uniform(trunc, value)
         else:
-            x_out[i] = value - np.abs(value * np.random.uniform(0, 1, 1))
+            x_out[i] = value - np.abs(value * np.random.uniform(0, 1))
     return x_out, c
 
 
@@ -56,7 +56,7 @@ def test_kaplan_meier_against_lifelines():
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000, 1)), *test_params
+            int(np.random.uniform(2, 1000)), *test_params
         )
         n = np.ones_like(x) * int(np.random.uniform(1, 5))
         x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
@@ -73,7 +73,7 @@ def test_kaplan_meier_censored_against_lifelines():
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000, 1)), *test_params
+            int(np.random.uniform(2, 1000)), *test_params
         )
         c = np.random.binomial(1, np.random.uniform(0, 1, 1), x.shape)
         x = x - np.abs(x * np.random.uniform(0, 1, x.shape))
@@ -92,7 +92,7 @@ def test_kaplan_meier_censored_and_truncated_against_lifelines():
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000, 1)), *test_params
+            int(np.random.uniform(2, 1000)), *test_params
         )
         x, tl = left_truncate(x, surpyval.Weibull, 0.1, test_params)
         x, c = right_censor(x, tl, 0.2)
@@ -111,7 +111,7 @@ def test_nelson_aalen_against_lifelines():
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000, 1)), *test_params
+            int(np.random.uniform(2, 1000)), *test_params
         )
         n = np.ones_like(x) * int(np.random.uniform(1, 5))
         x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
@@ -128,7 +128,7 @@ def test_nelson_aalen_censored_against_lifelines():
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000, 1)), *test_params
+            int(np.random.uniform(2, 1000)), *test_params
         )
         c = np.random.binomial(1, np.random.uniform(0, 1, 1), x.shape)
         x = x - np.abs(x * np.random.uniform(0, 1, x.shape))
@@ -147,7 +147,7 @@ def test_nelson_aalen_censored_and_truncated_against_lifelines():
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000, 1)), *test_params
+            int(np.random.uniform(2, 1000)), *test_params
         )
         x, tl = left_truncate(x, surpyval.Weibull, 0.1, test_params)
         x, c = right_censor(x, tl, 0.2)
@@ -166,7 +166,7 @@ def test_fleming_harrington_same_as_nelson_aalen_with_no_counts():
             test_params.append(np.random.uniform(*b))
         test_params = np.array(test_params)
         x = surpyval.Weibull.random(
-            int(np.random.uniform(2, 1000, 1)), *test_params
+            int(np.random.uniform(2, 1000)), *test_params
         )
         x_test = np.random.uniform(x.min() / 2, x.max() * 2, 100)
         ll_est = naf.fit(x).predict(x_test).values

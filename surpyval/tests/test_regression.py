@@ -116,8 +116,8 @@ def test_breslow_p_values_rossi():
 
 def test_formula_interface_matches_Z_cols():
     # fit_from_df with formula= must give the same betas as Z_cols=.
-    # Formula sorts covariates alphabetically, so we reorder Z_cols betas
-    # before comparing.
+    # Formulaic preserves the order covariates appear in the formula, so
+    # the betas can be compared directly.
     rossi = load_rossi_static()
     Z_cols = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
 
@@ -132,5 +132,4 @@ def test_formula_interface_matches_Z_cols():
         method="efron",
     )
 
-    alpha_idx = [Z_cols.index(c) for c in sorted(Z_cols)]
-    assert np.allclose(model_z.beta[alpha_idx], model_f.beta)
+    assert np.allclose(model_z.beta, model_f.beta)

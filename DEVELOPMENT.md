@@ -242,7 +242,13 @@ These are safe to bump in a single PR. Run the existing test suite to confirm.
 - `scipy`: 1.10.0 → 1.17.1. Requires numpy ≥1.26 — do this after Phase 3.
 - `formulaic`: 0.5.2 → 1.2.2. The `SimpleFormula`/`StructuredFormula` redesign (v1.0) and the `ModelSpec.required_variables` change (v1.2) will affect the regression formula parsing in `surpyval/regression/`. Audit all `formulaic` call sites before bumping.
 
-#### Phase 3 — numpy 2.x (breaking)
+#### Phase 3 — numpy 2.x (breaking) — ✅ COMPLETED (June 2026)
+
+Completed: the codebase now runs on numpy 2.4.6 with the full test suite
+passing. `numpy>=2.1,<3` is pinned in `pyproject.toml`, `np.in1d` was
+replaced with `np.isin`, and size-1-array-to-scalar conversions (an error
+since numpy 2.x) were fixed in `Logistic.moment`, the Gamma MPP fitter,
+and the test helpers.
 
 numpy 2.0 removed ~100 deprecated aliases (`np.bool`, `np.int`, `np.float`, `np.complex`, `np.object`, `np.str` → use Python built-ins), moved `np.core` to private `np._core`, and changed scalar type promotion rules. This will break code in surpyval and possibly in `autograd` (see §5).
 

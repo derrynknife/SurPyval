@@ -40,17 +40,25 @@ def mps(model):
     hess = hessian(mps_fun)
 
     with np.errstate(all="ignore"):
-        res = minimize(
-            mps_fun,
-            init,
-            method="Newton-CG",
-            jac=jac,
-            hess=hess,
-            tol=1e-15,
-            args=(dist, x, inv_trans, const, c, n, tl, tr, offset),
-        )
+        # Some distributions have all-shape parameters whose autograd
+        # second derivatives are zero (see autograd_gamma_compat); a zero
+        # Hessian makes Newton-CG terminate at the initial guess while
+        # reporting success, so skip straight to BFGS in that case.
+        args = (dist, x, inv_trans, const, c, n, tl, tr, offset)
+        if np.any(hess(np.array(init, dtype=float), *args)):
+            res = minimize(
+                mps_fun,
+                init,
+                method="Newton-CG",
+                jac=jac,
+                hess=hess,
+                tol=1e-15,
+                args=args,
+            )
+        else:
+            res = None
 
-        if (res.success is False) or (np.isnan(res.x).any()):
+        if (res is None) or (res.success is False) or (np.isnan(res.x).any()):
             res = minimize(
                 mps_fun,
                 init,

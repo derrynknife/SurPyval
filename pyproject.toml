@@ -22,12 +22,13 @@ classifiers = [
 ]
 dependencies = [
     "autograd>=1.8",
-    "numpy",
+    "numpy>=2.1,<3",
     "scipy",
     "pandas",
     "matplotlib>=3.10",
     "formulaic",
     "numdifftools>=0.9.42",
+    "joblib",
 ]
 
 [project.optional-dependencies]

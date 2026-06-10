@@ -20,8 +20,7 @@ class Node(ABC):
         function_name: str,
         x: int | float | ArrayLike,
         Z: NDArray,
-    ) -> NDArray:
-        ...
+    ) -> NDArray: ...
 
 
 class IntermediateNode(Node):
@@ -128,7 +127,7 @@ def build_tree(
     """
     # If max_depth has been reached, return a TerminalNode
     if curr_depth == max_depth:
-        return TerminalNode(data)
+        return TerminalNode(data, parametric)
 
     # Choose the random n_features_split subset of features, without
     # replacement
