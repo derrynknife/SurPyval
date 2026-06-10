@@ -1,5 +1,6 @@
 from collections import defaultdict
-from typing import Any, Callable, Hashable
+from collections.abc import Callable, Hashable
+from typing import Any
 
 import autograd.numpy as np
 

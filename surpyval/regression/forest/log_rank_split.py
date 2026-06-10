@@ -1,5 +1,5 @@
+from collections.abc import Iterable
 from math import sqrt
-from typing import Iterable
 
 import numpy as np
 from numpy.typing import NDArray

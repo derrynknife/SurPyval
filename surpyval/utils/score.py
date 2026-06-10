@@ -1,6 +1,6 @@
 from itertools import combinations
 from math import isclose
-from typing import Any, List, Tuple
+from typing import Any
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -34,7 +34,7 @@ def score(
     scores = np.array(scores, ndmin=1)
 
     # Package i, c, x, and score together
-    ixc: List[Tuple[Any, Any, Any]] = []
+    ixc: list[tuple[Any, Any, Any]] = []
     for i in range(len(x)):
         ixc.append((x[i], c[i], scores[i]))
 

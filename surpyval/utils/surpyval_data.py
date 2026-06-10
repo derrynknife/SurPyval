@@ -1,7 +1,6 @@
 import json
 from numbers import Number
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -13,15 +12,15 @@ from surpyval.utils import xcnt_handler
 class SurpyvalData:
     def __init__(
         self,
-        x: Optional[ArrayLike] = None,
-        c: Optional[ArrayLike] = None,
-        n: Optional[ArrayLike] = None,
-        t: Optional[ArrayLike] = None,
-        xl: Optional[ArrayLike] = None,
-        xr: Optional[ArrayLike] = None,
-        tl: Optional[Union[ArrayLike, Number]] = None,
-        tr: Optional[Union[ArrayLike, Number]] = None,
-        Z: Optional[ArrayLike] = None,
+        x: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
+        xl: ArrayLike | None = None,
+        xr: ArrayLike | None = None,
+        tl: ArrayLike | Number | None = None,
+        tr: ArrayLike | Number | None = None,
+        Z: ArrayLike | None = None,
         group_and_sort: bool = True,
         handle: bool = True,
     ) -> None:
@@ -116,7 +115,7 @@ class SurpyvalData:
         if Z is not None:
             self.add_covariates(Z)
         else:
-            self.Z: Optional[np.ndarray] = None
+            self.Z: np.ndarray | None = None
 
     def add_covariates(self, Z: ArrayLike) -> None:
         """
@@ -229,9 +228,7 @@ class SurpyvalData:
             f")"
         )
 
-    def to_json(
-        self, filepath: Optional[Union[str, Path]] = None
-    ) -> Optional[str]:
+    def to_json(self, filepath: str | Path | None = None) -> str | None:
         """
         Serialize SurpyvalData to JSON format.
 

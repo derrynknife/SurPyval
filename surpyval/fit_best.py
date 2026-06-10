@@ -1,5 +1,4 @@
 import warnings
-from typing import List
 
 import numpy as np
 
@@ -19,7 +18,7 @@ from surpyval.univariate.parametric import (
     Weibull,
 )
 
-distributions: List[ParametricFitter] = [
+distributions: list[ParametricFitter] = [
     Beta,
     Exponential,
     ExpoWeibull,
@@ -64,7 +63,7 @@ def fit_best(x, c=None, n=None, t=None, metric="aic", include=[], exclude=[]):
             tmp_measure = getattr(temp_model, metric)()
         except Exception as e:
             warnings.warn(str(e))
-            warnings.warn("{} distribution failed to fit".format(dist.name))
+            warnings.warn(f"{dist.name} distribution failed to fit")
             continue
         if tmp_measure < measure:
             measure = tmp_measure
