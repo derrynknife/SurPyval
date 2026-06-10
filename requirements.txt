@@ -1,5 +1,6 @@
-# Production requirements
-# For development, use requirements_dev.txt instead
-numpy-indexed==0.3.5
-matplotlib==3.6
-numdifftools
+# Runtime dependencies are declared in pyproject.toml.
+# To install surpyval with all dependencies:
+#   pip install -e .
+#
+# For development (includes test and dev tools):
+#   pip install -r requirements_dev.txt

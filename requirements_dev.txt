@@ -1,12 +1,9 @@
-# Include production requirements
--r requirements.txt
+-e .[tests]
 
-# Dev requirements
 black
 flake8
 flake8-pyproject
 mypy
-pytest
 coverage
 pre-commit
 scikit-survival
