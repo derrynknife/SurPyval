@@ -70,17 +70,28 @@ class Parametric(Distribution):
 
     @classmethod
     def from_json(cls, fp):
-        with open(fp, "r+") as f:
+        with open(fp, "r") as f:
             return cls.from_dict(json.load(f))
 
     @classmethod
     def from_dict(cls, model_dict):
+        # Imported here since parametric_fitter imports this module
+        from surpyval.univariate.parametric.parametric_fitter import (
+            ParametricFitter,
+        )
+
         if model_dict["parameterization"] != "parametric":
             raise ValueError(
                 "Must create parametric model from parametric model dict"
             )
 
-        dist = getattr(surv, model_dict["distribution"])
+        # Restrict the lookup to known distributions so an untrusted
+        # model dict cannot resolve arbitrary surpyval attributes
+        dist = getattr(surv, model_dict["distribution"], None)
+        if not isinstance(dist, ParametricFitter):
+            raise ValueError(
+                "Unknown distribution '{}'".format(model_dict["distribution"])
+            )
         how = model_dict["how"]
         if "data" in model_dict:
             data = model_dict["data"]
