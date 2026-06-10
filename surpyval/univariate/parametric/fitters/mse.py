@@ -48,31 +48,29 @@ def mse(model):
     jac = jacobian(mse_fun)
     hess = hessian(mse_fun)
 
-    old_err_state = np.seterr(all="ignore")
-
-    res = minimize(
-        mse_fun,
-        init,
-        method="Newton-CG",
-        jac=jac,
-        hess=hess,
-        args=(dist, x, F, inv_trans, const),
-    )
-
-    if (res.success is False) or (np.isnan(res.x).any()):
+    with np.errstate(all="ignore"):
         res = minimize(
             mse_fun,
             init,
-            method="BFGS",
+            method="Newton-CG",
             jac=jac,
+            hess=hess,
             args=(dist, x, F, inv_trans, const),
         )
 
-    if (res.success is False) or (np.isnan(res.x).any()):
-        res = minimize(mse_fun, init, args=(dist, x, F, inv_trans, const))
+        if (res.success is False) or (np.isnan(res.x).any()):
+            res = minimize(
+                mse_fun,
+                init,
+                method="BFGS",
+                jac=jac,
+                args=(dist, x, F, inv_trans, const),
+            )
+
+        if (res.success is False) or (np.isnan(res.x).any()):
+            res = minimize(mse_fun, init, args=(dist, x, F, inv_trans, const))
 
     results = {}
     results["res"] = res
     results["params"] = inv_trans(const(res.x))
-    np.seterr(**old_err_state)
     return results

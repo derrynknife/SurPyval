@@ -8,24 +8,22 @@ from surpyval.univariate.nonparametric import plotting_positions
 
 
 def mpp_from_ecfd(dist, x, F):
-    old_err_state = np.seterr(all="ignore")
-
     x_pp = copy(x)
     y_pp = copy(F)
 
     mask = (y_pp != 0) & (y_pp != 1)
     y_pp = y_pp[mask]
     x_pp = x_pp[mask]
-    y_pp = dist.mpp_y_transform(y_pp)
-    x_pp = dist.mpp_x_transform(x_pp)
 
-    params = np.polyfit(x_pp, y_pp, 1)
+    with np.errstate(all="ignore"):
+        y_pp = dist.mpp_y_transform(y_pp)
+        x_pp = dist.mpp_x_transform(x_pp)
+        params = np.polyfit(x_pp, y_pp, 1)
 
     params = np.array(dist.unpack_rr(params, "y"))
 
     results = {}
     results["params"] = params
-    np.seterr(**old_err_state)
     return results
 
 

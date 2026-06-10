@@ -27,8 +27,6 @@ def mps(model):
     is quite good for offset distributions.
     """
 
-    old_err_state = np.seterr(all="ignore")
-
     dist = model.dist
     x, c, n = model.data["x"], model.data["c"], model.data["n"]
     const = model.fitting_info["const"]
@@ -41,34 +39,37 @@ def mps(model):
     jac = jacobian(mps_fun)
     hess = hessian(mps_fun)
 
-    res = minimize(
-        mps_fun,
-        init,
-        method="Newton-CG",
-        jac=jac,
-        hess=hess,
-        tol=1e-15,
-        args=(dist, x, inv_trans, const, c, n, tl, tr, offset),
-    )
-
-    if (res.success is False) or (np.isnan(res.x).any()):
+    with np.errstate(all="ignore"):
         res = minimize(
             mps_fun,
             init,
-            method="BFGS",
+            method="Newton-CG",
             jac=jac,
+            hess=hess,
+            tol=1e-15,
             args=(dist, x, inv_trans, const, c, n, tl, tr, offset),
         )
 
-    if (res.success is False) or (np.isnan(res.x).any()):
-        res = minimize(
-            mps_fun,
-            init,
-            args=(dist, x, inv_trans, const, c, n, tl, tr, offset),
-        )
+        if (res.success is False) or (np.isnan(res.x).any()):
+            res = minimize(
+                mps_fun,
+                init,
+                method="BFGS",
+                jac=jac,
+                args=(dist, x, inv_trans, const, c, n, tl, tr, offset),
+            )
 
-    if (res.success is False) or (np.isnan(res.x).any()):
-        print("MPS FAILED: Try alternate estimation method", file=sys.stderr)
+        if (res.success is False) or (np.isnan(res.x).any()):
+            res = minimize(
+                mps_fun,
+                init,
+                args=(dist, x, inv_trans, const, c, n, tl, tr, offset),
+            )
+
+        if (res.success is False) or (np.isnan(res.x).any()):
+            print(
+                "MPS FAILED: Try alternate estimation method", file=sys.stderr
+            )
 
     results = {}
     params = inv_trans(const(res.x))
@@ -81,7 +82,5 @@ def mps(model):
         results["params"] = params
 
     results["jac"] = jac
-
-    np.seterr(**old_err_state)
 
     return results
