@@ -57,7 +57,13 @@ All tests generate random parameters and samples with no `np.random.seed()` call
 The MPS truncated fit for the Beta distribution consistently fails its 10 % convergence tolerance at n=2000. Root cause is unclear without a fixed seed — it may be a genuine convergence problem in the MPS fitter for Beta under truncation (CDF values are close together, spacing objective is ill-conditioned), or the tolerance is too tight for the sample size. Before investing in the fitter: add a seed, establish a baseline, and check whether the fit converges at n=100 000. If it still diverges, the MPS optimiser path for Beta needs attention; if it passes at a larger n, widen the tolerance or increase the sample size.
 
 ### Tests only check statistical convergence, not mathematical correctness
-The current tests only check statistical convergence. Add `tests/test_distributions_math.py` with closed-form checks: verify `sf(x) + ff(x) == 1`, `qf(0.5)` matches the known median, and `random()` samples have expected mean/variance for each distribution (with a fixed seed).
+~~The current tests only check statistical convergence. Add `tests/test_distributions_math.py` with closed-form checks: verify `sf(x) + ff(x) == 1`, `qf(0.5)` matches the known median, and `random()` samples have expected mean/variance for each distribution (with a fixed seed).~~
+**Done** — `surpyval/tests/test_distributions_math.py` added with all three checks.
+
+### `GumbelLEV.qf` is the inverse of `sf`, not `ff`
+**File:** `surpyval/univariate/parametric/gumbel_lev.py`
+
+`GumbelLEV.qf(p)` returns the value `x` where `sf(x) = p`, so `ff(qf(p)) = 1-p` instead of `p`. All other distributions define `qf` as the inverse of `ff` (the CDF). The fix is to make `GumbelLEV.qf` return the value where `ff(x) = p`, consistent with the rest of the API. Caught by `test_qf_ff_roundtrip[GumbelLEV]` (currently `xfail`).
 
 ---
 
