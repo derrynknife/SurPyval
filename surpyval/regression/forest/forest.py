@@ -20,7 +20,7 @@ class RandomSurvivalForest:
     def __init__(
         self,
         data: SurpyvalData,
-        Z: NDArray,
+        Z: ArrayLike | NDArray,
         n_trees: int = 100,
         max_depth: int | float = float("inf"),
         min_leaf_samples: int = 5,
@@ -30,7 +30,11 @@ class RandomSurvivalForest:
         parametric: bool = True,
     ):
         self.data: SurpyvalData = data
-        self.Z: NDArray = np.array(Z, ndmin=2)
+        Z = np.asarray(Z)
+        if Z.ndim == 1:
+            # A 1-d Z is a single feature, one value per sample
+            Z = Z.reshape(-1, 1)
+        self.Z: NDArray = Z
         self.n_trees = n_trees
         self.bootstrap = bootstrap
         self.parametric = parametric
@@ -80,7 +84,6 @@ class RandomSurvivalForest:
         parametric = parse_leaf_type(leaf_type)
 
         data = SurpyvalData(x, c, n, t, group_and_sort=False)
-        Z = np.array(Z, ndmin=2)
         return cls(
             data,
             Z,
@@ -146,7 +149,7 @@ class RandomSurvivalForest:
     def mortality(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> ArrayLike:
-        mortality = self.Hf(x, Z).sum(1)
+        mortality = np.atleast_2d(self.Hf(x, Z)).sum(1)
         return np.clip(mortality, 0, np.finfo(np.float64).max)
 
     def _apply_model_function_to_trees(
@@ -157,6 +160,7 @@ class RandomSurvivalForest:
     ) -> NDArray:
         # Prep input - make sure numpy array
         x = np.array(x, ndmin=1)
+        single_covariant_vector = np.ndim(Z) < 2
         Z = np.array(Z, ndmin=2)
 
         res = np.zeros((Z.shape[0], x.size)).astype(np.float64)
@@ -166,7 +170,10 @@ class RandomSurvivalForest:
                     function_name, x, Z[i_covariant_vector, :]
                 )
                 res[i_covariant_vector, :] += values
-        return res / self.n_trees
+        res = res / self.n_trees
+        if single_covariant_vector:
+            return res[0]
+        return res
 
     def score(
         self,
@@ -186,7 +193,5 @@ def parse_leaf_type(leaf_type: str):
     elif leaf_type.lower() == "parametric":
         return True
     else:
-        raise ValueError(
-            f"leaf_type={leaf_type} is invalid. Must\
-            'parametric' or 'non-parametric'"
-        )
+        raise ValueError(f"leaf_type={leaf_type} is invalid. Must\
+            'parametric' or 'non-parametric'")

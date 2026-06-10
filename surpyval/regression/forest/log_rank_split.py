@@ -57,12 +57,16 @@ def log_rank_split(
 
     Parameters
     ----------
-    x : NDArray
-        Survival times
+    data : SurpyvalData
+        Survival data (x, c, n, t)
     Z : NDArray
-        Covariant matrix
-    c : NDArray
-        Censor vector
+        Covariant matrix, of shape (n_samples, n_features)
+    min_leaf_samples : int
+        Minimum number of samples each child must have
+    min_leaf_failures : int
+        Minimum number of failures each child must have
+    feature_indices_in : Iterable[int]
+        Indices of the features to consider for the split
 
     Returns
     -------
@@ -87,9 +91,9 @@ def log_rank_split(
                 continue
             elif Z_u[~mask].size < min_leaf_samples:
                 continue
-            elif (data.c[mask] != 1).sum() <= min_leaf_failures:
+            elif (data.c[mask] != 1).sum() < min_leaf_failures:
                 continue
-            elif (data.c[~mask] != 1).sum() <= min_leaf_failures:
+            elif (data.c[~mask] != 1).sum() < min_leaf_failures:
                 continue
 
             abs_log_rank = log_rank(u, v, data, Z)
@@ -128,8 +132,7 @@ def log_rank(
     expanded_Y_L = np.empty_like(all_x)
     expanded_Y_L.fill(np.nan)
     # expanded_do_L = np.zeros_like(all_x)
-    # x_l_indices = np.in1d(all_x, left_child_x).nonzero()[0]
-    x_l_indices = np.in1d(all_x, data_left_child.x).nonzero()[0]
+    x_l_indices = np.isin(all_x, data_left_child.x).nonzero()[0]
     expanded_d_L[x_l_indices] = d_L
     expanded_Y_L[x_l_indices] = Y_L
     # expanded_do_L[x_l_indices] = do_L
@@ -178,7 +181,7 @@ def log_rank(
         (Y_L / Y) * (1.0 - Y_L / Y) * (Y - d) / (Y - 1) * d
     )
 
-    if denominator_inside_sqrt == 0:
+    if denominator_inside_sqrt <= 0:
         return -float("inf")
 
     try:

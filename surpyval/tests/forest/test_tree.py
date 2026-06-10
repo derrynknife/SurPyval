@@ -20,7 +20,7 @@ def test_tree_no_split():
 
     exp_weibull = Weibull.fit(x=x, c=c)
 
-    tree = SurvivalTree(x=x, Z=Z, c=c, max_depth=0)
+    tree = SurvivalTree.fit(x=x, Z=Z, c=c, max_depth=0)
 
     actual_weibull = tree._root.model
 
@@ -44,7 +44,7 @@ def test_tree_one_split_one_feature():
     exp_right_weibull = Weibull.fit(x=x[8:], c=c[8:])
 
     # Actual
-    tree = SurvivalTree(x=x, Z=Z, c=c, max_depth=1)
+    tree = SurvivalTree.fit(x=x, Z=Z, c=c, max_depth=1)
 
     # Assert Weibull models
     left_weibull = tree._root.left_child.model
@@ -75,7 +75,7 @@ def test_tree_one_split_two_features():
     c = [0] * len(x)
 
     # Actual
-    tree = SurvivalTree(x=x, Z=Z, c=c, max_depth=1, n_features_split="all")
+    tree = SurvivalTree.fit(x=x, Z=Z, c=c, max_depth=1, n_features_split="all")
 
     # Assert feature 1 was selected
     assert tree._root.split_feature_index == 1
@@ -102,32 +102,32 @@ def test_tree_one_split_two_features_n_features_split():
     c = [0] * len(x)
 
     # Different n_features_split
-    tree_one_feature = SurvivalTree(
+    tree_one_feature = SurvivalTree.fit(
         x=x, Z=Z, c=c, max_depth=1, n_features_split=1
     )
     assert len(tree_one_feature._root.feature_indices_in) == 1
 
-    tree_two_features = SurvivalTree(
+    tree_two_features = SurvivalTree.fit(
         x=x, Z=Z, c=c, max_depth=1, n_features_split=2
     )
     assert len(tree_two_features._root.feature_indices_in) == 2
 
-    tree_one_feature_float = SurvivalTree(
+    tree_one_feature_float = SurvivalTree.fit(
         x=x, Z=Z, c=c, max_depth=1, n_features_split=0.5
     )
     assert len(tree_one_feature_float._root.feature_indices_in) == 1
 
-    tree_one_feature_sqrt = SurvivalTree(
+    tree_one_feature_sqrt = SurvivalTree.fit(
         x=x, Z=Z, c=c, max_depth=1, n_features_split="sqrt"
     )
     assert len(tree_one_feature_sqrt._root.feature_indices_in) == 1
 
-    tree_one_feature_log2 = SurvivalTree(
+    tree_one_feature_log2 = SurvivalTree.fit(
         x=x, Z=Z, c=c, max_depth=1, n_features_split="log2"
     )
     assert len(tree_one_feature_log2._root.feature_indices_in) == 1
 
-    tree_two_features_all = SurvivalTree(
+    tree_two_features_all = SurvivalTree.fit(
         x=x, Z=Z, c=c, max_depth=1, n_features_split="all"
     )
     assert len(tree_two_features_all._root.feature_indices_in) == 2

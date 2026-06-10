@@ -252,7 +252,7 @@ def test_xcnt_handler():
     with pytest.raises(
         ValueError,
         match="Each element of 'x' must be either scalar or array-like"
-        "of no more than length 2",
+        " of no more than length 2",
     ):
         xcnt_handler(x=[1, [2, 3, 4]])
 
@@ -277,7 +277,8 @@ def test_xcnt_handler():
     # greater than right interval
     with pytest.raises(
         ValueError,
-        match="All left intervals must be <= to right intervals",
+        match="All left intervals must be less than or equal to right"
+        " intervals",
     ):
         xcnt_handler(x=[[3, 2], [5, 4]])
 

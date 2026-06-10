@@ -1,6 +1,24 @@
 import numpy as np
 
 from surpyval.regression.forest.log_rank_split import log_rank_split
+from surpyval.utils.surpyval_data import SurpyvalData
+
+
+def log_rank_split_xZc(x, Z, c, min_leaf_failures, feature_indices_in):
+    """Call log_rank_split() from x-Z-c arrays."""
+    data = SurpyvalData(
+        np.asarray(x, dtype=float), np.asarray(c), group_and_sort=False
+    )
+    Z = np.asarray(Z, dtype=float)
+    if Z.ndim == 1:
+        Z = Z.reshape(-1, 1)
+    return log_rank_split(
+        data,
+        Z,
+        min_leaf_samples=1,
+        min_leaf_failures=min_leaf_failures,
+        feature_indices_in=feature_indices_in,
+    )
 
 
 def test_log_rank_split_one_binary_feature():
@@ -12,7 +30,7 @@ def test_log_rank_split_one_binary_feature():
     Z = np.array([0] * 10 + [1] * 10)
     c = np.array([0] * len(x))
 
-    lrs = log_rank_split(
+    lrs = log_rank_split_xZc(
         x,
         Z,
         c,
@@ -32,7 +50,7 @@ def test_log_rank_split_one_feature_four_samples():
     Z = np.array([0, 0.2] + [15.1, 15])
     c = np.array([0] * len(x))
 
-    lrs = log_rank_split(
+    lrs = log_rank_split_xZc(
         x,
         Z,
         c,
@@ -53,7 +71,7 @@ def test_log_rank_split_two_features_two_samples():
     Z = np.array([[0.3, 1], [0.3, 3]])  # Feature 1 should be selected
     c = np.array([0] * len(x))
 
-    lrs = log_rank_split(
+    lrs = log_rank_split_xZc(
         x,
         Z,
         c,
@@ -76,7 +94,7 @@ def test_log_rank_split_min_leaf_failures():
     Z = np.array([0, 0.1, 0, 3, 3.1, 3.2])
     c_A = np.array([0] * len(x))
 
-    lrsA = log_rank_split(
+    lrsA = log_rank_split_xZc(
         x,
         Z,
         c_A,
@@ -88,7 +106,7 @@ def test_log_rank_split_min_leaf_failures():
 
     # Case B: all samples are censored, a split is not possible
     c_B = np.array([1] * len(x))
-    lrsA = log_rank_split(
+    lrsA = log_rank_split_xZc(
         x, Z, c_B, min_leaf_failures=min_leaf_failures, feature_indices_in=[0]
     )
     assert lrsA[0] == -1
@@ -96,7 +114,7 @@ def test_log_rank_split_min_leaf_failures():
 
     # Case C: Not enough uncensored samples to make a split
     c_C = np.array([0, 1, 0, 0, 0, 0])
-    lrsA = log_rank_split(
+    lrsA = log_rank_split_xZc(
         x, Z, c_C, min_leaf_failures=min_leaf_failures, feature_indices_in=[0]
     )
     assert lrsA[0] == -1

@@ -364,7 +364,7 @@ class Logistic_(ParametricFitter):
         d = self.mgf
         for i in range(n):
             d = grad(d)
-        return d(np.array([0]), mu, sigma)
+        return d(0.0, mu, sigma)
 
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma

@@ -575,7 +575,7 @@ class Gamma_(ParametricFitter):
                 alpha = res.x[0]
                 beta = np.linalg.lstsq(
                     self.mpp_y_transform(F, alpha, 1.0)[:, np.newaxis], x
-                )[0]
+                )[0][0]
                 beta = 1.0 / beta
 
             results["params"] = [alpha, beta]

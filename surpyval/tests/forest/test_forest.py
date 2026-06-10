@@ -32,7 +32,7 @@ def test_forest_n_trees(get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray]):
     x, Z, c = get_x_Z_c_samples
 
     # Make forest w/ 5 trees
-    forest = RandomSurvivalForest(x=x, Z=Z, c=c, n_trees=5)
+    forest = RandomSurvivalForest.fit(x=x, Z=Z, c=c, n_trees=5)
 
     # Assert there are only 5 trees
     assert forest.n_trees == 5
@@ -40,42 +40,44 @@ def test_forest_n_trees(get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray]):
 
 
 def test_forest_bootstrap_false(
-    get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray]
+    get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray],
 ):
     # Get samples
     x, Z, c = get_x_Z_c_samples
 
     # Make forest w/ 2 trees
-    forest = RandomSurvivalForest(x=x, Z=Z, c=c, n_trees=2, bootstrap=False)
+    forest = RandomSurvivalForest.fit(
+        x=x, Z=Z, c=c, n_trees=2, bootstrap=False
+    )
 
     assert not forest.bootstrap  # == False
-    assert_array_equal(forest.trees[0].x, x)
-    assert_array_equal(forest.trees[1].x, x)
+    assert_array_equal(forest.trees[0].data.x, x)
+    assert_array_equal(forest.trees[1].data.x, x)
 
 
 def test_forest_bootstrap_true(
-    get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray]
+    get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray],
 ):
     # Get samples
     x, Z, c = get_x_Z_c_samples
 
     # Make forest w/ 1 tree, bootstrapped (boostrap=True by default)
-    forest = RandomSurvivalForest(x=x, Z=Z, c=c, n_trees=1)
+    forest = RandomSurvivalForest.fit(x=x, Z=Z, c=c, n_trees=1)
 
     # Assert all samples are not as given
     assert forest.bootstrap  # == False
     with pytest.raises(AssertionError):
-        assert_array_equal(forest.trees[0].x, x)
+        assert_array_equal(forest.trees[0].data.x, x)
 
 
 def test_forest_sf_scalar_x(
-    get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray]
+    get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray],
 ):
     # Get samples
     x, Z, c = get_x_Z_c_samples
 
     # Make forest w/ 5 trees
-    forest = RandomSurvivalForest(x=x, Z=Z, c=c, n_trees=5)
+    forest = RandomSurvivalForest.fit(x=x, Z=Z, c=c, n_trees=5)
 
     # Make a sf() call for x=1 || 100, and Z = [0.5, 0.5]
     # Should be pretty     low || high
@@ -91,13 +93,13 @@ def test_forest_sf_scalar_x(
 
 
 def test_forest_sf_vector_x(
-    get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray]
+    get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray],
 ):
     # Get samples
     x, Z, c = get_x_Z_c_samples
 
     # Make forest w/ 5 trees
-    forest = RandomSurvivalForest(x=x, Z=Z, c=c, n_trees=5)
+    forest = RandomSurvivalForest.fit(x=x, Z=Z, c=c, n_trees=5)
 
     # Make a sf() call for x=[1, 5, 50, 75, 100], and Z = [0.5, 0.5]
     sf = forest.sf(x=[1, 5, 50, 75, 100], Z=[0.5, 0.5])
@@ -106,13 +108,13 @@ def test_forest_sf_vector_x(
 
 
 def test_forest_all_functions(
-    get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray]
+    get_x_Z_c_samples: tuple[NDArray, NDArray, NDArray],
 ):
     # Get samples
     x, Z, c = get_x_Z_c_samples
 
     # Make forest w/ 5 trees
-    forest = RandomSurvivalForest(x=x, Z=Z, c=c, n_trees=5)
+    forest = RandomSurvivalForest.fit(x=x, Z=Z, c=c, n_trees=5)
 
     # Make a sf(), ff(), df(), hf(), and Hf() call for x=1 and Z = [0.5, 0.5]
     sf = forest.sf(x=1, Z=[0.5, 0.5])
