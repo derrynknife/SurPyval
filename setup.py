@@ -25,9 +25,9 @@ setuptools.setup(
         "numpy",
         "scipy",
         "pandas",
-        "matplotlib",
+        "matplotlib>=3.10",
         "formulaic",
-        "numdifftools",
+        "numdifftools>=0.9.42",
     ],
     extras_require={
         "tests": [
