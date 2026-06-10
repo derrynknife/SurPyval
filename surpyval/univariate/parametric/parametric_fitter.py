@@ -92,7 +92,9 @@ class ParametricFitter:
         xl = xl - gamma
         right = np.where(np.isfinite(xr), self.ff(xr, *params), 1)
         left = np.where(np.isfinite(xl), self.ff(xl, *params), 0)
-        return np.sum(n * np.log(right - left)) + n.sum() * np.log(p - f0)
+        return np.sum(
+            n * np.log(np.maximum(right - left, 0.0))
+        ) + n.sum() * np.log(p - f0)
 
     def parameter_transform(self, x_min, params):
         *params, gamma, f0, p = params
@@ -137,7 +139,10 @@ class ParametricFitter:
         F = self.ff(x_obs, *params)
 
         all_F = np.hstack([F_tl, F, F_tr])
-        D_0_1_normed = (all_F - F_tl) / (F_tr - F_tl)
+        denom = F_tr - F_tl
+        if denom < np.finfo(float).eps:
+            return np.inf
+        D_0_1_normed = (all_F - F_tl) / denom
         D = np.diff(D_0_1_normed)
 
         # Censoring

@@ -250,7 +250,7 @@ class ParametricRegressionModel:
         """
         if type(x) == list:
             x = np.array(x)
-        return self.model.hf(x, Z, *self.params)
+        return self.model.Hf(x, Z, *self.params)
 
     def random(self, size, Z):
         r"""

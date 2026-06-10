@@ -381,7 +381,7 @@ class Parametric(Distribution):
         if self.p == 1:
             return self.dist.hf(x - self.gamma, *self.params)
         else:
-            return 1 - self.p * self.dist.ff(x - self.gamma, *self.params)
+            return self.df(x) / self.sf(x)
 
     def Hf(self, x):
         """

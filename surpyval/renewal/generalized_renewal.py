@@ -355,7 +355,7 @@ class GeneralizedRenewal:
                     dist_params = dist.fit(
                         first_events.x, first_events.c, first_events.n
                     ).params
-                    if dist_params.isna().any():
+                    if np.isnan(dist_params).any():
                         dist_params = None
                 except Exception:
                     dist_params = None
@@ -382,7 +382,7 @@ class GeneralizedRenewal:
             # result is (very!!) sensitive to initial value of q
             results = []
             for q_init in [0.0001, 1.0, 2.0]:
-                init = transform(np.array([1, *dist_params]))
+                init = transform(np.array([q_init, *dist_params]))
                 res = minimize(
                     neg_ll_unbounded,
                     init,
@@ -390,7 +390,11 @@ class GeneralizedRenewal:
                 )
                 if res.success:
                     results.append(res)
-            res = results[np.argmin([res.fun for res in results])]
+            if not results:
+                init = transform(np.array([1.0, *dist_params]))
+                res = minimize(neg_ll_unbounded, init, method="Nelder-Mead")
+            else:
+                res = results[np.argmin([res.fun for res in results])]
         else:
             init = transform(np.array(init))
             res = minimize(

@@ -266,7 +266,7 @@ class Exponential_(ParametricFitter):
         Quantile function for the Exponential Distribution:
 
         .. math::
-            q(p) = \frac{-\ln\left ( p \right )}{\lambda}
+            q(p) = \frac{-\ln\left ( 1 - p \right )}{\lambda}
 
         Parameters
         ----------
@@ -288,9 +288,9 @@ class Exponential_(ParametricFitter):
         >>> from surpyval import Exponential
         >>> p = np.array([.1, .2, .3, .4, .5])
         >>> Exponential.qf(p, 3)
-        array([0.76752836, 0.5364793 , 0.40132427, 0.30543024, 0.23104906])
+        array([0.03512219, 0.07438118, 0.11889152, 0.17027853, 0.23104906])
         """
-        return -np.log(p) / failure_rate
+        return -np.log1p(-p) / failure_rate
 
     def mean(self, failure_rate):
         r"""
