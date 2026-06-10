@@ -347,9 +347,9 @@ class NonParametric:
         dist="z",
     ):
         if bound_type not in ["exp", "normal"]:
-            return ValueError("'bound_type' must be in ['exp', 'normal']")
+            raise ValueError("'bound_type' must be in ['exp', 'normal']")
         if dist not in ["t", "z"]:
-            return ValueError("'dist' must be in ['t', 'z']")
+            raise ValueError("'dist' must be in ['t', 'z']")
 
         confidence = 1.0 - alpha_ci
 

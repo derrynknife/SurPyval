@@ -414,7 +414,8 @@ class CoxPH_:
         Z: array-like
             The covariates of the model.
         c: array-like, optional
-            The censoring indicator. 1 if observed, 0 if censored.
+            The censoring indicator. 0 if observed (event),
+            1 if right-censored.
         n: array-like, optional
             The number of observations at each time point.
         tl: array-like, optional

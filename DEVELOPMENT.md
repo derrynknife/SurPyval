@@ -91,15 +91,12 @@ Fully migrated from `setup.py` to `pyproject.toml`. `setup.py` deleted.
 ### Regression `fit()` argument order
 `CoxPH.fit(x, Z, ...)` takes time first, while `ProportionalHazardsFitter`, `ParameterSubstitutionFitter`, and `AcceleratedFailureTimeFitter` all take `(Z, x, ...)`. Switching between models silently swaps time and covariates.
 
-### CoxPH docstring inverts censoring convention
-**File:** `surpyval/regression/cox_ph.py:398`
+### ~~CoxPH docstring inverts censoring convention~~ ✓ Done
+Fixed: `c` parameter now correctly documented as `0=event, 1=right-censored`.
 
-Docstring says `c`: "1 if observed, 0 if censored" — opposite of surpyval's convention (`c=0` is event, `c=1` is right-censored). The *implementation* is correct; only the docstring is wrong.
-
-### `R_cb()` returns `ValueError` objects instead of raising them
-**File:** `surpyval/univariate/nonparametric/nonparametric.py:349-352`
-
-Invalid `bound_type` and `dist` arguments cause the method to `return ValueError(...)` rather than `raise ValueError(...)`. The caller receives a `ValueError` object treated as a valid array.
+### ~~`R_cb()` returns `ValueError` objects instead of raising them~~ ✓ Done
+Fixed: `return ValueError(...)` changed to `raise ValueError(...)` in
+`surpyval/univariate/nonparametric/nonparametric.py`.
 
 ### `cb()` default `on` parameter differs between `Parametric` and `NonParametric`
 `Parametric.cb()` defaults to `on='R'`; `NonParametric.cb()` defaults to `on='sf'`. Both strings refer to the survival function in the same conditional.
