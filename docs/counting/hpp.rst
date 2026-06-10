@@ -1,5 +1,5 @@
 HPP
 ===
 
-.. autoclass:: surpyval.recurrence.parametric.hpp.HPP
+.. autoclass:: surpyval.recurrent.parametric.hpp.HPP
    :members:

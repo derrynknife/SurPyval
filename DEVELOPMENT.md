@@ -37,7 +37,7 @@ All five methods (Nelder-Mead → Powell → BFGS → TNC → Newton-CG) start f
 ## 2. Test Coverage Gaps
 
 ### No random seed in parametric tests
-**Files:** `surpyval/tests/test_fit.py`, `surpyval/tests/test_np.py`
+**Files:** `surpyval/tests/univariate/parametric/test_fit.py`, `surpyval/tests/univariate/nonparametric/test_np.py`
 
 All tests generate random parameters and samples with no `np.random.seed()` call. The `FIT_SIZES = [1000, 10000, 100000]` retry loop masks intermittent failures and makes CI failures impossible to reproduce.
 
@@ -47,18 +47,18 @@ All tests generate random parameters and samples with no `np.random.seed()` call
 |-----------|-------|
 | `CompetingRisks`, `FineGray`, `CompetingRisksProportionalHazard` | `surpyval/competing_risks/` |
 | `MixtureModel`, `SeriesModel`, `ParallelModel` | `surpyval/univariate/parametric/` |
-| Recurrence/NHPP (`Crow`, `Duane`, `CoxLewis`, `CrowAMSAA`) | `surpyval/recurrence/parametric/` |
-| `AcceleratedFailureTime` regression variants | `surpyval/regression/` |
+| Recurrence/NHPP (`Crow`, `Duane`, `CoxLewis`, `CrowAMSAA`) | `surpyval/recurrent/parametric/` |
+| `AcceleratedFailureTime` regression variants | `surpyval/univariate/regression/` |
 | Serialization (`to_dict` / `from_dict`) | `test_to_dict.py` is 0 bytes |
 
 ### `test_mps_truncated[Beta]` consistently fails
-**File:** `surpyval/tests/test_fit.py::test_mps_truncated[Beta-random_parameters]`
+**File:** `surpyval/tests/univariate/parametric/test_fit.py::test_mps_truncated[Beta-random_parameters]`
 
 The MPS truncated fit for the Beta distribution consistently fails its 10 % convergence tolerance at n=2000. Root cause is unclear without a fixed seed — it may be a genuine convergence problem in the MPS fitter for Beta under truncation (CDF values are close together, spacing objective is ill-conditioned), or the tolerance is too tight for the sample size. Before investing in the fitter: add a seed, establish a baseline, and check whether the fit converges at n=100 000. If it still diverges, the MPS optimiser path for Beta needs attention; if it passes at a larger n, widen the tolerance or increase the sample size.
 
 ### Tests only check statistical convergence, not mathematical correctness
-~~The current tests only check statistical convergence. Add `tests/test_distributions_math.py` with closed-form checks: verify `sf(x) + ff(x) == 1`, `qf(0.5)` matches the known median, and `random()` samples have expected mean/variance for each distribution (with a fixed seed).~~
-**Done** — `surpyval/tests/test_distributions_math.py` added with all three checks.
+~~The current tests only check statistical convergence. Add `test_distributions_math.py` with closed-form checks: verify `sf(x) + ff(x) == 1`, `qf(0.5)` matches the known median, and `random()` samples have expected mean/variance for each distribution (with a fixed seed).~~
+**Done** — `test_distributions_math.py` added with all three checks.
 
 ### ~~`GumbelLEV.qf` is the inverse of `sf`, not `ff`~~ ✓ Done
 **File:** `surpyval/univariate/parametric/gumbel_lev.py`
@@ -122,7 +122,37 @@ Weibull, LogLogistic, Gamma, Beta, and ExpoWeibull all use `param_names=['alpha'
 
 ---
 
-## 6. Proposed Package Hierarchy
+## 6. Proposed Package Hierarchy — ✅ COMPLETED (June 2026)
+
+Implemented as proposed, with two deviations:
+
+1. **Survival tree / random survival forest** moved to `surpyval/experimental/forest/`
+   instead of `univariate/regression/forest/` — the feature is not yet mature
+   enough for the stable API. Import via
+   `from surpyval.experimental import RandomSurvivalForest, SurvivalTree`.
+2. **Top-level namespace:** the univariate distributions and regression models
+   (`Weibull`, `KaplanMeier`, `CoxPH`, `WeibullPH`, the `*AL` accelerated-life
+   models, etc.) remain importable directly from `surpyval`. Everything else
+   (competing risks, recurrent events, experimental features) is imported from
+   its package, e.g. `surpyval.recurrent`, `surpyval.competing_risks`.
+
+Other notes from the implementation:
+
+- The old `regression/lifemodels/` modules were flattened into
+  `univariate/regression/accelerated_life/` alongside
+  `parameter_substitution.py`; the dynamically generated `*AL` classes are
+  created in that package's `__init__.py`.
+- `parametric_regression_model.py` and `semi_parametric_regression_model.py`
+  are shared base classes and sit at the `univariate/regression/` level.
+- `competing_risks/nonparametric/` and `multivariate/` were **not** created —
+  empty placeholder packages add no value; create them when the first
+  implementation lands.
+- The stale `surpyval.nonparametric.*` imports in
+  `competing_risks/parametric/competing_risks.py` (which made the module
+  unimportable) were fixed during the move.
+- `surpyval/tests/` mirrors the package layout:
+  `tests/univariate/{nonparametric,parametric,regression}/`,
+  `tests/recurrent/`, `tests/experimental/forest/`, `tests/utils/`.
 
 ### Organising principle
 

@@ -1,6 +1,6 @@
 Cox-Lewis
 =========
 
-.. autoclass:: surpyval.recurrence.parametric.cox_lewis.CoxLewis_
+.. autoclass:: surpyval.recurrent.parametric.cox_lewis.CoxLewis_
    :members:
    :inherited-members:

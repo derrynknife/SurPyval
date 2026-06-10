@@ -2,6 +2,6 @@ Proportional Intensity Regression Model
 =======================================
 
 
-.. autoclass:: surpyval.recurrence.regression.proportional_intensity.ProportionalIntensityModel
+.. autoclass:: surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel
    :members:
    :inherited-members:

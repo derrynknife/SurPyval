@@ -2,6 +2,6 @@ NHPP Regression
 ===============
 
 
-.. autoclass:: surpyval.recurrence.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP
+.. autoclass:: surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP
    :members:
    :inherited-members:
