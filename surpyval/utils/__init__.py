@@ -66,25 +66,16 @@ def no_left_or_int(c):
     return any((c == -1) | (c == 2))
 
 
-def surv_tolist(x):
-    if x.ndim == 2:
-        return [v[0] if v[0] == v[1] else v.tolist() for v in x]
-    else:
-        return x.tolist()
-
-
-def check_and_convert_expected_float_array(arr, name):
+def validate_float_array(arr, name):
+    """Convert input to float array with better error handling."""
     if arr is None:
-        arr = np.array([])
-    else:
-        try:
-            arr = np.array(arr, dtype=np.float64)
-        except Exception:
-            raise ValueError(
-                f"'{name}' must be an array of scalar numbers"
-                + "with real values."
-            )
-    return arr
+        return np.array([], dtype=np.float64)
+    try:
+        return np.asarray(arr, dtype=np.float64)
+    except (ValueError, TypeError):
+        raise ValueError(
+            f"'{name}' must be convertible to an array of float values"
+        )
 
 
 def group_xcnt(x, c, n, t):
@@ -187,13 +178,13 @@ def fsli_handler(f=None, s=None, l=None, i=None):
     array([[1., 2.],
             [3., 4.]]))
     """
-    f = check_and_convert_expected_float_array(f, "f")
-    s = check_and_convert_expected_float_array(s, "s")
-    l = check_and_convert_expected_float_array(l, "l")
-    i = check_and_convert_expected_float_array(i, "i")
-
     if (f is None) & (s is None) & (l is None) & (i is None):
         raise ValueError("Must enter some data!")
+
+    f = validate_float_array(f, "f")
+    s = validate_float_array(s, "s")
+    l = validate_float_array(l, "l")
+    i = validate_float_array(i, "i")
 
     if (len(f) == 0) & (len(s) == 0) & (len(l) == 0) & (len(i) == 0):
         raise ValueError("Must enter some data!")
@@ -414,6 +405,7 @@ def xcnt_handler(
             [-inf,  inf]]))
     """
 
+    # logic for 'variables'
     if (x is None) & (xl is None) & (xr is None):
         raise ValueError(
             "Must enter some data! Use either 'x' or both 'xl and 'xr'"
@@ -472,6 +464,10 @@ def xcnt_handler(
                 + " intervals"
             )
 
+    if np.isnan(x).any():
+        raise ValueError("Variable 'x' cannot contain NaN values")
+
+    # logic for censoring flag
     if c is not None:
         c = np.array(c)
         if c.ndim != 1:
@@ -487,6 +483,18 @@ def xcnt_handler(
                 raise ValueError(
                     "Censor flag indicates interval censored but only has one"
                     + " failure time"
+                )
+
+            if any(c[x[:, 0] != x[:, 1]] != 2):
+                mask1 = x[:, 0] != x[:, 1]
+                mask2 = c != 2
+                m = mask1 & mask2
+                raise ValueError(
+                    "Censor flag indicates not interval censored but has"
+                    + " interval window.\nx:\n"
+                    + f"{x[m, :]}\n"
+                    + "censor flags:\n"
+                    + f"{c[m]}"
                 )
 
             if any((c == 2) & (x[:, 0] == x[:, 1])):
@@ -520,6 +528,8 @@ def xcnt_handler(
             raise ValueError(
                 "count array must be same length as variable array."
             )
+        if not np.equal(n, np.floor(n)).all():
+            raise ValueError("Count array 'n' must contain integer values")
         if not (n > 0).all():
             raise ValueError("count array can't be 0 or less")
     else:
@@ -583,6 +593,11 @@ def xcnt_handler(
         if t.shape[0] != x.shape[0]:
             raise ValueError(
                 "Truncation ndarray must be same shape as variable array"
+            )
+        if t.shape[1] != 2:
+            raise ValueError(
+                "Truncation array must have shape (n, 2) with left and"
+                + " right bounds"
             )
 
     if (t[:, 1] <= t[:, 0]).any():
@@ -797,10 +812,13 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
 
 
 def xrd_to_xcnt(x, r, d):
-    # TODO: make it work with left truncation
     """
     Converts the xrd format to the xcn format. Assumes that there is no
     right truncation or left censoring.
+
+    Note: left truncation cannot be recovered from the xrd format because
+    the at-risk count `r` collapses per-subject truncation times into a
+    single scalar. Use xcnt format directly when left truncation is present.
 
     Parameters
     ----------
@@ -961,8 +979,8 @@ def fsl_to_xcnt(f=None, s=None, l=None):
     return x, c, n, t
 
 
-def fs_to_xcnt(f=[], s=[]):
-    return fsl_to_xcnt(f, s, [])
+def fs_to_xcnt(f=None, s=None):
+    return fsl_to_xcnt(f, s, None)
 
 
 def _scale(ll, n, scale):
