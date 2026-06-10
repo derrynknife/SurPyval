@@ -121,7 +121,7 @@ We can then estimate the probability of failure in a given interval using the to
 where
 
 .. math::
-   M(s) = \frac{\sum_{i=1}^{N} \sum_{j=1}^{m}  \mu_{ij} + \nu_{ij}}{M(s)}
+   M(s) = \sum_{i=1}^{N} \sum_{j=1}^{m}  \mu_{ij} + \nu_{ij}
 
 Using this estimate of the survival function, it can be input to the start of this procedure and it done again. This can then be repeated over and over until the values do not change. At this point we have reached the NPMLE estimate of the survival function!
 
