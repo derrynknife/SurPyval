@@ -60,10 +60,11 @@ The MPS truncated fit for the Beta distribution consistently fails its 10 % conv
 ~~The current tests only check statistical convergence. Add `tests/test_distributions_math.py` with closed-form checks: verify `sf(x) + ff(x) == 1`, `qf(0.5)` matches the known median, and `random()` samples have expected mean/variance for each distribution (with a fixed seed).~~
 **Done** — `surpyval/tests/test_distributions_math.py` added with all three checks.
 
-### `GumbelLEV.qf` is the inverse of `sf`, not `ff`
+### ~~`GumbelLEV.qf` is the inverse of `sf`, not `ff`~~ ✓ Done
 **File:** `surpyval/univariate/parametric/gumbel_lev.py`
 
-`GumbelLEV.qf(p)` returns the value `x` where `sf(x) = p`, so `ff(qf(p)) = 1-p` instead of `p`. All other distributions define `qf` as the inverse of `ff` (the CDF). The fix is to make `GumbelLEV.qf` return the value where `ff(x) = p`, consistent with the rest of the API. Caught by `test_qf_ff_roundtrip[GumbelLEV]` (currently `xfail`).
+~~`GumbelLEV.qf(p)` returns the value `x` where `sf(x) = p`, so `ff(qf(p)) = 1-p` instead of `p`. All other distributions define `qf` as the inverse of `ff` (the CDF). The fix is to make `GumbelLEV.qf` return the value where `ff(x) = p`, consistent with the rest of the API. Caught by `test_qf_ff_roundtrip[GumbelLEV]` (currently `xfail`).~~
+**Fixed** — `qf` now returns `mu - sigma * log(-log(p))` (inverse of `ff`); `xfail` marker removed from `test_qf_ff_roundtrip[GumbelLEV]`.
 
 ---
 

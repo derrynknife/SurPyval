@@ -45,16 +45,7 @@ DIST_PARAM_IDS = [d.name for d, _ in DIST_PARAMS]
 # Probabilities used for the qf/ff roundtrip test
 ROUNDTRIP_PROBS = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
 
-# GumbelLEV.qf is the inverse of sf, not ff — the roundtrip ff(qf(p)) returns
-# 1-p instead of p. This is a known API inconsistency.
-_GUMBELLEV_QF_BUG = pytest.mark.xfail(
-    reason="GumbelLEV.qf is inverse of sf, not ff; ff(qf(p)) returns 1-p"
-)
-
-DIST_PARAMS_ROUNDTRIP = [
-    pytest.param(d, p, marks=_GUMBELLEV_QF_BUG) if d is GumbelLEV else (d, p)
-    for d, p in DIST_PARAMS
-]
+DIST_PARAMS_ROUNDTRIP = list(DIST_PARAMS)
 
 
 @pytest.fixture(autouse=True)

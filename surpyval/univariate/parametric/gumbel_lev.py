@@ -247,7 +247,7 @@ class GumbelLEV_(ParametricFitter):
         Quantile function for the Gumbel Distribution:
 
         .. math::
-            q(p) = \mu + \sigma\ln\left ( -\ln\left ( 1 - p \right ) \right )
+            q(p) = \mu - \sigma\ln\left ( -\ln\left ( p \right ) \right )
 
         Parameters
         ----------
@@ -263,18 +263,17 @@ class GumbelLEV_(ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Gumbel distribution at each value p.
+            The quantiles for the GumbelLEV distribution at each value p.
 
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import Gumbel
+        >>> from surpyval import GumbelLEV
         >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Gumbel.qf(p, 3, 2)
-        array([-1.50073465e+00, 1.20026481e-04, 9.38139134e-01, 1.65654602e+00,
-        2.26697416e+00])
+        >>> GumbelLEV.qf(p, 3, 2)
+        array([0.17472351, 1.28168877, 2.05427538, 2.70479498, 3.36651292])
         """
-        return mu - sigma * (np.log(-np.log1p(-p)))
+        return mu - sigma * np.log(-np.log(p))
 
     def mean(self, mu, sigma):
         r"""
