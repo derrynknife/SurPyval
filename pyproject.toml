@@ -1,3 +1,48 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "surpyval"
+version = "0.10.10"
+description = "A python package for survival analysis"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Derryn Knife", email = "derryn@reliafy.com"},
+]
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "autograd>=1.8",
+    "numpy",
+    "scipy",
+    "pandas",
+    "matplotlib>=3.10",
+    "formulaic",
+    "numdifftools>=0.9.42",
+]
+
+[project.optional-dependencies]
+tests = [
+    "lifelines==0.27.4",
+    "reliability==0.8.6",
+    "pytest",
+]
+
+[project.urls]
+Homepage = "https://github.com/derrynknife/SurPyval"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+"*" = ["datasets/*.csv", "py.typed"]
+
 # For Black pre-commit hook
 [tool.black]
 line-length = 79
@@ -20,7 +65,6 @@ module = [
     'lifelines',
     'reliability',
     'sphinx_rtd_theme',
-    'setuptools',
     'sklearn.*',
     'sksurv.*',
     'joblib.*',
