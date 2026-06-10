@@ -3,8 +3,8 @@
 # SurPyval - Survival Analysis in Python
 
 [![actions](https://github.com/derrynknife/SurPyval/actions/workflows/actions.yml/badge.svg)](https://github.com/derrynknife/SurPyval/actions/workflows/actions.yml)
-[![PyPI version](https://badge.fury.io/py/surpyval.svg)](https://badge.fury.io/py/surpyval)
-![PyPI - Python Version](https://img.shields.io/badge/python-3.6%20%7C%203.7%20%7C%203.8%20%7C%203.9-blue)
+[![PyPI version](https://img.shields.io/pypi/v/surpyval)](https://pypi.org/project/surpyval/)
+[![Python Version](https://img.shields.io/pypi/pyversions/surpyval)](https://pypi.org/project/surpyval/)
 [![Documentation Status](https://readthedocs.org/projects/surpyval/badge/?version=latest)](https://surpyval.readthedocs.io/en/latest/?badge=latest)
 [![DOI](https://joss.theoj.org/papers/10.21105/joss.03484/status.svg)](https://doi.org/10.21105/joss.03484)
 
