@@ -145,17 +145,17 @@ class ProportionalHazardsFitter:
             phi_init=lambda Z: np.zeros(Z.shape[1]),
         )
 
-    def fit(self, Z, x, c=None, n=None, t=None, init=[], fixed={}):
+    def fit(self, x, Z, c=None, n=None, t=None, init=[], fixed={}):
         """
         Fit the proportional hazards model to the data.
 
         Parameters
         ----------
 
-        Z : array_like
-            The covariates to fit the model to.
         x : array_like
             The observed event times.
+        Z : array_like
+            The covariates to fit the model to.
         c : array_like, optional
             The censoring indicators.
         n : array_like, optional

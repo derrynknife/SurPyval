@@ -200,7 +200,7 @@ class ParameterSubstitutionFitter:
         like = -np.sum(like)
         return like
 
-    def fit(self, Z, x, c=None, n=None, t=None, init=[], fixed={}):
+    def fit(self, x, Z, c=None, n=None, t=None, init=[], fixed={}):
         data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
         data.add_covariates(Z)
         life_parameter_idx = self.param_map[self.life_parameter]

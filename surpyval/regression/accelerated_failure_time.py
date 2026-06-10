@@ -104,7 +104,7 @@ class AcceleratedFailureTimeFitter:
             Z_out.append(np.ones(size) * stress)
         return np.concatenate(x), np.concatenate(Z_out)
 
-    def fit(self, Z, x, c=None, n=None, t=None, init=[], fixed={}):
+    def fit(self, x, Z, c=None, n=None, t=None, init=[], fixed={}):
         x, c, n, t = surpyval.xcnt_handler(
             x=x, c=c, n=n, t=t, group_and_sort=False
         )
