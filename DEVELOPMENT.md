@@ -89,8 +89,9 @@ Fully migrated from `setup.py` to `pyproject.toml`. `setup.py` deleted.
 
 ## 4. API Consistency Issues
 
-### Regression `fit()` argument order
-`CoxPH.fit(x, Z, ...)` takes time first, while `ProportionalHazardsFitter`, `ParameterSubstitutionFitter`, and `AcceleratedFailureTimeFitter` all take `(Z, x, ...)`. Switching between models silently swaps time and covariates.
+### ~~Regression `fit()` argument order~~ ✓ Done
+~~`CoxPH.fit(x, Z, ...)` takes time first, while `ProportionalHazardsFitter`, `ParameterSubstitutionFitter`, and `AcceleratedFailureTimeFitter` all take `(Z, x, ...)`. Switching between models silently swaps time and covariates.~~
+**Fixed** — all three fitters now use `fit(x, Z, ...)`, matching `CoxPH`, the forest models, and the proportional intensity models. All internal call sites already used keyword arguments, so no callers needed updating.
 
 ### ~~CoxPH docstring inverts censoring convention~~ ✓ Done
 Fixed: `c` parameter now correctly documented as `0=event, 1=right-censored`.
