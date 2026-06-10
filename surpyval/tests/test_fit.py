@@ -42,6 +42,11 @@ parameter_sample_random_parameters = [
 FIT_SIZES = [1_000, 10_000, 100_000]
 
 
+@pytest.fixture(autouse=True)
+def set_random_seed():
+    np.random.seed(42)
+
+
 def generate_mle_test_cases():
     for idx, dist in enumerate(DISTS):
         random_parameters = parameter_sample_random_parameters[idx]

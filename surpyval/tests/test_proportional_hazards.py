@@ -4,6 +4,11 @@ import pytest
 from surpyval import CoxPH, ExponentialPH, WeibullPH
 
 
+@pytest.fixture(autouse=True)
+def set_random_seed():
+    np.random.seed(42)
+
+
 def test_cox_ph_hospital():
     """
     'A single binary covariate' example from 'Proportional hazards model'
@@ -157,3 +162,58 @@ def test_weibull_ph_sim():
     # Parameters should be approximately equal to the Weibull params + the
     # beta vector
     assert pytest.approx([alpha_w, beta_w] + beta, abs=0.05) == model.params
+
+
+def test_efron_breslow_differ_on_ties():
+    # Efron and Breslow are different approximations for tied event times.
+    # They should give different beta estimates when ties exist.
+    x = np.array([1.0, 1.0, 2.0, 3.0, 3.0, 4.0, 5.0])
+    c = np.array([0, 0, 0, 0, 0, 1, 0])
+    Z = np.array([[0.5], [1.2], [0.3], [0.8], [1.5], [0.2], [1.1]])
+
+    m_breslow = CoxPH.fit(x=x, Z=Z, c=c, method="breslow")
+    m_efron = CoxPH.fit(x=x, Z=Z, c=c, method="efron")
+
+    assert not np.allclose(m_breslow.beta, m_efron.beta)
+
+
+def test_count_weights_equivalent_to_repeated():
+    # Fitting with n=[2, 2, 2] must give the same beta as repeating each row.
+    x = np.array([1.0, 2.5, 4.0])
+    Z = np.array([[0.5], [1.2], [0.3]])
+    c = np.array([0, 0, 0])
+
+    m_rep = CoxPH.fit(
+        x=np.repeat(x, 2),
+        Z=np.repeat(Z, 2, axis=0),
+        c=np.repeat(c, 2),
+        method="breslow",
+    )
+    m_cnt = CoxPH.fit(x=x, Z=Z, c=c, n=np.array([2, 2, 2]), method="breslow")
+
+    assert np.allclose(m_rep.beta, m_cnt.beta, atol=1e-6)
+
+
+def test_efron_p_values_is_none():
+    # Efron root-finding does not return a Hessian, so p_values should be None.
+    x = [1.0, 2.0, 3.0, 4.0, 5.0]
+    Z = [[0.1], [0.5], [0.3], [0.8], [0.2]]
+    c = [0, 0, 0, 0, 0]
+
+    model = CoxPH.fit(x=x, Z=Z, c=c, method="efron")
+
+    assert model.p_values is None
+
+
+def test_baseline_hazard_properties():
+    # h0 must be non-negative and H0 must be monotonically non-decreasing.
+    n = 100
+    x = np.random.exponential(10, n)
+    Z = np.random.normal(0, 1, (n, 2))
+    c = np.zeros(n, dtype=int)
+
+    model = CoxPH.fit(x=x, Z=Z, c=c, method="breslow")
+
+    assert np.all(model.h0 >= 0)
+    assert np.all(np.diff(model.H0) >= 0)
+    assert model.H0.shape == model.x.shape

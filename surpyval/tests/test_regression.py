@@ -68,3 +68,69 @@ def test_coxph_against_r_lung_2():
     )
 
     assert np.allclose(model.beta, r_answer)
+
+
+def test_breslow_betas_rossi():
+    # Hardcoded breslow answer for the Rossi dataset.
+    # lifelines does not support breslow for this dataset, so the expected
+    # values were generated from surpyval and kept as a regression guard.
+    expected = np.array(
+        [
+            -0.37902189,
+            -0.05724593,
+            0.31412977,
+            -0.15111460,
+            -0.43278257,
+            -0.08498284,
+            0.09111154,
+        ]
+    )
+
+    rossi = load_rossi_static()
+    model = CoxPH.fit_from_df(
+        rossi,
+        x_col="week",
+        c_col="arrest",
+        Z_cols=["fin", "age", "race", "wexp", "mar", "paro", "prio"],
+        method="breslow",
+    )
+
+    assert np.allclose(model.beta, expected)
+
+
+def test_breslow_p_values_rossi():
+    # Breslow method returns a p_value per covariate; Efron returns None.
+    rossi = load_rossi_static()
+    model = CoxPH.fit_from_df(
+        rossi,
+        x_col="week",
+        c_col="arrest",
+        Z_cols=["fin", "age", "race", "wexp", "mar", "paro", "prio"],
+        method="breslow",
+    )
+
+    assert model.p_values is not None
+    assert model.p_values.shape == (7,)
+    assert np.all((model.p_values >= 0) & (model.p_values <= 1))
+
+
+def test_formula_interface_matches_Z_cols():
+    # fit_from_df with formula= must give the same betas as Z_cols=.
+    # Formula sorts covariates alphabetically, so we reorder Z_cols betas
+    # before comparing.
+    rossi = load_rossi_static()
+    Z_cols = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
+
+    model_z = CoxPH.fit_from_df(
+        rossi, x_col="week", c_col="arrest", Z_cols=Z_cols, method="efron"
+    )
+    model_f = CoxPH.fit_from_df(
+        rossi,
+        x_col="week",
+        c_col="arrest",
+        formula="fin + age + race + wexp + mar + paro + prio",
+        method="efron",
+    )
+
+    alpha_idx = [Z_cols.index(c) for c in sorted(Z_cols)]
+    assert np.allclose(model_z.beta[alpha_idx], model_f.beta)

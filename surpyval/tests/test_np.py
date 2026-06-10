@@ -1,7 +1,13 @@
 import lifelines
 import numpy as np
+import pytest
 
 import surpyval
+
+
+@pytest.fixture(autouse=True)
+def set_random_seed():
+    np.random.seed(42)
 
 
 def right_censor(x, tl, frac):
