@@ -518,7 +518,7 @@ class ParametricFitter:
         xr=None,
         tl=None,
         tr=None,
-        **fit_options
+        **fit_options,
     ):
         r"""
         The central feature to SurPyval's capability. This function aimed to
@@ -581,7 +581,8 @@ class ParametricFitter:
         Examples
         --------
         >>> import surpyval as surv
-        >>> df = surv.datasets.BoforsSteel.data
+        >>> from surpyval.datasets import load_bofors_steel
+        >>> df = load_bofors_steel()
         >>> model = surv.Weibull.fit_from_df(df, x='x', n='n', offset=True)
         >>> print(model)
         Parametric SurPyval Model

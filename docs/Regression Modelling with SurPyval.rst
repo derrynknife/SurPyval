@@ -21,12 +21,13 @@ The first example is the Cox Proportional Hazards model. In this example we will
 
 .. code:: python
 
-    >>> from surpyval.datasets import Tires
+    >>> from surpyval.datasets import load_tires_data
     >>> from surpyval import CoxPH
     >>>
-    >>> x = Tires.data['Survival']
-    >>> c = Tires.data['Censoring']
-    >>> Z = Tires.data[['Tire age', 'Wedge gauge', 'Interbelt gauge', 'EB2B', 'Peel force',
+    >>> tires = load_tires_data()
+    >>> x = tires['Survival']
+    >>> c = tires['Censoring']
+    >>> Z = tires[['Tire age', 'Wedge gauge', 'Interbelt gauge', 'EB2B', 'Peel force',
     ...     'Carbon black (%)', 'Wedge gauge×peel force']]
     >>> model = CoxPH.fit(x=x, Z=Z, c=c)
     >>> model
@@ -57,12 +58,13 @@ We can redo the model using only those covariates:
 
 .. code:: python
 
-    >>> from surpyval.datasets import Tires
+    >>> from surpyval.datasets import load_tires_data
     >>> from surpyval import CoxPH
     >>>
-    >>> x = Tires.data['Survival']
-    >>> c = Tires.data['Censoring']
-    >>> Z = Tires.data[['Wedge gauge', 'Interbelt gauge', 'Peel force', 'Wedge gauge×peel force']]
+    >>> tires = load_tires_data()
+    >>> x = tires['Survival']
+    >>> c = tires['Censoring']
+    >>> Z = tires[['Wedge gauge', 'Interbelt gauge', 'Peel force', 'Wedge gauge×peel force']]
     >>> model = CoxPH.fit(x=x, Z=Z, c=c)
     >>> print(model.p_values)
     [0.02207978 0.01368372 0.00956108 0.01030372]
@@ -85,7 +87,7 @@ We can plot the survival curves of the average tire and the 10% above and 10% be
 
 .. code:: python
 
-    >>> Z_mean = Tires.data[['Wedge gauge', 'Interbelt gauge', 'Peel force', 'Wedge gauge×peel force']].mean().values
+    >>> Z_mean = tires[['Wedge gauge', 'Interbelt gauge', 'Peel force', 'Wedge gauge×peel force']].mean().values
     >>>
     >>> plot_x = np.linspace(x.min(), x.max())
     >>> for f in [0.9, 1., 1.1]:
@@ -105,12 +107,13 @@ In the above example we used a semi-parametric model where the 'baseline' hazard
 .. code:: python
 
 
-    >>> from surpyval.datasets import Tires
+    >>> from surpyval.datasets import load_tires_data
     >>> from surpyval.regression import WeibullPH
     >>>
-    >>> x = Tires.data['Survival']
-    >>> c = Tires.data['Censoring']
-    >>> Z = Tires.data[['Wedge gauge', 'Interbelt gauge', 'Peel force', 'Wedge gauge×peel force']]
+    >>> tires = load_tires_data()
+    >>> x = tires['Survival']
+    >>> c = tires['Censoring']
+    >>> Z = tires[['Wedge gauge', 'Interbelt gauge', 'Peel force', 'Wedge gauge×peel force']]
     >>> weibull_ph_model = WeibullPH.fit(x=x, Z=Z, c=c)
     >>> weibull_ph_model
     Parametric Regression SurPyval Model

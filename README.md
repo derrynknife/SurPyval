@@ -54,10 +54,10 @@ If you're familiar with survival analysis, and Weibull plotting, the following i
 
 ```python
 from surpyval import Weibull
-from surpyval.datasets import BoforsSteel
+from surpyval.datasets import load_bofors_steel
 
 # Fetch some data that comes with SurPyval
-data = BoforsSteel.df
+data = load_bofors_steel()
 
 x = data['x']
 n = data['n']

@@ -17,7 +17,8 @@ On consideration, one can see that there are no houses above $50,000 and that th
 .. code:: python
 
     import surpyval as surv
-    x = Boston.df['medv'].values
+    from surpyval.datasets import load_boston_housing
+    x = load_boston_housing()['medv'].values
     x, c, n, _ = surv.xcnt_handler(x)
 
     model = surv.Weibull.fit(x, c, n)
@@ -46,7 +47,8 @@ From the above plot you can see that near 50, the parametric model diverges subs
 .. code:: python
 
     import surpyval as surv
-    x = Boston.df['medv'].values
+    from surpyval.datasets import load_boston_housing
+    x = load_boston_housing()['medv'].values
     x, c, n, _ = surv.xcnt_handler(x)
     # Right censor the highest value
     c[-1] = 1
@@ -76,7 +78,8 @@ We can see that the model has changed slightly, however, there appears to be a '
 .. code:: python
 
     import surpyval as surv
-    x = Boston.df['medv'].values
+    from surpyval.datasets import load_boston_housing
+    x = load_boston_housing()['medv'].values
     x, c, n, _ = surv.xcnt_handler(x)
     # Right censor the highest value
     c[-1] = 1
@@ -107,7 +110,8 @@ This appears to be a much better fit, however, there is still quite a bit of dif
 .. code:: python
 
     import surpyval as surv
-    x = Boston.df['medv'].values
+    from surpyval.datasets import load_boston_housing
+    x = load_boston_housing()['medv'].values
     x, c, n, _ = surv.xcnt_handler(x)
     # Right censor the highest value
     c[-1] = 1
