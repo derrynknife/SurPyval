@@ -70,7 +70,9 @@ def mle(model):
     best_method = None
 
     with np.errstate(all="ignore"):
-        # Try easiest, to most complex optimisations
+        # Try easiest to most complex optimisations, warm-starting each
+        # method from the best point found so far.
+        x0 = np.array(init, dtype=float)
         for method, jac_i, hess_i in [
             ("Nelder-Mead", None, None),
             ("Powell", None, None),
@@ -81,20 +83,26 @@ def mle(model):
             opts = {"maxfun": 1000} if method == "TNC" else {"maxiter": 1000}
             res = minimize(
                 fun,
-                init,
+                x0,
                 args=(offset, lfp, zi, True),
                 method=method,
                 jac=jac_i,
                 hess=hess_i,
                 options=opts,
             )
-            if res.success:
+            if (
+                res.success
+                and np.isfinite(res.fun)
+                and not np.isnan(res.x).any()
+            ):
                 if res.fun < best:
                     best_result = res
                     best_method = method
                     best = res.fun
-            if best_result:
-                res = best_result
+                    x0 = res.x
+
+        if best_result is not None:
+            res = best_result
 
         winning_message = (
             best_result.get("message", "")
@@ -154,16 +162,35 @@ def mle(model):
 
         results["p"] = p
         results["params"] = params
-        # Do not account for variation of gamma, f0, p in confidence bounds.
+
+        # Confidence bounds: compute the Hessian in the transformed
+        # (unbounded) space the optimiser worked in, then map the
+        # covariance back to the bounded parameter space with the delta
+        # method. Evaluating curvature in the same space, and at the same
+        # point, as the optimiser's solution is far more reliable for
+        # bounded parameters than differentiating in the bounded space.
+        # The covariance of gamma, f0, and p is marginalised out of the
+        # returned block, and fixed parameters get zero variance.
+        x_opt = np.array(init, dtype=float) if use_initial else res.x
         try:
-            hess_inv = inv(
-                hess(params, *(False, False, False, False, gamma, f0, p))
-            )
-            if np.isnan(hess_inv).any():
-                hess_inv_approx = Hessian(
-                    lambda x: fun(x, False, False, False, False, gamma, f0, p)
+            hess_t = hess(x_opt, offset, lfp, zi, True)
+            if np.isnan(hess_t).any():
+                hess_t = Hessian(lambda x: fun(x, offset, lfp, zi, True))(
+                    x_opt
                 )
-                hess_inv = inv(hess_inv_approx(params))
+            cov_t = inv(hess_t)
+            # Jacobian of the free, transformed parameters to the full
+            # vector of bounded parameters; rows for fixed parameters
+            # are zero.
+            jac_t = jacobian(lambda x: inv_trans(const(x)))(x_opt)
+            cov = jac_t @ cov_t @ jac_t.T
+            # Slice out the distribution's parameters; gamma is first
+            # and p / f0 are last when present.
+            start = 1 if offset else 0
+            stop = cov.shape[0] - int(zi) - int(lfp)
+            hess_inv = cov[start:stop, start:stop]
+            if np.isnan(hess_inv).any():
+                hess_inv = None
         except np.linalg.LinAlgError:
             hess_inv = None
 

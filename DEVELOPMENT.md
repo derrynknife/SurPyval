@@ -14,19 +14,7 @@ This document tracks known issues, technical debt, and improvement priorities fo
 
 ---
 
-## 1. MLE Optimizer Improvements
-
-**File:** `surpyval/univariate/parametric/fitters/mle.py`
-
-### Hessian computed in wrong parameterization space (lines 158-168)
-Standard errors should be derived from the Hessian in the *transformed* (unbounded) parameterization used during optimization, then mapped back via the delta method. Computing in physical parameter space (`transform=False`) gives incorrect standard errors for any bounded parameter.
-
-### Optimizer cascade does not warm-start (lines 72-90)
-All five methods (Nelder-Mead → Powell → BFGS → TNC → Newton-CG) start from the same cold `init`. Gradient methods should warm-start from the best-found point so far.
-
----
-
-## 2. Test Coverage Gaps
+## 1. Test Coverage Gaps
 
 ### Entirely untested subsystems
 
@@ -37,12 +25,13 @@ All five methods (Nelder-Mead → Powell → BFGS → TNC → Newton-CG) start f
 | Recurrence/NHPP (`Crow`, `Duane`, `CoxLewis`, `CrowAMSAA`, `HPP`) | `surpyval/recurrent/parametric/` | Only `GeneralizedOneRenewal` has a test (`tests/recurrent/test_counting.py`) |
 | `AcceleratedFailureTime` regression variants | `surpyval/univariate/regression/accelerated_failure_time/` | `test_regression.py` covers ALT/PH paths only |
 | Serialization (`to_dict` / `from_dict` / `to_json`) | `test_to_dict.py` is 0 bytes | `to_dict` is abstract on the `Distribution` ABC but has no coverage |
+| Confidence bounds | `test_confidence_bounds.py` | Basic coverage added June 2026 (hess_inv vs observed information, param/sf bounds, offset/zi/lfp/fixed); `R_cb` distribution overrides and the `NonParametric` bounds remain untested |
 
 Two crash bugs fixed in June 2026 (a `warnings.warng` typo and a `0 * inf = NaN` in `InstantlyOccurs.Hf`) lived in these untested areas — coverage here pays for itself immediately.
 
 ---
 
-## 3. API Consistency Issues
+## 2. API Consistency Issues
 
 ### `cb()` default `on` parameter differs between `Parametric` and `NonParametric`
 `Parametric.cb()` (`parametric.py`) defaults to `on='R'`; `NonParametric.cb()` (`nonparametric.py`) defaults to `on='sf'`. Both strings refer to the survival function in the same conditional.
@@ -60,7 +49,7 @@ The class body is mostly a commented-out likelihood/jacobian/hessian implementat
 
 ---
 
-## 4. Code Quality
+## 3. Code Quality
 
 ### Triplicated simulation block
 The same "simulate timelines to `T`" loop appears three times:
@@ -73,6 +62,6 @@ The broken convergence-failure handling in each copy was fixed (all three now em
 
 ---
 
-## 5. Long-term: Replace `autograd` with JAX (deferred)
+## 4. Long-term: Replace `autograd` with JAX (deferred)
 
 `autograd` (HIPS/autograd) is in low-activity maintenance mode with no GPU support. JAX is the spiritual successor and a near-drop-in replacement for `autograd.numpy` patterns. The interim steps (inlining the `autograd_gamma` gradients into `surpyval/utils/autograd_gamma_compat.py` and upgrading to `autograd` 1.8 for numpy 2.x compatibility) are done, so there is no urgency. A JAX migration can be revisited once the library is otherwise stable — it is a multi-week effort touching every gradient computation.
