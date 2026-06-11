@@ -6,8 +6,12 @@ from surpyval.univariate.nonparametric import fleming_harrington, turnbull
 from surpyval.utils import xcnt_to_xrd
 
 
-def mse_fun(params, dist, x, F, inv_trans, const):
-    return np.sum(((dist.ff(x, *inv_trans(const(params)))) - F) ** 2)
+def mse_fun(params, dist, x, F, inv_trans, const, offset):
+    params = inv_trans(const(params))
+    if offset:
+        x = x - params[0]
+        params = params[1:]
+    return np.sum((dist.ff(x, *params) - F) ** 2)
 
 
 def mse(model):
@@ -31,6 +35,7 @@ def mse(model):
     const = model.fitting_info["const"]
     inv_trans = model.fitting_info["inv_trans"]
     init = model.fitting_info["init"]
+    offset = model.offset
 
     if (-1 in c) or (2 in c):
         out = turnbull(x, c, n, t, estimator="Fleming-Harrington")
@@ -49,13 +54,14 @@ def mse(model):
     hess = hessian(mse_fun)
 
     with np.errstate(all="ignore"):
+        args = (dist, x, F, inv_trans, const, offset)
         res = minimize(
             mse_fun,
             init,
             method="Newton-CG",
             jac=jac,
             hess=hess,
-            args=(dist, x, F, inv_trans, const),
+            args=args,
         )
 
         if (res.success is False) or (np.isnan(res.x).any()):
@@ -64,13 +70,20 @@ def mse(model):
                 init,
                 method="BFGS",
                 jac=jac,
-                args=(dist, x, F, inv_trans, const),
+                args=args,
             )
 
         if (res.success is False) or (np.isnan(res.x).any()):
-            res = minimize(mse_fun, init, args=(dist, x, F, inv_trans, const))
+            res = minimize(mse_fun, init, args=args)
 
     results = {}
     results["res"] = res
-    results["params"] = inv_trans(const(res.x))
+    params = inv_trans(const(res.x))
+
+    if offset:
+        results["gamma"] = params[0]
+        results["params"] = params[1:]
+    else:
+        results["params"] = params
+
     return results

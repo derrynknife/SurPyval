@@ -82,7 +82,7 @@ class LogLogistic_(ParametricFitter):
             flag = (c == 0).astype(int)
             value_range = np.max(x) - np.min(x)
             gamma_init = np.min(x) - value_range / 10
-            return gamma_init, x.sum() / (n * flag).sum(), 2.0, 1.0
+            return gamma_init, x.sum() / (n * flag).sum(), 2.0
         else:
             return self.fit(x, c, n, how="MPP").params
 
