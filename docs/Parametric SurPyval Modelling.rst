@@ -402,7 +402,6 @@ Modelling with arbitrary input
 The surpyval API is extremely flexible. All the unique examples provided above can all be used at once. That is, data can be censored, truncated, and directly observed with offsets and fixing parameters. The API is completely flexible. This makes surpyval an extremely useful tool for analysts where the data is gathered in a manner where it's cleanliness is not guaranteed.
 
 .. jupyter-execute::
-    :stderr:
 
     import surpyval as surv
     import numpy as np

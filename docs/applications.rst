@@ -176,7 +176,7 @@ We now have a GM distribution object that can be used to fit data. But we need s
     x = x[np.isfinite(x)]
 
 
-The parameters for the distribution come from [Gavrilov]_, specifically the parameters for the lifespans of the 1974-1978 data. So in this case we have (simulated) data on the lifespans of 100,000 thousand people and we need to determine the GM parameters. This can be compared to the historic parameters to see if the age related mortality has changed or has remained roughly constant. To do so, all we need do with surpyval is to put the data to the ``fit()`` method.
+The parameters for the distribution come from [Gavrilov]_, specifically the parameters for the lifespans of the 1974-1978 data. So in this case we have (simulated) data on the lifespans of 10,000 people and we need to determine the GM parameters. This can be compared to the historic parameters to see if the age related mortality has changed or has remained roughly constant. To do so, all we need do with surpyval is to put the data to the ``fit()`` method.
 
 .. jupyter-execute::
 
@@ -193,7 +193,7 @@ You can see that the model is a good fit to the data. Using the model we can det
     expected_loss = policy_payout * p_death
     print(p_death, expected_loss)
 
-From the results above, you can see that the probability of death over the two year interval is approximately 2.5%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $2,533.74. Therefore, to make a profit, the policy will need to cost more than $2,533.74. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $2,787.11. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $116.13 for two years (in the case of death the amount owing can be subtracted from the payout).
+From the results above, you can see that the probability of death over the two year interval is approximately 2.5%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $2,548.32. Therefore, to make a profit, the policy will need to cost more than $2,548.32. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $2,803.15. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $116.80 for two years (in the case of death the amount owing can be subtracted from the payout).
 
 Although this is a basic example, as insurance companies would have much more sophisticated models, it shows the basics of how demographic and actuarial data can be used. This shows the application of surpyval to actuarial and demogrphic studies.
 

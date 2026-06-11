@@ -8,11 +8,11 @@ theoretical background see :doc:`Competing Risks Analysis`.
 .. warning::
 
     The competing risks subsystem is under active development. The
-    ``FineGray`` and ``CompetingRisksProportionalHazard`` fitters currently
-    crash on first call; ``CompetingRisks`` has a known bug in its failure
-    function (``ff``). These issues are tracked in ``DEVELOPMENT.md``.
-    Code examples below show the intended API; they will work once the fixes
-    land.
+    ``CompetingRisks`` examples on this page are executed when the
+    documentation is built and work as shown. The ``FineGray`` and
+    ``CompetingRiskProportionalHazard`` fitters, however, currently crash on
+    first call; their sections below show the intended API only. These
+    issues are tracked in ``DEVELOPMENT.md``.
 
 Standard imports used throughout this page:
 
@@ -23,11 +23,12 @@ Standard imports used throughout this page:
     from matplotlib import pyplot as plt
 
 
-Fitting a Parametric Competing Risks Model
--------------------------------------------
+Fitting a Competing Risks Model
+-------------------------------
 
-The ``CompetingRisks`` class fits a parametric distribution independently to
-each failure cause and combines them into a joint model. Pass the observed
+The ``CompetingRisks`` class estimates a non-parametric cumulative incidence
+function (CIF) for each failure cause, using the Nelson-Aalen or
+Kaplan-Meier estimate of the overall survival function. Pass the observed
 times, a cause indicator, and optional censoring flags:
 
 .. jupyter-execute::
@@ -89,7 +90,7 @@ events:
 .. code-block:: python
 
     # Planned API — not yet working (see DEVELOPMENT.md)
-    from surpyval.competing_risks import CompetingRisksProportionalHazard
+    from surpyval.competing_risks import CompetingRiskProportionalHazard
 
-    model = CompetingRisksProportionalHazard.fit(x=x, c=c, Z=Z, cause=cause)
+    model = CompetingRiskProportionalHazard.fit(x=x, c=c, Z=Z, cause=cause)
     print(model.summary())

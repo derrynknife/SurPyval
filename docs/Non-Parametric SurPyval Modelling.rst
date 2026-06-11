@@ -114,21 +114,26 @@ Left Truncated Data
 -------------------
 
 In some instances you will need to account for left truncated data. These data can be passed
-stright to the same KM, NA, and FH fitters, Using one (of the many) excellent data sets from
-the `lifelines <https://lifelines.readthedocs.io/en/latest/lifelines.datasets.html#lifelines.datasets.load_multicenter_aids_cohort_study>`_. package:
+stright to the same KM, NA, and FH fitters. A common source of left truncation is delayed
+entry into a study: each subject's clock starts before they enrol, so anyone who failed
+before they could enrol is never observed, biasing the sample towards longer survivors.
+We can simulate such a cohort:
 
 .. jupyter-execute::
 
     from surpyval import KaplanMeier as KM
-    from lifelines.datasets import load_multicenter_aids_cohort_study
-    df = load_multicenter_aids_cohort_study()
 
-    x = df["T"].values
-    c = 1. - df["D"].values
-    tl = df["W"].values
+    np.random.seed(10)
+    lifetimes = surv.Weibull.random(1_000, 10, 2.5)
+    entry = np.random.uniform(0, 10, 1_000)
 
-    model = KM.fit(x=x, c=c, tl=tl)
-    model_no_trunc = KM.fit(x=x, c=c)
+    # Only subjects still alive at their entry time are ever enrolled
+    enrolled = lifetimes > entry
+    x = lifetimes[enrolled]
+    tl = entry[enrolled]
+
+    model = KM.fit(x=x, tl=tl)
+    model_no_trunc = KM.fit(x=x)
 
     model.plot(plot_bounds=False)
     model_no_trunc.plot(plot_bounds=False)
