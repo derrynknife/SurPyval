@@ -1,3 +1,3 @@
-.. autoclass:: surpyval.univariate.parametric.loglogistic.LogLogistic_
+.. autoclass:: surpyval.univariate.parametric.distributions.loglogistic.LogLogistic_
    :members:
    :inherited-members:

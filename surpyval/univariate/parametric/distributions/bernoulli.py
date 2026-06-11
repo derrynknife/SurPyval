@@ -2,7 +2,7 @@ from scipy.stats import uniform
 
 from surpyval import np
 
-from .parametric import Parametric
+from ..parametric import Parametric
 
 
 class Bernoulli_:

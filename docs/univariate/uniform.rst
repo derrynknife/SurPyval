@@ -1,3 +1,3 @@
-.. autoclass:: surpyval.univariate.parametric.uniform.Uniform_
+.. autoclass:: surpyval.univariate.parametric.distributions.uniform.Uniform_
    :members:
    :inherited-members:

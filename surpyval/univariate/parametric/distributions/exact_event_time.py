@@ -1,7 +1,7 @@
 import surpyval
 from surpyval import np
 
-from .parametric import Parametric
+from ..parametric import Parametric
 
 
 class ExactEventTime_:
@@ -36,8 +36,8 @@ class ExactEventTime_:
         hf[x >= T] = np.inf
         return hf
 
-    def Hf(self, x):
-        return self.hf(x)
+    def Hf(self, x, T):
+        return self.hf(x, T)
 
     def random(self, size, T):
         return np.ones(size) * T

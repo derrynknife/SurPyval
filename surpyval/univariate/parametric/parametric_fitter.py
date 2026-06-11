@@ -221,11 +221,11 @@ class ParametricFitter:
             raise ValueError(detail)
 
         if np.isfinite(surv_data.t).any() and how == "MSE":
-            detail = "Mean square error doesn't yet support tuncation"
+            detail = "Mean square error doesn't yet support truncation"
             raise NotImplementedError(detail)
 
         if np.isfinite(surv_data.t).any() and how == "MOM":
-            detail = "Maximum product spacing doesn't support tuncation"
+            detail = "Method of moments doesn't support truncation"
             raise ValueError(detail)
 
         if (lfp or zi) & (how != "MLE"):
@@ -238,9 +238,9 @@ class ParametricFitter:
         if zi & (self.support[0] != 0):
             detail = (
                 "zero-inflated models can only work"
-                + "with models starting at 0"
+                + " with models starting at 0"
             )
-            raise ValueError()
+            raise ValueError(detail)
 
         if (surv_data.c == 1).all():
             raise ValueError("Cannot have only right censored data")
@@ -260,7 +260,7 @@ class ParametricFitter:
                 "Probability plotting estimation with left or "
                 + "interval censoring only works with Turnbull heuristic"
             )
-            raise ValueError()
+            raise ValueError(detail)
 
         if (
             (heuristic == "Turnbull")
@@ -702,7 +702,7 @@ class ParametricFitter:
             tl = np.where(tl < self.support[0], self.support[0], tl)
 
         if np.isfinite(self.support[1]):
-            tr = np.where(tl > self.support[1], self.support[1], tr)
+            tr = np.where(tr > self.support[1], self.support[1], tr)
 
         # Validate inputs
         self._validate_fit_inputs(

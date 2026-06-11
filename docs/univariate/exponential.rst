@@ -1,3 +1,3 @@
-.. autoclass:: surpyval.univariate.parametric.exponential.Exponential_
+.. autoclass:: surpyval.univariate.parametric.distributions.exponential.Exponential_
    :members:
    :inherited-members:
