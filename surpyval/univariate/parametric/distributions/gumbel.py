@@ -17,7 +17,7 @@ class Gumbel_(ParametricFitter):
             plot_x_scale="linear",
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, offset=True):
+    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         if (2 in c) or (-1 in c):
             heuristic = "Turnbull"
         else:

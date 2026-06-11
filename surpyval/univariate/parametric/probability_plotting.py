@@ -4,6 +4,7 @@ Shared probability plot construction for parametric models.
 Used by both ``Parametric`` and ``MixtureModel`` which previously each
 carried their own near-identical copy of this logic.
 """
+
 import re
 import warnings
 

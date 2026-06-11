@@ -20,7 +20,7 @@ class Beta_(ParametricFitter):
             plot_x_scale="linear",
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None):
+    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         if (c is not None) & ((c == 0).all()):
             x = np.repeat(x, n)
             p = self._mom(x)
@@ -341,11 +341,11 @@ class Beta_(ParametricFitter):
     def log_ff(self, x, alpha, beta):
         return abetaincln(alpha, beta, x)
 
-    def mpp_y_transform(self, y, alpha, beta):
-        return self.qf(y, alpha, beta)
+    def mpp_y_transform(self, y, *params):
+        return self.qf(y, *params)
 
-    def mpp_inv_y_transform(self, y, alpha, beta):
-        return abetainc(y, alpha, beta)
+    def mpp_inv_y_transform(self, y, *params):
+        return abetainc(y, *params)
 
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma

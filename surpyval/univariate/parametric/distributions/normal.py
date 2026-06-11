@@ -42,7 +42,7 @@ class Normal_(ParametricFitter):
             ],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None):
+    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         if 2 in c:
             raise ValueError(c)
         return para.Normal.fit(

@@ -1069,9 +1069,7 @@ class Parametric(Distribution):
             detail = "Can't plot model that was given parameters and no data"
             raise Exception(detail)
 
-        heuristic = adjust_heuristic(
-            self.data["c"], self.data["t"], heuristic
-        )
+        heuristic = adjust_heuristic(self.data["c"], self.data["t"], heuristic)
 
         d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
 

@@ -16,7 +16,7 @@ class Uniform_(ParametricFitter):
             y_ticks=np.linspace(0, 1, 21)[1:-1],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None):
+    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         return np.min(x) - 1.0, np.max(x) + 1.0
 
     def sf(self, x, a, b):

@@ -40,7 +40,7 @@ class Exponential_(ParametricFitter):
             ],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, offset=False):
+    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         rate = 1.0 / x[np.isfinite(x)].mean()
         if offset:
             return np.min(x) - (np.max(x) - np.min(x)) / 10.0, rate
