@@ -16,7 +16,7 @@ theoretical background see :doc:`Competing Risks Analysis`.
 
 Standard imports used throughout this page:
 
-.. code-block:: python
+.. jupyter-execute::
 
     import surpyval as surv
     import numpy as np
@@ -30,14 +30,15 @@ The ``CompetingRisks`` class fits a parametric distribution independently to
 each failure cause and combines them into a joint model. Pass the observed
 times, a cause indicator, and optional censoring flags:
 
-.. code-block:: python
+.. jupyter-execute::
 
-    from surpyval import CompetingRisks, Weibull, Exponential
+    from surpyval.competing_risks import CompetingRisks
+    from surpyval import Weibull, Exponential
 
     # Simulated data: two competing causes
     np.random.seed(42)
     t1 = Weibull.random(100, alpha=50, beta=2.5)   # cause 1 latent times
-    t2 = Exponential.random(100, lam=1./80)         # cause 2 latent times
+    t2 = Exponential.random(100, 1./80)             # cause 2 latent times
 
     # Observed time is the minimum; cause is which latent time was smaller
     x = np.minimum(t1, t2)
@@ -47,18 +48,17 @@ times, a cause indicator, and optional censoring flags:
     model = CompetingRisks.fit(
         x=x,
         c=c,
-        cause=cause,
-        dist=[Weibull, Exponential],
+        e=cause,
     )
     print(model)
 
 Once fitted, you can query the CIF for each cause:
 
-.. code-block:: python
+.. jupyter-execute::
 
     t_plot = np.linspace(0, 150, 300)
     for k, label in enumerate(['Cause 1 (Weibull)', 'Cause 2 (Exponential)']):
-        plt.plot(t_plot, model.ff(t_plot, cause=k), label=label)
+        plt.plot(t_plot, model.cif(t_plot, event=k), label=label)
     plt.xlabel('Time')
     plt.ylabel('Cumulative Incidence')
     plt.legend()
