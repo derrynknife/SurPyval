@@ -1,44 +1,121 @@
-Parametric Proportional Hazards
-===============================
+Parametric Regression Models
+=============================
 
-Batteries Included
-------------------
+SurPyval provides three families of parametric regression model plus the
+Accelerated Life family for physics-motivated stress relationships. Each family
+is available as:
 
-A proportional hazard model is on in which the hazard rate is a function of
-the covariates and time. Very generally, the hazard rate for a proportional
-hazard model is:
+1. **Pre-built instances** — ready to use with any number of covariates
+2. **Factory functions** — compose any surpyval distribution on the fly
+3. **Low-level fitter classes** — for custom phi functions or life models
 
-.. math::
-    h(x | Z) = h(x) \phi(Z)
-
-Where :math:`h(t)` is the hazard rate of the underlying distribution and 
-:math:`\phi` is the function of the covariates.
-
-SurPyval allows you to use very general models for fitting, or to create much
-more specific models for your use case. For the general models SurPyval has 
-the following options immediately available:
-
-    - ExponentialPH
-    - WeibullPH
+All parametric regression models use :math:`\phi(Z) = e^{\beta'Z}` (log-linear
+covariates) except Accelerated Life models, which use domain-specific stress
+functions.
 
 
-These two are similar to the Cox Proportional Hazards model in that that have
-a log-linear function of the covariates. The difference is that the baseline
-disstribution is estimated using either the Exponential or Weibull
-distributions. The log-linear function is:
+Proportional Hazards (PH)
+--------------------------
 
 .. math::
-    \phi(Z) = e^{\beta_1 z_1 + \beta_2 z_2 + ...}
 
-The number of coefficients depends only on the number of covariates that you
-pass to the ``fit`` call. The coefficients are named ``beta_0``, ``beta_1``, 
-etc. You can pass any number of covariates to the function, and the model will
-automatically create the correct number of coefficients.
+    h(x \mid Z) = h_0(x) \cdot \phi(Z)
 
-Custom PH Models
-----------------
+Pre-built instances: ``ExponentialPH``, ``NormalPH``, ``WeibullPH``,
+``GumbelPH``, ``LogisticPH``, ``LogNormalPH``, ``GammaPH``.
 
+Factory::
 
+    from surpyval import LogNormal
+    from surpyval.regression import PH
+    model = PH(LogNormal).fit(x, Z=Z, c=c)
 
 .. autoclass:: surpyval.univariate.regression.proportional_hazards.proportional_hazards_fitter.ProportionalHazardsFitter
+    :members: fit, Hf, hf, sf, ff, df
+
+
+Accelerated Failure Time (AFT)
+--------------------------------
+
+.. math::
+
+    H(x \mid Z) = H_0\!\left(e^{\beta'Z} \cdot x\right)
+
+Pre-built instances: ``ExponentialAFT``, ``NormalAFT``, ``WeibullAFT``,
+``GumbelAFT``, ``LogisticAFT``, ``LogNormalAFT``, ``GammaAFT``.
+
+Factory::
+
+    from surpyval import Gamma
+    from surpyval.regression import AFT
+    model = AFT(Gamma).fit(x, Z=Z, c=c)
+
+.. autoclass:: surpyval.univariate.regression.accelerated_failure_time.aft_fitter.AFTFitter
+    :members: fit, Hf, hf, sf, ff, df
+
+
+Proportional Odds (PO)
+-----------------------
+
+.. math::
+
+    \frac{S(x \mid Z)}{F(x \mid Z)} = \frac{S_0(x)}{F_0(x)} \cdot e^{\beta'Z}
+
+Pre-built instances: ``ExponentialPO``, ``NormalPO``, ``WeibullPO``,
+``GumbelPO``, ``LogisticPO``, ``LogNormalPO``, ``GammaPO``.
+
+Factory::
+
+    from surpyval import Logistic
+    from surpyval.regression import PO
+    model = PO(Logistic).fit(x, Z=Z, c=c)
+
+.. autoclass:: surpyval.univariate.regression.proportional_hazards.proportional_odds_fitter.ProportionalOddsFitter
+    :members: fit, Hf, hf, sf, ff, df
+
+
+Accelerated Life (AL)
+----------------------
+
+AL models substitute the life parameter of a distribution with a
+physics-motivated stress function. Designed for discrete, controlled stress
+levels (e.g. temperature, voltage).
+
+Factory::
+
+    from surpyval import Weibull
+    from surpyval.regression import AcceleratedLife, Power, Eyring
+    model = AcceleratedLife(Weibull, Power).fit(x, Z=stress, c=c)
+
+Available life models: ``Power``, ``InversePower``, ``Eyring``,
+``InverseEyring``, ``ExponentialLifeModel``, ``InverseExponential``,
+``Linear``, ``DualExponential``, ``DualPower``, ``PowerExponential``.
+
+Custom life models can be created by subclassing ``LifeModel``::
+
+    from surpyval.regression import LifeModel, AcceleratedLife
+    import autograd.numpy as anp
+
+    class MyStressModel(LifeModel):
+        def __init__(self):
+            super().__init__(
+                name="MyStressModel",
+                phi_param_map={"a": 0, "b": 1},
+                phi_bounds=((None, None), (None, None)),
+            )
+
+        def phi(self, Z, *params):
+            a, b = params
+            return anp.exp(a + b * Z)
+
+        def phi_init(self, life, Z):
+            b, a = anp.polyfit(Z.flatten(), anp.log(life), 1)
+            return [float(a), float(b)]
+
+    model = AcceleratedLife(Weibull, MyStressModel()).fit(x, Z=stress, c=c)
+
+.. autoclass:: surpyval.univariate.regression.accelerated_life.parameter_substitution.ParameterSubstitutionFitter
+    :members: fit
+
+.. autoclass:: surpyval.univariate.regression.accelerated_life.lifemodel.LifeModel
     :members:
