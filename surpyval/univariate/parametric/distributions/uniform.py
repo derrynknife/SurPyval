@@ -1,6 +1,4 @@
 from scipy.optimize import minimize
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
@@ -338,44 +336,6 @@ class Uniform_(ParametricFitter):
 
     def p(self, c, n):
         return 1 - 2 * (1 + c) ** (1.0 - n) + (1 + 2 * c) ** (1.0 - n)
-
-    def random(self, size, a, b):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Uniform
-        >>> Uniform.random(10, 0, 6)
-        array([3.50214341, 3.7978912 , 5.12238656, 4.27185221, 3.05507685,
-               2.71236199, 4.89311322, 1.11373047, 4.90549424, 1.76321338])
-        >>> Uniform.random((5, 5), 0, 6)
-        array([[4.76809829, 4.42155933, 2.59469997, 4.31525748, 5.53469545],
-               [0.06222942, 1.26267164, 1.74188626, 1.05235807, 0.92461476],
-               [2.06215303, 0.02184135, 0.97058002, 3.02219656, 3.22137982],
-               [2.14951891, 3.18096661, 2.37105309, 0.65710124, 0.68828779],
-               [0.58827207, 3.7633596 , 5.62330526, 5.24481753, 4.23162212]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, a, b)
 
     def ab_cb(self, x, a, b, N, alpha=0.05):
         # Parameter confidence intervals from here:

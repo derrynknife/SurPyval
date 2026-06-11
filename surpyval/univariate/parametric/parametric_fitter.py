@@ -1,6 +1,7 @@
 import pandas as pd
 from scipy.integrate import quad
 from scipy.special import expit
+from scipy.stats import uniform
 
 import surpyval
 from surpyval import np
@@ -19,6 +20,33 @@ from .parametric import Parametric
 PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
 
+DEFAULT_Y_TICKS = [
+    0.0001,
+    0.0002,
+    0.0003,
+    0.001,
+    0.002,
+    0.003,
+    0.005,
+    0.01,
+    0.02,
+    0.03,
+    0.05,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    0.95,
+    0.99,
+    0.999,
+    0.9999,
+]
+
 
 class ParametricFitter:
     def __init__(
@@ -30,7 +58,7 @@ class ParametricFitter:
         param_names: list[str],
         param_map: dict[str, int],
         plot_x_scale: str,
-        y_ticks: list[float],
+        y_ticks: list[float] | None = None,
     ):
         self.name: str = name
         self.k = k
@@ -39,7 +67,39 @@ class ParametricFitter:
         self.param_names = param_names
         self.param_map = param_map
         self.plot_x_scale = plot_x_scale
-        self.y_ticks = y_ticks
+        self.y_ticks = DEFAULT_Y_TICKS if y_ticks is None else y_ticks
+
+    def random(self, size, *params):
+        r"""
+
+        Draws random samples from the distribution in shape `size`, using
+        the inverse transform method with the distribution's quantile
+        function.
+
+        Parameters
+        ----------
+
+        size : integer or tuple of positive integers
+            Shape or size of the random draw
+        params : numpy array or scalar
+            The parameters of the distribution
+
+        Returns
+        -------
+
+        random : scalar or numpy array
+            Random values drawn from the distribution in shape `size`
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> Weibull.random(5, 3, 4)
+        array([2.57122697, 3.18730986, 0.31024877, 2.32381059, 1.89352939])
+        """
+        U = uniform.rvs(size=size)
+        return self.qf(U, *params)
 
     def log_df(self, x, *params):
         return np.log(self.hf(x, *params)) - self.Hf(x, *params)

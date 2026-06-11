@@ -1,7 +1,5 @@
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
@@ -355,44 +353,6 @@ class Rayleigh_(ParametricFitter):
 
     def entropy(self, sigma):
         return euler_gamma / 2 + 1 + np.log(sigma / (np.sqrt(2)))
-
-    def random(self, size, sigma):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        alpha : numpy array or scalar
-            scale parameter for the Weibull distribution
-        beta : numpy array or scalar
-            shape parameter for the Weibull distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Weibull
-        >>> Weibull.random(10, 3, 4)
-        array([1.79782451, 1.7143211 , 2.84778674, 3.12226231, 2.61000839,
-               3.05456332, 3.00280851, 2.61910071, 1.37991527, 4.17488394])
-        >>> Weibull.random((5, 5), 3, 4)
-        array([[1.64782514, 2.79157632, 1.85500681, 2.91908736, 2.46089933],
-               [1.85880127, 0.96787742, 2.29677031, 2.42394129, 2.63889601],
-               [2.14351859, 3.90677225, 2.24013855, 2.49467774, 3.43755278],
-               [3.24417396, 1.40775181, 2.49584969, 3.07603353, 2.54679499],
-               [1.98330076, 2.95002633, 3.35402601, 3.11429283, 3.45706789]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, sigma)
 
     def log_df(self, x, sigma):
         return np.log(x) - 2 * np.log(sigma) - 0.5 * (x / sigma) ** 2

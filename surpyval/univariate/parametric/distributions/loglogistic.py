@@ -1,4 +1,4 @@
-from scipy.stats import fisk, uniform
+from scipy.stats import fisk
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
@@ -15,66 +15,7 @@ class LogLogistic_(ParametricFitter):
             param_names=["alpha", "beta"],
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="log",
-            y_ticks=[
-                0.0001,
-                0.0002,
-                0.0003,
-                0.001,
-                0.002,
-                0.003,
-                0.005,
-                0.01,
-                0.02,
-                0.03,
-                0.05,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                0.95,
-                0.99,
-                0.999,
-                0.9999,
-            ],
         )
-        self.k = 2
-        self.bounds = (
-            (0, None),
-            (0, None),
-        )
-        self.support = (0, np.inf)
-        self.plot_x_scale = "log"
-        self.y_ticks = [
-            0.0001,
-            0.0002,
-            0.0003,
-            0.001,
-            0.002,
-            0.003,
-            0.005,
-            0.01,
-            0.02,
-            0.03,
-            0.05,
-            0.1,
-            0.2,
-            0.3,
-            0.4,
-            0.5,
-            0.6,
-            0.7,
-            0.8,
-            0.9,
-            0.95,
-            0.99,
-            0.999,
-            0.9999,
-        ]
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         if offset:
@@ -364,44 +305,6 @@ class LogLogistic_(ParametricFitter):
             return (alpha * np.pi / beta) / (np.sin(np.pi / beta))
         else:
             return np.nan
-
-    def random(self, size, alpha, beta):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        alpha : numpy array or scalar
-            scale parameter for the LogLogistic distribution
-        beta : numpy array or scalar
-            shape parameter for the LogLogistic distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import LogLogistic
-        >>> LogLogistic.random(10, 3, 4)
-        array([4.46072122, 2.1336253 , 2.74159711, 2.90125715, 3.2390347 ,
-               5.45223664, 4.28281376, 2.7017541 , 3.023811  , 2.16225601])
-        >>> LogLogistic.random((5, 5), 3, 4)
-        array([[1.97744499, 4.02823921, 1.95761719, 1.20481591, 3.7166738 ],
-               [2.94863864, 3.02609811, 3.30563774, 2.39100075, 3.24937459],
-               [3.16102391, 1.77003533, 4.73831093, 0.36936215, 1.41566853],
-               [3.88505024, 2.88183095, 2.43977804, 2.62385959, 3.40881857],
-               [1.2349273 , 1.83914641, 3.68502568, 6.49834769, 8.62995574]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, alpha, beta)
 
     def log_df(self, x, alpha, beta):
         return (

@@ -1,6 +1,4 @@
 from scipy import integrate
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
@@ -20,32 +18,6 @@ class ExpoWeibull_(ParametricFitter):
             param_names=["alpha", "beta", "mu"],
             param_map={"alpha": 0, "beta": 1, "mu": 2},
             plot_x_scale="log",
-            y_ticks=[
-                0.0001,
-                0.0002,
-                0.0003,
-                0.001,
-                0.002,
-                0.003,
-                0.005,
-                0.01,
-                0.02,
-                0.03,
-                0.05,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                0.95,
-                0.99,
-                0.999,
-                0.9999,
-            ],
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
@@ -356,10 +328,6 @@ class ExpoWeibull_(ParametricFitter):
 
         top = 2 * self.qf(0.999, alpha, beta, mu)
         return integrate.quadrature(func, 0, top)[0]
-
-    def random(self, size, alpha, beta, mu):
-        U = uniform.rvs(size=size)
-        return self.qf(U, alpha, beta, mu)
 
     def mpp_x_transform(self, x, gamma=0):
         return np.log(x - gamma)

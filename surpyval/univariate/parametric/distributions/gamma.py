@@ -6,7 +6,7 @@ from autograd.scipy.special import gammaln as agammaln
 from scipy.optimize import minimize
 from scipy.special import gammaincinv
 from scipy.special import ndtri as z
-from scipy.stats import pearsonr, uniform
+from scipy.stats import pearsonr
 
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
@@ -36,32 +36,6 @@ class Gamma_(ParametricFitter):
             param_names=["alpha", "beta"],
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="linear",
-            y_ticks=[
-                0.0001,
-                0.0002,
-                0.0003,
-                0.001,
-                0.002,
-                0.003,
-                0.005,
-                0.01,
-                0.02,
-                0.03,
-                0.05,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                0.95,
-                0.99,
-                0.999,
-                0.9999,
-            ],
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
@@ -398,42 +372,6 @@ class Gamma_(ParametricFitter):
         0.9375
         """
         return agamma(n + alpha) / (beta**n * agamma(alpha))
-
-    def random(self, size, alpha, beta):
-        r"""
-
-        Draws random samples from the Gamma distribution in shape `size`
-
-        Parameters
-        ----------
-
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Gamma
-        >>> Gamma.random(10, 3, 4)
-        array([0.22856155, 1.69542468, 0.70894789, 0.75552168, 0.76634128,
-               0.58624638, 1.03288812, 0.85768925, 0.75071764, 0.91979151])
-        >>> Gamma.random((5, 5), 3, 4)
-        array([[0.55481976, 1.02867642, 1.25525161, 0.5141736 , 0.7227451 ],
-               [1.59192864, 1.22897457, 0.80820007, 0.39872068, 0.53656654],
-               [0.80703614, 0.75406597, 0.87307426, 1.88748737, 0.78115455],
-               [1.3233755 , 0.29908068, 1.88304902, 2.65690385, 0.51018073],
-               [0.36070265, 0.48834586, 0.45623895, 0.30104303, 0.49942908]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, alpha, beta)
 
     def log_df(self, x, alpha, beta):
         r"""

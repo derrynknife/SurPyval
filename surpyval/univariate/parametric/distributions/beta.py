@@ -2,8 +2,6 @@ from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv
 from scipy.special import gamma as gamma_func
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
@@ -20,32 +18,6 @@ class Beta_(ParametricFitter):
             param_names=["alpha", "beta"],
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="linear",
-            y_ticks=[
-                0.0001,
-                0.0002,
-                0.0003,
-                0.001,
-                0.002,
-                0.003,
-                0.005,
-                0.01,
-                0.02,
-                0.03,
-                0.05,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                0.95,
-                0.99,
-                0.999,
-                0.9999,
-            ],
         )
 
     def _parameter_initialiser(self, x, c=None, n=None):
@@ -358,43 +330,6 @@ class Beta_(ParametricFitter):
         0.75
         """
         return gamma_func(n + alpha) / (beta**n * gamma_func(alpha))
-
-    def random(self, size, alpha, beta):
-        r"""
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            Another scale parameter for the Beta distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Beta
-        >>> Beta.random(10, 3, 4)
-        array([0.48969376, 0.50266801, 0.66913503, 0.3031257 , 0.60897905,
-               0.34901845, 0.34196432, 0.37401123, 0.06191741, 0.17604693])
-        >>> Beta.random((5, 5), 3, 4)
-        array([[0.68575237, 0.39409872, 0.18546004, 0.51266116, 0.55043579],
-               [0.62656723, 0.69497065, 0.68958488, 0.37330801, 0.57053267],
-               [0.07330674, 0.68020665, 0.42907148, 0.51884251, 0.12159803],
-               [0.3566228 , 0.55493446, 0.59288881, 0.43542773, 0.31740851],
-               [0.82044756, 0.23062323, 0.35342936, 0.2902573 , 0.54522114]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, alpha, beta)
 
     def log_df(self, x, alpha, beta):
         return (

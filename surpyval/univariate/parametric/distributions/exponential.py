@@ -2,8 +2,6 @@ import warnings
 
 from scipy.special import factorial
 from scipy.special import ndtri as z
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
@@ -378,42 +376,6 @@ class Exponential_(ParametricFitter):
         -0.09861228866810978
         """
         return 1 - np.log(failure_rate)
-
-    def random(self, size, failure_rate):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        failure_rate : numpy array or scalar
-            The scale parameter for the Exponential distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Exponential
-        >>> Exponential.random(10, 3)
-        array([0.32480264, 0.03186663, 0.41807108, 0.74221745, 0.06133774,
-               0.2128422 , 0.36299424, 0.12250138, 0.61431089, 0.02266754])
-        >>> Exponential.random((5, 5), 3)
-        array([[0.25425552, 0.16867629, 0.21692401, 0.07020826, 0.03676643],
-               [0.65528908, 0.20774767, 0.00625475, 0.04122388, 0.07089254],
-               [1.22844679, 0.36199751, 0.564159  , 1.86811492, 0.08132478],
-               [0.33541878, 0.38614518, 0.09285907, 0.33422975, 0.32515494],
-               [0.03529228, 0.63134988, 0.45528738, 0.05037512, 0.7338039 ]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, failure_rate)
 
     def log_df(self, x, failure_rate):
         return np.log(failure_rate) - failure_rate * x

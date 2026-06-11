@@ -1,8 +1,6 @@
 from autograd.scipy.stats import norm
 from scipy.special import ndtri as z
 from scipy.stats import norm as scipy_norm
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
@@ -357,51 +355,6 @@ class Normal_(ParametricFitter):
         25.0
         """
         return scipy_norm.moment(n, mu, sigma)
-
-    def random(self, size, mu, sigma):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        mu : numpy array or scalar
-            The location parameter for the Normal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the Normal distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Normal
-        >>> Normal.random(10, 3, 4)
-        array([-1.28484969, -1.68138703,  0.13414348,  6.53416927,
-                -1.95649712,
-                3.09951162,  6.90469836,  4.90063467,  1.11075072,
-                4.97841115])
-        >>> Normal.random((5, 5), 3, 4)
-        array([[ 1.57569952,  4.98472487,  3.19475597,  5.12581251,
-                -0.98020861],
-               [ 6.73877217,  1.08561611,  3.07634125,  3.54656313,
-               13.32064634],
-               [-0.45094731,  2.52588422, -1.61414841,  8.39084564,
-               -1.35261631],
-               [ 1.98090151,  8.22151826,  5.59184063, -2.62221656,
-               0.20879673],
-               [-2.0790734 ,  2.67886095,  2.54115153,  5.49853925,
-               4.57056015]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, mu, sigma)
 
     def log_df(self, x, mu, sigma):
         return norm.logpdf(x, mu, sigma)

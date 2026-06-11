@@ -346,49 +346,6 @@ class LogNormal_(ParametricFitter):
         """
         return np.exp(n * mu + (n**2 * sigma**2) / 2)
 
-    def random(self, size, mu, sigma):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import LogNormal
-        >>> LogNormal.random(10, 3, 4)
-        array([1.74605298e+00, 1.90729963e+02, 1.90090366e+03, 2.59154042e-02,
-               3.71460694e-02, 3.38580771e+03, 7.58826512e+04, 7.23252303e+00,
-               1.21226718e+03, 4.15054624e+00])
-        >>> LogNormal.random((5, 5), 3, 4)
-        array([[4.59689256e+00, 2.91472936e-01, 4.66833783e+02, 9.88539048e+01,
-                3.88094471e+01],
-               [7.10705735e-01, 5.00788529e-02, 2.49032431e+01, 2.19196376e+01,
-                2.05043988e+02],
-               [1.32193999e+03, 7.38943238e-01, 5.16503535e-01, 9.09249819e+02,
-                2.69407879e+03],
-               [7.29473033e+00, 5.68246498e+03, 1.74464896e+00, 1.26043004e+00,
-                3.84009666e+03],
-               [1.47997384e+00, 2.21809242e+02, 1.32564564e+02, 8.06883052e-02,
-                1.05118538e+02]])
-        """
-        return np.exp(para.Normal.random(size, mu, sigma))
-
     def log_df(self, x, mu, sigma):
         return -np.log(x) + norm.logpdf(np.log(x), mu, sigma)
 

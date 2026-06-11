@@ -1,8 +1,6 @@
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
 from scipy.special import ndtri as z
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
@@ -17,32 +15,6 @@ class Weibull_(ParametricFitter):
             param_names=["alpha", "beta"],
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="log",
-            y_ticks=[
-                0.0001,
-                0.0002,
-                0.0003,
-                0.001,
-                0.002,
-                0.003,
-                0.005,
-                0.01,
-                0.02,
-                0.03,
-                0.05,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                0.95,
-                0.99,
-                0.999,
-                0.9999,
-            ],
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
@@ -369,44 +341,6 @@ class Weibull_(ParametricFitter):
 
     def entropy(self, alpha, beta):
         return euler_gamma * (1 - 1 / beta) + np.log(alpha) - np.log(beta) + 1
-
-    def random(self, size, alpha, beta):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        alpha : numpy array or scalar
-            scale parameter for the Weibull distribution
-        beta : numpy array or scalar
-            shape parameter for the Weibull distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Weibull
-        >>> Weibull.random(10, 3, 4)
-        array([1.79782451, 1.7143211 , 2.84778674, 3.12226231, 2.61000839,
-               3.05456332, 3.00280851, 2.61910071, 1.37991527, 4.17488394])
-        >>> Weibull.random((5, 5), 3, 4)
-        array([[1.64782514, 2.79157632, 1.85500681, 2.91908736, 2.46089933],
-               [1.85880127, 0.96787742, 2.29677031, 2.42394129, 2.63889601],
-               [2.14351859, 3.90677225, 2.24013855, 2.49467774, 3.43755278],
-               [3.24417396, 1.40775181, 2.49584969, 3.07603353, 2.54679499],
-               [1.98330076, 2.95002633, 3.35402601, 3.11429283, 3.45706789]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, alpha, beta)
 
     def log_df(self, x, alpha, beta):
         scaled = x / alpha
