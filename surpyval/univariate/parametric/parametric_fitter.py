@@ -54,9 +54,14 @@ class ParametricFitter:
     def ll_observed(self, x, n, *params):
         *params, gamma, f0, p = params
         x = x - gamma
-        n_zeros = np.sum(n[x == 0])
-        zero_weight = n_zeros * np.log(f0) if n_zeros != 0 else 0
-        non_zero_mask = x != 0
+        if f0 == 0:
+            # Not zero-inflated; x == 0 is an ordinary observation.
+            zero_weight = 0
+            non_zero_mask = np.full(x.shape, True)
+        else:
+            n_zeros = np.sum(n[x == 0])
+            zero_weight = n_zeros * np.log(f0) if n_zeros != 0 else 0
+            non_zero_mask = x != 0
         N = np.sum(n[non_zero_mask])
         return (
             (n[non_zero_mask] * self.log_df(x[non_zero_mask], *params)).sum()

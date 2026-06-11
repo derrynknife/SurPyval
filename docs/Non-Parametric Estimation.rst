@@ -14,11 +14,11 @@ This can be extended to more than one death. For example, the risk set could be 
 
 So a complete example of this format is:
 
-.. code:: python
+.. jupyter-execute::
 
-	x = [1, 2, 3, 4, 5, 6]
-	r = [7, 5, 4, 3, 2, 1]
-	d = [2, 1, 1, 1, 1, 1]
+    x = [1, 2, 3, 4, 5, 6]
+    r = [7, 5, 4, 3, 2, 1]
+    d = [2, 1, 1, 1, 1, 1]
 
 This format for data is not how survival data is usually provided in text books or papers. Survival data is usually displayed with the simple list of failure times such as "1, 3, 6, 7, 10, 16". The first step surpyval does for non-parametric analysis is to transform data into the xrd format. All the :code:`fit()` methods for surpyval take as input the xcnt format, see more at the data types docs. So if you provide surpyval with the data "1, 2, 3, 4, 5, 6" it will assume that each of them are one death, and then create the risk set from the death counts resulting in the xrd format from above.
 

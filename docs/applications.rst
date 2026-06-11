@@ -14,7 +14,7 @@ No statistical analysis package can avoid doing the 'hello world' task of analys
 On consideration, one can see that there are no houses above $50,000 and that the density at that point is much higher than we would expect because we would expect some form of a 'fat-tail.' That is, we should expect a decreasing number of houses at the highest costs. It is therefore safe to conclude that all values above $50,000 have been set to $50,000; which is to say that the sale price is right censored! And because it is a censored observation we will need to use an analysis tool that can handle censored observations, lest we may be wrong in our estimates of the distribution of housing prices. So lets load the data and see what results we can get, starting with the raw data.
 
 
-.. code:: python
+.. jupyter-execute::
 
     import surpyval as surv
     from surpyval.datasets import load_boston_housing
@@ -26,25 +26,10 @@ On consideration, one can see that there are no houses above $50,000 and that th
     model.plot()
 
 
-.. code:: text
-
-    Parametric SurPyval Model
-    =========================
-    Distribution        : Weibull
-    Fitted by           : MLE
-    Parameters          :
-         alpha: 25.386952832397032
-          beta: 2.5651903209947684
-
-
-.. image:: images/applications-boston-2.png
-    :align: center
-
-
 From the above plot you can see that near 50, the parametric model diverges substantially from the actual data. So we can see that having not censored the highest values means that our model could be improved by doing so. Let's see:
 
 
-.. code:: python
+.. jupyter-execute::
 
     import surpyval as surv
     from surpyval.datasets import load_boston_housing
@@ -58,24 +43,10 @@ From the above plot you can see that near 50, the parametric model diverges subs
     model.plot()
 
 
-.. code:: text
-
-    Parametric SurPyval Model
-    =========================
-    Distribution        : Weibull
-    Fitted by           : MLE
-    Parameters          :
-         alpha: 25.53669601993307
-          beta: 2.469159446459548
-
-
-.. image:: images/applications-boston-3.png
-    :align: center
-
 We can see that the model has changed slightly, however, there appears to be a 'disconnect' near 24 that makes the model a poor fit above and below the value. Let's see if a different distribution will improve the fit:
 
 
-.. code:: python
+.. jupyter-execute::
 
     import surpyval as surv
     from surpyval.datasets import load_boston_housing
@@ -89,28 +60,13 @@ We can see that the model has changed slightly, however, there appears to be a '
     model.plot()
 
 
-.. code:: text
-
-    Parametric SurPyval Model
-    =========================
-    Distribution        : LogLogistic
-    Fitted by           : MLE
-    Max Proportion (p)  : 0.9861133787129936
-    Parameters          :
-         alpha: 20.804405478058186
-          beta: 4.56190516414644
-
-
-.. image:: images/applications-boston-4.png
-    :align: center
-
-
 This appears to be a much better fit, however, there is still quite a bit of difference between the data and the model in the middle of the distribution. Lets create a custom spline to see if we can perfect the fit.
 
-.. code:: python
+.. jupyter-execute::
 
     import surpyval as surv
     from surpyval.datasets import load_boston_housing
+    from autograd import numpy as np
     x = load_boston_housing()['medv'].values
     x, c, n, _ = surv.xcnt_handler(x)
     # Right censor the highest value
@@ -132,31 +88,12 @@ This appears to be a much better fit, however, there is still quite a bit of dif
     name = 'WeibullLogLogisticSpline'
     support = (0, np.inf)
 
-    WeibullLogLogisticSpline = surv.Distribution(name, Hf, param_names, bounds, support)
+    WeibullLogLogisticSpline = surv.CustomDistribution(name, Hf, param_names, bounds, support)
 
     model = WeibullLogLogisticSpline.fit(x=x, c=c, n=n, lfp=True)
 
     print(model)
     model.plot()
-
-
-.. code:: text
-
-    Parametric SurPyval Model
-    =========================
-    Distribution        : WeibullLogLogisticSpline
-    Fitted by           : MLE
-    Max Proportion (p)  : 0.9711459340639835
-    Parameters          :
-          knot: 25.0000103742294
-       alpha_w: 22.735658691657452
-        beta_w: 3.926996942307611
-      alpha_ll: 32.2716411336919
-       beta_ll: 10.120540049344006
-
-
-.. image:: images/applications-boston-5.png
-    :align: center
 
 Much better!
 
@@ -170,48 +107,28 @@ In reliability engineering we might be interested in the proportion of a populat
 
 Using data from the paper that introduced the Limited Failure Population model (also known as the Defective Subpopulation) to the reliability engineering world [Meeker]_ we can show how surpyval can be used in part to calculate an optimal 'burn-in' test duration.
 
-.. code:: python
+.. jupyter-execute::
 
     import surpyval as surv
 
-    f = [.1, .1, .15, .6, .8, .8, 1.2, 2.5, 3., 4., 4., 6., 10., 10., 
+    f = [.1, .1, .15, .6, .8, .8, 1.2, 2.5, 3., 4., 4., 6., 10., 10.,
          12.5, 20., 20., 43., 43., 48., 48., 54., 74., 84., 94., 168., 263., 593.]
     s = [1370.] * 4128
 
-    x, c, n = surv.fs_to_xcn(f, s)
+    x, c, n, _ = surv.fs_to_xcnt(f, s)
     model = surv.Weibull.fit(x, c, n, lfp=True)
     print(model)
     model.plot()
 
-
-.. code:: text
-
-    Parametric SurPyval Model
-    =========================
-    Distribution        : Weibull
-    Fitted by           : MLE
-    Max Proportion (p)  : 0.006744450944727198
-    Parameters          :
-         alpha: 28.367193779799038
-          beta: 0.4959762140288241
-
-
-.. image:: images/applications-reliability-1.png
-    :align: center
-
 We can see from these results that at maximum we will have approximately 0.67% fail. If the company accepts a 0.1% probability of their products failing in the field then we can calculate the interval at which the difference between the total population and the proportion failed in the test is 0.1%.
 
-.. code:: python
+.. jupyter-execute::
 
     from scipy.optimize import minimize
     fun = lambda x : (0.001 - np.abs(model.p - model.ff(x)))**2
 
     res = minimize(fun, 10, tol=1e-50)
     print(res.x)
-
-.. code:: text
-
-    [104.43741352]
 
 Therefore we should do a burn in test up to approximately 104.4 to make sure we minimize the number of items shipped that are defective while also minimizing the duration of the test. We can simply change the value of ``0.001`` in the above code to any value we may wish to use.
 
@@ -222,8 +139,7 @@ In demographics and actuarial studies, the distribution of the life of a populat
 
 The `Gompertz-Makeham <https://en.wikipedia.org/wiki/Gompertz–Makeham_law_of_mortality>`_ is a distribution used in demography and actuarial studies to estimate the lifetime of a population. This can be implemented in surpyval with relative ease.
 
-.. code:: python
-
+.. jupyter-execute::
 
     import surpyval as surv
     from autograd import numpy as np
@@ -236,12 +152,13 @@ The `Gompertz-Makeham <https://en.wikipedia.org/wiki/Gompertz–Makeham_law_of_m
     def Hf(x, *params):
         Hf = params[0] * x + (params[1]/params[2])*(np.exp(params[2]*x))
         return Hf
-        
-    GompertzMakeham = surv.Distribution('GompertzMakeham', Hf, param_names, bounds, support)
+
+    GompertzMakeham = surv.CustomDistribution('GompertzMakeham', Hf, param_names, bounds, support)
 
 We now have a GM distribution object that can be used to fit data. But we need some data:
 
-.. code:: python
+.. jupyter-execute::
+    :stderr:
 
     # GM qf()
     def qf(p, params):
@@ -254,48 +171,29 @@ We now have a GM distribution object that can be used to fit data. But we need s
 
     np.random.seed(1)
     params = np.array([.68, 28.7e-3, 102.3])/1000
-    x = qf(np.random.uniform(0, 1, 100_000), params)
+    x = qf(np.random.uniform(0, 1, 10_000), params)
     # Filter out some numeric overflows.
     x = x[np.isfinite(x)]
 
 
-The parameters for the distribution come from [Gavrilov]_, specifically the parameters for the lifespans of the 1974-1978 data. So in this case we have (simulated) data on the lifespans of 100,000 thousand people and we need to determine the GM parameters. This can be compared to the historic parameters to see if the age related mortality has changed or has remained roughly constant. To do so, all we need do with surpyval is to put the data to the ``fit()`` method.
+The parameters for the distribution come from [Gavrilov]_, specifically the parameters for the lifespans of the 1974-1978 data. So in this case we have (simulated) data on the lifespans of 10,000 people and we need to determine the GM parameters. This can be compared to the historic parameters to see if the age related mortality has changed or has remained roughly constant. To do so, all we need do with surpyval is to put the data to the ``fit()`` method.
 
-.. code:: python
+.. jupyter-execute::
 
     model = GompertzMakeham.fit(x)
     model.plot(alpha_ci=0.99, heuristic='Nelson-Aalen')
     model
 
-.. code:: text
-
-    Parametric SurPyval Model
-    =========================
-    Distribution        : GompertzMakeham
-    Fitted by           : MLE
-    Parameters          :
-        lambda: 0.0007827108147066848
-         alpha: 2.1199267751549727e-05
-          beta: 0.10690878152126947
-
-.. image:: images/applications-demography-1.png
-    :align: center
-
-
 You can see that the model is a good fit to the data. Using the model we can determine the probability of death in a given term for a random individual from the population. This is useful to price the premium of a life insurance policy. For example, if a 60 year old was to take out a two year policy, what premium should we charge them for the policy. First, we need to determine the probability of death:
 
-.. code:: python
-    
+.. jupyter-execute::
+
     p_death = model.ff(62) - model.ff(60)
     policy_payout = 100_000
     expected_loss = policy_payout * p_death
     print(p_death, expected_loss)
 
-.. code:: text
-
-    0.025337351289907883 2533.7351289907883
-
-From the results above, you can see that the probability of death over the two year interval is approximately 2.5%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $2,533.74. Therefore, to make a profit, the policy will need to cost more than $2,533.74. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $2,787.11. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $116.13 for two years (in the case of death the amount owing can be subtracted from the payout).
+From the results above, you can see that the probability of death over the two year interval is approximately 2.5%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $2,548.32. Therefore, to make a profit, the policy will need to cost more than $2,548.32. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $2,803.15. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $116.80 for two years (in the case of death the amount owing can be subtracted from the payout).
 
 Although this is a basic example, as insurance companies would have much more sophisticated models, it shows the basics of how demographic and actuarial data can be used. This shows the application of surpyval to actuarial and demogrphic studies.
 
@@ -307,7 +205,7 @@ In reliability engineering you can come across the case where a new product has 
 Given the similarities, it is common to use the same shape parameter, the :math:`\beta` value, from a similar product as an initial estimate. In this case, we may need to know the reliability of the item in the field. We can create a model of this new product, but first the old product:
 
 
-.. code:: python
+.. jupyter-execute::
 
     import surpyval as surv
 
@@ -315,36 +213,15 @@ Given the similarities, it is common to use the same shape parameter, the :math:
     old = surv.Weibull.fit(x_old)
     print(old)
 
-.. code:: text
-
-    Parametric SurPyval Model
-    =========================
-    Distribution        : Weibull
-    Fitted by           : MLE
-    Parameters          :
-         alpha: 45.27418484669478
-          beta: 1.377623372184365
-
 We can use the above value of beta with the new data:
 
-.. code:: python
-
+.. jupyter-execute::
 
     x_new = [87, 100]
     c_new = [0, 1]
     n_new = [1, 9]
 
     surv.Weibull.fit(x_new, c_new, n_new, fixed={'beta' : 1.3776}, init=[100.])
-
-.. code:: text
-
-    Parametric SurPyval Model
-    =========================
-    Distribution        : Weibull
-    Fitted by           : MLE
-    Parameters          :
-         alpha: 525.1398140084557
-          beta: 1.3776
 
 The characteristic life of the new bearing is over 10 times higher! Quite an improved new design. This new model can be used as part of the sales of the new product (10x more life!) and to provide recommendations for maintenance.
 
@@ -417,17 +294,18 @@ Economics
 
 Economists are interested in the times between recessions. This information helps them formulate policy proscriptions that may (or may not) reduce the duration of a recession, or the time between recessions. Using data from Tadeu Cristino et al. [TC]_ we can use real data to esimate the probability of a recession.
 
-.. code:: python
+.. jupyter-execute::
+    :stderr:
 
     import pandas as pd
     import surpyval as surv
 
-    start = [np.nan, "June 1857", "October 1860", "April 1865", "June 1869", 
+    start = [np.nan, "June 1857", "October 1860", "April 1865", "June 1869",
              "October 1873", "March 1882", "March 1887", "July 1890", "January 1893",
              "December 1895", "June 1899", "September 1902", "May 1907", "January 1910",
              "January 1913", "August 1918", "January 1920", "May 1923", "October 1926",
              "August 1929", "May 1937", "February 1945", "November 1948", "July 1953",
-             "August 1957", "April 1960", "December 1969", "November 1973", 
+             "August 1957", "April 1960", "December 1969", "November 1973",
              "January 1980", "July 1981", "July 1990", "March 2001", "December 2007"]
 
 
@@ -435,8 +313,8 @@ Economists are interested in the times between recessions. This information help
         "December 1854", "December 1858", "June 1861", "December 1867", "December 1870",
         "March 1879", "May 1885", "April 1888", "May 1891", "June 1894", "June 1897",
         "December 1900", "August 1904", "June 1908", "January 1912", "December 1914",
-        "March 1919", "July 1921", "July 1924", "November 1927", "March 1933", 
-        "June 1938", "October 1945", "October 1949", "May 1954", "April 1958", 
+        "March 1919", "July 1921", "July 1924", "November 1927", "March 1933",
+        "June 1938", "October 1945", "October 1949", "May 1954", "April 1958",
         "February 1961", "November 1970", "March 1975", "July 1980", "November 1982",
         "March 1991", "November 2001", "June 2009"
     ]
@@ -452,34 +330,13 @@ Economists are interested in the times between recessions. This information help
     model.plot()
 
 
-.. code:: text
-
-    Parametric SurPyval Model
-    =========================
-    Distribution        : Weibull
-    Fitted by           : MLE
-    Offset (gamma)      : 304.0659320899125
-    Parameters          :
-         alpha: 895.3220718605215
-          beta: 1.0629492868473804
-
-
-.. image:: images/applications-economics-1.png
-    :align: center
-
-
 You can see from the above the data is a good fit to the model! Great. So now what?
 
 We can communicate what the expected time between recessions is:
 
-.. code:: python
+.. jupyter-execute::
 
     model.mean()
-
-
-.. code:: text
-
-    1178.2499033086633
 
 Therefore the average growth period is 1,178 days, or about 3.2 years between recessions.
 
@@ -493,4 +350,3 @@ References
 .. [Gavrilov] Gavrilov, L. A., Gavrilova, N. S., & Nosov, V. N. (1983). Human life span stopped increasing: why?. Gerontology, 29(3), 176-180.
 
 .. [Meeker] William Q. Meeker (1987) Limited Failure Population Life Tests: Application to Integrated Circuit Reliability, Technometrics, 29(1), 51-65
-

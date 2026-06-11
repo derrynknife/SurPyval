@@ -24,26 +24,26 @@ Survival analysis has several methods for handling censored data in the parametr
 
 Surpyval uses a convention regarding censoring. Specifically, surpyval takes as input, with a list of failure times 'x', an optional censoring flag array 'c'. If no flaggin array is provided, it is assumed that all the data are exact observations, i.e. that they are not censored. But if the 'c' array is provided, it must have a value for each value in the x input. That is, they must be the same length. The possible values of c are -1, 0, 1, and 2. The convention tries to illustrate the concept of left, right, and interval censoring on the timeline. That is, -1 is the flag for left censoring because it is to the left of an observed failure. With an observed failure at 0. 1 is used to flag a value as right censored. Finally, 2 is used to flag a value as being intervally censored because it has 2 data points, a left and right point. In practice this will therefore look like:
 
-.. code:: python
+.. jupyter-execute::
 
-	import surpyval
+    import surpyval
 
-	x = [3, 3, 3, 4, 4, [4, 6], [6, 8], 8]
-	c = [-1, -1, -1, 0, 0, 2, 2, 1]
+    x = [3, 3, 3, 4, 4, [4, 6], [6, 8], 8]
+    c = [-1, -1, -1, 0, 0, 2, 2, 1]
 
-	model = surpyval.Weibull.fit(x=x, c=c)
+    model = surpyval.Weibull.fit(x=x, c=c)
 
 This example shows the flexibility surpyval offers. It allows users to analyse data that has any arbitrary combination of the different types of censoring. The surpyval format is even more powerful, because the above example can be condensed even further through using the 'n' value.
 
-.. code:: python
+.. jupyter-execute::
 
-	import surpyval
+    import surpyval
 
-	x = [3, 4, [4, 6], [6, 8], 8]
-	c = [-1, 0, 2, 2, 1]
-	n = [3, 2, 1, 1, 1]
+    x = [3, 4, [4, 6], [6, 8], 8]
+    c = [-1, 0, 2, 2, 1]
+    n = [3, 2, 1, 1, 1]
 
-	model = surpyval.Weibull.fit(x=x, c=c, n=n)
+    model = surpyval.Weibull.fit(x=x, c=c, n=n)
 
 The first step of the fit method actually wrangles the input data into the densest form possible. So internally, the example without the n value, will be condensed to be the second example without you seeing it. But it shows the capability of how data can be input to surpyval if you have different formats. But we are getting away from data types...
 
@@ -61,14 +61,14 @@ Parametric and non-parametric analysis can both handle left truncated data. This
 
 In surpyval, passing truncated data to the fitting method looks like:
 
-.. code:: python
+.. jupyter-execute::
 
-	import surpyval
+    import surpyval
 
-	x  = [674, 792, 1153, 1450, 1555, 1923, 2019]
-	tl = 500
+    x  = [674, 792, 1153, 1450, 1555, 1923, 2019]
+    tl = 500
 
-	model = surpyval.Weibull.fit(x=x, tl=tl)
+    model = surpyval.Weibull.fit(x=x, tl=tl)
 
 
 Concluding Points

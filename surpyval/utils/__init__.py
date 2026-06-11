@@ -1025,7 +1025,9 @@ def check_e_and_x(e, x):
 
 
 def check_c_and_e(c, e):
-    if any(~(e[c == 1] is None)) or any(~(e[c != 1] is not None)):
+    if any(e_i is not None for e_i in e[c == 1]) or any(
+        e_i is None for e_i in e[c != 1]
+    ):
         raise ValueError(
             "None can only be used as event type for censored observation"
         )
@@ -1107,7 +1109,9 @@ def validate_cr_inputs(x, c, n, e, method):
 
     # Ensure all cases where c is 0, e is not None and
     # where c is 1 e is None
-    if any(~(e[c == 1] is None)) or any(~(e[c != 1] is not None)):
+    if any(e_i is not None for e_i in e[c == 1]) or any(
+        e_i is None for e_i in e[c != 1]
+    ):
         raise ValueError(
             "None can only be used as event type for censored observation"
         )

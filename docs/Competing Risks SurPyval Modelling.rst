@@ -8,36 +8,38 @@ theoretical background see :doc:`Competing Risks Analysis`.
 .. warning::
 
     The competing risks subsystem is under active development. The
-    ``FineGray`` and ``CompetingRisksProportionalHazard`` fitters currently
-    crash on first call; ``CompetingRisks`` has a known bug in its failure
-    function (``ff``). These issues are tracked in ``DEVELOPMENT.md``.
-    Code examples below show the intended API; they will work once the fixes
-    land.
+    ``CompetingRisks`` examples on this page are executed when the
+    documentation is built and work as shown. The ``FineGray`` and
+    ``CompetingRiskProportionalHazard`` fitters, however, currently crash on
+    first call; their sections below show the intended API only. These
+    issues are tracked in ``DEVELOPMENT.md``.
 
 Standard imports used throughout this page:
 
-.. code-block:: python
+.. jupyter-execute::
 
     import surpyval as surv
     import numpy as np
     from matplotlib import pyplot as plt
 
 
-Fitting a Parametric Competing Risks Model
--------------------------------------------
+Fitting a Competing Risks Model
+-------------------------------
 
-The ``CompetingRisks`` class fits a parametric distribution independently to
-each failure cause and combines them into a joint model. Pass the observed
+The ``CompetingRisks`` class estimates a non-parametric cumulative incidence
+function (CIF) for each failure cause, using the Nelson-Aalen or
+Kaplan-Meier estimate of the overall survival function. Pass the observed
 times, a cause indicator, and optional censoring flags:
 
-.. code-block:: python
+.. jupyter-execute::
 
-    from surpyval import CompetingRisks, Weibull, Exponential
+    from surpyval.competing_risks import CompetingRisks
+    from surpyval import Weibull, Exponential
 
     # Simulated data: two competing causes
     np.random.seed(42)
     t1 = Weibull.random(100, alpha=50, beta=2.5)   # cause 1 latent times
-    t2 = Exponential.random(100, lam=1./80)         # cause 2 latent times
+    t2 = Exponential.random(100, 1./80)             # cause 2 latent times
 
     # Observed time is the minimum; cause is which latent time was smaller
     x = np.minimum(t1, t2)
@@ -47,18 +49,17 @@ times, a cause indicator, and optional censoring flags:
     model = CompetingRisks.fit(
         x=x,
         c=c,
-        cause=cause,
-        dist=[Weibull, Exponential],
+        e=cause,
     )
     print(model)
 
 Once fitted, you can query the CIF for each cause:
 
-.. code-block:: python
+.. jupyter-execute::
 
     t_plot = np.linspace(0, 150, 300)
     for k, label in enumerate(['Cause 1 (Weibull)', 'Cause 2 (Exponential)']):
-        plt.plot(t_plot, model.ff(t_plot, cause=k), label=label)
+        plt.plot(t_plot, model.cif(t_plot, event=k), label=label)
     plt.xlabel('Time')
     plt.ylabel('Cumulative Incidence')
     plt.legend()
@@ -89,7 +90,7 @@ events:
 .. code-block:: python
 
     # Planned API — not yet working (see DEVELOPMENT.md)
-    from surpyval.competing_risks import CompetingRisksProportionalHazard
+    from surpyval.competing_risks import CompetingRiskProportionalHazard
 
-    model = CompetingRisksProportionalHazard.fit(x=x, c=c, Z=Z, cause=cause)
+    model = CompetingRiskProportionalHazard.fit(x=x, c=c, Z=Z, cause=cause)
     print(model.summary())

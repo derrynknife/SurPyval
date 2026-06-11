@@ -6,7 +6,7 @@ API
 
    surpyval.nonparametric
    surpyval.parametric
-   surpyval.univariate.regression
+   surpyval.regression
    surpyval.counting
    surpyval.utilities
    surpyval.datasets

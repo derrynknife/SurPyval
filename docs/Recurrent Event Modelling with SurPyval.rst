@@ -16,100 +16,90 @@ Creating a Non-Parametric MCF with surpyval is easy. Simply collect the data and
 pass it to the ``fit`` call of the ``NonParametricCounting`` class.
 
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> from surpyval.recurrent import NonParametricCounting
-    >>> import numpy as np
-    >>> 
-    >>> x = [1, 2, 3, 4, 5, 6, 7]
-    >>> 
-    >>> model = NonParametricCounting.fit(x)
-    >>> model.plot()
+    from surpyval.recurrent import NonParametricCounting
+    import numpy as np
 
-.. image:: images/counting_processes_np_mcf.png
-    :align: center
+    x = [1, 2, 3, 4, 5, 6, 7]
+
+    model = NonParametricCounting.fit(x)
+    model.plot()
 
 This shows the expected number of events at any time. The model is a step
 function since it is parametric and we have made no assumptions about the
 count between observed events.
 
-The result of this is a Non-Parametric Counting model that can be used just like 
+The result of this is a Non-Parametric Counting model that can be used just like
 all other models in surpyval. It is important to note that the ``fit`` function
 takes the values of x as the *cumulative* time to the event, not the inter-arrival
 time. If you do have inter-arrival data (which is sorted in the correct order)
 all you need do is take the cumulative sum of the obervations along the length
 of the array. For example:
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> from surpyval.recurrent import NonParametricCounting
-    >>> import numpy as np
+    from surpyval.recurrent import NonParametricCounting
+    import numpy as np
 
-    >>> interarrival_times = [1, 1, 2, 4, 3, 1, 2, 1]
-    >>> x = np.cumsum(interarrival_times)
+    interarrival_times = [1, 1, 2, 4, 3, 1, 2, 1]
+    x = np.cumsum(interarrival_times)
 
-    >>> model = NonParametricCounting.fit(x)
+    model = NonParametricCounting.fit(x)
 
 We can then use this model to estimate the number of failures at any time. For
 example, let's say we wanted to know how many failures we would expect to see
 after 10 units of time. We can do this by using the ``mcf`` method of the model.
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> from surpyval.recurrent import NonParametricCounting
-    >>> import numpy as np
+    from surpyval.recurrent import NonParametricCounting
+    import numpy as np
 
-    >>> interarrival_times = [1, 1, 2, 4, 3, 1, 2, 1]
-    >>> x = np.cumsum(interarrival_times)
+    interarrival_times = [1, 1, 2, 4, 3, 1, 2, 1]
+    x = np.cumsum(interarrival_times)
 
-    >>> model = NonParametricCounting.fit(x)
-    >>> model.mcf(10)
-    array([4.])
+    model = NonParametricCounting.fit(x)
+    model.mcf(10)
 
 
 The above two examples use only one item, but we can get the expected number
 of events based on data from any number of items. Let's say we had three items
 observed until the last event. Let's do some modelling.
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> from surpyval.recurrent import NonParametricCounting
-    >>> import numpy as np
+    from surpyval.recurrent import NonParametricCounting
+    import numpy as np
 
-    >>> x = [1, 2, 3, 4, 5, 6, 7, 1, 4, 6, 9, 2, 7, 8, 9]
-    >>> i = [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
+    x = [1, 2, 3, 4, 5, 6, 7, 1, 4, 6, 9, 2, 7, 8, 9]
+    i = [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
 
-    >>> model = NonParametricCounting.fit(x, i=i)
-    >>> model.plot()
+    model = NonParametricCounting.fit(x, i=i)
+    model.plot()
 
-.. image:: images/counting_processes_np_mcf_multiple_items.png
-    :align: center
-
-Here we have the expected number of events over time based on the observations 
-of three different items. 
+Here we have the expected number of events over time based on the observations
+of three different items.
 
 These functions work with censoring as well. We need to keep in mind that the
 only right censored points we can have for an item is the last. This is because
-it doesn't make any sense to have a right censored point followed by another 
-event. The same is true for left censored and truncated data. Therefore the 
+it doesn't make any sense to have a right censored point followed by another
+event. The same is true for left censored and truncated data. Therefore the
 "timeline" for a single item must be coherent for the model to work.
 
 Let's look at how we can use right censoring.
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> from surpyval.recurrent import NonParametricCounting
-    >>> import numpy as np
+    from surpyval.recurrent import NonParametricCounting
+    import numpy as np
 
-    >>> x = [1, 2, 3, 4, 5, 6, 7, 1, 4, 6, 9, 2, 7, 8, 9]
-    >>> i = [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
-    >>> c = [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]
+    x = [1, 2, 3, 4, 5, 6, 7, 1, 4, 6, 9, 2, 7, 8, 9]
+    i = [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
+    c = [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]
 
-    >>> model = NonParametricCounting.fit(x, i=i, c=c)
-    >>> model.plot()
-
-.. image:: images/counting_processes_np_mcf_multiple_items_with_censoring.png
-    :align: center
+    model = NonParametricCounting.fit(x, i=i, c=c)
+    model.plot()
 
 At present the ``NonParametricCounting`` model does not support fitting with
 truncated data.
@@ -138,41 +128,34 @@ above the highest observed values but may not be a good fit to the data.
 
 Let's fit a parametric model.
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> from surpyval.recurrent import HPP
-    >>> import numpy as np
-    >>> 
-    >>> x = [1, 2, 3, 4, 5, 6, 7, 1, 4, 6, 9, 2, 7, 8, 9]
-    >>> i = [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
-    >>> c = [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]
-    >>> 
-    >>> model = HPP.fit(x, i=i, c=c)
-    >>> model.plot()
+    from surpyval.recurrent import HPP
+    import numpy as np
 
-.. image:: images/counting_processes_hpp.png
-    :align: center
+    x = [1, 2, 3, 4, 5, 6, 7, 1, 4, 6, 9, 2, 7, 8, 9]
+    i = [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
+    c = [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]
+
+    model = HPP.fit(x, i=i, c=c)
+    model.plot()
 
 This model is a good fit to the data, althouhg it is just a straight line. But
 we can extraplotate above the highest observed value. Let's say we wanted to
 know how many events would happen up to "15", we can do this with the ``cif``
 method of the model.
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> model.cif(15)
-    7.2
+    model.cif(15)
 
 This means that we would expect to see 7.2 events up to "15" (in whatever units
 this model is in). Let's see a different example:
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> x = [1, 5, 8, 10, 12, 13, 13, 14]
-    >>> HPP.fit(x).plot()
-
-.. image:: images/counting_processes_hpp_2.png
-    :align: center
+    x = [1, 5, 8, 10, 12, 13, 13, 14]
+    HPP.fit(x).plot()
 
 
 This HPP model, in this case, is not a good fit to the data. This is because
@@ -181,17 +164,13 @@ line whereas the data appears to be increasing over time. In this case, we have
 made a poor assumption in using the HPP model. Let's try another one.
 
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> from surpyval.recurrent import Duane
-    >>> x = [1, 5, 8, 10, 12, 13, 13, 14]
-    >>> 
-    >>> model = HPP.fit(x, i=i, c=c)
-    >>> model.plot()
+    from surpyval.recurrent import Duane
+    x = [1, 5, 8, 10, 12, 13, 13, 14]
 
-
-.. image:: images/counting_processes_duane.png
-    :align: center
+    model = Duane.fit(x)
+    model.plot()
 
 This is clearly a much better fit. Have a look at the api documentation to see
 what other parametric models are available in SurPyval.
@@ -209,39 +188,27 @@ Generalised Renewal Process with SurPyval
 
 Generalized Renewal Process modelling is simple with SurPyval:
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> from surpyval import Weibull
-    >>> from surpyval.recurrent import GeneralizedRenewal, NonParametricCounting
-    >>> import numpy as np
-    >>>
-    >>> x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
-    >>>
-    >>> model = GeneralizedRenewal.fit(x, dist=Weibull)
-    >>> model
-    Generalized Renewal SurPyval Model
-    ==================================
-    Distribution        : Weibull
-    Fitted by           : MLE
-    Kijima Type         : i
-    Restoration Factor  : 0.1573211400037486
-    Parameters          :
-        alpha: 1.261338468404201
-        beta: 8.93900788677076
+    from surpyval import Weibull
+    from surpyval.recurrent import GeneralizedRenewal, NonParametricCounting
+    import numpy as np
+
+    x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
+
+    model = GeneralizedRenewal.fit(x, dist=Weibull)
+    model
 
 We cannot plot the cumulative incidence function of the model since it does
 not have a closed form solution. We can however plot the cumulative incidence
 function of a monte carlo simulation of the model. Let's do that and compare
 it to a non-parametric description of the MCF:
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> np_model = model.count_terminated_simulation(len(x), 5000)
-    >>> ax = np_model.plot()
-    >>> NonParametricCounting.fit(x).plot(ax=ax)
-
-.. image:: images/grp_weibull_comparison.png
-    :align: center
+    np_model = model.count_terminated_simulation(len(x), 5000)
+    ax = np_model.plot()
+    NonParametricCounting.fit(x).plot(ax=ax)
 
 We have simulated the model we created up to the number of failures we saw in
 the data with the ``count_terminated_simulation`` method. This method takes
@@ -265,22 +232,19 @@ like a smooth line at the higher values.
 SurPyval uses the Kijima Type i as the default. Let's change this to
 Kijima Type ii and see what happens.
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> from surpyval import Weibull
-    >>> from surpyval.recurrent import GeneralizedRenewal, NonParametricCounting
-    >>> import numpy as np
-    >>>
-    >>> x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
-    >>>
-    >>> model = GeneralizedRenewal.fit(x, dist=Weibull)
-    >>>
-    >>> np_model = model.count_terminated_simulation(len(x), 5000)
-    >>> ax = np_model.plot()
-    >>> NonParametricCounting.fit(x).plot(ax=ax)
+    from surpyval import Weibull
+    from surpyval.recurrent import GeneralizedRenewal, NonParametricCounting
+    import numpy as np
 
-.. image:: images/grp_ii_weibull_comparison.png
-    :align: center
+    x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
+
+    model = GeneralizedRenewal.fit(x, dist=Weibull, kijima="ii")
+
+    np_model = model.count_terminated_simulation(len(x), 5000)
+    ax = np_model.plot()
+    NonParametricCounting.fit(x).plot(ax=ax)
 
 We can see that this model is not as good a fit as the kijima type i model.
 This implies that the restoration that is done only repairs damage done since
@@ -292,22 +256,15 @@ G1 Renewal Process with SurPyval
 
 G1 Modelling can easily be done with SurPyval:
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> from surpyval import Exponential
-    >>> from surpyval.recurrent import GeneralizedOneRenewal
-    >>> import numpy as np
-    >>> x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
-    >>>
-    >>> model = GeneralizedOneRenewal.fit(x, dist=Exponential)
-    >>> model
-    G1 Renewal SurPyval Model
-    =========================
-    Distribution        : Exponential
-    Fitted by           : MLE
-    Restoration Factor  : 0.2318306601166155
-    Parameters          :
-        lambda: 0.20919291887716013
+    from surpyval import Exponential
+    from surpyval.recurrent import GeneralizedOneRenewal
+    import numpy as np
+    x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
+
+    model = GeneralizedOneRenewal.fit(x, dist=Exponential)
+    model
 
 
 This data is from [1]_ and shows the inter-arrival times, and not the total
@@ -320,23 +277,16 @@ Surpyval allows you to use any distribution in SurPyval as the underlying
 distribution. Let's use the same data with a Weibull G1 Renewal Process.
 
 
-.. code-block:: python
+.. jupyter-execute::
+    :stderr:
 
-    >>> from surpyval import Weibull
-    >>> from surpyval.recurrent import GeneralizedOneRenewal, NonParametricCounting
-    >>> import numpy as np
-    >>> x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
-    >>>
-    >>> model = GeneralizedOneRenewal.fit(x, dist=Weibull)
-    >>> model
-    G1 Renewal SurPyval Model
-    =========================
-    Distribution        : Weibull
-    Fitted by           : MLE
-    Restoration Factor  : 0.2163030528695554
-    Parameters          :
-        alpha: 5.722202157616563
-        beta: 3.4642271577145127
+    from surpyval import Weibull
+    from surpyval.recurrent import GeneralizedOneRenewal, NonParametricCounting
+    import numpy as np
+    x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
+
+    model = GeneralizedOneRenewal.fit(x, dist=Weibull)
+    model
 
 We can see that the restoration factor is quite similar. What is interesting is
 that the underlying Weibull distribution has a shape parameter greater than 1.
@@ -345,15 +295,12 @@ G1 Renewal Process does not have a closed form solution for the cif we can
 create a non-parametric model from a monte carlo simulation. Let's do this and
 compare it to the data MCF.
 
-.. code-block:: python
+.. jupyter-execute::
 
-    >>> np_model = model.time_terminated_simulation(250, 1000)
-    >>> np_model.plot()
-    >>> NonParametricCounting.fit(x).plot()
+    np_model = model.time_terminated_simulation(250, 1000)
+    np_model.plot()
+    NonParametricCounting.fit(x).plot()
 
-
-.. image:: images/g1_weibull_comparison.png
-    :align: center
 
 In this code we created a ``NonParametricCounting`` model using the G1 Models
 ``time_terminated_simulation`` method. This method takes two arguments, the

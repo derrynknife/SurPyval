@@ -39,7 +39,13 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosectionlabel",
     "sphinx_copybutton",
+    "jupyter_sphinx",
 ]
+
+# Code in ``.. jupyter-execute::`` directives runs in a fresh kernel per
+# document at build time; outputs and matplotlib figures are embedded in
+# the built HTML, so they always reflect the installed version of surpyval.
+jupyter_execute_default_kernel = "python3"
 
 # copybutton_prompt_text = ">>> "
 copybutton_prompt_text = (
