@@ -1,7 +1,6 @@
 import warnings
 
 from scipy.special import factorial
-from scipy.special import ndtri as z
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
@@ -443,16 +442,6 @@ class Exponential_(ParametricFitter):
                 mttf = np.linalg.lstsq(y_pp, x_pp, rcond=None)[0]
                 failure_rate = 1.0 / mttf
             return tuple([failure_rate[0]])
-
-    def lambda_cb(self, x, failure_rate, cv_matrix, alpha_ci=0.05):
-        return failure_rate * np.exp(
-            np.array([-1, 1]).reshape(2, 1)
-            * (z(alpha_ci / 2) * np.sqrt(cv_matrix.item()) / failure_rate)
-        )
-
-    # def R_cb(self, x, failure_rate, cv_matrix, alpha_ci=0.05):
-    # return np.exp(-self.lambda_cb(x, failure_rate, cv_matrix,
-    # alpha_ci=alpha_ci) * x).T
 
 
 Exponential: ParametricFitter = Exponential_("Exponential")

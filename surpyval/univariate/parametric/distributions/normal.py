@@ -1,5 +1,4 @@
 from autograd.scipy.stats import norm
-from scipy.special import ndtri as z
 from scipy.stats import norm as scipy_norm
 from surpyval import np
 from surpyval.univariate import parametric as para
@@ -383,27 +382,8 @@ class Normal_(ParametricFitter):
             sigma, mu = params
         return mu, sigma
 
-    def var_z(self, x, mu, sigma, cv_matrix):
-        z_hat = (x - mu) / sigma
-        var_z = (1.0 / sigma) ** 2 * (
-            cv_matrix[0, 0]
-            + z_hat**2 * cv_matrix[1, 1]
-            + 2 * z_hat * cv_matrix[0, 1]
-        )
-        return var_z
-
-    def z_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
-        z_hat = (x - mu) / sigma
-        var_z = self.var_z(x, mu, sigma, cv_matrix)
-        bounds = z_hat + np.array([1.0, -1.0]).reshape(2, 1) * z(
-            alpha_ci / 2
-        ) * np.sqrt(var_z)
-        return bounds
-
-    # def R_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
-    # return self.sf(self.z_cb(x, mu, sigma, cv_matrix, alpha_ci=alpha_ci), 0,
-    # 1).T
-
 
 Normal: ParametricFitter = Normal_("Normal")
+
+
 Gauss: ParametricFitter = Normal_("Gauss")

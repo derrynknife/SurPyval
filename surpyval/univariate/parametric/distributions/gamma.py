@@ -1,11 +1,9 @@
 import warnings
 
-from autograd import jacobian
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
 from scipy.optimize import minimize
 from scipy.special import gammaincinv
-from scipy.special import ndtri as z
 from scipy.stats import pearsonr
 
 from surpyval import np
@@ -519,42 +517,6 @@ class Gamma_(ParametricFitter):
             results["params"] = [alpha, beta]
 
             return results
-
-    def var_R(self, dR, cv_matrix):
-        dr_dalpha = dR[:, 0]
-        dr_dbeta = dR[:, 1]
-        var_r = (
-            dr_dalpha**2 * cv_matrix[0, 0]
-            + dr_dbeta**2 * cv_matrix[1, 1]
-            + 2 * dr_dalpha * dr_dbeta * cv_matrix[0, 1]
-        )
-        return var_r
-
-    def R_cb_(self, x, alpha, beta, cv_matrix, alpha_ci=0.05):
-        R_hat = self.sf(x, alpha, beta)
-
-        def dR_f(t):
-            return self.sf(*t)
-
-        jac = jacobian(dR_f)
-        x_ = np.array(x)
-        if x_.size == 1:
-            dR = jac(np.array((x_, alpha, beta))[1::])
-            dR = dR.reshape(1, 2)
-        else:
-            out = []
-            for xx in x_:
-                out.append(jac(np.array((xx, alpha, beta)))[1::])
-            dR = np.array(out)
-        K = z(alpha_ci / 2)
-        exponent = (
-            K
-            * np.array([-1, 1]).reshape(2, 1)
-            * np.sqrt(self.var_R(dR, cv_matrix))
-        )
-        exponent = exponent / (R_hat * (1 - R_hat))
-        R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
-        return R_cb.T
 
 
 Gamma: ParametricFitter = Gamma_("Gamma")

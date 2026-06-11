@@ -375,15 +375,5 @@ class Beta_(ParametricFitter):
 
         return alpha, beta
 
-    def var_R(self, dR, cv_matrix):
-        dr_dalpha = dR[:, 0]
-        dr_dbeta = dR[:, 1]
-        var_r = (
-            dr_dalpha**2 * cv_matrix[0, 0]
-            + dr_dbeta**2 * cv_matrix[1, 1]
-            + 2 * dr_dalpha * dr_dbeta * cv_matrix[0, 1]
-        )
-        return var_r
-
 
 Beta: ParametricFitter = Beta_("Beta")

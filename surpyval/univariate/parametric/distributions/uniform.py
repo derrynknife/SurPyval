@@ -1,4 +1,3 @@
-from scipy.optimize import minimize
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
@@ -333,21 +332,6 @@ class Uniform_(ParametricFitter):
             for i in range(n):
                 out[i] = a**i * b ** (n - i)
             return np.sum(out) / (n + 1)
-
-    def p(self, c, n):
-        return 1 - 2 * (1 + c) ** (1.0 - n) + (1 + 2 * c) ** (1.0 - n)
-
-    def ab_cb(self, x, a, b, N, alpha=0.05):
-        # Parameter confidence intervals from here:
-        # https://mathoverflow.net/questions/278675/confidence-intervals-for-the-endpoints-of-the-uniform-distribution
-        #
-        sample_range = np.max(x) - np.min(x)
-
-        def fun(c):
-            return self.p(c, N)
-
-        c_hat = minimize(fun, 1.0).x
-        return a - c_hat * sample_range, b + c_hat * sample_range
 
     def mle(self, data):
         if (data.c[data.x == data.x.max()] == 1).all():
