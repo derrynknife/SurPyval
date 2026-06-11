@@ -1,14 +1,6 @@
-from surpyval.univariate.parametric import Weibull
-
-from ..accelerated_life import InversePower
-from .accelerated_failure_time import AcceleratedFailureTimeFitter
-
-# Parametric AFT
-WeibullInversePowerAFT = AcceleratedFailureTimeFitter(
-    "WeibullInversePowerAFT", Weibull, InversePower
-)
+from .aft_fitter import AFT, AFTFitter
 
 __all__ = [
-    "AcceleratedFailureTimeFitter",
-    "WeibullInversePowerAFT",
+    "AFT",
+    "AFTFitter",
 ]

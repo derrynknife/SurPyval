@@ -131,6 +131,26 @@ class ProportionalHazardsFitter:
             ).sum()
         return -ll
 
+    @staticmethod
+    def create(distribution):
+        """
+        Create a Proportional Hazards fitter for the given distribution using
+        exp(beta'Z) as the hazard multiplier.
+
+        Parameters
+        ----------
+        distribution : ParametricFitter
+            A surpyval parametric distribution (e.g. ``Weibull``, ``Exponential``).
+
+        Returns
+        -------
+        ProportionalHazardsFitter
+            A configured fitter with a ``.fit(x, Z, ...)`` method.
+        """
+        return ProportionalHazardsFitter.create_general_log_linear_fitter(
+            f"{distribution.name}PH", distribution
+        )
+
     @classmethod
     def create_general_log_linear_fitter(cls, name, distribution):
         return cls(
