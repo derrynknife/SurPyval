@@ -65,6 +65,7 @@ module = [
     'pandas',
     'formulaic',
     'matplotlib.*',
+    'numdifftools.*',
 
     'sphinx_rtd_theme',
     'sklearn.*',
