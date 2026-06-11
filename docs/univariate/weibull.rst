@@ -1,3 +1,3 @@
-.. autoclass:: surpyval.univariate.parametric.weibull.Weibull_
+.. autoclass:: surpyval.univariate.parametric.distributions.weibull.Weibull_
    :members:
    :inherited-members:

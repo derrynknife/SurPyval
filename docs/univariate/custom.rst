@@ -1,2 +1,2 @@
-.. autoclass:: surpyval.univariate.parametric.custom_distribution.CustomDistribution
+.. autoclass:: surpyval.univariate.parametric.distributions.custom_distribution.CustomDistribution
    :members:

@@ -1,7 +1,7 @@
 import surpyval
 from surpyval import np
 
-from .parametric import Parametric
+from ..parametric import Parametric
 
 
 class ExactEventTime_:

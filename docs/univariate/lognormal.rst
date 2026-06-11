@@ -1,3 +1,3 @@
-.. autoclass:: surpyval.univariate.parametric.lognormal.LogNormal_
+.. autoclass:: surpyval.univariate.parametric.distributions.lognormal.LogNormal_
    :members:
    :inherited-members:
