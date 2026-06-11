@@ -117,7 +117,7 @@ class CompetingRisks:
         event_idx_map = {state: i for i, state in enumerate(sorted(unique_e))}
 
         # Get the x, r, d format agnostic of event.
-        unique_x, r, d = surv.xcn_to_xrd(x, c, n)
+        unique_x, r, d = surv.xcnt_to_xrd(x, c, n)
 
         # empty count array of occurrence (e) of amount (d) at time (x)
         d_e = np.zeros((n_event_types, len(unique_x)))

@@ -11,7 +11,7 @@ from surpyval.utils.recurrent_utils import handle_xicn
 class NHPPFitter:
     def create_negll_func(self, data):
         x, c, n = data.x, data.c, data.n
-        x_prev = data.find_x_prevget_previous_xious()
+        x_prev = data.get_previous_x()
 
         has_interval_censoring = True if 2 in c else False
         has_observed = True if 0 in c else False
