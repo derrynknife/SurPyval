@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.stats import uniform
@@ -90,7 +92,9 @@ class ParametricRecurrenceRegressionModel:
         self.clear_simulation()
 
         if convergence_problem:
-            print("Maybe...")
+            warnings.warn(
+                "Some timelines unable to reach T due to possible asymptote"
+            )
 
         model = NonParametricCounting.fit(**xicn)
 

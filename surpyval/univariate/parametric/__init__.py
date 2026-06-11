@@ -10,6 +10,7 @@ Parametric Analysis
     model = para.Weibull.fit(x)
 
 """
+
 import numpy as np
 
 from .bernoulli import Bernoulli, FixedEventProbability
@@ -64,8 +65,8 @@ class InstantlyOccurs:
 
     @classmethod
     def Hf(cls, x):
-        return np.zeros_like(x).astype(float) * np.inf
+        return np.full_like(x, np.inf, dtype=float)
 
     @classmethod
-    def random(self, size):
+    def random(cls, size):
         return np.zeros(size)

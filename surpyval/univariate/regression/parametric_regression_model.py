@@ -100,7 +100,7 @@ class ParametricRegressionModel:
         >>> model.sf([1, 2, 3, 4, 5])
         array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
         """
-        if type(x) == list:
+        if isinstance(x, list):
             x = np.array(x)
         return self.model.sf(x, Z, *self.params)
 
@@ -136,7 +136,7 @@ class ParametricRegressionModel:
         >>> model.ff([1, 2, 3, 4, 5])
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
-        if type(x) == list:
+        if isinstance(x, list):
             x = np.array(x)
 
         return self.model.ff(x, Z, *self.params)
@@ -173,7 +173,7 @@ class ParametricRegressionModel:
         >>> model.df([1, 2, 3, 4, 5])
         array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
         """
-        if type(x) == list:
+        if isinstance(x, list):
             x = np.array(x)
         return self.model.df(x, Z, *self.params)
 
@@ -210,7 +210,7 @@ class ParametricRegressionModel:
         >>> model.hf([1, 2, 3, 4, 5])
         array([0.003, 0.012, 0.027, 0.048, 0.075])
         """
-        if type(x) == list:
+        if isinstance(x, list):
             x = np.array(x)
         return self.model.hf(x, Z, *self.params)
 
@@ -248,7 +248,7 @@ class ParametricRegressionModel:
         >>> model.Hf([1, 2, 3, 4, 5])
         array([0.001, 0.008, 0.027, 0.064, 0.125])
         """
-        if type(x) == list:
+        if isinstance(x, list):
             x = np.array(x)
         return self.model.Hf(x, Z, *self.params)
 

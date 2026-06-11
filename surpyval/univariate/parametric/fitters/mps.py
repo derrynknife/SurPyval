@@ -1,4 +1,4 @@
-import sys
+import warnings
 
 from autograd import hessian, jacobian
 from scipy.optimize import minimize
@@ -75,9 +75,7 @@ def mps(model):
             )
 
         if (res.success is False) or (np.isnan(res.x).any()):
-            print(
-                "MPS FAILED: Try alternate estimation method", file=sys.stderr
-            )
+            warnings.warn("MPS FAILED: Try alternate estimation method")
 
     results = {}
     params = inv_trans(const(res.x))

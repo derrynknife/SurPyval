@@ -60,9 +60,7 @@ class NonParametricCounting:
             )
         else:
             # Normal Greenwood confidence
-            mcf_cb = (
-                self.mcf_hat + np.sqrt(self.var * self.mcf_hat**2) * stat
-            )
+            mcf_cb = self.mcf_hat + np.sqrt(self.var * self.mcf_hat**2) * stat
         # Let's not assume we can predict above the highest measurement
         if interp == "step":
             mcf_cb[np.where(x < self.x.min())] = 0

@@ -312,16 +312,12 @@ class ParametricFitter:
                     raise ValueError(detail)
 
         if (surv_data.tl[0] != surv_data.tl).any() and how == "MPS":
-            raise ValueError(
-                "Left truncated value can only be single number \
-                              when using MPS"
-            )
+            raise ValueError("Left truncated value can only be single number \
+                              when using MPS")
 
         if (surv_data.tr[0] != surv_data.tr).any() and how == "MPS":
-            raise ValueError(
-                "Right truncated value can only be single number \
-                              when using MPS"
-            )
+            raise ValueError("Right truncated value can only be single number \
+                              when using MPS")
 
         return True
 
@@ -600,7 +596,7 @@ class ParametricFitter:
               beta: 2.6204524040137844
         """
 
-        if not type(df) == pd.DataFrame:
+        if not isinstance(df, pd.DataFrame):
             raise ValueError("df must be a pandas DataFrame")
 
         if (x is not None) and ((xl is not None) or (xr is not None)):
@@ -620,7 +616,7 @@ class ParametricFitter:
             n = df[n].values.astype(int)
 
         if tl is not None:
-            if type(tl) == str:
+            if isinstance(tl, str):
                 tl = df[tl].values.astype(float)
             elif np.isscalar(tl):
                 tl = (np.ones(df.shape[0]) * tl).astype(float)
@@ -630,7 +626,7 @@ class ParametricFitter:
             tl = np.ones(df.shape[0]) * -np.inf
 
         if tr is not None:
-            if type(tr) == str:
+            if isinstance(tr, str):
                 tr = df[tr].values.astype(float)
             elif np.isscalar(tr):
                 tr = (np.ones(df.shape[0]) * tr).astype(float)

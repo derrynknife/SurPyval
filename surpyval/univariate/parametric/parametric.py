@@ -260,7 +260,7 @@ class Parametric(Distribution):
         >>> model.sf([1, 2, 3, 4, 5])
         array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
         """
-        if type(x) == list:
+        if isinstance(x, list):
             x = np.array(x)
         return (
             1
@@ -300,7 +300,7 @@ class Parametric(Distribution):
         >>> model.ff([1, 2, 3, 4, 5])
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
-        if type(x) == list:
+        if isinstance(x, list):
             x = np.array(x)
 
         return self.f0 + (self.p - self.f0) * self.dist.ff(
@@ -339,7 +339,7 @@ class Parametric(Distribution):
         >>> model.df([1, 2, 3, 4, 5])
         array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
         """
-        if type(x) == list:
+        if isinstance(x, list):
             x = np.array(x)
         if self.f0 == 0:
             df = self.p * self.dist.df(x - self.gamma, *self.params)
@@ -387,7 +387,7 @@ class Parametric(Distribution):
         >>> model.hf([1, 2, 3, 4, 5])
         array([0.003, 0.012, 0.027, 0.048, 0.075])
         """
-        if type(x) == list:
+        if isinstance(x, list):
             x = np.array(x)
         if self.p == 1:
             return self.dist.hf(x - self.gamma, *self.params)
@@ -426,7 +426,7 @@ class Parametric(Distribution):
         >>> model.Hf([1, 2, 3, 4, 5])
         array([0.001, 0.008, 0.027, 0.064, 0.125])
         """
-        if type(x) == list:
+        if isinstance(x, list):
             x = np.array(x)
 
         if self.p == 1:
@@ -463,7 +463,7 @@ class Parametric(Distribution):
         >>> model.qf([.1, .2, .3, .4, .5])
         array([4.72308719, 6.06542793, 7.09181722, 7.99387877, 8.84997045])
         """
-        if type(p) == list:
+        if isinstance(p, list):
             p = np.array(p)
         if self.p == 1:
             return self.dist.qf(p, *self.params) + self.gamma
@@ -551,7 +551,7 @@ class Parametric(Distribution):
             )
 
         if (self.p == 1) and (self.f0 == 0):
-            if (a is None) & (b is None):
+            if (a is None) and (b is None):
                 if hasattr(self.dist, "qf"):
                     return (
                         self.dist.qf(uniform.rvs(size=size), *self.params)
@@ -736,7 +736,7 @@ class Parametric(Distribution):
                     *self.params,
                     hess_inv,
                     alpha_ci=alpha_ci,
-                    bound=bound
+                    bound=bound,
                 )
 
         else:
@@ -852,7 +852,7 @@ class Parametric(Distribution):
         >>> model.neg_ll()
         262.52685642385734
         """
-        if not hasattr(self, "data"):
+        if self.data is None:
             raise ValueError("Must have been fit with data")
 
         return self._neg_ll
@@ -1030,8 +1030,7 @@ class Parametric(Distribution):
             vals_non_sig = 10 ** np.linspace(x_min, x_max, 7)
             x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
             x_minor_ticks = (
-                10**x_minor_ticks
-                * np.array(np.arange(1, 11)).reshape((10, 1))
+                10**x_minor_ticks * np.array(np.arange(1, 11)).reshape((10, 1))
             ).flatten()
             diff = (x_max - x_min) / 10
             x_scale_min = 10 ** (x_min - diff)
@@ -1067,9 +1066,11 @@ class Parametric(Distribution):
 
         x_ticks = _round_vals(vals_non_sig)
         x_ticks_labels = [
-            str(int(x))
-            if (re.match(r"([0-9]+\.0+)", str(x)) is not None) & (x > 1)
-            else str(x)
+            (
+                str(int(x))
+                if (re.match(r"([0-9]+\.0+)", str(x)) is not None) & (x > 1)
+                else str(x)
+            )
             for x in _round_vals(vals_non_sig + self.gamma)
         ]
 
@@ -1079,9 +1080,11 @@ class Parametric(Distribution):
         ]
 
         y_ticks_labels = [
-            str(int(y)) + "%"
-            if (re.match(r"([0-9]+\.0+)", str(y)) is not None) & (y > 1)
-            else str(y)
+            (
+                str(int(y)) + "%"
+                if (re.match(r"([0-9]+\.0+)", str(y)) is not None) & (y > 1)
+                else str(y)
+            )
             for y in y_ticks * 100
         ]
 

@@ -165,7 +165,7 @@ class ParametricRecurrenceModel:
         self.clear_simulation()
 
         if convergence_problem:
-            warnings.warng(
+            warnings.warn(
                 "Some timelines unable to reach T due to possible asymptote"
             )
 

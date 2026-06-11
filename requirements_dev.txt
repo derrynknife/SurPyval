@@ -6,4 +6,3 @@ flake8-pyproject
 mypy
 coverage
 pre-commit
-scikit-survival

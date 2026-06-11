@@ -102,7 +102,7 @@ class CustomDistribution(ParametricFitter):
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         out = []
         for low, high in self.bounds:
-            if (low is None) & (high is None):
+            if (low is None) and (high is None):
                 out.append(0)
             elif high is None:
                 out.append(low + 1.0)

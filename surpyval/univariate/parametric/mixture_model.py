@@ -128,8 +128,10 @@ class MixtureModel:
             self.EM()
             f1 = self.loglike
             i += 1
-        if i >= 1000:
-            print("Max iterations reached")
+        if i >= max_iter:
+            warnings.warn(
+                "EM algorithm reached max iterations before converging"
+            )
 
     def initialise_params(self):
         splits_x = np.array_split(self.data.x, self.m)
@@ -400,8 +402,7 @@ class MixtureModel:
             vals_non_sig = 10 ** np.linspace(x_min, x_max, 7)
             x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
             x_minor_ticks = (
-                10**x_minor_ticks
-                * np.array(np.arange(1, 11)).reshape((10, 1))
+                10**x_minor_ticks * np.array(np.arange(1, 11)).reshape((10, 1))
             ).flatten()
             diff = (x_max - x_min) / 10
             x_scale_min = 10 ** (x_min - diff)
@@ -437,9 +438,11 @@ class MixtureModel:
 
         x_ticks = _round_vals(vals_non_sig)
         x_ticks_labels = [
-            str(int(x))
-            if (re.match(r"([0-9]+\.0+)", str(x)) is not None) & (x > 1)
-            else str(x)
+            (
+                str(int(x))
+                if (re.match(r"([0-9]+\.0+)", str(x)) is not None) & (x > 1)
+                else str(x)
+            )
             for x in _round_vals(vals_non_sig)
         ]
 
@@ -449,9 +452,11 @@ class MixtureModel:
         ]
 
         y_ticks_labels = [
-            str(int(y)) + "%"
-            if (re.match(r"([0-9]+\.0+)", str(y)) is not None) & (y > 1)
-            else str(y)
+            (
+                str(int(y)) + "%"
+                if (re.match(r"([0-9]+\.0+)", str(y)) is not None) & (y > 1)
+                else str(y)
+            )
             for y in y_ticks * 100
         ]
 

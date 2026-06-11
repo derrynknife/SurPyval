@@ -49,7 +49,7 @@ class AcceleratedFailureTimeFitter:
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
         out = []
         for low, high in self.bounds:
-            if (low is None) & (high is None):
+            if (low is None) and (high is None):
                 out.append(0)
             elif high is None:
                 out.append(low + 1.0)
@@ -104,12 +104,15 @@ class AcceleratedFailureTimeFitter:
             Z_out.append(np.ones(size) * stress)
         return np.concatenate(x), np.concatenate(Z_out)
 
-    def fit(self, x, Z, c=None, n=None, t=None, init=[], fixed={}):
+    def fit(self, x, Z, c=None, n=None, t=None, init=None, fixed=None):
         x, c, n, t = surpyval.xcnt_handler(
             x=x, c=c, n=n, t=t, group_and_sort=False
         )
 
-        if init == []:
+        if fixed is None:
+            fixed = {}
+
+        if init is None or len(init) == 0:
             stress_data = np.unique(Z, axis=0)
             params_at_Z = []
             for s in stress_data:

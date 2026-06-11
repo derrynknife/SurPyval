@@ -3,31 +3,31 @@
 
 repos:
 
-# Organise imports
+# Organise imports (configured via [tool.isort] in pyproject.toml)
 -   repo: https://github.com/PyCQA/isort
-    rev: '5.12.0'
+    rev: '8.0.1'
     hooks:
     -   id: isort
-        args: ["-l=79"]
 
 # Update all old python syntax
 -   repo: https://github.com/asottile/pyupgrade
-    rev: 'v3.3.1'
+    rev: 'v3.21.2'
     hooks:
     -   id: pyupgrade
+        args: ["--py311-plus"]
 
-# Format with Black
+# Format with Black (configured via [tool.black] in pyproject.toml)
 -   repo: https://github.com/psf/black
-    rev: '23.1.0'
+    rev: '26.5.1'
     hooks:
     -   id: black
 
-# Lint with flake8
+# Lint with flake8 (configured via [tool.flake8] in pyproject.toml)
 -   repo: https://github.com/PyCQA/flake8
-    rev: '6.0.0'
+    rev: '7.3.0'
     hooks:
     -   id: flake8
-        args: ['--per-file-ignores=*/__init__.py:F401', '--ignore=E203,W503,E741']
+        additional_dependencies: [Flake8-pyproject]
 
 # It uses the locally installed (need mypy installed locally) since the mirror
 # by default uses opionated args

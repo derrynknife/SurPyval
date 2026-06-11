@@ -71,7 +71,7 @@ class ProportionalHazardsFitter:
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
         out = []
         for low, high in self.bounds:
-            if (low is None) & (high is None):
+            if (low is None) and (high is None):
                 out.append(0)
             elif high is None:
                 out.append(low + 1.0)
@@ -145,7 +145,7 @@ class ProportionalHazardsFitter:
             phi_init=lambda Z: np.zeros(Z.shape[1]),
         )
 
-    def fit(self, x, Z, c=None, n=None, t=None, init=[], fixed={}):
+    def fit(self, x, Z, c=None, n=None, t=None, init=None, fixed=None):
         """
         Fit the proportional hazards model to the data.
 
@@ -236,7 +236,10 @@ class ProportionalHazardsFitter:
         # if np.isfinite(self.support[1]):
         # tr = np.where(tl > self.support[1], self.support[1], tr)
 
-        if init == []:
+        if fixed is None:
+            fixed = {}
+
+        if init is None or len(init) == 0:
             ps = self.dist.fit_from_surpyval_data(data).params
             if callable(self.phi_init):
                 init_phi = self.phi_init(Z)
