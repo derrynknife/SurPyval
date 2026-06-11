@@ -86,10 +86,8 @@ def load_bofors_steel():
 
     """
 
-    with importlib.resources.path(
-        data_module, "bofors_steel.csv"
-    ) as data_path:
-        return pd.read_csv(data_path, engine="python")
+    data_path = importlib.resources.files(data_module) / "bofors_steel.csv"
+    return pd.read_csv(data_path, engine="python")
 
 
 def load_boston_housing():
@@ -108,8 +106,8 @@ def load_boston_housing():
               Economics and Management 5, 81-102.
 
     """
-    with importlib.resources.path(data_module, "boston.csv") as data_path:
-        return pd.read_csv(data_path, engine="python")
+    data_path = importlib.resources.files(data_module) / "boston.csv"
+    return pd.read_csv(data_path, engine="python")
 
 
 def load_g1_kaminskiy_krivtsov():
@@ -140,8 +138,8 @@ def load_heart_transplants():
            Association, 72, 27-36.
     """
 
-    with importlib.resources.path(data_module, "heart.csv") as data_path:
-        return pd.read_csv(data_path, engine="python")
+    data_path = importlib.resources.files(data_module) / "heart.csv"
+    return pd.read_csv(data_path, engine="python")
 
 
 def load_lung():
@@ -159,8 +157,8 @@ def load_lung():
            Treatment Group. Journal of Clinical Oncology. 12(3):601-7, 1994.
     """
 
-    with importlib.resources.path(data_module, "lung.csv") as data_path:
-        return pd.read_csv(data_path, engine="python")
+    data_path = importlib.resources.files(data_module) / "lung.csv"
+    return pd.read_csv(data_path, engine="python")
 
 
 def load_mettas_and_zhao():
@@ -245,8 +243,8 @@ def load_rossi_static():
            49(7), 1-32.
     """
 
-    with importlib.resources.path(data_module, "rossi.csv") as data_path:
-        return pd.read_csv(data_path, engine="python")
+    data_path = importlib.resources.files(data_module) / "rossi.csv"
+    return pd.read_csv(data_path, engine="python")
 
 
 def load_rossi_time_varying():
@@ -265,8 +263,8 @@ def load_rossi_time_varying():
            49(7), 1-32.
     """
 
-    with importlib.resources.path(data_module, "rossi_tv.csv") as data_path:
-        return pd.read_csv(data_path, engine="python")
+    data_path = importlib.resources.files(data_module) / "rossi_tv.csv"
+    return pd.read_csv(data_path, engine="python")
 
 
 def load_tires_data():
@@ -281,8 +279,8 @@ def load_tires_data():
            Reliability Engineering and System Safety, 78(3), 267-273.
     """
 
-    with importlib.resources.path(data_module, "tires.csv") as data_path:
-        return pd.read_csv(data_path, engine="python")
+    data_path = importlib.resources.files(data_module) / "tires.csv"
+    return pd.read_csv(data_path, engine="python")
 
 
 def load_sae():

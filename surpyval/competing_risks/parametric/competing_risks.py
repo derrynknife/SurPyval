@@ -28,9 +28,7 @@ class CompetingRisks:
         out = """\
         Competing Risk model with events:
         {events}
-        """.format(
-            events=list(self.event_idx_map.keys())
-        )
+        """.format(events=list(self.event_idx_map.keys()))
         return textwrap.dedent(out)
 
     def _f(self, f, x, event):

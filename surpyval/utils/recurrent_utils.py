@@ -4,8 +4,8 @@ from .recurrent_event_data import RecurrentEventData
 
 
 def handle_xicn(x, i=None, c=None, n=None, Z=None, as_recurrent_data=True):
-    if type(x) == list:
-        if any([type(v) == list for v in x]):
+    if isinstance(x, list):
+        if any(isinstance(v, list) for v in x):
             x_ndarray = np.empty(shape=(len(x), 2))
             for idx, val in enumerate(x):
                 x_ndarray[idx, :] = np.array(val)

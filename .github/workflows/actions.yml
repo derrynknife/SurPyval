@@ -8,15 +8,43 @@ env:
   SRC: surpyval # Source directory to run jobs on
 
 jobs:
-  surpyval_ci:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set-up Python 3.x
+      - name: Set-up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: flake8
+        run: flake8 $SRC
+
+      - name: mypy
+        run: mypy $SRC
+
+      - name: black
+        run: black --check $SRC
+
+  surpyval_ci:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set-up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
@@ -33,17 +61,8 @@ jobs:
           coverage html
 
       - name: Upload coverage html report artifact
+        if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-html-report
           path: htmlcov/
-
-      - name: flake8
-        run: flake8 $SRC
-
-      - name: mypy
-        run: mypy $SRC
-
-      - name: black
-        run:
-          black $SRC

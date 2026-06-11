@@ -36,16 +36,18 @@ distributions: list[ParametricFitter] = [
 METRICS = ["aic", "aic_c", "bic", "neg_ll"]
 
 
-def fit_best(x, c=None, n=None, t=None, metric="aic", include=[], exclude=[]):
-    include = set(include)
-    exclude = set(exclude)
+def fit_best(
+    x, c=None, n=None, t=None, metric="aic", include=None, exclude=None
+):
+    include = set(include) if include is not None else set()
+    exclude = set(exclude) if exclude is not None else set()
 
     if metric not in METRICS:
         raise ValueError(
             '`metric` must be on of "{}"'.format('", "'.join(METRICS))
         )
 
-    if (len(include) > 0) & (len(exclude) > 0):
+    if (len(include) > 0) and (len(exclude) > 0):
         raise ValueError("Provide either an include or an exclude, not both.")
 
     if len(exclude) > 0:

@@ -1,4 +1,3 @@
-import sys
 import warnings
 from collections import defaultdict
 
@@ -46,7 +45,7 @@ def _check_x_not_empty(func):
 def init_from_bounds(dist):
     out = []
     for low, high in dist.bounds:
-        if (low is None) & (high is None):
+        if (low is None) and (high is None):
             out.append(0)
         elif high is None:
             out.append(low + 1.0)
@@ -178,7 +177,7 @@ def fsli_handler(f=None, s=None, l=None, i=None):
     array([[1., 2.],
             [3., 4.]]))
     """
-    if (f is None) & (s is None) & (l is None) & (i is None):
+    if (f is None) and (s is None) and (l is None) and (i is None):
         raise ValueError("Must enter some data!")
 
     f = validate_float_array(f, "f")
@@ -186,7 +185,7 @@ def fsli_handler(f=None, s=None, l=None, i=None):
     l = validate_float_array(l, "l")
     i = validate_float_array(i, "i")
 
-    if (len(f) == 0) & (len(s) == 0) & (len(l) == 0) & (len(i) == 0):
+    if (len(f) == 0) and (len(s) == 0) and (len(l) == 0) and (len(i) == 0):
         raise ValueError("Must enter some data!")
 
     if f.ndim != 1:
@@ -196,7 +195,7 @@ def fsli_handler(f=None, s=None, l=None, i=None):
     if l.ndim != 1:
         raise ValueError("'l' array must be one-dimensional")
 
-    if (i.ndim != 2) & (i.size != 0):
+    if (i.ndim != 2) and (i.size != 0):
         raise ValueError("'i' array must be one-dimensional")
 
     if len(i) > 0:
@@ -406,15 +405,15 @@ def xcnt_handler(
     """
 
     # logic for 'variables'
-    if (x is None) & (xl is None) & (xr is None):
+    if (x is None) and (xl is None) and (xr is None):
         raise ValueError(
             "Must enter some data! Use either 'x' or both 'xl and 'xr'"
         )
 
-    if (x is not None) & ((xl is not None) | (xr is not None)):
+    if (x is not None) and ((xl is not None) or (xr is not None)):
         raise ValueError("Must use either 'x' or both 'xl and 'xr'")
 
-    if (x is None) & ((xl is None) | (xr is None)):
+    if (x is None) and ((xl is None) or (xr is None)):
         raise ValueError("Must use either 'x' or both 'xl and 'xr'")
 
     if x is None:
@@ -431,8 +430,8 @@ def xcnt_handler(
         except Exception:
             raise ValueError("'xl' and 'xr' must be the same length")
 
-    if type(x) == list:
-        if any([type(v) == list for v in x]):
+    if isinstance(x, list):
+        if any(isinstance(v, list) for v in x):
             x_ndarray = np.empty(shape=(len(x), 2))
             for idx, val in enumerate(x):
                 val_arr = np.atleast_1d(val)
@@ -445,7 +444,7 @@ def xcnt_handler(
             x = x_ndarray
         else:
             x = np.array(x)
-    elif type(x) == Series:
+    elif isinstance(x, Series):
         x = np.array(x)
 
     if x.ndim > 2:
@@ -542,7 +541,7 @@ def xcnt_handler(
             + " combination of 'tl' and 'tr'"
         )
 
-    elif (t is None) & (tl is None) & (tr is None):
+    elif (t is None) and (tl is None) and (tr is None):
         tl = np.ones(x.shape[0]) * -np.inf
         tr = np.ones(x.shape[0]) * np.inf
         t = np.vstack([tl, tr]).T
@@ -782,7 +781,7 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     if np.isfinite(t[:, 1]).any():
         raise ValueError("xrd format can't be used right truncated data")
 
-    if (t[:, 0] == t[0, 0]).all() & np.isfinite(t[0, 0]):
+    if (t[:, 0] == t[0, 0]).all() and np.isfinite(t[0, 0]):
         warnings.warn(
             "Ignoring left truncated values as all observations truncated at"
             + " same value"
@@ -1034,10 +1033,10 @@ def check_c_and_e(c, e):
 
 
 def wrangle_and_check_form_and_Z_cols(Z_cols, formula, df):
-    if (Z_cols is None) & (formula is None):
+    if (Z_cols is None) and (formula is None):
         raise ValueError("'Z_cols' or 'formula' cannot both be None")
 
-    if (Z_cols is not None) & (formula is not None):
+    if (Z_cols is not None) and (formula is not None):
         raise ValueError(
             "Either 'Z_cols' or 'formula' must be provided; not both"
         )
@@ -1096,7 +1095,7 @@ def validate_cr_inputs(x, c, n, e, method):
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
     e = np.array(e)
-    (x, c, n) = (np.array(a).astype(float) for a in [x, c, n])
+    x, c, n = (np.array(a).astype(float) for a in [x, c, n])
 
     # Check same shape
     check_e_and_x(e, x)
@@ -1185,7 +1184,7 @@ def validate_tv_coxph(id, tl, x, Z, c, n):
 
     Z, mask = wrangle_Z(Z)
     x, c, n = (arr[mask] for arr in (x, c, n))
-    (x, c, n, Z) = (arr.astype(float) for arr in [x, c, n, Z])
+    x, c, n, Z = (arr.astype(float) for arr in [x, c, n, Z])
 
     check_Z_and_x(Z, x)
     x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
@@ -1276,11 +1275,11 @@ def validate_coxph(x, c, n, Z, tl, method):
 
     tl = t[:, 0]
 
-    (x, c, n, Z, tl) = (np.array(a).astype(float) for a in [x, c, n, Z, tl])
+    x, c, n, Z, tl = (np.array(a).astype(float) for a in [x, c, n, Z, tl])
 
     Z, mask = wrangle_Z(Z)
     x, c, n, tl = (arr[mask] for arr in (x, c, n, tl))
-    (x, c, n, tl, Z) = (arr.astype(float) for arr in [x, c, n, tl, Z])
+    x, c, n, tl, Z = (arr.astype(float) for arr in [x, c, n, tl, Z])
 
     check_Z_and_x(Z, x)
 
@@ -1295,7 +1294,7 @@ def validate_fine_gray_inputs(x, Z, e, c, n):
     x, c, n, e = (arr[mask] for arr in (x, c, n, e))
 
     # Set all dtypes to float. Very poor results otherwise.
-    (x, c, n, Z) = (arr.astype(float) for arr in [x, c, n, Z])
+    x, c, n, Z = (arr.astype(float) for arr in [x, c, n, Z])
 
     check_e_and_x(e, x)
     check_Z_and_x(Z, x)

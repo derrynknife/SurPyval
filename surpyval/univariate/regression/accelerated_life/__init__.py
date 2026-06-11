@@ -51,9 +51,9 @@ LIFE_MODELS: list[LifeModel] = [
 life_parameter_transform: dict[Hashable, Callable | None] = defaultdict(
     lambda: None
 )
-life_parameter_inverse_transform: dict[
-    Hashable, Callable | None
-] = defaultdict(lambda: None)
+life_parameter_inverse_transform: dict[Hashable, Callable | None] = (
+    defaultdict(lambda: None)
+)
 
 life_parameter_transform["LogNormal"] = lambda x: np.log(x)
 life_parameter_transform["Exponential"] = lambda x: 1.0 / x

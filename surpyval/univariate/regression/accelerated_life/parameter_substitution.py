@@ -18,11 +18,13 @@ class ParameterSubstitutionFitter:
         distribution,
         life_model,
         life_parameter,
-        baseline=[],
+        baseline=None,
         param_transform=None,
         inverse_param_transform=None,
     ):
-        if type(baseline) != list:
+        if baseline is None:
+            baseline = []
+        elif not isinstance(baseline, list):
             # Baseline used if using a function that deviates from some number,
             # e.g. np.exp(np.dot(Z, beta))
             baseline = [baseline]
@@ -96,13 +98,13 @@ class ParameterSubstitutionFitter:
                 np.array(range(0, len(dist_params)))
                 == self.param_map[self.life_parameter]
             )
-            params = np.where(
+            dist_params_i = np.where(
                 life_param_mask,
                 self.param_transform(self.phi(stress, *phi_params)),
                 dist_params,
             )
             mask = (Z == stress).all(axis=1)
-            hf = np.where(mask, self.hf_dist(x, *params), hf)
+            hf = np.where(mask, self.hf_dist(x, *dist_params_i), hf)
 
         return hf
 
@@ -133,7 +135,7 @@ class ParameterSubstitutionFitter:
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
         out = []
         for low, high in self.bounds:
-            if (low is None) & (high is None):
+            if (low is None) and (high is None):
                 out.append(0)
             elif high is None:
                 out.append(low + 1.0)
@@ -168,7 +170,7 @@ class ParameterSubstitutionFitter:
 
         x = []
         Z_out = []
-        if type(Z) == tuple:
+        if isinstance(Z, tuple):
             Z = np.random.uniform(*Z, size)
 
         for stress in np.unique(Z, axis=0):
@@ -176,14 +178,14 @@ class ParameterSubstitutionFitter:
                 np.array(range(0, len(dist_params)))
                 == self.param_map[self.life_parameter]
             )
-            dist_params = np.where(
+            dist_params_i = np.where(
                 life_param_mask,
                 self.param_transform(self.phi(stress, *phi_params)),
                 dist_params,
             )
 
             U = np.random.uniform(0, 1, size)
-            x.append(self.dist.qf(U, *dist_params))
+            x.append(self.dist.qf(U, *dist_params_i))
             if np.isscalar(stress):
                 cols = 1
             else:
@@ -200,11 +202,13 @@ class ParameterSubstitutionFitter:
         like = -np.sum(like)
         return like
 
-    def fit(self, x, Z, c=None, n=None, t=None, init=[], fixed={}):
+    def fit(self, x, Z, c=None, n=None, t=None, init=None, fixed=None):
         data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
         data.add_covariates(Z)
         life_parameter_idx = self.param_map[self.life_parameter]
-        if init == []:
+        if fixed is None:
+            fixed = {}
+        if init is None or len(init) == 0:
             stress_data = []
             params_at_Z = []
 
@@ -221,7 +225,7 @@ class ParameterSubstitutionFitter:
                             data[mask]
                         ).params
                         params_at_Z.append(params_at_s)
-                    except:  # noqa: E722
+                    except Exception:
                         params_at_s = np.copy(base_line_dist_init)
                         params_at_s[life_parameter_idx] = x[mask].mean()
                         params_at_Z.append(params_at_s)

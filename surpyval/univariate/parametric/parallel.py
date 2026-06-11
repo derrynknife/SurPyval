@@ -7,17 +7,17 @@ from surpyval.univariate.parametric.series import SeriesModel
 
 class ParallelModel:
     def __or__(self, other):
-        if type(other) == surv.Parametric:
+        if isinstance(other, surv.Parametric):
             return SeriesModel([*self.models, other])
-        elif type(other) == ParallelModel:
+        elif isinstance(other, ParallelModel):
             return ParallelModel([*self.models, other])
         else:
             return SeriesModel([*self.models, *other.models])
 
     def __and__(self, other):
-        if type(other) == surv.Parametric:
+        if isinstance(other, surv.Parametric):
             return ParallelModel([*self.models, other])
-        elif type(other) == SeriesModel:
+        elif isinstance(other, SeriesModel):
             return ParallelModel([*self.models, other])
         else:
             return ParallelModel([*self.models, *other.models])
