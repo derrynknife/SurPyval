@@ -140,7 +140,8 @@ class ProportionalHazardsFitter:
         Parameters
         ----------
         distribution : ParametricFitter
-            A surpyval parametric distribution (e.g. ``Weibull``, ``Exponential``).
+            A surpyval parametric distribution (e.g. ``Weibull``,
+            ``Exponential``).
 
         Returns
         -------

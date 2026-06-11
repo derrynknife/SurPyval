@@ -24,13 +24,14 @@ class _LogLinearPhiModel:
 
 class AFTFitter:
     """
-    Accelerated Failure Time fitter using exp(beta'Z) as the acceleration factor.
+    Accelerated Failure Time fitter using exp(beta'Z) as the acceleration
+    factor.
 
     The cumulative hazard is:
         H(x | Z) = H_0(exp(beta'Z) * x)
 
-    A positive beta coefficient means higher covariate values accelerate failure
-    (shorter life), consistent with the PH sign convention.
+    A positive beta coefficient means higher covariate values accelerate
+    failure (shorter life), consistent with the PH sign convention.
     """
 
     def __init__(self, distribution):
@@ -84,8 +85,8 @@ class AFTFitter:
 
     def neg_ll(self, Z, x, c, n, *params):
         like = np.zeros_like(x, dtype=float)
-        like = np.where(c == 0,  self.log_df(x, Z, *params), like)
-        like = np.where(c == 1,  self.log_sf(x, Z, *params), like)
+        like = np.where(c == 0, self.log_df(x, Z, *params), like)
+        like = np.where(c == 1, self.log_sf(x, Z, *params), like)
         like = np.where(c == -1, self.log_ff(x, Z, *params), like)
         return -np.sum(n * like)
 
@@ -124,7 +125,9 @@ class AFTFitter:
                     data.Z, data.x, data.c, data.n, *inv_trans(const(params))
                 )
 
-            res = minimize(fun, init, method="Nelder-Mead", options={"maxiter": 1000})
+            res = minimize(
+                fun, init, method="Nelder-Mead", options={"maxiter": 1000}
+            )
             res2 = minimize(fun, res.x, method="TNC")
             res = res2 if res2.success else res
 

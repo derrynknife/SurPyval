@@ -7,25 +7,26 @@ from .parameter_substitution import ParameterSubstitutionFitter
 # the distribution's native parameter space.
 _LIFE_PARAM_MAP = {
     "Exponential": ("lambda", lambda x: 1.0 / x, lambda x: 1.0 / x),
-    "Normal":      ("mu",     None,               None),
-    "Weibull":     ("alpha",  None,               None),
-    "Gumbel":      ("mu",     None,               None),
-    "Logistic":    ("mu",     None,               None),
-    "LogNormal":   ("mu",     np.log,             np.exp),
-    "Gamma":       ("beta",   None,               None),
+    "Normal": ("mu", None, None),
+    "Weibull": ("alpha", None, None),
+    "Gumbel": ("mu", None, None),
+    "Logistic": ("mu", None, None),
+    "LogNormal": ("mu", np.log, np.exp),
+    "Gamma": ("beta", None, None),
 }
 
 
 def AcceleratedLife(distribution, life_model):
     """
-    Create an Accelerated Life fitter for the given distribution and life model.
+    Create an Accelerated Life fitter for the given distribution and
+    life model.
 
     Parameters
     ----------
     distribution : ParametricFitter
         A surpyval parametric distribution (e.g. ``Weibull``, ``LogNormal``).
     life_model : LifeModel
-        A stress-relationship model (e.g. ``Power``, ``Eyring``, ``Arrhenius``).
+        A stress-relationship model (e.g. ``Power``, ``Eyring``).
 
     Returns
     -------

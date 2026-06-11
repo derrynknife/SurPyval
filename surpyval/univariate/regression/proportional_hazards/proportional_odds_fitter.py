@@ -180,7 +180,9 @@ class ProportionalOddsFitter:
             def fun(params):
                 return self.neg_ll(data, *inv_trans(const(params)))
 
-            res = minimize(fun, init, method="Nelder-Mead", options={"maxiter": 1000})
+            res = minimize(
+                fun, init, method="Nelder-Mead", options={"maxiter": 1000}
+            )
             res2 = minimize(fun, res.x, method="TNC")
             res = res2 if res2.success else res
 
@@ -223,7 +225,8 @@ def PO(distribution):
     Parameters
     ----------
     distribution : ParametricFitter
-        A surpyval parametric distribution (e.g. ``Logistic``, ``LogLogistic``).
+        A surpyval parametric distribution (e.g. ``Logistic``,
+        ``LogLogistic``).
 
     Returns
     -------

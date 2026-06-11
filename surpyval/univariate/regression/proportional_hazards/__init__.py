@@ -39,25 +39,25 @@ def PH(distribution):
     return ProportionalHazardsFitter.create(distribution)
 
 
+_cglf = ProportionalHazardsFitter.create_general_log_linear_fitter
+
 # Pre-built PH instances — one per distribution
-ExponentialPH = ProportionalHazardsFitter.create_general_log_linear_fitter(
-    "ExponentialPH", Exponential
-)
-NormalPH    = ProportionalHazardsFitter.create_general_log_linear_fitter("NormalPH",    Normal)
-WeibullPH   = ProportionalHazardsFitter.create_general_log_linear_fitter("WeibullPH",   Weibull)
-GumbelPH    = ProportionalHazardsFitter.create_general_log_linear_fitter("GumbelPH",    Gumbel)
-LogisticPH  = ProportionalHazardsFitter.create_general_log_linear_fitter("LogisticPH",  Logistic)
-LogNormalPH = ProportionalHazardsFitter.create_general_log_linear_fitter("LogNormalPH", LogNormal)
-GammaPH     = ProportionalHazardsFitter.create_general_log_linear_fitter("GammaPH",     Gamma)
+ExponentialPH = _cglf("ExponentialPH", Exponential)
+NormalPH = _cglf("NormalPH", Normal)
+WeibullPH = _cglf("WeibullPH", Weibull)
+GumbelPH = _cglf("GumbelPH", Gumbel)
+LogisticPH = _cglf("LogisticPH", Logistic)
+LogNormalPH = _cglf("LogNormalPH", LogNormal)
+GammaPH = _cglf("GammaPH", Gamma)
 
 # Pre-built PO instances — one per distribution
 ExponentialPO = PO(Exponential)
-NormalPO      = PO(Normal)
-WeibullPO     = PO(Weibull)
-GumbelPO      = PO(Gumbel)
-LogisticPO    = PO(Logistic)
-LogNormalPO   = PO(LogNormal)
-GammaPO       = PO(Gamma)
+NormalPO = PO(Normal)
+WeibullPO = PO(Weibull)
+GumbelPO = PO(Gumbel)
+LogisticPO = PO(Logistic)
+LogNormalPO = PO(LogNormal)
+GammaPO = PO(Gamma)
 
 __all__ = [
     "CoxPH",
