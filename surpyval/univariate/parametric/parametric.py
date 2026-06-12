@@ -1,20 +1,20 @@
 import json
-import re
-import warnings
 from copy import copy, deepcopy
 
 import matplotlib.pyplot as plt
 from autograd import elementwise_grad, jacobian
-from matplotlib.ticker import FixedLocator
 from scipy.special import ndtri as z
 from scipy.stats import uniform
 
 import surpyval as surv
 from surpyval import Distribution, np
-from surpyval.univariate.nonparametric import plotting_positions
-from surpyval.utils import _round_vals, fsli_to_xcnt
+from surpyval.utils import fsli_to_xcnt
 
-CB_COLOUR = "#e94c54"
+from .probability_plotting import (
+    adjust_heuristic,
+    draw_probability_plot,
+    probability_plot_data,
+)
 
 
 class Parametric(Distribution):
@@ -90,7 +90,7 @@ class Parametric(Distribution):
         dist = getattr(surv, model_dict["distribution"], None)
         if not isinstance(dist, ParametricFitter):
             raise ValueError(
-                "Unknown distribution '{}'".format(model_dict["distribution"])
+                f"Unknown distribution '{model_dict['distribution']}'"
             )
         how = model_dict["how"]
         if "data" in model_dict:
@@ -176,30 +176,26 @@ class Parametric(Distribution):
         if hasattr(self, "params"):
             param_string = "\n".join(
                 [
-                    "{:>10}".format(name) + ": " + str(p)
+                    f"{name:>10}: {p}"
                     for p, name in zip(self.params, self.dist.param_names)
                 ]
             )
             out = (
                 "Parametric SurPyval Model"
-                + "\n========================="
-                + "\nDistribution        : {dist}"
-                + "\nFitted by           : {method}"
-            ).format(dist=self.dist.name, method=self.method)
+                "\n========================="
+                f"\nDistribution        : {self.dist.name}"
+                f"\nFitted by           : {self.method}"
+            )
             if self.offset:
-                out += "\nOffset (gamma)      : {g}".format(g=self.gamma)
+                out += f"\nOffset (gamma)      : {self.gamma}"
 
             if self.lfp:
-                out += "\nMax Proportion (p)  : {p}".format(p=self.p)
+                out += f"\nMax Proportion (p)  : {self.p}"
 
             if self.zi:
-                out += "\nZero-Inflation (f0) : {f0}".format(f0=self.f0)
+                out += f"\nZero-Inflation (f0) : {self.f0}"
 
-            out = (
-                out
-                + "\nParameters          :\n"
-                + "{params}".format(params=param_string)
-            )
+            out = out + "\nParameters          :\n" + param_string
 
             return out
         else:
@@ -232,7 +228,7 @@ class Parametric(Distribution):
     def sf(self, x):
         r"""
 
-        Surival (or Reliability) function for a distribution using the
+        Survival (or Reliability) function for a distribution using the
         parameters found in the ``.params`` attribute.
 
         Parameters
@@ -538,16 +534,15 @@ class Parametric(Distribution):
         array([10.84103403,  0.48542084,  7.11387062,  5.41420125, 4.59286657,
                 5.90703589,  7.5124326 ,  7.96575225,  9.18134126, 8.16000438])
         """
-        if ((a is not None) | (b is not None)) & (
-            (self.p != 1) | (self.f0 != 0)
+        if ((a is not None) or (b is not None)) and (
+            (self.p != 1) or (self.f0 != 0)
         ):
             raise NotImplementedError(
-                "Truncated sampling not supported with" + " LFP or ZI models"
+                "Truncated sampling not supported with LFP or ZI models"
             )
-        elif ((a is not None) | (b is not None)) & (self.offset):
+        elif ((a is not None) or (b is not None)) and self.offset:
             raise NotImplementedError(
-                "Truncated sampling not supported with"
-                + " offset distributions"
+                "Truncated sampling not supported with offset distributions"
             )
 
         if (self.p == 1) and (self.f0 == 0):
@@ -617,8 +612,8 @@ class Parametric(Distribution):
 
     def mean(self):
         r"""
-        A method to draw random samples from the distributions using the
-        parameters found in the ``.params`` attribute.
+        The mean of the distribution using the parameters found in the
+        ``.params`` attribute.
 
         Returns
         -------
@@ -639,8 +634,8 @@ class Parametric(Distribution):
     def moment(self, n):
         r"""
 
-        A method to draw random samples from the distributions using the
-        parameters found in the ``.params`` attribute.
+        The n-th moment of the distribution using the parameters found
+        in the ``.params`` attribute.
 
         Parameters
         ----------
@@ -669,8 +664,8 @@ class Parametric(Distribution):
 
     def entropy(self):
         r"""
-        A method to draw random samples from the distributions using the
-        parameters found in the ``.params`` attribute.
+        The entropy of the distribution using the parameters found in
+        the ``.params`` attribute.
 
         Returns
         -------
@@ -721,7 +716,7 @@ class Parametric(Distribution):
         """
         t = np.atleast_1d(t)
         if self.method != "MLE":
-            raise Exception("Only MLE has confidence bounds")
+            raise ValueError("Only MLE has confidence bounds")
 
         hess_inv = np.copy(self.hess_inv)
 
@@ -753,9 +748,6 @@ class Parametric(Distribution):
                     j = np.atleast_2d(j).T * j
                     j = j[np.triu_indices(j.shape[0])]
                     var_R.append(np.sum(j * pvars))
-
-                # First-Order Taylor Series Expansion of Variance
-                # var_R = (jac**2 * np.diag(hess_inv)).sum(axis=1).T
 
                 R_hat = self.sf(x)
                 if bound == "two-sided":
@@ -831,7 +823,7 @@ class Parametric(Distribution):
     def neg_ll(self):
         r"""
 
-        The the negative log-likelihood for the model, if it was fit with the
+        The negative log-likelihood for the model, if it was fit with the
         ``fit()`` method. Not available if fit with the ``from_params()``
         method.
 
@@ -860,7 +852,7 @@ class Parametric(Distribution):
     def bic(self):
         r"""
 
-        The the Bayesian Information Criterion (BIC) for the model, if it
+        The Bayesian Information Criterion (BIC) for the model, if it
         was fit with the ``fit()`` method. Not available if fit with the
         ``from_params()`` method.
 
@@ -899,7 +891,7 @@ class Parametric(Distribution):
 
     def aic(self):
         r"""
-        The the Aikake Information Criterion (AIC) for the model, if it was
+        The Aikake Information Criterion (AIC) for the model, if it was
         fit with the ``fit()`` method. Not available if fit with the
         ``from_params()`` method.
 
@@ -928,7 +920,7 @@ class Parametric(Distribution):
 
     def aic_c(self):
         r"""
-        The the Corrected Aikake Information Criterion (AIC) for the model,
+        The Corrected Aikake Information Criterion (AIC) for the model,
         if it was fit with the ``fit()`` method. Not available if fit with
         the ``from_params()`` method.
 
@@ -969,12 +961,12 @@ class Parametric(Distribution):
             'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None',\
             'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier',\
             'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
-            The method that the plotting point on the probablility plot will
+            The method that the plotting point on the probability plot will
             be calculated. Default is "Nelson-Aalen".
 
         alpha_ci : float, optional
-            The confidence with which the confidence bounds, if able, will
-            be calculated. Defaults to 0.95.
+            The level of significance at which the confidence bounds, if
+            able, will be calculated. Defaults to 0.05.
 
         Returns
         -------
@@ -989,130 +981,29 @@ class Parametric(Distribution):
         >>> model = Weibull.fit(x)
         >>> data = model.get_plot_data()
         """
-        x_, r, d, F = plotting_positions(
+        if hasattr(self, "hess_inv") and (self.method == "MLE"):
+            if self.hess_inv is not None:
+
+                def cb_func(x_model):
+                    return self.cb(x_model, on="ff", alpha_ci=alpha_ci)
+
+            else:
+                cb_func = None
+        else:
+            cb_func = None
+
+        return probability_plot_data(
+            dist=self.dist,
+            ff=self.ff,
             x=self.data["x"],
             c=self.data["c"],
             n=self.data["n"],
             t=self.data["t"],
             heuristic=heuristic,
+            gamma=self.gamma,
+            params=self.params,
+            cb_func=cb_func,
         )
-
-        mask = np.isfinite(x_)
-        x_ = x_[mask] - self.gamma
-        r = r[mask]
-        d = d[mask]
-        F = F[mask]
-
-        # Adjust the plotting points in event data is truncated.
-        tl_min = self.data["t"][0][0]
-        if np.isfinite(tl_min):
-            Ftl = self.ff(tl_min)
-        else:
-            Ftl = 0
-
-        tr_max = self.data["t"][-1][-1]
-        if np.isfinite(tr_max):
-            Ftr = self.ff(tr_max)
-        else:
-            Ftr = 1
-
-        # Adjust the plotting points due to truncation
-        F = Ftl + F * (Ftr - Ftl)
-
-        y_scale_min = np.min(F[F > 0]) / 2
-        y_scale_max = 1 - (1 - np.max(F[F < 1])) / 10
-
-        # x-axis
-        if self.dist.plot_x_scale == "log":
-            log_x = np.log10(x_[x_ > 0])
-            x_min = np.min(log_x)
-            x_max = np.max(log_x)
-            vals_non_sig = 10 ** np.linspace(x_min, x_max, 7)
-            x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
-            x_minor_ticks = (
-                10**x_minor_ticks * np.array(np.arange(1, 11)).reshape((10, 1))
-            ).flatten()
-            diff = (x_max - x_min) / 10
-            x_scale_min = 10 ** (x_min - diff)
-            x_scale_max = 10 ** (x_max + diff)
-            x_model = 10 ** np.linspace(x_min - diff, x_max + diff, 100)
-        elif self.dist.name in ("Beta"):
-            x_min = np.min(x_)
-            x_max = np.max(x_)
-            x_scale_min = 0
-            x_scale_max = 1
-            vals_non_sig = np.linspace(x_scale_min, x_scale_max, 11)[1:-1]
-            x_minor_ticks = np.linspace(x_scale_min, x_scale_max, 22)[1:-1]
-            x_model = np.linspace(x_scale_min, x_scale_max, 102)[1:-1]
-        elif self.dist.name in ("Uniform"):
-            x_min = np.min(self.params)
-            x_max = np.max(self.params)
-            x_scale_min = x_min
-            x_scale_max = x_max
-            vals_non_sig = np.linspace(x_scale_min, x_scale_max, 11)[1:-1]
-            x_minor_ticks = np.linspace(x_scale_min, x_scale_max, 22)[1:-1]
-            x_model = np.linspace(x_scale_min, x_scale_max, 102)[1:-1]
-        else:
-            x_min = np.min(x_)
-            x_max = np.max(x_)
-            vals_non_sig = np.linspace(x_min, x_max, 7)
-            x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
-            diff = (x_max - x_min) / 10
-            x_scale_min = x_min - diff
-            x_scale_max = x_max + diff
-            x_model = np.linspace(x_scale_min, x_scale_max, 100)
-
-        cdf = self.ff(x_model + self.gamma)
-
-        x_ticks = _round_vals(vals_non_sig)
-        x_ticks_labels = [
-            (
-                str(int(x))
-                if (re.match(r"([0-9]+\.0+)", str(x)) is not None) & (x > 1)
-                else str(x)
-            )
-            for x in _round_vals(vals_non_sig + self.gamma)
-        ]
-
-        y_ticks = np.array(self.dist.y_ticks)
-        y_ticks = y_ticks[
-            np.where((y_ticks > y_scale_min) & (y_ticks < y_scale_max))[0]
-        ]
-
-        y_ticks_labels = [
-            (
-                str(int(y)) + "%"
-                if (re.match(r"([0-9]+\.0+)", str(y)) is not None) & (y > 1)
-                else str(y)
-            )
-            for y in y_ticks * 100
-        ]
-
-        if hasattr(self, "hess_inv") & (self.method == "MLE"):
-            if self.hess_inv is not None:
-                cbs = self.cb(x_model + self.gamma, on="ff", alpha_ci=alpha_ci)
-            else:
-                cbs = []
-        else:
-            cbs = []
-
-        return {
-            "x_scale_min": x_scale_min,
-            "x_scale_max": x_scale_max,
-            "y_scale_min": y_scale_min,
-            "y_scale_max": y_scale_max,
-            "y_ticks": y_ticks,
-            "y_ticks_labels": y_ticks_labels,
-            "x_ticks": x_ticks,
-            "x_ticks_labels": x_ticks_labels,
-            "cdf": cdf,
-            "x_model": x_model,
-            "x_minor_ticks": x_minor_ticks,
-            "cbs": cbs,
-            "x_scale": self.dist.plot_x_scale,
-            "x_": x_,
-            "F": F,
-        }
 
     def plot(
         self,
@@ -1131,16 +1022,16 @@ class Parametric(Distribution):
             'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None',\
             'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier',\
             'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
-            The method that the plotting point on the probablility plot will
+            The method that the plotting point on the probability plot will
             be calculated.
 
         plot_bounds : Boolean, optional
-            A Boolean value to indicate whehter you want the probability
+            A Boolean value to indicate whether you want the probability
             bounds to be calculated.
 
         alpha_ci : float, optional
-            The confidence with which the confidence bounds, if able, will
-            be calculated. Defaults to 0.95.
+            The level of significance at which the confidence bounds, if
+            able, will be calculated. Defaults to 0.05.
 
         ax: matplotlib.axes.Axes, optional
             The axis onto which the plot will be created. Optional, if not
@@ -1164,64 +1055,29 @@ class Parametric(Distribution):
             ax = plt.gcf().gca()
 
         if not hasattr(self, "params"):
-            raise Exception("Can't plot model that failed to fit")
+            raise ValueError("Can't plot model that failed to fit")
 
         if self.method == "given parameters":
             detail = "Can't plot model that was given parameters and no data"
-            raise Exception(detail)
+            raise ValueError(detail)
 
-        if 2 in self.data["c"]:
-            if heuristic != "Turnbull":
-                warnings.warn(
-                    "Interval censored data, heuristic changed to Turnbull'",
-                    stacklevel=1,
-                )
-                heuristic = "Turnbull"
+        if not (
+            hasattr(self.dist, "mpp_y_transform")
+            and hasattr(self.dist, "mpp_inv_y_transform")
+        ):
+            raise NotImplementedError(
+                f"{self.dist.name} does not support probability plotting"
+            )
 
-        if np.isfinite(self.data["t"]).any():
-            if heuristic != "Turnbull":
-                warnings.warn(
-                    "Truncated censored data, heuristic changed to Turnbull'",
-                    stacklevel=1,
-                )
-                heuristic = "Turnbull"
+        heuristic = adjust_heuristic(self.data["c"], self.data["t"], heuristic)
 
         d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
 
-        # Set limits and scale
-        ax.set_ylim(
-            [max(d["y_scale_min"], 1e-4), min(d["y_scale_max"], 0.9999)]
-        )
-        ax.set_xscale(d["x_scale"])
-        functions = (
+        return draw_probability_plot(
+            ax,
+            d,
             lambda x: self.dist.mpp_y_transform(x, *self.params),
             lambda x: self.dist.mpp_inv_y_transform(x, *self.params),
+            title=f"{self.dist.name} Probability Plot",
+            plot_bounds=plot_bounds,
         )
-        ax.set_yscale("function", functions=functions)
-        ax.set_yticks(d["y_ticks"])
-        ax.set_yticklabels(d["y_ticks_labels"])
-        ax.yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
-        ax.set_xticks(d["x_ticks"])
-        ax.set_xticklabels(d["x_ticks_labels"])
-
-        if d["x_scale"] == "log":
-            ax.set_xticks(d["x_minor_ticks"], minor=True)
-            ax.set_xticklabels([], minor=True)
-
-        ax.grid(
-            visible=True, which="major", color="g", alpha=0.4, linestyle="-"
-        )
-        ax.grid(
-            visible=True, which="minor", color="g", alpha=0.1, linestyle="-"
-        )
-
-        ax.set_title("{} Probability Plot".format(self.dist.name))
-        ax.set_ylabel("CDF")
-        ax.scatter(d["x_"], d["F"])
-
-        ax.set_xlim([d["x_scale_min"], d["x_scale_max"]])
-        if plot_bounds & (len(d["cbs"]) != 0):
-            ax.plot(d["x_model"], d["cbs"], color=CB_COLOUR)
-
-        ax.plot(d["x_model"], d["cdf"], color="k", linestyle="--")
-        return ax

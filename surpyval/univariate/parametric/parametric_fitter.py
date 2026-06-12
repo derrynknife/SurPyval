@@ -1,6 +1,7 @@
 import pandas as pd
 from scipy.integrate import quad
 from scipy.special import expit
+from scipy.stats import uniform
 
 import surpyval
 from surpyval import np
@@ -19,8 +20,58 @@ from .parametric import Parametric
 PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
 
+DEFAULT_Y_TICKS = [
+    0.0001,
+    0.0002,
+    0.0003,
+    0.001,
+    0.002,
+    0.003,
+    0.005,
+    0.01,
+    0.02,
+    0.03,
+    0.05,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    0.95,
+    0.99,
+    0.999,
+    0.9999,
+]
+
 
 class ParametricFitter:
+    """
+    Base class for all parametric distributions.
+
+    A distribution needs only ``hf`` and ``Hf`` (or ``sf``, ``ff`` and
+    ``df``) plus a ``_parameter_initialiser`` with the signature
+    ``(self, x, c=None, n=None, t=None, offset=False)`` for fitting to
+    work; ``log_df``, ``log_sf``, ``log_ff`` and ``random`` have generic
+    implementations here that subclasses can override with closed forms.
+    Probability plotting (the MPP fit method and ``Parametric.plot``)
+    additionally requires ``mpp_x_transform``, ``mpp_y_transform(y,
+    *params)`` and ``mpp_inv_y_transform(y, *params)``.
+
+    A subclass can take over an entire estimation method by defining
+    ``mle(data)`` or ``mpp(x, c, n, heuristic, rr, on_d_is_0, offset)``,
+    both returning a results dict with at least a ``params`` numpy
+    array.
+
+    Implementations must do their math with ``surpyval.np``, which is
+    ``autograd.numpy``: maximum likelihood estimation differentiates
+    through these functions, and plain numpy silently breaks the
+    gradients.
+    """
+
     def __init__(
         self,
         name: str,
@@ -30,7 +81,7 @@ class ParametricFitter:
         param_names: list[str],
         param_map: dict[str, int],
         plot_x_scale: str,
-        y_ticks: list[float],
+        y_ticks: list[float] | None = None,
     ):
         self.name: str = name
         self.k = k
@@ -39,7 +90,39 @@ class ParametricFitter:
         self.param_names = param_names
         self.param_map = param_map
         self.plot_x_scale = plot_x_scale
-        self.y_ticks = y_ticks
+        self.y_ticks = DEFAULT_Y_TICKS if y_ticks is None else y_ticks
+
+    def random(self, size, *params):
+        r"""
+
+        Draws random samples from the distribution in shape `size`, using
+        the inverse transform method with the distribution's quantile
+        function.
+
+        Parameters
+        ----------
+
+        size : integer or tuple of positive integers
+            Shape or size of the random draw
+        params : numpy array or scalar
+            The parameters of the distribution
+
+        Returns
+        -------
+
+        random : scalar or numpy array
+            Random values drawn from the distribution in shape `size`
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> Weibull.random(5, 3, 4)
+        array([2.57122697, 3.18730986, 0.31024877, 2.32381059, 1.89352939])
+        """
+        U = uniform.rvs(size=size)
+        return self.qf(U, *params)
 
     def log_df(self, x, *params):
         return np.log(self.hf(x, *params)) - self.Hf(x, *params)
@@ -77,8 +160,6 @@ class ParametricFitter:
             return np.sum(n * (np.log1p(-f0) + self.log_sf(x, *params)))
         else:
             F = self.ff(x, *params)
-            # ALso could be:
-            # np.sum(n * np.log((1 - p + (p - f0)*self.sf(x, *params))))
             return np.sum(n * np.log(1 - f0 - (p - f0) * F))
 
     @_check_x_not_empty
@@ -157,7 +238,6 @@ class ParametricFitter:
         if (n_obs > 1).any():
             n_ties = (n_obs - 1).sum()
             Df = self.df(x_obs, *params)
-            # Df = Df[Df != 0]
             LL = np.concatenate([Dl, Df, Dr])
             ll_n = np.concatenate([n[c == -1], (n_obs - 1), n[c == 1]])
         else:
@@ -207,7 +287,7 @@ class ParametricFitter:
         self, surv_data, how, offset, lfp, zi, heuristic, turnbull_estimator
     ):
         if offset and (self.support[0] != 0):
-            detail = "{} distribution cannot be offset".format(self.name)
+            detail = f"{self.name} distribution cannot be offset"
             raise ValueError(detail)
 
         if how not in PARA_METHODS:
@@ -216,7 +296,7 @@ class ParametricFitter:
         if how == "MPP" and self.name == "ExpoWeibull":
             detail = (
                 "ExpoWeibull distribution does not work"
-                + " with probability plot fitting"
+                " with probability plot fitting"
             )
             raise ValueError(detail)
 
@@ -228,17 +308,16 @@ class ParametricFitter:
             detail = "Method of moments doesn't support truncation"
             raise ValueError(detail)
 
-        if (lfp or zi) & (how != "MLE"):
+        if (lfp or zi) and (how != "MLE"):
             detail = (
                 "Limited failure or zero-inflated models"
-                + " can only be made with MLE"
+                " can only be made with MLE"
             )
             raise ValueError(detail)
 
-        if zi & (self.support[0] != 0):
+        if zi and (self.support[0] != 0):
             detail = (
-                "zero-inflated models can only work"
-                + " with models starting at 0"
+                "zero-inflated models can only work with models starting at 0"
             )
             raise ValueError(detail)
 
@@ -258,7 +337,7 @@ class ParametricFitter:
         ):
             detail = (
                 "Probability plotting estimation with left or "
-                + "interval censoring only works with Turnbull heuristic"
+                "interval censoring only works with Turnbull heuristic"
             )
             raise ValueError(detail)
 
@@ -272,7 +351,7 @@ class ParametricFitter:
             # then this is equivalent.
             heuristic = turnbull_estimator
 
-        if (not offset) & (not zi):
+        if (not offset) and (not zi):
             detail_template = """
             Some of your data is outside support of distribution, observed
             values must be within [{lower}, {upper}].
@@ -360,7 +439,7 @@ class ParametricFitter:
             right censored, and 2 is intervally censored. If not provided
             will assume all values are observed.
         n : array like, optional
-            Array of counts for each x. If data is proivded as counts, then
+            Array of counts for each x. If data is provided as counts, then
             this can be provided. If :code:`None` will assume each
             observation is 1.
         t : 2D-array like, optional
@@ -829,13 +908,8 @@ class ParametricFitter:
         for k, v in results.items():
             setattr(model, k, v)
 
-        # Only needed since not all models return the params
-        # as a numpy array... which ought to be fixed.
-        model.params = np.atleast_1d(model.params)
-
-        if hasattr(model, "params"):
-            for k, v in zip(self.param_names, model.params):
-                setattr(model, k, v)
+        for k, v in zip(self.param_names, model.params):
+            setattr(model, k, v)
 
         # Set the support of the distribution.
         if offset:
@@ -916,13 +990,11 @@ class ParametricFitter:
               beta: 4
         """
         if self.k != len(params):
-            msg_base = "Must have {k} params for {dist} distribution"
-            detail = msg_base.format(k=self.k, dist=self.name)
+            detail = f"Must have {self.k} params for {self.name} distribution"
             raise ValueError(detail)
 
         if gamma is not None and np.isinf(self.support).all():
-            msg_base = "{dist} distribution cannot be offset"
-            detail = msg_base.format(dist=self.name)
+            detail = f"{self.name} distribution cannot be offset"
             raise ValueError(detail)
 
         if gamma is not None:
@@ -965,10 +1037,11 @@ class ParametricFitter:
             else:
                 upper_limit = upp
 
-            if not ((lower_limit < params[i]) & (params[i] < upper_limit)):
-                params = ", ".join(self.param_names)
-                base = "Params {params} must be in bounds {bounds}"
-                detail = base.format(params=params, bounds=self.bounds)
+            if not (lower_limit < params[i] < upper_limit):
+                param_names = ", ".join(self.param_names)
+                detail = (
+                    f"Params {param_names} must be in" f" bounds {self.bounds}"
+                )
                 raise ValueError(detail)
         model.dist = self
         return model

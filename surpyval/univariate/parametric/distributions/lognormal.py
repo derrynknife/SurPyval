@@ -1,5 +1,4 @@
 from autograd.scipy.stats import norm
-from scipy.special import ndtri as z
 from scipy.stats import norm as scipy_norm
 
 from surpyval import np
@@ -43,7 +42,7 @@ class LogNormal_(ParametricFitter):
     def sf(self, x, mu, sigma):
         r"""
 
-        Surival (or Reliability) function for the LogNormal Distribution:
+        Survival (or Reliability) function for the LogNormal Distribution:
 
         .. math::
             R(x) = 1 - \Phi \left( \frac{\ln(x) - \mu}{\sigma} \right )
@@ -62,7 +61,7 @@ class LogNormal_(ParametricFitter):
         -------
 
         sf : scalar or numpy array
-            The value(s) of the survival function at x.
+            The value(s) of the reliability function at x.
 
         Examples
         --------
@@ -346,49 +345,6 @@ class LogNormal_(ParametricFitter):
         """
         return np.exp(n * mu + (n**2 * sigma**2) / 2)
 
-    def random(self, size, mu, sigma):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import LogNormal
-        >>> LogNormal.random(10, 3, 4)
-        array([1.74605298e+00, 1.90729963e+02, 1.90090366e+03, 2.59154042e-02,
-               3.71460694e-02, 3.38580771e+03, 7.58826512e+04, 7.23252303e+00,
-               1.21226718e+03, 4.15054624e+00])
-        >>> LogNormal.random((5, 5), 3, 4)
-        array([[4.59689256e+00, 2.91472936e-01, 4.66833783e+02, 9.88539048e+01,
-                3.88094471e+01],
-               [7.10705735e-01, 5.00788529e-02, 2.49032431e+01, 2.19196376e+01,
-                2.05043988e+02],
-               [1.32193999e+03, 7.38943238e-01, 5.16503535e-01, 9.09249819e+02,
-                2.69407879e+03],
-               [7.29473033e+00, 5.68246498e+03, 1.74464896e+00, 1.26043004e+00,
-                3.84009666e+03],
-               [1.47997384e+00, 2.21809242e+02, 1.32564564e+02, 8.06883052e-02,
-                1.05118538e+02]])
-        """
-        return np.exp(para.Normal.random(size, mu, sigma))
-
     def log_df(self, x, mu, sigma):
         return -np.log(x) + norm.logpdf(np.log(x), mu, sigma)
 
@@ -416,28 +372,6 @@ class LogNormal_(ParametricFitter):
             sigma, mu = params
         return mu, sigma
 
-    def var_z(self, x, mu, sigma, cv_matrix):
-        z_hat = (x - mu) / sigma
-        var_z = (1.0 / sigma) ** 2 * (
-            cv_matrix[0, 0]
-            + z_hat**2 * cv_matrix[1, 1]
-            + 2 * z_hat * cv_matrix[0, 1]
-        )
-        return var_z
-
-    def z_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
-        z_hat = (x - mu) / sigma
-        var_z = self.var_z(x, mu, sigma, cv_matrix)
-        bounds = z_hat + np.array([1.0, -1.0]).reshape(2, 1) * z(
-            alpha_ci / 2
-        ) * np.sqrt(var_z)
-        return bounds
-
-    # def R_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
-    # t = np.log(x)
-    # return para.Normal.sf(self.z_cb(t, mu, sigma, cv_matrix,
-    # alpha_ci=alpha_ci), 0, 1).T
-
     def _mom(self, x):
         norm_mod = para.Normal.fit(np.log(x), how="MOM")
         mu, sigma = norm_mod.params
@@ -445,4 +379,6 @@ class LogNormal_(ParametricFitter):
 
 
 LogNormal: ParametricFitter = LogNormal_("LogNormal")
+
+
 Galton: ParametricFitter = LogNormal_("Galton")

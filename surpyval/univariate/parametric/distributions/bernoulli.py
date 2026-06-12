@@ -1,21 +1,22 @@
 from scipy.stats import uniform
 
 from surpyval import np
+from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
 from ..parametric import Parametric
 
 
-class Bernoulli_:
+class Bernoulli_(ParametricFitter):
     def __init__(self, name):
-        self.name = name
-        # Set 'k', the number of parameters
-        self.k = 1
-        self.bounds = ((0, 1),)
-        self.support = (0, 1)
-        self.param_names = ["p"]
-        self.param_map = {
-            "p": 0,
-        }
+        super().__init__(
+            name=name,
+            k=1,
+            bounds=((0, 1),),
+            support=(0, 1),
+            param_names=["p"],
+            param_map={"p": 0},
+            plot_x_scale="linear",
+        )
 
     def sf(self, x, p):
         r"""
@@ -69,7 +70,7 @@ class Bernoulli_:
         Returns
         -------
 
-        sf : scalar or numpy array
+        ff : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -77,7 +78,7 @@ class Bernoulli_:
         >>> import numpy as np
         >>> from surpyval import Bernoulli
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Bernoulli.sf(x, 0.5)
+        >>> Bernoulli.ff(x, 0.5)
         array([0.5, 0.5, 0.5, 0.5, 0.5])
         """
         return np.ones_like(x).astype(float) * p
@@ -145,9 +146,9 @@ class Bernoulli_:
         if not np.equal(x, np.array([0, 1])).all():
             raise ValueError("'x' must be either 0 or 1")
 
-        model = Parametric(self, "MLE", {}, False, False, False)
+        model = Parametric(self, "MLE", None, False, False, False)
         p = (x * n).sum() / n.sum()
-        model.params = [p]
+        model.params = np.array([p])
         return model
 
     def from_params(self, p):
@@ -159,8 +160,8 @@ class Bernoulli_:
         if p < 0:
             raise ValueError("'p' must be greater than 0")
 
-        model = Parametric(self, "given parameters", {}, False, False, False)
-        model.params = p.tolist()
+        model = Parametric(self, "given parameters", None, False, False, False)
+        model.params = p
         return model
 
 

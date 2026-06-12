@@ -1,6 +1,5 @@
 from numpy import euler_gamma
-from scipy.special import ndtri as z
-from scipy.stats import gumbel_l, uniform
+from scipy.stats import gumbel_l
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
@@ -16,35 +15,9 @@ class Gumbel_(ParametricFitter):
             param_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},
             plot_x_scale="linear",
-            y_ticks=[
-                0.0001,
-                0.0002,
-                0.0003,
-                0.001,
-                0.002,
-                0.003,
-                0.005,
-                0.01,
-                0.02,
-                0.03,
-                0.05,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                0.95,
-                0.99,
-                0.999,
-                0.9999,
-            ],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, offset=True):
+    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         if (2 in c) or (-1 in c):
             heuristic = "Turnbull"
         else:
@@ -54,7 +27,7 @@ class Gumbel_(ParametricFitter):
     def sf(self, x, mu, sigma):
         r"""
 
-        Surival (or Reliability) function for the Gumbel Distribution:
+        Survival (or Reliability) function for the Gumbel Distribution:
 
         .. math::
             R(x) = 1 - e^{e^{-\left ( x - \mu \right ) / \sigma}}
@@ -312,44 +285,6 @@ class Gumbel_(ParametricFitter):
         """
         return mu + sigma * euler_gamma
 
-    def random(self, size, mu, sigma):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        mu : numpy array like or scalar
-            The location parameter(s) of the distribution
-        sigma : numpy array like or scalar
-            The scale parameter(s) of the distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Gumbel
-        >>> Gumbel.random(10, 3, 2)
-        array([1.50706388, 3.3098799 , 4.32358009, 2.9914246 , 4.47216839,
-               3.56676358, 4.19781514, 4.49123942, 7.29849677, 6.32996653])
-        >>> Gumbel.random((5, 5), 3, 2)
-        array([[ 5.97265715, 5.89177067, 2.95883424, 2.46315557, 5.15250379],
-               [ 2.33808212, 7.42817091, 0.90560051, 8.05897841, 6.30714544],
-               [ 6.13076426, 6.31925048, 4.34031705, 3.01309504, -0.70053049],
-               [ 5.84888474, 5.95097491, 6.23960618, 6.24830057, 4.89655192],
-               [ 6.29507963, 4.21798292, 4.22835474, 5.23521822, 2.76053242]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, mu, sigma)
-
     def log_df(self, x, mu, sigma):
         z = (x - mu) / sigma
         return z - np.exp(z) - np.log(sigma)
@@ -384,23 +319,6 @@ class Gumbel_(ParametricFitter):
             sigma = params[0]
             mu = params[1]
         return mu, sigma
-
-    def var_z(self, x, mu, sigma, cv_matrix):
-        z_hat = (x - mu) / sigma
-        var_z = (1.0 / sigma) ** 2 * (
-            cv_matrix[0, 0]
-            + z_hat**2 * cv_matrix[1, 1]
-            + 2 * z_hat * cv_matrix[0, 1]
-        )
-        return var_z
-
-    def z_cb(self, x, mu, sigma, cv_matrix, alpha_ci=0.05):
-        z_hat = (x - mu) / sigma
-        var_z = self.var_z(x, mu, sigma, cv_matrix)
-        bounds = z_hat + np.array([1.0, -1.0]).reshape(2, 1) * z(
-            alpha_ci / 2
-        ) * np.sqrt(var_z)
-        return bounds
 
 
 Gumbel: ParametricFitter = Gumbel_("Gumbel")

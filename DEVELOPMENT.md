@@ -1,6 +1,6 @@
 # Development Notes
 
-This document tracks known issues, technical debt, and improvement priorities for surpyval. Issues are grouped by theme and ordered by severity within each section. Implemented items are removed; this reflects the state of the codebase as of 2026-06-11. The full test suite passes on Python 3.11+ with numpy 2.x / scipy 1.17 / pandas 3.x.
+This document tracks known issues, technical debt, and improvement priorities for surpyval. Issues are grouped by theme and ordered by severity within each section. Implemented items are removed; this reflects the state of the codebase as of 2026-06-12. The full test suite passes on Python 3.11+ with numpy 2.x / scipy 1.17 / pandas 3.x.
 
 ---
 
@@ -18,10 +18,10 @@ This document tracks known issues, technical debt, and improvement priorities fo
 
 **File:** `surpyval/univariate/parametric/fitters/mle.py`
 
-### Hessian computed in wrong parameterization space (lines 158-168)
+### Hessian computed in wrong parameterization space (lines 163-173)
 Standard errors should be derived from the Hessian in the *transformed* (unbounded) parameterization used during optimization, then mapped back via the delta method. Computing in physical parameter space (`transform=False`) gives incorrect standard errors for any bounded parameter.
 
-### Optimizer cascade does not warm-start (lines 72-90)
+### Optimizer cascade does not warm-start (lines 78-96)
 All five methods (Nelder-Mead → Powell → BFGS → TNC → Newton-CG) start from the same cold `init`. Gradient methods should warm-start from the best-found point so far.
 
 ---
@@ -36,13 +36,58 @@ All five methods (Nelder-Mead → Powell → BFGS → TNC → Newton-CG) start f
 | `MixtureModel`, `SeriesModel`, `ParallelModel` | `surpyval/univariate/parametric/` | No tests at all |
 | Recurrence/NHPP (`Crow`, `Duane`, `CoxLewis`, `CrowAMSAA`, `HPP`) | `surpyval/recurrent/parametric/` | Only `GeneralizedOneRenewal` has a test (`tests/recurrent/test_counting.py`) |
 | `AcceleratedFailureTime` regression variants | `surpyval/univariate/regression/accelerated_failure_time/` | `test_regression.py` covers ALT/PH paths only |
-| Serialization (`to_dict` / `from_dict` / `to_json`) | `test_to_dict.py` is 0 bytes | `to_dict` is abstract on the `Distribution` ABC but has no coverage |
+| Serialization (`to_dict` / `from_dict` / `to_json`) | `test_to_dict.py` is 0 bytes | `to_dict` is abstract on the `Distribution` ABC but has no coverage; `Bernoulli`/`ExactEventTime` round-trips are covered in `test_regressions.py` but the general path is not |
+| Probability plotting (`get_plot_data` / `plot` / `probability_plotting.py`) | `surpyval/univariate/parametric/` | No tests at all; the June 2026 plotting refactor was verified only by ad-hoc before/after output comparison |
 
 Two crash bugs fixed in June 2026 (a `warnings.warng` typo and a `0 * inf = NaN` in `InstantlyOccurs.Hf`) lived in these untested areas — coverage here pays for itself immediately.
 
 ---
 
 ## 3. API Consistency Issues
+
+### `cs()` means different things in different distributions
+The conditional survival function is `sf(x + X) / sf(X)` ("survive a
+further `x` given survival to `X`") in ten distributions, but
+`sf(x) / sf(X)` (absolute time, returns values > 1 for `x < X`) in
+Weibull and Rayleigh (`distributions/weibull.py`,
+`distributions/rayleigh.py`). The same method name silently computes
+different quantities depending on the distribution. `Parametric.cs`'s
+docstring example assumes the absolute-time convention; note also that
+its gamma handling (`self.dist.cs(x - gamma, X - gamma, ...)`) is only
+correct under that convention. Pick one definition (the
+further-survival form is the majority and the more standard), fix the
+two outliers, and document it. This changes results for existing
+Weibull/Rayleigh `cs` users, so it needs a release note.
+
+### Weibull is the only distribution with a closed-form `R_cb`
+**File:** `surpyval/univariate/parametric/distributions/weibull.py`
+
+Every other distribution's closed-form confidence bound was dead code
+(removed June 2026) and they all use the generic autograd delta-method
+bound in `Parametric.cb`. Weibull's survives because it is actually
+reachable. The two methods differ by up to ~7% (the closed form
+expands in log-log "u-space", the generic in logit-space; both are
+valid first-order delta methods). Decide whether to delete Weibull's
+closed form so all distributions are consistent — a user-visible
+change to Weibull confidence bounds — or keep it and document why
+Weibull is special.
+
+### `entropy` is declared by the ABC but implemented by four distributions
+`Distribution` (`distribution.py`) declares `entropy()`, and
+`Parametric.entropy` delegates to the underlying distribution, but only
+Bernoulli, Exponential, Rayleigh and Weibull implement it. Calling
+`model.entropy()` on the other ten raises `AttributeError`. Either
+implement the closed forms (all are textbook), provide a numerical
+default on `ParametricFitter`, or stop declaring it on the ABC.
+
+### `SeriesModel` / `ParallelModel` are unexported and undocumented
+**Files:** `surpyval/univariate/parametric/series.py`, `parallel.py`
+
+They support a nice composition API (`model_a | model_b`,
+`model_a & model_b`) but are not exported from
+`surpyval.univariate.parametric`, have no docstrings, and implement
+only `sf/ff/df/hf/Hf` (no `params`, `fit`, serialization or bounds).
+Either make them public properly or mark them experimental.
 
 ### `cb()` default `on` parameter differs between `Parametric` and `NonParametric`
 `Parametric.cb()` (`parametric.py`) defaults to `on='R'`; `NonParametric.cb()` (`nonparametric.py`) defaults to `on='sf'`. Both strings refer to the survival function in the same conditional.
@@ -61,6 +106,58 @@ The class body is mostly a commented-out likelihood/jacobian/hessian implementat
 ---
 
 ## 4. Code Quality
+
+### Turnbull heuristic downgrade never takes effect
+**File:** `surpyval/univariate/parametric/parametric_fitter.py` (`_validate_fit_inputs`, ~line 344)
+
+The block that swaps the memory-hungry Turnbull heuristic for the
+plain estimator when there is no left/interval censoring or
+right-truncation assigns to a local variable and returns `True`, so the
+caller never sees the downgrade — the optimization has never applied.
+Fix by returning the adjusted heuristic and using it in
+`fit_from_surpyval_data`. Results should be equivalent, but plotting
+points and performance change, so verify against a Turnbull fixture.
+
+### Structural refactors in the univariate parametric module
+Deferred from the June 2026 clean-up (sections 1–5 of that review are
+done):
+
+- `ParametricFitter.fit_from_surpyval_data` (~200 lines) mixes
+  truncation clamping, validation, initial-guess derivation, fitter
+  dispatch and support assignment. Extract `_initial_guess(...)` and
+  `_set_support(model)`; the LFP/ZI guess blocks are already
+  self-contained.
+- `Parametric.cb` (~135 lines) builds nested closures for the hf/df
+  bounds. Extract the per-function bound computations.
+- `probability_plotting.probability_plot_data` special-cases
+  distributions by name with `dist.name in ("Beta")` — string
+  membership on a *string*, not a tuple, so any distribution whose name
+  is a substring of "Beta" would match. Replace the name-based
+  branching with a `plot_x_limits` hook on the distribution.
+- `Uniform` declares `support=(-np.inf, np.inf)` as a workaround (see
+  the comment in `distributions/uniform.py`), and the NaN-support
+  branch in `fit_from_surpyval_data` (with its `TODO: More general
+  support setting. i.e. 4 parameter Beta`) appears unreachable now.
+  Design proper data-dependent support setting.
+- `MixtureModel` composes rather than inherits: it now shares the
+  probability-plot code but still reimplements `sf/ff/df/mean/random`
+  aggregation and its own `R_cb`, and sets most attributes outside
+  `__init__`.
+
+### Type hints are vestigial
+The package ships `py.typed`, but only `ParametricFitter.__init__` is
+annotated. Either grow annotations outward (fitter signatures and
+`fit()` are the highest-value targets) or remove the `py.typed`
+marker; the current state advertises typing that doesn't exist.
+
+### Docstring examples are not doctested
+Most distribution docstring examples now execute correctly (Rayleigh's
+and GumbelLEV's were rewritten with verified outputs in June 2026),
+but scalar-returning examples (`mean`, `moment`) print pre-numpy-2
+style plain floats, so `pytest --doctest-modules` fails on them.
+Decide a policy: either render with `np.float64(...)` reprs and run
+doctests in CI, or keep the readable plain-float style and accept that
+examples are unchecked.
 
 ### Triplicated simulation block
 The same "simulate timelines to `T`" loop appears three times:

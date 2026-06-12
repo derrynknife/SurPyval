@@ -28,7 +28,7 @@ def mom(model):
     x_ = np.repeat(x, n)
 
     if hasattr(dist, "_mom"):
-        return {"params": dist._mom(x_)}
+        return {"params": np.atleast_1d(dist._mom(x_)), "gamma": 0.0}
 
     moments = np.zeros(model.k)
 
@@ -49,9 +49,9 @@ def mom(model):
         results["gamma"] = params[0]
         results["params"] = params[1:]
     else:
+        results["gamma"] = 0.0
         results["params"] = params
 
     results["res"] = res
-    results["offset"] = offset
 
     return results

@@ -1,12 +1,10 @@
 import warnings
 
-from autograd import jacobian
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
 from scipy.optimize import minimize
 from scipy.special import gammaincinv
-from scipy.special import ndtri as z
-from scipy.stats import pearsonr, uniform
+from scipy.stats import pearsonr
 
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
@@ -36,32 +34,6 @@ class Gamma_(ParametricFitter):
             param_names=["alpha", "beta"],
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="linear",
-            y_ticks=[
-                0.0001,
-                0.0002,
-                0.0003,
-                0.001,
-                0.002,
-                0.003,
-                0.005,
-                0.01,
-                0.02,
-                0.03,
-                0.05,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                0.95,
-                0.99,
-                0.999,
-                0.9999,
-            ],
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
@@ -80,7 +52,7 @@ class Gamma_(ParametricFitter):
     def sf(self, x, alpha, beta):
         r"""
 
-        Surival (or Reliability) function for the Gamma Distribution:
+        Survival (or Reliability) function for the Gamma Distribution:
 
         .. math::
             R(x) = 1 - \frac{\gamma \left ( \alpha, \beta x \right )
@@ -252,7 +224,7 @@ class Gamma_(ParametricFitter):
         Returns
         -------
 
-        Hf : scalar or numpy array
+        hf : scalar or numpy array
             The instantaneous hazard rate of the distribution at each x
 
         Examples
@@ -399,42 +371,6 @@ class Gamma_(ParametricFitter):
         """
         return agamma(n + alpha) / (beta**n * agamma(alpha))
 
-    def random(self, size, alpha, beta):
-        r"""
-
-        Draws random samples from the Gamma distribution in shape `size`
-
-        Parameters
-        ----------
-
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Gamma
-        >>> Gamma.random(10, 3, 4)
-        array([0.22856155, 1.69542468, 0.70894789, 0.75552168, 0.76634128,
-               0.58624638, 1.03288812, 0.85768925, 0.75071764, 0.91979151])
-        >>> Gamma.random((5, 5), 3, 4)
-        array([[0.55481976, 1.02867642, 1.25525161, 0.5141736 , 0.7227451 ],
-               [1.59192864, 1.22897457, 0.80820007, 0.39872068, 0.53656654],
-               [0.80703614, 0.75406597, 0.87307426, 1.88748737, 0.78115455],
-               [1.3233755 , 0.29908068, 1.88304902, 2.65690385, 0.51018073],
-               [0.36070265, 0.48834586, 0.45623895, 0.30104303, 0.49942908]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, alpha, beta)
-
     def log_df(self, x, alpha, beta):
         r"""
 
@@ -510,8 +446,8 @@ class Gamma_(ParametricFitter):
             mask = F != 1
             warnings.warn(
                 "Some heuristic values for CDF = 1 have been "
-                + "encountered in plotting points and have been "
-                + "ignored.",
+                "encountered in plotting points and have been "
+                "ignored.",
                 stacklevel=2,
             )
             F = F[mask]
@@ -523,7 +459,7 @@ class Gamma_(ParametricFitter):
         if mask.any():
             warnings.warn(
                 "Some Infinite values encountered in plotting "
-                + "points and have been ignored.",
+                "points and have been ignored.",
                 stacklevel=2,
             )
             F = F[mask]
@@ -549,7 +485,7 @@ class Gamma_(ParametricFitter):
                 gamma = -params[1] / beta
 
             results["gamma"] = gamma
-            results["params"] = [alpha, beta]
+            results["params"] = np.array([alpha, beta])
 
             return results
         else:
@@ -578,45 +514,9 @@ class Gamma_(ParametricFitter):
                 )[0][0]
                 beta = 1.0 / beta
 
-            results["params"] = [alpha, beta]
+            results["params"] = np.array([alpha, beta])
 
             return results
-
-    def var_R(self, dR, cv_matrix):
-        dr_dalpha = dR[:, 0]
-        dr_dbeta = dR[:, 1]
-        var_r = (
-            dr_dalpha**2 * cv_matrix[0, 0]
-            + dr_dbeta**2 * cv_matrix[1, 1]
-            + 2 * dr_dalpha * dr_dbeta * cv_matrix[0, 1]
-        )
-        return var_r
-
-    def R_cb_(self, x, alpha, beta, cv_matrix, alpha_ci=0.05):
-        R_hat = self.sf(x, alpha, beta)
-
-        def dR_f(t):
-            return self.sf(*t)
-
-        jac = jacobian(dR_f)
-        x_ = np.array(x)
-        if x_.size == 1:
-            dR = jac(np.array((x_, alpha, beta))[1::])
-            dR = dR.reshape(1, 2)
-        else:
-            out = []
-            for xx in x_:
-                out.append(jac(np.array((xx, alpha, beta)))[1::])
-            dR = np.array(out)
-        K = z(alpha_ci / 2)
-        exponent = (
-            K
-            * np.array([-1, 1]).reshape(2, 1)
-            * np.sqrt(self.var_R(dR, cv_matrix))
-        )
-        exponent = exponent / (R_hat * (1 - R_hat))
-        R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
-        return R_cb.T
 
 
 Gamma: ParametricFitter = Gamma_("Gamma")

@@ -1,5 +1,5 @@
 from numpy import euler_gamma
-from scipy.stats import gumbel_r, uniform
+from scipy.stats import gumbel_r
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
@@ -15,32 +15,6 @@ class GumbelLEV_(ParametricFitter):
             param_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},
             plot_x_scale="linear",
-            y_ticks=[
-                0.0001,
-                0.0002,
-                0.0003,
-                0.001,
-                0.002,
-                0.003,
-                0.005,
-                0.01,
-                0.02,
-                0.03,
-                0.05,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                0.95,
-                0.99,
-                0.999,
-                0.9999,
-            ],
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
@@ -50,10 +24,10 @@ class GumbelLEV_(ParametricFitter):
     def sf(self, x, mu, sigma):
         r"""
 
-        Surival (or Reliability) function for the Gumbel Distribution:
+        Survival (or reliability) function for the Gumbel LEV Distribution:
 
         .. math::
-            R(x) = 1 - e^{e^{-\left ( x - \mu \right ) / \sigma}}
+            R(x) = 1 - e^{-e^{-\left ( x - \mu \right ) / \sigma}}
 
         Parameters
         ----------
@@ -79,10 +53,10 @@ class GumbelLEV_(ParametricFitter):
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import Gumbel
+        >>> from surpyval import GumbelLEV
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Gumbel.sf(x, 3, 2)
-        array([0.69220063, 0.54523921, 0.36787944, 0.19229565, 0.06598804])
+        >>> GumbelLEV.sf(x, 3, 2)
+        array([0.93401196, 0.80770435, 0.63212056, 0.45476079, 0.30779937])
         """
         return 1 - self.ff(x, mu, sigma)
 
@@ -92,10 +66,10 @@ class GumbelLEV_(ParametricFitter):
     def ff(self, x, mu, sigma):
         r"""
 
-        CDF (or Failure) function for the Gumbel Distribution:
+        CDF (or Failure) function for the Gumbel LEV Distribution:
 
         .. math::
-            F(x) = e^{e^{-\left ( x - \mu \right )/\sigma}}
+            F(x) = e^{-e^{-\left ( x - \mu \right )/\sigma}}
 
         Parameters
         ----------
@@ -121,10 +95,10 @@ class GumbelLEV_(ParametricFitter):
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import Gumbel
+        >>> from surpyval import GumbelLEV
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Gumbel.ff(x, 3, 2)
-        array([0.30779937, 0.45476079, 0.63212056, 0.80770435, 0.93401196])
+        >>> GumbelLEV.ff(x, 3, 2)
+        array([0.06598804, 0.19229565, 0.36787944, 0.54523921, 0.69220063])
         """
         z = (x - mu) / sigma
         return np.exp(-np.exp(-z))
@@ -132,11 +106,11 @@ class GumbelLEV_(ParametricFitter):
     def df(self, x, mu, sigma):
         r"""
 
-        Density function (pdf) for the Gumbel Distribution:
+        Density function (pdf) for the Gumbel LEV Distribution:
 
         .. math::
-            f(x) = \frac{1}{\sigma}e^{\left (\frac{x - \mu}{\sigma} -
-            e^{\frac{x-\mu}{\sigma}} \right)}
+            f(x) = \frac{1}{\sigma}e^{-\left (\frac{x - \mu}{\sigma} +
+            e^{-\frac{x-\mu}{\sigma}} \right)}
 
         Parameters
         ----------
@@ -161,10 +135,10 @@ class GumbelLEV_(ParametricFitter):
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import Gumbel
+        >>> from surpyval import GumbelLEV
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Gumbel.df(x, 3, 2)
-        array([0.12732319, 0.16535215, 0.18393972, 0.15852096, 0.08968704])
+        >>> GumbelLEV.df(x, 3, 2)
+        array([0.08968704, 0.15852096, 0.18393972, 0.16535215, 0.12732319])
         """
         z = (x - mu) / sigma
         return (1.0 / sigma) * np.exp(-(z + np.exp(-z)))
@@ -172,10 +146,10 @@ class GumbelLEV_(ParametricFitter):
     def hf(self, x, mu, sigma):
         r"""
 
-        Instantaneous hazard rate for the Gumbel Distribution:
+        Instantaneous hazard rate for the Gumbel LEV Distribution:
 
         .. math::
-            h(x) = \frac{1}{\sigma} e^{\frac{x-\mu}{\sigma}}
+            h(x) = \frac{f(x)}{R(x)}
 
         Parameters
         ----------
@@ -192,26 +166,26 @@ class GumbelLEV_(ParametricFitter):
         -------
 
         hf : scalar or numpy array
-            The value(s) for the instantaneous hazard rate for the Gumbel
+            The value(s) for the instantaneous hazard rate for the Gumbel LEV
             distribution.
 
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import Gumbel
+        >>> from surpyval import GumbelLEV
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Gumbel.hf(x, 3, 2)
-        array([0.18393972, 0.30326533, 0.5       , 0.82436064, 1.35914091])
+        >>> GumbelLEV.hf(x, 3, 2)
+        array([0.09602344, 0.19626112, 0.29098835, 0.36360248, 0.41365643])
         """
         return self.df(x, mu, sigma) / self.sf(x, mu, sigma)
 
     def Hf(self, x, mu, sigma):
         r"""
 
-        Cumulative hazard rate for the Gumbel Distribution:
+        Cumulative hazard rate for the Gumbel LEV Distribution:
 
         .. math::
-            H(x) = e^{\frac{x-\mu}{\sigma}}
+            H(x) = -\ln \left ( R(x) \right )
 
         Parameters
         ----------
@@ -228,23 +202,23 @@ class GumbelLEV_(ParametricFitter):
         -------
 
         Hf : scalar or numpy array
-            The value(s) for the cumulative hazard rate for the Gumbel
+            The value(s) for the cumulative hazard rate for the Gumbel LEV
             distribution.
 
         Examples
         --------
         >>> import numpy as np
-        >>> from surpyval import Gumbel
+        >>> from surpyval import GumbelLEV
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Gumbel.Hf(x, 3, 2)
-        array([0.36787944, 0.60653066, 1.        , 1.64872127, 2.71828183])
+        >>> GumbelLEV.Hf(x, 3, 2)
+        array([0.06826603, 0.21355919, 0.45867515, 0.78798374, 1.1783071 ])
         """
         return -np.log(self.sf(x, mu, sigma))
 
     def qf(self, p, mu, sigma):
         r"""
 
-        Quantile function for the Gumbel Distribution:
+        Quantile function for the Gumbel LEV Distribution:
 
         .. math::
             q(p) = \mu - \sigma\ln\left ( -\ln\left ( p \right ) \right )
@@ -271,14 +245,15 @@ class GumbelLEV_(ParametricFitter):
         >>> from surpyval import GumbelLEV
         >>> p = np.array([.1, .2, .3, .4, .5])
         >>> GumbelLEV.qf(p, 3, 2)
-        array([0.17472351, 1.28168877, 2.05427538, 2.70479498, 3.36651292])
+        array([1.33193511, 2.04823001, 2.62874648, 3.17484314, 3.73302584])
         """
         return mu - sigma * np.log(-np.log(p))
 
     def mean(self, mu, sigma):
         r"""
 
-        Calculates the mean of the Gumbel distribution with given parameters.
+        Calculates the mean of the Gumbel LEV distribution with given
+        parameters.
 
         .. math::
             E = \mu + \sigma\gamma
@@ -297,53 +272,15 @@ class GumbelLEV_(ParametricFitter):
         -------
 
         mean : scalar or numpy array
-            The mean(s) of the Gumbel distribution
+            The mean(s) of the Gumbel LEV distribution
 
         Examples
         --------
-        >>> from surpyval import Gumbel
-        >>> Gumbel.mean(3, 2)
+        >>> from surpyval import GumbelLEV
+        >>> GumbelLEV.mean(3, 2)
         4.1544313298030655
         """
         return mu + sigma * euler_gamma
-
-    def random(self, size, mu, sigma):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        mu : numpy array like or scalar
-            The location parameter(s) of the distribution
-        sigma : numpy array like or scalar
-            The scale parameter(s) of the distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Gumbel
-        >>> Gumbel.random(10, 3, 2)
-        array([1.50706388, 3.3098799 , 4.32358009, 2.9914246 , 4.47216839,
-               3.56676358, 4.19781514, 4.49123942, 7.29849677, 6.32996653])
-        >>> Gumbel.random((5, 5), 3, 2)
-        array([[ 5.97265715, 5.89177067, 2.95883424, 2.46315557, 5.15250379],
-               [ 2.33808212, 7.42817091, 0.90560051, 8.05897841, 6.30714544],
-               [ 6.13076426, 6.31925048, 4.34031705, 3.01309504,-0.70053049],
-               [ 5.84888474, 5.95097491, 6.23960618, 6.24830057, 4.89655192],
-               [ 6.29507963, 4.21798292, 4.22835474, 5.23521822, 2.76053242]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, mu, sigma)
 
     def log_sf(self, x, mu, sigma):
         return -self.Hf(x, mu, sigma)

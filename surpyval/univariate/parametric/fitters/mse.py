@@ -1,9 +1,10 @@
 from autograd import hessian, jacobian
-from scipy.optimize import minimize
 
 from surpyval import np
 from surpyval.univariate.nonparametric import fleming_harrington, turnbull
 from surpyval.utils import xcnt_to_xrd
+
+from . import fallback_minimize
 
 
 def mse_fun(params, dist, x, F, inv_trans, const, offset):
@@ -53,28 +54,8 @@ def mse(model):
     jac = jacobian(mse_fun)
     hess = hessian(mse_fun)
 
-    with np.errstate(all="ignore"):
-        args = (dist, x, F, inv_trans, const, offset)
-        res = minimize(
-            mse_fun,
-            init,
-            method="Newton-CG",
-            jac=jac,
-            hess=hess,
-            args=args,
-        )
-
-        if (res.success is False) or (np.isnan(res.x).any()):
-            res = minimize(
-                mse_fun,
-                init,
-                method="BFGS",
-                jac=jac,
-                args=args,
-            )
-
-        if (res.success is False) or (np.isnan(res.x).any()):
-            res = minimize(mse_fun, init, args=args)
+    args = (dist, x, F, inv_trans, const, offset)
+    res = fallback_minimize(mse_fun, init, args, jac, hess)
 
     results = {}
     results["res"] = res
@@ -84,6 +65,7 @@ def mse(model):
         results["gamma"] = params[0]
         results["params"] = params[1:]
     else:
+        results["gamma"] = 0.0
         results["params"] = params
 
     return results

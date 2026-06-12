@@ -1,4 +1,40 @@
+from scipy.optimize import minimize
+
 from surpyval import np
+
+
+def fallback_minimize(fun, init, args, jac, hess, newton_tol=None):
+    """
+    Minimise ``fun`` trying Newton-CG with the supplied jacobian and
+    hessian first, then falling back to BFGS, then Nelder-Mead, whenever
+    a method fails or returns nan parameters.
+
+    Some distributions have all-shape parameters whose autograd second
+    derivatives are zero (see autograd_gamma_compat); a zero hessian
+    makes Newton-CG terminate at the initial guess while reporting
+    success, so skip straight to BFGS in that case.
+    """
+    with np.errstate(all="ignore"):
+        if np.any(hess(np.array(init, dtype=float), *args)):
+            res = minimize(
+                fun,
+                init,
+                method="Newton-CG",
+                jac=jac,
+                hess=hess,
+                tol=newton_tol,
+                args=args,
+            )
+        else:
+            res = None
+
+        if (res is None) or (res.success is False) or (np.isnan(res.x).any()):
+            res = minimize(fun, init, method="BFGS", jac=jac, args=args)
+
+        if (res.success is False) or (np.isnan(res.x).any()):
+            res = minimize(fun, init, args=args)
+
+    return res
 
 
 def adj_relu(x):
@@ -57,12 +93,22 @@ def bounds_convert(x, bounds, fixed, param_map):
 
     def transform_params_to_unbounded(params):
         return np.array(
-            [f(p) for p, f in zip(params, bounded_to_unbounded_transforms)]
+            [
+                f(p)
+                for p, f in zip(
+                    params, bounded_to_unbounded_transforms, strict=True
+                )
+            ]
         )
 
     def transform_unbounded_value_to_params(params):
         return np.array(
-            [f(p) for p, f in zip(params, unbounded_to_bounded_transforms)]
+            [
+                f(p)
+                for p, f in zip(
+                    params, unbounded_to_bounded_transforms, strict=True
+                )
+            ]
         )
 
     n_params = len(param_map)

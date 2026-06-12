@@ -1,9 +1,6 @@
 import warnings
 
 from scipy.special import factorial
-from scipy.special import ndtri as z
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
@@ -43,7 +40,7 @@ class Exponential_(ParametricFitter):
             ],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, offset=False):
+    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         rate = 1.0 / x[np.isfinite(x)].mean()
         if offset:
             return np.min(x) - (np.max(x) - np.min(x)) / 10.0, rate
@@ -53,7 +50,7 @@ class Exponential_(ParametricFitter):
     def sf(self, x, failure_rate):
         r"""
 
-        Surival (or Reliability) function for the Exponential Distribution:
+        Survival (or Reliability) function for the Exponential Distribution:
 
         .. math::
             R(x) = e^{-\lambda x}
@@ -155,7 +152,7 @@ class Exponential_(ParametricFitter):
         >>> Exponential.ff(x, 3)
         array([0.95021293, 0.99752125, 0.99987659, 0.99999386, 0.99999969])
         """
-        return 1 - np.exp(-failure_rate * x)
+        return -np.expm1(-failure_rate * x)
 
     def df(self, x, failure_rate):
         r"""
@@ -379,42 +376,6 @@ class Exponential_(ParametricFitter):
         """
         return 1 - np.log(failure_rate)
 
-    def random(self, size, failure_rate):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        failure_rate : numpy array or scalar
-            The scale parameter for the Exponential distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Exponential
-        >>> Exponential.random(10, 3)
-        array([0.32480264, 0.03186663, 0.41807108, 0.74221745, 0.06133774,
-               0.2128422 , 0.36299424, 0.12250138, 0.61431089, 0.02266754])
-        >>> Exponential.random((5, 5), 3)
-        array([[0.25425552, 0.16867629, 0.21692401, 0.07020826, 0.03676643],
-               [0.65528908, 0.20774767, 0.00625475, 0.04122388, 0.07089254],
-               [1.22844679, 0.36199751, 0.564159  , 1.86811492, 0.08132478],
-               [0.33541878, 0.38614518, 0.09285907, 0.33422975, 0.32515494],
-               [0.03529228, 0.63134988, 0.45528738, 0.05037512, 0.7338039 ]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, failure_rate)
-
     def log_df(self, x, failure_rate):
         return np.log(failure_rate) - failure_rate * x
 
@@ -455,7 +416,7 @@ class Exponential_(ParametricFitter):
         y_pp = self.mpp_y_transform(F)
 
         mask = np.isfinite(y_pp)
-        if mask.any():
+        if not mask.all():
             warnings.warn(
                 "Some Infinite values encountered in plotting points and have \
                 been ignored.",
@@ -470,8 +431,8 @@ class Exponential_(ParametricFitter):
             elif rr == "x":
                 params = np.polyfit(y_pp, x_pp, 1)
             failure_rate = params[0]
-            offset = -params[1] * (1.0 / failure_rate)
-            return tuple([offset, failure_rate])
+            gamma = -params[1] * (1.0 / failure_rate)
+            return {"params": np.array([failure_rate]), "gamma": gamma}
         else:
             if rr == "y":
                 x_pp = x_pp[:, np.newaxis]
@@ -480,17 +441,7 @@ class Exponential_(ParametricFitter):
                 y_pp = y_pp[:, np.newaxis]
                 mttf = np.linalg.lstsq(y_pp, x_pp, rcond=None)[0]
                 failure_rate = 1.0 / mttf
-            return tuple([failure_rate[0]])
-
-    def lambda_cb(self, x, failure_rate, cv_matrix, alpha_ci=0.05):
-        return failure_rate * np.exp(
-            np.array([-1, 1]).reshape(2, 1)
-            * (z(alpha_ci / 2) * np.sqrt(cv_matrix.item()) / failure_rate)
-        )
-
-    # def R_cb(self, x, failure_rate, cv_matrix, alpha_ci=0.05):
-    # return np.exp(-self.lambda_cb(x, failure_rate, cv_matrix,
-    # alpha_ci=alpha_ci) * x).T
+            return {"params": np.array([failure_rate[0]])}
 
 
 Exponential: ParametricFitter = Exponential_("Exponential")

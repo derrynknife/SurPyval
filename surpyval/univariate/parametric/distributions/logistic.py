@@ -1,7 +1,5 @@
 from autograd import grad
 from autograd.scipy.special import beta as abeta
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 from surpyval.utils import xcnt_handler
@@ -20,32 +18,6 @@ class Logistic_(ParametricFitter):
             param_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},
             plot_x_scale="linear",
-            y_ticks=[
-                0.0001,
-                0.0002,
-                0.0003,
-                0.001,
-                0.002,
-                0.003,
-                0.005,
-                0.01,
-                0.02,
-                0.03,
-                0.05,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                0.95,
-                0.99,
-                0.999,
-                0.9999,
-            ],
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
@@ -58,7 +30,7 @@ class Logistic_(ParametricFitter):
             return x.sum() / (n * flag).sum(), 1.0
 
     def sf(self, x, mu, sigma):
-        """
+        r"""
 
         Survival (or reliability) function for the Logistic Distribution:
 
@@ -97,7 +69,7 @@ class Logistic_(ParametricFitter):
         return self.sf(x + X, mu, sigma) / self.sf(X, mu, sigma)
 
     def ff(self, x, mu, sigma):
-        """
+        r"""
 
         Failure (CDF or unreliability) function for the Logistic Distribution:
 
@@ -132,7 +104,7 @@ class Logistic_(ParametricFitter):
         return 1.0 / (1 + np.exp(-z))
 
     def df(self, x, mu, sigma):
-        """
+        r"""
 
         Failure (CDF or unreliability) function for the Logistic Distribution:
 
@@ -169,7 +141,7 @@ class Logistic_(ParametricFitter):
         return np.exp(-z) / (sigma * (1 + np.exp(-z)) ** 2)
 
     def hf(self, x, mu, sigma):
-        """
+        r"""
 
         Instantaneous hazard rate for the Logistic Distribution:
 
@@ -203,7 +175,7 @@ class Logistic_(ParametricFitter):
         return self.df(x, mu, sigma) / self.sf(x, mu, sigma)
 
     def Hf(self, x, mu, sigma):
-        """
+        r"""
 
         Cumulative hazard rate for the Logistic distribution:
 
@@ -223,7 +195,7 @@ class Logistic_(ParametricFitter):
         Returns
         -------
 
-        hf : scalar or numpy array
+        Hf : scalar or numpy array
             The value(s) of the cumulative hazard rate at x.
 
         Examples
@@ -237,7 +209,7 @@ class Logistic_(ParametricFitter):
         return -np.log(self.sf(x, mu, sigma))
 
     def qf(self, p, mu, sigma):
-        """
+        r"""
 
         Quantile function for the Logistic distribution:
 
@@ -299,51 +271,6 @@ class Logistic_(ParametricFitter):
         3
         """
         return mu
-
-    def random(self, size, mu, sigma):
-        """
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        mu : numpy array or scalar
-            The location parameter for the Logistic distribution
-        sigma : numpy array or scalar
-            The scale parameter for the Logistic distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Logistic
-        >>> Logistic.random(10, 3, 4)
-        array([-8.03085073, -1.69001847,  5.25971637,  4.49119392,
-                3.92027233,
-               -0.8320818 , -7.08778338,  5.01180405,  0.82373259,
-                8.51506487])
-        >>> Logistic.random((5, 5), 3, 4)
-        array([[ 7.11691946, 14.31662627,  8.5383889 ,  1.26608344,
-         0.97633704],
-               [-7.11229405,  8.56748118,  1.5959416 , -3.89229554,
-               -2.44623464],
-               [ 5.58805039, -0.11768336, -0.55000158,  8.5302643 ,
-                6.92591024],
-               [-2.88281091, -9.79724128, -3.80713019,  1.74120972,
-               15.37924263],
-               [-4.42521443, -0.69577732,  3.54658395,  2.82310964,
-                3.95850831]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, mu, sigma)
 
     def log_df(self, x, mu, sigma):
         z = (x - mu) / sigma

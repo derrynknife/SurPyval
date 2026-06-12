@@ -1,6 +1,3 @@
-from scipy.optimize import minimize
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
@@ -19,13 +16,13 @@ class Uniform_(ParametricFitter):
             y_ticks=np.linspace(0, 1, 21)[1:-1],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None):
+    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         return np.min(x) - 1.0, np.max(x) + 1.0
 
     def sf(self, x, a, b):
         r"""
 
-        Surival (or Reliability) function for the Uniform Distribution:
+        Survival (or Reliability) function for the Uniform Distribution:
 
         .. math::
             R(x) = \frac{b - x}{b - a}
@@ -44,7 +41,7 @@ class Uniform_(ParametricFitter):
         -------
 
         sf : scalar or numpy array
-            The value(s) of the survival function at x.
+            The value(s) of the reliability function at x.
 
         Examples
         --------
@@ -59,7 +56,7 @@ class Uniform_(ParametricFitter):
     def cs(self, x, X, a, b):
         r"""
 
-        Surival (or Reliability) function for the Uniform Distribution:
+        Survival (or Reliability) function for the Uniform Distribution:
 
         .. math::
             R(x, X) = \frac{R(x + X)}{R(X)}
@@ -221,8 +218,8 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        hf : scalar or numpy array
-            The value(s) of the instantaneous hazard rate at x.
+        Hf : scalar or numpy array
+            The value(s) of the cumulative hazard rate at x.
 
         Examples
         --------
@@ -336,70 +333,17 @@ class Uniform_(ParametricFitter):
                 out[i] = a**i * b ** (n - i)
             return np.sum(out) / (n + 1)
 
-    def p(self, c, n):
-        return 1 - 2 * (1 + c) ** (1.0 - n) + (1 + 2 * c) ** (1.0 - n)
-
-    def random(self, size, a, b):
-        r"""
-
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Uniform
-        >>> Uniform.random(10, 0, 6)
-        array([3.50214341, 3.7978912 , 5.12238656, 4.27185221, 3.05507685,
-               2.71236199, 4.89311322, 1.11373047, 4.90549424, 1.76321338])
-        >>> Uniform.random((5, 5), 0, 6)
-        array([[4.76809829, 4.42155933, 2.59469997, 4.31525748, 5.53469545],
-               [0.06222942, 1.26267164, 1.74188626, 1.05235807, 0.92461476],
-               [2.06215303, 0.02184135, 0.97058002, 3.02219656, 3.22137982],
-               [2.14951891, 3.18096661, 2.37105309, 0.65710124, 0.68828779],
-               [0.58827207, 3.7633596 , 5.62330526, 5.24481753, 4.23162212]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, a, b)
-
-    def ab_cb(self, x, a, b, N, alpha=0.05):
-        # Parameter confidence intervals from here:
-        # https://mathoverflow.net/questions/278675/confidence-intervals-for-the-endpoints-of-the-uniform-distribution
-        #
-        sample_range = np.max(x) - np.min(x)
-
-        def fun(c):
-            return self.p(c, N)
-
-        c_hat = minimize(fun, 1.0).x
-        return a - c_hat * sample_range, b + c_hat * sample_range
-
     def mle(self, data):
         if (data.c[data.x == data.x.max()] == 1).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
-                + " the highest value is right censored"
+                " the highest value is right censored"
             )
 
         if (data.c[data.x == data.x.min()] == -1).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
-                + " the lowest value is left censored"
+                " the lowest value is left censored"
             )
 
         tl = data.t[:, 0]
@@ -408,13 +352,13 @@ class Uniform_(ParametricFitter):
         if np.isfinite(tr[data.x == data.x.max()]).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
-                + " the highest value is right truncated"
+                " the highest value is right truncated"
             )
 
         if np.isfinite(tl[data.x == data.x.min()]).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
-                + " the lowest value is left truncated"
+                " the lowest value is left truncated"
             )
 
         params = np.array([np.min(data.x), np.max(data.x)])

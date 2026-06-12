@@ -1,20 +1,21 @@
 import surpyval
 from surpyval import np
+from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
 from ..parametric import Parametric
 
 
-class ExactEventTime_:
+class ExactEventTime_(ParametricFitter):
     def __init__(self, name):
-        self.name = name
-        # Set 'k', the number of parameters
-        self.k = 1
-        self.bounds = ((-np.inf, np.inf),)
-        self.support = (-np.inf, np.inf)
-        self.param_names = ["T"]
-        self.param_map = {
-            "T": 0,
-        }
+        super().__init__(
+            name=name,
+            k=1,
+            bounds=((None, None),),
+            support=(-np.inf, np.inf),
+            param_names=["T"],
+            param_map={"T": 0},
+            plot_x_scale="linear",
+        )
 
     def sf(self, x, T):
         x = np.atleast_1d(x)
@@ -63,13 +64,13 @@ class ExactEventTime_:
 
         T = (max_r + min_l) / 2.0
 
-        model = Parametric(self, "MLE", {}, False, False, False)
-        model.params = [T]
+        model = Parametric(self, "MLE", None, False, False, False)
+        model.params = np.array([T])
         return model
 
     def from_params(self, T):
-        model = Parametric(self, "from_params", {}, False, False, False)
-        model.params = [T]
+        model = Parametric(self, "from_params", None, False, False, False)
+        model.params = np.array([T])
         return model
 
 

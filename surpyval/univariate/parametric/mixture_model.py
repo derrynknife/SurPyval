@@ -1,16 +1,18 @@
-import re
 import warnings
 
 from autograd import jacobian
 from matplotlib import pyplot as plt
-from matplotlib.ticker import FixedLocator
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
 
 from surpyval import np
-from surpyval.univariate.nonparametric import plotting_positions
-from surpyval.utils import _round_vals
 from surpyval.utils.surpyval_data import SurpyvalData
+
+from .probability_plotting import (
+    adjust_heuristic,
+    draw_probability_plot,
+    probability_plot_data,
+)
 
 
 class MixtureModel:
@@ -44,30 +46,19 @@ class MixtureModel:
         if hasattr(self, "params"):
             param_string = "\n".join(
                 [
-                    "{:>10}".format(name) + ": " + str(p)
+                    f"{name:>10}: {p}"
                     for p, name in zip(self.params.T, self.dist.param_names)
                 ]
             )
+            weight_string = ",\n\t".join([str(w) for w in self.w])
             out = (
                 "Parametric Mixture SurPyval Model"
-                + "\n================================="
-                + "\nDistribution        : {dist}"
-                + "\nSub-Distributions   : {m}"
-                + "\nFitted by           : EM"
-            ).format(dist=self.dist.name, m=self.m)
-
-            out = (
-                out
-                + "\nWeights             : "
-                + "\n\t{params}".format(
-                    params=",\n\t".join([str(w) for w in self.w])
-                )
-            )
-
-            out = (
-                out
-                + "\nParameters          :\n"
-                + "{params}".format(params=param_string)
+                "\n================================="
+                f"\nDistribution        : {self.dist.name}"
+                f"\nSub-Distributions   : {self.m}"
+                "\nFitted by           : EM"
+                f"\nWeights             : \n\t{weight_string}"
+                f"\nParameters          :\n{param_string}"
             )
 
             return out
@@ -169,7 +160,7 @@ class MixtureModel:
             right censored, and 2 is intervally censored. If not provided
             will assume all values are observed.
         n : array like, optional
-            Array of counts for each x. If data is proivded as counts, then
+            Array of counts for each x. If data is provided as counts, then
             this can be provided. If :code:`None` will assume each
             observation is 1.
         t : 2D-array like, optional
@@ -361,121 +352,16 @@ class MixtureModel:
         return self.sf(x + X) / self.sf(X)
 
     def get_plot_data(self, heuristic="Nelson-Aalen"):
-        x_, r, d, F = plotting_positions(
+        return probability_plot_data(
+            dist=self.dist,
+            ff=self.ff,
             x=self.data.x,
             c=self.data.c,
             n=self.data.n,
             t=self.data.t,
             heuristic=heuristic,
+            params=self.params,
         )
-
-        mask = np.isfinite(x_)
-        x_ = x_[mask]
-        r = r[mask]
-        d = d[mask]
-        F = F[mask]
-
-        # Adjust the plotting points in event data is truncated.
-        tl_min = self.data.t[0][0]
-        if np.isfinite(tl_min):
-            Ftl = self.ff(tl_min)
-        else:
-            Ftl = 0
-
-        tr_max = self.data.t[-1][-1]
-        if np.isfinite(tr_max):
-            Ftr = self.ff(tr_max)
-        else:
-            Ftr = 1
-
-        # Adjust the plotting points due to truncation
-        F = Ftl + F * (Ftr - Ftl)
-
-        y_scale_min = np.min(F[F > 0]) / 2
-        y_scale_max = 1 - (1 - np.max(F[F < 1])) / 10
-
-        # x-axis
-        if self.dist.plot_x_scale == "log":
-            log_x = np.log10(x_[x_ > 0])
-            x_min = np.min(log_x)
-            x_max = np.max(log_x)
-            vals_non_sig = 10 ** np.linspace(x_min, x_max, 7)
-            x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
-            x_minor_ticks = (
-                10**x_minor_ticks * np.array(np.arange(1, 11)).reshape((10, 1))
-            ).flatten()
-            diff = (x_max - x_min) / 10
-            x_scale_min = 10 ** (x_min - diff)
-            x_scale_max = 10 ** (x_max + diff)
-            x_model = 10 ** np.linspace(x_min - diff, x_max + diff, 100)
-        elif self.dist.name in ("Beta"):
-            x_min = np.min(x_)
-            x_max = np.max(x_)
-            x_scale_min = 0
-            x_scale_max = 1
-            vals_non_sig = np.linspace(x_scale_min, x_scale_max, 11)[1:-1]
-            x_minor_ticks = np.linspace(x_scale_min, x_scale_max, 22)[1:-1]
-            x_model = np.linspace(x_scale_min, x_scale_max, 102)[1:-1]
-        elif self.dist.name in ("Uniform"):
-            x_min = np.min(self.params)
-            x_max = np.max(self.params)
-            x_scale_min = x_min
-            x_scale_max = x_max
-            vals_non_sig = np.linspace(x_scale_min, x_scale_max, 11)[1:-1]
-            x_minor_ticks = np.linspace(x_scale_min, x_scale_max, 22)[1:-1]
-            x_model = np.linspace(x_scale_min, x_scale_max, 102)[1:-1]
-        else:
-            x_min = np.min(x_)
-            x_max = np.max(x_)
-            vals_non_sig = np.linspace(x_min, x_max, 7)
-            x_minor_ticks = np.arange(np.floor(x_min), np.ceil(x_max))
-            diff = (x_max - x_min) / 10
-            x_scale_min = x_min - diff
-            x_scale_max = x_max + diff
-            x_model = np.linspace(x_scale_min, x_scale_max, 100)
-
-        cdf = self.ff(x_model)
-
-        x_ticks = _round_vals(vals_non_sig)
-        x_ticks_labels = [
-            (
-                str(int(x))
-                if (re.match(r"([0-9]+\.0+)", str(x)) is not None) & (x > 1)
-                else str(x)
-            )
-            for x in _round_vals(vals_non_sig)
-        ]
-
-        y_ticks = np.array(self.dist.y_ticks)
-        y_ticks = y_ticks[
-            np.where((y_ticks > y_scale_min) & (y_ticks < y_scale_max))[0]
-        ]
-
-        y_ticks_labels = [
-            (
-                str(int(y)) + "%"
-                if (re.match(r"([0-9]+\.0+)", str(y)) is not None) & (y > 1)
-                else str(y)
-            )
-            for y in y_ticks * 100
-        ]
-
-        return {
-            "x_scale_min": x_scale_min,
-            "x_scale_max": x_scale_max,
-            "y_scale_min": y_scale_min,
-            "y_scale_max": y_scale_max,
-            "y_ticks": y_ticks,
-            "y_ticks_labels": y_ticks_labels,
-            "x_ticks": x_ticks,
-            "x_ticks_labels": x_ticks_labels,
-            "cdf": cdf,
-            "x_model": x_model,
-            "x_minor_ticks": x_minor_ticks,
-            "x_scale": self.dist.plot_x_scale,
-            "x_": x_,
-            "F": F,
-        }
 
     def plot(
         self,
@@ -491,7 +377,7 @@ class MixtureModel:
             'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None',\
             'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier',\
             'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
-            The method that the plotting point on the probablility plot will
+            The method that the plotting point on the probability plot will
             be calculated.
 
         ax: matplotlib.axes.Axes, optional
@@ -508,58 +394,16 @@ class MixtureModel:
             ax = plt.gcf().gca()
 
         if not hasattr(self, "params"):
-            raise Exception("Can't plot model that failed to fit")
+            raise ValueError("Can't plot model that failed to fit")
 
-        if 2 in self.data.c:
-            if heuristic != "Turnbull":
-                warnings.warn(
-                    "Interval censored data, heuristic changed to Turnbull'",
-                    stacklevel=1,
-                )
-                heuristic = "Turnbull"
-
-        if np.isfinite(self.data.t).any():
-            if heuristic != "Turnbull":
-                warnings.warn(
-                    "Truncated censored data, heuristic changed to Turnbull'",
-                    stacklevel=1,
-                )
-                heuristic = "Turnbull"
+        heuristic = adjust_heuristic(self.data.c, self.data.t, heuristic)
 
         d = self.get_plot_data(heuristic=heuristic)
 
-        # Set limits and scale
-        ax.set_ylim(
-            [max(d["y_scale_min"], 1e-4), min(d["y_scale_max"], 0.9999)]
-        )
-        ax.set_xscale(d["x_scale"])
-        functions = (
+        return draw_probability_plot(
+            ax,
+            d,
             lambda x: self.dist.mpp_y_transform(x, *self.params),
             lambda x: self.dist.mpp_inv_y_transform(x, *self.params),
+            title=f"{self.dist.name} Mixture Probability Plot",
         )
-        ax.set_yscale("function", functions=functions)
-        ax.set_yticks(d["y_ticks"])
-        ax.set_yticklabels(d["y_ticks_labels"])
-        ax.yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
-        ax.set_xticks(d["x_ticks"])
-        ax.set_xticklabels(d["x_ticks_labels"])
-
-        if d["x_scale"] == "log":
-            ax.set_xticks(d["x_minor_ticks"], minor=True)
-            ax.set_xticklabels([], minor=True)
-
-        ax.grid(
-            visible=True, which="major", color="g", alpha=0.4, linestyle="-"
-        )
-        ax.grid(
-            visible=True, which="minor", color="g", alpha=0.1, linestyle="-"
-        )
-
-        ax.set_title("{} Mixture Probability Plot".format(self.dist.name))
-        ax.set_ylabel("CDF")
-        ax.scatter(d["x_"], d["F"])
-
-        ax.set_xlim([d["x_scale_min"], d["x_scale_max"]])
-
-        ax.plot(d["x_model"], d["cdf"], color="k", linestyle="--")
-        return ax

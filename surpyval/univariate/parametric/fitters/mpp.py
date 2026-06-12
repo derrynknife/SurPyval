@@ -53,7 +53,7 @@ def mpp(model):
         raise ValueError("rr must be either 'x' or 'y'")
 
     if hasattr(dist, "mpp"):
-        return dist.mpp(
+        results = dist.mpp(
             x,
             c,
             n,
@@ -62,6 +62,9 @@ def mpp(model):
             on_d_is_0=on_d_is_0,
             offset=offset,
         )
+        results["params"] = np.atleast_1d(results["params"])
+        results.setdefault("gamma", 0.0)
+        return results
 
     x_, r, d, F = plotting_positions(
         x=x,
@@ -90,10 +93,8 @@ def mpp(model):
     y_pp = dist.mpp_y_transform(y_pp)
 
     if offset:
-        # I think this should be x[c != 1] and not in xl
         x_min = np.min(x_pp)
 
-        # fun = lambda gamma : -pearsonr(np.log(x - gamma), y_)[0]
         def fun(gamma):
             g = x_min - np.exp(-gamma)
             out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
@@ -116,8 +117,9 @@ def mpp(model):
 
     if offset:
         results["gamma"] = gamma
+    else:
+        results["gamma"] = 0.0
 
     results["params"] = params
-    results["rr"] = rr
 
     return results

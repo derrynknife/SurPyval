@@ -2,8 +2,6 @@ from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv
 from scipy.special import gamma as gamma_func
-from scipy.stats import uniform
-
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
@@ -20,36 +18,10 @@ class Beta_(ParametricFitter):
             param_names=["alpha", "beta"],
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="linear",
-            y_ticks=[
-                0.0001,
-                0.0002,
-                0.0003,
-                0.001,
-                0.002,
-                0.003,
-                0.005,
-                0.01,
-                0.02,
-                0.03,
-                0.05,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                0.95,
-                0.99,
-                0.999,
-                0.9999,
-            ],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None):
-        if (c is not None) & ((c == 0).all()):
+    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+        if (c is not None) and (c == 0).all():
             x = np.repeat(x, n)
             p = self._mom(x)
         else:
@@ -78,7 +50,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
+        sf : scalar or numpy array
             The value(s) of the reliability function at x.
 
         Examples
@@ -115,7 +87,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
+        cs : scalar or numpy array
             The value(s) of the conditional survival function at x.
 
         Examples
@@ -149,7 +121,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
+        ff : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -218,7 +190,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
+        hf : scalar or numpy array
             The value(s) of the instantaneous hazard rate at x.
 
         Examples
@@ -252,8 +224,8 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
-            The value(s) of the cumulative hazard function at x.
+        Hf : scalar or numpy array
+            The value(s) of the cumulative hazard rate at x.
 
         Examples
         --------
@@ -359,43 +331,6 @@ class Beta_(ParametricFitter):
         """
         return gamma_func(n + alpha) / (beta**n * gamma_func(alpha))
 
-    def random(self, size, alpha, beta):
-        r"""
-        Draws random samples from the distribution in shape `size`
-
-        Parameters
-        ----------
-
-        size : integer or tuple of positive integers
-            Shape or size of the random draw
-        alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            Another scale parameter for the Beta distribution
-
-        Returns
-        -------
-
-        random : scalar or numpy array
-            Random values drawn from the distribution in shape `size`
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Beta
-        >>> Beta.random(10, 3, 4)
-        array([0.48969376, 0.50266801, 0.66913503, 0.3031257 , 0.60897905,
-               0.34901845, 0.34196432, 0.37401123, 0.06191741, 0.17604693])
-        >>> Beta.random((5, 5), 3, 4)
-        array([[0.68575237, 0.39409872, 0.18546004, 0.51266116, 0.55043579],
-               [0.62656723, 0.69497065, 0.68958488, 0.37330801, 0.57053267],
-               [0.07330674, 0.68020665, 0.42907148, 0.51884251, 0.12159803],
-               [0.3566228 , 0.55493446, 0.59288881, 0.43542773, 0.31740851],
-               [0.82044756, 0.23062323, 0.35342936, 0.2902573 , 0.54522114]])
-        """
-        U = uniform.rvs(size=size)
-        return self.qf(U, alpha, beta)
-
     def log_df(self, x, alpha, beta):
         return (
             (alpha - 1) * np.log(x)
@@ -406,11 +341,11 @@ class Beta_(ParametricFitter):
     def log_ff(self, x, alpha, beta):
         return abetaincln(alpha, beta, x)
 
-    def mpp_y_transform(self, y, alpha, beta):
-        return self.qf(y, alpha, beta)
+    def mpp_y_transform(self, y, *params):
+        return self.qf(y, *params)
 
-    def mpp_inv_y_transform(self, y, alpha, beta):
-        return abetainc(y, alpha, beta)
+    def mpp_inv_y_transform(self, y, *params):
+        return abetainc(y, *params)
 
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
@@ -439,16 +374,6 @@ class Beta_(ParametricFitter):
         beta = term1 * (1 - mean)
 
         return alpha, beta
-
-    def var_R(self, dR, cv_matrix):
-        dr_dalpha = dR[:, 0]
-        dr_dbeta = dR[:, 1]
-        var_r = (
-            dr_dalpha**2 * cv_matrix[0, 0]
-            + dr_dbeta**2 * cv_matrix[1, 1]
-            + 2 * dr_dalpha * dr_dbeta * cv_matrix[0, 1]
-        )
-        return var_r
 
 
 Beta: ParametricFitter = Beta_("Beta")
