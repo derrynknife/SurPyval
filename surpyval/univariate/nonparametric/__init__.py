@@ -5,6 +5,7 @@ from .fleming_harrington import (
     fleming_harrington_variance,
 )
 from .kaplan_meier import KaplanMeier, greenwood_variance, kaplan_meier
+from .logrank import LogRankResult, logrank
 from .nelson_aalen import NelsonAalen, nelson_aalen, nelson_aalen_variance
 from .nonparametric import NonParametric
 from .plotting_positions import plotting_positions

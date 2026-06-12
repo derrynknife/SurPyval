@@ -793,6 +793,265 @@ class NonParametric:
                 "'bound' must be in ['two-sided', 'upper', 'lower']"
             )
 
+    @staticmethod
+    def _band_critical_value(
+        a_l, a_u, alpha_ci, standardized, n_sims, random_state
+    ):
+        # Critical value of the supremum of a Brownian bridge (for the
+        # Hall-Wellner band), or of a standardized Brownian bridge
+        # B(u)/sqrt(u(1 - u)) (for the equal precision band), over
+        # [a_l, a_u]. Computed by Monte Carlo simulation of bridge
+        # paths on a grid.
+        rng = np.random.default_rng(random_state)
+        m = 1000
+        u = np.arange(1, m + 1) / m
+        in_band = (u >= a_l) & (u <= a_u)
+        sups = np.empty(n_sims)
+        chunk = 1000
+        for start in range(0, n_sims, chunk):
+            size = min(chunk, n_sims - start)
+            W = np.cumsum(rng.standard_normal((size, m)) / np.sqrt(m), axis=1)
+            bridge = W - u * W[:, -1:]
+            paths = np.abs(bridge[:, in_band])
+            if standardized:
+                paths = paths / np.sqrt(u[in_band] * (1 - u[in_band]))
+            sups[start : start + size] = paths.max(axis=1)
+        return np.quantile(sups, 1 - alpha_ci)
+
+    def band(
+        self,
+        x=None,
+        method="hall-wellner",
+        bound_type="exp",
+        alpha_ci=0.05,
+        n_sims=10_000,
+        random_state=1,
+    ):
+        r"""
+        Simultaneous confidence band of the survival function.
+
+        The pointwise bounds from ``cb()`` cover the true value of the
+        survival function at each single time with probability
+        1 - alpha_ci, but the probability that the *whole* true curve
+        lies between them is lower, since the curve has many
+        opportunities to escape. A confidence band is widened so that,
+        with probability 1 - alpha_ci, the entire survival function
+        lies within the band over the observed range. Use the band, not
+        the pointwise bounds, to assess whether a hypothesised curve
+        (e.g. a fitted parametric distribution) is consistent with the
+        data as a whole.
+
+        Two classical bands are available:
+
+        - "hall-wellner": width proportional to
+          :math:`(1 + n\sigma^2(t))/\sqrt{n}`; tends to be relatively
+          wider in the middle of the curve.
+        - "nair" (equal precision): width proportional to the pointwise
+          standard error, i.e. the band is the pointwise interval
+          scaled by a larger critical value, so its width follows the
+          pointwise bounds everywhere.
+
+        Critical values are computed by Monte Carlo simulation of the
+        limiting Brownian bridge process, with a fixed default seed so
+        results are reproducible.
+
+        The band is only defined between the first and last observed
+        events (where the variance estimate is positive and finite);
+        NaN is returned outside that range. The asymptotic theory for
+        these bands is for right censored data; for Turnbull models
+        with interval censoring prefer ``bootstrap_cb()``.
+
+        Parameters
+        ----------
+
+        x : array like or scalar, optional
+            The values at which the band will be evaluated. Defaults to
+            the observed values.
+        method : ('hall-wellner', 'nair'), str, optional
+            The type of band. Defaults to 'hall-wellner'.
+        bound_type : ('exp', 'normal'), str, optional
+            As for ``cb()``: 'exp' applies the band on the log(-log)
+            scale, keeping it within [0, 1]. Defaults to 'exp'.
+        alpha_ci : scalar, optional
+            The level of significance of the band. Defaults to 0.05.
+        n_sims : int, optional
+            Number of simulated paths for the critical value.
+        random_state : int or numpy.random.Generator, optional
+            Seed for the critical value simulation. Defaults to a fixed
+            seed for reproducibility.
+
+        Returns
+        -------
+
+        band : numpy array
+            Array of shape (len(x), 2) with the ``[lower, upper]`` band
+            values for the survival function at each x.
+
+        References
+        ----------
+
+        Hall, W. J. and Wellner, J. A. (1980), "Confidence bands for a
+        survival curve from censored data", Biometrika 67, 133-143.
+
+        Nair, V. N. (1984), "Confidence bands for survival functions
+        with censored data: a comparative study", Technometrics 26,
+        265-275.
+
+        Klein, J. P. and Moeschberger, M. L. (2003), "Survival
+        Analysis", 2nd ed., Section 4.4.
+        """
+        if method not in ["hall-wellner", "nair"]:
+            raise ValueError("'method' must be in ['hall-wellner', 'nair']")
+        if bound_type not in ["exp", "normal"]:
+            raise ValueError("'bound_type' must be in ['exp', 'normal']")
+        if getattr(self, "greenwood", None) is None:
+            raise ValueError(
+                "Model has no variance estimate so confidence bands "
+                + "cannot be computed. This occurs for models created "
+                + "with 'fit_from_ecdf' since the at risk and death "
+                + "counts are unknown."
+            )
+
+        if getattr(self, "data", None) is not None and "n" in self.data:
+            N = float(self.data["n"].sum())
+        else:
+            N = float(np.max(self.r))
+
+        old_err_state = np.seterr(all="ignore")
+
+        sigma2 = self.greenwood
+        valid = (
+            np.isfinite(sigma2) & (sigma2 > 0) & (self.R > 0) & (self.R < 1)
+        )
+
+        if not valid.any():
+            np.seterr(**old_err_state)
+            raise ValueError(
+                "Band is undefined: no observations with a positive, "
+                + "finite variance estimate"
+            )
+
+        a = N * sigma2 / (1 + N * sigma2)
+        a_l = a[valid].min()
+        a_u = a[valid].max()
+
+        crit = self._band_critical_value(
+            a_l,
+            a_u,
+            alpha_ci,
+            standardized=(method == "nair"),
+            n_sims=n_sims,
+            random_state=random_state,
+        )
+
+        if method == "nair":
+            half_width = crit * np.sqrt(sigma2)
+        else:
+            half_width = crit * (1 + N * sigma2) / np.sqrt(N)
+
+        if bound_type == "exp":
+            # Band applied on the log(-log) scale, mirroring the
+            # pointwise exponential Greenwood bounds.
+            theta = np.log(-np.log(self.R))
+            se = half_width / np.abs(np.log(self.R))
+            lower = np.exp(-np.exp(theta + se))
+            upper = np.exp(-np.exp(theta - se))
+        else:
+            lower = self.R - half_width * self.R
+            upper = self.R + half_width * self.R
+
+        lower = np.where(valid, lower, np.nan)
+        upper = np.where(valid, upper, np.nan)
+
+        if x is None:
+            x = self.x
+        x = np.atleast_1d(x).astype(float)
+        idx = np.searchsorted(self.x, x, side="right") - 1
+        idx_c = np.clip(idx, 0, len(self.x) - 1)
+        out = np.empty((x.size, 2))
+        out[:, 0] = np.where(idx < 0, np.nan, lower[idx_c])
+        out[:, 1] = np.where(idx < 0, np.nan, upper[idx_c])
+        outside = (x < self.x.min()) | (x > self.x.max())
+        out[outside] = np.nan
+
+        np.seterr(**old_err_state)
+
+        return out
+
+    def smoothed_hf(self, x, bandwidth=None):
+        r"""
+        Kernel smoothed estimate of the hazard rate, using an
+        Epanechnikov kernel over the increments of the cumulative
+        hazard estimate:
+
+        .. math::
+            \hat{h}(t) = \frac{1}{b} \sum_{i} K\left (
+                \frac{t - x_i}{b} \right ) \Delta \hat{H}(x_i)
+
+        Contributions are renormalised near the boundaries of the
+        observed range so the estimate is not biased downward where the
+        kernel window extends past the data.
+
+        This is a better estimate of the hazard rate than ``hf()``,
+        which simply differences the cumulative hazard between the
+        requested points.
+
+        Parameters
+        ----------
+
+        x : array like or scalar
+            The values at which the hazard rate will be estimated.
+        bandwidth : scalar, optional
+            The kernel bandwidth in the units of x. Defaults to a rough
+            rule of thumb (one eighth of the observed range); for
+            serious use choose by inspection or cross-validation.
+
+        Returns
+        -------
+
+        hf : numpy array
+            The estimated hazard rate at each x. NaN outside the
+            observed range.
+
+        References
+        ----------
+
+        Klein, J. P. and Moeschberger, M. L. (2003), "Survival
+        Analysis", 2nd ed., Section 6.2.
+        """
+        x = np.atleast_1d(x).astype(float)
+
+        with np.errstate(all="ignore"):
+            dH = np.diff(np.hstack([[0.0], self.H]))
+        dH = np.where(np.isfinite(dH), dH, 0.0)
+
+        x_min = self.x.min()
+        x_max = self.x.max()
+        if bandwidth is None:
+            bandwidth = (x_max - x_min) / 8
+        if bandwidth <= 0:
+            raise ValueError("'bandwidth' must be positive")
+
+        u = (x[:, None] - self.x[None, :]) / bandwidth
+        kern = np.where(np.abs(u) <= 1, 0.75 * (1 - u**2), 0.0)
+        h = (kern * dH).sum(axis=1) / bandwidth
+
+        # Renormalise by the kernel mass that lies within the observed
+        # range, correcting the downward bias near the boundaries. The
+        # Epanechnikov CDF is (2 + 3v - v^3) / 4 on [-1, 1].
+        def epa_cdf(v):
+            v = np.clip(v, -1, 1)
+            return (2 + 3 * v - v**3) / 4
+
+        lo = (x - x_max) / bandwidth
+        hi = (x - x_min) / bandwidth
+        mass = epa_cdf(hi) - epa_cdf(lo)
+        with np.errstate(all="ignore"):
+            h = np.where(mass > 0, h / mass, np.nan)
+
+        h = np.where((x < x_min) | (x > x_max), np.nan, h)
+        return h
+
     def get_plot_data(self, **kwargs):
         y_scale_min = 0
         y_scale_max = 1

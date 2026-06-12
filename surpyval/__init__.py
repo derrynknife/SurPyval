@@ -6,9 +6,11 @@ from surpyval.distribution import Distribution
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
     KaplanMeier,
+    LogRankResult,
     NelsonAalen,
     NonParametric,
     Turnbull,
+    logrank,
     success_run,
 )
 from surpyval.univariate.parametric import (
