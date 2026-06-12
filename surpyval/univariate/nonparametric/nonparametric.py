@@ -701,6 +701,13 @@ class NonParametric:
         uncertainty in the EM allocation itself; the bootstrap does
         not.
 
+        Note that the Turnbull NPMLE only identifies the probability
+        mass within each Turnbull interval, not how it is distributed
+        inside one. Point estimates and bounds evaluated strictly
+        inside an interval therefore reflect the step convention rather
+        than an estimate of the underlying continuous survival
+        function, and are best evaluated at the interval bounds.
+
         Parameters
         ----------
 
