@@ -469,13 +469,18 @@ class Parametric(Distribution):
     def cs(self, x, X):
         r"""
 
-        The conditional survival of the model.
+        The conditional survival of the model; that is, the probability
+        that an item that has survived to ``X`` survives a further ``x``:
+
+        .. math::
+            R(x, X) = \frac{R(x + X)}{R(X)}
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values at which conditional survival is to be calculated.
+            The further durations at which conditional survival is to be
+            calculated.
         X : array like or scalar
             The value(s) at which it is known the item has survived
 
@@ -494,9 +499,7 @@ class Parametric(Distribution):
         0.00025840046151723767
         """
         x = np.array(x)
-        cs = np.array(
-            self.dist.cs(x - self.gamma, X - self.gamma, *self.params)
-        )
+        cs = np.array(self.dist.cs(x, X - self.gamma, *self.params))
         cs[cs > 1.0] = 1
         return cs
 

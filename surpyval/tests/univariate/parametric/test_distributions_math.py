@@ -6,6 +6,7 @@ Checks closed-form identities independent of fitting:
   2. ff(qf(p)) ≈ p       qf/ff roundtrip across the probability range
   3. qf(0.5)             equals the known closed-form median
   4. random() samples    have mean and variance matching analytical values
+  5. cs(x, X)            equals sf(x + X) / sf(X) (further survival)
 """
 
 import math
@@ -162,3 +163,30 @@ def test_random_sample_statistics(dist, params, true_mean, true_var):
     assert math.isclose(
         sample_var, true_var, rel_tol=VAR_REL_TOL
     ), f"{dist.name}: sample var {sample_var:.4f} vs expected {true_var}"
+
+
+# ---------------------------------------------------------------------------
+# 5. cs(x, X) == sf(x + X) / sf(X)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("dist, params", DIST_PARAMS, ids=DIST_PARAM_IDS)
+def test_cs_is_further_survival(dist, params):
+    """cs(x, X) must be the probability of surviving a further x given
+    survival to X, i.e. sf(x + X) / sf(X), for every distribution."""
+    X = dist.qf(0.3, *params)
+    x = np.array([dist.qf(p, *params) for p in [0.4, 0.5, 0.6]]) - X
+    expected = dist.sf(x + X, *params) / dist.sf(X, *params)
+    computed = dist.cs(x, X, *params)
+    assert np.allclose(
+        computed, expected, rtol=1e-9
+    ), f"{dist.name}: cs(x, X) != sf(x + X) / sf(X)"
+
+
+def test_parametric_cs_with_offset():
+    """Parametric.cs must honour the further-survival convention when the
+    distribution has a location offset (gamma)."""
+    model = Weibull.from_params([10.0, 3.0], gamma=2.0)
+    x, X = 3.0, 5.0
+    expected = model.sf(x + X) / model.sf(X)
+    assert np.allclose(model.cs(x, X), expected)

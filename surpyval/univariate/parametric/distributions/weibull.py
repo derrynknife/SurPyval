@@ -129,10 +129,10 @@ class Weibull_(ParametricFitter):
         >>> from surpyval import Weibull
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> Weibull.cs(x, 5, 3, 4)
-        array([2.21654222e+03, 1.84183662e+03, 8.25549630e+02, 9.51596070e+01,
-               1.00000000e+00])
+        array([2.52537548e-04, 3.00394073e-10, 2.45288508e-19, 1.48999440e-32,
+               5.42544000e-51])
         """
-        return self.sf(x, alpha, beta) / self.sf(X, alpha, beta)
+        return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
 
     def df(self, x, alpha, beta):
         r"""
