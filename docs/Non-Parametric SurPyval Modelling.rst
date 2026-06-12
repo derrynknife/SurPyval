@@ -62,7 +62,7 @@ The above shows that approximately 80% will survive up to a stress of 34. Theref
 
 It is up to the designer to determine whether this is acceptable.
 
-What if we want to take into account our uncertainty about the reliability. The non-parametric class automatically computes the Greenwood variance and uses that to compute the upper and lower confidence intervals. Let's plot the intervals to see.
+What if we want to take into account our uncertainty about the reliability. The non-parametric class automatically computes the variance of the estimate using the formula appropriate to the estimator (Greenwood's formula for Kaplan-Meier, Aalen's variance for Nelson-Aalen, and the tie-corrected variance for Fleming-Harrington) and uses that to compute the upper and lower confidence intervals. Let's plot the intervals to see.
 
 .. jupyter-execute::
 
@@ -81,9 +81,11 @@ The confidence bounds can also be used to estimate the probability of survival u
 
     print(str(bofors_steel_na.R_cb(34, bound='lower', interp='linear', alpha_ci=0.05).round(4).item() * 100) + "%")
 
-Therefore we can be 95% confident that the reliability at 34 is above 76%. You can also see that
-the confidence interval stretches the entire span of the possible [0, 1] interval at the higest value.
-This is because the variance at the final value is infinite using the Greenwood confidence interval.
+Therefore we can be 95% confident that the reliability at 34 is above 76%. For a Kaplan-Meier
+model with no right censoring the variance at the final value is undefined with Greenwood's
+formula, so the bounds at the last observation are filled with the last finite upper bound and
+zero for the lower bound. The Nelson-Aalen and Fleming-Harrington variances remain finite at
+the final value so their bounds are defined all the way to the last observation.
 
 
 Right Censored Data

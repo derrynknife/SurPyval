@@ -19,15 +19,16 @@ class NonParametricFitter:
         with np.errstate(all="ignore"):
             out.H = -np.log(out.R)
 
-        out.greenwood = self._compute_var(out.R, r, d)
+        out.greenwood = self._compute_var(estimator, r, d)
         return out
 
-    def _compute_var(self, R, r, d):
-        with np.errstate(all="ignore"):
-            var = d / (r * (r - d))
-            var = np.where(np.isfinite(var), var, np.nan)
-            greenwood = np.cumsum(var)
-        return greenwood
+    def _compute_var(self, estimator, r, d):
+        # Variance of the cumulative hazard estimate using the formula
+        # appropriate to the estimator, e.g. Greenwood's formula for
+        # Kaplan-Meier. See VAR_FUNCS for each.
+        return nonp.VAR_FUNCS[estimator](
+            np.asarray(r, dtype=float), np.asarray(d, dtype=float)
+        )
 
     def fit(
         self,
@@ -137,7 +138,7 @@ class NonParametricFitter:
             t_obj = self._fit(x, c, n, t, turnbull_estimator)
 
             out.greenwood = self._compute_var(
-                t_obj["R"], t_obj["r"], t_obj["d"]
+                turnbull_estimator, t_obj["r"], t_obj["d"]
             )
             for k, v in t_obj.items():
                 setattr(out, k, v)
@@ -195,7 +196,7 @@ class NonParametricFitter:
         >>> x = [1, 2, 3, 4, 5, 6]
         >>> r = [10, 8, 6, 4, 3, 2]
         >>> d = [2, 1, 1, 1, 1, 1]
-        >>> model = NelsonAalen.from_xrd(x)
+        >>> model = NelsonAalen.from_xrd(x, r, d)
         >>> print(model)
         Non-Parametric SurPyval Model
         =============================

@@ -5,6 +5,25 @@ from surpyval.univariate.nonparametric.nonparametric_fitter import (
 )
 
 
+def nelson_aalen_variance(r, d):
+    """
+    Aalen's (Poisson) estimate of the variance of the Nelson-Aalen
+    cumulative hazard estimator:
+
+    Var(H) = sum(d / r**2)
+
+    Recommended by Klein (1991) for its small sample performance.
+
+    Klein, J. P. (1991), "Small sample moments of some estimators of
+    the variance of the Kaplan-Meier and Nelson-Aalen estimators",
+    Scandinavian Journal of Statistics, 18(4), 333-340.
+    """
+    with np.errstate(all="ignore"):
+        var = d / r**2
+        var = np.where(np.isfinite(var), var, np.nan)
+        return np.cumsum(var)
+
+
 def nelson_aalen(r, d):
     H = np.cumsum(d / r)
     H[np.isnan(H)] = np.inf
@@ -20,6 +39,13 @@ class NelsonAalen_(NonParametricFitter):
 
     .. math::
         R(x) = e^{-\sum_{i:x_{i} \leq x}^{} \frac{d_{i} }{r_{i}}}
+
+    The variance of the cumulative hazard used for confidence bounds is
+    estimated with Aalen's (Poisson) estimator, as recommended by
+    Klein (1991):
+
+    .. math::
+        \widehat{Var}(H(x)) = \sum_{i:x_{i} \leq x} \frac{d_{i}}{r_{i}^{2}}
 
     Examples
     --------

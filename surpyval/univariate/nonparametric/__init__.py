@@ -1,7 +1,11 @@
 from .filliben import filliben
-from .fleming_harrington import FlemingHarrington, fleming_harrington
-from .kaplan_meier import KaplanMeier, kaplan_meier
-from .nelson_aalen import NelsonAalen, nelson_aalen
+from .fleming_harrington import (
+    FlemingHarrington,
+    fleming_harrington,
+    fleming_harrington_variance,
+)
+from .kaplan_meier import KaplanMeier, greenwood_variance, kaplan_meier
+from .nelson_aalen import NelsonAalen, nelson_aalen, nelson_aalen_variance
 from .nonparametric import NonParametric
 from .plotting_positions import plotting_positions
 from .rank_adjust import rank_adjust
@@ -15,10 +19,17 @@ FIT_FUNCS = {
     "Turnbull": turnbull,
 }
 
+VAR_FUNCS = {
+    "Nelson-Aalen": nelson_aalen_variance,
+    "Kaplan-Meier": greenwood_variance,
+    "Fleming-Harrington": fleming_harrington_variance,
+}
+
 PLOTTING_METHODS = [
     "Blom",
     "Median",
     "ECDF",
+    "ECDF_Adj",
     "Modal",
     "Midpoint",
     "Mean",

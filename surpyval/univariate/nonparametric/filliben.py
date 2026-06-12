@@ -1,6 +1,6 @@
 import numpy as np
 
-from surpyval.univariate.nonparametric import rank_adjust
+from surpyval.univariate.nonparametric.rank_adjust import rank_adjust
 from surpyval.utils import xcnt_handler
 
 

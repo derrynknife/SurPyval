@@ -140,11 +140,10 @@ class NonParametric:
         >>> from surpyval import NelsonAalen
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> model = NelsonAalen.fit(x)
-        >>> model.ff(2)
-        array([0.36237185])
-        >>> model.ff([1., 1.5, 2., 2.5])
-        array([0.18126925, 0.18126925, 0.36237185, 0.36237185])
+        >>> model.hf([1.5, 2.5, 3.5])
+        array([0.25      , 0.25      , 0.33333333])
         """
+        x = np.atleast_1d(x)
         idx = np.argsort(x)
         rev = np.argsort(idx)
         x = x[idx]
@@ -153,7 +152,8 @@ class NonParametric:
                 [self.Hf(x[0], interp=interp), self.Hf(x, interp=interp)]
             )
         )
-        hf[0] = hf[1]
+        if hf.size > 1:
+            hf[0] = hf[1]
         hf = pd.Series(hf)
         hf[hf == 0] = np.nan
         hf = hf.ffill().values
@@ -188,10 +188,8 @@ class NonParametric:
         >>> from surpyval import NelsonAalen
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> model = NelsonAalen.fit(x)
-        >>> model.df(2)
-        array([0.28693267])
-        >>> model.df([1., 1.5, 2., 2.5])
-        array([0.16374615, 0.        , 0.15940704, 0.        ])
+        >>> model.df([1.5, 2.5, 3.5])
+        array([0.20468269, 0.15940704, 0.15229351])
         """
         return self.hf(x, interp=interp) * np.exp(-self.Hf(x, interp=interp))
 
@@ -225,8 +223,8 @@ class NonParametric:
         >>> model = NelsonAalen.fit(x)
         >>> model.Hf(2)
         array([0.45])
-        >>> model.df([1., 1.5, 2., 2.5])
-        model.Hf([1., 1.5, 2., 2.5])
+        >>> model.Hf([1., 1.5, 2., 2.5])
+        array([0.2 , 0.2 , 0.45, 0.45])
         """
         return -np.log(self.sf(x, interp=interp))
 
@@ -243,10 +241,15 @@ class NonParametric:
         r"""
 
         Confidence bounds of the ``on`` function at the
-        ``alpa_ci`` level of significance. Can be the upper,
+        ``alpha_ci`` level of significance. Can be the upper,
         lower, or two-sided confidence by changing value of ``bound``.
-        Can change the bound type to be regular or exponential
+        Can change the bound type to be regular (normal) or exponential
         using either the 't' or 'z' statistic.
+
+        The variance used is the one appropriate to the estimator with
+        which the model was fitted: Greenwood's formula for Kaplan-Meier,
+        Aalen's (Poisson) variance for Nelson-Aalen, and the tie-corrected
+        variance for Fleming-Harrington.
 
         Parameters
         ----------
@@ -265,33 +268,52 @@ class NonParametric:
             interpolated values if desired. Defaults to step.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
-        bound_type : ('exp', 'regular'), str, optional
-            The method with which the bounds will be calculated. Using regular
-            will allow for the bounds to exceed 1 or be less than 0. Defaults
-            to exp as this ensures the bounds are within 0 and 1.
+        bound_type : ('exp', 'normal'), str, optional
+            The method with which the bounds will be calculated. Using
+            'normal' (i.e. the plain Greenwood-style interval) will allow
+            for the bounds to exceed 1 or be less than 0 and tends to
+            undercover in small samples. Defaults to 'exp' (the
+            log(-log) transformed interval) as this ensures the bounds
+            are within 0 and 1 and has better coverage.
         dist : ('t', 'z'), str, optional
             The statistic to use in calculating the bounds (student-t or
-            normal). Defaults to the normal (z).
+            normal). Defaults to the normal (z). The 't' option is a
+            conservative heuristic which uses the at risk count minus one
+            at each point as the degrees of freedom; it is not supported
+            by asymptotic theory, widens (overcovers) as the at risk
+            count falls, and is undefined when only one item remains at
+            risk.
 
         Returns
         -------
 
         cb : scalar or numpy array
             The value(s) of the upper, lower, or both confidence bound(s) of
-            the selected function at x
+            the selected function at x. For two-sided bounds the result has
+            one row per value of x with the columns being the
+            ``[lower, upper]`` bounds of the ``on`` function.
+
+        Notes
+        -----
+
+        If the last observation is an event (i.e. there is no right
+        censoring) the Kaplan-Meier variance is undefined at, and after,
+        that point. The bounds there are filled with the last finite
+        upper bound and 0 for the lower bound, rather than NaN, so that
+        bounds can be drawn up to the last observation.
 
         Examples
         --------
         >>> from surpyval import NelsonAalen
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> model = NelsonAalen.fit(x)
-        >>> model.cb([1., 1.5, 2., 2.5], bound='lower', dist='t')
-        array([0.11434813, 0.11434813, 0.04794404, 0.04794404])
+        >>> model.cb([1., 1.5, 2., 2.5], bound='lower')
+        array([0.35485348, 0.35485348, 0.2345113 , 0.2345113 ])
         >>> model.cb([1., 1.5, 2., 2.5])
-        array([[0.97789387, 0.16706394],
-               [0.97789387, 0.16706394],
-               [0.91235117, 0.10996882],
-               [0.91235117, 0.10996882]])
+        array([[0.24175891, 0.97222045],
+               [0.24175891, 0.97222045],
+               [0.16288538, 0.89441253],
+               [0.16288538, 0.89441253]])
 
         References
         ----------
@@ -350,6 +372,13 @@ class NonParametric:
             raise ValueError("'bound_type' must be in ['exp', 'normal']")
         if dist not in ["t", "z"]:
             raise ValueError("'dist' must be in ['t', 'z']")
+        if getattr(self, "greenwood", None) is None:
+            raise ValueError(
+                "Model has no variance estimate so confidence bounds "
+                + "cannot be computed. This occurs for models created "
+                + "with 'fit_from_ecdf' since the at risk and death "
+                + "counts are unknown."
+            )
 
         confidence = 1.0 - alpha_ci
 
@@ -423,14 +452,26 @@ class NonParametric:
         return R_out
 
     def random(self, size):
-        return np.random.choice(self.x, size=size)
+        r"""
+        Draws random samples from the fitted distribution. Each observed
+        value x is drawn with the probability mass the estimated survival
+        function assigns to it. If the estimate does not reach zero (e.g.
+        due to right censoring) the remaining mass is distributed over the
+        observed values, i.e. sampling is conditional on an event occurring
+        at one of the observed values.
+        """
+        with np.errstate(all="ignore"):
+            p = -np.diff(np.hstack([[1.0], self.R]))
+        p = np.where(np.isfinite(p), p, 0)
+        p = p / p.sum()
+        return np.random.choice(self.x, size=size, p=p)
 
     def get_plot_data(self, **kwargs):
         y_scale_min = 0
         y_scale_max = 1
 
         # x-axis
-        x_min = 0
+        x_min = min(0, np.min(self.x))
         x_max = np.max(self.x)
 
         diff = (x_max - x_min) / 10
@@ -498,5 +539,8 @@ class NonParametric:
         out.F = 1 - out.R
         with np.errstate(all="ignore"):
             out.H = -np.log(out.R)
+        # Without r and d there is no variance estimate, and therefore
+        # no confidence bounds, for the model.
+        out.greenwood = None
 
         return out
