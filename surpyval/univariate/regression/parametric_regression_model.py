@@ -403,7 +403,7 @@ class ParametricRegressionModel:
             return self._bic
         else:
             self._bic = (
-                self.k * np.log(self.data["n"][self.data["c"] == 0].sum())
+                self.k * np.log(self.data.n[self.data.c == 0].sum())
                 + 2 * self.neg_ll()
             )
             return self._bic
@@ -476,7 +476,7 @@ class ParametricRegressionModel:
             return self._aic_c
         else:
             k = len(self.params)
-            n = self.data["n"].sum()
+            n = self.data.n.sum()
             self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
             return self._aic_c
 

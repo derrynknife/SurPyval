@@ -52,6 +52,26 @@ def test_fixed_all_params():
     assert np.all(model.cov_matrix == 0)
 
 
+def test_fixed_with_free_only_init():
+    # An initial guess covering only the free parameters is merged with
+    # the fixed values. This used to work only when the fixed parameters
+    # came last in the parameter vector (silent zip truncation), and
+    # crashed once the transforms became strict.
+    x = [87.0, 100.0]
+    c = [0, 1]
+    n = [1, 9]
+    model = Weibull.fit(x, c, n, fixed={"beta": 1.3776}, init=[100.0])
+    assert model.params[1] == 1.3776
+
+    np.random.seed(3)
+    x = Weibull.random(100, 10, 2)
+    model = Weibull.fit(x, fixed={"alpha": 10.0}, init=[2.0])
+    assert model.params[0] == 10.0
+    # And a full-length init still works
+    model = Weibull.fit(x, fixed={"alpha": 10.0}, init=[10.0, 2.0])
+    assert model.params[0] == 10.0
+
+
 def test_mpp_fixed_raises():
     # MPP cannot honour fixed parameters; it used to silently ignore
     # them and return a fully estimated model

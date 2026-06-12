@@ -92,22 +92,25 @@ negative makes it slower.
 SurPyval supports all four families, each available as pre-built instances for
 every standard distribution and as factory functions for custom combinations:
 
-+-------------------+--------------------------------------+----------------------------------------+
-| Family            | Effect of covariates                 | Ready-to-use examples                  |
-+===================+======================================+========================================+
-| Proportional      | Multiplies the hazard rate           | ``WeibullPH``, ``ExponentialPH``, …    |
-| Hazards (PH)      | :math:`h(x|Z) = h_0(x)\,\phi(Z)`    |                                        |
-+-------------------+--------------------------------------+----------------------------------------+
-| Accelerated       | Scales the time axis                 | ``WeibullAFT``, ``LogNormalAFT``, …    |
-| Failure Time      | :math:`H(x|Z) = H_0(\phi(Z)\,x)`    |                                        |
-| (AFT)             |                                      |                                        |
-+-------------------+--------------------------------------+----------------------------------------+
-| Proportional      | Scales the survival odds             | ``WeibullPO``, ``LogisticPO``, …       |
-| Odds (PO)         | :math:`O(x|Z) = O_0(x)\,\phi(Z)`    |                                        |
-+-------------------+--------------------------------------+----------------------------------------+
-| Accelerated Life  | Substitutes the life parameter       | ``AcceleratedLife(Weibull, Power)``,   |
-| (AL)              | with a physics-motivated function    | ``AcceleratedLife(Weibull, Eyring)``   |
-+-------------------+--------------------------------------+----------------------------------------+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 42 36
+
+   * - Family
+     - Effect of covariates
+     - Ready-to-use examples
+   * - Proportional Hazards (PH)
+     - Multiplies the hazard rate :math:`h(x|Z) = h_0(x)\,\phi(Z)`
+     - ``WeibullPH``, ``ExponentialPH``, …
+   * - Accelerated Failure Time (AFT)
+     - Scales the time axis :math:`H(x|Z) = H_0(\phi(Z)\,x)`
+     - ``WeibullAFT``, ``LogNormalAFT``, …
+   * - Proportional Odds (PO)
+     - Scales the survival odds :math:`O(x|Z) = O_0(x)\,\phi(Z)`
+     - ``WeibullPO``, ``LogisticPO``, …
+   * - Accelerated Life (AL)
+     - Substitutes the life parameter with a physics-motivated function
+     - ``AcceleratedLife(Weibull, Power)``, ``AcceleratedLife(Weibull, Eyring)``
 
 
 Semi-Parametric — Cox Proportional Hazards
@@ -212,7 +215,7 @@ a parametric PH model for any surpyval distribution:
 .. jupyter-execute::
 
     from surpyval import LogNormal
-    from surpyval.regression import PH
+    from surpyval import PH
 
     model = PH(LogNormal).fit(x=x, Z=Z, c=c)
     model
@@ -274,7 +277,7 @@ For distributions not in the pre-built list:
 .. jupyter-execute::
 
     from surpyval import Gamma
-    from surpyval.regression import AFT
+    from surpyval import AFT
 
     model = AFT(Gamma).fit(x=x, Z=Z, c=c)
     model
@@ -340,7 +343,7 @@ The ``PO`` factory accepts any distribution:
 .. jupyter-execute::
 
     from surpyval import Weibull
-    from surpyval.regression import PO
+    from surpyval import PO
 
     model = PO(Weibull).fit(x=x, Z=Z, c=c)
     model
@@ -386,35 +389,44 @@ Available life models
 
 The choice of life model depends on the physical failure mechanism:
 
-+------------------------+------------------------------------------+--------------------------------------+
-| Life model             | Formula :math:`\phi(Z)`                  | Typical use                          |
-+========================+==========================================+======================================+
-| ``ExponentialLifeModel``| :math:`b \cdot e^{a/Z}` (Arrhenius)    | Thermally-activated (chemical,       |
-|                        |                                          | diffusion, electromigration)         |
-+------------------------+------------------------------------------+--------------------------------------+
-| ``Eyring``             | :math:`Z^{-1} e^{-(c - a/Z)}`           | Quantum-mechanical processes;        |
-|                        |                                          | more accurate than Arrhenius at      |
-|                        |                                          | extreme temperatures                 |
-+------------------------+------------------------------------------+--------------------------------------+
-| ``InversePower``       | :math:`1 / (a \cdot Z^n)`               | Voltage, electrical field,           |
-|                        |                                          | mechanical fatigue                   |
-+------------------------+------------------------------------------+--------------------------------------+
-| ``Power``              | :math:`a \cdot Z^n`                      | Same as InversePower but with        |
-|                        |                                          | life increasing with stress          |
-+------------------------+------------------------------------------+--------------------------------------+
-| ``Linear``             | :math:`a + b \cdot Z`                    | Simple first-order approximation;    |
-|                        |                                          | valid over narrow stress ranges      |
-+------------------------+------------------------------------------+--------------------------------------+
-| ``DualExponential``    | :math:`c \cdot e^{a/Z_1} e^{b/Z_2}`    | Two thermal stresses                 |
-+------------------------+------------------------------------------+--------------------------------------+
-| ``DualPower``          | :math:`c \cdot Z_1^m Z_2^n`             | Two non-thermal stresses             |
-+------------------------+------------------------------------------+--------------------------------------+
-| ``PowerExponential``   | :math:`c \cdot e^{a/Z_1} Z_2^n`        | One thermal + one non-thermal        |
-+------------------------+------------------------------------------+--------------------------------------+
-| ``InverseEyring``      | Reciprocal of Eyring                     | Inverse Eyring relationship          |
-+------------------------+------------------------------------------+--------------------------------------+
-| ``InverseExponential`` | Reciprocal of Arrhenius                  | Inverse Arrhenius relationship       |
-+------------------------+------------------------------------------+--------------------------------------+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 38 36
+
+   * - Life model
+     - Formula :math:`\phi(Z)`
+     - Typical use
+   * - ``ExponentialLifeModel``
+     - :math:`b \cdot e^{a/Z}` (Arrhenius)
+     - Thermally-activated (chemical, diffusion, electromigration)
+   * - ``Eyring``
+     - :math:`Z^{-1} e^{-(c - a/Z)}`
+     - Quantum-mechanical processes; more accurate than Arrhenius at
+       extreme temperatures
+   * - ``InversePower``
+     - :math:`1 / (a \cdot Z^n)`
+     - Voltage, electrical field, mechanical fatigue
+   * - ``Power``
+     - :math:`a \cdot Z^n`
+     - Same as InversePower but with life increasing with stress
+   * - ``Linear``
+     - :math:`a + b \cdot Z`
+     - Simple first-order approximation; valid over narrow stress ranges
+   * - ``DualExponential``
+     - :math:`c \cdot e^{a/Z_1} e^{b/Z_2}`
+     - Two thermal stresses
+   * - ``DualPower``
+     - :math:`c \cdot Z_1^m Z_2^n`
+     - Two non-thermal stresses
+   * - ``PowerExponential``
+     - :math:`c \cdot e^{a/Z_1} Z_2^n`
+     - One thermal + one non-thermal
+   * - ``InverseEyring``
+     - Reciprocal of Eyring
+     - Inverse Eyring relationship
+   * - ``InverseExponential``
+     - Reciprocal of Arrhenius
+     - Inverse Arrhenius relationship
 
 A note on units: the stress variable :math:`Z` for Arrhenius and Eyring should
 be in Kelvin (absolute temperature), not Celsius.
@@ -425,7 +437,7 @@ Using the factory
 .. jupyter-execute::
 
     from surpyval import Weibull
-    from surpyval.regression import AcceleratedLife, Power, ExponentialLifeModel
+    from surpyval import AcceleratedLife, Power, ExponentialLifeModel
 
     # Discrete stress levels — three temperatures in Kelvin
     stress = np.array([358.]*20 + [378.]*20 + [398.]*20)  # 85°C, 105°C, 125°C
@@ -484,7 +496,7 @@ your own by subclassing ``LifeModel``. The two methods you must implement are:
 
 .. jupyter-execute::
 
-    from surpyval.regression import LifeModel, AcceleratedLife
+    from surpyval import LifeModel, AcceleratedLife
     from surpyval import Weibull
     import autograd.numpy as anp
 
@@ -524,7 +536,7 @@ using the same Weibull baseline:
 .. jupyter-execute::
 
     from surpyval import WeibullAFT, WeibullPH
-    from surpyval.regression import PO
+    from surpyval import PO
     from surpyval import Weibull
 
     models = {

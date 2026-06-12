@@ -133,3 +133,21 @@ def test_formula_interface_matches_Z_cols():
     )
 
     assert np.allclose(model_z.beta, model_f.beta)
+
+
+def test_parametric_ph_aic_bic():
+    # ParametricRegressionModel.aic/bic crashed: the PH fitter never set
+    # model.k, and bic/aic_c indexed SurpyvalData like a dict.
+    from surpyval import Weibull, WeibullPH
+
+    np.random.seed(1)
+    n = 100
+    Z = np.random.binomial(1, 0.5, n).reshape(-1, 1)
+    x = Weibull.random(n, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    model = WeibullPH.fit(x=x, Z=Z)
+
+    assert model.k == 3
+    assert np.isfinite(model.aic())
+    assert np.isfinite(model.aic_c())
+    assert np.isfinite(model.bic())
+    assert model.aic() < model.aic_c()

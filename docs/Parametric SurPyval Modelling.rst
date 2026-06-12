@@ -178,7 +178,7 @@ Surpyval has the capacity to handle arbitrary truncated data. A common occurence
     import surpyval as surv
 
     np.random.seed(10)
-    x = surv.Weibull.random(100, alpha=100, beta=0.6)
+    x = surv.Weibull.random(100, 100, 0.6)
     # Keep only those values greater than 250
     threshold = 25
     x = x[x > threshold]
@@ -225,7 +225,7 @@ The example from above can be continued for right-truncated data as well.
     import surpyval as surv
 
     np.random.seed(10)
-    x = surv.Normal.random(100, mu=100, sigma=10)
+    x = surv.Normal.random(100, 100, 10)
     tl = 85
     tr = 115
     # Truncate the data

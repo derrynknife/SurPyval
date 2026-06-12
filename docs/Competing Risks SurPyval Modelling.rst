@@ -38,7 +38,7 @@ times, a cause indicator, and optional censoring flags:
 
     # Simulated data: two competing causes
     np.random.seed(42)
-    t1 = Weibull.random(100, alpha=50, beta=2.5)   # cause 1 latent times
+    t1 = Weibull.random(100, 50, 2.5)   # cause 1 latent times
     t2 = Exponential.random(100, 1./80)             # cause 2 latent times
 
     # Observed time is the minimum; cause is which latent time was smaller

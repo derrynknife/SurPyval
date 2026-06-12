@@ -923,6 +923,14 @@ class ParametricFitter:
                     init = np.concatenate([init, [f_0_init]])
 
             init = np.atleast_1d(init)
+            if fixed and len(init) == len(not_fixed):
+                # The initial guess covers only the free parameters;
+                # merge it with the fixed values to get the full vector
+                full_init = np.zeros(len(model.param_map))
+                full_init[not_fixed] = init
+                for name, value in fixed.items():
+                    full_init[model.param_map[name]] = value
+                init = full_init
             init = transform(init)
             init = init[not_fixed]
             fitting_info["init"] = init
