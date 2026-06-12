@@ -24,7 +24,12 @@ def mle(model):
     offset, lfp, zi = model.offset, model.lfp, model.zi
 
     if hasattr(model.dist, "mle"):
-        return model.dist.mle(model.surv_data)
+        results = model.dist.mle(model.surv_data)
+        results["params"] = np.atleast_1d(results["params"])
+        results.setdefault("gamma", 0.0)
+        results.setdefault("f0", 0.0)
+        results.setdefault("p", 1.0)
+        return results
 
     results = {}
 

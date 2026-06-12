@@ -65,6 +65,7 @@ def mse(model):
         results["gamma"] = params[0]
         results["params"] = params[1:]
     else:
+        results["gamma"] = 0.0
         results["params"] = params
 
     return results

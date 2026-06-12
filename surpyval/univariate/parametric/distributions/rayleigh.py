@@ -393,12 +393,12 @@ class Rayleigh_(ParametricFitter):
                 params = np.polyfit(x_pp, y_pp, 1)
                 sigma = np.sqrt(0.5) * (1.0 / params[0])
                 gamma = -params[1] / params[0]
-                params = [sigma]
+                params = np.array([sigma])
             elif rr == "x":
                 params = np.polyfit(y_pp, x_pp, 1)
                 sigma = np.sqrt(0.5) * (params[0])
                 gamma = params[1]
-                params = [sigma]
+                params = np.array([sigma])
 
             return {"params": params, "gamma": gamma}
 
@@ -412,7 +412,7 @@ class Rayleigh_(ParametricFitter):
                 gradient = np.linalg.lstsq(y_pp, x_pp, rcond=None)[0]
                 sigma = np.sqrt(0.5) * (gradient[0])
 
-            params = [sigma]
+            params = np.array([sigma])
 
             return {"params": params}
 

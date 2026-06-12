@@ -416,7 +416,7 @@ class Exponential_(ParametricFitter):
         y_pp = self.mpp_y_transform(F)
 
         mask = np.isfinite(y_pp)
-        if mask.any():
+        if not mask.all():
             warnings.warn(
                 "Some Infinite values encountered in plotting points and have \
                 been ignored.",
@@ -431,8 +431,8 @@ class Exponential_(ParametricFitter):
             elif rr == "x":
                 params = np.polyfit(y_pp, x_pp, 1)
             failure_rate = params[0]
-            offset = -params[1] * (1.0 / failure_rate)
-            return tuple([offset, failure_rate])
+            gamma = -params[1] * (1.0 / failure_rate)
+            return {"params": np.array([failure_rate]), "gamma": gamma}
         else:
             if rr == "y":
                 x_pp = x_pp[:, np.newaxis]
@@ -441,7 +441,7 @@ class Exponential_(ParametricFitter):
                 y_pp = y_pp[:, np.newaxis]
                 mttf = np.linalg.lstsq(y_pp, x_pp, rcond=None)[0]
                 failure_rate = 1.0 / mttf
-            return tuple([failure_rate[0]])
+            return {"params": np.array([failure_rate[0]])}
 
 
 Exponential: ParametricFitter = Exponential_("Exponential")

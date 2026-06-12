@@ -485,7 +485,7 @@ class Gamma_(ParametricFitter):
                 gamma = -params[1] / beta
 
             results["gamma"] = gamma
-            results["params"] = [alpha, beta]
+            results["params"] = np.array([alpha, beta])
 
             return results
         else:
@@ -514,7 +514,7 @@ class Gamma_(ParametricFitter):
                 )[0][0]
                 beta = 1.0 / beta
 
-            results["params"] = [alpha, beta]
+            results["params"] = np.array([alpha, beta])
 
             return results
 

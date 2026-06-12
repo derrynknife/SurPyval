@@ -889,13 +889,8 @@ class ParametricFitter:
         for k, v in results.items():
             setattr(model, k, v)
 
-        # Only needed since not all models return the params
-        # as a numpy array... which ought to be fixed.
-        model.params = np.atleast_1d(model.params)
-
-        if hasattr(model, "params"):
-            for k, v in zip(self.param_names, model.params):
-                setattr(model, k, v)
+        for k, v in zip(self.param_names, model.params):
+            setattr(model, k, v)
 
         # Set the support of the distribution.
         if offset:
