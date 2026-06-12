@@ -188,7 +188,76 @@ The broken convergence-failure handling in each copy was fixed (all three now em
 
 ---
 
-## 5. Semi-Parametric Regression — Future Work
+## 5. Univariate Non-Parametric Module — Remaining Work
+
+The June 2026 confidence-bound review fixed the per-estimator variance
+formulas (Greenwood for KM, Aalen for NA, tie-corrected for FH), the
+`random()`/`qf`/`mean` correctness bugs, and added quantile and RMST
+intervals, a bootstrap, simultaneous confidence bands, the log-rank
+test, and a smoothed hazard estimator. The following engineering debt
+in `surpyval/univariate/nonparametric/` remains.
+
+### Turnbull EM performance and convergence control
+**File:** `surpyval/univariate/nonparametric/turnbull.py`
+
+The EM loop builds `dok_matrix` sparse matrices and iterates over
+`.keys()`/`.values()` in Python, which dominates runtime (the bootstrap
+and any simulation involving Turnbull are noticeably slow). The
+convergence criterion is hardcoded — `np.allclose(p, p_prev,
+rtol=1e-30, atol=1e-30)` with a silent `iters < 1000` cap — so a
+non-converged fit is returned without warning, and callers cannot
+trade accuracy for speed. Expose `tol` and `max_iter` as `fit`
+parameters, emit a `warnings.warn` when the cap is hit without
+convergence, and act on the existing in-file TODO to do row-wise
+iteration on the sparse matrices.
+
+### `random()` uses the legacy global RNG
+**File:** `nonparametric.py` (`NonParametric.random`, ~line 454)
+
+`random()` calls `np.random.choice`, drawing on the legacy global
+random state, so it cannot be seeded locally and is inconsistent with
+the new `bootstrap_cb`/`band` methods that already accept a
+`random_state`. Add a `random_state` argument and route through
+`np.random.default_rng`, matching the parametric side.
+
+### No serialization
+Parametric models expose `to_dict`/`to_json`; `NonParametric` has
+nothing. A fitted non-parametric model (its `x`, `R`, `r`, `d`,
+`greenwood`, and estimator metadata) cannot be persisted or
+round-tripped. Add `to_dict`/`from_dict` (and the JSON wrappers) and
+fold the result into the empty `test_to_dict.py` once the general
+parametric path is also covered.
+
+### `interp='cubic'` can violate monotonicity
+**File:** `nonparametric.py` (`interp_function`)
+
+The survival function is monotone non-increasing, but `interp1d(...,
+kind='cubic')` can overshoot and produce a non-monotone — even
+out-of-`[0, 1]` — interpolated curve, which then propagates into `Hf`,
+`hf`, and the interpolated confidence bounds. Switch the smooth
+interpolation to a shape-preserving monotone scheme
+(`scipy.interpolate.PchipInterpolator`) so interpolated curves remain
+valid survival functions.
+
+### `dist='t'` confidence-bound heuristic
+**File:** `nonparametric.py` (`R_cb`)
+
+The `dist='t'` option is documented as an unfounded conservative
+heuristic (degrees of freedom from the at-risk count, undefined at the
+last point). It is retained only for backward compatibility; decide
+whether to formally deprecate and remove it, or keep it and accept the
+maintenance of a statistically unjustified path.
+
+### Type hints and residual test gaps
+The module is untyped despite the package shipping `py.typed` (see also
+section 4). The new behaviour is well covered, but `plot()` with
+non-step `interp`, the `set_lower_limit` path in
+`NonParametricFitter.fit`, and the `from_xrd` entry point still have no
+direct tests.
+
+---
+
+## 6. Semi-Parametric Regression — Future Work
 
 Four semi-parametric models are candidates for addition, in priority order:
 
@@ -206,7 +275,7 @@ The semi-parametric counterpart to Cox PH. Fits `log(T) = β'Z + ε` without ass
 
 ---
 
-## 6. Time-Varying Covariates and Truncation (to be confirmed)
+## 7. Time-Varying Covariates and Truncation (to be confirmed)
 
 Full support for time-varying covariates (TVCs) and left/right truncation across all regression model families needs to be designed and confirmed before implementation. Key points established so far:
 
@@ -220,6 +289,6 @@ Full support for time-varying covariates (TVCs) and left/right truncation across
 
 ---
 
-## 7. Long-term: Replace `autograd` with JAX (deferred)
+## 8. Long-term: Replace `autograd` with JAX (deferred)
 
 `autograd` (HIPS/autograd) is in low-activity maintenance mode with no GPU support. JAX is the spiritual successor and a near-drop-in replacement for `autograd.numpy` patterns. The interim steps (inlining the `autograd_gamma` gradients into `surpyval/utils/autograd_gamma_compat.py` and upgrading to `autograd` 1.8 for numpy 2.x compatibility) are done, so there is no urgency. A JAX migration can be revisited once the library is otherwise stable — it is a multi-week effort touching every gradient computation.

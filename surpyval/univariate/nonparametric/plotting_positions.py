@@ -114,8 +114,7 @@ def plotting_positions(
     N = n.sum()
 
     if heuristic == "Filliben":
-        # Needs work
-        out = nonp.filliben(x, c, n)
+        out = nonp.filliben(x, c, n, t)
     elif heuristic == "Nelson-Aalen":
         x, r, d = xcnt_to_xrd(x, c, n, t)
         R = nonp.nelson_aalen(r, d)

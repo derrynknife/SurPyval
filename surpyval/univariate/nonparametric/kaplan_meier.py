@@ -5,6 +5,22 @@ from surpyval.univariate.nonparametric.nonparametric_fitter import (
 )
 
 
+def greenwood_variance(r, d):
+    """
+    Greenwood's formula for the variance of the cumulative hazard
+    (equivalently, of -log(R)) of the Kaplan-Meier estimator:
+
+    Var(H) = sum(d / (r * (r - d)))
+
+    Where d == r (i.e. the survival function reaches zero) the variance
+    is undefined and NaN is returned at, and after, that point.
+    """
+    with np.errstate(all="ignore"):
+        var = d / (r * (r - d))
+        var = np.where(np.isfinite(var), var, np.nan)
+        return np.cumsum(var)
+
+
 def kaplan_meier(r, d):
     R = 1 - (d / r)
     R[np.isnan(R)] = 0
@@ -28,6 +44,13 @@ class KaplanMeier_(NonParametricFitter):
     .. math::
         R(x) = \prod_{i:x_{i} \leq x}^{}
             \left ( 1 - \frac{d_{i} }{r_{i}}  \right )
+
+    The variance of the cumulative hazard used for confidence bounds is
+    estimated with Greenwood's formula:
+
+    .. math::
+        \widehat{Var}(H(x)) = \sum_{i:x_{i} \leq x}
+            \frac{d_{i}}{r_{i} \left ( r_{i} - d_{i} \right )}
 
     Examples
     --------
