@@ -328,8 +328,8 @@ class Uniform_(ParametricFitter):
         if n == 0:
             return 1
         else:
-            out = np.zeros(n)
-            for i in range(n):
+            out = np.zeros(n + 1)
+            for i in range(n + 1):
                 out[i] = a**i * b ** (n - i)
             return np.sum(out) / (n + 1)
 

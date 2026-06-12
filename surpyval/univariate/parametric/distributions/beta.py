@@ -1,7 +1,6 @@
 from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, digamma
-from scipy.special import gamma as gamma_func
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
@@ -304,8 +303,8 @@ class Beta_(ParametricFitter):
         n-th (non central) moment of the Beta distribution
 
         .. math::
-            E = \frac{\Gamma \left( n + \alpha\right )}{\beta^{n}\Gamma
-            \left ( \alpha \right )}
+            E = \frac{B \left( n + \alpha, \beta \right )}{B
+            \left ( \alpha, \beta \right )}
 
         Parameters
         ----------
@@ -315,7 +314,7 @@ class Beta_(ParametricFitter):
         alpha : numpy array or scalar
             One shape parameter for the Beta distribution
         beta : numpy array or scalar
-            Another scale parameter for the Beta distribution
+            Another shape parameter for the Beta distribution
 
         Returns
         -------
@@ -327,9 +326,9 @@ class Beta_(ParametricFitter):
         --------
         >>> from surpyval import Beta
         >>> Beta.moment(2, 3, 4)
-        0.75
+        0.21428571428571427
         """
-        return gamma_func(n + alpha) / (beta**n * gamma_func(alpha))
+        return np.exp(abetaln(n + alpha, beta) - abetaln(alpha, beta))
 
     def entropy(self, alpha, beta):
         r"""

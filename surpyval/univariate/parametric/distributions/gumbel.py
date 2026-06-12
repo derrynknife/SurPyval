@@ -259,9 +259,11 @@ class Gumbel_(ParametricFitter):
         Calculates the mean of the Gumbel distribution with given parameters.
 
         .. math::
-            E = \mu + \sigma\gamma
+            E = \mu - \sigma\gamma
 
-        Where gamma is the Euler-Mascheroni constant
+        Where gamma is the Euler-Mascheroni constant. The Gumbel
+        distribution here is the smallest extreme value distribution,
+        so the mean sits below the location parameter.
 
         Parameters
         ----------
@@ -281,9 +283,9 @@ class Gumbel_(ParametricFitter):
         --------
         >>> from surpyval import Gumbel
         >>> Gumbel.mean(3, 2)
-        4.1544313298030655
+        1.8455686701969343
         """
-        return mu + sigma * euler_gamma
+        return mu - sigma * euler_gamma
 
     def log_df(self, x, mu, sigma):
         z = (x - mu) / sigma
