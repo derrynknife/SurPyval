@@ -27,11 +27,31 @@ This document tracks known issues, technical debt, and improvement priorities fo
 | Serialization (`to_dict` / `from_dict` / `to_json`) | `test_to_dict.py` is 0 bytes | `to_dict` is abstract on the `Distribution` ABC but has no coverage; `Bernoulli`/`ExactEventTime` round-trips are covered in `test_regressions.py` but the general path is not |
 | Probability plotting (`get_plot_data` / `plot` / `probability_plotting.py`) | `surpyval/univariate/parametric/` | No tests at all; the June 2026 plotting refactor was verified only by ad-hoc before/after output comparison |
 
-Two crash bugs fixed in June 2026 (a `warnings.warng` typo and a `0 * inf = NaN` in `InstantlyOccurs.Hf`) lived in these untested areas — coverage here pays for itself immediately.
+Two crash bugs fixed in June 2026 (a `warnings.warng` typo and a `0 * inf = NaN` in `InstantlyOccurs.Hf`) lived in these untested areas — coverage here pays for itself immediately. The June 2026 univariate fit-matrix expansion (methods × offset/lfp/zi/fixed, Exponential/Rayleigh, left censoring) found five real bugs the same way.
 
 ---
 
-## 2. API Consistency Issues
+## 2. Known Offset Estimation Issues
+
+Found during the June 2026 coverage expansion; each is reproducible
+with `dist.random(10_000, *params) + 10`:
+
+- **MOM with `offset=True` gives badly biased gamma.** e.g. Rayleigh
+  recovers gamma ≈ 6.1 when the true value is 10 (Weibull ≈ 9.6,
+  LogLogistic ≈ 9.0). MOM offset accuracy is deliberately untested;
+  either improve the moment matching or disallow `offset` for MOM.
+- **MPP with `offset=True` fails for Gamma** (recovers gamma ≈ −0.6
+  for a true value of 10) while every other offsettable distribution
+  recovers it well. `test_offset_fit_recovers_gamma` skips this
+  combination.
+- **Beta cannot actually be offset.** `_validate_fit_inputs` allows it
+  (`support[0] == 0`) but `Beta._parameter_initialiser` has no offset
+  path, so `Beta.fit(x, offset=True)` raises. Either support it or
+  validate it away.
+
+---
+
+## 3. API Consistency Issues
 
 ### Weibull/Rayleigh `cs()` convention change needs a release note
 Fixed June 2026: `cs()` now uniformly computes `sf(x + X) / sf(X)`
@@ -53,8 +73,12 @@ correctly carry zero variance, so free-parameter bounds on such fits
 are conditional (narrower than before, which treated fixed parameters
 as estimated), and `fixed={"p": ...}` / `fixed={"f0": ...}` work (they
 previously raised `IndexError` from an off-by-one in
-`Parametric.__init__`'s `param_map`). The next release's notes must
-call out the changed LFP/ZI and fixed-parameter bounds.
+`Parametric.__init__`'s `param_map`). Also fixed June 2026: `zi=True`
+with `offset=True` now optimises correctly — the zero-inflation mass
+was masked *after* the gamma shift, producing NaN likelihoods, a gamma
+bound capped at 0, and a model silently returned at its initial guess.
+The next release's notes must call out the changed LFP/ZI and
+fixed-parameter bounds.
 
 ### Weibull is the only distribution with a closed-form `R_cb`
 **File:** `surpyval/univariate/parametric/distributions/weibull.py`
@@ -102,7 +126,7 @@ The class body is mostly a commented-out likelihood/jacobian/hessian implementat
 
 ---
 
-## 3. Code Quality
+## 4. Code Quality
 
 ### Turnbull heuristic downgrade never takes effect
 **File:** `surpyval/univariate/parametric/parametric_fitter.py` (`_validate_fit_inputs`, ~line 344)
@@ -172,7 +196,7 @@ The broken convergence-failure handling in each copy was fixed (all three now em
 
 ---
 
-## 4. Semi-Parametric Regression — Future Work
+## 5. Semi-Parametric Regression — Future Work
 
 Four semi-parametric models are candidates for addition, in priority order:
 
@@ -190,7 +214,7 @@ The semi-parametric counterpart to Cox PH. Fits `log(T) = β'Z + ε` without ass
 
 ---
 
-## 5. Time-Varying Covariates and Truncation (to be confirmed)
+## 6. Time-Varying Covariates and Truncation (to be confirmed)
 
 Full support for time-varying covariates (TVCs) and left/right truncation across all regression model families needs to be designed and confirmed before implementation. Key points established so far:
 
@@ -204,6 +228,6 @@ Full support for time-varying covariates (TVCs) and left/right truncation across
 
 ---
 
-## 6. Long-term: Replace `autograd` with JAX (deferred)
+## 7. Long-term: Replace `autograd` with JAX (deferred)
 
 `autograd` (HIPS/autograd) is in low-activity maintenance mode with no GPU support. JAX is the spiritual successor and a near-drop-in replacement for `autograd.numpy` patterns. The interim steps (inlining the `autograd_gamma` gradients into `surpyval/utils/autograd_gamma_compat.py` and upgrading to `autograd` 1.8 for numpy 2.x compatibility) are done, so there is no urgency. A JAX migration can be revisited once the library is otherwise stable — it is a multi-week effort touching every gradient computation.

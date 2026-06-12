@@ -3,7 +3,7 @@ import warnings
 from autograd import hessian, jacobian
 from autograd.numpy.linalg import inv
 from numdifftools import Hessian  # type: ignore
-from scipy.optimize import minimize
+from scipy.optimize import OptimizeResult, minimize
 
 from surpyval import np
 
@@ -75,18 +75,36 @@ def mle(model):
     best_method = None
 
     with np.errstate(all="ignore"):
-        # Try easiest, to most complex optimisations. Each method warm
-        # starts from the best point found so far rather than the cold
-        # initial guess.
-        for method, jac_i, hess_i in [
-            ("Nelder-Mead", None, None),
-            ("Powell", None, None),
-            ("BFGS", None, None),
-            ("TNC", jac, None),
-            ("Newton-CG", jac, hess),
-        ]:
+        if len(init) == 0:
+            # Every parameter is fixed; there is nothing to optimise
+            res = OptimizeResult(
+                x=init,
+                success=True,
+                fun=fun(init, offset, lfp, zi, True),
+                message="",
+            )
+            best_result = res
+            best_method = method = "all parameters fixed"
+            methods = []
+        else:
+            methods = [
+                ("Nelder-Mead", None, None),
+                ("Powell", None, None),
+                ("BFGS", None, None),
+                ("TNC", jac, None),
+                ("Newton-CG", jac, hess),
+            ]
+
+        # Try easiest, to most complex optimisations. The derivative
+        # free methods each explore from the cold initial guess so a
+        # poor basin found by one does not trap the rest; the gradient
+        # methods then refine the best point found so far.
+        for method, jac_i, hess_i in methods:
             opts = {"maxfun": 1000} if method == "TNC" else {"maxiter": 1000}
-            x0 = init if best_result is None else best_result.x
+            if method in ("Nelder-Mead", "Powell") or best_result is None:
+                x0 = init
+            else:
+                x0 = best_result.x
             res = minimize(
                 fun,
                 x0,
