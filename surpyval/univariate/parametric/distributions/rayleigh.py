@@ -117,13 +117,15 @@ class Rayleigh_(ParametricFitter):
         Conditional survival function for the Rayleigh Distribution:
 
         .. math::
-            R(x, X) = \frac{R(x)}{R(X)}
+            R(x, X) = \frac{R(x + X)}{R(X)}
 
         Parameters
         ----------
 
         x : numpy array or scalar
             The values at which the function will be calculated
+        X : numpy array or scalar
+            The values at which the item is known to have survived
         sigma : numpy array or scalar
             scale parameter for the Rayleigh distribution
 
@@ -139,9 +141,9 @@ class Rayleigh_(ParametricFitter):
         >>> from surpyval import Rayleigh
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> Rayleigh.cs(x, 5, 3)
-        array([3.79366789, 3.21127054, 2.43242545, 1.64872127, 1.        ])
+        array([0.54274748, 0.26359714, 0.11455884, 0.04455143, 0.01550385])
         """
-        return self.sf(x, sigma) / self.sf(X, sigma)
+        return self.sf(x + X, sigma) / self.sf(X, sigma)
 
     def df(self, x, sigma):
         r"""

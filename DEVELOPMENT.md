@@ -45,19 +45,13 @@ Two crash bugs fixed in June 2026 (a `warnings.warng` typo and a `0 * inf = NaN`
 
 ## 3. API Consistency Issues
 
-### `cs()` means different things in different distributions
-The conditional survival function is `sf(x + X) / sf(X)` ("survive a
-further `x` given survival to `X`") in ten distributions, but
-`sf(x) / sf(X)` (absolute time, returns values > 1 for `x < X`) in
-Weibull and Rayleigh (`distributions/weibull.py`,
-`distributions/rayleigh.py`). The same method name silently computes
-different quantities depending on the distribution. `Parametric.cs`'s
-docstring example assumes the absolute-time convention; note also that
-its gamma handling (`self.dist.cs(x - gamma, X - gamma, ...)`) is only
-correct under that convention. Pick one definition (the
-further-survival form is the majority and the more standard), fix the
-two outliers, and document it. This changes results for existing
-Weibull/Rayleigh `cs` users, so it needs a release note.
+### Weibull/Rayleigh `cs()` convention change needs a release note
+Fixed June 2026: `cs()` now uniformly computes `sf(x + X) / sf(X)`
+("survive a further `x` given survival to `X`"). Weibull and Rayleigh
+previously computed `sf(x) / sf(X)` (absolute time), and
+`Parametric.cs` shifted `x` by gamma accordingly. This changes results
+for existing Weibull/Rayleigh `cs` users, so the next release's notes
+must call it out.
 
 ### Weibull is the only distribution with a closed-form `R_cb`
 **File:** `surpyval/univariate/parametric/distributions/weibull.py`
