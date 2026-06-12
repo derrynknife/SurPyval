@@ -113,7 +113,7 @@ class Rayleigh_(ParametricFitter):
         >>> Weibull.ff(x, 3, 4)
         array([0.01226978, 0.17924519, 0.63212056, 0.9575952 , 0.99955438])
         """
-        return -np.expm1(np.exp(-(x**2) / (2 * sigma**2)))
+        return -np.expm1(-(x**2) / (2 * sigma**2))
 
     def cs(self, x, X, sigma):
         r"""

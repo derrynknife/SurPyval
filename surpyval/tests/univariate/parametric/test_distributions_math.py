@@ -16,6 +16,7 @@ import pytest
 from surpyval import (
     Beta,
     ExpoWeibull,
+    Exponential,
     Gamma,
     Gumbel,
     GumbelLEV,
@@ -23,6 +24,8 @@ from surpyval import (
     LogLogistic,
     LogNormal,
     Normal,
+    Rayleigh,
+    Uniform,
     Weibull,
 )
 
@@ -38,6 +41,9 @@ DIST_PARAMS = [
     (Beta, (2.0, 5.0)),
     (ExpoWeibull, (3.0, 1.5, 0.8)),
     (Gamma, (3.0, 2.0)),
+    (Exponential, (0.5,)),
+    (Rayleigh, (3.0,)),
+    (Uniform, (2.0, 8.0)),
 ]
 
 DIST_PARAM_IDS = [d.name for d, _ in DIST_PARAMS]
