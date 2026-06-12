@@ -166,36 +166,47 @@ def mle(model):
         # The covariance of the parameters is found from the Hessian in
         # the transformed (unbounded) space used during optimisation,
         # then mapped back to the bounded parameter space with the delta
-        # method. gamma, f0 and p are held at their estimates and do not
-        # contribute variance to the confidence bounds.
+        # method. p and f0 are estimated parameters and are included in
+        # the covariance; gamma is held at its estimate since the
+        # threshold parameter of an offset model is non-regular and a
+        # Wald variance for it would be misleading.
         u_full = const(init) if use_initial else const(res.x)
         n_head = 1 if offset else 0
         n_core = len(params)
         u_head = u_full[:n_head]
-        u_core = u_full[n_head : n_head + n_core]
-        u_tail = u_full[n_head + n_core :]
+        u_var = u_full[n_head:]
 
         def transformed_fun(u):
-            theta = inv_trans(np.concatenate([u_head, u, u_tail]))
-            core = theta[n_head : n_head + n_core]
+            theta = inv_trans(np.concatenate([u_head, u]))[n_head:]
+            if zi:
+                *theta, f0_i = theta
+            else:
+                f0_i = f0
+            if lfp:
+                *theta, p_i = theta
+            else:
+                p_i = p
             return model.dist._neg_ll_func(
-                model.surv_data, *core, gamma, f0, p
+                model.surv_data, *theta, gamma, f0_i, p_i
             )
 
-        def u_to_params(u):
-            theta = inv_trans(np.concatenate([u_head, u, u_tail]))
-            return theta[n_head : n_head + n_core]
+        def u_to_phi(u):
+            return inv_trans(np.concatenate([u_head, u]))[n_head:]
 
         try:
-            hess_u = hessian(transformed_fun)(u_core)
+            hess_u = hessian(transformed_fun)(u_var)
             cov_u = inv(hess_u)
             if np.isnan(cov_u).any():
-                cov_u = inv(Hessian(transformed_fun)(u_core))
-            jac_u = jacobian(u_to_params)(u_core)
-            hess_inv = jac_u @ cov_u @ jac_u.T
+                cov_u = inv(Hessian(transformed_fun)(u_var))
+            jac_u = jacobian(u_to_phi)(u_var)
+            # Covariance of the extended vector (*params, p?, f0?)
+            cov_matrix = jac_u @ cov_u @ jac_u.T
+            hess_inv = cov_matrix[:n_core, :n_core]
         except np.linalg.LinAlgError:
+            cov_matrix = None
             hess_inv = None
 
+        results["cov_matrix"] = cov_matrix
         results["hess_inv"] = hess_inv
         results["_neg_ll"] = res["fun"]
         results["log_likelihood"] = -res["fun"]

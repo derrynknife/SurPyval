@@ -41,6 +41,16 @@ previously computed `sf(x) / sf(X)` (absolute time), and
 for existing Weibull/Rayleigh `cs` users, so the next release's notes
 must call it out.
 
+### LFP/ZI confidence bound change needs a release note
+Fixed June 2026: MLE confidence bounds now include the variance of the
+LFP (`p`) and zero-inflation (`f0`) parameters via the full covariance
+matrix (`cov_matrix` on the fitted model), so bounds for `lfp`/`zi`
+models are wider than before and the lower `sf` bound can fall below
+the fitted `1 - p` asymptote. `param_cb("p")` and `param_cb("f0")` are
+now supported. `gamma` deliberately still carries no Wald variance
+(threshold parameters are non-regular). The next release's notes must
+call out the changed LFP/ZI bounds.
+
 ### Weibull is the only distribution with a closed-form `R_cb`
 **File:** `surpyval/univariate/parametric/distributions/weibull.py`
 
