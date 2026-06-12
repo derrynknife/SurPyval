@@ -53,14 +53,14 @@ class Parametric(Distribution):
 
         if lfp:
             bounds = (*bounds, (0, 1))
-            param_map.update({"p": len(param_map) + 1})
+            param_map.update({"p": len(param_map)})
             self.k += 1
         else:
             self.p = 1
 
         if zi:
             bounds = (*bounds, (0, 1))
-            param_map.update({"f0": len(param_map) + 1})
+            param_map.update({"f0": len(param_map)})
             self.k += 1
         else:
             self.f0 = 0

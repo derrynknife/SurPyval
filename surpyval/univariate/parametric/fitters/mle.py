@@ -167,17 +167,30 @@ def mle(model):
         # the transformed (unbounded) space used during optimisation,
         # then mapped back to the bounded parameter space with the delta
         # method. p and f0 are estimated parameters and are included in
-        # the covariance; gamma is held at its estimate since the
-        # threshold parameter of an offset model is non-regular and a
-        # Wald variance for it would be misleading.
+        # the covariance. User-fixed parameters are known, not
+        # estimated, so they carry no variance and the free parameters
+        # get their conditional variance. gamma is also held at its
+        # estimate since the threshold parameter of an offset model is
+        # non-regular and a Wald variance for it would be misleading.
+        fixed_idx = model.fitting_info["fixed_idx"]
         u_full = const(init) if use_initial else const(res.x)
         n_head = 1 if offset else 0
         n_core = len(params)
-        u_head = u_full[:n_head]
-        u_var = u_full[n_head:]
+        n_total = len(u_full)
+        var_idx = np.array(
+            [i for i in range(n_head, n_total) if i not in fixed_idx],
+            dtype=int,
+        )
+
+        # Embed the variance-carrying sub-vector into the full
+        # transformed vector; the matrix form keeps the held entries
+        # constant under autograd
+        embed = np.zeros((n_total, len(var_idx)))
+        embed[var_idx, np.arange(len(var_idx))] = 1.0
+        u_held = np.where(embed.sum(axis=1) == 0, u_full, 0.0)
 
         def transformed_fun(u):
-            theta = inv_trans(np.concatenate([u_head, u]))[n_head:]
+            theta = inv_trans(embed @ u + u_held)[n_head:]
             if zi:
                 *theta, f0_i = theta
             else:
@@ -191,16 +204,21 @@ def mle(model):
             )
 
         def u_to_phi(u):
-            return inv_trans(np.concatenate([u_head, u]))[n_head:]
+            return inv_trans(embed @ u + u_held)[n_head:]
 
         try:
-            hess_u = hessian(transformed_fun)(u_var)
-            cov_u = inv(hess_u)
-            if np.isnan(cov_u).any():
-                cov_u = inv(Hessian(transformed_fun)(u_var))
-            jac_u = jacobian(u_to_phi)(u_var)
-            # Covariance of the extended vector (*params, p?, f0?)
-            cov_matrix = jac_u @ cov_u @ jac_u.T
+            if len(var_idx) == 0:
+                cov_matrix = np.zeros((n_total - n_head, n_total - n_head))
+            else:
+                u_var = u_full[var_idx]
+                hess_u = hessian(transformed_fun)(u_var)
+                cov_u = inv(hess_u)
+                if np.isnan(cov_u).any():
+                    cov_u = inv(Hessian(transformed_fun)(u_var))
+                jac_u = jacobian(u_to_phi)(u_var)
+                # Covariance of the extended vector (*params, p?, f0?);
+                # fixed parameters have zero rows and columns
+                cov_matrix = jac_u @ cov_u @ jac_u.T
             hess_inv = cov_matrix[:n_core, :n_core]
         except np.linalg.LinAlgError:
             cov_matrix = None

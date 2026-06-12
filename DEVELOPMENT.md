@@ -48,8 +48,13 @@ matrix (`cov_matrix` on the fitted model), so bounds for `lfp`/`zi`
 models are wider than before and the lower `sf` bound can fall below
 the fitted `1 - p` asymptote. `param_cb("p")` and `param_cb("f0")` are
 now supported. `gamma` deliberately still carries no Wald variance
-(threshold parameters are non-regular). The next release's notes must
-call out the changed LFP/ZI bounds.
+(threshold parameters are non-regular). User-`fixed` parameters now
+correctly carry zero variance, so free-parameter bounds on such fits
+are conditional (narrower than before, which treated fixed parameters
+as estimated), and `fixed={"p": ...}` / `fixed={"f0": ...}` work (they
+previously raised `IndexError` from an off-by-one in
+`Parametric.__init__`'s `param_map`). The next release's notes must
+call out the changed LFP/ZI and fixed-parameter bounds.
 
 ### Weibull is the only distribution with a closed-form `R_cb`
 **File:** `surpyval/univariate/parametric/distributions/weibull.py`
