@@ -27,7 +27,13 @@ def mom(model):
 
     x_ = np.repeat(x, n)
 
-    if hasattr(dist, "_mom"):
+    # The closed-form moment estimate cannot honour fixed parameters or
+    # an offset, so only use it for a plain fit
+    if (
+        hasattr(dist, "_mom")
+        and not offset
+        and not model.fitting_info["fixed_idx"]
+    ):
         return {"params": np.atleast_1d(dist._mom(x_)), "gamma": 0.0}
 
     moments = np.zeros(model.k)

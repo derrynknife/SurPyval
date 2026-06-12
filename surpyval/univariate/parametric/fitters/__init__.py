@@ -116,7 +116,7 @@ def bounds_convert(x, bounds, fixed, param_map):
     if fixed is not None:
         fixed_idx = [param_map[x] for x in fixed.keys()]
         not_fixed = [x for x in range(n_params) if x not in fixed_idx]
-        not_fixed = np.array(not_fixed)
+        not_fixed = np.array(not_fixed, dtype=int)
 
         def constraints(p):
             params = [0] * (n_params)

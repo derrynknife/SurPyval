@@ -34,7 +34,15 @@ class LogNormal_(ParametricFitter):
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        # Need an offset mpp function here
+        if offset:
+            # Shift the data so the log transform is defined, then
+            # initialise mu and sigma from the shifted data
+            gamma_init = np.min(x) - 1.0
+            norm_mod = para.Normal.fit(
+                np.log(x - gamma_init), c=c, n=n, how="MLE"
+            )
+            mu, sigma = norm_mod.params
+            return gamma_init, mu, sigma
         norm_mod = para.Normal.fit(np.log(x), c=c, n=n, how="MLE")
         mu, sigma = norm_mod.params
         return mu, sigma

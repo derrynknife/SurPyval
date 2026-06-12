@@ -3,6 +3,7 @@ import pytest
 
 from surpyval import (
     Beta,
+    Exponential,
     ExpoWeibull,
     Gamma,
     Gumbel,
@@ -11,6 +12,7 @@ from surpyval import (
     LogLogistic,
     LogNormal,
     Normal,
+    Rayleigh,
     Weibull,
 )
 
@@ -25,6 +27,8 @@ DISTS = [
     Beta,
     ExpoWeibull,
     Gamma,
+    Exponential,
+    Rayleigh,
 ]
 
 parameter_sample_random_parameters = [
@@ -38,6 +42,8 @@ parameter_sample_random_parameters = [
     ((0.1, 30), (0.1, 30)),
     ((1, 30), (0.1, 10), (0.5, 1.5)),
     ((1, 30), (0.1, 10)),
+    ((0.1, 1),),
+    ((1, 30),),
 ]
 FIT_SIZES = [1_000, 10_000, 100_000]
 
@@ -50,7 +56,13 @@ def set_random_seed():
 def generate_mle_test_cases():
     for idx, dist in enumerate(DISTS):
         random_parameters = parameter_sample_random_parameters[idx]
-        for kind in ["full", "censored", "truncated", "interval"]:
+        for kind in [
+            "full",
+            "censored",
+            "left_censored",
+            "truncated",
+            "interval",
+        ]:
             yield dist, random_parameters, kind
 
 
@@ -175,6 +187,9 @@ def test_mle_convergence(dist, random_parameters, kind):
             model = dist.fit(x)
         elif kind == "censored":
             x, c = censor_at(x, 0.025, "right")
+            model = dist.fit(x, c=c)
+        elif kind == "left_censored":
+            x, c = censor_at(x, 0.025, "left")
             model = dist.fit(x, c=c)
         elif kind == "truncated":
             x, tl, tr = truncate_at(x, 0.05, "both")
@@ -315,6 +330,30 @@ def test_mps_truncated(dist, random_parameters):
             break
     else:
         raise AssertionError("MPS fit not very good in %s\n" % dist.name)
+
+
+OFFSET_CASES = [
+    (Weibull, (10.0, 2.0)),
+    (Gamma, (3.0, 2.0)),
+    (LogNormal, (1.0, 0.5)),
+    (LogLogistic, (5.0, 2.0)),
+    (Exponential, (0.5,)),
+    (Rayleigh, (3.0,)),
+]
+
+
+@pytest.mark.parametrize("how", ["MLE", "MPS", "MSE", "MPP"])
+@pytest.mark.parametrize(
+    "dist,dist_params", OFFSET_CASES, ids=[d.name for d, _ in OFFSET_CASES]
+)
+def test_offset_fit_recovers_gamma(dist, dist_params, how):
+    if how == "MPP" and dist is Gamma:
+        pytest.skip("MPP gamma estimation fails for Gamma (see DEVELOPMENT)")
+    gamma = 10.0
+    x = dist.random(10_000, *dist_params) + gamma
+    model = dist.fit(x, offset=True, how=how)
+    assert abs(model.gamma - gamma) < 0.5
+    assert np.allclose(model.params, dist_params, rtol=0.15)
 
 
 @pytest.mark.parametrize(

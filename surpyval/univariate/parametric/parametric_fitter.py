@@ -136,15 +136,17 @@ class ParametricFitter:
     @_check_x_not_empty
     def ll_observed(self, x, n, *params):
         *params, gamma, f0, p = params
-        x = x - gamma
         if f0 == 0:
             # Not zero-inflated; x == 0 is an ordinary observation.
             zero_weight = 0
             non_zero_mask = np.full(x.shape, True)
         else:
+            # The zero-inflation mass sits at x == 0 in observed time,
+            # so the mask must be taken before the offset shift
             n_zeros = np.sum(n[x == 0])
             zero_weight = n_zeros * np.log(f0) if n_zeros != 0 else 0
             non_zero_mask = x != 0
+        x = x - gamma
         N = np.sum(n[non_zero_mask])
         return (
             (n[non_zero_mask] * self.log_df(x[non_zero_mask], *params)).sum()
@@ -284,10 +286,25 @@ class ParametricFitter:
         return moments
 
     def _validate_fit_inputs(
-        self, surv_data, how, offset, lfp, zi, heuristic, turnbull_estimator
+        self,
+        surv_data,
+        how,
+        offset,
+        lfp,
+        zi,
+        fixed,
+        heuristic,
+        turnbull_estimator,
     ):
         if offset and (self.support[0] != 0):
             detail = f"{self.name} distribution cannot be offset"
+            raise ValueError(detail)
+
+        if fixed and how == "MPP":
+            detail = (
+                "Probability plotting (MPP) does not support"
+                " fixing parameters"
+            )
             raise ValueError(detail)
 
         if how not in PARA_METHODS:
@@ -785,7 +802,14 @@ class ParametricFitter:
 
         # Validate inputs
         self._validate_fit_inputs(
-            surv_data, how, offset, lfp, zi, heuristic, turnbull_estimator
+            surv_data,
+            how,
+            offset,
+            lfp,
+            zi,
+            fixed,
+            heuristic,
+            turnbull_estimator,
         )
 
         # Passed checks
@@ -859,6 +883,14 @@ class ParametricFitter:
                             x_init = x_init[in_support_mask]
                             c_init = c_init[in_support_mask]
                             n_init = n[in_support_mask]
+                        elif zi:
+                            # Exact zeros belong to the zero-inflation
+                            # mass; including them would drag the offset
+                            # initial guess below zero
+                            nonzero_mask = x_init != 0
+                            x_init = x_init[nonzero_mask]
+                            c_init = c_init[nonzero_mask]
+                            n_init = n_init[nonzero_mask]
 
                         # Create an initial estimate with the new points
                         init = self._parameter_initialiser(
@@ -867,7 +899,8 @@ class ParametricFitter:
                         init = np.array(init)
 
                         if offset:
-                            init[0] = x.min() - 1.0
+                            x_nonzero = x[x != 0] if zi else x
+                            init[0] = x_nonzero.min() - 1.0
 
                 if lfp:
                     _, _, _, F = pp(
@@ -890,6 +923,14 @@ class ParametricFitter:
                     init = np.concatenate([init, [f_0_init]])
 
             init = np.atleast_1d(init)
+            if fixed and len(init) == len(not_fixed):
+                # The initial guess covers only the free parameters;
+                # merge it with the fixed values to get the full vector
+                full_init = np.zeros(len(model.param_map))
+                full_init[not_fixed] = init
+                for name, value in fixed.items():
+                    full_init[model.param_map[name]] = value
+                init = full_init
             init = transform(init)
             init = init[not_fixed]
             fitting_info["init"] = init

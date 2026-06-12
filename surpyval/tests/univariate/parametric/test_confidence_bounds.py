@@ -270,6 +270,25 @@ def test_fixed_f0_zi():
     assert np.allclose(model.param_cb("f0"), [model.f0, model.f0])
 
 
+@pytest.mark.parametrize("dist_name", ["Weibull", "Gamma"])
+def test_offset_model_cb(dist_name):
+    # Weibull exercises the closed-form R_cb with an offset; Gamma the
+    # generic delta-method path. gamma carries no variance.
+    np.random.seed(8)
+    dist = getattr(surv, dist_name)
+    params = {"Weibull": (10, 2), "Gamma": (3, 2)}[dist_name]
+    x = dist.random(500, *params) + 10
+    model = dist.fit(x, offset=True)
+    assert model.gamma > 5
+
+    t = np.linspace(np.quantile(x, 0.1), np.quantile(x, 0.9), 8)
+    for on in ["sf", "ff", "Hf", "hf", "df"]:
+        cb = model.cb(t, on=on, bound="two-sided", alpha_ci=0.05)
+        point = getattr(model, on)(t)
+        assert np.all(cb[:, 0] < point)
+        assert np.all(point < cb[:, 1])
+
+
 def test_cb_round_trips_through_serialization(lfp_model):
     model = lfp_model
     t = np.linspace(5, 50, 10)

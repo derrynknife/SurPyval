@@ -11,6 +11,7 @@ from surpyval import (
     ExactEventTime,
     Exponential,
     LogLogistic,
+    LogNormal,
     Normal,
     Parametric,
     Weibull,
@@ -46,6 +47,15 @@ def test_loglogistic_offset_initial_guess_length():
         np.array([1.0, 2.0, 3.0, 4.0, 5.0]), offset=True
     )
     assert len(init) == LogLogistic.k + 1
+
+
+def test_lognormal_offset_initial_guess_length():
+    # The offset initial guess ignored the offset flag and returned one
+    # parameter too few, so offset fits crashed before optimising.
+    init = LogNormal._parameter_initialiser(
+        np.array([1.0, 2.0, 3.0, 4.0, 5.0]), offset=True
+    )
+    assert len(init) == LogNormal.k + 1
 
 
 def test_mps_right_truncation_clamped_to_support():

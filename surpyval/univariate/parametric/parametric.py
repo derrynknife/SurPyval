@@ -41,7 +41,12 @@ class Parametric(Distribution):
 
         if offset:
             if data is not None:
-                bounds = ((None, np.min(data["x"])), *bounds)
+                x_min = np.asarray(data["x"])
+                if zi:
+                    # Exact zeros belong to the zero-inflation mass, so
+                    # they must not cap the offset of the continuous part
+                    x_min = x_min[x_min != 0]
+                bounds = ((None, np.min(x_min)), *bounds)
             else:
                 bounds = ((None, None), *bounds)
 

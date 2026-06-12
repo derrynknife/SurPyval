@@ -323,6 +323,7 @@ class ProportionalHazardsFitter:
         model._neg_ll = res["fun"]
         model.fixed = fixed
         model.k_dist = self.k_dist
+        model.k = len(bounds)
         model.phi_param_map = phi_param_map
         model.data = data
 
