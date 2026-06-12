@@ -93,14 +93,6 @@ closed form so all distributions are consistent — a user-visible
 change to Weibull confidence bounds — or keep it and document why
 Weibull is special.
 
-### `entropy` is declared by the ABC but implemented by four distributions
-`Distribution` (`distribution.py`) declares `entropy()`, and
-`Parametric.entropy` delegates to the underlying distribution, but only
-Bernoulli, Exponential, Rayleigh and Weibull implement it. Calling
-`model.entropy()` on the other ten raises `AttributeError`. Either
-implement the closed forms (all are textbook), provide a numerical
-default on `ParametricFitter`, or stop declaring it on the ABC.
-
 ### `SeriesModel` / `ParallelModel` are unexported and undocumented
 **Files:** `surpyval/univariate/parametric/series.py`, `parallel.py`
 

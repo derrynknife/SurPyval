@@ -7,12 +7,16 @@ Checks closed-form identities independent of fitting:
   3. qf(0.5)             equals the known closed-form median
   4. random() samples    have mean and variance matching analytical values
   5. cs(x, X)            equals sf(x + X) / sf(X) (further survival)
+  6. entropy()           equals the numerically integrated -∫ f ln f
+  7. mean(), moment(n)   equal the numerically integrated ∫ xⁿ f
 """
 
 import math
 
 import numpy as np
 import pytest
+from scipy import integrate
+from scipy.special import xlogy
 
 from surpyval import (
     Beta,
@@ -190,3 +194,100 @@ def test_parametric_cs_with_offset():
     x, X = 3.0, 5.0
     expected = model.sf(x + X) / model.sf(X)
     assert np.allclose(model.cs(x, X), expected)
+
+
+# ---------------------------------------------------------------------------
+# 6. entropy() == -∫ f ln f over the support
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("dist, params", DIST_PARAMS, ids=DIST_PARAM_IDS)
+def test_entropy_matches_numerical_integration(dist, params):
+    """entropy() must equal the differential entropy -∫ f(x) ln f(x) dx
+    computed by numerical integration over the support."""
+    eps = 1e-12
+    lower = dist.qf(eps, *params)
+    upper = dist.qf(1 - eps, *params)
+    # Heavy-tailed distributions make the integration interval vast while
+    # the density mass stays narrow; breakpoints keep quad on target.
+    breakpoints = [dist.qf(p, *params) for p in [0.01, 0.5, 0.99]]
+
+    def neg_f_ln_f(x):
+        f = dist.df(x, *params)
+        return -xlogy(f, f)
+
+    expected = integrate.quad(
+        neg_f_ln_f, lower, upper, points=breakpoints, limit=200
+    )[0]
+    computed = dist.entropy(*params)
+    assert math.isclose(
+        computed, expected, rel_tol=1e-6, abs_tol=1e-9
+    ), f"{dist.name}: entropy() = {computed}, integration gives {expected}"
+
+
+def test_parametric_model_entropy():
+    """Parametric.entropy must delegate to the distribution's entropy."""
+    model = Normal.from_params([10.0, 3.0])
+    assert math.isclose(model.entropy(), Normal.entropy(10.0, 3.0))
+
+
+# ---------------------------------------------------------------------------
+# 7. mean() and moment(n) == ∫ xⁿ f over the support
+# ---------------------------------------------------------------------------
+
+
+def _integrated_moment(dist, params, n):
+    """Numerically integrate ∫ xⁿ f(x) dx over the distribution's support."""
+    eps = 1e-13
+    lower = dist.qf(eps, *params)
+    upper = dist.qf(1 - eps, *params)
+    breakpoints = [dist.qf(p, *params) for p in [0.01, 0.5, 0.99]]
+
+    def x_n_f(x):
+        return x**n * dist.df(x, *params)
+
+    return integrate.quad(x_n_f, lower, upper, points=breakpoints, limit=200)[
+        0
+    ]
+
+
+@pytest.mark.parametrize("dist, params", DIST_PARAMS, ids=DIST_PARAM_IDS)
+def test_mean_matches_numerical_integration(dist, params):
+    """mean() must equal the numerically integrated first moment."""
+    expected = _integrated_moment(dist, params, 1)
+    computed = dist.mean(*params)
+    assert math.isclose(
+        computed, expected, rel_tol=1e-5
+    ), f"{dist.name}: mean() = {computed}, integration gives {expected}"
+
+
+# ExpoWeibull does not implement moment(); LogLogistic needs a larger shape
+# parameter than DIST_PARAMS uses so its second moment exists with a tail
+# light enough for truncated integration.
+MOMENT_PARAMS = [
+    (Gumbel, (-1.0, 2.0)),
+    (GumbelLEV, (3.0, 1.5)),
+    (Normal, (5.0, 2.0)),
+    (Weibull, (10.0, 2.0)),
+    (LogNormal, (1.0, 0.5)),
+    (Logistic, (4.0, 1.0)),
+    (LogLogistic, (5.0, 5.0)),
+    (Beta, (2.0, 5.0)),
+    (Gamma, (3.0, 2.0)),
+    (Exponential, (0.5,)),
+    (Rayleigh, (3.0,)),
+    (Uniform, (2.0, 8.0)),
+]
+
+MOMENT_IDS = [d.name for d, _ in MOMENT_PARAMS]
+
+
+@pytest.mark.parametrize("dist, params", MOMENT_PARAMS, ids=MOMENT_IDS)
+@pytest.mark.parametrize("n", [1, 2])
+def test_moment_matches_numerical_integration(dist, params, n):
+    """moment(n) must equal the numerically integrated n-th moment."""
+    expected = _integrated_moment(dist, params, n)
+    computed = dist.moment(n, *params)
+    assert math.isclose(
+        computed, expected, rel_tol=1e-5
+    ), f"{dist.name}: moment({n}) = {computed}, integration gives {expected}"

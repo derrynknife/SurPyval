@@ -293,6 +293,36 @@ class Logistic_(ParametricFitter):
             d = grad(d)
         return d(0.0, mu, sigma)
 
+    def entropy(self, mu, sigma):
+        r"""
+
+        Calculates the entropy of the Logistic distribution.
+
+        .. math::
+            S = \ln \left ( \sigma \right ) + 2
+
+        Parameters
+        ----------
+
+        mu : numpy array or scalar
+            The location parameter for the Logistic distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Logistic distribution
+
+        Returns
+        -------
+
+        entropy : scalar or numpy array
+            The entropy(ies) of the Logistic distribution
+
+        Examples
+        --------
+        >>> from surpyval import Logistic
+        >>> Logistic.entropy(3, 4)
+        3.386294361119891
+        """
+        return np.log(sigma) + 2
+
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
 

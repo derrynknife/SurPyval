@@ -355,6 +355,36 @@ class Normal_(ParametricFitter):
         """
         return scipy_norm.moment(n, mu, sigma)
 
+    def entropy(self, mu, sigma):
+        r"""
+
+        Calculates the entropy of the Normal distribution.
+
+        .. math::
+            S = \frac{1}{2} \ln \left ( 2\pi e \sigma^{2} \right )
+
+        Parameters
+        ----------
+
+        mu : numpy array or scalar
+            The location parameter for the Normal distribution
+        sigma : numpy array or scalar
+            The scale parameter for the Normal distribution
+
+        Returns
+        -------
+
+        entropy : scalar or numpy array
+            The entropy(ies) of the Normal distribution
+
+        Examples
+        --------
+        >>> from surpyval import Normal
+        >>> Normal.entropy(3, 4)
+        2.8052328943245635
+        """
+        return 0.5 * np.log(2 * np.pi * np.e * sigma**2)
+
     def log_df(self, x, mu, sigma):
         return norm.logpdf(x, mu, sigma)
 

@@ -718,7 +718,7 @@ class Parametric(Distribution):
         >>> from surpyval import Normal
         >>> model = Normal.from_params([10, 3])
         >>> model.entropy()
-        2.588783247593625
+        2.5175508218727822
         """
         if self.p == 1:
             return self.dist.entropy(*self.params)

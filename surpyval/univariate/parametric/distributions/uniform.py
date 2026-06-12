@@ -328,10 +328,40 @@ class Uniform_(ParametricFitter):
         if n == 0:
             return 1
         else:
-            out = np.zeros(n)
-            for i in range(n):
+            out = np.zeros(n + 1)
+            for i in range(n + 1):
                 out[i] = a**i * b ** (n - i)
             return np.sum(out) / (n + 1)
+
+    def entropy(self, a, b):
+        r"""
+
+        Calculates the entropy of the Uniform distribution.
+
+        .. math::
+            S = \ln \left ( b - a \right )
+
+        Parameters
+        ----------
+
+        a : numpy array or scalar
+            The lower parameter for the Uniform distribution
+        b : numpy array or scalar
+            The upper parameter for the Uniform distribution
+
+        Returns
+        -------
+
+        entropy : scalar or numpy array
+            The entropy(ies) of the Uniform distribution
+
+        Examples
+        --------
+        >>> from surpyval import Uniform
+        >>> Uniform.entropy(0, 6)
+        1.791759469228055
+        """
+        return np.log(b - a)
 
     def mle(self, data):
         if (data.c[data.x == data.x.max()] == 1).all():

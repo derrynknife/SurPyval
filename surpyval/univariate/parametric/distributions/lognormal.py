@@ -353,6 +353,36 @@ class LogNormal_(ParametricFitter):
         """
         return np.exp(n * mu + (n**2 * sigma**2) / 2)
 
+    def entropy(self, mu, sigma):
+        r"""
+
+        Calculates the entropy of the LogNormal distribution.
+
+        .. math::
+            S = \mu + \frac{1}{2} \ln \left ( 2\pi e \sigma^{2} \right )
+
+        Parameters
+        ----------
+
+        mu : numpy array or scalar
+            The location parameter for the LogNormal distribution
+        sigma : numpy array or scalar
+            The scale parameter for the LogNormal distribution
+
+        Returns
+        -------
+
+        entropy : scalar or numpy array
+            The entropy(ies) of the LogNormal distribution
+
+        Examples
+        --------
+        >>> from surpyval import LogNormal
+        >>> LogNormal.entropy(3, 4)
+        5.805232894324563
+        """
+        return mu + 0.5 * np.log(2 * np.pi * np.e * sigma**2)
+
     def log_df(self, x, mu, sigma):
         return -np.log(x) + norm.logpdf(np.log(x), mu, sigma)
 

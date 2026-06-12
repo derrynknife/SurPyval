@@ -1,7 +1,6 @@
 from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
-from scipy.special import betaincinv
-from scipy.special import gamma as gamma_func
+from scipy.special import betaincinv, digamma
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
@@ -304,8 +303,8 @@ class Beta_(ParametricFitter):
         n-th (non central) moment of the Beta distribution
 
         .. math::
-            E = \frac{\Gamma \left( n + \alpha\right )}{\beta^{n}\Gamma
-            \left ( \alpha \right )}
+            E = \frac{B \left( n + \alpha, \beta \right )}{B
+            \left ( \alpha, \beta \right )}
 
         Parameters
         ----------
@@ -315,7 +314,7 @@ class Beta_(ParametricFitter):
         alpha : numpy array or scalar
             One shape parameter for the Beta distribution
         beta : numpy array or scalar
-            Another scale parameter for the Beta distribution
+            Another shape parameter for the Beta distribution
 
         Returns
         -------
@@ -327,9 +326,50 @@ class Beta_(ParametricFitter):
         --------
         >>> from surpyval import Beta
         >>> Beta.moment(2, 3, 4)
-        0.75
+        0.21428571428571427
         """
-        return gamma_func(n + alpha) / (beta**n * gamma_func(alpha))
+        return np.exp(abetaln(n + alpha, beta) - abetaln(alpha, beta))
+
+    def entropy(self, alpha, beta):
+        r"""
+
+        Calculates the entropy of the Beta distribution.
+
+        .. math::
+            S = \ln B \left ( \alpha, \beta \right )
+            - \left ( \alpha - 1 \right ) \psi \left ( \alpha \right )
+            - \left ( \beta - 1 \right ) \psi \left ( \beta \right )
+            + \left ( \alpha + \beta - 2 \right ) \psi \left ( \alpha +
+            \beta \right )
+
+        Where B is the beta function and psi is the digamma function
+
+        Parameters
+        ----------
+
+        alpha : numpy array or scalar
+            One shape parameter for the Beta distribution
+        beta : numpy array or scalar
+            Another shape parameter for the Beta distribution
+
+        Returns
+        -------
+
+        entropy : scalar or numpy array
+            The entropy(ies) of the Beta distribution
+
+        Examples
+        --------
+        >>> from surpyval import Beta
+        >>> Beta.entropy(3, 4)
+        -0.3443445622221013
+        """
+        return (
+            abetaln(alpha, beta)
+            - (alpha - 1) * digamma(alpha)
+            - (beta - 1) * digamma(beta)
+            + (alpha + beta - 2) * digamma(alpha + beta)
+        )
 
     def log_df(self, x, alpha, beta):
         return (

@@ -1,4 +1,6 @@
 from scipy import integrate
+from scipy.special import xlogy
+
 from surpyval import np
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
@@ -326,8 +328,47 @@ class ExpoWeibull_(ParametricFitter):
         def func(x):
             return x * self.df(x, alpha, beta, mu)
 
-        top = 2 * self.qf(0.999, alpha, beta, mu)
-        return integrate.quadrature(func, 0, top)[0]
+        return integrate.quad(func, 0, np.inf)[0]
+
+    def entropy(self, alpha, beta, mu):
+        r"""
+
+        Calculates the entropy of the ExpoWeibull distribution.
+
+        The entropy of the ExpoWeibull distribution has no closed form
+        and is therefore computed by numerical integration of:
+
+        .. math::
+            S = -\int_{0}^{\infty} f(x) \ln f(x) dx
+
+        Parameters
+        ----------
+
+        alpha : numpy array or scalar
+            scale parameter for the ExpoWeibull distribution
+        beta : numpy array or scalar
+            shape parameter for the ExpoWeibull distribution
+        mu : numpy array or scalar
+            shape parameter for the ExpoWeibull distribution
+
+        Returns
+        -------
+
+        entropy : scalar
+            The entropy of the ExpoWeibull distribution
+
+        Examples
+        --------
+        >>> from surpyval import ExpoWeibull
+        >>> ExpoWeibull.entropy(3, 1.5, 0.8)
+        1.8227536487527594
+        """
+
+        def func(x):
+            f = self.df(x, alpha, beta, mu)
+            return xlogy(f, f)
+
+        return -integrate.quad(func, 0, np.inf)[0]
 
     def mpp_x_transform(self, x, gamma=0):
         return np.log(x - gamma)
