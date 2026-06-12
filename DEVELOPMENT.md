@@ -121,8 +121,10 @@ done):
   dispatch and support assignment. Extract `_initial_guess(...)` and
   `_set_support(model)`; the LFP/ZI guess blocks are already
   self-contained.
-- `Parametric.cb` (~135 lines) builds nested closures for the hf/df
-  bounds. Extract the per-function bound computations.
+- `Parametric.cb` (~135 lines) still builds nested closures for the
+  R-based bounds. Extract the per-function bound computations. (The
+  hf/df bounds now use the delta method directly rather than
+  differentiating the Hf bound curve, June 2026.)
 - `probability_plotting.probability_plot_data` special-cases
   distributions by name with `dist.name in ("Beta")` — string
   membership on a *string*, not a tuple, so any distribution whose name
@@ -136,7 +138,10 @@ done):
 - `MixtureModel` composes rather than inherits: it now shares the
   probability-plot code but still reimplements `sf/ff/df/mean/random`
   aggregation and its own `R_cb`, and sets most attributes outside
-  `__init__`.
+  `__init__`. Its `R_cb` is unreachable: it reads `self.res` and
+  `self.hess_inv`, which `_em()` never sets, so it raises
+  `AttributeError` on any fitted model. Either compute a Hessian after
+  EM or remove the method.
 
 ### Type hints are vestigial
 The package ships `py.typed`, but only `ParametricFitter.__init__` is
