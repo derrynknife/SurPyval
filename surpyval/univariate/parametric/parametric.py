@@ -2,7 +2,7 @@ import json
 from copy import copy, deepcopy
 
 import matplotlib.pyplot as plt
-from autograd import elementwise_grad, jacobian
+from autograd import jacobian
 from scipy.special import ndtri as z
 from scipy.stats import uniform
 
@@ -701,7 +701,7 @@ class Parametric(Distribution):
         x : array like or scalar
             The values of the random variables at which the confidence bounds
             will be calculated
-        on : ('sf', 'ff', 'Hf'), optional
+        on : ('sf', 'ff', 'Hf', 'hf', 'df'), optional
             The function on which the confidence bound will be calculated.
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Compute either the two-sided, upper or lower confidence bound(s).
@@ -722,9 +722,12 @@ class Parametric(Distribution):
             raise ValueError("Only MLE has confidence bounds")
 
         hess_inv = np.copy(self.hess_inv)
-
-        pvars = hess_inv[np.triu_indices(hess_inv.shape[0])]
         old_err_state = np.seterr(all="ignore")
+
+        def delta_method_var(func):
+            # First-order delta method: Var(g) = J Sigma J^T
+            jac = np.atleast_2d(jacobian(func)(np.array(self.params)))
+            return np.einsum("ij,jk,ik->i", jac, hess_inv, jac)
 
         if hasattr(self.dist, "R_cb"):
 
@@ -743,82 +746,78 @@ class Parametric(Distribution):
                 def sf_func(params):
                     return self.dist.sf(x - self.gamma, *params)
 
-                jac = np.atleast_2d(jacobian(sf_func)(np.array(self.params)))
-
-                # Second-Order Taylor Series Expansion of Variance
-                var_R = []
-                for i, j in enumerate(jac):
-                    j = np.atleast_2d(j).T * j
-                    j = j[np.triu_indices(j.shape[0])]
-                    var_R.append(np.sum(j * pvars))
-
-                R_hat = self.sf(x)
+                var_R = delta_method_var(sf_func)
+                R_hat = self.dist.sf(x - self.gamma, *self.params)
                 if bound == "two-sided":
                     diff = (
                         z(alpha_ci / 2)
-                        * np.sqrt(np.array(var_R))
+                        * np.sqrt(var_R)
                         * np.array([1.0, -1.0]).reshape(2, 1)
                     )
                 elif bound == "upper":
-                    diff = z(alpha_ci) * np.sqrt(np.array(var_R))
+                    diff = z(alpha_ci) * np.sqrt(var_R)
                 else:
-                    diff = -z(alpha_ci) * np.sqrt(np.array(var_R))
+                    diff = -z(alpha_ci) * np.sqrt(var_R)
 
+                # Bounds on the logit of R keep the result within (0, 1)
                 exponent = diff / (R_hat * (1 - R_hat))
                 R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
                 return R_cb.T
 
-        # Reverse for ff and F
-        if on in ["ff", "F", "Hf", "hf", "df"] and bound == "lower":
+        def sf_cb(x, bound=bound):
+            # p, f0 and gamma are treated as fixed; the Hessian used for
+            # the variance does not include them.
+            return 1 - self.p + (self.p - self.f0) * R_cb(x, bound=bound)
+
+        # ff, F and Hf are decreasing transforms of R; flip one-sided bounds
+        if on in ["ff", "F", "Hf"] and bound == "lower":
             bound = "upper"
-        elif on in ["ff", "F", "Hf", "hf", "df"] and bound == "upper":
+        elif on in ["ff", "F", "Hf"] and bound == "upper":
             bound = "lower"
 
         if (on == "ff") or (on == "F"):
-            cb = R_cb(t, bound=bound)
-            cb = 1.0 - cb
+            cb = 1.0 - sf_cb(t, bound=bound)
         elif (on == "sf") or (on == "R"):
-            cb = R_cb(t, bound=bound)
+            cb = sf_cb(t, bound=bound)
             if bound == "two-sided":
                 cb = np.fliplr(cb)
         elif on == "Hf":
-            cb = R_cb(t, bound=bound)
-            cb = -np.log(cb)
-        elif on == "hf":
+            cb = -np.log(sf_cb(t, bound=bound))
+        elif on in ["hf", "df"]:
 
-            def cb_hf(x):
-                def func(x):
-                    return -np.log(R_cb(x, bound=bound))
+            def density(params):
+                return (self.p - self.f0) * self.dist.df(
+                    t - self.gamma, *params
+                )
 
-                if bound == "two-sided":
-                    jac = jacobian(func)
-                    cbs = [jac(np.array([v])).flatten() for v in x]
-                    return np.vstack(cbs)
-                else:
-                    grad = elementwise_grad(func)
-                    return grad(x)
+            if on == "hf":
 
-            cb = cb_hf(t)
+                def func(params):
+                    survival = (
+                        1
+                        - self.p
+                        + (self.p - self.f0)
+                        * self.dist.sf(t - self.gamma, *params)
+                    )
+                    return density(params) / survival
 
-        elif on == "df":
+            else:
+                func = density
 
-            def cb_df(x):
-                def func(x):
-                    return -np.log(R_cb(x, bound))
+            g_hat = func(np.array(self.params))
+            var_g = delta_method_var(func)
 
-                if bound == "two-sided":
-                    jac = jacobian(func)
-                    cbs = [jac(np.array([v])).flatten() for v in x]
-                    cbs = np.vstack(cbs)
-                    cbs = cbs * self.sf(x).reshape(-1, 1)
-                else:
-                    grad = elementwise_grad(func)
-                    cbs = grad(x)
-                    cbs = cbs * self.sf(x)
+            if bound == "two-sided":
+                diff = z(alpha_ci / 2) * np.array([1.0, -1.0]).reshape(2, 1)
+            elif bound == "upper":
+                diff = -z(alpha_ci)
+            else:
+                diff = z(alpha_ci)
 
-                return cbs
-
-            cb = cb_df(t)
+            # Bounds on the log of hf/df keep the result positive
+            cb = g_hat * np.exp(diff * np.sqrt(var_g) / g_hat)
+            if bound == "two-sided":
+                cb = cb.T
 
         np.seterr(**old_err_state)
         return cb

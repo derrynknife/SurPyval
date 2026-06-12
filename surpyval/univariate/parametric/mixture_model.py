@@ -231,20 +231,12 @@ class MixtureModel:
                 F = F + params[i, 0] * self.dist.ff(t, *params[i, 1::])
             return 1 - F
 
-        pvars = self.hess_inv[np.triu_indices(self.hess_inv.shape[0])]
         with np.errstate(all="ignore"):
-            jac = jacobian(ssf)(self.res.x)
+            jac = np.atleast_2d(jacobian(ssf)(self.res.x))
 
-        var_u = []
-        for i, j in enumerate(jac):
-            j = np.atleast_2d(j).T * j
-            j = j[np.triu_indices(j.shape[0])]
-            var_u.append(np.sum(j * pvars))
-        diff = (
-            z(cb / 2)
-            * np.sqrt(np.array(var_u))
-            * np.array([1.0, -1.0]).reshape(2, 1)
-        )
+        # First-order delta method: Var(R) = J Sigma J^T
+        var_u = np.einsum("ij,jk,ik->i", jac, self.hess_inv, jac)
+        diff = z(cb / 2) * np.sqrt(var_u) * np.array([1.0, -1.0]).reshape(2, 1)
         R_hat = self.sf(t)
         exponent = diff / (R_hat * (1 - R_hat))
         R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
