@@ -1,15 +1,18 @@
 """
 Regression tests for specific bug fixes in the univariate parametric module.
 """
+
 import numpy as np
 import pytest
 
 from surpyval import (
+    Bernoulli,
     Beta,
     ExactEventTime,
     Exponential,
     LogLogistic,
     Normal,
+    Parametric,
     Weibull,
 )
 
@@ -88,3 +91,17 @@ def test_exponential_mpp():
 
     model = Exponential.fit(x + 3, how="MPP", offset=True)
     assert np.isclose(model.gamma, 3, atol=1)
+
+
+def test_bernoulli_dict_round_trip():
+    # Bernoulli_ did not subclass ParametricFitter, so from_dict rejected
+    # its own to_dict output as an unknown distribution.
+    model = Bernoulli.from_params(0.3)
+    recovered = Parametric.from_dict(model.to_dict())
+    assert np.allclose(recovered.params, model.params)
+
+
+def test_exact_event_time_dict_round_trip():
+    model = ExactEventTime.from_params(10)
+    recovered = Parametric.from_dict(model.to_dict())
+    assert np.allclose(recovered.params, model.params)

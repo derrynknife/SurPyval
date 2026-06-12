@@ -93,12 +93,22 @@ def bounds_convert(x, bounds, fixed, param_map):
 
     def transform_params_to_unbounded(params):
         return np.array(
-            [f(p) for p, f in zip(params, bounded_to_unbounded_transforms)]
+            [
+                f(p)
+                for p, f in zip(
+                    params, bounded_to_unbounded_transforms, strict=True
+                )
+            ]
         )
 
     def transform_unbounded_value_to_params(params):
         return np.array(
-            [f(p) for p, f in zip(params, unbounded_to_bounded_transforms)]
+            [
+                f(p)
+                for p, f in zip(
+                    params, unbounded_to_bounded_transforms, strict=True
+                )
+            ]
         )
 
     n_params = len(param_map)

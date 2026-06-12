@@ -49,6 +49,29 @@ DEFAULT_Y_TICKS = [
 
 
 class ParametricFitter:
+    """
+    Base class for all parametric distributions.
+
+    A distribution needs only ``hf`` and ``Hf`` (or ``sf``, ``ff`` and
+    ``df``) plus a ``_parameter_initialiser`` with the signature
+    ``(self, x, c=None, n=None, t=None, offset=False)`` for fitting to
+    work; ``log_df``, ``log_sf``, ``log_ff`` and ``random`` have generic
+    implementations here that subclasses can override with closed forms.
+    Probability plotting (the MPP fit method and ``Parametric.plot``)
+    additionally requires ``mpp_x_transform``, ``mpp_y_transform(y,
+    *params)`` and ``mpp_inv_y_transform(y, *params)``.
+
+    A subclass can take over an entire estimation method by defining
+    ``mle(data)`` or ``mpp(x, c, n, heuristic, rr, on_d_is_0, offset)``,
+    both returning a results dict with at least a ``params`` numpy
+    array.
+
+    Implementations must do their math with ``surpyval.np``, which is
+    ``autograd.numpy``: maximum likelihood estimation differentiates
+    through these functions, and plain numpy silently breaks the
+    gradients.
+    """
+
     def __init__(
         self,
         name: str,

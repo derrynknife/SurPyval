@@ -1069,6 +1069,16 @@ class Parametric(Distribution):
             detail = "Can't plot model that was given parameters and no data"
             raise Exception(detail)
 
+        if not (
+            hasattr(self.dist, "mpp_y_transform")
+            and hasattr(self.dist, "mpp_inv_y_transform")
+        ):
+            raise NotImplementedError(
+                "{} does not support probability plotting".format(
+                    self.dist.name
+                )
+            )
+
         heuristic = adjust_heuristic(self.data["c"], self.data["t"], heuristic)
 
         d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
