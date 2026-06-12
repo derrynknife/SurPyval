@@ -25,7 +25,7 @@ def adjust_heuristic(c, t, heuristic):
     if 2 in c:
         if heuristic != "Turnbull":
             warnings.warn(
-                "Interval censored data, heuristic changed to Turnbull'",
+                "Interval censored data, heuristic changed to Turnbull",
                 stacklevel=2,
             )
             heuristic = "Turnbull"
@@ -33,7 +33,7 @@ def adjust_heuristic(c, t, heuristic):
     if np.isfinite(t).any():
         if heuristic != "Turnbull":
             warnings.warn(
-                "Truncated censored data, heuristic changed to Turnbull'",
+                "Truncated censored data, heuristic changed to Turnbull",
                 stacklevel=2,
             )
             heuristic = "Turnbull"

@@ -232,7 +232,7 @@ class Parametric(Distribution):
     def sf(self, x):
         r"""
 
-        Surival (or Reliability) function for a distribution using the
+        Survival (or Reliability) function for a distribution using the
         parameters found in the ``.params`` attribute.
 
         Parameters
@@ -617,8 +617,8 @@ class Parametric(Distribution):
 
     def mean(self):
         r"""
-        A method to draw random samples from the distributions using the
-        parameters found in the ``.params`` attribute.
+        The mean of the distribution using the parameters found in the
+        ``.params`` attribute.
 
         Returns
         -------
@@ -639,8 +639,8 @@ class Parametric(Distribution):
     def moment(self, n):
         r"""
 
-        A method to draw random samples from the distributions using the
-        parameters found in the ``.params`` attribute.
+        The n-th moment of the distribution using the parameters found
+        in the ``.params`` attribute.
 
         Parameters
         ----------
@@ -669,8 +669,8 @@ class Parametric(Distribution):
 
     def entropy(self):
         r"""
-        A method to draw random samples from the distributions using the
-        parameters found in the ``.params`` attribute.
+        The entropy of the distribution using the parameters found in
+        the ``.params`` attribute.
 
         Returns
         -------
@@ -831,7 +831,7 @@ class Parametric(Distribution):
     def neg_ll(self):
         r"""
 
-        The the negative log-likelihood for the model, if it was fit with the
+        The negative log-likelihood for the model, if it was fit with the
         ``fit()`` method. Not available if fit with the ``from_params()``
         method.
 
@@ -860,7 +860,7 @@ class Parametric(Distribution):
     def bic(self):
         r"""
 
-        The the Bayesian Information Criterion (BIC) for the model, if it
+        The Bayesian Information Criterion (BIC) for the model, if it
         was fit with the ``fit()`` method. Not available if fit with the
         ``from_params()`` method.
 
@@ -899,7 +899,7 @@ class Parametric(Distribution):
 
     def aic(self):
         r"""
-        The the Aikake Information Criterion (AIC) for the model, if it was
+        The Aikake Information Criterion (AIC) for the model, if it was
         fit with the ``fit()`` method. Not available if fit with the
         ``from_params()`` method.
 
@@ -928,7 +928,7 @@ class Parametric(Distribution):
 
     def aic_c(self):
         r"""
-        The the Corrected Aikake Information Criterion (AIC) for the model,
+        The Corrected Aikake Information Criterion (AIC) for the model,
         if it was fit with the ``fit()`` method. Not available if fit with
         the ``from_params()`` method.
 
@@ -969,12 +969,12 @@ class Parametric(Distribution):
             'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None',\
             'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier',\
             'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
-            The method that the plotting point on the probablility plot will
+            The method that the plotting point on the probability plot will
             be calculated. Default is "Nelson-Aalen".
 
         alpha_ci : float, optional
-            The confidence with which the confidence bounds, if able, will
-            be calculated. Defaults to 0.95.
+            The level of significance at which the confidence bounds, if
+            able, will be calculated. Defaults to 0.05.
 
         Returns
         -------
@@ -1030,16 +1030,16 @@ class Parametric(Distribution):
             'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None',\
             'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier',\
             'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
-            The method that the plotting point on the probablility plot will
+            The method that the plotting point on the probability plot will
             be calculated.
 
         plot_bounds : Boolean, optional
-            A Boolean value to indicate whehter you want the probability
+            A Boolean value to indicate whether you want the probability
             bounds to be calculated.
 
         alpha_ci : float, optional
-            The confidence with which the confidence bounds, if able, will
-            be calculated. Defaults to 0.95.
+            The level of significance at which the confidence bounds, if
+            able, will be calculated. Defaults to 0.05.
 
         ax: matplotlib.axes.Axes, optional
             The axis onto which the plot will be created. Optional, if not

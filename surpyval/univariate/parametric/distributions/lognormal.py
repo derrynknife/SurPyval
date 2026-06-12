@@ -42,7 +42,7 @@ class LogNormal_(ParametricFitter):
     def sf(self, x, mu, sigma):
         r"""
 
-        Surival (or Reliability) function for the LogNormal Distribution:
+        Survival (or Reliability) function for the LogNormal Distribution:
 
         .. math::
             R(x) = 1 - \Phi \left( \frac{\ln(x) - \mu}{\sigma} \right )
@@ -61,7 +61,7 @@ class LogNormal_(ParametricFitter):
         -------
 
         sf : scalar or numpy array
-            The value(s) of the survival function at x.
+            The value(s) of the reliability function at x.
 
         Examples
         --------

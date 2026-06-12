@@ -157,7 +157,7 @@ class LogLogistic_(ParametricFitter):
         -------
 
         df : scalar or numpy array
-            The value(s) of the failure function at x.
+            The value(s) of the density function at x.
 
         Examples
         --------

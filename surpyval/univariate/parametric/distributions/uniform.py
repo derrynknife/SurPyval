@@ -22,7 +22,7 @@ class Uniform_(ParametricFitter):
     def sf(self, x, a, b):
         r"""
 
-        Surival (or Reliability) function for the Uniform Distribution:
+        Survival (or Reliability) function for the Uniform Distribution:
 
         .. math::
             R(x) = \frac{b - x}{b - a}
@@ -41,7 +41,7 @@ class Uniform_(ParametricFitter):
         -------
 
         sf : scalar or numpy array
-            The value(s) of the survival function at x.
+            The value(s) of the reliability function at x.
 
         Examples
         --------
@@ -56,7 +56,7 @@ class Uniform_(ParametricFitter):
     def cs(self, x, X, a, b):
         r"""
 
-        Surival (or Reliability) function for the Uniform Distribution:
+        Survival (or Reliability) function for the Uniform Distribution:
 
         .. math::
             R(x, X) = \frac{R(x + X)}{R(X)}
@@ -218,8 +218,8 @@ class Uniform_(ParametricFitter):
         Returns
         -------
 
-        hf : scalar or numpy array
-            The value(s) of the instantaneous hazard rate at x.
+        Hf : scalar or numpy array
+            The value(s) of the cumulative hazard rate at x.
 
         Examples
         --------

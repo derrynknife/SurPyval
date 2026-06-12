@@ -52,7 +52,7 @@ class Gamma_(ParametricFitter):
     def sf(self, x, alpha, beta):
         r"""
 
-        Surival (or Reliability) function for the Gamma Distribution:
+        Survival (or Reliability) function for the Gamma Distribution:
 
         .. math::
             R(x) = 1 - \frac{\gamma \left ( \alpha, \beta x \right )
@@ -224,7 +224,7 @@ class Gamma_(ParametricFitter):
         Returns
         -------
 
-        Hf : scalar or numpy array
+        hf : scalar or numpy array
             The instantaneous hazard rate of the distribution at each x
 
         Examples

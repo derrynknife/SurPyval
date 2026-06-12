@@ -30,7 +30,7 @@ class Logistic_(ParametricFitter):
             return x.sum() / (n * flag).sum(), 1.0
 
     def sf(self, x, mu, sigma):
-        """
+        r"""
 
         Survival (or reliability) function for the Logistic Distribution:
 
@@ -69,7 +69,7 @@ class Logistic_(ParametricFitter):
         return self.sf(x + X, mu, sigma) / self.sf(X, mu, sigma)
 
     def ff(self, x, mu, sigma):
-        """
+        r"""
 
         Failure (CDF or unreliability) function for the Logistic Distribution:
 
@@ -104,7 +104,7 @@ class Logistic_(ParametricFitter):
         return 1.0 / (1 + np.exp(-z))
 
     def df(self, x, mu, sigma):
-        """
+        r"""
 
         Failure (CDF or unreliability) function for the Logistic Distribution:
 
@@ -141,7 +141,7 @@ class Logistic_(ParametricFitter):
         return np.exp(-z) / (sigma * (1 + np.exp(-z)) ** 2)
 
     def hf(self, x, mu, sigma):
-        """
+        r"""
 
         Instantaneous hazard rate for the Logistic Distribution:
 
@@ -175,7 +175,7 @@ class Logistic_(ParametricFitter):
         return self.df(x, mu, sigma) / self.sf(x, mu, sigma)
 
     def Hf(self, x, mu, sigma):
-        """
+        r"""
 
         Cumulative hazard rate for the Logistic distribution:
 
@@ -195,7 +195,7 @@ class Logistic_(ParametricFitter):
         Returns
         -------
 
-        hf : scalar or numpy array
+        Hf : scalar or numpy array
             The value(s) of the cumulative hazard rate at x.
 
         Examples
@@ -209,7 +209,7 @@ class Logistic_(ParametricFitter):
         return -np.log(self.sf(x, mu, sigma))
 
     def qf(self, p, mu, sigma):
-        """
+        r"""
 
         Quantile function for the Logistic distribution:
 

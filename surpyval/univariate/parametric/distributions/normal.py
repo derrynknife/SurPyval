@@ -52,7 +52,7 @@ class Normal_(ParametricFitter):
     def sf(self, x, mu, sigma):
         r"""
 
-        Surival (or Reliability) function for the Normal Distribution:
+        Survival (or Reliability) function for the Normal Distribution:
 
         .. math::
             R(x) = 1 - \Phi \left( \frac{x - \mu}{\sigma} \right )
@@ -71,7 +71,7 @@ class Normal_(ParametricFitter):
         -------
 
         sf : scalar or numpy array
-            The value(s) of the survival function at x.
+            The value(s) of the reliability function at x.
 
         Examples
         --------
@@ -212,7 +212,7 @@ class Normal_(ParametricFitter):
         -------
 
         hf : scalar or numpy array
-            The value(s) of the instantaneous hazard rate function at x.
+            The value(s) of the instantaneous hazard rate at x.
 
         Examples
         --------
@@ -246,8 +246,8 @@ class Normal_(ParametricFitter):
         Returns
         -------
 
-        ff : scalar or numpy array
-            The value(s) of the cumulative hazard rate function at x.
+        Hf : scalar or numpy array
+            The value(s) of the cumulative hazard rate at x.
 
         Examples
         --------

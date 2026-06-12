@@ -101,7 +101,7 @@ class ExpoWeibull_(ParametricFitter):
         Returns
         -------
 
-        sf : scalar or numpy array
+        ff : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -138,8 +138,8 @@ class ExpoWeibull_(ParametricFitter):
         Returns
         -------
 
-        sf : scalar or numpy array
-            The value(s) of the reliability function at x.
+        cs : scalar or numpy array
+            The value(s) of the conditional survival function at x.
 
         Examples
         --------

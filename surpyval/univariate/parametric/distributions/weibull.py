@@ -82,7 +82,7 @@ class Weibull_(ParametricFitter):
         Returns
         -------
 
-        sf : scalar or numpy array
+        ff : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -157,14 +157,14 @@ class Weibull_(ParametricFitter):
         -------
 
         df : scalar or numpy array
-            The value(s) of the conditional survival function at x.
+            The value(s) of the density function at x.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Weibull
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Weibull.df(x, 5, 3, 4)
+        >>> Weibull.df(x, 3, 4)
         array([0.0487768 , 0.32424881, 0.49050592, 0.13402009, 0.00275073])
         """
         return (
@@ -195,7 +195,7 @@ class Weibull_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
+        hf : scalar or numpy array
             The value(s) of the instantaneous hazard rate at x.
 
         Examples
@@ -229,7 +229,7 @@ class Weibull_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
+        Hf : scalar or numpy array
             The value(s) of the cumulative hazard rate at x.
 
         Examples

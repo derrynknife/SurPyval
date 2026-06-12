@@ -27,7 +27,7 @@ class Gumbel_(ParametricFitter):
     def sf(self, x, mu, sigma):
         r"""
 
-        Surival (or Reliability) function for the Gumbel Distribution:
+        Survival (or Reliability) function for the Gumbel Distribution:
 
         .. math::
             R(x) = 1 - e^{e^{-\left ( x - \mu \right ) / \sigma}}

@@ -50,7 +50,7 @@ class Exponential_(ParametricFitter):
     def sf(self, x, failure_rate):
         r"""
 
-        Surival (or Reliability) function for the Exponential Distribution:
+        Survival (or Reliability) function for the Exponential Distribution:
 
         .. math::
             R(x) = e^{-\lambda x}

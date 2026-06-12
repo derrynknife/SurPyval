@@ -50,7 +50,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
+        sf : scalar or numpy array
             The value(s) of the reliability function at x.
 
         Examples
@@ -87,7 +87,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
+        cs : scalar or numpy array
             The value(s) of the conditional survival function at x.
 
         Examples
@@ -121,7 +121,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
+        ff : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -190,7 +190,7 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
+        hf : scalar or numpy array
             The value(s) of the instantaneous hazard rate at x.
 
         Examples
@@ -224,8 +224,8 @@ class Beta_(ParametricFitter):
         Returns
         -------
 
-        df : scalar or numpy array
-            The value(s) of the cumulative hazard function at x.
+        Hf : scalar or numpy array
+            The value(s) of the cumulative hazard rate at x.
 
         Examples
         --------

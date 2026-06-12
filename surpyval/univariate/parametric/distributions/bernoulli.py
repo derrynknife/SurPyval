@@ -70,7 +70,7 @@ class Bernoulli_(ParametricFitter):
         Returns
         -------
 
-        sf : scalar or numpy array
+        ff : scalar or numpy array
             The value(s) of the failure function at x.
 
         Examples
@@ -78,7 +78,7 @@ class Bernoulli_(ParametricFitter):
         >>> import numpy as np
         >>> from surpyval import Bernoulli
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Bernoulli.sf(x, 0.5)
+        >>> Bernoulli.ff(x, 0.5)
         array([0.5, 0.5, 0.5, 0.5, 0.5])
         """
         return np.ones_like(x).astype(float) * p

@@ -443,7 +443,7 @@ class ParametricFitter:
             right censored, and 2 is intervally censored. If not provided
             will assume all values are observed.
         n : array like, optional
-            Array of counts for each x. If data is proivded as counts, then
+            Array of counts for each x. If data is provided as counts, then
             this can be provided. If :code:`None` will assume each
             observation is 1.
         t : 2D-array like, optional
