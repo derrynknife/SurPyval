@@ -14,19 +14,7 @@ This document tracks known issues, technical debt, and improvement priorities fo
 
 ---
 
-## 1. MLE Optimizer Improvements
-
-**File:** `surpyval/univariate/parametric/fitters/mle.py`
-
-### Hessian computed in wrong parameterization space (lines 163-173)
-Standard errors should be derived from the Hessian in the *transformed* (unbounded) parameterization used during optimization, then mapped back via the delta method. Computing in physical parameter space (`transform=False`) gives incorrect standard errors for any bounded parameter.
-
-### Optimizer cascade does not warm-start (lines 78-96)
-All five methods (Nelder-Mead → Powell → BFGS → TNC → Newton-CG) start from the same cold `init`. Gradient methods should warm-start from the best-found point so far.
-
----
-
-## 2. Test Coverage Gaps
+## 1. Test Coverage Gaps
 
 ### Entirely untested subsystems
 
@@ -43,7 +31,7 @@ Two crash bugs fixed in June 2026 (a `warnings.warng` typo and a `0 * inf = NaN`
 
 ---
 
-## 3. API Consistency Issues
+## 2. API Consistency Issues
 
 ### Weibull/Rayleigh `cs()` convention change needs a release note
 Fixed June 2026: `cs()` now uniformly computes `sf(x + X) / sf(X)`
@@ -52,6 +40,21 @@ previously computed `sf(x) / sf(X)` (absolute time), and
 `Parametric.cs` shifted `x` by gamma accordingly. This changes results
 for existing Weibull/Rayleigh `cs` users, so the next release's notes
 must call it out.
+
+### LFP/ZI confidence bound change needs a release note
+Fixed June 2026: MLE confidence bounds now include the variance of the
+LFP (`p`) and zero-inflation (`f0`) parameters via the full covariance
+matrix (`cov_matrix` on the fitted model), so bounds for `lfp`/`zi`
+models are wider than before and the lower `sf` bound can fall below
+the fitted `1 - p` asymptote. `param_cb("p")` and `param_cb("f0")` are
+now supported. `gamma` deliberately still carries no Wald variance
+(threshold parameters are non-regular). User-`fixed` parameters now
+correctly carry zero variance, so free-parameter bounds on such fits
+are conditional (narrower than before, which treated fixed parameters
+as estimated), and `fixed={"p": ...}` / `fixed={"f0": ...}` work (they
+previously raised `IndexError` from an off-by-one in
+`Parametric.__init__`'s `param_map`). The next release's notes must
+call out the changed LFP/ZI and fixed-parameter bounds.
 
 ### Weibull is the only distribution with a closed-form `R_cb`
 **File:** `surpyval/univariate/parametric/distributions/weibull.py`
@@ -99,7 +102,7 @@ The class body is mostly a commented-out likelihood/jacobian/hessian implementat
 
 ---
 
-## 4. Code Quality
+## 3. Code Quality
 
 ### Turnbull heuristic downgrade never takes effect
 **File:** `surpyval/univariate/parametric/parametric_fitter.py` (`_validate_fit_inputs`, ~line 344)
@@ -169,7 +172,7 @@ The broken convergence-failure handling in each copy was fixed (all three now em
 
 ---
 
-## 5. Semi-Parametric Regression — Future Work
+## 4. Semi-Parametric Regression — Future Work
 
 Four semi-parametric models are candidates for addition, in priority order:
 
@@ -187,7 +190,7 @@ The semi-parametric counterpart to Cox PH. Fits `log(T) = β'Z + ε` without ass
 
 ---
 
-## 6. Time-Varying Covariates and Truncation (to be confirmed)
+## 5. Time-Varying Covariates and Truncation (to be confirmed)
 
 Full support for time-varying covariates (TVCs) and left/right truncation across all regression model families needs to be designed and confirmed before implementation. Key points established so far:
 
@@ -201,6 +204,6 @@ Full support for time-varying covariates (TVCs) and left/right truncation across
 
 ---
 
-## 7. Long-term: Replace `autograd` with JAX (deferred)
+## 6. Long-term: Replace `autograd` with JAX (deferred)
 
 `autograd` (HIPS/autograd) is in low-activity maintenance mode with no GPU support. JAX is the spiritual successor and a near-drop-in replacement for `autograd.numpy` patterns. The interim steps (inlining the `autograd_gamma` gradients into `surpyval/utils/autograd_gamma_compat.py` and upgrading to `autograd` 1.8 for numpy 2.x compatibility) are done, so there is no urgency. A JAX migration can be revisited once the library is otherwise stable — it is a multi-week effort touching every gradient computation.

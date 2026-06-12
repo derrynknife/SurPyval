@@ -4,7 +4,7 @@ Tests for the confidence bounds of univariate parametric models.
 
 import numpy as np
 import pytest
-from autograd import jacobian
+from autograd import hessian, jacobian
 from scipy.special import ndtri as z
 
 import surpyval as surv
@@ -100,9 +100,8 @@ def test_hf_df_cb_match_delta_method(gumbel_model):
         assert np.allclose(cb, expected)
 
 
-def test_lfp_cb_centred_on_full_sf():
-    # For an LFP model the bounds must be centred on the full survival
-    # function, 1 - p + p * R(t), and respect its 1 - p asymptote.
+@pytest.fixture(scope="module")
+def lfp_model():
     np.random.seed(3)
     n = 500
     x = surv.Weibull.random(n, 10, 2)
@@ -111,8 +110,13 @@ def test_lfp_cb_centred_on_full_sf():
     never = np.random.uniform(size=n) > 0.5
     x[never] = x.max() + 1
     c[never] = 1
+    return surv.Weibull.fit(x, c=c, lfp=True)
 
-    model = surv.Weibull.fit(x, c=c, lfp=True)
+
+def test_lfp_cb_centred_on_full_sf(lfp_model):
+    # For an LFP model the bounds must be centred on the full survival
+    # function, 1 - p + p * R(t).
+    model = lfp_model
     assert model.p < 1
 
     t = np.linspace(5, 50, 20)
@@ -120,5 +124,157 @@ def test_lfp_cb_centred_on_full_sf():
     sf = model.sf(t)
     assert np.all(cb[:, 0] < sf)
     assert np.all(sf < cb[:, 1])
-    # The bounds inherit the LFP scaling, so cannot fall below 1 - p
-    assert np.all(cb[:, 0] >= 1 - model.p)
+    assert np.all(cb > 0)
+    assert np.all(cb < 1)
+    # p is estimated, not known, so at large t the lower bound falls
+    # below the fitted 1 - p asymptote
+    assert cb[-1, 0] < 1 - model.p
+
+
+def test_cov_matrix_extends_hess_inv(lfp_model):
+    # The full covariance covers (alpha, beta, p); its parameter block
+    # is exactly hess_inv, and the estimated p has variance.
+    model = lfp_model
+    assert model.cov_matrix.shape == (3, 3)
+    assert np.allclose(model.cov_matrix[:2, :2], model.hess_inv)
+    assert model.cov_matrix[2, 2] > 0
+
+
+def test_lfp_sf_cb_includes_p_variance(lfp_model):
+    # The sf bounds must come from the delta method over the extended
+    # vector (alpha, beta, p) applied to the full survival function.
+    model = lfp_model
+    t = np.array([5.0, 15.0, 40.0])
+
+    def sf_func(phi):
+        *params, p = phi
+        return 1 - p + p * model.dist.sf(t - model.gamma, *params)
+
+    phi_hat = np.array([*model.params, model.p])
+    jac = np.atleast_2d(jacobian(sf_func)(phi_hat))
+    var_R = np.einsum("ij,jk,ik->i", jac, model.cov_matrix, jac)
+    R_hat = model.sf(t)
+    diff = -z(0.05 / 2) * np.sqrt(var_R) / (R_hat * (1 - R_hat))
+    lower = R_hat / (R_hat + (1 - R_hat) * np.exp(diff))
+    upper = R_hat / (R_hat + (1 - R_hat) * np.exp(-diff))
+
+    cb = model.cb(t, on="sf", bound="two-sided", alpha_ci=0.05)
+    assert np.allclose(cb[:, 0], lower)
+    assert np.allclose(cb[:, 1], upper)
+
+    # Treating p as fixed must give strictly narrower bounds
+    var_fixed = np.einsum(
+        "ij,jk,ik->i", jac[:, :2], model.hess_inv, jac[:, :2]
+    )
+    assert np.all(var_R > var_fixed)
+
+
+def test_param_cb_p(lfp_model):
+    model = lfp_model
+    lower, upper = model.param_cb("p", alpha_ci=0.05)
+    assert 0 < lower < model.p < upper < 1
+    assert np.allclose(
+        model.param_cb("p", alpha_ci=0.025, bound="lower"), lower
+    )
+    assert np.allclose(
+        model.param_cb("p", alpha_ci=0.025, bound="upper"), upper
+    )
+
+
+def test_zi_lfp_cb():
+    # Bounds for a model with both zero-inflation and a limited failure
+    # population are computed over (alpha, beta, p, f0) and stay valid.
+    np.random.seed(4)
+    n = 1000
+    x = surv.Weibull.random(n, 10, 2)
+    c = np.concatenate((np.zeros(n), np.zeros(100), np.ones(100)))
+    x = np.concatenate((x, np.zeros(100), x.max() * np.ones(100) + 1))
+
+    model = surv.Weibull.fit(x, c=c, zi=True, lfp=True)
+    assert model.cov_matrix.shape == (4, 4)
+    assert model.cov_matrix[2, 2] > 0
+    assert model.cov_matrix[3, 3] > 0
+
+    t = np.linspace(1, 40, 10)
+    sf = model.sf(t)
+    for on in ["sf", "ff", "Hf", "hf", "df"]:
+        cb = model.cb(t, on=on, bound="two-sided", alpha_ci=0.05)
+        point = getattr(model, on)(t)
+        assert np.all(cb[:, 0] < point)
+        assert np.all(point < cb[:, 1])
+
+    cb = model.cb(t, on="sf", bound="two-sided", alpha_ci=0.05)
+    assert np.all(cb > 0)
+    assert np.all(cb < 1)
+    assert np.all(cb[:, 0] < sf) and np.all(sf < cb[:, 1])
+
+    f0_lower, f0_upper = model.param_cb("f0", alpha_ci=0.05)
+    assert 0 < f0_lower < model.f0 < f0_upper < 1
+
+
+def test_fixed_param_has_no_variance():
+    np.random.seed(5)
+    x = surv.Weibull.random(500, 10, 2)
+    model = surv.Weibull.fit(x, fixed={"beta": 2.0})
+
+    # A fixed parameter is known, not estimated: zero variance and a
+    # degenerate confidence interval
+    assert np.all(model.hess_inv[1, :] == 0)
+    assert np.all(model.hess_inv[:, 1] == 0)
+    assert np.allclose(model.param_cb("beta"), [2.0, 2.0])
+
+    # The free parameter's variance is conditional on the fixed value:
+    # it matches a Hessian computed over alpha alone
+    def nll(a):
+        return model.dist._neg_ll_func(model.surv_data, a[0], 2.0, 0, 0, 1)
+
+    h = hessian(nll)(np.array([model.params[0]]))
+    assert np.allclose(model.hess_inv[0, 0], 1 / h[0, 0])
+
+    t = np.linspace(6, 14, 9)
+    cb = model.cb(t, on="sf", bound="two-sided", alpha_ci=0.05)
+    sf = model.sf(t)
+    assert np.all(cb[:, 0] < sf) and np.all(sf < cb[:, 1])
+
+
+def test_fixed_p_lfp():
+    np.random.seed(6)
+    n = 500
+    x = surv.Weibull.random(n, 10, 2)
+    c = np.zeros(n)
+    never = np.random.uniform(size=n) > 0.5
+    x[never] = x.max() + 1
+    c[never] = 1
+
+    model = surv.Weibull.fit(x, c=c, lfp=True, fixed={"p": 0.5})
+    assert np.isclose(model.p, 0.5)
+    assert np.all(model.cov_matrix[2, :] == 0)
+    assert np.all(model.cov_matrix[:, 2] == 0)
+    assert np.allclose(model.param_cb("p"), [model.p, model.p])
+
+    t = np.linspace(5, 50, 10)
+    cb = model.cb(t, on="sf", bound="two-sided", alpha_ci=0.05)
+    sf = model.sf(t)
+    assert np.all(cb[:, 0] < sf) and np.all(sf < cb[:, 1])
+
+
+def test_fixed_f0_zi():
+    np.random.seed(7)
+    x = surv.Weibull.random(500, 10, 2)
+    x = np.concatenate([x, np.zeros(50)])
+
+    model = surv.Weibull.fit(x, zi=True, fixed={"f0": 0.1})
+    assert np.isclose(model.f0, 0.1)
+    assert np.all(model.cov_matrix[2, :] == 0)
+    assert np.all(model.cov_matrix[:, 2] == 0)
+    assert np.allclose(model.param_cb("f0"), [model.f0, model.f0])
+
+
+def test_cb_round_trips_through_serialization(lfp_model):
+    model = lfp_model
+    t = np.linspace(5, 50, 10)
+    expected = model.cb(t, on="sf", bound="two-sided", alpha_ci=0.05)
+    restored = surv.Parametric.from_dict(model.to_dict())
+    assert np.allclose(
+        restored.cb(t, on="sf", bound="two-sided", alpha_ci=0.05), expected
+    )

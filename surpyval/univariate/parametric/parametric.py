@@ -53,14 +53,14 @@ class Parametric(Distribution):
 
         if lfp:
             bounds = (*bounds, (0, 1))
-            param_map.update({"p": len(param_map) + 1})
+            param_map.update({"p": len(param_map)})
             self.k += 1
         else:
             self.p = 1
 
         if zi:
             bounds = (*bounds, (0, 1))
-            param_map.update({"f0": len(param_map) + 1})
+            param_map.update({"f0": len(param_map)})
             self.k += 1
         else:
             self.f0 = 0
@@ -114,6 +114,9 @@ class Parametric(Distribution):
         if "hess_inv" in model_dict:
             out.hess_inv = np.array(model_dict["hess_inv"])
 
+        if "cov_matrix" in model_dict:
+            out.cov_matrix = np.array(model_dict["cov_matrix"])
+
         if "_neg_ll" in model_dict:
             out._neg_ll = model_dict["_neg_ll"]
 
@@ -163,6 +166,8 @@ class Parametric(Distribution):
                 pass
             else:
                 out["hess_inv"] = self.hess_inv.tolist()
+        if getattr(self, "cov_matrix", None) is not None:
+            out["cov_matrix"] = self.cov_matrix.tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = self._neg_ll
 
@@ -205,23 +210,50 @@ class Parametric(Distribution):
         """
         Method to calculate the confidence bound on a parameter.
         """
-        idx = self.dist.param_map[name]
-        p_hat = self.params[idx]
+        if name in ("p", "f0"):
+            if name == "p" and not self.lfp:
+                raise ValueError("'p' is only estimated for lfp models")
+            if name == "f0" and not self.zi:
+                raise ValueError("'f0' is only estimated for zi models")
+            cov = getattr(self, "cov_matrix", None)
+            if cov is None:
+                raise ValueError(
+                    f"Model has no covariance for '{name}'; "
+                    "it must be fit with the MLE method"
+                )
+            idx = len(self.params)
+            if name == "f0" and self.lfp:
+                idx += 1
+            p_hat = self.p if name == "p" else self.f0
+            var = cov[idx, idx]
+            param_bounds = (0, 1)
+        else:
+            idx = self.dist.param_map[name]
+            p_hat = self.params[idx]
+            var = self.hess_inv[idx, idx]
+            param_bounds = self.dist.bounds[idx]
 
         if bound == "two-sided":
             alpha = alpha_ci / 2
             bounds = np.array([-1, 1])
         elif bound == "lower":
+            alpha = alpha_ci
             bounds = np.array([-1])
         elif bound == "upper":
+            alpha = alpha_ci
             bounds = np.array([1])
 
-        if self.dist.bounds[idx] == (0, None):
-            exponent = z(alpha) * np.sqrt(self.hess_inv[idx, idx]) / p_hat
+        if param_bounds == (0, None):
+            exponent = z(alpha) * np.sqrt(var) / p_hat
             bounds = -bounds * exponent
             return p_hat * np.exp(bounds)
+        elif param_bounds == (0, 1):
+            # Bounds on the logit keep the result within (0, 1)
+            u_hat = np.log(p_hat / (1 - p_hat))
+            diff = -bounds * z(alpha) * np.sqrt(var) / (p_hat * (1 - p_hat))
+            return 1 / (1 + np.exp(-(u_hat + diff)))
         else:
-            factor = z(alpha) * np.sqrt(self.hess_inv[idx, idx])
+            factor = z(alpha) * np.sqrt(var)
             bounds = -bounds * factor
             return p_hat + bounds
 
@@ -722,16 +754,51 @@ class Parametric(Distribution):
             raise ValueError("Only MLE has confidence bounds")
 
         hess_inv = np.copy(self.hess_inv)
+
+        # The variance is computed over the extended parameter vector
+        # (*params, p?, f0?) so that the uncertainty of the LFP and
+        # zero-inflation parameters widens the bounds. gamma is held
+        # fixed: the threshold parameter is non-regular, so it carries
+        # no Wald variance. Models deserialized without a cov_matrix
+        # fall back to treating p and f0 as fixed.
+        n_core = len(self.params)
+        phi_hat = list(self.params)
+        if self.lfp:
+            phi_hat.append(self.p)
+        if self.zi:
+            phi_hat.append(self.f0)
+        phi_hat = np.array(phi_hat)
+
+        cov = getattr(self, "cov_matrix", None)
+        if cov is None:
+            cov = np.zeros((len(phi_hat), len(phi_hat)))
+            cov[:n_core, :n_core] = hess_inv
+
+        def unpack(phi):
+            core = phi[:n_core]
+            i = n_core
+            if self.lfp:
+                p = phi[i]
+                i += 1
+            else:
+                p = 1.0
+            f0 = phi[i] if self.zi else 0.0
+            return core, p, f0
+
+        def full_sf(x, phi):
+            core, p, f0 = unpack(phi)
+            return 1 - p + (p - f0) * self.dist.sf(x - self.gamma, *core)
+
         old_err_state = np.seterr(all="ignore")
 
         def delta_method_var(func):
             # First-order delta method: Var(g) = J Sigma J^T
-            jac = np.atleast_2d(jacobian(func)(np.array(self.params)))
-            return np.einsum("ij,jk,ik->i", jac, hess_inv, jac)
+            jac = np.atleast_2d(jacobian(func)(phi_hat))
+            return np.einsum("ij,jk,ik->i", jac, cov, jac)
 
-        if hasattr(self.dist, "R_cb"):
+        if hasattr(self.dist, "R_cb") and not (self.lfp or self.zi):
 
-            def R_cb(x, bound=bound):
+            def sf_cb(x, bound=bound):
                 return self.dist.R_cb(
                     x - self.gamma,
                     *self.params,
@@ -742,12 +809,12 @@ class Parametric(Distribution):
 
         else:
 
-            def R_cb(x, bound=bound):
-                def sf_func(params):
-                    return self.dist.sf(x - self.gamma, *params)
+            def sf_cb(x, bound=bound):
+                def sf_func(phi):
+                    return full_sf(x, phi)
 
                 var_R = delta_method_var(sf_func)
-                R_hat = self.dist.sf(x - self.gamma, *self.params)
+                R_hat = full_sf(x, phi_hat)
                 if bound == "two-sided":
                     diff = (
                         z(alpha_ci / 2)
@@ -763,11 +830,6 @@ class Parametric(Distribution):
                 exponent = diff / (R_hat * (1 - R_hat))
                 R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
                 return R_cb.T
-
-        def sf_cb(x, bound=bound):
-            # p, f0 and gamma are treated as fixed; the Hessian used for
-            # the variance does not include them.
-            return 1 - self.p + (self.p - self.f0) * R_cb(x, bound=bound)
 
         # ff, F and Hf are decreasing transforms of R; flip one-sided bounds
         if on in ["ff", "F", "Hf"] and bound == "lower":
@@ -785,26 +847,19 @@ class Parametric(Distribution):
             cb = -np.log(sf_cb(t, bound=bound))
         elif on in ["hf", "df"]:
 
-            def density(params):
-                return (self.p - self.f0) * self.dist.df(
-                    t - self.gamma, *params
-                )
+            def density(phi):
+                core, p, f0 = unpack(phi)
+                return (p - f0) * self.dist.df(t - self.gamma, *core)
 
             if on == "hf":
 
-                def func(params):
-                    survival = (
-                        1
-                        - self.p
-                        + (self.p - self.f0)
-                        * self.dist.sf(t - self.gamma, *params)
-                    )
-                    return density(params) / survival
+                def func(phi):
+                    return density(phi) / full_sf(t, phi)
 
             else:
                 func = density
 
-            g_hat = func(np.array(self.params))
+            g_hat = func(phi_hat)
             var_g = delta_method_var(func)
 
             if bound == "two-sided":

@@ -75,7 +75,9 @@ def mle(model):
     best_method = None
 
     with np.errstate(all="ignore"):
-        # Try easiest, to most complex optimisations
+        # Try easiest, to most complex optimisations. Each method warm
+        # starts from the best point found so far rather than the cold
+        # initial guess.
         for method, jac_i, hess_i in [
             ("Nelder-Mead", None, None),
             ("Powell", None, None),
@@ -84,22 +86,23 @@ def mle(model):
             ("Newton-CG", jac, hess),
         ]:
             opts = {"maxfun": 1000} if method == "TNC" else {"maxiter": 1000}
+            x0 = init if best_result is None else best_result.x
             res = minimize(
                 fun,
-                init,
+                x0,
                 args=(offset, lfp, zi, True),
                 method=method,
                 jac=jac_i,
                 hess=hess_i,
                 options=opts,
             )
-            if res.success:
-                if res.fun < best:
-                    best_result = res
-                    best_method = method
-                    best = res.fun
-            if best_result:
-                res = best_result
+            if res.success and res.fun < best:
+                best_result = res
+                best_method = method
+                best = res.fun
+
+        if best_result is not None:
+            res = best_result
 
         winning_message = (
             best_result.get("message", "")
@@ -159,19 +162,69 @@ def mle(model):
 
         results["p"] = p
         results["params"] = params
-        # Do not account for variation of gamma, f0, p in confidence bounds.
-        try:
-            hess_inv = inv(
-                hess(params, *(False, False, False, False, gamma, f0, p))
+
+        # The covariance of the parameters is found from the Hessian in
+        # the transformed (unbounded) space used during optimisation,
+        # then mapped back to the bounded parameter space with the delta
+        # method. p and f0 are estimated parameters and are included in
+        # the covariance. User-fixed parameters are known, not
+        # estimated, so they carry no variance and the free parameters
+        # get their conditional variance. gamma is also held at its
+        # estimate since the threshold parameter of an offset model is
+        # non-regular and a Wald variance for it would be misleading.
+        fixed_idx = model.fitting_info["fixed_idx"]
+        u_full = const(init) if use_initial else const(res.x)
+        n_head = 1 if offset else 0
+        n_core = len(params)
+        n_total = len(u_full)
+        var_idx = np.array(
+            [i for i in range(n_head, n_total) if i not in fixed_idx],
+            dtype=int,
+        )
+
+        # Embed the variance-carrying sub-vector into the full
+        # transformed vector; the matrix form keeps the held entries
+        # constant under autograd
+        embed = np.zeros((n_total, len(var_idx)))
+        embed[var_idx, np.arange(len(var_idx))] = 1.0
+        u_held = np.where(embed.sum(axis=1) == 0, u_full, 0.0)
+
+        def transformed_fun(u):
+            theta = inv_trans(embed @ u + u_held)[n_head:]
+            if zi:
+                *theta, f0_i = theta
+            else:
+                f0_i = f0
+            if lfp:
+                *theta, p_i = theta
+            else:
+                p_i = p
+            return model.dist._neg_ll_func(
+                model.surv_data, *theta, gamma, f0_i, p_i
             )
-            if np.isnan(hess_inv).any():
-                hess_inv_approx = Hessian(
-                    lambda x: fun(x, False, False, False, False, gamma, f0, p)
-                )
-                hess_inv = inv(hess_inv_approx(params))
+
+        def u_to_phi(u):
+            return inv_trans(embed @ u + u_held)[n_head:]
+
+        try:
+            if len(var_idx) == 0:
+                cov_matrix = np.zeros((n_total - n_head, n_total - n_head))
+            else:
+                u_var = u_full[var_idx]
+                hess_u = hessian(transformed_fun)(u_var)
+                cov_u = inv(hess_u)
+                if np.isnan(cov_u).any():
+                    cov_u = inv(Hessian(transformed_fun)(u_var))
+                jac_u = jacobian(u_to_phi)(u_var)
+                # Covariance of the extended vector (*params, p?, f0?);
+                # fixed parameters have zero rows and columns
+                cov_matrix = jac_u @ cov_u @ jac_u.T
+            hess_inv = cov_matrix[:n_core, :n_core]
         except np.linalg.LinAlgError:
+            cov_matrix = None
             hess_inv = None
 
+        results["cov_matrix"] = cov_matrix
         results["hess_inv"] = hess_inv
         results["_neg_ll"] = res["fun"]
         results["log_likelihood"] = -res["fun"]
