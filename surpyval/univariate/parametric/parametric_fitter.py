@@ -160,8 +160,6 @@ class ParametricFitter:
             return np.sum(n * (np.log1p(-f0) + self.log_sf(x, *params)))
         else:
             F = self.ff(x, *params)
-            # ALso could be:
-            # np.sum(n * np.log((1 - p + (p - f0)*self.sf(x, *params))))
             return np.sum(n * np.log(1 - f0 - (p - f0) * F))
 
     @_check_x_not_empty
@@ -240,7 +238,6 @@ class ParametricFitter:
         if (n_obs > 1).any():
             n_ties = (n_obs - 1).sum()
             Df = self.df(x_obs, *params)
-            # Df = Df[Df != 0]
             LL = np.concatenate([Dl, Df, Dr])
             ll_n = np.concatenate([n[c == -1], (n_obs - 1), n[c == 1]])
         else:
@@ -290,7 +287,7 @@ class ParametricFitter:
         self, surv_data, how, offset, lfp, zi, heuristic, turnbull_estimator
     ):
         if offset and (self.support[0] != 0):
-            detail = "{} distribution cannot be offset".format(self.name)
+            detail = f"{self.name} distribution cannot be offset"
             raise ValueError(detail)
 
         if how not in PARA_METHODS:
@@ -299,7 +296,7 @@ class ParametricFitter:
         if how == "MPP" and self.name == "ExpoWeibull":
             detail = (
                 "ExpoWeibull distribution does not work"
-                + " with probability plot fitting"
+                " with probability plot fitting"
             )
             raise ValueError(detail)
 
@@ -311,17 +308,16 @@ class ParametricFitter:
             detail = "Method of moments doesn't support truncation"
             raise ValueError(detail)
 
-        if (lfp or zi) & (how != "MLE"):
+        if (lfp or zi) and (how != "MLE"):
             detail = (
                 "Limited failure or zero-inflated models"
-                + " can only be made with MLE"
+                " can only be made with MLE"
             )
             raise ValueError(detail)
 
-        if zi & (self.support[0] != 0):
+        if zi and (self.support[0] != 0):
             detail = (
-                "zero-inflated models can only work"
-                + " with models starting at 0"
+                "zero-inflated models can only work with models starting at 0"
             )
             raise ValueError(detail)
 
@@ -341,7 +337,7 @@ class ParametricFitter:
         ):
             detail = (
                 "Probability plotting estimation with left or "
-                + "interval censoring only works with Turnbull heuristic"
+                "interval censoring only works with Turnbull heuristic"
             )
             raise ValueError(detail)
 
@@ -355,7 +351,7 @@ class ParametricFitter:
             # then this is equivalent.
             heuristic = turnbull_estimator
 
-        if (not offset) & (not zi):
+        if (not offset) and (not zi):
             detail_template = """
             Some of your data is outside support of distribution, observed
             values must be within [{lower}, {upper}].
@@ -994,13 +990,11 @@ class ParametricFitter:
               beta: 4
         """
         if self.k != len(params):
-            msg_base = "Must have {k} params for {dist} distribution"
-            detail = msg_base.format(k=self.k, dist=self.name)
+            detail = f"Must have {self.k} params for {self.name} distribution"
             raise ValueError(detail)
 
         if gamma is not None and np.isinf(self.support).all():
-            msg_base = "{dist} distribution cannot be offset"
-            detail = msg_base.format(dist=self.name)
+            detail = f"{self.name} distribution cannot be offset"
             raise ValueError(detail)
 
         if gamma is not None:
@@ -1043,10 +1037,11 @@ class ParametricFitter:
             else:
                 upper_limit = upp
 
-            if not ((lower_limit < params[i]) & (params[i] < upper_limit)):
-                params = ", ".join(self.param_names)
-                base = "Params {params} must be in bounds {bounds}"
-                detail = base.format(params=params, bounds=self.bounds)
+            if not (lower_limit < params[i] < upper_limit):
+                param_names = ", ".join(self.param_names)
+                detail = (
+                    f"Params {param_names} must be in" f" bounds {self.bounds}"
+                )
                 raise ValueError(detail)
         model.dist = self
         return model

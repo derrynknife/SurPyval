@@ -110,23 +110,23 @@ def mle(model):
         if "Desired error not necessarily" in winning_message:
             warnings.warn(
                 "Precision was lost, try:"
-                + "\n- Using alternate fitting method"
-                + "\n- visually checking model fit"
-                + "\n- change data to be closer to 1."
+                "\n- Using alternate fitting method"
+                "\n- visually checking model fit"
+                "\n- change data to be closer to 1."
             )
 
         elif (not res.success) or (np.isnan(res.x).any()):
             warnings.warn(
                 "MLE Failed, using MPP results instead. "
-                + "Try making the values of the data closer to "
-                + "1 by dividing or multiplying by some constant."
-                + "\n\nAlternately try setting the `init` keyword in"
-                + " the `fit()`"
-                + " method to a value you believe is closer."
-                + "A good way to do this is to set any shape parameter to 1. "
-                + "and any scale parameter to be the mean of the data "
-                + "(or it's inverse)"
-                + "\n\nModel returned with inital guesses (MPP)"
+                "Try making the values of the data closer to "
+                "1 by dividing or multiplying by some constant."
+                "\n\nAlternately try setting the `init` keyword in"
+                " the `fit()`"
+                " method to a value you believe is closer."
+                "A good way to do this is to set any shape parameter to 1. "
+                "and any scale parameter to be the mean of the data "
+                "(or it's inverse)"
+                "\n\nModel returned with inital guesses (MPP)"
             )
 
             use_initial = True

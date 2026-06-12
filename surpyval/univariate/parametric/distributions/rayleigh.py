@@ -359,13 +359,6 @@ class Rayleigh_(ParametricFitter):
         y_pp = self.mpp_y_transform(F)
         x_pp = self.mpp_x_transform(x_pp)
 
-        # mask = np.isinfinite(y_pp)
-        # if mask.any():
-        #     warnings.warn("Some Infinite values encountered in plotting
-        # points and have been ignored.", stacklevel=2)
-        #     y_pp = y_pp[mask]
-        #     x_pp = x_pp[mask]
-
         if offset:
             if rr == "y":
                 params = np.polyfit(x_pp, y_pp, 1)

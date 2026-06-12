@@ -93,10 +93,8 @@ def mpp(model):
     y_pp = dist.mpp_y_transform(y_pp)
 
     if offset:
-        # I think this should be x[c != 1] and not in xl
         x_min = np.min(x_pp)
 
-        # fun = lambda gamma : -pearsonr(np.log(x - gamma), y_)[0]
         def fun(gamma):
             g = x_min - np.exp(-gamma)
             out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]

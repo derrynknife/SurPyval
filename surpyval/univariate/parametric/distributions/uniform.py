@@ -337,13 +337,13 @@ class Uniform_(ParametricFitter):
         if (data.c[data.x == data.x.max()] == 1).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
-                + " the highest value is right censored"
+                " the highest value is right censored"
             )
 
         if (data.c[data.x == data.x.min()] == -1).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
-                + " the lowest value is left censored"
+                " the lowest value is left censored"
             )
 
         tl = data.t[:, 0]
@@ -352,13 +352,13 @@ class Uniform_(ParametricFitter):
         if np.isfinite(tr[data.x == data.x.max()]).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
-                + " the highest value is right truncated"
+                " the highest value is right truncated"
             )
 
         if np.isfinite(tl[data.x == data.x.min()]).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
-                + " the lowest value is left truncated"
+                " the lowest value is left truncated"
             )
 
         params = np.array([np.min(data.x), np.max(data.x)])

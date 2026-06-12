@@ -152,7 +152,7 @@ class Exponential_(ParametricFitter):
         >>> Exponential.ff(x, 3)
         array([0.95021293, 0.99752125, 0.99987659, 0.99999386, 0.99999969])
         """
-        return 1 - np.exp(-failure_rate * x)
+        return -np.expm1(-failure_rate * x)
 
     def df(self, x, failure_rate):
         r"""

@@ -21,7 +21,7 @@ class Beta_(ParametricFitter):
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        if (c is not None) & ((c == 0).all()):
+        if (c is not None) and (c == 0).all():
             x = np.repeat(x, n)
             p = self._mom(x)
         else:

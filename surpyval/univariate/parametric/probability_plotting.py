@@ -142,7 +142,7 @@ def probability_plot_data(
     x_ticks_labels = [
         (
             str(int(x))
-            if (re.match(r"([0-9]+\.0+)", str(x)) is not None) & (x > 1)
+            if (re.match(r"([0-9]+\.0+)", str(x)) is not None) and (x > 1)
             else str(x)
         )
         for x in _round_vals(vals_non_sig + gamma)
@@ -156,7 +156,7 @@ def probability_plot_data(
     y_ticks_labels = [
         (
             str(int(y)) + "%"
-            if (re.match(r"([0-9]+\.0+)", str(y)) is not None) & (y > 1)
+            if (re.match(r"([0-9]+\.0+)", str(y)) is not None) and (y > 1)
             else str(y)
         )
         for y in y_ticks * 100
@@ -220,7 +220,7 @@ def draw_probability_plot(
     ax.scatter(d["x_"], d["F"])
 
     ax.set_xlim([d["x_scale_min"], d["x_scale_max"]])
-    if plot_bounds & (len(d["cbs"]) != 0):
+    if plot_bounds and (len(d["cbs"]) != 0):
         ax.plot(d["x_model"], d["cbs"], color=CB_COLOUR)
 
     ax.plot(d["x_model"], d["cdf"], color="k", linestyle="--")

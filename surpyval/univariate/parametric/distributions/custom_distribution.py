@@ -74,7 +74,7 @@ class CustomDistribution(ParametricFitter):
         if "f0" in param_names:
             detail = (
                 "'f0' reserved parameter name for zero"
-                + "inflated or hurdle models"
+                "inflated or hurdle models"
             )
             raise ValueError(detail)
 

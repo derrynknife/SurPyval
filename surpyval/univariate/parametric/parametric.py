@@ -90,7 +90,7 @@ class Parametric(Distribution):
         dist = getattr(surv, model_dict["distribution"], None)
         if not isinstance(dist, ParametricFitter):
             raise ValueError(
-                "Unknown distribution '{}'".format(model_dict["distribution"])
+                f"Unknown distribution '{model_dict['distribution']}'"
             )
         how = model_dict["how"]
         if "data" in model_dict:
@@ -176,30 +176,26 @@ class Parametric(Distribution):
         if hasattr(self, "params"):
             param_string = "\n".join(
                 [
-                    "{:>10}".format(name) + ": " + str(p)
+                    f"{name:>10}: {p}"
                     for p, name in zip(self.params, self.dist.param_names)
                 ]
             )
             out = (
                 "Parametric SurPyval Model"
-                + "\n========================="
-                + "\nDistribution        : {dist}"
-                + "\nFitted by           : {method}"
-            ).format(dist=self.dist.name, method=self.method)
+                "\n========================="
+                f"\nDistribution        : {self.dist.name}"
+                f"\nFitted by           : {self.method}"
+            )
             if self.offset:
-                out += "\nOffset (gamma)      : {g}".format(g=self.gamma)
+                out += f"\nOffset (gamma)      : {self.gamma}"
 
             if self.lfp:
-                out += "\nMax Proportion (p)  : {p}".format(p=self.p)
+                out += f"\nMax Proportion (p)  : {self.p}"
 
             if self.zi:
-                out += "\nZero-Inflation (f0) : {f0}".format(f0=self.f0)
+                out += f"\nZero-Inflation (f0) : {self.f0}"
 
-            out = (
-                out
-                + "\nParameters          :\n"
-                + "{params}".format(params=param_string)
-            )
+            out = out + "\nParameters          :\n" + param_string
 
             return out
         else:
@@ -538,16 +534,15 @@ class Parametric(Distribution):
         array([10.84103403,  0.48542084,  7.11387062,  5.41420125, 4.59286657,
                 5.90703589,  7.5124326 ,  7.96575225,  9.18134126, 8.16000438])
         """
-        if ((a is not None) | (b is not None)) & (
-            (self.p != 1) | (self.f0 != 0)
+        if ((a is not None) or (b is not None)) and (
+            (self.p != 1) or (self.f0 != 0)
         ):
             raise NotImplementedError(
-                "Truncated sampling not supported with" + " LFP or ZI models"
+                "Truncated sampling not supported with LFP or ZI models"
             )
-        elif ((a is not None) | (b is not None)) & (self.offset):
+        elif ((a is not None) or (b is not None)) and self.offset:
             raise NotImplementedError(
-                "Truncated sampling not supported with"
-                + " offset distributions"
+                "Truncated sampling not supported with offset distributions"
             )
 
         if (self.p == 1) and (self.f0 == 0):
@@ -721,7 +716,7 @@ class Parametric(Distribution):
         """
         t = np.atleast_1d(t)
         if self.method != "MLE":
-            raise Exception("Only MLE has confidence bounds")
+            raise ValueError("Only MLE has confidence bounds")
 
         hess_inv = np.copy(self.hess_inv)
 
@@ -753,9 +748,6 @@ class Parametric(Distribution):
                     j = np.atleast_2d(j).T * j
                     j = j[np.triu_indices(j.shape[0])]
                     var_R.append(np.sum(j * pvars))
-
-                # First-Order Taylor Series Expansion of Variance
-                # var_R = (jac**2 * np.diag(hess_inv)).sum(axis=1).T
 
                 R_hat = self.sf(x)
                 if bound == "two-sided":
@@ -989,7 +981,7 @@ class Parametric(Distribution):
         >>> model = Weibull.fit(x)
         >>> data = model.get_plot_data()
         """
-        if hasattr(self, "hess_inv") & (self.method == "MLE"):
+        if hasattr(self, "hess_inv") and (self.method == "MLE"):
             if self.hess_inv is not None:
 
                 def cb_func(x_model):
@@ -1063,20 +1055,18 @@ class Parametric(Distribution):
             ax = plt.gcf().gca()
 
         if not hasattr(self, "params"):
-            raise Exception("Can't plot model that failed to fit")
+            raise ValueError("Can't plot model that failed to fit")
 
         if self.method == "given parameters":
             detail = "Can't plot model that was given parameters and no data"
-            raise Exception(detail)
+            raise ValueError(detail)
 
         if not (
             hasattr(self.dist, "mpp_y_transform")
             and hasattr(self.dist, "mpp_inv_y_transform")
         ):
             raise NotImplementedError(
-                "{} does not support probability plotting".format(
-                    self.dist.name
-                )
+                f"{self.dist.name} does not support probability plotting"
             )
 
         heuristic = adjust_heuristic(self.data["c"], self.data["t"], heuristic)
@@ -1088,6 +1078,6 @@ class Parametric(Distribution):
             d,
             lambda x: self.dist.mpp_y_transform(x, *self.params),
             lambda x: self.dist.mpp_inv_y_transform(x, *self.params),
-            title="{} Probability Plot".format(self.dist.name),
+            title=f"{self.dist.name} Probability Plot",
             plot_bounds=plot_bounds,
         )

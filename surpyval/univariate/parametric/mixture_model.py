@@ -46,30 +46,19 @@ class MixtureModel:
         if hasattr(self, "params"):
             param_string = "\n".join(
                 [
-                    "{:>10}".format(name) + ": " + str(p)
+                    f"{name:>10}: {p}"
                     for p, name in zip(self.params.T, self.dist.param_names)
                 ]
             )
+            weight_string = ",\n\t".join([str(w) for w in self.w])
             out = (
                 "Parametric Mixture SurPyval Model"
-                + "\n================================="
-                + "\nDistribution        : {dist}"
-                + "\nSub-Distributions   : {m}"
-                + "\nFitted by           : EM"
-            ).format(dist=self.dist.name, m=self.m)
-
-            out = (
-                out
-                + "\nWeights             : "
-                + "\n\t{params}".format(
-                    params=",\n\t".join([str(w) for w in self.w])
-                )
-            )
-
-            out = (
-                out
-                + "\nParameters          :\n"
-                + "{params}".format(params=param_string)
+                "\n================================="
+                f"\nDistribution        : {self.dist.name}"
+                f"\nSub-Distributions   : {self.m}"
+                "\nFitted by           : EM"
+                f"\nWeights             : \n\t{weight_string}"
+                f"\nParameters          :\n{param_string}"
             )
 
             return out
@@ -405,7 +394,7 @@ class MixtureModel:
             ax = plt.gcf().gca()
 
         if not hasattr(self, "params"):
-            raise Exception("Can't plot model that failed to fit")
+            raise ValueError("Can't plot model that failed to fit")
 
         heuristic = adjust_heuristic(self.data.c, self.data.t, heuristic)
 
@@ -416,5 +405,5 @@ class MixtureModel:
             d,
             lambda x: self.dist.mpp_y_transform(x, *self.params),
             lambda x: self.dist.mpp_inv_y_transform(x, *self.params),
-            title="{} Mixture Probability Plot".format(self.dist.name),
+            title=f"{self.dist.name} Mixture Probability Plot",
         )

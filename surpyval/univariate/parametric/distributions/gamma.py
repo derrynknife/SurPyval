@@ -446,8 +446,8 @@ class Gamma_(ParametricFitter):
             mask = F != 1
             warnings.warn(
                 "Some heuristic values for CDF = 1 have been "
-                + "encountered in plotting points and have been "
-                + "ignored.",
+                "encountered in plotting points and have been "
+                "ignored.",
                 stacklevel=2,
             )
             F = F[mask]
@@ -459,7 +459,7 @@ class Gamma_(ParametricFitter):
         if mask.any():
             warnings.warn(
                 "Some Infinite values encountered in plotting "
-                + "points and have been ignored.",
+                "points and have been ignored.",
                 stacklevel=2,
             )
             F = F[mask]
