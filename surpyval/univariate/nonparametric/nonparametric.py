@@ -466,6 +466,326 @@ class NonParametric:
         p = p / p.sum()
         return np.random.choice(self.x, size=size, p=p)
 
+    def qf(self, p):
+        r"""
+        Quantile function of the non-parametric estimate. Returns the
+        smallest observed value at which the estimated CDF reaches, or
+        exceeds, the probability p.
+
+        Parameters
+        ----------
+
+        p : array like or scalar
+            The probabilities at which the quantile will be computed.
+            Values must be in (0, 1].
+
+        Returns
+        -------
+
+        q : numpy array
+            The value(s) of the quantile at each p. NaN where the
+            estimated CDF never reaches p (e.g. due to right censoring).
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> x = np.array([1, 2, 3, 4, 5])
+        >>> model = KaplanMeier.fit(x)
+        >>> model.qf(0.5)
+        array([3.])
+        >>> model.qf([0.1, 0.5, 0.9])
+        array([1., 3., 5.])
+        """
+        p = np.atleast_1d(p).astype(float)
+        if ((p <= 0) | (p > 1)).any():
+            raise ValueError("'p' must be in the range (0, 1]")
+        idx = np.searchsorted(self.F, p, side="left")
+        x_padded = np.hstack([self.x.astype(float), [np.nan]])
+        return x_padded[np.minimum(idx, len(self.x))]
+
+    @property
+    def median(self):
+        r"""
+        The median survival time; the smallest observed value at which
+        the estimated CDF reaches, or exceeds, 0.5. NaN if the estimate
+        never reaches 0.5 (e.g. due to right censoring).
+        """
+        return self.qf(0.5)[0]
+
+    def quantile_cb(self, p, alpha_ci=0.05, bound_type="exp", dist="z"):
+        r"""
+        Two-sided confidence interval of the quantile at each
+        probability p using the Brookmeyer-Crowley method: the interval
+        is the set of times at which the pointwise confidence interval
+        of the survival function contains 1 - p.
+
+        Parameters
+        ----------
+
+        p : array like or scalar
+            The probabilities at which the quantile interval will be
+            computed. Values must be in (0, 1].
+        alpha_ci : scalar, optional
+            The level of significance at which the interval will be
+            computed. Defaults to 0.05.
+        bound_type : ('exp', 'normal'), str, optional
+            The method for the underlying survival function bounds.
+        dist : ('t', 'z'), str, optional
+            The statistic used in the underlying survival function
+            bounds.
+
+        Returns
+        -------
+
+        cb : numpy array
+            Array of shape (len(p), 2) with the ``[lower, upper]``
+            interval of the quantile for each p. The upper limit is NaN
+            where the relevant bound of the survival function never
+            crosses 1 - p (i.e. the interval is open to the right).
+        """
+        p = np.atleast_1d(p).astype(float)
+        if ((p <= 0) | (p > 1)).any():
+            raise ValueError("'p' must be in the range (0, 1]")
+
+        bounds = self.cb(
+            self.x,
+            on="sf",
+            bound="two-sided",
+            alpha_ci=alpha_ci,
+            bound_type=bound_type,
+            dist=dist,
+        )
+        lower_sf, upper_sf = bounds[:, 0], bounds[:, 1]
+
+        out = np.empty((p.size, 2))
+        for i, p_i in enumerate(p):
+            level = 1.0 - p_i
+            # Times enter the interval when the lower survival bound
+            # falls to the level, and leave it once the upper survival
+            # bound falls below the level.
+            in_lower = lower_sf <= level
+            in_upper = upper_sf < level
+            out[i, 0] = (
+                self.x[np.argmax(in_lower)] if in_lower.any() else np.nan
+            )
+            out[i, 1] = (
+                self.x[np.argmax(in_upper)] if in_upper.any() else np.nan
+            )
+        return out
+
+    def mean(self, tau=None):
+        r"""
+        The (restricted) mean survival time: the area under the
+        estimated survival function from 0 to tau.
+
+        If the survival function reaches zero this is the mean of the
+        estimated distribution. With right censoring the survival
+        function does not reach zero and the unrestricted mean is
+        undefined; the restricted mean up to tau (defaulting to the
+        largest observed value) is reported instead, which is the
+        standard restricted mean survival time (RMST).
+
+        Parameters
+        ----------
+
+        tau : scalar, optional
+            The horizon up to which the survival function is
+            integrated. Defaults to the largest observed value. If tau
+            is beyond the last observation the survival function is
+            extended at its final value.
+
+        Returns
+        -------
+
+        mean : float
+            The restricted mean survival time.
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> x = np.array([1, 2, 3, 4, 5])
+        >>> model = KaplanMeier.fit(x)
+        >>> model.mean()
+        3.0
+        """
+        if np.min(self.x) < 0:
+            raise ValueError(
+                "Mean survival time requires non-negative observations"
+            )
+        if tau is None:
+            tau = np.max(self.x)
+
+        xs = self.x[self.x < tau].astype(float)
+        times = np.hstack([[0.0], xs, [tau]])
+        surv = np.hstack([[1.0], self.R[: xs.size]])
+        return float(np.sum(np.diff(times) * surv))
+
+    def mean_cb(self, tau=None, alpha_ci=0.05):
+        r"""
+        Two-sided confidence interval of the (restricted) mean survival
+        time, using the normal approximation with the standard variance
+        estimate:
+
+        .. math::
+            \widehat{Var}(\hat{\mu}) = \sum_{i: x_i \leq \tau}
+                A_i^2 v_i
+
+        where :math:`A_i` is the area under the survival function from
+        :math:`x_i` to :math:`\tau` and :math:`v_i` is the variance
+        increment of the cumulative hazard at :math:`x_i` (e.g. the
+        Greenwood increment for the Kaplan-Meier estimator).
+
+        Parameters
+        ----------
+
+        tau : scalar, optional
+            The horizon up to which the survival function is
+            integrated. Defaults to the largest observed value.
+        alpha_ci : scalar, optional
+            The level of significance at which the interval will be
+            computed. Defaults to 0.05.
+
+        Returns
+        -------
+
+        cb : numpy array
+            The ``[lower, upper]`` interval of the (restricted) mean.
+        """
+        if getattr(self, "greenwood", None) is None:
+            raise ValueError(
+                "Model has no variance estimate so confidence bounds "
+                + "cannot be computed. This occurs for models created "
+                + "with 'fit_from_ecdf' since the at risk and death "
+                + "counts are unknown."
+            )
+        if tau is None:
+            tau = np.max(self.x)
+
+        mu = self.mean(tau=tau)
+
+        # Area under the survival curve from each observation to tau
+        xs = self.x.astype(float)
+        upper_t = np.minimum(np.hstack([xs[1:], [np.inf]]), tau)
+        widths = np.clip(upper_t - np.minimum(xs, tau), 0, None)
+        seg_area = widths * self.R
+        # A[i] is the area from x[i] to tau
+        A = np.cumsum(seg_area[::-1])[::-1]
+
+        v = np.diff(np.hstack([[0.0], self.greenwood]))
+        with np.errstate(all="ignore"):
+            terms = np.where(A > 0, A**2 * v, 0.0)
+        var = np.sum(terms)
+
+        z = norm.ppf(1 - alpha_ci / 2)
+        se = np.sqrt(var)
+        return np.array([mu - z * se, mu + z * se])
+
+    def bootstrap_cb(
+        self,
+        x,
+        bound="two-sided",
+        alpha_ci=0.05,
+        B=200,
+        random_state=None,
+    ):
+        r"""
+        Confidence bounds of the survival function computed with a
+        non-parametric bootstrap: the data are resampled with
+        replacement, the model is refitted with the same estimator, and
+        the percentile interval across the refits is taken at each x.
+
+        This is the recommended way to compute bounds for the Turnbull
+        estimator. The Greenwood-style bounds from ``cb()`` treat the
+        expected (fractional) at risk and death counts from the
+        Turnbull EM as if they were observed counts, which ignores the
+        uncertainty in the EM allocation itself; the bootstrap does
+        not.
+
+        Parameters
+        ----------
+
+        x : array like or scalar
+            The values at which the confidence bounds will be
+            calculated.
+        bound : ('two-sided', 'upper', 'lower'), str, optional
+            Compute either the two-sided, upper or lower confidence
+            bound(s). Defaults to two-sided.
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be
+            computed. Defaults to 0.05.
+        B : int, optional
+            The number of bootstrap resamples. Defaults to 200. Larger
+            values give smoother bounds at a linear cost in runtime;
+            note that refitting the Turnbull estimator is relatively
+            expensive.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for reproducible resampling.
+
+        Returns
+        -------
+
+        cb : numpy array
+            For two-sided bounds an array of shape (len(x), 2) with
+            ``[lower, upper]`` columns; otherwise an array of the
+            requested bound at each x.
+        """
+        if getattr(self, "data", None) is None or "x" not in self.data:
+            raise ValueError(
+                "Bootstrap requires the data the model was fitted "
+                + "with. Models created with 'from_xrd' or "
+                + "'fit_from_ecdf' cannot be bootstrapped."
+            )
+        # Imported here as the package imports this module on init.
+        from surpyval.univariate import nonparametric as nonp
+        from surpyval.utils import xcnt_to_xrd
+
+        x_eval = np.atleast_1d(x).astype(float)
+        x_data = self.data["x"]
+        c_data = self.data["c"]
+        n_data = self.data["n"]
+        t_data = self.data["t"]
+
+        rng = np.random.default_rng(random_state)
+        N = int(n_data.sum())
+        probs = n_data / n_data.sum()
+
+        old_err_state = np.seterr(all="ignore")
+        R_boot = np.empty((B, x_eval.size))
+        for b in range(B):
+            n_b = rng.multinomial(N, probs)
+            keep = n_b > 0
+            if self.model == "Turnbull":
+                fitted = nonp.turnbull(
+                    x_data[keep],
+                    c_data[keep],
+                    n_b[keep],
+                    t_data[keep],
+                    estimator=self.data["estimator"],
+                )
+                x_b, R_b = fitted["x"], fitted["R"]
+            else:
+                x_b, r_b, d_b = xcnt_to_xrd(
+                    x_data[keep], c_data[keep], n_b[keep], t_data[keep]
+                )
+                R_b = nonp.FIT_FUNCS[self.model](r_b, d_b)
+            idx = np.searchsorted(x_b, x_eval, side="right") - 1
+            R_boot[b, :] = np.where(
+                idx < 0, 1.0, R_b[np.clip(idx, 0, len(x_b) - 1)]
+            )
+        np.seterr(**old_err_state)
+
+        if bound == "two-sided":
+            qs = np.quantile(R_boot, [alpha_ci / 2, 1 - alpha_ci / 2], axis=0)
+            return qs.T
+        elif bound == "lower":
+            return np.quantile(R_boot, alpha_ci, axis=0)
+        elif bound == "upper":
+            return np.quantile(R_boot, 1 - alpha_ci, axis=0)
+        else:
+            raise ValueError(
+                "'bound' must be in ['two-sided', 'upper', 'lower']"
+            )
+
     def get_plot_data(self, **kwargs):
         y_scale_min = 0
         y_scale_max = 1
@@ -494,11 +814,39 @@ class NonParametric:
     def plot(self, ax=None, **kwargs):
         r"""
         Creates a plot of the survival function.
+
+        Two-sided confidence bounds are drawn as a shaded band in the
+        same colour as the survival curve, and right censored
+        observations are marked with ticks on the curve. Any keyword
+        arguments not listed below (e.g. ``color`` or ``label``) are
+        passed to the matplotlib plotting call for the survival curve.
+
+        Parameters
+        ----------
+
+        ax : matplotlib axis, optional
+            The axis on which the plot will be drawn. Defaults to the
+            current axis.
+        plot_bounds : bool, optional
+            Whether to draw the confidence bounds. Defaults to True.
+        show_censors : bool, optional
+            Whether to mark right censored observations on the curve.
+            Defaults to True.
+        interp : ('step', 'linear', 'cubic'), optional
+            How to draw the curve between observations.
+        bound, alpha_ci, bound_type, dist : optional
+            Passed to the confidence bound calculation; see ``cb()``.
+
+        Returns
+        -------
+
+        ax : matplotlib axis
         """
         if ax is None:
             ax = plt.gcf().gca()
 
         plot_bounds = kwargs.pop("plot_bounds", True)
+        show_censors = kwargs.pop("show_censors", True)
         interp = kwargs.pop("interp", "step")
         bound = kwargs.pop("bound", "two-sided")
         alpha_ci = kwargs.pop("alpha_ci", 0.05)
@@ -520,13 +868,39 @@ class NonParametric:
         ax.set_title("Model Survival Plot")
         ax.set_ylabel("R")
         if interp != "step":
-            ax.plot(d["x_"], d["R"])
-            if plot_bounds:
-                ax.plot(d["x_"], d["cbs"], color="r")
+            (line,) = ax.plot(d["x_"], d["R"], **kwargs)
         else:
-            ax.step(d["x_"], d["R"], where="post")
-            if plot_bounds:
-                ax.step(d["x_"], d["cbs"], color="r", where="post")
+            (line,) = ax.step(d["x_"], d["R"], where="post", **kwargs)
+        color = line.get_color()
+
+        if plot_bounds:
+            cbs = d["cbs"]
+            band_kwargs = {"alpha": 0.3, "color": color, "linewidth": 0}
+            if interp == "step":
+                band_kwargs["step"] = "post"
+            if np.ndim(cbs) == 2:
+                ax.fill_between(d["x_"], cbs[:, 0], cbs[:, 1], **band_kwargs)
+            elif interp == "step":
+                ax.step(
+                    d["x_"], cbs, where="post", color=color, linestyle="--"
+                )
+            else:
+                ax.plot(d["x_"], cbs, color=color, linestyle="--")
+
+        if show_censors and getattr(self, "data", None) is not None:
+            x_data = self.data["x"]
+            c_data = self.data["c"]
+            if np.ndim(x_data) == 1 and (c_data == 1).any():
+                x_cens = x_data[c_data == 1]
+                ax.plot(
+                    x_cens,
+                    self.sf(x_cens, interp=interp),
+                    linestyle="",
+                    marker="|",
+                    markersize=10,
+                    markeredgewidth=1.5,
+                    color=color,
+                )
 
         return ax
 
