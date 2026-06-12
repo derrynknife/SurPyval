@@ -298,6 +298,38 @@ class Gumbel_(ParametricFitter):
     def moment(self, n, mu, sigma):
         return gumbel_l.moment(n, loc=mu, scale=sigma)
 
+    def entropy(self, mu, sigma):
+        r"""
+
+        Calculates the entropy of the Gumbel distribution.
+
+        .. math::
+            S = \ln \left ( \sigma \right ) + \gamma + 1
+
+        Where gamma is the Euler-Mascheroni constant
+
+        Parameters
+        ----------
+
+        mu : numpy array or scalar
+            The location parameter(s) of the distribution
+        sigma : numpy array or scalar
+            The scale parameter(s) of the distribution
+
+        Returns
+        -------
+
+        entropy : scalar or numpy array
+            The entropy(ies) of the Gumbel distribution
+
+        Examples
+        --------
+        >>> from surpyval import Gumbel
+        >>> Gumbel.entropy(3, 2)
+        2.270362845461478
+        """
+        return np.log(sigma) + euler_gamma + 1
+
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
 

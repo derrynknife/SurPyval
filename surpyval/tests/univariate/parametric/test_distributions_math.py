@@ -7,12 +7,15 @@ Checks closed-form identities independent of fitting:
   3. qf(0.5)             equals the known closed-form median
   4. random() samples    have mean and variance matching analytical values
   5. cs(x, X)            equals sf(x + X) / sf(X) (further survival)
+  6. entropy()           equals the numerically integrated -∫ f ln f
 """
 
 import math
 
 import numpy as np
 import pytest
+from scipy import integrate
+from scipy.special import xlogy
 
 from surpyval import (
     Beta,
@@ -190,3 +193,38 @@ def test_parametric_cs_with_offset():
     x, X = 3.0, 5.0
     expected = model.sf(x + X) / model.sf(X)
     assert np.allclose(model.cs(x, X), expected)
+
+
+# ---------------------------------------------------------------------------
+# 6. entropy() == -∫ f ln f over the support
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("dist, params", DIST_PARAMS, ids=DIST_PARAM_IDS)
+def test_entropy_matches_numerical_integration(dist, params):
+    """entropy() must equal the differential entropy -∫ f(x) ln f(x) dx
+    computed by numerical integration over the support."""
+    eps = 1e-12
+    lower = dist.qf(eps, *params)
+    upper = dist.qf(1 - eps, *params)
+    # Heavy-tailed distributions make the integration interval vast while
+    # the density mass stays narrow; breakpoints keep quad on target.
+    breakpoints = [dist.qf(p, *params) for p in [0.01, 0.5, 0.99]]
+
+    def neg_f_ln_f(x):
+        f = dist.df(x, *params)
+        return -xlogy(f, f)
+
+    expected = integrate.quad(
+        neg_f_ln_f, lower, upper, points=breakpoints, limit=200
+    )[0]
+    computed = dist.entropy(*params)
+    assert math.isclose(
+        computed, expected, rel_tol=1e-6, abs_tol=1e-9
+    ), f"{dist.name}: entropy() = {computed}, integration gives {expected}"
+
+
+def test_parametric_model_entropy():
+    """Parametric.entropy must delegate to the distribution's entropy."""
+    model = Normal.from_params([10.0, 3.0])
+    assert math.isclose(model.entropy(), Normal.entropy(10.0, 3.0))

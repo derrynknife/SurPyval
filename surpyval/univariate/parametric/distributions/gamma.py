@@ -3,7 +3,7 @@ import warnings
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
 from scipy.optimize import minimize
-from scipy.special import gammaincinv
+from scipy.special import digamma, gammaincinv
 from scipy.stats import pearsonr
 
 from surpyval import np
@@ -370,6 +370,45 @@ class Gamma_(ParametricFitter):
         0.9375
         """
         return agamma(n + alpha) / (beta**n * agamma(alpha))
+
+    def entropy(self, alpha, beta):
+        r"""
+
+        Calculates the entropy of the Gamma distribution.
+
+        .. math::
+            S = \alpha - \ln \left ( \beta \right ) + \ln \Gamma \left (
+            \alpha \right ) + \left ( 1 - \alpha \right ) \psi \left (
+            \alpha \right )
+
+        Where psi is the digamma function
+
+        Parameters
+        ----------
+
+        alpha : numpy array or scalar
+            The shape parameter for the Gamma distribution
+        beta : numpy array or scalar
+            The rate parameter for the Gamma distribution
+
+        Returns
+        -------
+
+        entropy : scalar or numpy array
+            The entropy(ies) of the Gamma distribution
+
+        Examples
+        --------
+        >>> from surpyval import Gamma
+        >>> Gamma.entropy(3, 4)
+        0.46128414924312033
+        """
+        return (
+            alpha
+            - np.log(beta)
+            + agammaln(alpha)
+            + (1 - alpha) * digamma(alpha)
+        )
 
     def log_df(self, x, alpha, beta):
         r"""

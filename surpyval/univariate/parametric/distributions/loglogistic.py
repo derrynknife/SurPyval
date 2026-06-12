@@ -344,5 +344,35 @@ class LogLogistic_(ParametricFitter):
     def moment(self, n, alpha, beta):
         return fisk.moment(n, beta, scale=alpha)
 
+    def entropy(self, alpha, beta):
+        r"""
+
+        Calculates the entropy of the LogLogistic distribution.
+
+        .. math::
+            S = \ln \left ( \frac{\alpha}{\beta} \right ) + 2
+
+        Parameters
+        ----------
+
+        alpha : numpy array or scalar
+            scale parameter for the LogLogistic distribution
+        beta : numpy array or scalar
+            shape parameter for the LogLogistic distribution
+
+        Returns
+        -------
+
+        entropy : scalar or numpy array
+            The entropy(ies) of the LogLogistic distribution
+
+        Examples
+        --------
+        >>> from surpyval import LogLogistic
+        >>> LogLogistic.entropy(3, 4)
+        1.7123179275482192
+        """
+        return np.log(alpha / beta) + 2
+
 
 LogLogistic: ParametricFitter = LogLogistic_("LogLogistic")

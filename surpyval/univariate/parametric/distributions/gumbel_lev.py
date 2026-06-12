@@ -308,6 +308,38 @@ class GumbelLEV_(ParametricFitter):
     def moment(self, n, mu, sigma):
         return gumbel_r.moment(n, loc=mu, scale=sigma)
 
+    def entropy(self, mu, sigma):
+        r"""
+
+        Calculates the entropy of the Gumbel LEV distribution.
+
+        .. math::
+            S = \ln \left ( \sigma \right ) + \gamma + 1
+
+        Where gamma is the Euler-Mascheroni constant
+
+        Parameters
+        ----------
+
+        mu : numpy array or scalar
+            The location parameter(s) of the distribution
+        sigma : numpy array or scalar
+            The scale parameter(s) of the distribution
+
+        Returns
+        -------
+
+        entropy : scalar or numpy array
+            The entropy(ies) of the Gumbel LEV distribution
+
+        Examples
+        --------
+        >>> from surpyval import GumbelLEV
+        >>> GumbelLEV.entropy(3, 2)
+        2.270362845461478
+        """
+        return np.log(sigma) + euler_gamma + 1
+
     def unpack_rr(self, params, rr):
         if rr == "y":
             sigma = 1.0 / params[0]
