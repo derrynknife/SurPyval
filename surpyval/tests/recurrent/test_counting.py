@@ -1,7 +1,10 @@
+import warnings
+
 import numpy as np
 import pytest
 
-from surpyval import Exponential, Gamma, Normal
+from surpyval import Exponential, Gamma, Normal, Weibull
+from surpyval.recurrent import HPP
 from surpyval.recurrent.renewal import (
     GeneralizedOneRenewal,
     GeneralizedRenewal,
@@ -142,3 +145,44 @@ def test_renewal_raises_when_user_init_does_not_converge(
 
     with pytest.raises(ValueError, match="did not.*converge"):
         model.fit(x, i, c=c, init=[1.0, 1.0, 1.0])
+
+
+def test_time_terminated_tol_stops_decaying_sequence():
+    # A G1 process with q < 0 has geometrically shrinking interarrival times,
+    # so its cumulative time converges below any large T. The tol early-exit
+    # must catch this and the simulation must terminate (not hang).
+    model = GeneralizedOneRenewal.fit_from_parameters(
+        [5.0, 1.5], q=-0.6, dist=Weibull
+    )
+    np.random.seed(0)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        np_model = model.time_terminated_simulation(T=1e6, items=10)
+    assert any("possible asymptote" in str(w.message) for w in caught)
+    assert len(np_model.x) > 0
+
+
+def test_time_terminated_max_events_backstop():
+    # max_events guarantees termination even when tol never trips: a low-rate
+    # process with a tiny cap and a huge T must stop at the cap and warn.
+    x = Exponential.random(20, 1.0).cumsum()
+    hpp = HPP.fit(x)
+    np.random.seed(1)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        hpp.time_terminated_simulation(T=1e6, items=3, max_events=5)
+    assert any("max_events" in str(w.message) for w in caught)
+
+
+def test_time_terminated_reaching_sequence_does_not_warn():
+    # A well-behaved process that comfortably reaches T must not trip either
+    # the tol or max_events early-exit (no false positives).
+    model = GeneralizedOneRenewal.fit_from_parameters(
+        [5.0, 1.5], q=0.2, dist=Weibull
+    )
+    np.random.seed(2)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        np_model = model.time_terminated_simulation(T=60, items=30)
+    assert caught == []
+    assert len(np_model.x) > 0

@@ -9,7 +9,6 @@ from surpyval.recurrent.nonparametric import NonParametricCounting
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
-    interarrivals_converge_below,
     validate_renewal_censoring,
 )
 
@@ -183,7 +182,9 @@ class GeneralizedRenewal:
 
         return model
 
-    def time_terminated_simulation(self, T, items=1, max_events=10_000):
+    def time_terminated_simulation(
+        self, T, items=1, tol=1e-8, max_events=10_000
+    ):
         """
         Simulate time-terminated recurrence data based on the fitted model.
 
@@ -194,10 +195,14 @@ class GeneralizedRenewal:
             Time termination value.
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
+        tol: float, optional
+            Interarrival times below this value end the sequence early; a tiny
+            increment indicates the cumulative time has stalled below T (a
+            possible asymptote). Default is 1e-8.
         max_events: int, optional
-            Hard cap on the number of events simulated per sequence. Acts as a
-            backstop for sequences whose cumulative time cannot reach T.
-            Default is 10000.
+            Hard cap on the number of events simulated per sequence. This is
+            the backstop that guarantees termination for sequences whose
+            cumulative time cannot reach T. Default is 10000.
 
         Returns
         -------
@@ -209,13 +214,12 @@ class GeneralizedRenewal:
         --------
 
         A sequence is terminated early and right-censored at its last event if
-        its interarrival times decay geometrically so that the cumulative time
-        converges below T, or if it reaches ``max_events`` before T. A warning
-        is raised in either case.
+        an interarrival time falls below ``tol`` or it reaches ``max_events``
+        before T. A warning is raised in either case.
         """
         q = self.q
         self.initialize_simulation()
-        converged_below = False
+        stalled = False
         hit_max_events = False
 
         xicn = {"x": [], "i": [], "c": [], "n": []}
@@ -223,8 +227,7 @@ class GeneralizedRenewal:
         for i in range(0, items):
             running = 0
             virtual_age = 0
-            increments = []
-            j = 0
+            n_events = 0
             while True:
                 ui = self.get_uniform_random_number()
                 u_adj = ui * self.model.sf(virtual_age)
@@ -232,19 +235,19 @@ class GeneralizedRenewal:
                 # Update virtual age
                 virtual_age = self.virtual_age_function(virtual_age, xi, q)
                 running += xi
-                increments.append(xi)
+                n_events += 1
                 xicn["i"].append(i + 1)
                 xicn["n"].append(1)
                 if running > T:
                     xicn["x"].append(T)
                     xicn["c"].append(1)
                     break
-                elif interarrivals_converge_below(increments, running, T):
-                    converged_below = True
+                elif xi < tol:
+                    stalled = True
                     xicn["x"].append(running)
                     xicn["c"].append(0)
                     break
-                elif len(increments) >= max_events:
+                elif n_events >= max_events:
                     hit_max_events = True
                     xicn["x"].append(running)
                     xicn["c"].append(0)
@@ -252,15 +255,14 @@ class GeneralizedRenewal:
                 else:
                     xicn["x"].append(running)
                     xicn["c"].append(0)
-                    j += 1
 
         self.clear_simulation()
 
-        if converged_below:
+        if stalled:
             warnings.warn(
-                "Some sequences' interarrival times decayed geometrically and "
-                "their cumulative time converged below T; these were "
-                "terminated early and right-censored at their last event."
+                "Some sequences produced a near-zero interarrival time "
+                "(< tol) before reaching T, indicating a possible asymptote; "
+                "they were terminated early at their last event."
             )
         if hit_max_events:
             warnings.warn(
