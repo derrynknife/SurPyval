@@ -178,7 +178,7 @@ class CompetingRiskProportionalHazard:
 
         Examples
         --------
-        >>> from cartiga import CRPH
+        >>> from surpyval.univariate.competing_risks import CRPH
 
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)

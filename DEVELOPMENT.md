@@ -82,7 +82,7 @@ Implement `surpyval.recurrent.tests.laplace(x, i, T)` and `mil_hdbk_189c(x, i, T
 Beyond Kijima I/II: arithmetic reduction of intensity (ARI), arithmetic reduction of age (ARA), and the geometric process. These are well-studied and have closed-form likelihood contributions.
 
 **Competing failure modes**
-Multiple event types in a single recurrent process (e.g., two failure modes on the same repairable system). Requires extending `RecurrentEventData` with an event-type column and updating the MCF estimator to produce cause-specific curves.
+Multiple event types in a single recurrent process (e.g., two failure modes on the same repairable system). The nonparametric scaffold is in place: `RecurrentEventData` now carries an optional event-type (mark) column and `surpyval.recurrent.competing_risks.CauseSpecificMCF` produces per-cause MCF curves over a shared at-risk set. Still to do: parametric cause-specific intensity models (cause-specific NHPP) and proportional-intensity regression, plus `fit_from_df`/`handle_xicn` support for the mark column.
 
 ---
 
