@@ -1,5 +1,7 @@
 import warnings
 
+import numpy as np
+from matplotlib import pyplot as plt
 from scipy.stats import uniform
 
 from surpyval.recurrent.nonparametric import NonParametricCounting
@@ -23,13 +25,24 @@ class RecurrenceSimulationMixin:
     ``_new_sequence_sampler``, which returns a callable mapping a uniform
     random number to the next interarrival time and which carries its own
     per-sequence state. Subclasses may optionally override
-    ``_postprocess_simulated_model``
-    to adjust the fitted ``NonParametricCounting`` model (e.g. the CoxLewis
-    offset) before it is returned.
+    ``_postprocess_simulated_model`` to adjust the fitted
+    ``NonParametricCounting`` model (e.g. the CoxLewis offset) before it is
+    returned.
     """
 
+    def _set_simulation_seed(self, seed):
+        # ``None`` defers to numpy's global RNG (so ``np.random.seed`` still
+        # controls the stream); an int/Generator gives a reproducible stream
+        # that is independent of global state.
+        self._sim_random_state = (
+            None if seed is None else np.random.default_rng(seed)
+        )
+
     def initialize_simulation(self):
-        self.us = uniform.rvs(size=100_000).tolist()
+        self.us = uniform.rvs(
+            size=100_000,
+            random_state=getattr(self, "_sim_random_state", None),
+        ).tolist()
 
     def clear_simulation(self):
         del self.us
@@ -56,7 +69,7 @@ class RecurrenceSimulationMixin:
         """
         return model
 
-    def count_terminated_simulation(self, events, items=1):
+    def count_terminated_simulation(self, events, items=1, seed=None):
         """
         Simulate count-terminated recurrence data based on the fitted model.
 
@@ -67,6 +80,9 @@ class RecurrenceSimulationMixin:
             Number of events to simulate.
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible simulation. When ``None`` (default) the
+            numpy global RNG is used.
 
         Returns
         -------
@@ -74,6 +90,7 @@ class RecurrenceSimulationMixin:
         NonParametricCounting
             An NonParametricCounting model built from the simulated data.
         """
+        self._set_simulation_seed(seed)
         self.initialize_simulation()
 
         xicn = {"x": [], "i": [], "c": [], "n": []}
@@ -100,7 +117,7 @@ class RecurrenceSimulationMixin:
         return model
 
     def time_terminated_simulation(
-        self, T, items=1, tol=1e-8, max_events=10_000
+        self, T, items=1, tol=1e-8, max_events=10_000, seed=None
     ):
         """
         Simulate time-terminated recurrence data based on the fitted model.
@@ -120,6 +137,9 @@ class RecurrenceSimulationMixin:
             Hard cap on the number of events simulated per sequence. This is
             the backstop that guarantees termination for sequences whose
             cumulative time cannot reach T. Default is 10000.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible simulation. When ``None`` (default) the
+            numpy global RNG is used.
 
         Returns
         -------
@@ -134,6 +154,7 @@ class RecurrenceSimulationMixin:
         an interarrival time falls below ``tol`` or it reaches ``max_events``
         before T. A warning is raised in either case.
         """
+        self._set_simulation_seed(seed)
         self.initialize_simulation()
         stalled = False
         hit_max_events = False
@@ -180,3 +201,68 @@ class RecurrenceSimulationMixin:
         self._postprocess_simulated_model(model)
         model.var = None
         return model
+
+    def mcf(self, x, items=1000, seed=None):
+        """
+        Estimate the mean cumulative function (MCF) at ``x``.
+
+        These models have no closed-form cumulative intensity, so the MCF is
+        estimated by simulating ``items`` time-terminated sequences out to
+        ``max(x)`` and reading off the nonparametric MCF. Increase ``items``
+        for a smoother estimate; pass ``seed`` for reproducibility.
+
+        Parameters
+        ----------
+
+        x: array_like
+            Times at which to evaluate the MCF.
+        items: int, optional
+            Number of sequences to simulate. Default is 1000.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible estimate.
+
+        Returns
+        -------
+
+        numpy.ndarray
+            The estimated MCF at each value of ``x``.
+        """
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        np_model = self.time_terminated_simulation(
+            float(x.max()), items=items, seed=seed
+        )
+        return np_model.mcf(x)
+
+    def plot(self, ax=None, items=1000, seed=None):
+        """
+        Overlay the simulated MCF on the empirical MCF of the fitted data.
+
+        Parameters
+        ----------
+
+        ax: matplotlib axes, optional
+            Axes to draw on. A new one is created if not provided.
+        items: int, optional
+            Number of sequences to simulate for the model MCF. Default is 1000.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible model curve.
+
+        Returns
+        -------
+
+        matplotlib axes
+            The axes with the plot.
+        """
+        if not hasattr(self, "data"):
+            raise ValueError(
+                "plot requires a model fitted from data; fit_from_parameters "
+                "models carry no data to compare against."
+            )
+        x, r, d = self.data.to_xrd()
+        if ax is None:
+            ax = plt.gcf().gca()
+
+        x_plot = np.linspace(0, float(self.data.x.max()), 200)
+        ax.step(x, (d / r).cumsum(), color="r", where="post")
+        ax.plot(x_plot, self.mcf(x_plot, items=items, seed=seed), color="b")
+        return ax

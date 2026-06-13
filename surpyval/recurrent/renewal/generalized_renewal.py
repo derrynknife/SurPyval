@@ -2,6 +2,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from surpyval import Weibull
+from surpyval.recurrent.renewal.inference import RenewalInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.recurrent_utils import (
@@ -29,7 +30,7 @@ def kijima_ii_from_prev_interarrival(previous_interarrival_times, q):
     )
 
 
-class GeneralizedRenewal(RecurrenceSimulationMixin):
+class GeneralizedRenewal(RecurrenceSimulationMixin, RenewalInferenceMixin):
     """
     A class to handle the generalized renewal process with different Kijima
     models.
@@ -302,11 +303,13 @@ class GeneralizedRenewal(RecurrenceSimulationMixin):
                 )
 
         q, *dist_params = inv_trans(res.x)
-        q = q
         model = dist.from_params(list(dist_params))
         out = cls(model, q, kijima)
         out.res = res
         out.data = data
+        out._neg_ll = neg_ll_bounded
+        out._mle = np.asarray([q, *dist_params], dtype=float)
+        out._n_obs = len(data.x)
 
         return out
 

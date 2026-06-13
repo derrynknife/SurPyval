@@ -75,6 +75,26 @@ class ParametricRecurrenceModel(RecurrenceSimulationMixin):
         x = np.array(x)
         return self.dist.cif(x, *self.params)
 
+    def mcf(self, x):
+        """
+        The mean cumulative function (MCF). For these counting processes the
+        MCF equals the cumulative intensity, so this is a closed-form alias for
+        :meth:`cif` (overriding the simulation-based estimate in the mixin).
+
+        Parameters
+        ----------
+
+        x: array_like
+            Values at which to compute the MCF.
+
+        Returns
+        -------
+
+        array_like
+            The MCF evaluated at ``x``.
+        """
+        return self.cif(x)
+
     def iif(self, x):
         """
         Compute the intensity function based on the fitted model. No need to
