@@ -21,6 +21,7 @@ class ExpoWeibull_(ParametricFitter):
             param_map={"alpha": 0, "beta": 1, "mu": 2},
             plot_x_scale="log",
         )
+        self.supports_mpp = False
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         log_x = np.log(x)
@@ -387,7 +388,6 @@ class ExpoWeibull_(ParametricFitter):
         return (1 - np.exp(-np.exp(y))) ** mu
 
     def unpack_rr(self, params, rr):
-        # UPDATE ME
         if rr == "y":
             beta = params[0]
             alpha = np.exp(params[1] / -beta)

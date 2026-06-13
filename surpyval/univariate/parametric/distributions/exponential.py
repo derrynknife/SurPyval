@@ -23,8 +23,8 @@ class Exponential_(ParametricFitter):
             k=1,
             bounds=((0, None),),
             support=(0, np.inf),
-            param_names=["lambda"],
-            param_map={"lambda": 0},
+            param_names=["failure_rate"],
+            param_map={"failure_rate": 0},
             plot_x_scale="linear",
             y_ticks=[
                 0.05,

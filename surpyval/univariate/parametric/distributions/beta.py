@@ -415,5 +415,8 @@ class Beta_(ParametricFitter):
 
         return alpha, beta
 
+    def _plot_x_bounds(self, x, params):
+        return 0.0, 1.0
+
 
 Beta: ParametricFitter = Beta_("Beta")

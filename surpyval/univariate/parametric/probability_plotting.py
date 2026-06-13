@@ -110,19 +110,10 @@ def probability_plot_data(
         x_scale_min = 10 ** (x_min - diff)
         x_scale_max = 10 ** (x_max + diff)
         x_model = 10 ** np.linspace(x_min - diff, x_max + diff, 100)
-    elif dist.name in ("Beta"):
+    elif dist._plot_x_bounds(x_, params) is not None:
         x_min = np.min(x_)
         x_max = np.max(x_)
-        x_scale_min = 0
-        x_scale_max = 1
-        vals_non_sig = np.linspace(x_scale_min, x_scale_max, 11)[1:-1]
-        x_minor_ticks = np.linspace(x_scale_min, x_scale_max, 22)[1:-1]
-        x_model = np.linspace(x_scale_min, x_scale_max, 102)[1:-1]
-    elif dist.name in ("Uniform"):
-        x_min = np.min(params)
-        x_max = np.max(params)
-        x_scale_min = x_min
-        x_scale_max = x_max
+        x_scale_min, x_scale_max = dist._plot_x_bounds(x_, params)
         vals_non_sig = np.linspace(x_scale_min, x_scale_max, 11)[1:-1]
         x_minor_ticks = np.linspace(x_scale_min, x_scale_max, 22)[1:-1]
         x_model = np.linspace(x_scale_min, x_scale_max, 102)[1:-1]

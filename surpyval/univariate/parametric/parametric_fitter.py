@@ -91,6 +91,7 @@ class ParametricFitter:
         self.param_map = param_map
         self.plot_x_scale = plot_x_scale
         self.y_ticks = DEFAULT_Y_TICKS if y_ticks is None else y_ticks
+        self.supports_mpp = True
 
     def random(self, size, *params):
         r"""
@@ -132,6 +133,10 @@ class ParametricFitter:
 
     def log_ff(self, x, *params):
         return np.log(-np.expm1(-self.Hf(x, *params)))
+
+    def _plot_x_bounds(self, x, params):
+        """Return (x_scale_min, x_scale_max) for probability plots, or None to auto-compute from data."""
+        return None
 
     @_check_x_not_empty
     def ll_observed(self, x, n, *params):
@@ -310,9 +315,9 @@ class ParametricFitter:
         if how not in PARA_METHODS:
             raise ValueError('"how" must be one of: ' + str(PARA_METHODS))
 
-        if how == "MPP" and self.name == "ExpoWeibull":
+        if how == "MPP" and not self.supports_mpp:
             detail = (
-                "ExpoWeibull distribution does not work"
+                f"{self.name} distribution does not work"
                 " with probability plot fitting"
             )
             raise ValueError(detail)

@@ -671,6 +671,27 @@ class Parametric(Distribution):
             self._mean = self.p * (self.dist.mean(*self.params) + self.gamma)
         return self._mean
 
+    def var(self):
+        r"""
+        The variance of the distribution using the parameters found in the
+        ``.params`` attribute.
+
+        Returns
+        -------
+        var : float
+            Returns the variance of the distribution.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([10, 3])
+        >>> model.var()
+        11.229...
+        """
+        m1 = self.dist._moment(1, *self.params)
+        m2 = self.dist._moment(2, *self.params)
+        return m2 - m1**2
+
     def moment(self, n):
         r"""
 
@@ -801,40 +822,27 @@ class Parametric(Distribution):
             jac = np.atleast_2d(jacobian(func)(phi_hat))
             return np.einsum("ij,jk,ik->i", jac, cov, jac)
 
-        if hasattr(self.dist, "R_cb") and not (self.lfp or self.zi):
+        def sf_cb(x, bound=bound):
+            def sf_func(phi):
+                return full_sf(x, phi)
 
-            def sf_cb(x, bound=bound):
-                return self.dist.R_cb(
-                    x - self.gamma,
-                    *self.params,
-                    hess_inv,
-                    alpha_ci=alpha_ci,
-                    bound=bound,
+            var_R = delta_method_var(sf_func)
+            R_hat = full_sf(x, phi_hat)
+            if bound == "two-sided":
+                diff = (
+                    z(alpha_ci / 2)
+                    * np.sqrt(var_R)
+                    * np.array([1.0, -1.0]).reshape(2, 1)
                 )
+            elif bound == "upper":
+                diff = z(alpha_ci) * np.sqrt(var_R)
+            else:
+                diff = -z(alpha_ci) * np.sqrt(var_R)
 
-        else:
-
-            def sf_cb(x, bound=bound):
-                def sf_func(phi):
-                    return full_sf(x, phi)
-
-                var_R = delta_method_var(sf_func)
-                R_hat = full_sf(x, phi_hat)
-                if bound == "two-sided":
-                    diff = (
-                        z(alpha_ci / 2)
-                        * np.sqrt(var_R)
-                        * np.array([1.0, -1.0]).reshape(2, 1)
-                    )
-                elif bound == "upper":
-                    diff = z(alpha_ci) * np.sqrt(var_R)
-                else:
-                    diff = -z(alpha_ci) * np.sqrt(var_R)
-
-                # Bounds on the logit of R keep the result within (0, 1)
-                exponent = diff / (R_hat * (1 - R_hat))
-                R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
-                return R_cb.T
+            # Bounds on the logit of R keep the result within (0, 1)
+            exponent = diff / (R_hat * (1 - R_hat))
+            R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
+            return R_cb.T
 
         # ff, F and Hf are decreasing transforms of R; flip one-sided bounds
         if on in ["ff", "F", "Hf"] and bound == "lower":
