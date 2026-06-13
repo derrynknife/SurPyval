@@ -65,3 +65,42 @@ def test_renewal_rejects_unsupported_censoring(model):
     c_left = np.array([-1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
     with pytest.raises(ValueError, match="censoring code"):
         model.fit(x, i, c=c_left)
+
+
+@pytest.mark.parametrize(
+    "model, module_path",
+    [
+        (
+            GeneralizedOneRenewal,
+            "surpyval.recurrent.renewal.generalized_one_renewal",
+        ),
+        (
+            GeneralizedRenewal,
+            "surpyval.recurrent.renewal.generalized_renewal",
+        ),
+    ],
+)
+def test_renewal_raises_when_no_start_converges(
+    model, module_path, monkeypatch
+):
+    # Both renewal models share one contract: if no multi-start initial value
+    # converges, raise rather than silently return an unconverged fit. Force
+    # every optimizer call to report failure to exercise that path.
+    import importlib
+    from types import SimpleNamespace
+
+    module = importlib.import_module(module_path)
+
+    def failing_minimize(*args, **kwargs):
+        return SimpleNamespace(
+            success=False, fun=np.inf, x=np.array([1.0, 1.0, 1.0])
+        )
+
+    monkeypatch.setattr(module, "minimize", failing_minimize)
+
+    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+    c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
+
+    with pytest.raises(ValueError, match="Could not find a good solution"):
+        model.fit(x, i, c=c)

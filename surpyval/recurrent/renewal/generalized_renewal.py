@@ -403,8 +403,10 @@ class GeneralizedRenewal:
                 if res.success:
                     results.append(res)
             if not results:
-                init = transform(np.array([1.0, *dist_params]))
-                res = minimize(neg_ll_unbounded, init, method="Nelder-Mead")
+                raise ValueError(
+                    "Could not find a good solution. "
+                    + "Try using `init` for better initial guess."
+                )
             else:
                 res = results[np.argmin([res.fun for res in results])]
         else:
