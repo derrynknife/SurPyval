@@ -2,7 +2,11 @@ __version__ = "0.11.1"
 
 from autograd import numpy as np
 
-from surpyval.distribution import Distribution
+from surpyval.distribution import (
+    Distribution,
+    NonParametricDistribution,
+    ParametricDistribution,
+)
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
     KaplanMeier,

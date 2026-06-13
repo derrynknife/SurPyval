@@ -7,7 +7,7 @@ from scipy.special import ndtri as z
 from scipy.stats import uniform
 
 import surpyval as surv
-from surpyval import Distribution, np
+from surpyval import ParametricDistribution, np
 from surpyval.utils import fsli_to_xcnt
 
 from .probability_plotting import (
@@ -17,7 +17,7 @@ from .probability_plotting import (
 )
 
 
-class Parametric(Distribution):
+class Parametric(ParametricDistribution):
     """
     Result of ``.fit()`` or ``.from_params()`` method for every parametric
     surpyval distribution.

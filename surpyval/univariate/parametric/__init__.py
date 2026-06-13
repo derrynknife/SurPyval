@@ -13,6 +13,8 @@ Parametric Analysis
 
 import numpy as np
 
+from surpyval.distribution import Distribution
+
 from .distributions import (
     Bernoulli,
     Beta,
@@ -40,7 +42,7 @@ from .parametric import Parametric
 from .parametric_fitter import ParametricFitter
 
 
-class NeverOccurs:
+class NeverOccurs(Distribution):
     @classmethod
     def sf(cls, x):
         return np.ones_like(x).astype(float)
@@ -58,7 +60,7 @@ class NeverOccurs:
         return np.ones(size) * np.inf
 
 
-class InstantlyOccurs:
+class InstantlyOccurs(Distribution):
     @classmethod
     def sf(cls, x):
         return np.zeros_like(x).astype(float)

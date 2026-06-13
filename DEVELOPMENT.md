@@ -147,9 +147,6 @@ They support a nice composition API (`model_a | model_b`,
 only `sf/ff/df/hf/Hf` (no `params`, `fit`, serialization or bounds).
 Either make them public properly or mark them experimental.
 
-### `Distribution` ABC adoption is incomplete
-`Parametric` now inherits from the `Distribution` ABC (`distribution.py`), but `NonParametric`, `MixtureModel`, `SeriesModel`, `ParallelModel`, `NeverOccurs`, and `InstantlyOccurs` expose the same interface without inheriting it. Users still cannot write polymorphic code using `isinstance(model, Distribution)` across model types.
-
 ### Parameter naming inconsistency (`alpha`/`beta`)
 Weibull, LogLogistic, Gamma, Beta, and ExpoWeibull all use `param_names=['alpha', 'beta']` but the roles differ across distributions. Positional use will produce silently incorrect results.
 

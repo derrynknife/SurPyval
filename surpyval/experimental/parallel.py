@@ -1,11 +1,11 @@
 from autograd import elementwise_grad
 
 import surpyval as surv
-from surpyval import np
+from surpyval import Distribution, np
 from surpyval.experimental.series import SeriesModel
 
 
-class ParallelModel:
+class ParallelModel(Distribution):
     def __or__(self, other):
         if isinstance(other, surv.Parametric):
             return SeriesModel([*self.models, other])
