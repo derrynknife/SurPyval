@@ -70,7 +70,7 @@ Factory::
     from surpyval.regression import PO
     model = PO(Logistic).fit(x, Z=Z, c=c)
 
-.. autoclass:: surpyval.univariate.regression.proportional_hazards.proportional_odds_fitter.ProportionalOddsFitter
+.. autoclass:: surpyval.univariate.regression.proportional_odds.proportional_odds_fitter.ProportionalOddsFitter
     :members: fit, Hf, hf, sf, ff, df
 
 
