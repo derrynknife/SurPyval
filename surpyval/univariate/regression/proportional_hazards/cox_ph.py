@@ -525,12 +525,14 @@ class CoxPH_:
         model: SemiParametricProportionalHazardsModel
             The fitted model.
         """
-        x, c, n, Z, form = validate_coxph_df_inputs(
+        x, c, n, Z, form, feature_names, model_spec = validate_coxph_df_inputs(
             df, x_col, c_col, n_col, Z_cols, formula
         )
 
         model = self.fit(x, Z, c, n, method=method)
         model.formula = form
+        model.feature_names = feature_names
+        model._model_spec = model_spec
 
         return model
 

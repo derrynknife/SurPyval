@@ -1042,6 +1042,8 @@ def wrangle_and_check_form_and_Z_cols(Z_cols, formula, df):
         )
 
     if Z_cols is not None:
+        if isinstance(Z_cols, str):
+            Z_cols = [Z_cols]
         unknown = [x for x in Z_cols if x not in df.columns]
         if len(unknown) > 0:
             raise ValueError("{} not in dataframe columns".format(unknown))
@@ -1049,12 +1051,17 @@ def wrangle_and_check_form_and_Z_cols(Z_cols, formula, df):
         mask = ~df[Z_cols].isna().any(axis=1).values
         Z = Z[mask]
         form = None
+        feature_names = list(Z_cols)
+        model_spec = None
     else:
         form = Formula("0 + " + formula)
-        Z = form.get_model_matrix(df, na_action="ignore").values.astype(float)
+        model_matrix = form.get_model_matrix(df, na_action="ignore")
+        feature_names = list(model_matrix.columns)
+        model_spec = model_matrix.model_spec
+        Z = model_matrix.values.astype(float)
         mask = ~np.any(np.isnan(Z), axis=1)
 
-    return Z, mask, form
+    return Z, mask, form, feature_names, model_spec
 
 
 def wrangle_Z(Z):
@@ -1225,7 +1232,9 @@ def validate_tv_coxph_df_inputs(
             x = s[x_col].values
             _check_an_ids_tl_and_x(i, tl, x)
 
-    Z, mask, form = wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+    Z, mask, form, _, _ = wrangle_and_check_form_and_Z_cols(
+        Z_cols, formula, df
+    )
 
     x = df.loc[mask, x_col].values
     tl = df.loc[mask, tl_col].values
@@ -1248,7 +1257,9 @@ def validate_tv_coxph_df_inputs(
 def validate_coxph_df_inputs(df, x_col, c_col, n_col, Z_cols, formula):
     # TODO: Return the count of dropped rows?
 
-    Z, mask, form = wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+    Z, mask, form, feature_names, model_spec = (
+        wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+    )
 
     x = df.loc[mask, x_col].values
 
@@ -1264,7 +1275,7 @@ def validate_coxph_df_inputs(df, x_col, c_col, n_col, Z_cols, formula):
 
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
-    return x, c, n, Z, form
+    return x, c, n, Z, form, feature_names, model_spec
 
 
 def validate_coxph(x, c, n, Z, tl, method):
