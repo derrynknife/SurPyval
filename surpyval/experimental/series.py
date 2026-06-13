@@ -2,22 +2,19 @@ from autograd import elementwise_grad
 
 import surpyval as surv
 from surpyval import np
-from surpyval.univariate.parametric.series import SeriesModel
 
 
-class ParallelModel:
+class SeriesModel:
     def __or__(self, other):
         if isinstance(other, surv.Parametric):
             return SeriesModel([*self.models, other])
-        elif isinstance(other, ParallelModel):
-            return ParallelModel([*self.models, other])
         else:
             return SeriesModel([*self.models, *other.models])
 
     def __and__(self, other):
+        from surpyval.experimental.parallel import ParallelModel
+
         if isinstance(other, surv.Parametric):
-            return ParallelModel([*self.models, other])
-        elif isinstance(other, SeriesModel):
             return ParallelModel([*self.models, other])
         else:
             return ParallelModel([*self.models, *other.models])
@@ -27,14 +24,14 @@ class ParallelModel:
         self._df = elementwise_grad(self.ff)
         self._hf = elementwise_grad(self.Hf)
 
-    def ff(self, x):
-        x = np.atleast_1d(x)
-        ff = np.vstack([np.log(D.ff(x)) for D in self.models])
-        return np.exp(ff.sum(axis=0))
-
     def sf(self, x):
         x = np.atleast_1d(x)
-        return 1 - self.ff(x)
+        sf = np.vstack([np.log(D.sf(x)) for D in self.models])
+        return np.exp(sf.sum(axis=0))
+
+    def ff(self, x):
+        x = np.atleast_1d(x)
+        return 1 - self.sf(x)
 
     def df(self, x):
         x = np.atleast_1d(x)
