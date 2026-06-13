@@ -299,24 +299,31 @@ incrementally.
    ├── single_event        # the event happens at most once per unit
    └── recurrent           # repeated events over time  (implies multivariate)
 
-3. Transition structure    # how many states and how a unit moves between them
-   ├── single_risk         # one absorbing state (one event type)
-   ├── competing_risks     # one transient state → several absorbing states
-   └── multi_state         # arbitrary transition graph (illness-death,
-                           #   progressive, reversible); competing_risks and
-                           #   single_risk are special cases of this
+3. Competing events        # branching: how many event types compete out of a state
+   ├── single              # one possible event type
+   └── competing           # several mutually-exclusive event types
 
-4. Covariates
+4. State structure         # the shape of the state graph
+   ├── terminal            # every event leads to an absorbing state; the
+   │                       #   process ends at the first event
+   │                       #   (single + terminal = "single risk",
+   │                       #    competing + terminal = "competing risks")
+   └── multi_state         # transient intermediate states with onward and/or
+                           #   reversible transitions (illness-death,
+                           #   progressive); each transient state has its own
+                           #   single-vs-competing exits (axis 3)
+
+5. Covariates
    ├── without_covariates
    └── with_covariates     # regression
 
-5. Time scale              # nature of the time axis itself
+6. Time scale              # nature of the time axis itself
    ├── continuous          # absolutely-continuous failure time
    └── discrete            # discrete/grouped time, or binary outcome
                            #   (revealed by Bernoulli; also success-run,
                            #   period/grouped data)
 
-6. Estimation
+7. Estimation
    ├── parametric          # fully specified distribution / intensity
    ├── semiparametric      # parametric covariate effect + nonparametric
    │                       #   baseline (Cox PH, Fine–Gray, CRPH)
@@ -329,31 +336,41 @@ incrementally.
   case.
 - `semiparametric` only co-occurs with `with_covariates` (it is the
   nonparametric-baseline-plus-covariate-effect combination).
-- `single_risk` ⊂ `competing_risks` ⊂ `multi_state` — the transition axis is a
-  ladder, not three disjoint kinds; a multi-state engine subsumes the others.
+- **Branching (axis 3) and state structure (axis 4) are independent — that is
+  the split.** Classic survival is `single` + `terminal`; classic competing
+  risks is `competing` + `terminal`. `multi_state` is *not* "more competing
+  risks": it is a separate generalization (transient intermediate states), and
+  each transient state independently has its own single-vs-competing exits. So
+  multistate composes with axis 3 rather than sitting at the top of a single
+  ladder.
+- A `recurrent` process is the self-returning special case (a transient state
+  that loops back to at-risk), so the `terminal` / `multi_state` distinction
+  mainly refines `single_event` processes; recurrent rows are marked
+  `recurrent` in the state column below.
 
 Worked classifications:
 
-| Model | dim | recurrence | transition | covariates | time | estimation |
-|-------|-----|-----------|------------|------------|------|------------|
-| Weibull, Exponential, … | univariate | single_event | single_risk | none | continuous | parametric |
-| KaplanMeier, NelsonAalen | univariate | single_event | single_risk | none | continuous | nonparametric |
-| CoxPH | univariate | single_event | single_risk | with | continuous | semiparametric |
-| CompetingRisks (CIF) | univariate | single_event | competing_risks | none | continuous | nonparametric |
-| Fine–Gray, CRPH | univariate | single_event | competing_risks | with | continuous | semiparametric |
-| NonParametricCounting (MCF) | multivariate | recurrent | single_risk | none | continuous | nonparametric |
-| HPP/NHPP, Crow, Duane | multivariate | recurrent | single_risk | none | continuous | parametric |
-| ProportionalIntensity HPP/NHPP | multivariate | recurrent | single_risk | with | continuous | parametric |
-| CauseSpecificMCF | multivariate | recurrent | competing_risks | none | continuous | nonparametric |
-| Bernoulli, success-run | univariate | single_event | single_risk | none | discrete | parametric |
+| Model | dim | recurrence | events | states | covariates | time | estimation |
+|-------|-----|-----------|--------|--------|------------|------|------------|
+| Weibull, Exponential, … | univariate | single_event | single | terminal | none | continuous | parametric |
+| KaplanMeier, NelsonAalen | univariate | single_event | single | terminal | none | continuous | nonparametric |
+| CoxPH | univariate | single_event | single | terminal | with | continuous | semiparametric |
+| CompetingRisks (CIF) | univariate | single_event | competing | terminal | none | continuous | nonparametric |
+| Fine–Gray, CRPH | univariate | single_event | competing | terminal | with | continuous | semiparametric |
+| NonParametricCounting (MCF) | multivariate | recurrent | single | recurrent | none | continuous | nonparametric |
+| HPP/NHPP, Crow, Duane | multivariate | recurrent | single | recurrent | none | continuous | parametric |
+| ProportionalIntensity HPP/NHPP | multivariate | recurrent | single | recurrent | with | continuous | parametric |
+| CauseSpecificMCF | multivariate | recurrent | competing | recurrent | none | continuous | nonparametric |
+| Bernoulli, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
+| (future) illness-death, progressive | univariate | single_event | single/competing | multi_state | none/with | continuous | any |
 
 ### Not separate axes
 
 - **Population composition** (homogeneous vs **mixture / cure / limited-failure
   / zero-inflated**) is *not* an axis. `MixtureModel`,
   `FixedEventProbability`/LFP, zero-inflated, and `Bernoulli` are all parametric
-  variants that live in the simplest cell — `univariate, single_event,
-  single_risk, without_covariates, parametric` (continuous or discrete). They
+  variants that live in the simplest cell — `univariate, single_event, single,
+  terminal, without_covariates, parametric` (continuous or discrete). They
   compose existing distributions rather than occupying a new dimension.
 - It was `Bernoulli` sitting in that cell that surfaced the **time-scale**
   (discrete vs continuous) axis above.
