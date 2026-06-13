@@ -48,17 +48,38 @@ with `dist.random(10_000, *params) + 10`:
 A note on severity: these are *parameter*-recovery problems, not
 *distribution*-recovery problems. The threshold parameter `gamma` is
 non-regular and trades off against the shape/scale parameters, so a
-fit can land on the wrong `(gamma, *params)` tuple while the fitted
-distribution it implies is still very close to the truth. The
-discrepancy that actually matters to a user — the divergence between
-the true and inferred distributions (KL divergence, or the
-Wasserstein / earth-mover distance between the two CDFs) — is expected
-to be small even when the individual parameters are visibly off. So
-the practical impact of the biases above is likely minor: predictions,
-quantiles, and survival probabilities from the fitted model stay
-usable. Before investing in better moment matching or a different
-offset initialiser, quantify the divergence (not the parameter error)
-to confirm it is worth the effort.
+fit can land on a wildly wrong `(gamma, *params)` tuple while the
+fitted distribution it implies stays close to the truth. What matters
+to a user is the divergence between the true and inferred
+distributions (KL divergence, or the Wasserstein / earth-mover
+distance between the two CDFs), not the parameter error — and the two
+can be orders of magnitude apart.
+
+Measured on `dist.random(10_000, *params) + 10` (200k-sample
+Wasserstein, Monte-Carlo KL, fresh seeds):
+
+- **MPP-offset Gamma**, the spectacular case. The parameters are off
+  by ~6000 % (`gamma` ≈ −0.6 vs 10, `alpha` ≈ 189 vs 3 — a near-normal
+  high-shape Gamma sitting at the origin mimics the offset Gamma), yet
+  the *distribution* barely moves: mean matches to ~0.2 %, std to
+  ~3 %, KL ≈ 0.10 nats, Wasserstein ≈ 1.2 % of the data scale. Central
+  quantiles (p10–p90) land within ~2 %; only the tails (p1/p99) slip
+  to ~7 %.
+- **MOM-offset Rayleigh** is milder in parameters (~22 % off) but,
+  paradoxically, diverges *more* in distribution: the spread is
+  genuinely wrong (std off ~22 %), KL ≈ 0.066 nats, Wasserstein ≈ 18 %
+  of the std, tail quantiles off ~6–8 % (median still within ~1 %).
+
+So the headline — a huge parameter error need not mean a bad fit — is
+real and worth keeping in mind, but the impact is *modest, not
+negligible*: central predictions (mean, median) stay accurate to ~1 %,
+while tail quantiles and (for MOM) the spread can be off 5–20 %. Before
+investing in better moment matching or a different offset initialiser,
+measure the divergence (not the parameter error); whether 0.06–0.10
+nats / 5–20 % tail error is acceptable depends on the application. The
+check used to produce these numbers is straightforward to reproduce
+with `from_params(..., gamma=10)` for the truth and
+`fit(x, offset=True, how=...)` for the estimate.
 
 **Resolved June 2026 — Beta can no longer be offset.**
 `_validate_fit_inputs` previously allowed it (`support[0] == 0`) but
