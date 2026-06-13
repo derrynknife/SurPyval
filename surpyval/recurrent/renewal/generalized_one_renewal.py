@@ -2,7 +2,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from surpyval import Weibull
-from surpyval.recurrent.renewal.inference import RenewalInferenceMixin
+from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -10,7 +10,9 @@ from surpyval.utils.recurrent_utils import (
 )
 
 
-class GeneralizedOneRenewal(RecurrenceSimulationMixin, RenewalInferenceMixin):
+class GeneralizedOneRenewal(
+    RecurrenceSimulationMixin, LikelihoodInferenceMixin
+):
     """
     A class to handle the G1 renewal process of Kaminskiy and Krivtsov, in
     which the jth interarrival time is the underlying lifetime distribution

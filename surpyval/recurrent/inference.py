@@ -31,21 +31,21 @@ def numerical_hessian(func, x):
     return H
 
 
-class RenewalInferenceMixin:
+class LikelihoodInferenceMixin:
     """
-    Likelihood-based inference for fitted renewal models.
+    Likelihood-based inference for fitted recurrent-event models.
 
     The fitting routine must set ``_neg_ll`` (the negative log-likelihood in
-    natural parameter space), ``_mle`` (the fitted ``[q, *dist_params]``
-    vector) and ``_n_obs`` (the number of events contributing to the
-    likelihood). Models built with ``fit_from_parameters`` carry no likelihood
-    and these methods raise.
+    natural parameter space), ``_mle`` (the fitted parameter vector, with the
+    leading repair/restoration parameter first) and ``_n_obs`` (the number of
+    events contributing to the likelihood). Models built with
+    ``fit_from_parameters`` carry no likelihood and these methods raise.
 
     Standard errors come from inverting a numerical Hessian of the negative
     log-likelihood (the observed Fisher information). When a parameter sits on
-    a boundary (notably the restoration factor ``q`` driven to 0) the
-    asymptotic normal approximation does not hold and the corresponding
-    standard error is returned as NaN with a warning.
+    a boundary (e.g. a repair parameter driven to its limit) the asymptotic
+    normal approximation does not hold and the corresponding standard error is
+    returned as NaN with a warning.
     """
 
     def _check_fitted(self):

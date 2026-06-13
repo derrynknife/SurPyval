@@ -2,7 +2,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from surpyval import Weibull
-from surpyval.recurrent.renewal.inference import RenewalInferenceMixin
+from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.recurrent_utils import (
@@ -51,7 +51,7 @@ def ara_virtual_ages(arrival_times, rho, m):
     return v
 
 
-class ARA(RecurrenceSimulationMixin, RenewalInferenceMixin):
+class ARA(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
     """
     Arithmetic Reduction of Age (ARA) imperfect-repair model of Doyen and
     Gaudoin (2004).
