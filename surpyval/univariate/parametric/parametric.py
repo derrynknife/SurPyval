@@ -671,6 +671,27 @@ class Parametric(Distribution):
             self._mean = self.p * (self.dist.mean(*self.params) + self.gamma)
         return self._mean
 
+    def var(self):
+        r"""
+        The variance of the distribution using the parameters found in the
+        ``.params`` attribute.
+
+        Returns
+        -------
+        var : float
+            Returns the variance of the distribution.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([10, 3])
+        >>> model.var()
+        11.229...
+        """
+        m1 = self.dist._moment(1, *self.params)
+        m2 = self.dist._moment(2, *self.params)
+        return m2 - m1**2
+
     def moment(self, n):
         r"""
 

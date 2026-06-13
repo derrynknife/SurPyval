@@ -424,5 +424,8 @@ class Uniform_(ParametricFitter):
         b = mu_1 + d
         return a, b
 
+    def _plot_x_bounds(self, x, params):
+        return float(np.min(params)), float(np.max(params))
+
 
 Uniform: ParametricFitter = Uniform_("Uniform")
