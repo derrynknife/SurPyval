@@ -9,9 +9,10 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
+from ..regression_data import DataFrameRegressionMixin
 
 
-class ParameterSubstitutionFitter:
+class ParameterSubstitutionFitter(DataFrameRegressionMixin):
     def __init__(
         self,
         kind,

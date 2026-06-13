@@ -4,6 +4,8 @@ from scipy.stats import uniform
 
 from surpyval.utils import fsli_to_xcnt
 
+from .regression_data import prepare_Z
+
 
 class ParametricRegressionModel:
     """
@@ -15,6 +17,24 @@ class ParametricRegressionModel:
     analysis and numeric integration.
 
     """
+
+    # Covariate metadata populated when the model is fit from a pandas
+    # DataFrame (see ``DataFrameRegressionMixin.fit_from_df``). These defaults
+    # keep the array based interface working unchanged.
+    feature_names = None
+    formula = None
+    _model_spec = None
+
+    def _prepare_Z(self, Z):
+        """
+        Convert ``Z`` to a numeric design matrix.
+
+        If a pandas DataFrame is passed and the model was fit from a DataFrame,
+        the covariate columns (or formula) recorded at fit time are used to
+        select and encode the correct columns. Otherwise ``Z`` is returned
+        unchanged.
+        """
+        return prepare_Z(Z, self.feature_names, self._model_spec)
 
     def __repr__(self):
         dist_params = self.params[0 : self.k_dist]
@@ -67,6 +87,7 @@ class ParametricRegressionModel:
             return "Unable to fit values"
 
     def phi(self, Z):
+        Z = self._prepare_Z(Z)
         return self.reg_model.phi(Z, *self.phi_params)
 
     def sf(self, x, Z):
@@ -102,6 +123,7 @@ class ParametricRegressionModel:
         """
         if isinstance(x, list):
             x = np.array(x)
+        Z = self._prepare_Z(Z)
         return self.model.sf(x, Z, *self.params)
 
     def ff(self, x, Z):
@@ -138,7 +160,7 @@ class ParametricRegressionModel:
         """
         if isinstance(x, list):
             x = np.array(x)
-
+        Z = self._prepare_Z(Z)
         return self.model.ff(x, Z, *self.params)
 
     def df(self, x, Z):
@@ -175,6 +197,7 @@ class ParametricRegressionModel:
         """
         if isinstance(x, list):
             x = np.array(x)
+        Z = self._prepare_Z(Z)
         return self.model.df(x, Z, *self.params)
 
     def hf(self, x, Z):
@@ -212,6 +235,7 @@ class ParametricRegressionModel:
         """
         if isinstance(x, list):
             x = np.array(x)
+        Z = self._prepare_Z(Z)
         return self.model.hf(x, Z, *self.params)
 
     def Hf(self, x, Z):
@@ -250,6 +274,7 @@ class ParametricRegressionModel:
         """
         if isinstance(x, list):
             x = np.array(x)
+        Z = self._prepare_Z(Z)
         return self.model.Hf(x, Z, *self.params)
 
     def random(self, size, Z):
