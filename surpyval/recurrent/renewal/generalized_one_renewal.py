@@ -6,7 +6,10 @@ from scipy.stats import uniform
 
 from surpyval import Weibull
 from surpyval.recurrent.nonparametric import NonParametricCounting
-from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.recurrent_utils import (
+    handle_xicn,
+    validate_renewal_censoring,
+)
 
 DT_WARN = "Small increment encountered, may have trouble reaching T."
 
@@ -313,6 +316,7 @@ class GeneralizedOneRenewal:
              beta: 2.7838386997223212
         """
         cls._check_dist_eligible(dist)
+        validate_renewal_censoring(data.c, cls.__name__)
         if init is None:
             dist_params = dist.fit(
                 data.interarrival_times, data.c, data.n

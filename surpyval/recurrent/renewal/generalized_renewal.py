@@ -7,7 +7,10 @@ from scipy.stats import uniform
 from surpyval import Weibull
 from surpyval.recurrent.nonparametric import NonParametricCounting
 from surpyval.univariate.parametric.fitters import bounds_convert
-from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.recurrent_utils import (
+    handle_xicn,
+    validate_renewal_censoring,
+)
 
 
 def kijima_ii_from_prev_interarrival(previous_interarrival_times, q):
@@ -354,6 +357,7 @@ class GeneralizedRenewal:
             alpha: 2.399029078569064
             beta: 2.753920439616154
         """
+        validate_renewal_censoring(data.c, cls.__name__)
         first_events = data.get_times_to_first_events()
         if init is None:
             if len(first_events.x) < 2:

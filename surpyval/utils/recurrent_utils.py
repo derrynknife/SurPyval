@@ -3,6 +3,23 @@ import numpy as np
 from .recurrent_event_data import RecurrentEventData
 
 
+def validate_renewal_censoring(c, model_name):
+    """
+    The renewal models only define likelihood contributions for exact events
+    (``c=0``) and right-censored observations (``c=1``). Interval (``c=2``) and
+    left (``c=-1``) censoring are not supported; reject them here rather than
+    let them be silently dropped from the likelihood sum.
+    """
+    unsupported = sorted(set(np.unique(c).tolist()) - {0, 1})
+    if unsupported:
+        raise ValueError(
+            "{} only supports exact (c=0) and right-censored (c=1) "
+            "observations; received unsupported censoring code(s) {}. "
+            "Interval (c=2) and left (c=-1) censoring are not "
+            "supported.".format(model_name, unsupported)
+        )
+
+
 def handle_xicn(x, i=None, c=None, n=None, Z=None, as_recurrent_data=True):
     if isinstance(x, list):
         if any(isinstance(v, list) for v in x):
