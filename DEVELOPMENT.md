@@ -276,3 +276,87 @@ Full support for time-varying covariates (TVCs) and left/right truncation across
 ## 9. Long-term: Replace `autograd` with JAX (deferred)
 
 `autograd` (HIPS/autograd) is in low-activity maintenance mode with no GPU support. JAX is the spiritual successor and a near-drop-in replacement for `autograd.numpy` patterns. The interim steps (inlining the `autograd_gamma` gradients into `surpyval/utils/autograd_gamma_compat.py` and upgrading to `autograd` 1.8 for numpy 2.x compatibility) are done, so there is no urgency. A JAX migration can be revisited once the library is otherwise stable — it is a multi-week effort touching every gradient computation.
+
+---
+
+## 10. Long-term: Target package architecture (ultimate goal)
+
+This is the **aspirational end-state** layout for the whole library, not a
+planned near-term refactor. The intent is to grow the package toward it
+incrementally; no large move should be made just to reach it. It is recorded
+here so new modules can be placed consistently with the eventual shape.
+
+The structure is built from four orthogonal axes, applied symmetrically so
+every branch has the same sub-structure (many leaf cells will be empty or
+future-only — that is expected):
+
+1. **Outcome dimension** — `univariate` (one failure time per unit) vs
+   `multivariate` (several, possibly correlated, failure times per unit).
+2. **Event recurrence** — `single_event` (a unit experiences the event once)
+   vs `recurrent` (repeated events over time).
+3. **Number of event types** — `single_risk` (one event type) vs
+   `competing_risks` (several mutually-exclusive types).
+4. **Covariates** — `without_covariates` vs `with_covariates` (regression).
+
+with a final `parametric` / `nonparametric` estimation split at the leaves.
+This places each model unambiguously: e.g. Cox PH is a *with-covariates,
+nonparametric-baseline* univariate single-event single-risk model; Fine–Gray
+and CRPH are its competing-risks analogues; the cause-specific MCF is a
+multivariate (recurrent), competing-risks, without-covariates, nonparametric
+model.
+
+```
+surpyval/
+├── univariate/                         # one failure time per unit
+│   ├── single_event/
+│   │   ├── single_risk/
+│   │   │   ├── without_covariates/
+│   │   │   │   ├── parametric/         # Weibull, Exponential, Gamma, LogNormal, …
+│   │   │   │   └── nonparametric/      # KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull
+│   │   │   └── with_covariates/
+│   │   │       ├── parametric/         # Weibull-PH/AFT, accelerated-life, proportional-odds
+│   │   │       └── nonparametric/      # CoxPH (nonparametric baseline)
+│   │   └── competing_risks/
+│   │       ├── without_covariates/
+│   │       │   ├── parametric/         # (future) parametric cause-specific
+│   │       │   └── nonparametric/      # CompetingRisks (CIF)
+│   │       └── with_covariates/
+│   │           ├── parametric/         # (future)
+│   │           └── nonparametric/      # CRPH, FineGray
+│   └── recurrent/                      # (symmetry placeholder; rarely populated
+│       └── …                           #  for univariate — recurrence implies multivariate)
+└── multivariate/                       # several failure times per unit
+    ├── single_event/                   # (symmetry placeholder)
+    │   └── …
+    └── recurrent/
+        ├── single_risk/
+        │   ├── without_covariates/
+        │   │   ├── parametric/         # HPP, NHPP, Crow, CrowAMSAA, Duane, CoxLewis, renewal/
+        │   │   └── nonparametric/      # NonParametricCounting (MCF)
+        │   └── with_covariates/
+        │       ├── parametric/         # (partial) parametric intensity regression
+        │       └── nonparametric/      # ProportionalIntensity HPP/NHPP
+        └── competing_risks/
+            ├── without_covariates/
+            │   ├── parametric/         # (future)
+            │   └── nonparametric/      # CauseSpecificMCF
+            └── with_covariates/
+                ├── parametric/         # (future)
+                └── nonparametric/      # (future)
+```
+
+**Notes / open trade-offs to settle before any move toward this:**
+
+- The symmetric layout duplicates the `single_event` / `recurrent` level on
+  the `univariate` branch even though univariate recurrence is degenerate
+  (recurrence implies multivariate). Those cells are kept only for uniform
+  paths and can stay empty.
+- Model files end up ~5 directories deep, so a substantial `__init__.py`
+  re-export layer is needed to preserve the flat public API
+  (`from surpyval import Weibull`, etc.).
+- The current code only partially matches this: `univariate/competing_risks`
+  and `recurrent/competing_risks` exist (the latter as a nonparametric
+  scaffold), but the `single_event` / `single_risk` / covariate levels are
+  not yet introduced, and `recurrent/` has not been renamed under a
+  `multivariate/` parent.
+
