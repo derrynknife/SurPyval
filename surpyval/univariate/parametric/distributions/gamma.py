@@ -495,7 +495,7 @@ class Gamma_(ParametricFitter):
         init = self._parameter_initialiser(x_pp, c, n)
 
         mask = np.isfinite(F)
-        if mask.any():
+        if not mask.all():
             warnings.warn(
                 "Some Infinite values encountered in plotting "
                 "points and have been ignored.",

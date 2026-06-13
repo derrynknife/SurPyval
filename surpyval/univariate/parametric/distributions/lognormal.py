@@ -292,7 +292,7 @@ class LogNormal_(ParametricFitter):
     def mean(self, mu, sigma):
         r"""
 
-        Quantile function for the LogNormal Distribution:
+        Mean of the LogNormal Distribution:
 
         .. math::
             E = e^{\mu + \frac{\sigma^2}{2}}
@@ -300,8 +300,6 @@ class LogNormal_(ParametricFitter):
         Parameters
         ----------
 
-        p : numpy array or scalar
-            The percentiles at which the quantile will be calculated
         mu : numpy array or scalar
             The location parameter for the LogNormal distribution
         sigma : numpy array or scalar
@@ -310,8 +308,8 @@ class LogNormal_(ParametricFitter):
         Returns
         -------
 
-        q : scalar or numpy array
-            The quantiles for the LogNormal distribution at each value p.
+        mean : scalar or numpy array
+            The mean of the LogNormal distribution.
 
         Examples
         --------

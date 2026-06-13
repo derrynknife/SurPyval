@@ -126,23 +126,27 @@ class AcceleratedFailureTimeFitter:
 
             if params_at_Z == []:
                 dist_init = self._parameter_initialiser_dist(x, c, n, t)
+                if callable(self.acc_model.phi_init):
+                    phi_init = self.acc_model.phi_init(None, stress_data)
+                else:
+                    phi_init = self.acc_model.phi_init
             else:
                 params_at_Z = np.array(params_at_Z)
                 dist_init = params_at_Z.mean(axis=0)
 
-            acc_parameter_data = params_at_Z[
-                :, self.param_map[self.fixed_parameter]
-            ]
-            acc_parameter_data = self.acc_parameter_relationship(
-                acc_parameter_data
-            )
-
-            if callable(self.acc_model.phi_init):
-                phi_init = self.acc_model.phi_init(
-                    acc_parameter_data, stress_data
+                acc_parameter_data = params_at_Z[
+                    :, self.param_map[self.fixed_parameter]
+                ]
+                acc_parameter_data = self.acc_parameter_relationship(
+                    acc_parameter_data
                 )
-            else:
-                phi_init = self.acc_model.phi_init
+
+                if callable(self.acc_model.phi_init):
+                    phi_init = self.acc_model.phi_init(
+                        acc_parameter_data, stress_data
+                    )
+                else:
+                    phi_init = self.acc_model.phi_init
 
             init = np.array([*dist_init, *phi_init])
         else:
