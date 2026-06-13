@@ -10,7 +10,6 @@ from surpyval.univariate.parametric import (
 
 from .cox_ph import CoxPH
 from .proportional_hazards_fitter import ProportionalHazardsFitter
-from .proportional_odds_fitter import PO, ProportionalOddsFitter
 
 
 def PH(distribution):
@@ -33,7 +32,7 @@ def PH(distribution):
     Examples
     --------
     >>> from surpyval import Weibull
-    >>> from surpyval.regression import PH
+    >>> from surpyval import PH
     >>> model = PH(Weibull).fit(x, Z=covariates, c=c)
     """
     return ProportionalHazardsFitter.create(distribution)
@@ -50,33 +49,15 @@ LogisticPH = _cglf("LogisticPH", Logistic)
 LogNormalPH = _cglf("LogNormalPH", LogNormal)
 GammaPH = _cglf("GammaPH", Gamma)
 
-# Pre-built PO instances — one per distribution
-ExponentialPO = PO(Exponential)
-NormalPO = PO(Normal)
-WeibullPO = PO(Weibull)
-GumbelPO = PO(Gumbel)
-LogisticPO = PO(Logistic)
-LogNormalPO = PO(LogNormal)
-GammaPO = PO(Gamma)
-
 __all__ = [
     "CoxPH",
     "ExponentialPH",
-    "ExponentialPO",
     "GammaPH",
-    "GammaPO",
     "GumbelPH",
-    "GumbelPO",
     "LogisticPH",
-    "LogisticPO",
     "LogNormalPH",
-    "LogNormalPO",
     "NormalPH",
-    "NormalPO",
     "PH",
-    "PO",
     "ProportionalHazardsFitter",
-    "ProportionalOddsFitter",
     "WeibullPH",
-    "WeibullPO",
 ]

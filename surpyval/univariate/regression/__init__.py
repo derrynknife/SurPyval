@@ -14,22 +14,24 @@ from .accelerated_failure_time import (
 from .proportional_hazards import (
     CoxPH,
     ExponentialPH,
-    ExponentialPO,
     GammaPH,
-    GammaPO,
     GumbelPH,
-    GumbelPO,
     LogisticPH,
-    LogisticPO,
     LogNormalPH,
-    LogNormalPO,
     NormalPH,
-    NormalPO,
     PH,
-    PO,
     ProportionalHazardsFitter,
-    ProportionalOddsFitter,
     WeibullPH,
+)
+from .proportional_odds import (
+    ExponentialPO,
+    GammaPO,
+    GumbelPO,
+    LogisticPO,
+    LogNormalPO,
+    NormalPO,
+    PO,
+    ProportionalOddsFitter,
     WeibullPO,
 )
 

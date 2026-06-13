@@ -27,7 +27,7 @@ Pre-built instances: ``ExponentialPH``, ``NormalPH``, ``WeibullPH``,
 Factory::
 
     from surpyval import LogNormal
-    from surpyval.regression import PH
+    from surpyval import PH
     model = PH(LogNormal).fit(x, Z=Z, c=c)
 
 .. autoclass:: surpyval.univariate.regression.proportional_hazards.proportional_hazards_fitter.ProportionalHazardsFitter
@@ -47,7 +47,7 @@ Pre-built instances: ``ExponentialAFT``, ``NormalAFT``, ``WeibullAFT``,
 Factory::
 
     from surpyval import Gamma
-    from surpyval.regression import AFT
+    from surpyval import AFT
     model = AFT(Gamma).fit(x, Z=Z, c=c)
 
 .. autoclass:: surpyval.univariate.regression.accelerated_failure_time.aft_fitter.AFTFitter
@@ -67,10 +67,10 @@ Pre-built instances: ``ExponentialPO``, ``NormalPO``, ``WeibullPO``,
 Factory::
 
     from surpyval import Logistic
-    from surpyval.regression import PO
+    from surpyval import PO
     model = PO(Logistic).fit(x, Z=Z, c=c)
 
-.. autoclass:: surpyval.univariate.regression.proportional_hazards.proportional_odds_fitter.ProportionalOddsFitter
+.. autoclass:: surpyval.univariate.regression.proportional_odds.proportional_odds_fitter.ProportionalOddsFitter
     :members: fit, Hf, hf, sf, ff, df
 
 
@@ -84,7 +84,7 @@ levels (e.g. temperature, voltage).
 Factory::
 
     from surpyval import Weibull
-    from surpyval.regression import AcceleratedLife, Power, Eyring
+    from surpyval import AcceleratedLife, Power, Eyring
     model = AcceleratedLife(Weibull, Power).fit(x, Z=stress, c=c)
 
 Available life models: ``Power``, ``InversePower``, ``Eyring``,
@@ -93,7 +93,7 @@ Available life models: ``Power``, ``InversePower``, ``Eyring``,
 
 Custom life models can be created by subclassing ``LifeModel``::
 
-    from surpyval.regression import LifeModel, AcceleratedLife
+    from surpyval import LifeModel, AcceleratedLife
     import autograd.numpy as anp
 
     class MyStressModel(LifeModel):
