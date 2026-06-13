@@ -217,7 +217,7 @@ def PO(distribution):
     Examples
     --------
     >>> from surpyval import Logistic
-    >>> from surpyval.regression import PO
+    >>> from surpyval import PO
     >>> model = PO(Logistic).fit(x, Z=covariates, c=c)
     """
     return ProportionalOddsFitter(distribution)

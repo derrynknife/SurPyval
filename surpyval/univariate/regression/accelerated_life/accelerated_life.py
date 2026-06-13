@@ -36,7 +36,7 @@ def AcceleratedLife(distribution, life_model):
     Examples
     --------
     >>> from surpyval import Weibull
-    >>> from surpyval.regression import AcceleratedLife, Power
+    >>> from surpyval import AcceleratedLife, Power
     >>> model = AcceleratedLife(Weibull, Power).fit(x, c=c, Z=stress)
     """
     if distribution.name not in _LIFE_PARAM_MAP:

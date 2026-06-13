@@ -176,7 +176,7 @@ def AFT(distribution):
     Examples
     --------
     >>> from surpyval import Weibull
-    >>> from surpyval.regression import AFT
+    >>> from surpyval import AFT
     >>> model = AFT(Weibull).fit(x, Z=covariates, c=c)
     """
     return AFTFitter(distribution)

@@ -32,7 +32,7 @@ def PH(distribution):
     Examples
     --------
     >>> from surpyval import Weibull
-    >>> from surpyval.regression import PH
+    >>> from surpyval import PH
     >>> model = PH(Weibull).fit(x, Z=covariates, c=c)
     """
     return ProportionalHazardsFitter.create(distribution)
