@@ -4,7 +4,7 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.stats import uniform
 
-from surpyval import Exponential, Weibull
+from surpyval import Weibull
 from surpyval.recurrent.nonparametric import NonParametricCounting
 from surpyval.utils.recurrent_utils import handle_xicn
 
@@ -13,8 +13,17 @@ DT_WARN = "Small increment encountered, may have trouble reaching T."
 
 class GeneralizedOneRenewal:
     """
-    A class to handle the generalized renewal process with different Kijima
-    models.
+    A class to handle the G1 renewal process of Kaminskiy and Krivtsov, in
+    which the jth interarrival time is the underlying lifetime distribution
+    scaled by ``(1 + q) ** j``.
+
+    Because scaling a random variable by a factor ``cj`` is equivalent to
+    evaluating the base distribution on a rescaled time axis
+    (``S_j(x) = S0(x / cj)``), the model is well defined for any non-negative
+    lifetime distribution and does not need to know which parameter is the
+    scale. Distributions whose support includes negative values (e.g. Normal,
+    Gumbel) are rejected, as scaled interarrival times would not be guaranteed
+    positive.
 
     Since the Generalised One Renewal Process does not have closed form
     solutions for the instantaneous intensity function and the cumulative
@@ -110,7 +119,7 @@ class GeneralizedOneRenewal:
         NonParametricCounting
             An NonParametricCounting model built from the simulated data.
         """
-        life, *scale = self.model.params
+        base_params = self.model.params
         q = self.q
         self.initialize_simulation()
 
@@ -120,11 +129,11 @@ class GeneralizedOneRenewal:
             running = 0
             for j in range(0, events + 1):
                 ui = self.get_uniform_random_number()
-                if self.model.dist == Exponential:
-                    new_life = 1.0 / (1.0 / life * (1 + q) ** j)
-                else:
-                    new_life = life * (1 + q) ** j
-                xi = self.model.dist.qf(ui, new_life, *scale)
+                # The jth interarrival is the base lifetime scaled by
+                # (1 + q) ** j, so its quantiles are the base quantiles
+                # multiplied by the same factor.
+                cj = (1.0 + q) ** j
+                xi = cj * self.model.dist.qf(ui, *base_params)
                 running += xi
                 xicn["x"].append(running)
                 xicn["i"].append(i + 1)
@@ -168,7 +177,7 @@ class GeneralizedOneRenewal:
         be printed to notify the user about potential convergence problems in
         the simulation.
         """
-        life, *scale = self.model.params
+        base_params = self.model.params
         q = self.q
         self.initialize_simulation()
         convergence_problem = False
@@ -180,11 +189,11 @@ class GeneralizedOneRenewal:
             j = 0
             while True:
                 ui = self.get_uniform_random_number()
-                if self.model.dist == Exponential:
-                    new_life = 1.0 / (1.0 / life * (1 + q) ** j)
-                else:
-                    new_life = life * (1 + q) ** j
-                xi = self.model.dist.qf(ui, new_life, *scale)
+                # The jth interarrival is the base lifetime scaled by
+                # (1 + q) ** j, so its quantiles are the base quantiles
+                # multiplied by the same factor.
+                cj = (1.0 + q) ** j
+                xi = cj * self.model.dist.qf(ui, *base_params)
                 running += xi
                 xicn["i"].append(i + 1)
                 xicn["n"].append(1)
@@ -217,7 +226,7 @@ class GeneralizedOneRenewal:
         def negll_func(params):
             ll = 0
             q = params[0]
-            life, *scale = params[1:]
+            dist_params = params[1:]
 
             for item in set(i):
                 mask_item = i == item
@@ -225,21 +234,38 @@ class GeneralizedOneRenewal:
                 c_item = np.atleast_1d(c[mask_item])
                 n_item = np.atleast_1d(n[mask_item])
                 for j in range(0, len(x_item)):
-                    if dist == Exponential:
-                        new_life = 1.0 / (1.0 / life * (1 + q) ** j)
-                    else:
-                        new_life = life * (1 + q) ** j
+                    # The jth interarrival is the base lifetime scaled by
+                    # cj = (1 + q) ** j. Scaling the random variable by cj is
+                    # equivalent to evaluating the base distribution on a
+                    # rescaled time axis: f_j(x) = f0(x / cj) / cj and
+                    # S_j(x) = S0(x / cj).
+                    cj = (1.0 + q) ** j
+                    xj = x_item[j] / cj
                     if c_item[j] == 0:
-                        ll += n_item[j] * dist.log_df(
-                            x_item[j], new_life, *scale
+                        ll += n_item[j] * (
+                            dist.log_df(xj, *dist_params) - np.log(cj)
                         )
                     elif c_item[j] == 1:
-                        ll += n_item[j] * dist.log_sf(
-                            x_item[j], new_life, *scale
-                        )
+                        ll += n_item[j] * dist.log_sf(xj, *dist_params)
             return -ll
 
         return negll_func
+
+    @staticmethod
+    def _check_dist_eligible(dist):
+        """
+        The G1 renewal process scales interarrival times by ``(1 + q) ** j``.
+        For the scaled times to remain valid the base distribution must be a
+        non-negative lifetime distribution; distributions with support over
+        negative values (e.g. Normal, Gumbel) are not eligible.
+        """
+        if dist.support[0] < 0:
+            raise ValueError(
+                "{} has support {} which includes negative values; the G1 "
+                "renewal process requires a non-negative lifetime "
+                "distribution (e.g. Weibull, Exponential, Gamma, "
+                "LogNormal).".format(dist.name, dist.support)
+            )
 
     @classmethod
     def fit_from_recurrent_data(cls, data, dist=Weibull, init=None):
@@ -286,6 +312,7 @@ class GeneralizedOneRenewal:
             alpha: 1.3494830373118245
              beta: 2.7838386997223212
         """
+        cls._check_dist_eligible(dist)
         if init is None:
             dist_params = dist.fit(
                 data.interarrival_times, data.c, data.n
@@ -407,23 +434,24 @@ class GeneralizedOneRenewal:
         Example
         -------
 
-        >>> from surpyval import Normal
+        >>> from surpyval import Weibull
         >>> from surpyval.recurrent import GeneralizedOneRenewal
         >>>
         >>> model = GeneralizedOneRenewal.fit_from_parameters(
             [10, 2],
             0.2,
-            dist=Normal
+            dist=Weibull
         )
         >>> model
         G1 Renewal SurPyval Model
         =========================
-        Distribution        : Normal
+        Distribution        : Weibull
         Fitted by           : MLE
         Restoration Factor  : 0.2
         Parameters          :
-                mu: 10
-             sigma: 2
+             alpha: 10
+              beta: 2
         """
+        cls._check_dist_eligible(dist)
         model = dist.from_params(params)
         return cls(model, q)
