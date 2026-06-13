@@ -147,9 +147,6 @@ They support a nice composition API (`model_a | model_b`,
 only `sf/ff/df/hf/Hf` (no `params`, `fit`, serialization or bounds).
 Either make them public properly or mark them experimental.
 
-### `cb()` default `on` parameter differs between `Parametric` and `NonParametric`
-`Parametric.cb()` (`parametric.py`) defaults to `on='R'`; `NonParametric.cb()` (`nonparametric.py`) defaults to `on='sf'`. Both strings refer to the survival function in the same conditional.
-
 ### `Distribution` ABC adoption is incomplete
 `Parametric` now inherits from the `Distribution` ABC (`distribution.py`), but `NonParametric`, `MixtureModel`, `SeriesModel`, `ParallelModel`, `NeverOccurs`, and `InstantlyOccurs` expose the same interface without inheriting it. Users still cannot write polymorphic code using `isinstance(model, Distribution)` across model types.
 

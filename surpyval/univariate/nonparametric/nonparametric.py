@@ -231,7 +231,7 @@ class NonParametric:
     def cb(
         self,
         x,
-        on="sf",
+        on="R",
         bound="two-sided",
         interp="step",
         alpha_ci=0.05,
