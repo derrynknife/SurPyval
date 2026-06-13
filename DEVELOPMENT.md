@@ -14,150 +14,90 @@ This document tracks known issues, technical debt, and improvement priorities fo
 
 ---
 
-## 1. Test Coverage Gaps
+## 4. Recurrent Module — Bugs and Gaps
 
-### Entirely untested subsystems
+### Confirmed bugs
 
-| Subsystem | Files | Notes |
-|-----------|-------|-------|
-| `CompetingRisks`, `FineGray`, `CompetingRisksProportionalHazard` | `surpyval/competing_risks/` | No tests at all |
-| `MixtureModel`, `SeriesModel`, `ParallelModel` | `surpyval/univariate/parametric/` | No tests at all |
-| Recurrence/NHPP (`Crow`, `Duane`, `CoxLewis`, `CrowAMSAA`, `HPP`) | `surpyval/recurrent/parametric/` | Only `GeneralizedOneRenewal` has a test (`tests/recurrent/test_counting.py`) |
-| `AcceleratedFailureTime` regression variants | `surpyval/univariate/regression/accelerated_failure_time/` | `test_regression.py` covers ALT/PH paths only |
-| Serialization (`to_dict` / `from_dict` / `to_json`) | `test_to_dict.py` is 0 bytes | `to_dict` is abstract on the `Distribution` ABC but has no coverage; `Bernoulli`/`ExactEventTime` round-trips are covered in `test_regressions.py` but the general path is not |
-| Probability plotting (`get_plot_data` / `plot` / `probability_plotting.py`) | `surpyval/univariate/parametric/` | No tests at all; the June 2026 plotting refactor was verified only by ad-hoc before/after output comparison |
+**Typo `has_left_censoing` (missing 'r')**
+**Files:** `surpyval/recurrent/parametric/nhpp_fitter.py:18`, `surpyval/recurrent/regression/nhpp_proportional_intensity.py:72`
+Variable is never read back so it is silent dead code today, but it will break any future code that reads the flag.
 
-Two crash bugs fixed in June 2026 (a `warnings.warng` typo and a `0 * inf = NaN` in `InstantlyOccurs.Hf`) lived in these untested areas — coverage here pays for itself immediately. The June 2026 univariate fit-matrix expansion (methods × offset/lfp/zi/fixed, Exponential/Rayleigh, left censoring) found five real bugs the same way.
+**`log_iif()` not implemented for proportional-intensity NHPP**
+**File:** `surpyval/recurrent/regression/nhpp_proportional_intensity.py:129` — marked TODO.
+The MLE likelihood falls back to the non-log path; for small intensities this causes underflow and silent NaN log-likelihoods.
 
----
+**`ParametricRecurrenceRegressionModel` is incomplete and unexported**
+**File:** `surpyval/recurrent/regression/parametric_regression.py:137` — simulation methods are marked TODO, class is defined but never imported in `__init__.py`.
 
-## 2. Known Offset Estimation Issues
+**`CoxLewis.inv_cif()` can return negative times**
+When `ln(N) < alpha`, the expression `(ln(N) - alpha) / beta` is negative. No guard or error is raised; simulation silently produces invalid (negative) event times.
 
-Found during the June 2026 coverage expansion; each is reproducible
-with `dist.random(10_000, *params) + 10`:
+**Renewal model restoration factor `q` is unbounded**
+**File:** `surpyval/recurrent/renewal/generalized_renewal.py`
+Multi-start search covers `q ∈ {0.0001, 1.0, 2.0}` but the optimizer is unconstrained, so `q` can go negative, violating the virtual-age assumption. Add a bound `q ≥ 0`.
 
-- **MOM with `offset=True` gives badly biased gamma.** e.g. Rayleigh
-  recovers gamma ≈ 6.1 when the true value is 10 (Weibull ≈ 9.6,
-  LogLogistic ≈ 9.0). MOM offset accuracy is deliberately untested;
-  either improve the moment matching or disallow `offset` for MOM.
-- **MPP with `offset=True` fails for Gamma** (recovers gamma ≈ −0.6
-  for a true value of 10) while every other offsettable distribution
-  recovers it well. `test_offset_fit_recovers_gamma` skips this
-  combination.
-
-A note on severity: these are *parameter*-recovery problems, not
-*distribution*-recovery problems. The threshold parameter `gamma` is
-non-regular and trades off against the shape/scale parameters, so a
-fit can land on a wildly wrong `(gamma, *params)` tuple while the
-fitted distribution it implies stays close to the truth. What matters
-to a user is the divergence between the true and inferred
-distributions (KL divergence, or the Wasserstein / earth-mover
-distance between the two CDFs), not the parameter error — and the two
-can be orders of magnitude apart.
-
-Measured on `dist.random(10_000, *params) + 10` (200k-sample
-Wasserstein, Monte-Carlo KL, fresh seeds):
-
-- **MPP-offset Gamma**, the spectacular case. The parameters are off
-  by ~6000 % (`gamma` ≈ −0.6 vs 10, `alpha` ≈ 189 vs 3 — a near-normal
-  high-shape Gamma sitting at the origin mimics the offset Gamma), yet
-  the *distribution* barely moves: mean matches to ~0.2 %, std to
-  ~3 %, KL ≈ 0.10 nats, Wasserstein ≈ 1.2 % of the data scale. Central
-  quantiles (p10–p90) land within ~2 %; only the tails (p1/p99) slip
-  to ~7 %.
-- **MOM-offset Rayleigh** is milder in parameters (~22 % off) but,
-  paradoxically, diverges *more* in distribution: the spread is
-  genuinely wrong (std off ~22 %), KL ≈ 0.066 nats, Wasserstein ≈ 18 %
-  of the std, tail quantiles off ~6–8 % (median still within ~1 %).
-
-So the headline — a huge parameter error need not mean a bad fit — is
-real and worth keeping in mind, but the impact is *modest, not
-negligible*: central predictions (mean, median) stay accurate to ~1 %,
-while tail quantiles and (for MOM) the spread can be off 5–20 %. Before
-investing in better moment matching or a different offset initialiser,
-measure the divergence (not the parameter error); whether 0.06–0.10
-nats / 5–20 % tail error is acceptable depends on the application. The
-check used to produce these numbers is straightforward to reproduce
-with `from_params(..., gamma=10)` for the truth and
-`fit(x, offset=True, how=...)` for the estimate.
-
-**Resolved June 2026 — Beta can no longer be offset.**
-`_validate_fit_inputs` previously allowed it (`support[0] == 0`) but
-`Beta._parameter_initialiser` had no offset path, so
-`Beta.fit(x, offset=True)` raised an opaque `zip()` error. Offsetting
-only makes sense for distributions on the half-line `[0, inf)` — the
-check now requires `support[0] == 0 and isinf(support[1])`, so Beta
-(and any other finite-upper-bound distribution) raises a clear
-"cannot be offset" `ValueError`. The use case offsetting was reaching
-for — a Beta on an arbitrary `[a, b]` interval — is now served by the
-new four-parameter Beta (`Beta4`, `distributions/beta4.py`), which
-estimates the support bounds `a` and `b` alongside the two shape
-parameters.
+**Redundant `q = q` assignment**
+**File:** `surpyval/recurrent/renewal/generalized_renewal.py:409` — dead assignment, remove.
 
 ---
 
-## 3. API Consistency Issues
+### Missing capabilities — high priority
 
-### Weibull/Rayleigh `cs()` convention change needs a release note
-Fixed June 2026: `cs()` now uniformly computes `sf(x + X) / sf(X)`
-("survive a further `x` given survival to `X`"). Weibull and Rayleigh
-previously computed `sf(x) / sf(X)` (absolute time), and
-`Parametric.cs` shifted `x` by gamma accordingly. This changes results
-for existing Weibull/Rayleigh `cs` users, so the next release's notes
-must call it out.
+**No parameter uncertainty**
+All models return point estimates only. No standard errors, covariance matrix, or confidence intervals for fitted parameters. For HPP, `autograd` already computes the Hessian; use `np.linalg.inv(-H)` to get the observed Fisher information. For NHPP, `scipy.optimize.minimize` returns `result.hess_inv` (BFGS) or a numerical Hessian can be computed via `numdifftools`. This is the single highest-value missing feature across the entire recurrent sub-package.
 
-### LFP/ZI confidence bound change needs a release note
-Fixed June 2026: MLE confidence bounds now include the variance of the
-LFP (`p`) and zero-inflation (`f0`) parameters via the full covariance
-matrix (`cov_matrix` on the fitted model), so bounds for `lfp`/`zi`
-models are wider than before and the lower `sf` bound can fall below
-the fitted `1 - p` asymptote. `param_cb("p")` and `param_cb("f0")` are
-now supported. `gamma` deliberately still carries no Wald variance
-(threshold parameters are non-regular). User-`fixed` parameters now
-correctly carry zero variance, so free-parameter bounds on such fits
-are conditional (narrower than before, which treated fixed parameters
-as estimated), and `fixed={"p": ...}` / `fixed={"f0": ...}` work (they
-previously raised `IndexError` from an off-by-one in
-`Parametric.__init__`'s `param_map`). Also fixed June 2026: `zi=True`
-with `offset=True` now optimises correctly — the zero-inflation mass
-was masked *after* the gamma shift, producing NaN likelihoods, a gamma
-bound capped at 0, and a model silently returned at its initial guess.
-The next release's notes must call out the changed LFP/ZI and
-fixed-parameter bounds.
+**No goodness-of-fit or trend tests**
+There is no Laplace test for trend, no Military Handbook (MIL-HDBK-189C) test, no Cramér-von Mises test for NHPP, and no AIC/BIC for model comparison. The Laplace statistic is a one-liner given the event times; it should be a standalone function and a method on fitted NHPP models.
 
-### Weibull is the only distribution with a closed-form `R_cb`
-**File:** `surpyval/univariate/parametric/distributions/weibull.py`
+**No residual diagnostics**
+No martingale residuals, no cumulative-hazard residuals, no probability-integral-transform (PIT) check. Without these, model validation is limited to eyeballing the MCF overlay.
 
-Every other distribution's closed-form confidence bound was dead code
-(removed June 2026) and they all use the generic autograd delta-method
-bound in `Parametric.cb`. Weibull's survives because it is actually
-reachable. The two methods differ by up to ~7% (the closed form
-expands in log-log "u-space", the generic in logit-space; both are
-valid first-order delta methods). Decide whether to delete Weibull's
-closed form so all distributions are consistent — a user-visible
-change to Weibull confidence bounds — or keep it and document why
-Weibull is special.
+**Renewal models have no `plot()` method**
+`GeneralizedRenewal` and `GeneralizedOneRenewal` fit and simulate but cannot plot — unlike every other model in the module. Add the same MCF-overlay `plot()` that `ParametricRecurrenceModel` already implements.
 
-### `SeriesModel` / `ParallelModel` are unexported and undocumented
-**Files:** `surpyval/univariate/parametric/series.py`, `parallel.py`
-
-They support a nice composition API (`model_a | model_b`,
-`model_a & model_b`) but are not exported from
-`surpyval.univariate.parametric`, have no docstrings, and implement
-only `sf/ff/df/hf/Hf` (no `params`, `fit`, serialization or bounds).
-Either make them public properly or mark them experimental.
-
-### Parameter naming inconsistency (`alpha`/`beta`)
-Weibull, LogLogistic, Gamma, Beta, and ExpoWeibull all use `param_names=['alpha', 'beta']` but the roles differ across distributions. Positional use will produce silently incorrect results.
-
-### `FineGray.fit` raises `NotImplementedError` over ~100 lines of commented-out implementation
-**File:** `surpyval/competing_risks/regression/fine_gray.py`
-
-The class body is mostly a commented-out likelihood/jacobian/hessian implementation (originally numba-based); `fit()` raises `NotImplementedError`. Either finish the implementation (without numba) or delete the class and the dead code — exporting a model that cannot fit misleads users about the library's capabilities.
+**Parametric `plot()` shows no confidence band**
+`ParametricRecurrenceModel.plot()` overlays the fitted CIF on the nonparametric MCF but draws no band around the parametric curve. Once parameter covariance is available (see above), add a delta-method band using the same Greenwood logic already in `NonParametricCounting.mcf_cb`.
 
 ---
 
-## 4. Code Quality
+### Missing capabilities — medium priority
+
+**No left-truncation support**
+The univariate module handles left truncation via `tl`; the recurrent module does not. Items observed only after a delayed start (e.g., warranty data starting from first sale) cannot be correctly analysed.
+
+**No input validation**
+Negative times, NaN/inf values, and empty arrays all pass silently into the optimiser. Add a validation step in `handle_xicn()` with informative `ValueError`s.
+
+**No AIC/BIC on fitted models**
+Log-likelihood is computed during fitting but discarded. Store it on the returned model object and expose `aic` / `bic` properties.
+
+---
+
+### Missing capabilities — lower priority
+
+**Laplace and trend-test standalone functions**
+Implement `surpyval.recurrent.tests.laplace(x, i, T)` and `mil_hdbk_189c(x, i, T)` as module-level functions independent of any fitted model.
+
+**Additional virtual-age models**
+Beyond Kijima I/II: arithmetic reduction of intensity (ARI), arithmetic reduction of age (ARA), and the geometric process. These are well-studied and have closed-form likelihood contributions.
+
+**Competing failure modes**
+Multiple event types in a single recurrent process (e.g., two failure modes on the same repairable system). Requires extending `RecurrentEventData` with an event-type column and updating the MCF estimator to produce cause-specific curves.
+
+---
+
+### Test coverage
+
+Only one test file with one test covers the entire recurrent module (`tests/recurrent/test_counting.py` — a single `GeneralizedOneRenewal` fit). The parametric, nonparametric, and regression sub-packages have no tests at all. Minimum viable coverage:
+
+- Round-trip fit + CIF/IIF evaluation for each parametric model (HPP, Crow, CrowAMSAA, Duane, CoxLewis)
+- MCF and confidence bounds for `NonParametricCounting`
+- Simulation outputs for `GeneralizedRenewal` and `GeneralizedOneRenewal`
+- Proportional intensity HPP and NHPP fit + predict
+
+---
+
+## 5. Code Quality
 
 ### Turnbull heuristic downgrade never takes effect
 **File:** `surpyval/univariate/parametric/parametric_fitter.py` (`_validate_fit_inputs`, ~line 344)
@@ -232,7 +172,7 @@ The broken convergence-failure handling in each copy was fixed (all three now em
 
 ---
 
-## 5. Univariate Non-Parametric Module — Remaining Work
+## 6. Univariate Non-Parametric Module — Remaining Work
 
 The June 2026 confidence-bound review fixed the per-estimator variance
 formulas (Greenwood for KM, Aalen for NA, tie-corrected for FH), the
@@ -301,7 +241,7 @@ direct tests.
 
 ---
 
-## 6. Semi-Parametric Regression — Future Work
+## 7. Semi-Parametric Regression — Future Work
 
 Four semi-parametric models are candidates for addition, in priority order:
 
@@ -319,7 +259,7 @@ The semi-parametric counterpart to Cox PH. Fits `log(T) = β'Z + ε` without ass
 
 ---
 
-## 7. Time-Varying Covariates and Truncation (to be confirmed)
+## 8. Time-Varying Covariates and Truncation (to be confirmed)
 
 Full support for time-varying covariates (TVCs) and left/right truncation across all regression model families needs to be designed and confirmed before implementation. Key points established so far:
 
@@ -333,6 +273,6 @@ Full support for time-varying covariates (TVCs) and left/right truncation across
 
 ---
 
-## 8. Long-term: Replace `autograd` with JAX (deferred)
+## 9. Long-term: Replace `autograd` with JAX (deferred)
 
 `autograd` (HIPS/autograd) is in low-activity maintenance mode with no GPU support. JAX is the spiritual successor and a near-drop-in replacement for `autograd.numpy` patterns. The interim steps (inlining the `autograd_gamma` gradients into `surpyval/utils/autograd_gamma_compat.py` and upgrading to `autograd` 1.8 for numpy 2.x compatibility) are done, so there is no urgency. A JAX migration can be revisited once the library is otherwise stable — it is a multi-week effort touching every gradient computation.
