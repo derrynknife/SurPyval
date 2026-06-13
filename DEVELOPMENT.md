@@ -279,84 +279,93 @@ Full support for time-varying covariates (TVCs) and left/right truncation across
 
 ---
 
-## 10. Long-term: Target package architecture (ultimate goal)
+## 10. Long-term: Model taxonomy (ultimate goal)
 
-This is the **aspirational end-state** layout for the whole library, not a
-planned near-term refactor. The intent is to grow the package toward it
-incrementally; no large move should be made just to reach it. It is recorded
-here so new modules can be placed consistently with the eventual shape.
+This is the **aspirational classification** of the modelling space the library
+aims to cover, not a directory layout or a planned refactor. Every model is
+fully specified by picking one value on each of the orthogonal axes below.
+Recorded here so new models have an unambiguous classification and the gaps
+(unbuilt cells) are visible; grow the library toward full coverage
+incrementally.
 
-The structure is built from four orthogonal axes, applied symmetrically so
-every branch has the same sub-structure (many leaf cells will be empty or
-future-only — that is expected):
-
-1. **Outcome dimension** — `univariate` (one failure time per unit) vs
-   `multivariate` (several, possibly correlated, failure times per unit).
-2. **Event recurrence** — `single_event` (a unit experiences the event once)
-   vs `recurrent` (repeated events over time).
-3. **Number of event types** — `single_risk` (one event type) vs
-   `competing_risks` (several mutually-exclusive types).
-4. **Covariates** — `without_covariates` vs `with_covariates` (regression).
-
-with a final `parametric` / `nonparametric` estimation split at the leaves.
-This places each model unambiguously: e.g. Cox PH is a *with-covariates,
-nonparametric-baseline* univariate single-event single-risk model; Fine–Gray
-and CRPH are its competing-risks analogues; the cause-specific MCF is a
-multivariate (recurrent), competing-risks, without-covariates, nonparametric
-model.
+### The axes
 
 ```
-surpyval/
-├── univariate/                         # one failure time per unit
-│   ├── single_event/
-│   │   ├── single_risk/
-│   │   │   ├── without_covariates/
-│   │   │   │   ├── parametric/         # Weibull, Exponential, Gamma, LogNormal, …
-│   │   │   │   └── nonparametric/      # KaplanMeier, NelsonAalen, FlemingHarrington, Turnbull
-│   │   │   └── with_covariates/
-│   │   │       ├── parametric/         # Weibull-PH/AFT, accelerated-life, proportional-odds
-│   │   │       └── nonparametric/      # CoxPH (nonparametric baseline)
-│   │   └── competing_risks/
-│   │       ├── without_covariates/
-│   │       │   ├── parametric/         # (future) parametric cause-specific
-│   │       │   └── nonparametric/      # CompetingRisks (CIF)
-│   │       └── with_covariates/
-│   │           ├── parametric/         # (future)
-│   │           └── nonparametric/      # CRPH, FineGray
-│   └── recurrent/                      # (symmetry placeholder; rarely populated
-│       └── …                           #  for univariate — recurrence implies multivariate)
-└── multivariate/                       # several failure times per unit
-    ├── single_event/                   # (symmetry placeholder)
-    │   └── …
-    └── recurrent/
-        ├── single_risk/
-        │   ├── without_covariates/
-        │   │   ├── parametric/         # HPP, NHPP, Crow, CrowAMSAA, Duane, CoxLewis, renewal/
-        │   │   └── nonparametric/      # NonParametricCounting (MCF)
-        │   └── with_covariates/
-        │       ├── parametric/         # (partial) parametric intensity regression
-        │       └── nonparametric/      # ProportionalIntensity HPP/NHPP
-        └── competing_risks/
-            ├── without_covariates/
-            │   ├── parametric/         # (future)
-            │   └── nonparametric/      # CauseSpecificMCF
-            └── with_covariates/
-                ├── parametric/         # (future)
-                └── nonparametric/      # (future)
+1. Outcome dimension
+   ├── univariate          # one failure time per unit
+   └── multivariate        # several (possibly correlated) failure times per unit
+
+2. Event recurrence
+   ├── single_event        # the event happens at most once per unit
+   └── recurrent           # repeated events over time  (implies multivariate)
+
+3. Transition structure    # how many states and how a unit moves between them
+   ├── single_risk         # one absorbing state (one event type)
+   ├── competing_risks     # one transient state → several absorbing states
+   └── multi_state         # arbitrary transition graph (illness-death,
+                           #   progressive, reversible); competing_risks and
+                           #   single_risk are special cases of this
+
+4. Covariates
+   ├── without_covariates
+   └── with_covariates     # regression
+
+5. Time scale              # nature of the time axis itself
+   ├── continuous          # absolutely-continuous failure time
+   └── discrete            # discrete/grouped time, or binary outcome
+                           #   (revealed by Bernoulli; also success-run,
+                           #   period/grouped data)
+
+6. Estimation
+   ├── parametric          # fully specified distribution / intensity
+   ├── semiparametric      # parametric covariate effect + nonparametric
+   │                       #   baseline (Cox PH, Fine–Gray, CRPH)
+   └── nonparametric       # no distributional assumption (KM, NA, MCF, CIF)
 ```
 
-**Notes / open trade-offs to settle before any move toward this:**
+### Dependencies and how existing models classify
 
-- The symmetric layout duplicates the `single_event` / `recurrent` level on
-  the `univariate` branch even though univariate recurrence is degenerate
-  (recurrence implies multivariate). Those cells are kept only for uniform
-  paths and can stay empty.
-- Model files end up ~5 directories deep, so a substantial `__init__.py`
-  re-export layer is needed to preserve the flat public API
-  (`from surpyval import Weibull`, etc.).
-- The current code only partially matches this: `univariate/competing_risks`
-  and `recurrent/competing_risks` exist (the latter as a nonparametric
-  scaffold), but the `single_event` / `single_risk` / covariate levels are
-  not yet introduced, and `recurrent/` has not been renamed under a
-  `multivariate/` parent.
+- `recurrent` implies `multivariate`; `single_event` is the usual `univariate`
+  case.
+- `semiparametric` only co-occurs with `with_covariates` (it is the
+  nonparametric-baseline-plus-covariate-effect combination).
+- `single_risk` ⊂ `competing_risks` ⊂ `multi_state` — the transition axis is a
+  ladder, not three disjoint kinds; a multi-state engine subsumes the others.
+
+Worked classifications:
+
+| Model | dim | recurrence | transition | covariates | time | estimation |
+|-------|-----|-----------|------------|------------|------|------------|
+| Weibull, Exponential, … | univariate | single_event | single_risk | none | continuous | parametric |
+| KaplanMeier, NelsonAalen | univariate | single_event | single_risk | none | continuous | nonparametric |
+| CoxPH | univariate | single_event | single_risk | with | continuous | semiparametric |
+| CompetingRisks (CIF) | univariate | single_event | competing_risks | none | continuous | nonparametric |
+| Fine–Gray, CRPH | univariate | single_event | competing_risks | with | continuous | semiparametric |
+| NonParametricCounting (MCF) | multivariate | recurrent | single_risk | none | continuous | nonparametric |
+| HPP/NHPP, Crow, Duane | multivariate | recurrent | single_risk | none | continuous | parametric |
+| ProportionalIntensity HPP/NHPP | multivariate | recurrent | single_risk | with | continuous | parametric |
+| CauseSpecificMCF | multivariate | recurrent | competing_risks | none | continuous | nonparametric |
+| Bernoulli, success-run | univariate | single_event | single_risk | none | discrete | parametric |
+
+### Not separate axes
+
+- **Population composition** (homogeneous vs **mixture / cure / limited-failure
+  / zero-inflated**) is *not* an axis. `MixtureModel`,
+  `FixedEventProbability`/LFP, zero-inflated, and `Bernoulli` are all parametric
+  variants that live in the simplest cell — `univariate, single_event,
+  single_risk, without_covariates, parametric` (continuous or discrete). They
+  compose existing distributions rather than occupying a new dimension.
+- It was `Bernoulli` sitting in that cell that surfaced the **time-scale**
+  (discrete vs continuous) axis above.
+- **Censoring / truncation scheme** and **static vs time-varying covariates**
+  are data/likelihood properties handled inside fitters, not model-family axes.
+
+### Deferred orthogonal axes (out of scope for now)
+
+- **Inference paradigm** — frequentist vs Bayesian. The entire library is
+  frequentist (MLE/MPS/MOM/MSE); Bayesian survival would be a genuine new
+  top-level axis.
+- **Effect type** — fixed vs random effects (frailty). Frailty is both the
+  *clustered* kind of `multivariate` data and a random-effect modality of the
+  covariate axis.
 
