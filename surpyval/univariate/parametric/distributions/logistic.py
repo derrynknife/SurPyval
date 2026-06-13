@@ -2,7 +2,6 @@ from autograd import grad
 from autograd.scipy.special import beta as abeta
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
-from surpyval.utils import xcnt_handler
 
 
 class Logistic_(ParametricFitter):
@@ -22,12 +21,6 @@ class Logistic_(ParametricFitter):
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         return self.fit(x, c, n, how="MPP").params
-        x, c, n, _ = xcnt_handler(x, c, n, t)
-        flag = (c == 0).astype(int)
-        if offset:
-            return x.sum() / (n * flag).sum(), 1.0, 1.0
-        else:
-            return x.sum() / (n * flag).sum(), 1.0
 
     def sf(self, x, mu, sigma):
         r"""

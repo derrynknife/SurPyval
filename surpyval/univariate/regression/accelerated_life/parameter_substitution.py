@@ -70,7 +70,7 @@ class ParameterSubstitutionFitter:
         stresses = np.unique(Z, axis=0)
         for stress in stresses:
             life_param_mask = (
-                np.array(range(0, len(dist_params)))
+                np.arange(len(dist_params))
                 == self.param_map[self.life_parameter]
             )
             dist_params_i = np.where(
@@ -96,7 +96,7 @@ class ParameterSubstitutionFitter:
         hf = np.zeros_like(x)
         for stress in np.unique(Z, axis=0):
             life_param_mask = (
-                np.array(range(0, len(dist_params)))
+                np.arange(len(dist_params))
                 == self.param_map[self.life_parameter]
             )
             dist_params_i = np.where(
@@ -176,7 +176,7 @@ class ParameterSubstitutionFitter:
 
         for stress in np.unique(Z, axis=0):
             life_param_mask = (
-                np.array(range(0, len(dist_params)))
+                np.arange(len(dist_params))
                 == self.param_map[self.life_parameter]
             )
             dist_params_i = np.where(

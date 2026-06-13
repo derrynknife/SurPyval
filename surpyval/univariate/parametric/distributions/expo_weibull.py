@@ -322,7 +322,6 @@ class ExpoWeibull_(ParametricFitter):
         return mu * np.log1p(-np.exp(-((x / alpha) ** beta)))
 
     def log_sf(self, x, alpha, beta, mu):
-        1 - np.power(1 - np.exp(-((x / alpha) ** beta)), mu)
         return np.log1p(-np.power(-np.expm1(-((x / alpha) ** beta)), mu))
 
     def mean(self, alpha, beta, mu):
