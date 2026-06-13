@@ -7,6 +7,7 @@ from scipy.optimize import minimize
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 
 
@@ -193,14 +194,8 @@ class ParameterSubstitutionFitter:
             Z_out.append(np.ones((size, cols)) * stress)
         return np.array(x).flatten(), np.concatenate(Z_out)
 
-    def neg_ll(self, Z, x, c, n, *params):
-        like = np.zeros_like(x).astype(float)
-        like = np.where(c == 0, self.log_df(x, Z, *params), like)
-        like = np.where(c == 1, self.log_sf(x, Z, *params), like)
-        like = np.where(c == -1, self.log_ff(x, Z, *params), like)
-        like = np.multiply(n, like)
-        like = -np.sum(like)
-        return like
+    def neg_ll(self, data, *params):
+        return regression_neg_ll(self, data, *params)
 
     def fit(self, x, Z, c=None, n=None, t=None, init=None, fixed=None):
         data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
@@ -297,9 +292,7 @@ class ParameterSubstitutionFitter:
         with np.errstate(all="ignore"):
 
             def fun(params):
-                return self.neg_ll(
-                    data.Z, data.x, data.c, data.n, *inv_trans(const(params))
-                )
+                return self.neg_ll(data, *inv_trans(const(params)))
 
             res1 = minimize(
                 fun, init, method="Nelder-Mead", options={"maxiter": 1000}
