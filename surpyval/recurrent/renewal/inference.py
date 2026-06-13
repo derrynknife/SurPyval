@@ -55,10 +55,14 @@ class RenewalInferenceMixin:
                 "fit_from_parameters does not compute a likelihood."
             )
 
+    # Name of the leading repair/restoration parameter in ``_mle``. Subclasses
+    # using a different symbol (e.g. ARA's ``rho``) override this.
+    _restoration_param_name = "q"
+
     @property
     def parameter_names(self):
         self._check_fitted()
-        return ["q", *self.model.dist.param_names]
+        return [self._restoration_param_name, *self.model.dist.param_names]
 
     @property
     def log_likelihood(self):
