@@ -37,11 +37,16 @@ class RecurrentEventData:
     array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
     """
 
-    def __init__(self, x, i, c, n):
+    def __init__(self, x, i, c, n, e=None):
         self.x = np.atleast_1d(x)
         self.i = np.atleast_1d(i)
         self.c = np.atleast_1d(c)
         self.n = np.atleast_1d(n)
+        # Optional event-type (mark) per observation. When provided this
+        # turns the data into a competing-risks recurrent process: each
+        # event belongs to one of several mutually-exclusive types. ``None``
+        # marks (e.g. the end-of-observation censoring row) are permitted.
+        self.e = np.atleast_1d(e) if e is not None else None
         self.items = list(set(self.i))
 
         if self.x.ndim == 1:
@@ -103,6 +108,66 @@ class RecurrentEventData:
 
             self.xrd = x_unique, r, d
         return self.xrd
+
+    @property
+    def event_types(self):
+        """
+        The distinct event types (marks) present in the data, excluding the
+        ``None`` mark used for censored / end-of-observation rows. Returns an
+        empty list when the data carries no marks.
+        """
+        if self.e is None:
+            return []
+        return sorted({e for e in self.e if e is not None})
+
+    def to_cause_specific_xrd(self, cause):
+        """
+        Convert the recurrent event data to xrd format for a single event
+        type (cause). The at-risk set ``r`` is shared across all causes (an
+        item remains at risk for every cause until it leaves observation);
+        only the event count ``d`` is restricted to the requested cause.
+
+        Parameters
+        ----------
+        cause : object
+            The event type to compute the cause-specific counts for. Must be
+            one of ``self.event_types``.
+
+        Returns
+        -------
+        tuple
+            A tuple ``(x_unique, r, d_cause)`` where ``d_cause`` counts only
+            events of the requested cause and ``r`` is the shared at-risk set.
+        """
+        if self.e is None:
+            raise ValueError(
+                "Data has no event-type marks; pass `e` to compute "
+                "cause-specific curves."
+            )
+        if cause not in self.event_types:
+            raise ValueError(
+                "Unrecognised cause {!r}; known causes are {}".format(
+                    cause, self.event_types
+                )
+            )
+
+        # Reuse the shared at-risk set and event-time grid from to_xrd.
+        x_unique, r, _ = self.to_xrd()
+
+        if self.x.ndim == 2:
+            x_out = self.midpoints
+        else:
+            x_out = self.x
+
+        observed = (self.c == 0) | (self.c == 2) | (self.c == -1)
+        is_cause = np.array([ei == cause for ei in self.e])
+        d_cause = np.array(
+            [
+                self.n[(x_out == xi) & observed & is_cause].sum()
+                for xi in x_unique
+            ]
+        )
+        return x_unique, r, d_cause
 
     def get_interarrival_times(self):
         """
@@ -197,6 +262,7 @@ class RecurrentEventData:
             self.i[index],
             self.c[index],
             self.n[index],
+            None if self.e is None else self.e[index],
         )
 
     def __iter__(self):

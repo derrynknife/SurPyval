@@ -66,8 +66,10 @@ from surpyval.utils.recurrent_event_data import (  # isort: skip
 # The univariate regression models (CoxPH, WeibullPH, the accelerated
 # life models, etc.) are importable directly from `surpyval`. Everything
 # else (competing risks, recurrent events, experimental features) is
-# imported from its package, e.g. `surpyval.recurrent` or
-# `surpyval.experimental`.
+# imported from its package. Competing risks lives under each paradigm
+# it applies to: `surpyval.univariate.competing_risks` and
+# `surpyval.recurrent.competing_risks`. Recurrent and experimental
+# features live in `surpyval.recurrent` and `surpyval.experimental`.
 from surpyval.univariate.regression import *  # isort: skip # noqa: F401,F403,E501
 
 from surpyval.utils.surpyval_data import SurpyvalData  # isort: skip

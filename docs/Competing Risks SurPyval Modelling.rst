@@ -33,7 +33,7 @@ times, a cause indicator, and optional censoring flags:
 
 .. jupyter-execute::
 
-    from surpyval.competing_risks import CompetingRisks
+    from surpyval.univariate.competing_risks import CompetingRisks
     from surpyval import Weibull, Exponential
 
     # Simulated data: two competing causes
@@ -76,7 +76,7 @@ regression fitters:
 .. code-block:: python
 
     # Planned API — not yet working (see DEVELOPMENT.md)
-    from surpyval.competing_risks import FineGray
+    from surpyval.univariate.competing_risks import FineGray
 
     model = FineGray.fit(x=x, c=c, Z=Z, cause=cause, cause_of_interest=0)
     print(model.summary())
@@ -90,7 +90,7 @@ events:
 .. code-block:: python
 
     # Planned API — not yet working (see DEVELOPMENT.md)
-    from surpyval.competing_risks import CompetingRiskProportionalHazard
+    from surpyval.univariate.competing_risks import CompetingRiskProportionalHazard
 
     model = CompetingRiskProportionalHazard.fit(x=x, c=c, Z=Z, cause=cause)
     print(model.summary())
