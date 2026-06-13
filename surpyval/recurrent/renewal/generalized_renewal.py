@@ -76,6 +76,12 @@ class GeneralizedRenewal:
             self.virtual_age_function = self.kijima_i
         elif kijima_type == "ii":
             self.virtual_age_function = self.kijima_ii
+        else:
+            raise ValueError(
+                "Unknown kijima_type {!r}; must be 'i' or 'ii'".format(
+                    kijima_type
+                )
+            )
 
     def __repr__(self):
         out = (

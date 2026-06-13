@@ -253,8 +253,6 @@ class GeneralizedOneRenewal:
             Data containing the recurrence details.
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
-        kijima : str, optional
-            Type of Kijima model to use, either "i" or "ii". Default is "i".
         init : list, optional
             Initial parameters for the optimization algorithm.
 
@@ -352,8 +350,6 @@ class GeneralizedOneRenewal:
             An array of counts.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
-        kijima : str, optional
-            Type of Kijima model to use, either "i" or "ii". Default is "i".
         init : list, optional
             Initial parameters for the optimization algorithm.
 
@@ -398,9 +394,7 @@ class GeneralizedOneRenewal:
         params : list
             A list of parameters for the survival analysis distribution.
         q : float
-            Restoration factor used in the Kijima models.
-        kijima : str, optional
-            Type of Kijima model to use, either "i" or "ii". Default is "i".
+            Restoration factor used in the G1 renewal model.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
 
