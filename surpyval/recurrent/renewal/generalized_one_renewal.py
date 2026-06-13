@@ -355,6 +355,11 @@ class GeneralizedOneRenewal:
                 bounds=[(-1, None), *dist.bounds],
                 method="Nelder-Mead",
             )
+            if not res.success:
+                raise ValueError(
+                    "Optimization with the provided `init` did not "
+                    "converge. Try a different initial guess."
+                )
 
         underlying_model = dist.from_params(list(res.x[1:]))
         q = res.x[0]

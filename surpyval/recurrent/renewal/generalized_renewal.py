@@ -416,6 +416,11 @@ class GeneralizedRenewal:
                 init,
                 method="Nelder-Mead",
             )
+            if not res.success:
+                raise ValueError(
+                    "Optimization with the provided `init` did not "
+                    "converge. Try a different initial guess."
+                )
 
         q, *dist_params = inv_trans(res.x)
         q = q
