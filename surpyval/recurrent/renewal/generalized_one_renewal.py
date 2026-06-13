@@ -8,10 +8,9 @@ from surpyval import Weibull
 from surpyval.recurrent.nonparametric import NonParametricCounting
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
+    interarrivals_converge_below,
     validate_renewal_censoring,
 )
-
-DT_WARN = "Small increment encountered, may have trouble reaching T."
 
 
 class GeneralizedOneRenewal:
@@ -152,7 +151,7 @@ class GeneralizedOneRenewal:
         model.var = None
         return model
 
-    def time_terminated_simulation(self, T, items=1, tol=1e-5):
+    def time_terminated_simulation(self, T, items=1, max_events=10_000):
         """
         Simulate time-terminated recurrence data based on the fitted model.
 
@@ -163,8 +162,10 @@ class GeneralizedOneRenewal:
             Time termination value.
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
-        tol: float, optional
-            Tolerance for interarrival times to stop an individual sequence.
+        max_events: int, optional
+            Hard cap on the number of events simulated per sequence. Acts as a
+            backstop for sequences whose cumulative time cannot reach T.
+            Default is 10000.
 
         Returns
         -------
@@ -175,20 +176,22 @@ class GeneralizedOneRenewal:
         Warnings
         --------
 
-        If any of the simulated sequences seem to not reach the time
-        termination value T due to possible asymptote, a warning message will
-        be printed to notify the user about potential convergence problems in
-        the simulation.
+        A sequence is terminated early and right-censored at its last event if
+        its interarrival times decay geometrically so that the cumulative time
+        converges below T, or if it reaches ``max_events`` before T. A warning
+        is raised in either case.
         """
         base_params = self.model.params
         q = self.q
         self.initialize_simulation()
-        convergence_problem = False
+        converged_below = False
+        hit_max_events = False
 
         xicn = {"x": [], "i": [], "c": [], "n": []}
 
         for i in range(0, items):
             running = 0
+            increments = []
             j = 0
             while True:
                 ui = self.get_uniform_random_number()
@@ -198,14 +201,20 @@ class GeneralizedOneRenewal:
                 cj = (1.0 + q) ** j
                 xi = cj * self.model.dist.qf(ui, *base_params)
                 running += xi
+                increments.append(xi)
                 xicn["i"].append(i + 1)
                 xicn["n"].append(1)
                 if running > T:
                     xicn["x"].append(T)
                     xicn["c"].append(1)
                     break
-                elif xi < tol:
-                    convergence_problem = True
+                elif interarrivals_converge_below(increments, running, T):
+                    converged_below = True
+                    xicn["x"].append(running)
+                    xicn["c"].append(0)
+                    break
+                elif len(increments) >= max_events:
+                    hit_max_events = True
                     xicn["x"].append(running)
                     xicn["c"].append(0)
                     break
@@ -216,8 +225,17 @@ class GeneralizedOneRenewal:
 
         self.clear_simulation()
 
-        if convergence_problem:
-            warnings.warn(DT_WARN)
+        if converged_below:
+            warnings.warn(
+                "Some sequences' interarrival times decayed geometrically and "
+                "their cumulative time converged below T; these were "
+                "terminated early and right-censored at their last event."
+            )
+        if hit_max_events:
+            warnings.warn(
+                "Some sequences reached max_events ({}) before T; increase "
+                "max_events or check the model parameters.".format(max_events)
+            )
 
         model = NonParametricCounting.fit(**xicn)
         model.var = None

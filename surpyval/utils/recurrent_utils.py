@@ -2,6 +2,82 @@ import numpy as np
 
 from .recurrent_event_data import RecurrentEventData
 
+# Number of trailing interarrival times used to estimate the geometric decay
+# ratio in ``interarrivals_converge_below``.
+DECAY_WINDOW = 8
+
+# Safety factor applied to the extrapolated geometric tail. The sequence is
+# only declared non-convergent when the gap to the target is at least this many
+# times the extrapolated reachable distance, so a slowly-decaying sequence that
+# is in fact about to cross the target is not terminated prematurely.
+DECAY_MARGIN = 3.0
+
+
+def interarrivals_converge_below(
+    increments, running, target, window=DECAY_WINDOW, margin=DECAY_MARGIN
+):
+    """
+    Geometric-tail reachability test for time-terminated simulation.
+
+    A time-terminated sequence must either cross ``target`` or have its running
+    total converge to a limit below ``target``. This detects the latter: it
+    returns ``True`` only when the recent interarrival ``increments`` are
+    decaying geometrically and ``margin`` times the extrapolated geometric tail
+    still cannot bridge the remaining gap to ``target``.
+
+    The decay ratio is estimated over a smoothing ``window`` and the test bails
+    out whenever the increments are not clearly shrinking, so a burst of
+    small-but-stable interarrival times (a high-intensity region well below
+    ``target``) is never mistaken for convergence. The ``margin`` factor guards
+    against the opposite error: terminating a slowly-decaying sequence that is
+    actually a step or two away from crossing ``target``.
+
+    Parameters
+    ----------
+    increments : sequence of float
+        Interarrival times generated so far for the current sequence.
+    running : float
+        Current cumulative time (the sum of ``increments``).
+    target : float
+        The time-termination value ``T``.
+    window : int, optional
+        Number of trailing increments used to estimate the decay ratio.
+    margin : float, optional
+        Safety factor applied to the extrapolated geometric tail before
+        comparing against the gap to ``target``.
+
+    Returns
+    -------
+    bool
+        ``True`` if the sequence cannot reach ``target`` under continued
+        geometric decay (with the safety margin applied), otherwise ``False``.
+    """
+    # Need two full blocks to estimate a block-averaged decay ratio. Requiring
+    # 2 * window events also means short sequences that genuinely reach the
+    # target do so (via running > target) before this test can ever fire.
+    if len(increments) < 2 * window:
+        return False
+
+    older = increments[-2 * window : -window]
+    recent = increments[-window:]
+    older_mean = sum(older) / window
+    recent_mean = sum(recent) / window
+    if older_mean <= 0.0 or recent_mean <= 0.0:
+        return False
+
+    # Block-averaged per-step decay ratio. Averaging over blocks smooths out
+    # the heavy noise in individual interarrival times, so a noisy-but-stable
+    # sequence is not mistaken for a decaying one.
+    if recent_mean >= older_mean:
+        # Not decaying; the remaining gap to target may still be closed.
+        return False
+    rho = (recent_mean / older_mean) ** (1.0 / window)
+
+    # Supremum of the additional distance reachable if decay continues at rho,
+    # extrapolated from the recent average increment level.
+    max_additional = recent_mean * rho / (1.0 - rho)
+    return (running + margin * max_additional) < target
+
 
 def validate_renewal_censoring(c, model_name):
     """
