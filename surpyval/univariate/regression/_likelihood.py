@@ -22,16 +22,21 @@ import autograd.numpy as np
 _TINY = np.finfo(float).tiny
 
 
-def _ff_safe(model, x, Z, *params):
-    """``model.ff`` evaluated with infinite truncation bounds mapped to the
-    correct limiting probability (0 below the support, 1 above it) without
-    ever calling ``ff`` at a non-finite value.
+def _ff_safe(model, x, Z, fill, *params):
+    """``model.ff(x, Z, *params)`` with non-finite bounds replaced by their
+    limiting probability without ever evaluating ``ff`` at a non-finite
+    value.
+
+    ``fill`` is the probability a non-finite entry maps to: ``0.0`` for a
+    lower/left truncation bound (``F(-inf) = 0``) and ``1.0`` for an
+    upper/right bound (``F(+inf) = 1``). The caller knows which bound it is
+    passing, so the fill is supplied explicitly rather than inferred from
+    the value of ``x``.
     """
     finite = np.isfinite(x)
+    # Substitute a finite placeholder so ``ff`` is never called at +/-inf;
+    # the placeholder's result is discarded for those entries below.
     x_safe = np.where(finite, x, 0.0)
-    # ``x`` only ever holds ``-inf`` on the left bound and ``+inf`` on the
-    # right bound, so a non-finite entry maps to F = 0 or F = 1 respectively.
-    fill = np.where(x > 0, 1.0, 0.0)
     return np.where(finite, model.ff(x_safe, Z, *params), fill)
 
 
@@ -47,8 +52,9 @@ def truncation_correction(model, data, *params):
     if data.x_tl.size == 0:
         return 0.0
 
-    right = _ff_safe(model, data.x_tr, data.Z_t, *params)
-    left = _ff_safe(model, data.x_tl, data.Z_t, *params)
+    # Upper bound: F(+inf) = 1; lower bound: F(-inf) = 0.
+    right = _ff_safe(model, data.x_tr, data.Z_t, 1.0, *params)
+    left = _ff_safe(model, data.x_tl, data.Z_t, 0.0, *params)
     return (data.n_t * np.log(np.maximum(right - left, _TINY))).sum()
 
 

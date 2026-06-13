@@ -109,3 +109,50 @@ def test_right_truncation_runs():
     model = WeibullPH.fit(x=x, Z=Z, t=t)
 
     assert np.allclose(model.params[:2], baseline.params, atol=1e-2)
+
+
+def test_interval_truncation_matches_baseline():
+    # Both truncation bounds finite (observation window (tl, tr)); must match
+    # the truncated baseline for zero covariates.
+    rng = np.random.default_rng(4)
+    tl, tr = 2.0, 25.0
+    x = 10.0 * rng.weibull(2.0, 2000)
+    x = x[(x > tl) & (x < tr)]
+    t = np.column_stack([np.full(x.size, tl), np.full(x.size, tr)])
+    Z = np.zeros((x.size, 1))
+
+    baseline = Weibull.fit(x=x, tl=tl, tr=tr)
+    model = WeibullPH.fit(x=x, Z=Z, t=t)
+
+    assert np.allclose(model.params[:2], baseline.params, atol=1e-2)
+
+
+def test_partial_truncation_matches_baseline():
+    # Only a subset of rows is truncated (the rest carry [-inf, inf]); the
+    # correction must apply to the truncated subset alone.
+    rng = np.random.default_rng(5)
+    tl = 3.0
+    x_trunc = 10.0 * rng.weibull(2.0, 1000)
+    x_trunc = x_trunc[x_trunc > tl]
+    x_full = 10.0 * rng.weibull(2.0, 500)
+
+    x = np.concatenate([x_trunc, x_full])
+    t = np.vstack(
+        [
+            np.column_stack(
+                [np.full(x_trunc.size, tl), np.full(x_trunc.size, np.inf)]
+            ),
+            np.column_stack(
+                [np.full(x_full.size, -np.inf), np.full(x_full.size, np.inf)]
+            ),
+        ]
+    )
+    Z = np.zeros((x.size, 1))
+
+    tl_arr = np.concatenate(
+        [np.full(x_trunc.size, tl), np.full(x_full.size, -np.inf)]
+    )
+    baseline = Weibull.fit(x=x, tl=tl_arr)
+    model = WeibullPH.fit(x=x, Z=Z, t=t)
+
+    assert np.allclose(model.params[:2], baseline.params, atol=1e-2)
