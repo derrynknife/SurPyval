@@ -16,6 +16,7 @@ import numpy as np
 from .distributions import (
     Bernoulli,
     Beta,
+    Beta4,
     CustomDistribution,
     ExactEventTime,
     ExpoWeibull,

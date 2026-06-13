@@ -44,10 +44,34 @@ with `dist.random(10_000, *params) + 10`:
   for a true value of 10) while every other offsettable distribution
   recovers it well. `test_offset_fit_recovers_gamma` skips this
   combination.
-- **Beta cannot actually be offset.** `_validate_fit_inputs` allows it
-  (`support[0] == 0`) but `Beta._parameter_initialiser` has no offset
-  path, so `Beta.fit(x, offset=True)` raises. Either support it or
-  validate it away.
+
+A note on severity: these are *parameter*-recovery problems, not
+*distribution*-recovery problems. The threshold parameter `gamma` is
+non-regular and trades off against the shape/scale parameters, so a
+fit can land on the wrong `(gamma, *params)` tuple while the fitted
+distribution it implies is still very close to the truth. The
+discrepancy that actually matters to a user — the divergence between
+the true and inferred distributions (KL divergence, or the
+Wasserstein / earth-mover distance between the two CDFs) — is expected
+to be small even when the individual parameters are visibly off. So
+the practical impact of the biases above is likely minor: predictions,
+quantiles, and survival probabilities from the fitted model stay
+usable. Before investing in better moment matching or a different
+offset initialiser, quantify the divergence (not the parameter error)
+to confirm it is worth the effort.
+
+**Resolved June 2026 — Beta can no longer be offset.**
+`_validate_fit_inputs` previously allowed it (`support[0] == 0`) but
+`Beta._parameter_initialiser` had no offset path, so
+`Beta.fit(x, offset=True)` raised an opaque `zip()` error. Offsetting
+only makes sense for distributions on the half-line `[0, inf)` — the
+check now requires `support[0] == 0 and isinf(support[1])`, so Beta
+(and any other finite-upper-bound distribution) raises a clear
+"cannot be offset" `ValueError`. The use case offsetting was reaching
+for — a Beta on an arbitrary `[a, b]` interval — is now served by the
+new four-parameter Beta (`Beta4`, `distributions/beta4.py`), which
+estimates the support bounds `a` and `b` alongside the two shape
+parameters.
 
 ---
 
@@ -149,11 +173,16 @@ done):
   membership on a *string*, not a tuple, so any distribution whose name
   is a substring of "Beta" would match. Replace the name-based
   branching with a `plot_x_limits` hook on the distribution.
-- `Uniform` declares `support=(-np.inf, np.inf)` as a workaround (see
-  the comment in `distributions/uniform.py`), and the NaN-support
-  branch in `fit_from_surpyval_data` (with its `TODO: More general
-  support setting. i.e. 4 parameter Beta`) appears unreachable now.
-  Design proper data-dependent support setting.
+- Data-dependent support setting now works for the general case
+  (June 2026): a distribution declares `support=(np.nan, np.nan)` and
+  a `support_param_index` naming which fitted parameters supply the
+  bounds, and `fit_from_surpyval_data`/`from_params` resolve the
+  support from them. The new four-parameter Beta (`Beta4`) uses this
+  path with `support_param_index=(2, 3)`. `Uniform` still declares
+  `support=(-np.inf, np.inf)` rather than NaN (see the comment in
+  `distributions/uniform.py`); it could be migrated to the NaN path
+  with `support_param_index=(0, 1)` (the default) for consistency, but
+  the current workaround is harmless.
 - `MixtureModel` composes rather than inherits: it now shares the
   probability-plot code but still reimplements `sf/ff/df/mean/random`
   aggregation and its own `R_cb`, and sets most attributes outside

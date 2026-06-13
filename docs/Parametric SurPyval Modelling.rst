@@ -359,6 +359,18 @@ A four parameter exponentiated Weibull can also be found:
 
     model.plot()
 
+Offsets only make sense for distributions supported on the half real line ``[0, inf)`` - the offset ``gamma`` simply slides the lower bound of the support. A distribution with a finite upper bound, such as the Beta distribution on ``[0, 1]``, therefore cannot be offset, and ``surv.Beta.fit(x, offset=True)`` will raise a ``ValueError``. Sliding the lower bound while pinning the upper bound at 1 does not produce another member of the Beta family. If your data are bounded on both sides and you need to estimate where those bounds are, use the four parameter Beta distribution (``Beta4``) instead, which estimates the lower bound ``a`` and upper bound ``b`` along with the two shape parameters:
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    import numpy as np
+
+    np.random.seed(10)
+    x = surv.Beta4.random(10000, 3., 4., 10., 20.)
+    model = surv.Beta4.fit(x)
+    print(model)
+
 Fixing parameters
 -----------------
 

@@ -3,6 +3,7 @@ import pytest
 
 from surpyval import (
     Beta,
+    Beta4,
     Exponential,
     ExpoWeibull,
     Gamma,
@@ -354,6 +355,45 @@ def test_offset_fit_recovers_gamma(dist, dist_params, how):
     model = dist.fit(x, offset=True, how=how)
     assert abs(model.gamma - gamma) < 0.5
     assert np.allclose(model.params, dist_params, rtol=0.15)
+
+
+@pytest.mark.parametrize("how", ["MLE", "MPS", "MSE", "MOM"])
+def test_beta_cannot_be_offset(how):
+    # Beta is supported on [0, 1]; a one-sided offset cannot move the
+    # lower bound while pinning the upper bound at 1, so it must raise a
+    # clear error rather than the opaque failure it used to.
+    x = Beta.random(100, 2.0, 5.0)
+    with pytest.raises(ValueError, match="cannot be offset"):
+        Beta.fit(x, offset=True, how=how)
+
+
+def test_beta4_recovers_parameters():
+    # The four-parameter Beta estimates the support bounds (a, b) along
+    # with the two shape parameters.
+    np.random.seed(0)
+    alpha, beta, a, b = 3.0, 4.0, 2.0, 7.0
+    x = Beta4.random(10_000, alpha, beta, a, b)
+    model = Beta4.fit(x)
+    assert np.allclose(model.params, [alpha, beta, a, b], rtol=0.1)
+    # Support is read off the fitted bounds.
+    assert np.allclose(model.support, [model.params[2], model.params[3]])
+
+
+def test_beta4_cannot_be_offset():
+    x = Beta4.random(100, 2.0, 5.0, 1.0, 4.0)
+    with pytest.raises(ValueError, match="cannot be offset"):
+        Beta4.fit(x, offset=True)
+
+
+def test_beta4_handles_right_censoring():
+    np.random.seed(1)
+    alpha, beta, a, b = 2.5, 3.0, 1.0, 5.0
+    x = Beta4.random(5_000, alpha, beta, a, b)
+    threshold = 4.0
+    c = np.where(x > threshold, 1, 0)
+    x = np.where(x > threshold, threshold, x)
+    model = Beta4.fit(x, c=c)
+    assert np.allclose(model.params, [alpha, beta, a, b], rtol=0.15)
 
 
 @pytest.mark.parametrize(

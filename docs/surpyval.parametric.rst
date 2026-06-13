@@ -27,6 +27,7 @@ Distribution Classes
    univariate/logistic
    univariate/loglogistic
    univariate/uniform
+   univariate/beta4
 
 Custom Distributions
 --------------------

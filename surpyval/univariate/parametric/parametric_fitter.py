@@ -92,6 +92,12 @@ class ParametricFitter:
         self.plot_x_scale = plot_x_scale
         self.y_ticks = DEFAULT_Y_TICKS if y_ticks is None else y_ticks
         self.supports_mpp = True
+        # For distributions whose support is data-dependent (declared as
+        # NaN, e.g. the 4-parameter Beta), these give the indices of the
+        # parameters that supply the left and right support bounds once
+        # the model is fitted. The default ``(0, 1)`` matches the legacy
+        # behaviour used by ``Uniform``.
+        self.support_param_index = (0, 1)
 
     def random(self, size, *params):
         r"""
@@ -301,7 +307,15 @@ class ParametricFitter:
         heuristic,
         turnbull_estimator,
     ):
-        if offset and (self.support[0] != 0):
+        # Offsetting (a free location/threshold ``gamma``) only makes sense
+        # for distributions supported on a half-line ``[0, inf)``. A
+        # distribution with a finite upper bound (e.g. Beta on ``[0, 1]``)
+        # or a data-dependent support cannot be offset: shifting the lower
+        # bound while pinning the upper one is not a member of the family.
+        # Use the 4-parameter Beta instead if you need a shifted/scaled
+        # Beta on an arbitrary ``[a, b]`` interval.
+        offsettable = (self.support[0] == 0) and np.isinf(self.support[1])
+        if offset and not offsettable:
             detail = f"{self.name} distribution cannot be offset"
             raise ValueError(detail)
 
@@ -867,8 +881,10 @@ class ParametricFitter:
                 # finite. If it isn't, then the distribution cannot be offset.
                 # i.e if both finite or both infinite, then cannot be offset,
                 # zero-inflated, or limited failure.
-                if np.all(np.isinf(self.support)) or np.all(
-                    np.isfinite(self.support)
+                if (
+                    np.all(np.isinf(self.support))
+                    or np.all(np.isfinite(self.support))
+                    or np.all(np.isnan(self.support))
                 ):
                     with np.errstate(all="ignore"):
                         init = np.array(
@@ -965,16 +981,18 @@ class ParametricFitter:
         elif self.support[0] == -np.inf:
             left = -np.inf
         elif np.isnan(self.support[0]):
-            # This only works for the uniform dist
-            # TODO: More general support setting. i.e. 4 parameter Beta
-            left = model.params[0]
+            # Data-dependent left support: read it from the fitted
+            # parameter the distribution nominates (``a`` for the uniform
+            # and the 4-parameter Beta).
+            left = model.params[self.support_param_index[0]]
 
         if np.isfinite(self.support[1]):
             right = self.support[1]
         elif self.support[1] == np.inf:
             right = np.inf
         elif np.isnan(self.support[1]):
-            right = model.params[1]
+            # Data-dependent right support (``b``).
+            right = model.params[self.support_param_index[1]]
 
         model.support = np.array([left, right])
 
@@ -1071,7 +1089,12 @@ class ParametricFitter:
         if offset:
             model.support = (gamma, model.support[1])
         elif np.isnan(self.support).any():
-            model.support = np.array(model.params)
+            left, right = self.support
+            if np.isnan(left):
+                left = model.params[self.support_param_index[0]]
+            if np.isnan(right):
+                right = model.params[self.support_param_index[1]]
+            model.support = np.array([left, right])
 
         for i, (low, upp) in enumerate(self.bounds):
             if low is None:

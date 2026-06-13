@@ -20,6 +20,7 @@ from scipy.special import xlogy
 
 from surpyval import (
     Beta,
+    Beta4,
     ExpoWeibull,
     Exponential,
     Gamma,
@@ -44,6 +45,7 @@ DIST_PARAMS = [
     (Logistic, (4.0, 1.0)),
     (LogLogistic, (5.0, 2.0)),
     (Beta, (2.0, 5.0)),
+    (Beta4, (2.0, 5.0, 10.0, 20.0)),
     (ExpoWeibull, (3.0, 1.5, 0.8)),
     (Gamma, (3.0, 2.0)),
     (Exponential, (0.5,)),
@@ -140,6 +142,8 @@ RANDOM_STATS = [
     (Weibull, (10.0, 1.0), 10.0, 100.0),
     # Beta(1,1) = Uniform(0,1): mean=0.5, var=1/12
     (Beta, (1.0, 1.0), 0.5, 1.0 / 12.0),
+    # Beta4(1,1,10,20) = Uniform(10,20): mean=15, var=100/12
+    (Beta4, (1.0, 1.0, 10.0, 20.0), 15.0, 100.0 / 12.0),
     # Gamma(alpha, beta) rate-parameterised: mean=alpha/beta, var=alpha/beta^2
     (Gamma, (4.0, 2.0), 2.0, 1.0),
 ]
@@ -273,6 +277,7 @@ MOMENT_PARAMS = [
     (Logistic, (4.0, 1.0)),
     (LogLogistic, (5.0, 5.0)),
     (Beta, (2.0, 5.0)),
+    (Beta4, (2.0, 5.0, 10.0, 20.0)),
     (Gamma, (3.0, 2.0)),
     (Exponential, (0.5,)),
     (Rayleigh, (3.0,)),
