@@ -16,6 +16,7 @@ from surpyval.univariate.nonparametric import (
 from surpyval.univariate.parametric import (
     Bernoulli,
     Beta,
+    Beta4,
     CustomDistribution,
     ExactEventTime,
     Exponential,

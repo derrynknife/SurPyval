@@ -359,6 +359,54 @@ A four parameter exponentiated Weibull can also be found:
 
     model.plot()
 
+Offsets only make sense for distributions supported on the half real line ``[0, inf)`` - the offset ``gamma`` simply slides the lower bound of the support. A distribution with a finite upper bound, such as the Beta distribution on ``[0, 1]``, therefore cannot be offset, and ``surv.Beta.fit(x, offset=True)`` will raise a ``ValueError``. Sliding the lower bound while pinning the upper bound at 1 does not produce another member of the Beta family. If your data are bounded on both sides and you need to estimate where those bounds are, use the four parameter Beta distribution (``Beta4``) instead, which estimates the lower bound ``a`` and upper bound ``b`` along with the two shape parameters:
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    import numpy as np
+
+    np.random.seed(10)
+    x = surv.Beta4.random(10000, 3., 4., 10., 20.)
+    model = surv.Beta4.fit(x)
+    print(model)
+
+A caution: offset parameters can be unidentifiable
+--------------------------------------------------
+
+The offset ``gamma`` is a *threshold* parameter, and threshold parameters are statistically awkward. ``gamma`` trades off against the shape and scale parameters, so two very different parameter tuples can describe almost the same distribution. This means a fit can report parameters that are badly wrong while the distribution it implies is still an excellent fit to your data. It is important to understand this so you are not alarmed by - or misled by - the printed parameters.
+
+The clearest way to see this is to fit the same offset data with different estimation methods. Below we generate Gamma data shifted by ``gamma = 10`` and fit it both with maximum product of spacings (``MPP``) and maximum likelihood (``MLE``):
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    import numpy as np
+
+    np.random.seed(0)
+    x = surv.Gamma.random(10_000, 3.0, 2.0) + 10.0
+
+    mpp = surv.Gamma.fit(x, offset=True, how='MPP')
+    mle = surv.Gamma.fit(x, offset=True, how='MLE')
+
+    print('Truth : gamma=10.000, alpha=3.000, beta=2.000')
+    print('MPP   : gamma={:.3f}, alpha={:.3f}, beta={:.3f}'.format(mpp.gamma, *mpp.params))
+    print('MLE   : gamma={:.3f}, alpha={:.3f}, beta={:.3f}'.format(mle.gamma, *mle.params))
+
+The ``MPP`` parameters look like nonsense: a negative ``gamma`` and a shape parameter inflated by two orders of magnitude. But a high-shape Gamma sitting near the origin is, by the central limit theorem, almost the same bell-shaped curve as a moderate Gamma shifted out to 10. If we compare what the models actually *predict*, the two fits are nearly indistinguishable - and both are close to the truth:
+
+.. jupyter-execute::
+
+    truth = surv.Gamma.from_params([3.0, 2.0], gamma=10.0)
+
+    for name, m in [('Truth', truth), ('MPP', mpp), ('MLE', mle)]:
+        print('{:5s} mean={:.3f}  median={:.3f}  90th percentile={:.3f}'.format(
+            name, float(m.mean()), float(m.qf(0.5)), float(m.qf(0.9))))
+
+Despite the ``MPP`` parameters being off by thousands of percent, its mean, median and upper percentile all agree with the truth to better than 2%. The lesson is that when you use an offset, **judge the fit by what it predicts, not by the printed parameters**. Plot it against the non-parametric estimate, or compare the survival function, quantiles, mean and variance, rather than reading meaning into ``gamma`` and the shape parameters individually.
+
+This unidentifiability is also why the estimation method matters more than usual for offset fits. ``MLE`` is the most reliable for recovering the parameters themselves; the method-of-moments (``MOM``) and probability-plotting (``MPP``) initialisers can be badly biased on the parameters even when the resulting distribution is acceptable. If you need the threshold ``gamma`` to be meaningful - for example you are interpreting it as a guaranteed minimum life - prefer ``MLE`` and treat any single parameter estimate with care. The library's test suite pins this behaviour down with measured KL and Wasserstein distances in ``test_offset_divergence.py``.
+
 Fixing parameters
 -----------------
 

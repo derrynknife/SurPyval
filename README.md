@@ -33,6 +33,7 @@ SurPyval also offers many different distributions for users, and because of the 
 | **LogNormal** | Yes |
 | **Gamma**     | Yes |
 | **Beta**      | No |
+| **Beta (4 parameter)** | No |
 | **Uniform**   | No |
 | **Exponential** | Yes |
 | **Exponentiated Weibull** | Yes |

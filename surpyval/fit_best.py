@@ -4,6 +4,7 @@ import numpy as np
 
 from surpyval.univariate.parametric import (
     Beta,
+    Beta4,
     Exponential,
     ExpoWeibull,
     Gamma,
@@ -20,6 +21,7 @@ from surpyval.univariate.parametric import (
 
 distributions: list[ParametricFitter] = [
     Beta,
+    Beta4,
     Exponential,
     ExpoWeibull,
     Gamma,
