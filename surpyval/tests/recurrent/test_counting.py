@@ -147,6 +147,20 @@ def test_renewal_raises_when_user_init_does_not_converge(
         model.fit(x, i, c=c, init=[1.0, 1.0, 1.0])
 
 
+def test_count_terminated_simulation_via_mixin():
+    # The shared RecurrenceSimulationMixin drives count_terminated_simulation
+    # for every recurrent model. Pin the documented G1 result so the refactor
+    # stays behaviour-preserving.
+    x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
+    model = GeneralizedOneRenewal.fit(x, dist=Weibull)
+    np.random.seed(0)
+    np_model = model.count_terminated_simulation(len(x), 5000)
+    expected = np.array(
+        [0.1696, 1.181, 2.287, 3.6694, 5.58237925, 8.54474531]
+    )
+    assert np.allclose(np_model.mcf(np.array([1, 2, 3, 4, 5, 6])), expected)
+
+
 def test_time_terminated_tol_stops_decaying_sequence():
     # A G1 process with q < 0 has geometrically shrinking interarrival times,
     # so its cumulative time converges below any large T. The tol early-exit

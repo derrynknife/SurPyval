@@ -1,11 +1,8 @@
-import warnings
-
 import numpy as np
 from scipy.optimize import minimize
-from scipy.stats import uniform
 
 from surpyval import Weibull
-from surpyval.recurrent.nonparametric import NonParametricCounting
+from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -32,7 +29,7 @@ def kijima_ii_from_prev_interarrival(previous_interarrival_times, q):
     )
 
 
-class GeneralizedRenewal:
+class GeneralizedRenewal(RecurrenceSimulationMixin):
     """
     A class to handle the generalized renewal process with different Kijima
     models.
@@ -67,8 +64,7 @@ class GeneralizedRenewal:
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
     >>> np_model.mcf(np.array([1, 2, 3, 4, 5, 6]))
-    array([0.116     , 1.1804    , 2.4032    , 3.9166    , 5.81163625,
-           8.77859347])
+    array([0.1214   , 1.1772   , 2.406    , 3.919    , 5.804    , 8.6088822])
     """
 
     def __init__(self, model, q, kijima_type="i"):
@@ -113,19 +109,6 @@ class GeneralizedRenewal:
 
         return out
 
-    def initialize_simulation(self):
-        self.us = uniform.rvs(size=100_000).tolist()
-
-    def clear_simulation(self):
-        del self.us
-
-    def get_uniform_random_number(self):
-        try:
-            return self.us.pop()
-        except IndexError:
-            self.initialize_simulation()
-            return self.us.pop()
-
     @classmethod
     def kijima_i(self, v, x, q):
         return v + q * x
@@ -134,144 +117,18 @@ class GeneralizedRenewal:
     def kijima_ii(self, v, x, q):
         return q * (v + x)
 
-    def count_terminated_simulation(self, events, items=1):
-        """
-        Simulate count-terminated recurrence data based on the fitted model.
-
-        Parameters
-        ----------
-
-        events: int
-            Number of events to simulate.
-        items: int, optional
-            Number of items (or sequences) to simulate. Default is 1.
-
-        Returns
-        -------
-
-        NonParametricCounting
-            An NonParametricCounting model built from the simulated data.
-        """
+    def _new_sequence_sampler(self):
         q = self.q
-        self.initialize_simulation()
+        virtual_age = 0.0
 
-        xicn = {"x": [], "i": [], "c": [], "n": []}
+        def sample(ui):
+            nonlocal virtual_age
+            u_adj = ui * self.model.sf(virtual_age)
+            xi = self.model.qf(1 - u_adj) - virtual_age
+            virtual_age = self.virtual_age_function(virtual_age, xi, q)
+            return xi
 
-        for i in range(0, items):
-            virtual_age = 0
-            running = 0
-            for j in range(0, events):
-                ui = self.get_uniform_random_number()
-                u_adj = ui * self.model.sf(virtual_age)
-                xi = self.model.qf(1 - u_adj) - virtual_age
-                # Update virtual age
-                virtual_age = self.virtual_age_function(virtual_age, xi, q)
-                running += xi
-                xicn["x"].append(running)
-                xicn["i"].append(i + 1)
-                xicn["c"].append(0)
-                xicn["n"].append(1)
-
-        self.clear_simulation()
-
-        model = NonParametricCounting.fit(**xicn)
-        mask = model.mcf_hat < events
-        model.x = model.x[mask]
-        model.mcf_hat = model.mcf_hat[mask]
-        model.var = None
-
-        return model
-
-    def time_terminated_simulation(
-        self, T, items=1, tol=1e-8, max_events=10_000
-    ):
-        """
-        Simulate time-terminated recurrence data based on the fitted model.
-
-        Parameters
-        ----------
-
-        T: float
-            Time termination value.
-        items: int, optional
-            Number of items (or sequences) to simulate. Default is 1.
-        tol: float, optional
-            Interarrival times below this value end the sequence early; a tiny
-            increment indicates the cumulative time has stalled below T (a
-            possible asymptote). Default is 1e-8.
-        max_events: int, optional
-            Hard cap on the number of events simulated per sequence. This is
-            the backstop that guarantees termination for sequences whose
-            cumulative time cannot reach T. Default is 10000.
-
-        Returns
-        -------
-
-        NonParametricCounting
-            An NonParametricCounting model built from the simulated data.
-
-        Warnings
-        --------
-
-        A sequence is terminated early and right-censored at its last event if
-        an interarrival time falls below ``tol`` or it reaches ``max_events``
-        before T. A warning is raised in either case.
-        """
-        q = self.q
-        self.initialize_simulation()
-        stalled = False
-        hit_max_events = False
-
-        xicn = {"x": [], "i": [], "c": [], "n": []}
-
-        for i in range(0, items):
-            running = 0
-            virtual_age = 0
-            n_events = 0
-            while True:
-                ui = self.get_uniform_random_number()
-                u_adj = ui * self.model.sf(virtual_age)
-                xi = self.model.qf(1 - u_adj) - virtual_age
-                # Update virtual age
-                virtual_age = self.virtual_age_function(virtual_age, xi, q)
-                running += xi
-                n_events += 1
-                xicn["i"].append(i + 1)
-                xicn["n"].append(1)
-                if running > T:
-                    xicn["x"].append(T)
-                    xicn["c"].append(1)
-                    break
-                elif xi < tol:
-                    stalled = True
-                    xicn["x"].append(running)
-                    xicn["c"].append(0)
-                    break
-                elif n_events >= max_events:
-                    hit_max_events = True
-                    xicn["x"].append(running)
-                    xicn["c"].append(0)
-                    break
-                else:
-                    xicn["x"].append(running)
-                    xicn["c"].append(0)
-
-        self.clear_simulation()
-
-        if stalled:
-            warnings.warn(
-                "Some sequences produced a near-zero interarrival time "
-                "(< tol) before reaching T, indicating a possible asymptote; "
-                "they were terminated early at their last event."
-            )
-        if hit_max_events:
-            warnings.warn(
-                "Some sequences reached max_events ({}) before T; increase "
-                "max_events or check the model parameters.".format(max_events)
-            )
-        model = NonParametricCounting.fit(**xicn)
-        model.var = None
-        return model
+        return sample
 
     @classmethod
     def create_negll_func(cls, data, dist, kijima="i"):

@@ -1,0 +1,182 @@
+import warnings
+
+from scipy.stats import uniform
+
+from surpyval.recurrent.nonparametric import NonParametricCounting
+
+STALLED_WARNING = (
+    "Some sequences produced a near-zero interarrival time (< tol) before "
+    "reaching T, indicating a possible asymptote; they were terminated early "
+    "at their last event."
+)
+MAX_EVENTS_WARNING = (
+    "Some sequences reached max_events ({}) before T; increase max_events or "
+    "check the model parameters."
+)
+
+
+class RecurrenceSimulationMixin:
+    """
+    Shared simulation machinery for fitted recurrent-event models.
+
+    Subclasses provide the per-event sampling logic by implementing
+    ``_new_sequence_sampler``, which returns a callable mapping a uniform
+    random number to the next interarrival time and which carries its own
+    per-sequence state. Subclasses may optionally override
+    ``_postprocess_simulated_model``
+    to adjust the fitted ``NonParametricCounting`` model (e.g. the CoxLewis
+    offset) before it is returned.
+    """
+
+    def initialize_simulation(self):
+        self.us = uniform.rvs(size=100_000).tolist()
+
+    def clear_simulation(self):
+        del self.us
+
+    def get_uniform_random_number(self):
+        try:
+            return self.us.pop()
+        except IndexError:
+            self.initialize_simulation()
+            return self.us.pop()
+
+    def _new_sequence_sampler(self):
+        """
+        Return a callable ``sample(ui) -> xi`` that draws the next interarrival
+        time from a uniform random number, maintaining any per-sequence state
+        internally. A fresh sampler is requested for each simulated sequence.
+        """
+        raise NotImplementedError
+
+    def _postprocess_simulated_model(self, model):
+        """
+        Hook to adjust the fitted ``NonParametricCounting`` model in place
+        before it is returned. Default is a no-op.
+        """
+        return model
+
+    def count_terminated_simulation(self, events, items=1):
+        """
+        Simulate count-terminated recurrence data based on the fitted model.
+
+        Parameters
+        ----------
+
+        events: int
+            Number of events to simulate.
+        items: int, optional
+            Number of items (or sequences) to simulate. Default is 1.
+
+        Returns
+        -------
+
+        NonParametricCounting
+            An NonParametricCounting model built from the simulated data.
+        """
+        self.initialize_simulation()
+
+        xicn = {"x": [], "i": [], "c": [], "n": []}
+
+        for i in range(0, items):
+            running = 0
+            sample = self._new_sequence_sampler()
+            for j in range(0, events + 1):
+                ui = self.get_uniform_random_number()
+                running += sample(ui)
+                xicn["x"].append(running)
+                xicn["i"].append(i + 1)
+                xicn["c"].append(0)
+                xicn["n"].append(1)
+
+        self.clear_simulation()
+
+        model = NonParametricCounting.fit(**xicn)
+        self._postprocess_simulated_model(model)
+        mask = model.mcf_hat < events
+        model.x = model.x[mask]
+        model.mcf_hat = model.mcf_hat[mask]
+        model.var = None
+        return model
+
+    def time_terminated_simulation(
+        self, T, items=1, tol=1e-8, max_events=10_000
+    ):
+        """
+        Simulate time-terminated recurrence data based on the fitted model.
+
+        Parameters
+        ----------
+
+        T: float
+            Time termination value.
+        items: int, optional
+            Number of items (or sequences) to simulate. Default is 1.
+        tol: float, optional
+            Interarrival times below this value end the sequence early; a tiny
+            increment indicates the cumulative time has stalled below T (a
+            possible asymptote). Default is 1e-8.
+        max_events: int, optional
+            Hard cap on the number of events simulated per sequence. This is
+            the backstop that guarantees termination for sequences whose
+            cumulative time cannot reach T. Default is 10000.
+
+        Returns
+        -------
+
+        NonParametricCounting
+            An NonParametricCounting model built from the simulated data.
+
+        Warnings
+        --------
+
+        A sequence is terminated early and right-censored at its last event if
+        an interarrival time falls below ``tol`` or it reaches ``max_events``
+        before T. A warning is raised in either case.
+        """
+        self.initialize_simulation()
+        stalled = False
+        hit_max_events = False
+
+        xicn = {"x": [], "i": [], "c": [], "n": []}
+
+        for i in range(0, items):
+            running = 0
+            n_events = 0
+            sample = self._new_sequence_sampler()
+            while True:
+                ui = self.get_uniform_random_number()
+                xi = sample(ui)
+                running += xi
+                n_events += 1
+                xicn["i"].append(i + 1)
+                xicn["n"].append(1)
+                if running > T:
+                    xicn["x"].append(T)
+                    xicn["c"].append(1)
+                    break
+                elif xi < tol:
+                    stalled = True
+                    xicn["x"].append(running)
+                    xicn["c"].append(0)
+                    break
+                elif n_events >= max_events:
+                    hit_max_events = True
+                    xicn["x"].append(running)
+                    xicn["c"].append(0)
+                    break
+                else:
+                    xicn["x"].append(running)
+                    xicn["c"].append(0)
+
+        self.clear_simulation()
+
+        if stalled:
+            warnings.warn(STALLED_WARNING)
+        if hit_max_events:
+            warnings.warn(MAX_EVENTS_WARNING.format(max_events))
+
+        model = NonParametricCounting.fit(**xicn)
+        self._postprocess_simulated_model(model)
+        model.var = None
+        return model
