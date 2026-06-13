@@ -747,7 +747,7 @@ class Parametric(Distribution):
             msg = "Entropy not available for LFP distribution"
             raise NotImplementedError(msg)
 
-    def cb(self, t, on="R", alpha_ci=0.05, bound="two-sided"):
+    def cb(self, t, on="sf", alpha_ci=0.05, bound="two-sided"):
         r"""
         Confidence bounds of the ``on`` function at the ``alpa_ci`` level of
         significance. Can be the upper, lower, or two-sided confidence by
