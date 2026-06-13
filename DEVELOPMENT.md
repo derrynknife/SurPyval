@@ -364,19 +364,6 @@ Worked classifications:
 | Bernoulli, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
 | (future) illness-death, progressive | univariate | single_event | single/competing | multi_state | none/with | continuous | any |
 
-### Not separate axes
-
-- **Population composition** (homogeneous vs **mixture / cure / limited-failure
-  / zero-inflated**) is *not* an axis. `MixtureModel`,
-  `FixedEventProbability`/LFP, zero-inflated, and `Bernoulli` are all parametric
-  variants that live in the simplest cell — `univariate, single_event, single,
-  terminal, without_covariates, parametric` (continuous or discrete). They
-  compose existing distributions rather than occupying a new dimension.
-- It was `Bernoulli` sitting in that cell that surfaced the **time-scale**
-  (discrete vs continuous) axis above.
-- **Censoring / truncation scheme** and **static vs time-varying covariates**
-  are data/likelihood properties handled inside fitters, not model-family axes.
-
 ### Deferred orthogonal axes (out of scope for now)
 
 - **Inference paradigm** — frequentist vs Bayesian. The entire library is
