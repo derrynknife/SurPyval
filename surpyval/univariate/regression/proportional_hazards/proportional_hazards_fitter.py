@@ -6,6 +6,7 @@ from scipy.optimize import minimize
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 
 
@@ -109,27 +110,7 @@ class ProportionalHazardsFitter:
         return x.flatten(), Z_out.flatten()
 
     def neg_ll(self, data, *params):
-        ll = (
-            (data.n_o * self.log_df(data.x_o, data.Z_o, *params)).sum()
-            + (data.n_r * self.log_sf(data.x_r, data.Z_r, *params)).sum()
-            + (data.n_l * self.log_ff(data.x_l, data.Z_l, *params)).sum()
-            + (
-                data.n_i
-                * (
-                    self.log_ff(data.x_ir, data.Z_i, *params)
-                    - self.log_ff(data.x_il, data.Z_i, *params)
-                )
-            ).sum()
-        )
-        if (np.isfinite(data.tl).any()) | (np.isfinite(data.tr).any()):
-            ll -= (
-                data.n
-                * (
-                    self.log_ff(data.tr, data.Z, *params)
-                    - self.log_ff(data.tl, data.Z, *params)
-                )
-            ).sum()
-        return -ll
+        return regression_neg_ll(self, data, *params)
 
     @staticmethod
     def create(distribution):

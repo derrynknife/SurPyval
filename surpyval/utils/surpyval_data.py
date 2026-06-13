@@ -137,6 +137,10 @@ class SurpyvalData:
         self.Z_r = Z_arr[self.c == 1]
         self.Z_l = Z_arr[self.c == -1]
         self.Z_i = Z_arr[self.c == 2]
+        # Covariates of the truncated subset, aligned with x_tl/x_tr/n_t so
+        # that regression likelihoods can apply the truncation correction
+        # using each truncated observation's own covariates.
+        self.Z_t = Z_arr[self.truncated_mask]
 
     def _split_to_observation_types(self) -> None:
         self.x_o, self.n_o = self._split_by_mask(self.c == 0)
@@ -151,11 +155,11 @@ class SurpyvalData:
             self.x_il = np.array([], dtype=float)
             self.x_ir = np.array([], dtype=float)
             self.n_i = np.array([], dtype=int)
-        truncated_mask = np.isfinite(self.t).any(axis=1)
+        self.truncated_mask = np.isfinite(self.t).any(axis=1)
         self.x_tl, self.x_tr, self.n_t = (
-            self.t[truncated_mask, 0],
-            self.t[truncated_mask, 1],
-            self.n[truncated_mask],
+            self.t[self.truncated_mask, 0],
+            self.t[self.truncated_mask, 1],
+            self.n[self.truncated_mask],
         )
 
     def to_xrd(self, estimator="Nelson-Aalen") -> tuple:
