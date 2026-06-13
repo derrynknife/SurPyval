@@ -1,23 +1,25 @@
 from autograd import elementwise_grad
 
-import surpyval as surv
-from surpyval import np
+from surpyval import Distribution, np
 
 
-class SeriesModel:
+class SeriesModel(Distribution):
     def __or__(self, other):
-        if isinstance(other, surv.Parametric):
-            return SeriesModel([*self.models, other])
-        else:
+        from surpyval.experimental.parallel import ParallelModel
+
+        # Composite operands contribute their components; any other
+        # Distribution (Parametric, NonParametric, MixtureModel, ...) is
+        # a leaf and is appended whole.
+        if isinstance(other, (SeriesModel, ParallelModel)):
             return SeriesModel([*self.models, *other.models])
+        return SeriesModel([*self.models, other])
 
     def __and__(self, other):
         from surpyval.experimental.parallel import ParallelModel
 
-        if isinstance(other, surv.Parametric):
-            return ParallelModel([*self.models, other])
-        else:
+        if isinstance(other, (SeriesModel, ParallelModel)):
             return ParallelModel([*self.models, *other.models])
+        return ParallelModel([*self.models, other])
 
     def __init__(self, models):
         self.models = models

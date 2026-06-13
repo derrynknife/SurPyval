@@ -4,12 +4,14 @@ import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.stats import norm, t
 
+from surpyval.distribution import NonParametricDistribution
+
 
 def interp_function(x, y, kind):
     return interp1d(x, y, kind=kind, bounds_error=False, fill_value=np.nan)
 
 
-class NonParametric:
+class NonParametric(NonParametricDistribution):
     """
     Result of ``.fit()`` method for every non-parametric
     surpyval distribution. This means that each of the

@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 from scipy.special import ndtri as z
 
-from surpyval import np
+from surpyval import Distribution, np
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
@@ -15,7 +15,7 @@ from .probability_plotting import (
 )
 
 
-class MixtureModel:
+class MixtureModel(Distribution):
     """
     A class for creating a Mixture Model fitter.
 

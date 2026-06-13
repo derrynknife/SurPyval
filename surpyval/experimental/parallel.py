@@ -1,26 +1,23 @@
 from autograd import elementwise_grad
 
-import surpyval as surv
-from surpyval import np
+from surpyval import Distribution, np
 from surpyval.experimental.series import SeriesModel
 
 
-class ParallelModel:
+class ParallelModel(Distribution):
     def __or__(self, other):
-        if isinstance(other, surv.Parametric):
-            return SeriesModel([*self.models, other])
-        elif isinstance(other, ParallelModel):
-            return ParallelModel([*self.models, other])
-        else:
-            return SeriesModel([*self.models, *other.models])
-
-    def __and__(self, other):
-        if isinstance(other, surv.Parametric):
+        if isinstance(other, ParallelModel):
             return ParallelModel([*self.models, other])
         elif isinstance(other, SeriesModel):
-            return ParallelModel([*self.models, other])
-        else:
+            return SeriesModel([*self.models, *other.models])
+        # Leaf model (Parametric, NonParametric, MixtureModel, ...)
+        return SeriesModel([*self.models, other])
+
+    def __and__(self, other):
+        if isinstance(other, ParallelModel):
             return ParallelModel([*self.models, *other.models])
+        # SeriesModel and leaf models alike nest as a single component.
+        return ParallelModel([*self.models, other])
 
     def __init__(self, models):
         self.models = models
