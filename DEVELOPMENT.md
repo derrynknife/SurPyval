@@ -291,13 +291,16 @@ incrementally.
 ### The axes
 
 ```
-1. Outcome dimension
-   ├── univariate          # one failure time per unit
-   └── multivariate        # several (possibly correlated) failure times per unit
+1. Outcome dimension       # how many event-time series are modelled jointly
+   ├── univariate          # one series per unit; units treated as independent
+   │                       #   replicates (the usual case)
+   └── multivariate        # several correlated series modelled jointly
+                           #   (clustered / paired / parallel units); the
+                           #   dependence is specified via frailty or a copula
 
-2. Event recurrence
-   ├── single_event        # the event happens at most once per unit
-   └── recurrent           # repeated events over time  (implies multivariate)
+2. Event recurrence        # how many events within one series (orthogonal to dim)
+   ├── single_event        # at most one event per series
+   └── recurrent           # repeated events over time within a series
 
 3. Competing events        # branching: how many event types compete out of a state
    ├── single              # one possible event type
@@ -332,8 +335,11 @@ incrementally.
 
 ### Dependencies and how existing models classify
 
-- `recurrent` implies `multivariate`; `single_event` is the usual `univariate`
-  case.
+- **`recurrent` does *not* imply `multivariate`** — the two axes are
+  orthogonal. A single repairable system with repeated failures is *univariate
+  recurrent* (one counting process — MCF, NHPP, …); `multivariate` is reserved
+  for *several correlated series* modelled jointly. All four combinations of
+  univariate/multivariate × single_event/recurrent are valid.
 - `semiparametric` only co-occurs with `with_covariates` (it is the
   nonparametric-baseline-plus-covariate-effect combination).
 - **Branching (axis 3) and state structure (axis 4) are independent — that is
@@ -357,12 +363,16 @@ Worked classifications:
 | CoxPH | univariate | single_event | single | terminal | with | continuous | semiparametric |
 | CompetingRisks (CIF) | univariate | single_event | competing | terminal | none | continuous | nonparametric |
 | Fine–Gray, CRPH | univariate | single_event | competing | terminal | with | continuous | semiparametric |
-| NonParametricCounting (MCF) | multivariate | recurrent | single | recurrent | none | continuous | nonparametric |
-| HPP/NHPP, Crow, Duane | multivariate | recurrent | single | recurrent | none | continuous | parametric |
-| ProportionalIntensity HPP/NHPP | multivariate | recurrent | single | recurrent | with | continuous | parametric |
-| CauseSpecificMCF | multivariate | recurrent | competing | recurrent | none | continuous | nonparametric |
+| NonParametricCounting (MCF) | univariate | recurrent | single | recurrent | none | continuous | nonparametric |
+| HPP/NHPP, Crow, Duane | univariate | recurrent | single | recurrent | none | continuous | parametric |
+| ProportionalIntensity HPP/NHPP | univariate | recurrent | single | recurrent | with | continuous | parametric |
+| CauseSpecificMCF | univariate | recurrent | competing | recurrent | none | continuous | nonparametric |
 | Bernoulli, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
 | (future) illness-death, progressive | univariate | single_event | single/competing | multi_state | none/with | continuous | any |
+
+Every model SurPyval ships today is `univariate`; the `multivariate` branch
+(jointly-modelled correlated series, via frailty or copula) is entirely future
+work.
 
 ### Deferred orthogonal axes (out of scope for now)
 
