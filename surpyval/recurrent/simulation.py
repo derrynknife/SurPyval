@@ -69,6 +69,166 @@ class RecurrenceSimulationMixin:
         """
         return model
 
+    def _simulate_count_xicn(self, events, items, seed):
+        """
+        Simulate ``items`` count-terminated sequences and return the raw event
+        data as an ``xicn`` dict (``events + 1`` exact events per sequence).
+        """
+        self._set_simulation_seed(seed)
+        self.initialize_simulation()
+
+        xicn = {"x": [], "i": [], "c": [], "n": []}
+
+        for i in range(0, items):
+            running = 0
+            sample = self._new_sequence_sampler()
+            for j in range(0, events + 1):
+                ui = self.get_uniform_random_number()
+                running += sample(ui)
+                xicn["x"].append(running)
+                xicn["i"].append(i + 1)
+                xicn["c"].append(0)
+                xicn["n"].append(1)
+
+        self.clear_simulation()
+        return xicn
+
+    def _simulate_time_xicn(self, T, items, tol, max_events, seed):
+        """
+        Simulate ``items`` time-terminated sequences and return the raw event
+        data as an ``xicn`` dict. Each sequence ends in a right-censored (c=1)
+        row at ``T``, or an observed (c=0) row at its last event if it stalls
+        or hits ``max_events``. Warns in the latter cases.
+        """
+        self._set_simulation_seed(seed)
+        self.initialize_simulation()
+        stalled = False
+        hit_max_events = False
+
+        xicn = {"x": [], "i": [], "c": [], "n": []}
+
+        for i in range(0, items):
+            running = 0
+            n_events = 0
+            sample = self._new_sequence_sampler()
+            while True:
+                ui = self.get_uniform_random_number()
+                xi = sample(ui)
+                running += xi
+                n_events += 1
+                xicn["i"].append(i + 1)
+                xicn["n"].append(1)
+                if running > T:
+                    xicn["x"].append(T)
+                    xicn["c"].append(1)
+                    break
+                elif xi < tol:
+                    stalled = True
+                    xicn["x"].append(running)
+                    xicn["c"].append(0)
+                    break
+                elif n_events >= max_events:
+                    hit_max_events = True
+                    xicn["x"].append(running)
+                    xicn["c"].append(0)
+                    break
+                else:
+                    xicn["x"].append(running)
+                    xicn["c"].append(0)
+
+        self.clear_simulation()
+
+        if stalled:
+            warnings.warn(STALLED_WARNING)
+        if hit_max_events:
+            warnings.warn(MAX_EVENTS_WARNING.format(max_events))
+
+        return xicn
+
+    def count_terminated_simulation_data(self, events, items=1, seed=None):
+        """
+        Simulate count-terminated recurrence data and return the raw events.
+
+        Unlike :meth:`count_terminated_simulation` (which returns the fitted
+        ``NonParametricCounting`` MCF), this returns the simulated event data
+        itself, ready to be refitted or inspected via ``.x``/``.i``/``.c``/
+        ``.n``.
+
+        Parameters
+        ----------
+
+        events: int
+            Number of events to simulate per sequence.
+        items: int, optional
+            Number of items (or sequences) to simulate. Default is 1.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible simulation.
+
+        Returns
+        -------
+
+        RecurrentEventData
+            The simulated recurrence data in xicn format.
+
+        Notes
+        -----
+
+        Count termination is a failure-terminated (Type II) scheme: each item
+        is observed until its ``events + 1``-th event, so its observation
+        window is the random time of that last event and every event is exact
+        (``c = 0``). Parametric fits handle this correctly -- the
+        interarrival/intensity likelihood ends at the last observed event and
+        the MLE is consistent. The nonparametric MCF, however, is only reliable
+        up to roughly ``events`` recurrences: beyond that the at-risk set is
+        depleted and the curve is biased (which is why
+        :meth:`count_terminated_simulation` trims to ``mcf_hat < events``). For
+        a fixed-window observation scheme, use
+        :meth:`time_terminated_simulation_data`, which right-censors each item
+        at ``T``.
+        """
+        from surpyval.utils.recurrent_utils import handle_xicn
+
+        xicn = self._simulate_count_xicn(events, items, seed)
+        return handle_xicn(as_recurrent_data=True, **xicn)
+
+    def time_terminated_simulation_data(
+        self, T, items=1, tol=1e-8, max_events=10_000, seed=None
+    ):
+        """
+        Simulate time-terminated recurrence data and return the raw events.
+
+        Unlike :meth:`time_terminated_simulation` (which returns the fitted
+        ``NonParametricCounting`` MCF), this returns the simulated event data
+        itself, ready to be refitted or inspected via ``.x``/``.i``/``.c``/
+        ``.n``. Each sequence is right-censored at ``T``.
+
+        Parameters
+        ----------
+
+        T: float
+            Time termination value.
+        items: int, optional
+            Number of items (or sequences) to simulate. Default is 1.
+        tol: float, optional
+            Interarrival times below this value end the sequence early.
+            Default is 1e-8.
+        max_events: int, optional
+            Hard per-sequence event cap that guarantees termination.
+            Default is 10000.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible simulation.
+
+        Returns
+        -------
+
+        RecurrentEventData
+            The simulated recurrence data in xicn format.
+        """
+        from surpyval.utils.recurrent_utils import handle_xicn
+
+        xicn = self._simulate_time_xicn(T, items, tol, max_events, seed)
+        return handle_xicn(as_recurrent_data=True, **xicn)
+
     def count_terminated_simulation(self, events, items=1, seed=None):
         """
         Simulate count-terminated recurrence data based on the fitted model.
@@ -90,23 +250,7 @@ class RecurrenceSimulationMixin:
         NonParametricCounting
             An NonParametricCounting model built from the simulated data.
         """
-        self._set_simulation_seed(seed)
-        self.initialize_simulation()
-
-        xicn = {"x": [], "i": [], "c": [], "n": []}
-
-        for i in range(0, items):
-            running = 0
-            sample = self._new_sequence_sampler()
-            for j in range(0, events + 1):
-                ui = self.get_uniform_random_number()
-                running += sample(ui)
-                xicn["x"].append(running)
-                xicn["i"].append(i + 1)
-                xicn["c"].append(0)
-                xicn["n"].append(1)
-
-        self.clear_simulation()
+        xicn = self._simulate_count_xicn(events, items, seed)
 
         model = NonParametricCounting.fit(**xicn)
         self._postprocess_simulated_model(model)
@@ -154,48 +298,7 @@ class RecurrenceSimulationMixin:
         an interarrival time falls below ``tol`` or it reaches ``max_events``
         before T. A warning is raised in either case.
         """
-        self._set_simulation_seed(seed)
-        self.initialize_simulation()
-        stalled = False
-        hit_max_events = False
-
-        xicn = {"x": [], "i": [], "c": [], "n": []}
-
-        for i in range(0, items):
-            running = 0
-            n_events = 0
-            sample = self._new_sequence_sampler()
-            while True:
-                ui = self.get_uniform_random_number()
-                xi = sample(ui)
-                running += xi
-                n_events += 1
-                xicn["i"].append(i + 1)
-                xicn["n"].append(1)
-                if running > T:
-                    xicn["x"].append(T)
-                    xicn["c"].append(1)
-                    break
-                elif xi < tol:
-                    stalled = True
-                    xicn["x"].append(running)
-                    xicn["c"].append(0)
-                    break
-                elif n_events >= max_events:
-                    hit_max_events = True
-                    xicn["x"].append(running)
-                    xicn["c"].append(0)
-                    break
-                else:
-                    xicn["x"].append(running)
-                    xicn["c"].append(0)
-
-        self.clear_simulation()
-
-        if stalled:
-            warnings.warn(STALLED_WARNING)
-        if hit_max_events:
-            warnings.warn(MAX_EVENTS_WARNING.format(max_events))
+        xicn = self._simulate_time_xicn(T, items, tol, max_events, seed)
 
         model = NonParametricCounting.fit(**xicn)
         self._postprocess_simulated_model(model)

@@ -2,8 +2,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from surpyval import Weibull
-from surpyval.recurrent.inference import LikelihoodInferenceMixin
-from surpyval.recurrent.simulation import RecurrenceSimulationMixin
+from surpyval.recurrent.renewal.renewal_model import RenewalModel
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -52,7 +51,7 @@ def ara_virtual_ages(arrival_times, rho, m):
     return v
 
 
-class ARA(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
+class ARA:
     """
     Arithmetic Reduction of Age (ARA) imperfect-repair model of Doyen and
     Gaudoin (2004).
@@ -80,38 +79,6 @@ class ARA(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
     >>> model = ARA.fit(x, i, c=c, m=2)
     """
 
-    _restoration_param_name = "rho"
-
-    def __init__(self, model, rho, m=1):
-        self.model = model
-        self.rho = rho
-        self.m = m
-
-    def __repr__(self):
-        out = (
-            "ARA Renewal SurPyval Model"
-            + "\n=========================="
-            + f"\nDistribution        : {self.model.dist.name}"
-            + "\nFitted by           : MLE"
-            + f"\nMemory (m)          : {self.m}"
-            + f"\nRepair Efficiency   : {self.rho}"
-        )
-
-        param_string = "\n".join(
-            [
-                "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(
-                    self.model.params, self.model.dist.param_names
-                )
-            ]
-        )
-
-        return (
-            out
-            + "\nParameters          :\n"
-            + "{params}".format(params=param_string)
-        )
-
     @staticmethod
     def _validate_memory(m):
         if m == np.inf:
@@ -121,9 +88,10 @@ class ARA(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
                 "m must be a positive integer or numpy.inf; got {!r}".format(m)
             )
 
-    def _new_sequence_sampler(self):
-        rho = self.rho
-        m = self.m
+    @staticmethod
+    def _build_sampler(model):
+        rho = model.rho
+        m = model.m
         arrivals = []
         running = 0.0
 
@@ -137,13 +105,26 @@ class ARA(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
                 upper = n if np.isinf(m) else min(int(m), n)
                 j = np.arange(upper)
                 v = T[-1] - rho * np.sum(((1.0 - rho) ** j) * T[n - 1 - j])
-            u_adj = ui * self.model.sf(v)
-            xi = self.model.qf(1 - u_adj) - v
+            u_adj = ui * model.model.sf(v)
+            xi = model.model.qf(1 - u_adj) - v
             running += xi
             arrivals.append(running)
             return xi
 
         return sample
+
+    @classmethod
+    def _make_model(cls, underlying_model, rho, m):
+        out = RenewalModel(
+            underlying_model,
+            rho,
+            "rho",
+            "Repair Efficiency",
+            "ARA Renewal",
+            cls._build_sampler,
+        )
+        out.m = m
+        return out
 
     @classmethod
     def create_negll_func(cls, data, dist, m):
@@ -196,8 +177,8 @@ class ARA(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         Returns
         -------
 
-        ARA
-            A fitted ARA object.
+        RenewalModel
+            A fitted renewal model.
         """
         cls._validate_memory(m)
         validate_renewal_censoring(data.c, cls.__name__)
@@ -250,7 +231,7 @@ class ARA(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
 
         rho, *dist_params = inv_trans(res.x)
         model = dist.from_params(list(dist_params))
-        out = cls(model, rho, m)
+        out = cls._make_model(model, rho, m)
         out.res = res
         out.data = data
         out._neg_ll = neg_ll
@@ -285,8 +266,8 @@ class ARA(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         Returns
         -------
 
-        ARA
-            A fitted ARA object.
+        RenewalModel
+            A fitted renewal model.
         """
         data = handle_xicn(x, i, c, n, as_recurrent_data=True)
         return cls.fit_from_recurrent_data(data, dist, m, init=init)
@@ -317,4 +298,4 @@ class ARA(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         """
         cls._validate_memory(m)
         model = dist.from_params(params)
-        return cls(model, rho, m)
+        return cls._make_model(model, rho, m)

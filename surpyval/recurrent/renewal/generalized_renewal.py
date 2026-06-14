@@ -2,8 +2,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from surpyval import Weibull
-from surpyval.recurrent.inference import LikelihoodInferenceMixin
-from surpyval.recurrent.simulation import RecurrenceSimulationMixin
+from surpyval.recurrent.renewal.renewal_model import RenewalModel
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -31,7 +30,7 @@ def kijima_ii_from_prev_interarrival(previous_interarrival_times, q):
     )
 
 
-class GeneralizedRenewal(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
+class GeneralizedRenewal:
     """
     A class to handle the generalized renewal process with different Kijima
     models.
@@ -69,48 +68,6 @@ class GeneralizedRenewal(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
     array([0.1214   , 1.1772   , 2.406    , 3.919    , 5.804    , 8.6088822])
     """
 
-    def __init__(self, model, q, kijima_type="i"):
-        self.model = model
-        self.q = q
-        self.kijima_type = kijima_type
-        if kijima_type == "i":
-            self.virtual_age_function = self.kijima_i
-        elif kijima_type == "ii":
-            self.virtual_age_function = self.kijima_ii
-        else:
-            raise ValueError(
-                "Unknown kijima_type {!r}; must be 'i' or 'ii'".format(
-                    kijima_type
-                )
-            )
-
-    def __repr__(self):
-        out = (
-            "Generalized Renewal SurPyval Model"
-            + "\n=================================="
-            + f"\nDistribution        : {self.model.dist.name}"
-            + "\nFitted by           : MLE"
-            + f"\nKijima Type         : {self.kijima_type}"
-            + f"\nRestoration Factor  : {self.q}"
-        )
-
-        param_string = "\n".join(
-            [
-                "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(
-                    self.model.params, self.model.dist.param_names
-                )
-            ]
-        )
-
-        out = (
-            out
-            + "\nParameters          :\n"
-            + "{params}".format(params=param_string)
-        )
-
-        return out
-
     @classmethod
     def kijima_i(self, v, x, q):
         return v + q * x
@@ -119,18 +76,46 @@ class GeneralizedRenewal(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
     def kijima_ii(self, v, x, q):
         return q * (v + x)
 
-    def _new_sequence_sampler(self):
-        q = self.q
+    @classmethod
+    def _resolve_virtual_age_function(cls, kijima_type):
+        if kijima_type == "i":
+            return cls.kijima_i
+        if kijima_type == "ii":
+            return cls.kijima_ii
+        raise ValueError(
+            "Unknown kijima_type {!r}; must be 'i' or 'ii'".format(kijima_type)
+        )
+
+    @staticmethod
+    def _build_sampler(model):
+        q = model.q
+        virtual_age_function = model._virtual_age_function
         virtual_age = 0.0
 
         def sample(ui):
             nonlocal virtual_age
-            u_adj = ui * self.model.sf(virtual_age)
-            xi = self.model.qf(1 - u_adj) - virtual_age
-            virtual_age = self.virtual_age_function(virtual_age, xi, q)
+            u_adj = ui * model.model.sf(virtual_age)
+            xi = model.model.qf(1 - u_adj) - virtual_age
+            virtual_age = virtual_age_function(virtual_age, xi, q)
             return xi
 
         return sample
+
+    @classmethod
+    def _make_model(cls, underlying_model, q, kijima_type):
+        out = RenewalModel(
+            underlying_model,
+            q,
+            "q",
+            "Restoration Factor",
+            "Generalized Renewal",
+            cls._build_sampler,
+        )
+        out.kijima_type = kijima_type
+        out._virtual_age_function = cls._resolve_virtual_age_function(
+            kijima_type
+        )
+        return out
 
     @classmethod
     def create_negll_func(cls, data, dist, kijima="i"):
@@ -210,8 +195,8 @@ class GeneralizedRenewal(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         Returns
         -------
 
-        GeneralizedRenewal
-            A fitted GeneralizedRenewal object.
+        RenewalModel
+            A fitted renewal model.
 
         Example
         -------
@@ -306,7 +291,7 @@ class GeneralizedRenewal(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
 
         q, *dist_params = inv_trans(res.x)
         model = dist.from_params(list(dist_params))
-        out = cls(model, q, kijima)
+        out = cls._make_model(model, q, kijima)
         out.res = res
         out.data = data
         out._neg_ll = neg_ll_bounded
@@ -343,8 +328,8 @@ class GeneralizedRenewal(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         Returns
         -------
 
-        GeneralizedRenewal
-            A fitted GeneralizedRenewal object.
+        RenewalModel
+            A fitted renewal model.
 
         Example
         -------
@@ -392,8 +377,8 @@ class GeneralizedRenewal(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         Returns
         -------
 
-        GeneralizedRenewal
-            A fitted GeneralizedRenewal object.
+        RenewalModel
+            A fitted renewal model.
 
         Example
         -------
@@ -418,4 +403,4 @@ class GeneralizedRenewal(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
             sigma: 2
         """
         model = dist.from_params(params)
-        return cls(model, q, kijima)
+        return cls._make_model(model, q, kijima)

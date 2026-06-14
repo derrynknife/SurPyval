@@ -16,6 +16,88 @@ This document tracks known issues, technical debt, and improvement priorities fo
 
 ## 4. Recurrent Module — Bugs and Gaps
 
+### Fresh deep-dive — 2026-06-14 (full-package audit)
+
+A current-state audit of the whole `recurrent/` package (parametric intensity,
+renewal, regression, nonparametric, competing risks). Findings are grouped by
+theme; items already resolved are marked **[done]**.
+
+**A. Correctness bugs**
+- `ProportionalIntensityHPP` crashes on left- or interval-censored data:
+  `Z_left`/`Z_i` are assigned only in the no-censoring `else` branches
+  (`hpp_proportional_intensity.py:130,147`) but used in the likelihood
+  (`:165,174`) → `NameError`. The NHPP sibling is fine (it uses ternaries).
+- Left-truncated MCF is wrong: `RecurrentEventData.to_xrd()` builds the
+  at-risk set assuming every item enters at `t=0`, ignoring `tl`; inflates the
+  MCF and propagates to `CauseSpecificMCF`. (Left truncation *is* handled for
+  the parametric NHPP likelihood via `get_previous_x`; only the nonparametric
+  risk set is wrong.)
+- `nhpp_proportional_intensity.py:131` calls `dist.log_iif(...)`
+  unconditionally under a `# TODO`; crashes for any baseline lacking it, with
+  no log-path fallback (underflow risk).
+- Lower: NHPP/HPP likelihoods take `np.log(delta_cif)` with no guard against a
+  non-positive delta (pathological params mid-optimisation); `CoxLewis.inv_cif`
+  can return negative times → invalid interarrivals in simulation, unguarded.
+
+**B. Dead code / stubs / docs**
+- `ParametricRecurrenceRegressionModel` (`parametric_regression.py`) — `# TODO`
+  stub simulation, never imported/exported. Remove or finish.
+- `_validate_memory` duplicated verbatim in `renewal/ara.py` and
+  `parametric/ari.py`.
+- 16 copy-pasted docstrings read "Parameters of the Duane model" inside
+  `Crow`/`CrowAMSAA`/`CoxLewis`.
+- `has_left_censoing` typo (`nhpp_fitter.py`, NHPP regression file).
+- Doubled `to_xrd()` call in `nonparametric/mcf.py:106-107`.
+
+**C. Simplification**
+- The multi-start MLE fit scaffolding is copy-pasted across the four repair
+  fitters (`GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI`): the
+  `for X_init in [...]` loop, `bounds_convert`, the identical "Could not find a
+  good solution" raise, and the `_neg_ll`/`_mle`/`_n_obs` storage → a
+  `RenewalFitMixin._fit_repair_model(...)`.
+- Regression simulation is the stale pre-mixin copy (`tol=1e-5`, no `seed`/
+  `max_events`) in `ProportionalIntensityModel` → should inherit
+  `RecurrenceSimulationMixin`.
+- The parametric (`HPP`/`Crow`/`Duane`/`CoxLewis`) and regression fitters never
+  set `_neg_ll`/`_mle`/`_n_obs`, so they get no AIC/BIC/SE even though
+  `LikelihoodInferenceMixin` exists and the repair models use it (~3 lines per
+  fit).
+- `Crow`/`Duane`/`CrowAMSAA`/`CoxLewis` each redefine `iif`/`log_iif`/`cif`/
+  `inv_cif` with identical docstring boilerplate (the models are mathematically
+  distinct — do not merge the math) → an `IntensityModel` ABC for the contract.
+  `HPP` could subclass `NHPPFitter` (overriding `create_negll_func`).
+
+**D. Missing capabilities**
+- No goodness-of-fit / trend tests anywhere (Laplace, MIL-HDBK-189C).
+- Truncation half-wired: `tr` not in the NHPP integral (right window-close
+  relies on a `c=1` row); MCF risk set ignores `tl` (see A); not exposed on
+  nonparametric `fit()`, regression `fit()`, or `CauseSpecificMCF.fit()`.
+- `handle_xicn` has no `e` (event-mark) parameter, so `CauseSpecificMCF.fit`
+  bypasses it and can't take truncation; no `fit_from_df` for marks.
+- The regression submodule and the nonparametric MCF have **zero tests**.
+- No residual diagnostics; no parametric CI band on `plot()`.
+
+**E. API inconsistencies**
+- `ProportionalIntensityModel.cif(x, Z)` / `time_terminated_simulation(T, Z,
+  ...)` require `Z` at call time vs `ParametricRecurrenceModel.cif(x)`.
+- `HPP` is not an `NHPPFitter`; `how=` only on `NHPPFitter`; `__repr__`
+  hardcodes "Fitted by: MLE"; string dispatch `dist.name == "CoxLewis"`;
+  `@classmethod` on `iif`/`cif` that take `self`.
+
+**F. Resolved since this review began** *(this branch)*
+- Renewal fitters now return a generic `RenewalModel` (fitter/model split
+  matching univariate `Weibull_ → Parametric`); `ARI` folded into the same
+  `RenewalModel` (its "distribution" is an intensity model). **[done]**
+- AIC/BIC/standard errors for the repair models via `LikelihoodInferenceMixin`.
+  **[done]**
+- Left-truncation support for the NHPP family; interval-censoring validation
+  fix in `handle_xicn`; shared `coerce_xcnt_x`/`format_truncation` helpers.
+  **[done]**
+- `kijima_type` validation; `q` bounded `≥ 0`; dead `q = q` removed;
+  `RecurrenceSimulationMixin` de-duplication. **[done]**
+
+---
+
 ### Confirmed bugs
 
 **Typo `has_left_censoing` (missing 'r')**
@@ -31,13 +113,6 @@ The MLE likelihood falls back to the non-log path; for small intensities this ca
 
 **`CoxLewis.inv_cif()` can return negative times**
 When `ln(N) < alpha`, the expression `(ln(N) - alpha) / beta` is negative. No guard or error is raised; simulation silently produces invalid (negative) event times.
-
-**Renewal model restoration factor `q` is unbounded**
-**File:** `surpyval/recurrent/renewal/generalized_renewal.py`
-Multi-start search covers `q ∈ {0.0001, 1.0, 2.0}` but the optimizer is unconstrained, so `q` can go negative, violating the virtual-age assumption. Add a bound `q ≥ 0`.
-
-**Redundant `q = q` assignment**
-**File:** `surpyval/recurrent/renewal/generalized_renewal.py:409` — dead assignment, remove.
 
 ---
 
