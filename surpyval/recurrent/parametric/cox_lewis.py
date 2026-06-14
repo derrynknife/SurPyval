@@ -24,19 +24,19 @@ class CoxLewis_(NHPPFitter):
     Process             : Cox-Lewis
     Fitted by           : MLE
     Parameters          :
-        alpha: 0.7177727527489457
-        beta: 0.08828975097259131
+        alpha: 0.3848528712360503
+        beta: 0.1939447728437042
     >>> model.cif([1, 2, 3, 4, 5, 6])
-    array([2.23907426, 2.44575105, 2.67150506, 2.91809719, 3.1874509 ,
-           3.4816672 ])
+    array([ 1.6215655 ,  3.59019342,  5.98016527,  8.88166096, 12.40416155,
+           16.68058024])
     >>>
     >>> model.iif([1, 2, 3, 4, 5, 6])
-    array([0.19768731, 0.21593475, 0.23586652, 0.25763807, 0.28141925,
-           0.30739553])
+    array([1.78389227, 2.16569736, 2.62921991, 3.19194983, 3.87512041,
+           4.70450946])
     >>>
     >>> model.inv_cif([1, 2, 3, 4, 5, 6])
-    array([-8.12974037, -0.27891768,  4.3135192 ,  7.57190502, 10.09930541,
-           12.16434189])
+    array([0.63923607, 1.20789182, 1.72001505, 2.18583659, 2.61303902,
+           3.00753845])
     """
 
     def __init__(self):
@@ -52,13 +52,17 @@ class CoxLewis_(NHPPFitter):
         """
         Cumulative intensity function (CIF) of the Cox-Lewis model.
 
+        This is the integral of the instantaneous intensity from 0 to ``x``,
+        i.e. the expected number of events by ``x``. It satisfies
+        ``cif(0) == 0``.
+
         Parameters
         ----------
 
         x : float
             The value at which CIF is evaluated.
         params : tuple
-            Parameters of the Duane model.
+            Parameters of the Cox-Lewis model.
 
         Returns
         -------
@@ -68,11 +72,12 @@ class CoxLewis_(NHPPFitter):
         """
         alpha = params[0]
         beta = params[1]
-        return np.exp(alpha + beta * x)
+        return np.exp(alpha) / beta * (np.exp(beta * x) - 1.0)
 
     def iif(self, x, *params):
         """
         Instantaneous intensity function (IIF) or the failure rate of the
+        Cox-Lewis model. This is the log-linear intensity that defines the
         Cox-Lewis model.
 
         Parameters
@@ -81,7 +86,7 @@ class CoxLewis_(NHPPFitter):
         x : float
             The value at which IIF is evaluated.
         params : tuple
-            Parameters of the Duane model.
+            Parameters of the Cox-Lewis model.
 
         Returns
         -------
@@ -91,7 +96,7 @@ class CoxLewis_(NHPPFitter):
         """
         alpha = params[0]
         beta = params[1]
-        return beta * np.exp(alpha + beta * x)
+        return np.exp(alpha + beta * x)
 
     def log_iif(self, x, *params):
         """
@@ -104,7 +109,7 @@ class CoxLewis_(NHPPFitter):
         x : float
             The value at which log(IIF) is evaluated.
         params : tuple
-            Parameters of the Duane model.
+            Parameters of the Cox-Lewis model.
 
         Returns
         -------
@@ -114,7 +119,7 @@ class CoxLewis_(NHPPFitter):
         """
         alpha = params[0]
         beta = params[1]
-        return np.log(beta) + alpha + beta * x
+        return alpha + beta * x
 
     def inv_cif(self, N, *params):
         """
@@ -127,7 +132,7 @@ class CoxLewis_(NHPPFitter):
         N : float
             The number of events expected to have occured.
         params : tuple
-            Parameters of the Duane model.
+            Parameters of the Cox-Lewis model.
 
         Returns
         -------
@@ -137,7 +142,7 @@ class CoxLewis_(NHPPFitter):
         """
         alpha = params[0]
         beta = params[1]
-        return (np.log(N) - alpha) / beta
+        return np.log(1.0 + N * beta * np.exp(-alpha)) / beta
 
 
 CoxLewis = CoxLewis_()
