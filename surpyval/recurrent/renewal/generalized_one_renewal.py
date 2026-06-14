@@ -2,8 +2,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from surpyval import Weibull
-from surpyval.recurrent.inference import LikelihoodInferenceMixin
-from surpyval.recurrent.simulation import RecurrenceSimulationMixin
+from surpyval.recurrent.renewal.renewal_model import RenewalModel
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_left_truncation,
@@ -11,9 +10,7 @@ from surpyval.utils.recurrent_utils import (
 )
 
 
-class GeneralizedOneRenewal(
-    RecurrenceSimulationMixin, LikelihoodInferenceMixin
-):
+class GeneralizedOneRenewal:
     """
     A class to handle the G1 renewal process of Kaminskiy and Krivtsov, in
     which the jth interarrival time is the underlying lifetime distribution
@@ -60,39 +57,10 @@ class GeneralizedOneRenewal(
            8.54474531])
     """
 
-    def __init__(self, model, q):
-        self.model = model
-        self.q = q
-
-    def __repr__(self):
-        out = (
-            "G1 Renewal SurPyval Model"
-            + "\n========================="
-            + f"\nDistribution        : {self.model.dist.name}"
-            + "\nFitted by           : MLE"
-            + f"\nRestoration Factor  : {self.q}"
-        )
-
-        param_string = "\n".join(
-            [
-                "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(
-                    self.model.params, self.model.dist.param_names
-                )
-            ]
-        )
-
-        out = (
-            out
-            + "\nParameters          :\n"
-            + "{params}".format(params=param_string)
-        )
-
-        return out
-
-    def _new_sequence_sampler(self):
-        base_params = self.model.params
-        q = self.q
+    @staticmethod
+    def _build_sampler(model):
+        base_params = model.model.params
+        q = model.q
         j = 0
 
         def sample(ui):
@@ -102,9 +70,20 @@ class GeneralizedOneRenewal(
             # factor.
             cj = (1.0 + q) ** j
             j += 1
-            return cj * self.model.dist.qf(ui, *base_params)
+            return cj * model.model.dist.qf(ui, *base_params)
 
         return sample
+
+    @classmethod
+    def _make_model(cls, underlying_model, q):
+        return RenewalModel(
+            underlying_model,
+            q,
+            "q",
+            "Restoration Factor",
+            "G1 Renewal",
+            cls._build_sampler,
+        )
 
     @classmethod
     def create_negll_func(cls, x, i, c, n, dist):
@@ -170,8 +149,8 @@ class GeneralizedOneRenewal(
         Returns
         -------
 
-        GeneralizedOneRenewal
-            A fitted GeneralizedOneRenewal object.
+        RenewalModel
+            A fitted renewal model.
 
         Example
         -------
@@ -246,7 +225,7 @@ class GeneralizedOneRenewal(
 
         underlying_model = dist.from_params(list(res.x[1:]))
         q = res.x[0]
-        out = cls(underlying_model, q)
+        out = cls._make_model(underlying_model, q)
         out.res = res
         out.data = data
         out._neg_ll = neg_ll
@@ -278,8 +257,8 @@ class GeneralizedOneRenewal(
         Returns
         -------
 
-        GeneralizedOneRenewal
-            A fitted GeneralizedOneRenewal object.
+        RenewalModel
+            A fitted renewal model.
 
         Example
         -------
@@ -323,8 +302,8 @@ class GeneralizedOneRenewal(
         Returns
         -------
 
-        GeneralizedOneRenewal
-            A fitted GeneralizedOneRenewal object.
+        RenewalModel
+            A fitted renewal model.
 
         Example
         -------
@@ -349,4 +328,4 @@ class GeneralizedOneRenewal(
         """
         cls._check_dist_eligible(dist)
         model = dist.from_params(params)
-        return cls(model, q)
+        return cls._make_model(model, q)
