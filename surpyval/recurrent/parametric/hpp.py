@@ -4,13 +4,14 @@ from autograd import numpy as anp
 from scipy.optimize import root
 from scipy.special import gammaln
 
+from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
-class HPP:
+class HPP(CountingProcess):
     """
     Represents the Homogeneous Poisson Process (HPP) model.
     This class includes methods to evaluate various statistical functions of
