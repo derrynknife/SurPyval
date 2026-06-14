@@ -6,6 +6,7 @@ from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
+    reject_left_truncation,
     validate_renewal_censoring,
 )
 
@@ -198,6 +199,7 @@ class GeneralizedOneRenewal(
         """
         cls._check_dist_eligible(dist)
         validate_renewal_censoring(data.c, cls.__name__)
+        reject_left_truncation(data, cls.__name__)
         if init is None:
             dist_params = dist.fit(
                 data.interarrival_times, data.c, data.n

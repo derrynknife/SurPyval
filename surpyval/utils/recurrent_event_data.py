@@ -37,11 +37,22 @@ class RecurrentEventData:
     array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
     """
 
-    def __init__(self, x, i, c, n, e=None):
+    def __init__(self, x, i, c, n, e=None, tl=None, tr=None):
         self.x = np.atleast_1d(x)
         self.i = np.atleast_1d(i)
         self.c = np.atleast_1d(c)
         self.n = np.atleast_1d(n)
+        # Per-row truncation bounds defining each item's observation window.
+        # Recurrent processes start at 0, so the default left bound is 0.
+        n_rows = self.x.shape[0]
+        self.tl = (
+            np.zeros(n_rows) if tl is None else np.atleast_1d(tl).astype(float)
+        )
+        self.tr = (
+            np.full(n_rows, np.inf)
+            if tr is None
+            else np.atleast_1d(tr).astype(float)
+        )
         # Optional event-type (mark) per observation. When provided this
         # turns the data into a competing-risks recurrent process: each
         # event belongs to one of several mutually-exclusive types. ``None``
@@ -198,8 +209,9 @@ class RecurrentEventData:
         ----------
 
         min_x : float, optional
-            The minimum value to use for the first event of each item. Defaults
-            to 0.
+            Fallback minimum for the first event of each item. The item's left
+            truncation bound is used instead when it is greater, so a
+            delayed-entry item's first interval begins at its entry time.
 
         Returns
         -------
@@ -213,8 +225,10 @@ class RecurrentEventData:
             mask_item = self.i == item
             x_item = self.x[mask_item]
             x_prev_item = np.roll(x_item, shift=1, axis=0)
-            # Replace the first value with 0
-            x_prev_item[0] = min_x
+            # The first interval of an item starts at its observation entry,
+            # i.e. its left truncation bound (0 when untruncated).
+            entry = max(min_x, float(self.tl[mask_item][0]))
+            x_prev_item[0] = entry
             x_previous.append(x_prev_item)
 
         return np.concatenate(x_previous)
@@ -263,6 +277,8 @@ class RecurrentEventData:
             self.c[index],
             self.n[index],
             None if self.e is None else self.e[index],
+            tl=self.tl[index],
+            tr=self.tr[index],
         )
 
     def __iter__(self):

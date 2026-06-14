@@ -62,8 +62,8 @@ No martingale residuals, no cumulative-hazard residuals, no probability-integral
 
 ### Missing capabilities — medium priority
 
-**No left-truncation support**
-The univariate module handles left truncation via `tl`; the recurrent module does not. Items observed only after a delayed start (e.g., warranty data starting from first sale) cannot be correctly analysed.
+**Left-truncation support (partial)**
+`handle_xicn` now takes the surpyval `t`/`tl`/`tr` truncation fields, and the calendar-time NHPP models (`HPP`, `Crow`, `Duane`, `CoxLewis`) integrate each item's likelihood from its entry time `tl`, so delayed-entry (warranty-from-first-sale) data is analysed correctly there. The virtual-age / history-dependent models (Kijima/G1/ARA/ARI) reject `tl > 0` with an explanatory error, since the virtual age at entry is undefined without the pre-entry history. Still to do: delayed-entry risk sets in the nonparametric MCF (`NonParametricCounting.to_xrd` still assumes entry at 0), truncation passthrough for the proportional-intensity regression fitters, and multi-window (gapped) observation per item.
 
 **No input validation**
 Negative times, NaN/inf values, and empty arrays all pass silently into the optimiser. Add a validation step in `handle_xicn()` with informative `ValueError`s.

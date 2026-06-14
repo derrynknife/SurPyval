@@ -3,6 +3,22 @@ import numpy as np
 from .recurrent_event_data import RecurrentEventData
 
 
+def reject_left_truncation(data, model_name):
+    """
+    Virtual-age and history-dependent models (Kijima/G1/ARA/ARI) cannot be
+    fitted to left-truncated (delayed-entry) data: the virtual age or
+    intensity reduction at entry depends on the unobserved pre-entry failure
+    history. Only the calendar-time NHPP models support delayed entry.
+    """
+    if np.any(np.asarray(data.tl) > 0):
+        raise ValueError(
+            "{} does not support left truncation (tl > 0): the state at entry "
+            "depends on the unobserved pre-entry history. Use an NHPP "
+            "intensity model (HPP, Crow, Duane, CoxLewis) for delayed "
+            "entry.".format(model_name)
+        )
+
+
 def validate_renewal_censoring(c, model_name):
     """
     The renewal models only define likelihood contributions for exact events
@@ -20,7 +36,10 @@ def validate_renewal_censoring(c, model_name):
         )
 
 
-def handle_xicn(x, i=None, c=None, n=None, Z=None, as_recurrent_data=True):
+def handle_xicn(
+    x, i=None, c=None, n=None, t=None, tl=None, tr=None, Z=None,
+    as_recurrent_data=True,
+):
     if isinstance(x, list):
         if any(isinstance(v, list) for v in x):
             x_ndarray = np.empty(shape=(len(x), 2))
@@ -46,6 +65,36 @@ def handle_xicn(x, i=None, c=None, n=None, Z=None, as_recurrent_data=True):
         c = np.zeros(x.shape[0])
     else:
         c = np.array(c)
+
+    # Truncation, following surpyval's xcnt convention: ``t`` is an (N, 2)
+    # array of [left, right] truncation bounds, or ``tl``/``tr`` give the
+    # bounds separately (scalar broadcasts to all rows). Recurrent processes
+    # start at 0, so the default left bound is 0 (not -inf).
+    nrows = x.shape[0]
+    if t is not None:
+        if tl is not None or tr is not None:
+            raise ValueError("Cannot use `t` together with `tl`/`tr`.")
+        t = np.array(t, dtype=float)
+        if t.ndim == 1:
+            t = np.broadcast_to(t, (nrows, 2)).copy()
+        tl_arr = t[:, 0]
+        tr_arr = t[:, 1]
+    else:
+        if tl is None:
+            tl_arr = np.zeros(nrows)
+        elif np.isscalar(tl):
+            tl_arr = np.full(nrows, float(tl))
+        else:
+            tl_arr = np.array(tl, dtype=float)
+        if tr is None:
+            tr_arr = np.full(nrows, np.inf)
+        elif np.isscalar(tr):
+            tr_arr = np.full(nrows, float(tr))
+        else:
+            tr_arr = np.array(tr, dtype=float)
+
+    if tl_arr.shape[0] != nrows or tr_arr.shape[0] != nrows:
+        raise ValueError("truncation must have the same length as x")
 
     if Z is not None:
         if isinstance(Z, dict):
@@ -79,6 +128,7 @@ def handle_xicn(x, i=None, c=None, n=None, Z=None, as_recurrent_data=True):
         sort_order = np.lexsort((x, i))
 
     x, i, c, n = x[sort_order], i[sort_order], c[sort_order], n[sort_order]
+    tl_arr, tr_arr = tl_arr[sort_order], tr_arr[sort_order]
 
     if Z is not None:
         Z = Z[sort_order]
@@ -114,8 +164,32 @@ def handle_xicn(x, i=None, c=None, n=None, Z=None, as_recurrent_data=True):
             if (ends > starts).any():
                 raise ValueError(f"Item {ii} has overlapping intervals")
 
+    # Truncation defines a single observation window [tl, tr] per item, so the
+    # bounds must be constant within an item and contain all of its events.
+    tl_by_i = np.split(tl_arr, idx)[1:]
+    tr_by_i = np.split(tr_arr, idx)[1:]
+    x_lower = x if x.ndim == 1 else x[:, 0]
+    x_upper = x if x.ndim == 1 else x[:, 1]
+    xl_by_i = np.split(x_lower, idx)[1:]
+    xu_by_i = np.split(x_upper, idx)[1:]
+    for ii, tl_i, tr_i, xl_i, xu_i in zip(
+        unique_i, tl_by_i, tr_by_i, xl_by_i, xu_by_i
+    ):
+        if not (np.all(tl_i == tl_i[0]) and np.all(tr_i == tr_i[0])):
+            raise ValueError(
+                f"Item {ii} has inconsistent truncation bounds; each item "
+                "must have a single observation window."
+            )
+        if tl_i[0] > tr_i[0]:
+            raise ValueError(f"Item {ii} has left truncation beyond right")
+        if (xl_i < tl_i[0]).any() or (xu_i > tr_i[0]).any():
+            raise ValueError(
+                f"Item {ii} has events outside its truncation window "
+                f"[{tl_i[0]}, {tr_i[0]}]"
+            )
+
     if as_recurrent_data:
-        data = RecurrentEventData(x, i, c, n)
+        data = RecurrentEventData(x, i, c, n, tl=tl_arr, tr=tr_arr)
         data.Z = Z
         return data
     else:

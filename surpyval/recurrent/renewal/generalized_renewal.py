@@ -7,6 +7,7 @@ from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
+    reject_left_truncation,
     validate_renewal_censoring,
 )
 
@@ -238,6 +239,7 @@ class GeneralizedRenewal(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
             beta: 2.753920439616154
         """
         validate_renewal_censoring(data.c, cls.__name__)
+        reject_left_truncation(data, cls.__name__)
         first_events = data.get_times_to_first_events()
         if init is None:
             if len(first_events.x) < 2:
