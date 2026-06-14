@@ -174,16 +174,24 @@ Only one test file with one test covers the entire recurrent module (`tests/recu
 
 ## 5. Code Quality
 
-### Turnbull heuristic downgrade never takes effect
-**File:** `surpyval/univariate/parametric/parametric_fitter.py` (`_validate_fit_inputs`, ~line 344)
+### Turnbull heuristic downgrade never takes effect — FIXED
+**File:** `surpyval/univariate/parametric/parametric_fitter.py` (`_validate_fit_inputs`)
 
 The block that swaps the memory-hungry Turnbull heuristic for the
 plain estimator when there is no left/interval censoring or
-right-truncation assigns to a local variable and returns `True`, so the
-caller never sees the downgrade — the optimization has never applied.
-Fix by returning the adjusted heuristic and using it in
-`fit_from_surpyval_data`. Results should be equivalent, but plotting
-points and performance change, so verify against a Turnbull fixture.
+right-truncation assigned to a local variable and returned `True`, so the
+caller never saw the downgrade — the optimization had never applied.
+`_validate_fit_inputs` now returns the (possibly adjusted) heuristic and
+`fit_from_surpyval_data` captures it. Verified equivalent against a
+Turnbull fixture (right-censored-only data fits identically to the
+Fleming-Harrington downgrade).
+
+Activating the path also exposed a latent bug in the guard itself: the
+"no right-truncation" check used `(~np.isfinite(tr)).any()` (true when
+*any* point is untruncated), which wrongly downgraded partially
+right-truncated data and then crashed in `plotting_positions` because the
+truncated points still require Turnbull. Changed to `.all()` so the
+downgrade only fires when every observation is untruncated.
 
 ### Structural refactors in the univariate parametric module
 Deferred from the June 2026 clean-up (sections 1–5 of that review are

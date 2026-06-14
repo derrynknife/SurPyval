@@ -380,7 +380,7 @@ class ParametricFitter:
         if (
             (heuristic == "Turnbull")
             and (not ((-1 in surv_data.c) or (2 in surv_data.c)))
-            and ((~np.isfinite(surv_data.tr)).any())
+            and ((~np.isfinite(surv_data.tr)).all())
         ):
             # The Turnbull method is extremely memory intensive.
             # So if no left or interval censoring and no right-truncation
@@ -434,7 +434,7 @@ class ParametricFitter:
             raise ValueError("Right truncated value can only be single number \
                               when using MPS")
 
-        return True
+        return heuristic
 
     def fit(
         self,
@@ -820,7 +820,7 @@ class ParametricFitter:
             tr = np.where(tr > self.support[1], self.support[1], tr)
 
         # Validate inputs
-        self._validate_fit_inputs(
+        heuristic = self._validate_fit_inputs(
             surv_data,
             how,
             offset,
