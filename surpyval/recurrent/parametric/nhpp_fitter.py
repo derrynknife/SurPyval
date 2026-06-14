@@ -2,13 +2,14 @@ from autograd import numpy as np
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
-class NHPPFitter:
+class NHPPFitter(CountingProcess):
     def create_negll_func(self, data):
         x, c, n = data.x, data.c, data.n
         x_prev = data.get_previous_x()

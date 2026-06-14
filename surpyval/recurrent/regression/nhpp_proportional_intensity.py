@@ -3,6 +3,7 @@ from scipy.optimize import minimize
 from scipy.special import gammaln
 
 from surpyval.recurrent.parametric import Duane
+from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.utils.recurrent_utils import handle_xicn
 
 from .proportional_intensity import ProportionalIntensityModel
@@ -171,6 +172,11 @@ class ProportionalIntensityNHPP:
 
     @classmethod
     def fit_from_recurrent_data(cls, data, dist, init=None):
+        if not isinstance(dist, CountingProcess):
+            raise TypeError(
+                "`dist` must be a CountingProcess instance "
+                "(e.g. Duane, CrowAMSAA, CoxLewis); got {!r}".format(dist)
+            )
         out = ProportionalIntensityModel()
         out.dist = dist
         out.data = data
