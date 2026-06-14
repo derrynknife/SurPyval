@@ -14,13 +14,13 @@ class ProportionalIntensityModel:
     Examples
     --------
     >>> from surpyval.datasets import load_rossi_static
-    >>> from surpyval.recurrent import Crow
+    >>> from surpyval.recurrent import CrowAMSAA
     >>> from surpyval.recurrent import ProportionalIntensityNHPP
     >>> data = load_rossi_static()
     >>> x = data['week'].values
     >>> c = data['arrest'].values
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
-    >>> model = ProportionalIntensityNHPP.fit(x, Z, c, dist=Crow)
+    >>> model = ProportionalIntensityNHPP.fit(x, Z, c, dist=CrowAMSAA)
     >>> type(model)
     surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel
     >>> model.cif([1, 2, 3], Z.mean(axis=0))

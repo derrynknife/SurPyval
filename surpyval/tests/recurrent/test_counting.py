@@ -205,7 +205,7 @@ def test_time_terminated_simulation_data_is_censored_at_T():
 
 def test_parametric_recurrence_model_has_data_simulators():
     # The data simulators come from the shared mixin, so the intensity models
-    # (HPP, Crow, ...) get them too.
+    # (HPP, CrowAMSAA, ...) get them too.
     from surpyval.utils.recurrent_event_data import RecurrentEventData
 
     x = Exponential.random(20, 1.0).cumsum()

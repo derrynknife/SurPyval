@@ -8,7 +8,7 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
 
     This is the model object returned by the renewal-family fitters
     (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``), in the same
-    way that the intensity fitters (``Crow``, ``Duane``, ...) return a
+    way that the intensity fitters (``CrowAMSAA``, ``Duane``, ...) return a
     ``ParametricRecurrenceModel``. It holds the fitted underlying lifetime
     distribution and the restoration parameter, and provides the simulation
     (``mcf``, ``plot``, ``count_terminated_simulation``,

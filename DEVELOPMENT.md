@@ -45,7 +45,7 @@ theme; items already resolved are marked **[done]**.
 - `_validate_memory` duplicated verbatim in `renewal/ara.py` and
   `parametric/ari.py`.
 - 16 copy-pasted docstrings read "Parameters of the Duane model" inside
-  `Crow`/`CrowAMSAA`/`CoxLewis`.
+  `CrowAMSAA`/`CoxLewis`.
 - `has_left_censoing` typo (`nhpp_fitter.py`, NHPP regression file).
 - Doubled `to_xrd()` call in `nonparametric/mcf.py:106-107`.
 
@@ -58,11 +58,11 @@ theme; items already resolved are marked **[done]**.
 - Regression simulation is the stale pre-mixin copy (`tol=1e-5`, no `seed`/
   `max_events`) in `ProportionalIntensityModel` → should inherit
   `RecurrenceSimulationMixin`.
-- The parametric (`HPP`/`Crow`/`Duane`/`CoxLewis`) and regression fitters never
+- The parametric (`HPP`/`CrowAMSAA`/`Duane`/`CoxLewis`) and regression fitters never
   set `_neg_ll`/`_mle`/`_n_obs`, so they get no AIC/BIC/SE even though
   `LikelihoodInferenceMixin` exists and the repair models use it (~3 lines per
   fit).
-- `Crow`/`Duane`/`CrowAMSAA`/`CoxLewis` each redefine `iif`/`log_iif`/`cif`/
+- `Duane`/`CrowAMSAA`/`CoxLewis` each redefine `iif`/`log_iif`/`cif`/
   `inv_cif` with identical docstring boilerplate (the models are mathematically
   distinct — do not merge the math) → an `IntensityModel` ABC for the contract.
   `HPP` could subclass `NHPPFitter` (overriding `create_negll_func`).
@@ -138,7 +138,7 @@ No martingale residuals, no cumulative-hazard residuals, no probability-integral
 ### Missing capabilities — medium priority
 
 **Left-truncation support (partial)**
-`handle_xicn` now takes the surpyval `t`/`tl`/`tr` truncation fields, and the calendar-time NHPP models (`HPP`, `Crow`, `Duane`, `CoxLewis`) integrate each item's likelihood from its entry time `tl`, so delayed-entry (warranty-from-first-sale) data is analysed correctly there. The virtual-age / history-dependent models (Kijima/G1/ARA/ARI) reject `tl > 0` with an explanatory error, since the virtual age at entry is undefined without the pre-entry history. Still to do: delayed-entry risk sets in the nonparametric MCF (`NonParametricCounting.to_xrd` still assumes entry at 0), truncation passthrough for the proportional-intensity regression fitters, and multi-window (gapped) observation per item.
+`handle_xicn` now takes the surpyval `t`/`tl`/`tr` truncation fields, and the calendar-time NHPP models (`HPP`, `CrowAMSAA`, `Duane`, `CoxLewis`) integrate each item's likelihood from its entry time `tl`, so delayed-entry (warranty-from-first-sale) data is analysed correctly there. The virtual-age / history-dependent models (Kijima/G1/ARA/ARI) reject `tl > 0` with an explanatory error, since the virtual age at entry is undefined without the pre-entry history. Still to do: delayed-entry risk sets in the nonparametric MCF (`NonParametricCounting.to_xrd` still assumes entry at 0), truncation passthrough for the proportional-intensity regression fitters, and multi-window (gapped) observation per item.
 
 **No input validation**
 Negative times, NaN/inf values, and empty arrays all pass silently into the optimiser. Add a validation step in `handle_xicn()` with informative `ValueError`s.
@@ -154,7 +154,7 @@ Log-likelihood is computed during fitting but discarded. Store it on the returne
 Implement `surpyval.recurrent.tests.laplace(x, i, T)` and `mil_hdbk_189c(x, i, T)` as module-level functions independent of any fitted model.
 
 **Additional virtual-age models**
-Both Doyen & Gaudoin imperfect-repair families are now implemented: `surpyval.recurrent.ARA` (Arithmetic Reduction of Age, on the lifetime-distribution machinery) and `surpyval.recurrent.ARI` (Arithmetic Reduction of Intensity, built on the NHPP baseline intensity models — `Crow`/`Duane`/`CoxLewis`), each parameterised by repair efficiency `rho` and memory `m`. Note the equivalences already covered elsewhere: ARA₁ = Kijima-I and ARA∞ = Kijima-II (both in `GeneralizedRenewal`), the geometric process (Lam) = `GeneralizedOneRenewal` reparameterised by `a = 1/(1+q)`, and ARI at `rho = 0` is the plain NHPP of its baseline intensity (used as the correctness check). The leftover virtual-age model worth adding is the general geometric-process estimator if a first-class `a` parameterisation is wanted.
+Both Doyen & Gaudoin imperfect-repair families are now implemented: `surpyval.recurrent.ARA` (Arithmetic Reduction of Age, on the lifetime-distribution machinery) and `surpyval.recurrent.ARI` (Arithmetic Reduction of Intensity, built on the NHPP baseline intensity models — `CrowAMSAA`/`Duane`/`CoxLewis`), each parameterised by repair efficiency `rho` and memory `m`. Note the equivalences already covered elsewhere: ARA₁ = Kijima-I and ARA∞ = Kijima-II (both in `GeneralizedRenewal`), the geometric process (Lam) = `GeneralizedOneRenewal` reparameterised by `a = 1/(1+q)`, and ARI at `rho = 0` is the plain NHPP of its baseline intensity (used as the correctness check). The leftover virtual-age model worth adding is the general geometric-process estimator if a first-class `a` parameterisation is wanted.
 
 **Competing failure modes**
 Multiple event types in a single recurrent process (e.g., two failure modes on the same repairable system). The nonparametric scaffold is in place: `RecurrentEventData` now carries an optional event-type (mark) column and `surpyval.recurrent.competing_risks.CauseSpecificMCF` produces per-cause MCF curves over a shared at-risk set. Still to do: parametric cause-specific intensity models (cause-specific NHPP) and proportional-intensity regression, plus `fit_from_df`/`handle_xicn` support for the mark column.
@@ -165,7 +165,7 @@ Multiple event types in a single recurrent process (e.g., two failure modes on t
 
 Only one test file with one test covers the entire recurrent module (`tests/recurrent/test_counting.py` — a single `GeneralizedOneRenewal` fit). The parametric, nonparametric, and regression sub-packages have no tests at all. Minimum viable coverage:
 
-- Round-trip fit + CIF/IIF evaluation for each parametric model (HPP, Crow, CrowAMSAA, Duane, CoxLewis)
+- Round-trip fit + CIF/IIF evaluation for each parametric model (HPP, CrowAMSAA, Duane, CoxLewis)
 - MCF and confidence bounds for `NonParametricCounting`
 - Simulation outputs for `GeneralizedRenewal` and `GeneralizedOneRenewal`
 - Proportional intensity HPP and NHPP fit + predict

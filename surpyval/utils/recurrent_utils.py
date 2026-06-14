@@ -16,7 +16,7 @@ def reject_left_truncation(data, model_name):
         raise ValueError(
             "{} does not support left truncation (tl > 0): the state at entry "
             "depends on the unobserved pre-entry history. Use an NHPP "
-            "intensity model (HPP, Crow, Duane, CoxLewis) for delayed "
+            "intensity model (HPP, CrowAMSAA, Duane, CoxLewis) for delayed "
             "entry.".format(model_name)
         )
 

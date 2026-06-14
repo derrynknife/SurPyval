@@ -11,7 +11,6 @@ Recurrent Event (Poisson Process) Models
     counting/hpp
     counting/duane
     counting/cox_lewis
-    counting/crow
     counting/crow_amsaa
 
 Renewal Models

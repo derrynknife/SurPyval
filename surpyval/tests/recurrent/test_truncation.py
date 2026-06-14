@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from surpyval.recurrent import ARA, ARI, Crow, GeneralizedRenewal, HPP
+from surpyval.recurrent import ARA, ARI, CrowAMSAA, GeneralizedRenewal, HPP
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -79,8 +79,8 @@ def test_nhpp_left_truncation_changes_fit():
     np.random.seed(0)
     x = np.cumsum(np.random.exponential(2.0, 25))
     i = np.ones_like(x)
-    untruncated = Crow.fit(x, i)
-    truncated = Crow.fit(x, i, tl=float(x[0]) - 0.5)
+    untruncated = CrowAMSAA.fit(x, i)
+    truncated = CrowAMSAA.fit(x, i, tl=float(x[0]) - 0.5)
     assert not np.allclose(untruncated.params, truncated.params)
 
 
