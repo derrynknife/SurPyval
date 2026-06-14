@@ -68,8 +68,10 @@ def handle_xicn(
 
     # Truncation, following surpyval's xcnt convention: ``t`` is an (N, 2)
     # array of [left, right] truncation bounds, or ``tl``/``tr`` give the
-    # bounds separately (scalar broadcasts to all rows). Recurrent processes
-    # start at 0, so the default left bound is 0 (not -inf).
+    # bounds separately (scalar broadcasts to all rows). The default window is
+    # the whole real line, so no assumption is made about the sign of ``x``
+    # (e.g. a log-intensity model can take negative values); the integration
+    # origin for untruncated NHPP data falls back to 0 in ``get_previous_x``.
     nrows = x.shape[0]
     if t is not None:
         if tl is not None or tr is not None:
@@ -81,7 +83,7 @@ def handle_xicn(
         tr_arr = t[:, 1]
     else:
         if tl is None:
-            tl_arr = np.zeros(nrows)
+            tl_arr = np.full(nrows, -np.inf)
         elif np.isscalar(tl):
             tl_arr = np.full(nrows, float(tl))
         else:

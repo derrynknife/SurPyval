@@ -43,10 +43,14 @@ class RecurrentEventData:
         self.c = np.atleast_1d(c)
         self.n = np.atleast_1d(n)
         # Per-row truncation bounds defining each item's observation window.
-        # Recurrent processes start at 0, so the default left bound is 0.
+        # The default window is the whole real line so that no non-negativity
+        # assumption is imposed on ``x`` (e.g. a log-intensity variable may be
+        # negative); untruncated NHPP fits use 0 as the integration origin.
         n_rows = self.x.shape[0]
         self.tl = (
-            np.zeros(n_rows) if tl is None else np.atleast_1d(tl).astype(float)
+            np.full(n_rows, -np.inf)
+            if tl is None
+            else np.atleast_1d(tl).astype(float)
         )
         self.tr = (
             np.full(n_rows, np.inf)
@@ -225,9 +229,11 @@ class RecurrentEventData:
             mask_item = self.i == item
             x_item = self.x[mask_item]
             x_prev_item = np.roll(x_item, shift=1, axis=0)
-            # The first interval of an item starts at its observation entry,
-            # i.e. its left truncation bound (0 when untruncated).
-            entry = max(min_x, float(self.tl[mask_item][0]))
+            # The first interval of an item starts at its observation entry:
+            # the left truncation bound when one is given (which may be
+            # negative), otherwise the ``min_x`` origin for untruncated data.
+            tl_item = float(self.tl[mask_item][0])
+            entry = tl_item if np.isfinite(tl_item) else min_x
             x_prev_item[0] = entry
             x_previous.append(x_prev_item)
 

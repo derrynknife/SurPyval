@@ -6,10 +6,28 @@ from surpyval.utils.recurrent_utils import handle_xicn
 
 
 def test_handle_xicn_default_truncation():
-    # Without truncation the window defaults to [0, inf) for every row.
+    # Without truncation the window defaults to the whole real line, so no
+    # assumption is made about the sign of x.
     data = handle_xicn(np.array([1.0, 2.0, 3.0]), np.array([1, 1, 1]))
-    assert np.all(data.tl == 0.0)
-    assert np.all(np.isinf(data.tr))
+    assert np.all(data.tl == -np.inf)
+    assert np.all(data.tr == np.inf)
+
+
+def test_handle_xicn_allows_negative_x_when_untruncated():
+    # A variable on a native/transformed scale (e.g. a log-intensity) can be
+    # negative; the default window must not reject it.
+    data = handle_xicn(np.array([-3.0, -1.0, 2.0]), np.array([1, 1, 1]))
+    assert np.allclose(data.x, [-3.0, -1.0, 2.0])
+
+
+def test_explicit_negative_left_truncation_is_used_as_origin():
+    # An explicit (possibly negative) tl is the integration origin; the first
+    # interval starts exactly there rather than at 0.
+    data = handle_xicn(
+        np.array([-1.0, 2.0]), np.array([1, 1]), tl=-4.0, tr=5.0
+    )
+    x_prev = data.get_previous_x()
+    assert np.isclose(x_prev[0], -4.0)
 
 
 def test_handle_xicn_scalar_truncation_broadcasts():
