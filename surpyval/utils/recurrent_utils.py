@@ -46,10 +46,17 @@ def handle_xicn(
             for idx, val in enumerate(x):
                 x_ndarray[idx, :] = np.array(val)
             x = x_ndarray
-            if (x[0, :] > x[1, :]).any():
-                raise ValueError("x values must be monotonically increasing")
         else:
             x = np.array(x)
+    else:
+        x = np.asarray(x)
+
+    # Interval-censored events are 2D rows [left, right]; the left bound of
+    # each interval must not exceed its right bound.
+    if x.ndim == 2 and (x[:, 0] > x[:, 1]).any():
+        raise ValueError(
+            "interval-censored x must have left bound <= right bound"
+        )
 
     if i is None:
         i = np.ones(x.shape[0])
