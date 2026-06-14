@@ -768,6 +768,147 @@ class ParametricFitter:
         x, F = non_parametric_model.x, 1 - non_parametric_model.R
         return self.fit_from_ecdf(x, F)
 
+    def _clamp_truncation_to_support(self, t):
+        """Clamp the truncation bounds to the distribution's support.
+
+        Returns the left and right truncation arrays with any value that
+        falls outside a *finite* support edge moved onto that edge. An
+        infinite support edge leaves the corresponding bound untouched.
+        """
+        tl = t[:, 0]
+        tr = t[:, 1]
+
+        if np.isfinite(self.support[0]):
+            tl = np.where(tl < self.support[0], self.support[0], tl)
+
+        if np.isfinite(self.support[1]):
+            tr = np.where(tr > self.support[1], self.support[1], tr)
+
+        return tl, tr
+
+    def _initial_guess(self, x, c, n, offset, zi, lfp, heuristic):
+        """Derive an initial parameter vector for the iterative fitters.
+
+        Builds a working copy of the data with interval- and
+        left-censored points imputed to point observations, asks the
+        distribution's ``_parameter_initialiser`` for a seed, and appends
+        the limited-failure (``p``) and zero-inflation (``f0``) seeds when
+        those models are requested. The returned vector is in the natural
+        (untransformed) parameter space.
+        """
+        if x.ndim == 2:
+            # If x has 2 dims, then there is intervally
+            # censored data. Simply take the midpoint to
+            # get the initial estimate.
+            x_init = x.mean(axis=1)
+            c_init = np.copy(c)
+            c_init[c_init == 2] = 0
+            n_init = np.copy(n)
+        else:
+            x_init = np.copy(x)
+            c_init = np.copy(c)
+            n_init = np.copy(n)
+
+        # If there is left censoring, assume that the
+        # left censored value is the midpoint between
+        # the censored value and the lowest x value
+        x_init[c_init == -1] = (x_init[c_init == -1] + x.min()) / 2
+        c_init[c_init == -1] = 0
+
+        # check if the one support is -inf or inf and the other is
+        # finite. If it isn't, then the distribution cannot be offset.
+        # i.e if both finite or both infinite, then cannot be offset,
+        # zero-inflated, or limited failure.
+        if (
+            np.all(np.isinf(self.support))
+            or np.all(np.isfinite(self.support))
+            or np.all(np.isnan(self.support))
+        ):
+            with np.errstate(all="ignore"):
+                init = np.array(
+                    self._parameter_initialiser(x_init, c_init, n_init)
+                )
+        else:
+            with np.errstate(all="ignore"):
+                # Remove x where x is out of support
+                # This is if data for a zi or lfp model is present
+                if not offset:
+                    in_support_mask = (x_init > self.support[0]) & (
+                        x_init < self.support[1]
+                    )
+
+                    # Reduce x, c, and n to the case where it is in the
+                    # support of the distribution
+                    x_init = x_init[in_support_mask]
+                    c_init = c_init[in_support_mask]
+                    n_init = n[in_support_mask]
+                elif zi:
+                    # Exact zeros belong to the zero-inflation
+                    # mass; including them would drag the offset
+                    # initial guess below zero
+                    nonzero_mask = x_init != 0
+                    x_init = x_init[nonzero_mask]
+                    c_init = c_init[nonzero_mask]
+                    n_init = n_init[nonzero_mask]
+
+                # Create an initial estimate with the new points
+                init = self._parameter_initialiser(
+                    x_init, c_init, n_init, offset=offset
+                )
+                init = np.array(init)
+
+                if offset:
+                    x_nonzero = x[x != 0] if zi else x
+                    init[0] = x_nonzero.min() - 1.0
+
+        if lfp:
+            _, _, _, F = pp(x_init, c_init, n_init, heuristic="Nelson-Aalen")
+
+            max_F = np.max(F)
+            init = np.concatenate([init, [min(0.6, max_F)]])
+
+        if zi:
+            if x.ndim == 2:
+                x_0 = x[c == 0, 0]
+            else:
+                x_0 = x[c == 0]
+
+            n_0 = n[c == 0]
+            total_failures_at_zero = n_0[x_0 == 0].sum()
+
+            f_0_init = total_failures_at_zero / n.sum()
+            init = np.concatenate([init, [f_0_init]])
+
+        return init
+
+    def _set_support(self, model, offset):
+        """Resolve and assign the fitted model's support interval.
+
+        For an offset model the left edge is the fitted ``gamma``;
+        otherwise each edge comes from the distribution's declared
+        support, except a data-dependent (NaN) edge, which is read from
+        the fitted parameter the distribution nominates via
+        ``support_param_index`` (``a``/``b`` for the uniform and the
+        4-parameter Beta).
+        """
+        if offset:
+            left = model.gamma
+        elif np.isfinite(self.support[0]):
+            left = self.support[0]
+        elif self.support[0] == -np.inf:
+            left = -np.inf
+        elif np.isnan(self.support[0]):
+            left = model.params[self.support_param_index[0]]
+
+        if np.isfinite(self.support[1]):
+            right = self.support[1]
+        elif self.support[1] == np.inf:
+            right = np.inf
+        elif np.isnan(self.support[1]):
+            right = model.params[self.support_param_index[1]]
+
+        model.support = np.array([left, right])
+
     def fit_from_surpyval_data(
         self,
         surv_data,
@@ -807,17 +948,8 @@ class ParametricFitter:
 
         """
         x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
-        # Unpack the truncation
-        tl = t[:, 0]
-        tr = t[:, 1]
-
-        # Ensure truncation values move to edge where support is not
-        # -np.inf to np.inf
-        if np.isfinite(self.support[0]):
-            tl = np.where(tl < self.support[0], self.support[0], tl)
-
-        if np.isfinite(self.support[1]):
-            tr = np.where(tr > self.support[1], self.support[1], tr)
+        # Clamp the truncation values to the (possibly finite) support edges
+        tl, tr = self._clamp_truncation_to_support(t)
 
         # Validate inputs
         heuristic = self._validate_fit_inputs(
@@ -858,90 +990,9 @@ class ParametricFitter:
             fitting_info["not_fixed"] = not_fixed
 
             if init == []:
-                if x.ndim == 2:
-                    # If x has 2 dims, then there is intervally
-                    # censored data. Simply take the midpoint to
-                    # get the initial estimate.
-                    x_init = x.mean(axis=1)
-                    c_init = np.copy(c)
-                    c_init[c_init == 2] = 0
-                    n_init = np.copy(n)
-                else:
-                    x_init = np.copy(x)
-                    c_init = np.copy(c)
-                    n_init = np.copy(n)
-
-                # If there is left censoring, assume that the
-                # left censored value is the midpoint between
-                # the censored value and the lowest x value
-                x_init[c_init == -1] = (x_init[c_init == -1] + x.min()) / 2
-                c_init[c_init == -1] = 0
-
-                # check if the one support is -inf or inf and the other is
-                # finite. If it isn't, then the distribution cannot be offset.
-                # i.e if both finite or both infinite, then cannot be offset,
-                # zero-inflated, or limited failure.
-                if (
-                    np.all(np.isinf(self.support))
-                    or np.all(np.isfinite(self.support))
-                    or np.all(np.isnan(self.support))
-                ):
-                    with np.errstate(all="ignore"):
-                        init = np.array(
-                            self._parameter_initialiser(x_init, c_init, n_init)
-                        )
-                else:
-                    with np.errstate(all="ignore"):
-                        # Remove x where x is out of support
-                        # This is if data for a zi or lfp model is present
-                        if not offset:
-                            in_support_mask = (x_init > self.support[0]) & (
-                                x_init < self.support[1]
-                            )
-
-                            # Reduce x, c, and n to the case where it is in the
-                            # support of the distribution
-                            x_init = x_init[in_support_mask]
-                            c_init = c_init[in_support_mask]
-                            n_init = n[in_support_mask]
-                        elif zi:
-                            # Exact zeros belong to the zero-inflation
-                            # mass; including them would drag the offset
-                            # initial guess below zero
-                            nonzero_mask = x_init != 0
-                            x_init = x_init[nonzero_mask]
-                            c_init = c_init[nonzero_mask]
-                            n_init = n_init[nonzero_mask]
-
-                        # Create an initial estimate with the new points
-                        init = self._parameter_initialiser(
-                            x_init, c_init, n_init, offset=offset
-                        )
-                        init = np.array(init)
-
-                        if offset:
-                            x_nonzero = x[x != 0] if zi else x
-                            init[0] = x_nonzero.min() - 1.0
-
-                if lfp:
-                    _, _, _, F = pp(
-                        x_init, c_init, n_init, heuristic="Nelson-Aalen"
-                    )
-
-                    max_F = np.max(F)
-                    init = np.concatenate([init, [min(0.6, max_F)]])
-
-                if zi:
-                    if x.ndim == 2:
-                        x_0 = x[c == 0, 0]
-                    else:
-                        x_0 = x[c == 0]
-
-                    n_0 = n[c == 0]
-                    total_failures_at_zero = n_0[x_0 == 0].sum()
-
-                    f_0_init = total_failures_at_zero / n.sum()
-                    init = np.concatenate([init, [f_0_init]])
+                init = self._initial_guess(
+                    x, c, n, offset, zi, lfp, heuristic
+                )
 
             init = np.atleast_1d(init)
             if fixed and len(init) == len(not_fixed):
@@ -973,28 +1024,7 @@ class ParametricFitter:
         for k, v in zip(self.param_names, model.params):
             setattr(model, k, v)
 
-        # Set the support of the distribution.
-        if offset:
-            left = model.gamma
-        elif np.isfinite(self.support[0]):
-            left = self.support[0]
-        elif self.support[0] == -np.inf:
-            left = -np.inf
-        elif np.isnan(self.support[0]):
-            # Data-dependent left support: read it from the fitted
-            # parameter the distribution nominates (``a`` for the uniform
-            # and the 4-parameter Beta).
-            left = model.params[self.support_param_index[0]]
-
-        if np.isfinite(self.support[1]):
-            right = self.support[1]
-        elif self.support[1] == np.inf:
-            right = np.inf
-        elif np.isnan(self.support[1]):
-            # Data-dependent right support (``b``).
-            right = model.params[self.support_param_index[1]]
-
-        model.support = np.array([left, right])
+        self._set_support(model, offset)
 
         return model
 
@@ -1084,17 +1114,7 @@ class ParametricFitter:
         model.p = p
         model.f0 = f0
         model.params = np.array(params)
-        model.support = self.support
-
-        if offset:
-            model.support = (gamma, model.support[1])
-        elif np.isnan(self.support).any():
-            left, right = self.support
-            if np.isnan(left):
-                left = model.params[self.support_param_index[0]]
-            if np.isnan(right):
-                right = model.params[self.support_param_index[1]]
-            model.support = np.array([left, right])
+        self._set_support(model, offset)
 
         for i, (low, upp) in enumerate(self.bounds):
             if low is None:
