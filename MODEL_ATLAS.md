@@ -85,7 +85,7 @@ Worked classifications:
 | CompetingRisks (CIF) | univariate | single_event | competing | terminal | none | continuous | nonparametric |
 | Fine–Gray, CRPH | univariate | single_event | competing | terminal | with | continuous | semiparametric |
 | NonParametricCounting (MCF) | univariate | recurrent | single | recurrent | none | continuous | nonparametric |
-| HPP/NHPP, Crow, Duane | univariate | recurrent | single | recurrent | none | continuous | parametric |
+| HPP/NHPP, Crow-AMSAA, Duane | univariate | recurrent | single | recurrent | none | continuous | parametric |
 | ProportionalIntensity HPP/NHPP | univariate | recurrent | single | recurrent | with | continuous | parametric |
 | CauseSpecificMCF | univariate | recurrent | competing | recurrent | none | continuous | nonparametric |
 | Bernoulli, success-run | univariate | single_event | single | terminal | none | discrete | parametric |

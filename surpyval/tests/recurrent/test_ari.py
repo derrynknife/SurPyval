@@ -4,7 +4,7 @@ import pytest
 
 matplotlib.use("Agg")
 
-from surpyval.recurrent import ARI, Crow, Duane  # noqa: E402
+from surpyval.recurrent import ARI, CrowAMSAA, Duane  # noqa: E402
 from surpyval.recurrent.parametric.ari import ari_reduction  # noqa: E402
 from surpyval.utils.recurrent_utils import handle_xicn  # noqa: E402
 
@@ -29,7 +29,7 @@ def test_ari_reduction_helper():
     assert ari_reduction([], rho, 1) == 0.0
 
 
-@pytest.mark.parametrize("dist", [Crow, Duane])
+@pytest.mark.parametrize("dist", [CrowAMSAA, Duane])
 def test_ari_rho_zero_matches_nhpp(dist):
     # With rho = 0 there is no intensity reduction, so the ARI log-likelihood
     # must equal the plain NHPP log-likelihood of the baseline intensity.
@@ -43,7 +43,7 @@ def test_ari_rho_zero_matches_nhpp(dist):
 
 
 def test_ari_fit_and_information_criteria():
-    model = ARI.fit(X, I, m=1, dist=Crow)
+    model = ARI.fit(X, I, m=1, dist=CrowAMSAA)
     assert 0.0 <= model.rho <= 1.0
     k = model._mle.size
     n = model._n_obs
@@ -56,7 +56,7 @@ def test_ari_fit_and_information_criteria():
 
 
 def test_ari_mcf_simulation_monotonic():
-    model = ARI.fit_from_parameters([60.0, 2.0], rho=0.3, m=1, dist=Crow)
+    model = ARI.fit_from_parameters([60.0, 2.0], rho=0.3, m=1, dist=CrowAMSAA)
     mcf = model.mcf(np.array([5.0, 10.0, 20.0, 30.0]), items=800, seed=0)
     assert np.all(np.diff(mcf) >= -1e-9)
     assert np.all(mcf >= 0)
@@ -76,6 +76,6 @@ def test_ari_rejects_unsupported_censoring():
 
 
 def test_ari_inference_requires_fit_from_data():
-    model = ARI.fit_from_parameters([60.0, 2.0], rho=0.3, m=1, dist=Crow)
+    model = ARI.fit_from_parameters([60.0, 2.0], rho=0.3, m=1, dist=CrowAMSAA)
     with pytest.raises(ValueError, match="fitted from data"):
         model.aic

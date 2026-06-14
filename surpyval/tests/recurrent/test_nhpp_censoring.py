@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from surpyval.recurrent import Crow, HPP
+from surpyval.recurrent import HPP, CrowAMSAA
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -16,12 +16,12 @@ def test_hpp_interval_censoring_matches_analytic_rate():
     assert np.isclose(model.params[0], 6.0 / 15.0)
 
 
-def test_crow_interval_censoring_fits():
+def test_crow_amsaa_interval_censoring_fits():
     x = [[0, 5], [5, 10], [10, 20]]
     c = [2, 2, 2]
     n = [1, 2, 2]
     i = [1, 1, 1]
-    model = Crow.fit(x, i, c=c, n=n)
+    model = CrowAMSAA.fit(x, i, c=c, n=n)
     assert np.all(np.isfinite(model.params))
 
 

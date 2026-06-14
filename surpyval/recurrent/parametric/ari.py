@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.optimize import brentq, minimize
 
-from surpyval.recurrent.parametric.crow import Crow
+from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -50,21 +50,21 @@ class ARI:
     so each repair subtracts a fraction ``rho`` of (a memory-weighted sum of)
     the past failure intensities. ``rho = 0`` recovers the plain NHPP defined
     by the baseline intensity. The baseline is any of the recurrent intensity
-    models (``Crow``, ``Duane``, ``CoxLewis``); ``Crow`` (power law) is the
-    default.
+    models (``CrowAMSAA``, ``Duane``, ``CoxLewis``); ``CrowAMSAA`` (power law)
+    is the default.
 
     There is no closed-form marginal intensity, so the mean cumulative function
     is obtained by simulation (see ``mcf`` and ``plot``).
 
     Examples
     --------
-    >>> from surpyval.recurrent import ARI, Crow
+    >>> from surpyval.recurrent import ARI, CrowAMSAA
     >>> import numpy as np
     >>>
     >>> x = np.array([3, 9, 20, 35, 56, 4, 11, 25, 44, 70])
     >>> i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
     >>>
-    >>> model = ARI.fit(x, i, m=1, dist=Crow)
+    >>> model = ARI.fit(x, i, m=1, dist=CrowAMSAA)
     """
 
     @staticmethod
@@ -162,7 +162,7 @@ class ARI:
         return negll_func
 
     @classmethod
-    def fit_from_recurrent_data(cls, data, dist=Crow, m=1, init=None):
+    def fit_from_recurrent_data(cls, data, dist=CrowAMSAA, m=1, init=None):
         """
         Fit the ARI model from recurrent data.
 
@@ -172,8 +172,8 @@ class ARI:
         data : RecurrentData
             Data containing the recurrence details.
         dist : object, optional
-            A recurrent baseline intensity model (``Crow``, ``Duane``,
-            ``CoxLewis``). Default is ``Crow``.
+            A recurrent baseline intensity model (``CrowAMSAA``, ``Duane``,
+            ``CoxLewis``). Default is ``CrowAMSAA``.
         m : int or float, optional
             Memory of the ARI model; a positive integer or ``numpy.inf``.
             Default is 1.
@@ -242,7 +242,7 @@ class ARI:
         return out
 
     @classmethod
-    def fit(cls, x, i=None, c=None, n=None, dist=Crow, m=1, init=None):
+    def fit(cls, x, i=None, c=None, n=None, dist=CrowAMSAA, m=1, init=None):
         """
         Fit the ARI model.
 
@@ -258,7 +258,7 @@ class ARI:
         n : array_like, optional
             An array of counts.
         dist : object, optional
-            A recurrent baseline intensity model. Default is ``Crow``.
+            A recurrent baseline intensity model. Default is ``CrowAMSAA``.
         m : int or float, optional
             Memory of the ARI model; a positive integer or ``numpy.inf``.
             Default is 1.
@@ -275,7 +275,7 @@ class ARI:
         return cls.fit_from_recurrent_data(data, dist, m, init=init)
 
     @classmethod
-    def fit_from_parameters(cls, dist_params, rho, m=1, dist=Crow):
+    def fit_from_parameters(cls, dist_params, rho, m=1, dist=CrowAMSAA):
         """
         Build an ARI model from given parameters.
 
@@ -290,7 +290,7 @@ class ARI:
             Memory of the ARI model; a positive integer or ``numpy.inf``.
             Default is 1.
         dist : object, optional
-            A recurrent baseline intensity model. Default is ``Crow``.
+            A recurrent baseline intensity model. Default is ``CrowAMSAA``.
 
         Returns
         -------
