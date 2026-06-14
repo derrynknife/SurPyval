@@ -1,9 +1,7 @@
 import numpy as np
 from scipy.optimize import brentq, minimize
 
-from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.parametric.crow import Crow
-from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -36,7 +34,7 @@ def ari_reduction(failure_intensities, rho, m):
     return rho * np.sum(weights * recent)
 
 
-class ARI(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
+class ARI:
     """
     Arithmetic Reduction of Intensity (ARI) imperfect-repair model of Doyen and
     Gaudoin (2004).
@@ -69,42 +67,6 @@ class ARI(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
     >>> model = ARI.fit(x, i, m=1, dist=Crow)
     """
 
-    _restoration_param_name = "rho"
-
-    def __init__(self, dist, dist_params, rho, m=1):
-        self.dist = dist
-        self.dist_params = np.asarray(dist_params, dtype=float)
-        self.rho = rho
-        self.m = m
-
-    def __repr__(self):
-        out = (
-            "ARI Recurrence SurPyval Model"
-            + "\n============================="
-            + f"\nBaseline Intensity  : {self.dist.name}"
-            + "\nFitted by           : MLE"
-            + f"\nMemory (m)          : {self.m}"
-            + f"\nRepair Efficiency   : {self.rho}"
-        )
-
-        param_string = "\n".join(
-            [
-                "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(self.dist.param_names, self.dist_params)
-            ]
-        )
-
-        return (
-            out
-            + "\nParameters          :\n"
-            + "{params}".format(params=param_string)
-        )
-
-    @property
-    def parameter_names(self):
-        self._check_fitted()
-        return [self._restoration_param_name, *self.dist.param_names]
-
     @staticmethod
     def _validate_memory(m):
         if m == np.inf:
@@ -114,11 +76,12 @@ class ARI(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
                 "m must be a positive integer or numpy.inf; got {!r}".format(m)
             )
 
-    def _new_sequence_sampler(self):
-        dist = self.dist
-        dp = self.dist_params
-        rho = self.rho
-        m = self.m
+    @staticmethod
+    def _build_sampler(model):
+        dist = model.model.dist
+        dp = model.model.params
+        rho = model.rho
+        m = model.m
         history_iif = []
         running = [0.0]
         reduction = [0.0]
@@ -145,6 +108,23 @@ class ARI(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
             return xi
 
         return sample
+
+    @classmethod
+    def _make_model(cls, baseline_dist, dist_params, rho, m):
+        from surpyval.recurrent.renewal.renewal_model import RenewalModel
+
+        model = baseline_dist.from_params(list(dist_params))
+        out = RenewalModel(
+            model,
+            rho,
+            "rho",
+            "Repair Efficiency",
+            "ARI Recurrence",
+            cls._build_sampler,
+            dist_label="Baseline Intensity",
+        )
+        out.m = m
+        return out
 
     @classmethod
     def create_negll_func(cls, data, dist, m):
@@ -253,7 +233,7 @@ class ARI(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
                 )
 
         rho, *dist_params = inv_trans(res.x)
-        out = cls(dist, dist_params, rho, m)
+        out = cls._make_model(dist, dist_params, rho, m)
         out.res = res
         out.data = data
         out._neg_ll = neg_ll
@@ -319,4 +299,4 @@ class ARI(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
             An ARI object built from the supplied parameters.
         """
         cls._validate_memory(m)
-        return cls(dist, dist_params, rho, m)
+        return cls._make_model(dist, dist_params, rho, m)

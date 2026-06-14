@@ -47,11 +47,13 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         restoration_label,
         kind,
         sampler_factory,
+        dist_label="Distribution",
     ):
         self.model = model
         self.restoration = restoration
         self._restoration_param_name = restoration_name
         self._restoration_label = restoration_label
+        self._dist_label = dist_label
         self.kind = kind
         self._sampler_factory = sampler_factory
         # Expose the restoration parameter under its conventional name
@@ -66,7 +68,7 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         lines = [
             title,
             "=" * len(title),
-            f"Distribution        : {self.model.dist.name}",
+            "{:<20}: {}".format(self._dist_label, self.model.dist.name),
             "Fitted by           : MLE",
         ]
         if getattr(self, "kijima_type", None) is not None:
