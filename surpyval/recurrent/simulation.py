@@ -169,6 +169,22 @@ class RecurrenceSimulationMixin:
 
         RecurrentEventData
             The simulated recurrence data in xicn format.
+
+        Notes
+        -----
+
+        Count termination is a failure-terminated (Type II) scheme: each item
+        is observed until its ``events + 1``-th event, so its observation
+        window is the random time of that last event and every event is exact
+        (``c = 0``). Parametric fits handle this correctly -- the
+        interarrival/intensity likelihood ends at the last observed event and
+        the MLE is consistent. The nonparametric MCF, however, is only reliable
+        up to roughly ``events`` recurrences: beyond that the at-risk set is
+        depleted and the curve is biased (which is why
+        :meth:`count_terminated_simulation` trims to ``mcf_hat < events``). For
+        a fixed-window observation scheme, use
+        :meth:`time_terminated_simulation_data`, which right-censors each item
+        at ``T``.
         """
         from surpyval.utils.recurrent_utils import handle_xicn
 
