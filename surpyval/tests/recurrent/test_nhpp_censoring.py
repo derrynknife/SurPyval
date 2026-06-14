@@ -26,10 +26,11 @@ def test_crow_interval_censoring_fits():
 
 
 def test_interval_left_must_not_exceed_right():
-    # A reversed interval [5, 1] is invalid regardless of input type.
-    with pytest.raises(ValueError, match="left bound <= right bound"):
+    # A reversed interval [5, 1] is invalid regardless of input type. The
+    # check is shared with the univariate handler via coerce_xcnt_x.
+    with pytest.raises(ValueError, match="less than or equal to right"):
         handle_xicn(np.array([[5.0, 1.0]]), np.array([1]), c=np.array([2]))
-    with pytest.raises(ValueError, match="left bound <= right bound"):
+    with pytest.raises(ValueError, match="less than or equal to right"):
         handle_xicn([[5.0, 1.0]], [1], c=[2])
 
 

@@ -1,5 +1,7 @@
 import numpy as np
 
+from surpyval.utils import coerce_xcnt_x, format_truncation
+
 from .recurrent_event_data import RecurrentEventData
 
 
@@ -40,23 +42,7 @@ def handle_xicn(
     x, i=None, c=None, n=None, t=None, tl=None, tr=None, Z=None,
     as_recurrent_data=True,
 ):
-    if isinstance(x, list):
-        if any(isinstance(v, list) for v in x):
-            x_ndarray = np.empty(shape=(len(x), 2))
-            for idx, val in enumerate(x):
-                x_ndarray[idx, :] = np.array(val)
-            x = x_ndarray
-        else:
-            x = np.array(x)
-    else:
-        x = np.asarray(x)
-
-    # Interval-censored events are 2D rows [left, right]; the left bound of
-    # each interval must not exceed its right bound.
-    if x.ndim == 2 and (x[:, 0] > x[:, 1]).any():
-        raise ValueError(
-            "interval-censored x must have left bound <= right bound"
-        )
+    x = coerce_xcnt_x(x)
 
     if i is None:
         i = np.ones(x.shape[0])
@@ -73,37 +59,14 @@ def handle_xicn(
     else:
         c = np.array(c)
 
-    # Truncation, following surpyval's xcnt convention: ``t`` is an (N, 2)
-    # array of [left, right] truncation bounds, or ``tl``/``tr`` give the
-    # bounds separately (scalar broadcasts to all rows). The default window is
-    # the whole real line, so no assumption is made about the sign of ``x``
-    # (e.g. a log-intensity model can take negative values); the integration
-    # origin for untruncated NHPP data falls back to 0 in ``get_previous_x``.
-    nrows = x.shape[0]
-    if t is not None:
-        if tl is not None or tr is not None:
-            raise ValueError("Cannot use `t` together with `tl`/`tr`.")
-        t = np.array(t, dtype=float)
-        if t.ndim == 1:
-            t = np.broadcast_to(t, (nrows, 2)).copy()
-        tl_arr = t[:, 0]
-        tr_arr = t[:, 1]
-    else:
-        if tl is None:
-            tl_arr = np.full(nrows, -np.inf)
-        elif np.isscalar(tl):
-            tl_arr = np.full(nrows, float(tl))
-        else:
-            tl_arr = np.array(tl, dtype=float)
-        if tr is None:
-            tr_arr = np.full(nrows, np.inf)
-        elif np.isscalar(tr):
-            tr_arr = np.full(nrows, float(tr))
-        else:
-            tr_arr = np.array(tr, dtype=float)
-
-    if tl_arr.shape[0] != nrows or tr_arr.shape[0] != nrows:
-        raise ValueError("truncation must have the same length as x")
+    # Truncation follows surpyval's xcnt convention (shared with the univariate
+    # handler): the default window is the whole real line, so no assumption is
+    # made about the sign of ``x`` (e.g. a log-intensity model can take
+    # negative values); the integration origin for untruncated NHPP data falls
+    # back to 0 in ``get_previous_x``.
+    truncation = format_truncation(t, tl, tr, x.shape[0])
+    tl_arr = truncation[:, 0]
+    tr_arr = truncation[:, 1]
 
     if Z is not None:
         if isinstance(Z, dict):
