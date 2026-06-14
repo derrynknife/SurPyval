@@ -62,8 +62,8 @@ No martingale residuals, no cumulative-hazard residuals, no probability-integral
 
 ### Missing capabilities — medium priority
 
-**No left-truncation support**
-The univariate module handles left truncation via `tl`; the recurrent module does not. Items observed only after a delayed start (e.g., warranty data starting from first sale) cannot be correctly analysed.
+**Left-truncation support (partial)**
+`handle_xicn` now takes the surpyval `t`/`tl`/`tr` truncation fields, and the calendar-time NHPP models (`HPP`, `Crow`, `Duane`, `CoxLewis`) integrate each item's likelihood from its entry time `tl`, so delayed-entry (warranty-from-first-sale) data is analysed correctly there. The virtual-age / history-dependent models (Kijima/G1/ARA/ARI) reject `tl > 0` with an explanatory error, since the virtual age at entry is undefined without the pre-entry history. Still to do: delayed-entry risk sets in the nonparametric MCF (`NonParametricCounting.to_xrd` still assumes entry at 0), truncation passthrough for the proportional-intensity regression fitters, and multi-window (gapped) observation per item.
 
 **No input validation**
 Negative times, NaN/inf values, and empty arrays all pass silently into the optimiser. Add a validation step in `handle_xicn()` with informative `ValueError`s.
@@ -79,7 +79,7 @@ Log-likelihood is computed during fitting but discarded. Store it on the returne
 Implement `surpyval.recurrent.tests.laplace(x, i, T)` and `mil_hdbk_189c(x, i, T)` as module-level functions independent of any fitted model.
 
 **Additional virtual-age models**
-Beyond Kijima I/II: arithmetic reduction of intensity (ARI), arithmetic reduction of age (ARA), and the geometric process. These are well-studied and have closed-form likelihood contributions.
+Both Doyen & Gaudoin imperfect-repair families are now implemented: `surpyval.recurrent.ARA` (Arithmetic Reduction of Age, on the lifetime-distribution machinery) and `surpyval.recurrent.ARI` (Arithmetic Reduction of Intensity, built on the NHPP baseline intensity models — `Crow`/`Duane`/`CoxLewis`), each parameterised by repair efficiency `rho` and memory `m`. Note the equivalences already covered elsewhere: ARA₁ = Kijima-I and ARA∞ = Kijima-II (both in `GeneralizedRenewal`), the geometric process (Lam) = `GeneralizedOneRenewal` reparameterised by `a = 1/(1+q)`, and ARI at `rho = 0` is the plain NHPP of its baseline intensity (used as the correctness check). The leftover virtual-age model worth adding is the general geometric-process estimator if a first-class `a` parameterisation is wanted.
 
 **Competing failure modes**
 Multiple event types in a single recurrent process (e.g., two failure modes on the same repairable system). The nonparametric scaffold is in place: `RecurrentEventData` now carries an optional event-type (mark) column and `surpyval.recurrent.competing_risks.CauseSpecificMCF` produces per-cause MCF curves over a shared at-risk set. Still to do: parametric cause-specific intensity models (cause-specific NHPP) and proportional-intensity regression, plus `fit_from_df`/`handle_xicn` support for the mark column.

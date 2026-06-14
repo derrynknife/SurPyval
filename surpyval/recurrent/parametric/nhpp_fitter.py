@@ -148,7 +148,18 @@ class NHPPFitter:
         model.how = how
         return model
 
-    def fit(self, x, i=None, c=None, n=None, how="MLE", init=None):
+    def fit(
+        self,
+        x,
+        i=None,
+        c=None,
+        n=None,
+        t=None,
+        tl=None,
+        tr=None,
+        how="MLE",
+        init=None,
+    ):
         """
         Fit the NHPP model from the provided data. This function prepares the
         data to ensure that it is in the correct format for the fitting.
@@ -164,6 +175,13 @@ class NHPPFitter:
             Censoring indicator.
         n: array_like, optional
             Counts for each observation.
+        t: array_like, optional
+            (N, 2) array of [left, right] truncation bounds per observation.
+        tl: array_like or scalar, optional
+            Left truncation (delayed entry) time per item; the observation of
+            each item begins here. Scalar broadcasts to all items.
+        tr: array_like or scalar, optional
+            Right truncation time per item.
         how: str, optional
             Specifies the fitting method to use, either 'MLE' for Maximum
             Likelihood Estimation or 'MSE' for Mean Square Error.
@@ -178,7 +196,9 @@ class NHPPFitter:
             An object of fitted model returned by the fit_from_recurrent_data
             method.
         """
-        data = handle_xicn(x, i, c, n, as_recurrent_data=True)
+        data = handle_xicn(
+            x, i, c, n, t=t, tl=tl, tr=tr, as_recurrent_data=True
+        )
         return self.fit_from_recurrent_data(data, how, init)
 
     def from_params(self, params):

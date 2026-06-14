@@ -1,13 +1,10 @@
-import warnings
-
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.stats import uniform
 
-from surpyval.recurrent.nonparametric import NonParametricCounting
+from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 
 
-class ParametricRecurrenceModel:
+class ParametricRecurrenceModel(RecurrenceSimulationMixin):
     """
     A class for holding the parameters, data, and usefult methods for a
     fitted parametric recurrence model. This is the result of the ``fit`` calls
@@ -40,141 +37,21 @@ class ParametricRecurrenceModel:
             + param_string
         )
 
-    def initialize_simulation(self):
-        self.us = uniform.rvs(size=100_000).tolist()
+    def _new_sequence_sampler(self):
+        x_prev = 0.0
 
-    def clear_simulation(self):
-        del self.us
+        def sample(ui):
+            nonlocal x_prev
+            u_adj = ui * np.exp(-self.cif(x_prev))
+            xi = self.inv_cif(-np.log(u_adj)) - x_prev
+            x_prev += xi
+            return xi
 
-    def get_uniform_random_number(self):
-        try:
-            return self.us.pop()
-        except IndexError:
-            self.initialize_simulation()
-            return self.us.pop()
+        return sample
 
-    def count_terminated_simulation(self, events, items=1):
-        """
-        Simulate count-terminated recurrence data based on the fitted model.
-
-        Parameters
-        ----------
-
-        events: int
-            Number of events to simulate.
-        items: int, optional
-            Number of items (or sequences) to simulate. Default is 1.
-
-        Returns
-        -------
-
-        NonParametricCounting
-            An NonParametricCounting model built from the simulated data.
-        """
-        self.initialize_simulation()
-
-        xicn = {"x": [], "i": [], "c": [], "n": []}
-
-        for i in range(0, items):
-            running = 0
-            j = 0
-            x_prev = 0
-            for j in range(0, events + 1):
-                ui = self.get_uniform_random_number()
-                u_adj = ui * np.exp(-self.cif(x_prev))
-                xi = self.inv_cif(-np.log(u_adj)) - x_prev
-                running += xi
-                x_prev = running
-                xicn["i"].append(i + 1)
-                xicn["n"].append(1)
-                xicn["x"].append(running)
-                xicn["c"].append(0)
-
-        self.clear_simulation()
-
-        model = NonParametricCounting.fit(**xicn)
-
+    def _postprocess_simulated_model(self, model):
         if self.dist.name == "CoxLewis":
             model.mcf_hat += np.exp(self.params[0])
-
-        mask = model.mcf_hat <= events
-        model.x = model.x[mask]
-        model.mcf_hat = model.mcf_hat[mask]
-        model.var = None
-        return model
-
-    def time_terminated_simulation(self, T, items=1, tol=1e-5):
-        """
-        Simulate time-terminated recurrence data based on the fitted model.
-
-        Parameters
-        ----------
-
-        T: float
-            Time termination value.
-        items: int, optional
-            Number of items (or sequences) to simulate. Default is 1.
-        tol: float, optional
-            Tolerance for interarrival times to stop an individual sequence.
-
-        Returns
-        -------
-
-        NonParametricCounting
-            An NonParametricCounting model built from the simulated data.
-
-        Warnings
-        --------
-
-        If any of the simulated sequences seem to not reach the time
-        termination value T due to possible asymptote, a warning message will
-        be printed to notify the user about potential convergence problems in
-        the simulation.
-        """
-        self.initialize_simulation()
-        convergence_problem = False
-
-        xicn = {"x": [], "i": [], "c": [], "n": []}
-
-        for i in range(0, items):
-            running = 0
-            j = 0
-            x_prev = 0
-            while True:
-                ui = self.get_uniform_random_number()
-                u_adj = ui * np.exp(-self.cif(x_prev))
-                xi = self.inv_cif(-np.log(u_adj)) - x_prev
-                running += xi
-                x_prev = running
-                xicn["i"].append(i + 1)
-                xicn["n"].append(1)
-                if running > T:
-                    xicn["x"].append(T)
-                    xicn["c"].append(1)
-                    break
-                elif xi < tol:
-                    convergence_problem = True
-                    xicn["x"].append(running)
-                    xicn["c"].append(0)
-                    break
-                else:
-                    xicn["x"].append(running)
-                    xicn["c"].append(0)
-                    j += 1
-
-        self.clear_simulation()
-
-        if convergence_problem:
-            warnings.warn(
-                "Some timelines unable to reach T due to possible asymptote"
-            )
-
-        model = NonParametricCounting.fit(**xicn)
-
-        if self.dist.name == "CoxLewis":
-            model.mcf_hat += np.exp(self.params[0])
-        model.var = None
-
         return model
 
     def cif(self, x):
@@ -197,6 +74,26 @@ class ParametricRecurrenceModel:
         """
         x = np.array(x)
         return self.dist.cif(x, *self.params)
+
+    def mcf(self, x):
+        """
+        The mean cumulative function (MCF). For these counting processes the
+        MCF equals the cumulative intensity, so this is a closed-form alias for
+        :meth:`cif` (overriding the simulation-based estimate in the mixin).
+
+        Parameters
+        ----------
+
+        x: array_like
+            Values at which to compute the MCF.
+
+        Returns
+        -------
+
+        array_like
+            The MCF evaluated at ``x``.
+        """
+        return self.cif(x)
 
     def iif(self, x):
         """

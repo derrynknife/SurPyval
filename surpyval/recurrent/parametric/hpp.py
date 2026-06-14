@@ -272,7 +272,8 @@ class HPP:
         return out
 
     @classmethod
-    def fit(cls, x, i=None, c=None, n=None, init=None):
+    def fit(cls, x, i=None, c=None, n=None, t=None, tl=None, tr=None,
+            init=None):
         """
         Fits the HPP model to the provided data and returns the fitted model.
 
@@ -286,6 +287,12 @@ class HPP:
             Censoring indicators at each x.
         n : array_like, optional
             count of the data at each x.
+        t : array_like, optional
+            (N, 2) array of [left, right] truncation bounds per observation.
+        tl : array_like or scalar, optional
+            Left truncation (delayed entry) time per item.
+        tr : array_like or scalar, optional
+            Right truncation time per item.
         init : array_like, optional
             Initial parameter estimates for the optimization.
 
@@ -294,5 +301,7 @@ class HPP:
         object
             An object containing the fitted model and related information.
         """
-        data = handle_xicn(x, i, c, n, as_recurrent_data=True)
+        data = handle_xicn(
+            x, i, c, n, t=t, tl=tl, tr=tr, as_recurrent_data=True
+        )
         return cls.fit_from_recurrent_data(data, init=init)
