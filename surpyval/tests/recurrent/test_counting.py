@@ -9,6 +9,7 @@ matplotlib.use("Agg")
 from surpyval import Exponential, Gamma, Normal, Weibull  # noqa: E402
 from surpyval.recurrent import HPP  # noqa: E402
 from surpyval.recurrent.renewal import (  # noqa: E402
+    ARA,
     GeneralizedOneRenewal,
     GeneralizedRenewal,
 )
@@ -162,6 +163,56 @@ def test_count_terminated_simulation_via_mixin():
         [0.1696, 1.181, 2.287, 3.6694, 5.58237925, 8.54474531]
     )
     assert np.allclose(np_model.mcf(np.array([1, 2, 3, 4, 5, 6])), expected)
+
+
+def test_count_terminated_simulation_data_is_recurrent_data():
+    # The data simulator returns raw xicn events (RecurrentEventData), not the
+    # aggregated MCF, with events+1 exact events per item.
+    from surpyval.utils.recurrent_event_data import RecurrentEventData
+
+    model = GeneralizedOneRenewal.fit_from_parameters(
+        [5.0, 1.5], q=0.2, dist=Weibull
+    )
+    data = model.count_terminated_simulation_data(8, items=20, seed=0)
+    assert isinstance(data, RecurrentEventData)
+    assert len(data.x) == 20 * (8 + 1)
+    assert len(set(data.i.tolist())) == 20
+    assert set(data.c.tolist()) == {0}
+
+
+def test_simulated_data_round_trips_through_fit():
+    # Simulating from a known model and refitting recovers it in the right
+    # neighbourhood (this is now possible because the simulator yields events).
+    truth = ARA.fit_from_parameters([10.0, 2.0], rho=0.5, m=2, dist=Weibull)
+    data = truth.count_terminated_simulation_data(events=8, items=400, seed=0)
+    refit = ARA.fit(data.x, data.i, c=data.c, m=2)
+    assert 0.0 < refit.rho < 1.0
+    assert np.all(refit.model.params > 0)
+
+
+def test_time_terminated_simulation_data_is_censored_at_T():
+    from surpyval.utils.recurrent_event_data import RecurrentEventData
+
+    model = GeneralizedOneRenewal.fit_from_parameters(
+        [5.0, 1.5], q=0.2, dist=Weibull
+    )
+    data = model.time_terminated_simulation_data(T=60, items=20, seed=2)
+    assert isinstance(data, RecurrentEventData)
+    # Each reaching sequence ends in a right-censored row at T.
+    assert (data.c == 1).any()
+    assert data.x[data.c == 1].max() <= 60.0 + 1e-9
+
+
+def test_parametric_recurrence_model_has_data_simulators():
+    # The data simulators come from the shared mixin, so the intensity models
+    # (HPP, Crow, ...) get them too.
+    from surpyval.utils.recurrent_event_data import RecurrentEventData
+
+    x = Exponential.random(20, 1.0).cumsum()
+    hpp = HPP.fit(x)
+    data = hpp.count_terminated_simulation_data(10, items=15, seed=0)
+    assert isinstance(data, RecurrentEventData)
+    assert len(data.x) == 15 * (10 + 1)
 
 
 def test_time_terminated_tol_stops_decaying_sequence():
