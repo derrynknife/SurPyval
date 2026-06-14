@@ -81,18 +81,30 @@ class NonParametricCounting:
             mcf_cb[np.where(x > self.x.max())] = np.nan
         return mcf_cb
 
-    def plot(self, confidence=0.95, plot_bounds=True, ax=None):
+    def plot(self, confidence=0.95, plot_bounds=True, ax=None, start=0.0):
         if ax is None:
             ax = plt.gcf().gca()
 
-        ax.step(self.x, self.mcf_hat, where="post", label="MCF")
+        # Prepend the start point so the step plot always begins from it
+        # (the MCF is 0 before the first observed event).
+        if start is not None and start < self.x.min():
+            x = np.hstack([[start], self.x])
+            mcf_hat = np.hstack([[0.0], self.mcf_hat])
+        else:
+            x = self.x
+            mcf_hat = self.mcf_hat
+
+        ax.step(x, mcf_hat, where="post", label="MCF")
         if plot_bounds:
             if self.var is not None:
+                cb = self.mcf_cb(
+                    self.x, bound="two-sided", confidence=confidence
+                )
+                if start is not None and start < self.x.min():
+                    cb = np.vstack([[0.0, 0.0], cb])
                 ax.step(
-                    self.x,
-                    self.mcf_cb(
-                        self.x, bound="two-sided", confidence=confidence
-                    ),
+                    x,
+                    cb,
                     where="post",
                     label=f"{confidence * 100}% Confidence Bounds",
                     color="red",
