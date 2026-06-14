@@ -174,17 +174,6 @@ Only one test file with one test covers the entire recurrent module (`tests/recu
 
 ## 5. Code Quality
 
-### Turnbull heuristic downgrade never takes effect
-**File:** `surpyval/univariate/parametric/parametric_fitter.py` (`_validate_fit_inputs`, ~line 344)
-
-The block that swaps the memory-hungry Turnbull heuristic for the
-plain estimator when there is no left/interval censoring or
-right-truncation assigns to a local variable and returns `True`, so the
-caller never sees the downgrade — the optimization has never applied.
-Fix by returning the adjusted heuristic and using it in
-`fit_from_surpyval_data`. Results should be equivalent, but plotting
-points and performance change, so verify against a Turnbull fixture.
-
 ### Structural refactors in the univariate parametric module
 Deferred from the June 2026 clean-up (sections 1–5 of that review are
 done):
