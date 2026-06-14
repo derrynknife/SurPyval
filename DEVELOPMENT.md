@@ -43,7 +43,7 @@ theme; items already resolved are marked **[done]**.
 - `ParametricRecurrenceRegressionModel` (`parametric_regression.py`) — `# TODO`
   stub simulation, never imported/exported. Remove or finish.
 - `_validate_memory` duplicated verbatim in `renewal/ara.py` and
-  `parametric/ari.py`.
+  `renewal/ari.py`.
 - 16 copy-pasted docstrings read "Parameters of the Duane model" inside
   `CrowAMSAA`/`CoxLewis`.
 - `has_left_censoing` typo (`nhpp_fitter.py`, NHPP regression file).

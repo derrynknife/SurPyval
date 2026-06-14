@@ -5,7 +5,7 @@ import pytest
 matplotlib.use("Agg")
 
 from surpyval.recurrent import ARI, CrowAMSAA, Duane  # noqa: E402
-from surpyval.recurrent.parametric.ari import ari_reduction  # noqa: E402
+from surpyval.recurrent.renewal.ari import ari_reduction  # noqa: E402
 from surpyval.utils.recurrent_utils import handle_xicn  # noqa: E402
 
 X = np.array([3, 9, 20, 35, 56, 4, 11, 25, 44, 70], dtype=float)
