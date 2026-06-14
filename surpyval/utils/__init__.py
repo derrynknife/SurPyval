@@ -297,6 +297,111 @@ def xrd_handler(x, r, d):
     return x, r, d
 
 
+def coerce_xcnt_x(x):
+    """
+    Coerce the ``x`` variable of xcnt-format data into a numpy array.
+
+    Accepts a 1D array of event values, or a 2D array / list-of-pairs of
+    ``[left, right]`` interval bounds. Validates dimensionality, the interval
+    ordering (``left <= right``) and the absence of NaNs. Shared by the
+    univariate (``xcnt_handler``) and recurrent (``handle_xicn``) handlers.
+    """
+    if isinstance(x, list):
+        if any(isinstance(v, list) for v in x):
+            x_ndarray = np.empty(shape=(len(x), 2))
+            for idx, val in enumerate(x):
+                val_arr = np.atleast_1d(val)
+                if len(val_arr) > 2:
+                    raise ValueError(
+                        "Each element of 'x' must be either scalar or"
+                        " array-like of no more than length 2"
+                    )
+                x_ndarray[idx, :] = val_arr
+            x = x_ndarray
+        else:
+            x = np.array(x)
+    elif isinstance(x, Series):
+        x = np.array(x)
+    else:
+        x = np.asarray(x)
+
+    if x.ndim > 2:
+        raise ValueError("Variable 'x' array must be one or two dimensional")
+    if x.ndim == 2:
+        if x.shape[1] != 2:
+            raise ValueError(
+                "Dimension 1 must be equal to 2, try transposing data, or do"
+                " you have a 1d array in a 2d array?"
+            )
+        if not (x[:, 0] <= x[:, 1]).all():
+            raise ValueError(
+                "All left intervals must be less than or equal to right"
+                " intervals"
+            )
+    if np.isnan(x).any():
+        raise ValueError("Variable 'x' cannot contain NaN values")
+    return x
+
+
+def format_truncation(t, tl, tr, n_rows):
+    """
+    Build the ``(n_rows, 2)`` truncation array from either a ``t`` matrix or
+    separate ``tl``/``tr`` bounds (scalars broadcast to all rows). The default
+    window is the whole real line ``[-inf, inf]``. Shared by ``xcnt_handler``
+    and ``handle_xicn``.
+    """
+    if t is not None and ((tl is not None) or (tr is not None)):
+        raise ValueError(
+            "Cannot use 't' with 'tl' or 'tr'. Use either 't' or any"
+            " combination of 'tl' and 'tr'"
+        )
+
+    if (t is None) and (tl is None) and (tr is None):
+        tl_arr = np.ones(n_rows) * -np.inf
+        tr_arr = np.ones(n_rows) * np.inf
+        return np.vstack([tl_arr, tr_arr]).T
+
+    if (tl is not None) or (tr is not None):
+        if tl is None:
+            tl_arr = np.ones(n_rows) * -np.inf
+        elif np.isscalar(tl):
+            tl_arr = np.ones(n_rows) * tl
+        else:
+            tl_arr = np.array(tl, dtype=float)
+
+        if tr is None:
+            tr_arr = np.ones(n_rows) * np.inf
+        elif np.isscalar(tr):
+            tr_arr = np.ones(n_rows) * tr
+        else:
+            tr_arr = np.array(tr, dtype=float)
+
+        if tl_arr.ndim > 1 or tr_arr.ndim > 1:
+            raise ValueError(
+                "Truncation arrays must be one dimensional, did you mean to"
+                " use 't'"
+            )
+        if tl_arr.shape[0] != n_rows or tr_arr.shape[0] != n_rows:
+            raise ValueError(
+                "Truncation array must be same length as variable array"
+            )
+        return np.vstack([tl_arr, tr_arr]).T
+
+    t = np.array(t, dtype=float)
+    if t.ndim != 2:
+        raise ValueError("Truncation ndarray must be 2 dimensional")
+    if t.shape[0] != n_rows:
+        raise ValueError(
+            "Truncation ndarray must be same shape as variable array"
+        )
+    if t.shape[1] != 2:
+        raise ValueError(
+            "Truncation array must have shape (n, 2) with left and right"
+            " bounds"
+        )
+    return t
+
+
 def xcnt_handler(
     x=None,
     c=None,
@@ -430,41 +535,7 @@ def xcnt_handler(
         except Exception:
             raise ValueError("'xl' and 'xr' must be the same length")
 
-    if isinstance(x, list):
-        if any(isinstance(v, list) for v in x):
-            x_ndarray = np.empty(shape=(len(x), 2))
-            for idx, val in enumerate(x):
-                val_arr = np.atleast_1d(val)
-                if len(val_arr) > 2:
-                    raise ValueError(
-                        "Each element of 'x' must be either scalar or"
-                        + " array-like of no more than length 2"
-                    )
-                x_ndarray[idx, :] = val_arr
-            x = x_ndarray
-        else:
-            x = np.array(x)
-    elif isinstance(x, Series):
-        x = np.array(x)
-
-    if x.ndim > 2:
-        raise ValueError("Variable 'x' array must be one or two dimensional")
-
-    if x.ndim == 2:
-        if x.shape[1] != 2:
-            raise ValueError(
-                "Dimension 1 must be equal to 2, try transposing data, or do"
-                + " you have a 1d array in a 2d array?"
-            )
-
-        if not (x[:, 0] <= x[:, 1]).all():
-            raise ValueError(
-                "All left intervals must be less than or equal to right"
-                + " intervals"
-            )
-
-    if np.isnan(x).any():
-        raise ValueError("Variable 'x' cannot contain NaN values")
+    x = coerce_xcnt_x(x)
 
     # logic for censoring flag
     if c is not None:
@@ -535,69 +606,7 @@ def xcnt_handler(
         # Do check here for groupby and binning
         n = np.ones(x.shape[0])
 
-    if t is not None and ((tl is not None) or (tr is not None)):
-        raise ValueError(
-            "Cannot use 't' with 'tl' or 'tr'. Use either 't' or any"
-            + " combination of 'tl' and 'tr'"
-        )
-
-    elif (t is None) and (tl is None) and (tr is None):
-        tl = np.ones(x.shape[0]) * -np.inf
-        tr = np.ones(x.shape[0]) * np.inf
-        t = np.vstack([tl, tr]).T
-    elif (tl is not None) or (tr is not None):
-        if tl is None:
-            tl = np.ones(x.shape[0]) * -np.inf
-        elif np.isscalar(tl):
-            tl = np.ones(x.shape[0]) * tl
-        else:
-            tl = np.array(tl)
-
-        if tr is None:
-            tr = np.ones(x.shape[0]) * np.inf
-        elif np.isscalar(tr):
-            tr = np.ones(x.shape[0]) * tr
-        else:
-            tr = np.array(tr)
-
-        if tl.ndim > 1:
-            raise ValueError(
-                "Left truncation array must be one dimensional, did you mean"
-                + " to use 't'"
-            )
-        if tr.ndim > 1:
-            raise ValueError(
-                "Left truncation array must be one dimensional, did you mean"
-                + " to use 't'"
-            )
-        if tl.shape[0] != x.shape[0]:
-            raise ValueError(
-                "Left truncation array must be same length as variable array"
-            )
-        if tr.shape[0] != x.shape[0]:
-            raise ValueError(
-                "Right truncation array must be same length as variable array"
-            )
-        if tl.shape != tr.shape:
-            raise ValueError(
-                "Left truncation array and right truncation array must be the"
-                + " same length"
-            )
-        t = np.vstack([tl, tr]).T
-
-    else:
-        t = np.array(t)
-        if t.ndim != 2:
-            raise ValueError("Truncation ndarray must be 2 dimensional")
-        if t.shape[0] != x.shape[0]:
-            raise ValueError(
-                "Truncation ndarray must be same shape as variable array"
-            )
-        if t.shape[1] != 2:
-            raise ValueError(
-                "Truncation array must have shape (n, 2) with left and"
-                + " right bounds"
-            )
+    t = format_truncation(t, tl, tr, x.shape[0])
 
     if (t[:, 1] <= t[:, 0]).any():
         raise ValueError(
