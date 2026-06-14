@@ -178,11 +178,6 @@ Only one test file with one test covers the entire recurrent module (`tests/recu
 Deferred from the June 2026 clean-up (sections 1–5 of that review are
 done):
 
-- `ParametricFitter.fit_from_surpyval_data` (~200 lines) mixes
-  truncation clamping, validation, initial-guess derivation, fitter
-  dispatch and support assignment. Extract `_initial_guess(...)` and
-  `_set_support(model)`; the LFP/ZI guess blocks are already
-  self-contained.
 - `Parametric.cb` (~135 lines) still builds nested closures for the
   R-based bounds. Extract the per-function bound computations. (The
   hf/df bounds now use the delta method directly rather than
