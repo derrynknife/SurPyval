@@ -178,11 +178,6 @@ Only one test file with one test covers the entire recurrent module (`tests/recu
 Deferred from the June 2026 clean-up (sections 1–5 of that review are
 done):
 
-- `ParametricFitter.fit_from_surpyval_data` (~200 lines) mixes
-  truncation clamping, validation, initial-guess derivation, fitter
-  dispatch and support assignment. Extract `_initial_guess(...)` and
-  `_set_support(model)`; the LFP/ZI guess blocks are already
-  self-contained.
 - `Parametric.cb` (~135 lines) still builds nested closures for the
   R-based bounds. Extract the per-function bound computations. (The
   hf/df bounds now use the delta method directly rather than
@@ -192,16 +187,6 @@ done):
   membership on a *string*, not a tuple, so any distribution whose name
   is a substring of "Beta" would match. Replace the name-based
   branching with a `plot_x_limits` hook on the distribution.
-- Data-dependent support setting now works for the general case
-  (June 2026): a distribution declares `support=(np.nan, np.nan)` and
-  a `support_param_index` naming which fitted parameters supply the
-  bounds, and `fit_from_surpyval_data`/`from_params` resolve the
-  support from them. The new four-parameter Beta (`Beta4`) uses this
-  path with `support_param_index=(2, 3)`. `Uniform` still declares
-  `support=(-np.inf, np.inf)` rather than NaN (see the comment in
-  `distributions/uniform.py`); it could be migrated to the NaN path
-  with `support_param_index=(0, 1)` (the default) for consistency, but
-  the current workaround is harmless.
 - `MixtureModel` composes rather than inherits: it now shares the
   probability-plot code but still reimplements `sf/ff/df/mean/random`
   aggregation and its own `R_cb`, and sets most attributes outside
