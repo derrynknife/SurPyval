@@ -99,9 +99,7 @@ def test_cause_specific_mcf_shares_truncated_risk_set():
     model = CauseSpecificMCF.fit(x, i, c=c, e=e, tl=tl)
 
     # The shared at-risk grid matches the truncation-aware to_xrd.
-    np.testing.assert_array_equal(
-        model.x, [2.0, 5.0, 6.0, 8.0, 10.0, 12.0]
-    )
+    np.testing.assert_array_equal(model.x, [2.0, 5.0, 6.0, 8.0, 10.0, 12.0])
     np.testing.assert_array_equal(model.r, [1, 2, 2, 2, 2, 1])
 
 
@@ -142,13 +140,9 @@ def test_cause_specific_mcf_rejects_unsupported():
     i = np.array([1, 1, 1])
     e = ["a", "b", None]
     with pytest.raises(ValueError, match="left-censored"):
-        CauseSpecificMCF.fit(
-            x, i, c=np.array([-1, 0, 1]), e=e
-        )
+        CauseSpecificMCF.fit(x, i, c=np.array([-1, 0, 1]), e=e)
     with pytest.raises(ValueError, match="right truncation"):
-        CauseSpecificMCF.fit(
-            x, i, c=np.array([0, 0, 1]), e=e, tr=10.0
-        )
+        CauseSpecificMCF.fit(x, i, c=np.array([0, 0, 1]), e=e, tr=10.0)
 
 
 def test_cause_specific_mcf_scalar_truncation_broadcasts():

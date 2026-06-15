@@ -160,7 +160,5 @@ class NonParametricCounting:
         -------
         NonParametricCounting
         """
-        data = handle_xicn(
-            x, i, c, n, tl=tl, tr=tr, as_recurrent_data=True
-        )
+        data = handle_xicn(x, i, c, n, tl=tl, tr=tr, as_recurrent_data=True)
         return cls.fit_from_recurrent_data(data)
