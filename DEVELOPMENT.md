@@ -178,10 +178,6 @@ Only one test file with one test covers the entire recurrent module (`tests/recu
 Deferred from the June 2026 clean-up (sections 1–5 of that review are
 done):
 
-- `Parametric.cb` (~135 lines) still builds nested closures for the
-  R-based bounds. Extract the per-function bound computations. (The
-  hf/df bounds now use the delta method directly rather than
-  differentiating the Hf bound curve, June 2026.)
 - `probability_plotting.probability_plot_data` special-cases
   distributions by name with `dist.name in ("Beta")` — string
   membership on a *string*, not a tuple, so any distribution whose name

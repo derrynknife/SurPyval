@@ -1,4 +1,5 @@
 import json
+from collections import namedtuple
 from copy import copy, deepcopy
 
 import matplotlib.pyplot as plt
@@ -15,6 +16,13 @@ from .probability_plotting import (
     draw_probability_plot,
     probability_plot_data,
 )
+
+# Shared inputs for the confidence-bound computations: the fitted parameter
+# vector ``phi_hat`` (core params plus any LFP/ZI parameters), its covariance
+# ``cov``, and ``n_core`` (the number of leading core parameters). These three
+# always travel together, so they are bundled to keep the bound helpers'
+# signatures small.
+_CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
 
 
 class Parametric(ParametricDistribution):
@@ -779,14 +787,41 @@ class Parametric(ParametricDistribution):
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
 
-        hess_inv = np.copy(self.hess_inv)
+        ctx = self._cb_context()
 
-        # The variance is computed over the extended parameter vector
-        # (*params, p?, f0?) so that the uncertainty of the LFP and
-        # zero-inflation parameters widens the bounds. gamma is held
-        # fixed: the threshold parameter is non-regular, so it carries
-        # no Wald variance. Models deserialized without a cov_matrix
-        # fall back to treating p and f0 as fixed.
+        # ff, F and Hf are decreasing transforms of R; flip one-sided bounds
+        if on in ["ff", "F", "Hf"] and bound == "lower":
+            bound = "upper"
+        elif on in ["ff", "F", "Hf"] and bound == "upper":
+            bound = "lower"
+
+        old_err_state = np.seterr(all="ignore")
+        try:
+            if (on == "ff") or (on == "F"):
+                cb = 1.0 - self._cb_sf_bound(t, ctx, alpha_ci, bound)
+            elif (on == "sf") or (on == "R"):
+                cb = self._cb_sf_bound(t, ctx, alpha_ci, bound)
+                if bound == "two-sided":
+                    cb = np.fliplr(cb)
+            elif on == "Hf":
+                cb = -np.log(self._cb_sf_bound(t, ctx, alpha_ci, bound))
+            elif on in ["hf", "df"]:
+                cb = self._cb_rate_bound(t, ctx, alpha_ci, bound, on)
+        finally:
+            np.seterr(**old_err_state)
+
+        return cb
+
+    def _cb_context(self):
+        """Assemble the parameter vector and covariance used by ``cb``.
+
+        The variance is computed over the extended parameter vector
+        ``(*params, p?, f0?)`` so that the uncertainty of the LFP and
+        zero-inflation parameters widens the bounds. gamma is held fixed:
+        the threshold parameter is non-regular, so it carries no Wald
+        variance. Models deserialized without a ``cov_matrix`` fall back to
+        treating p and f0 as fixed.
+        """
         n_core = len(self.params)
         phi_hat = list(self.params)
         if self.lfp:
@@ -798,96 +833,93 @@ class Parametric(ParametricDistribution):
         cov = getattr(self, "cov_matrix", None)
         if cov is None:
             cov = np.zeros((len(phi_hat), len(phi_hat)))
-            cov[:n_core, :n_core] = hess_inv
+            cov[:n_core, :n_core] = np.copy(self.hess_inv)
 
-        def unpack(phi):
-            core = phi[:n_core]
-            i = n_core
-            if self.lfp:
-                p = phi[i]
-                i += 1
-            else:
-                p = 1.0
-            f0 = phi[i] if self.zi else 0.0
-            return core, p, f0
+        return _CBContext(phi_hat=phi_hat, cov=cov, n_core=n_core)
 
-        def full_sf(x, phi):
-            core, p, f0 = unpack(phi)
-            return 1 - p + (p - f0) * self.dist.sf(x - self.gamma, *core)
+    def _cb_unpack(self, phi, ctx):
+        """Split an extended parameter vector into ``(core, p, f0)``."""
+        core = phi[: ctx.n_core]
+        i = ctx.n_core
+        if self.lfp:
+            p = phi[i]
+            i += 1
+        else:
+            p = 1.0
+        f0 = phi[i] if self.zi else 0.0
+        return core, p, f0
 
-        old_err_state = np.seterr(all="ignore")
+    def _cb_full_sf(self, x, phi, ctx):
+        """Survival function including the LFP and zero-inflation mass."""
+        core, p, f0 = self._cb_unpack(phi, ctx)
+        return 1 - p + (p - f0) * self.dist.sf(x - self.gamma, *core)
 
-        def delta_method_var(func):
-            # First-order delta method: Var(g) = J Sigma J^T
-            jac = np.atleast_2d(jacobian(func)(phi_hat))
-            return np.einsum("ij,jk,ik->i", jac, cov, jac)
+    def _cb_delta_var(self, func, ctx):
+        """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
+        jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
+        return np.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
 
-        def sf_cb(x, bound=bound):
-            def sf_func(phi):
-                return full_sf(x, phi)
+    def _cb_sf_bound(self, x, ctx, alpha_ci, bound):
+        """Confidence bound on the survival function via a logit transform.
 
-            var_R = delta_method_var(sf_func)
-            R_hat = full_sf(x, phi_hat)
-            if bound == "two-sided":
-                diff = (
-                    z(alpha_ci / 2)
-                    * np.sqrt(var_R)
-                    * np.array([1.0, -1.0]).reshape(2, 1)
-                )
-            elif bound == "upper":
-                diff = z(alpha_ci) * np.sqrt(var_R)
-            else:
-                diff = -z(alpha_ci) * np.sqrt(var_R)
+        Working on the logit of R keeps the bound within ``(0, 1)``. The
+        returned array is the transpose of the per-point bounds, matching the
+        layout the public ``cb`` method expects.
+        """
 
-            # Bounds on the logit of R keep the result within (0, 1)
-            exponent = diff / (R_hat * (1 - R_hat))
-            R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
-            return R_cb.T
+        def sf_func(phi):
+            return self._cb_full_sf(x, phi, ctx)
 
-        # ff, F and Hf are decreasing transforms of R; flip one-sided bounds
-        if on in ["ff", "F", "Hf"] and bound == "lower":
-            bound = "upper"
-        elif on in ["ff", "F", "Hf"] and bound == "upper":
-            bound = "lower"
+        var_R = self._cb_delta_var(sf_func, ctx)
+        R_hat = self._cb_full_sf(x, ctx.phi_hat, ctx)
+        if bound == "two-sided":
+            diff = (
+                z(alpha_ci / 2)
+                * np.sqrt(var_R)
+                * np.array([1.0, -1.0]).reshape(2, 1)
+            )
+        elif bound == "upper":
+            diff = z(alpha_ci) * np.sqrt(var_R)
+        else:
+            diff = -z(alpha_ci) * np.sqrt(var_R)
 
-        if (on == "ff") or (on == "F"):
-            cb = 1.0 - sf_cb(t, bound=bound)
-        elif (on == "sf") or (on == "R"):
-            cb = sf_cb(t, bound=bound)
-            if bound == "two-sided":
-                cb = np.fliplr(cb)
-        elif on == "Hf":
-            cb = -np.log(sf_cb(t, bound=bound))
-        elif on in ["hf", "df"]:
+        exponent = diff / (R_hat * (1 - R_hat))
+        R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
+        return R_cb.T
 
-            def density(phi):
-                core, p, f0 = unpack(phi)
-                return (p - f0) * self.dist.df(t - self.gamma, *core)
+    def _cb_rate_bound(self, t, ctx, alpha_ci, bound, on):
+        """Confidence bound on the hazard (``hf``) or density (``df``).
 
-            if on == "hf":
+        Both are non-negative, so the bound is computed on the log scale to
+        keep the result positive. The delta method is applied directly to the
+        rate function rather than differentiating the ``Hf`` bound curve.
+        """
 
-                def func(phi):
-                    return density(phi) / full_sf(t, phi)
+        def density(phi):
+            core, p, f0 = self._cb_unpack(phi, ctx)
+            return (p - f0) * self.dist.df(t - self.gamma, *core)
 
-            else:
-                func = density
+        if on == "hf":
 
-            g_hat = func(phi_hat)
-            var_g = delta_method_var(func)
+            def func(phi):
+                return density(phi) / self._cb_full_sf(t, phi, ctx)
 
-            if bound == "two-sided":
-                diff = z(alpha_ci / 2) * np.array([1.0, -1.0]).reshape(2, 1)
-            elif bound == "upper":
-                diff = -z(alpha_ci)
-            else:
-                diff = z(alpha_ci)
+        else:
+            func = density
 
-            # Bounds on the log of hf/df keep the result positive
-            cb = g_hat * np.exp(diff * np.sqrt(var_g) / g_hat)
-            if bound == "two-sided":
-                cb = cb.T
+        g_hat = func(ctx.phi_hat)
+        var_g = self._cb_delta_var(func, ctx)
 
-        np.seterr(**old_err_state)
+        if bound == "two-sided":
+            diff = z(alpha_ci / 2) * np.array([1.0, -1.0]).reshape(2, 1)
+        elif bound == "upper":
+            diff = -z(alpha_ci)
+        else:
+            diff = z(alpha_ci)
+
+        cb = g_hat * np.exp(diff * np.sqrt(var_g) / g_hat)
+        if bound == "two-sided":
+            cb = cb.T
         return cb
 
     def neg_ll(self):
