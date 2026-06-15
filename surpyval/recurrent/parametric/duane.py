@@ -1,9 +1,12 @@
 import numpy as np
 
+from surpyval.utils.fitter import singleton_fitter
+
 from .nhpp_fitter import NHPPFitter
 
 
-class Duane_(NHPPFitter):
+@singleton_fitter
+class Duane(NHPPFitter):
     """
     Represents the Duane Non-Homogeneous Poisson Process model.
     This class includes methods to evaluate various statistical functions of
@@ -131,6 +134,3 @@ class Duane_(NHPPFitter):
             The inverse CIF value.
         """
         return (N / params[1]) ** (1.0 / params[0])
-
-
-Duane = Duane_()

@@ -4,11 +4,13 @@ from scipy.special import gammaln
 
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
+from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import handle_xicn
 
 from .proportional_intensity import ProportionalIntensityModel
 
 
+@singleton_fitter
 class ProportionalIntensityNHPP:
     """
     A class representing the Proportional Intensity Non-Homogeneous Poisson
@@ -61,19 +63,15 @@ class ProportionalIntensityNHPP:
     <BLANKLINE>
     """
 
-    @classmethod
     def iif(self, x, rate):
         return np.ones_like(x) * rate
 
-    @classmethod
     def cif(self, x, rate):
         return rate * x
 
-    @classmethod
     def inv_cif(self, cif, rate):
         return cif / rate
 
-    @classmethod
     def create_negll_func(self, data, dist):
         x, c, n = data.x, data.c, data.n
         Z = data.Z
@@ -182,8 +180,7 @@ class ProportionalIntensityNHPP:
 
         return negll_func
 
-    @classmethod
-    def fit_from_recurrent_data(cls, data, dist, init=None):
+    def fit_from_recurrent_data(self, data, dist, init=None):
         if not isinstance(dist, CountingProcess):
             raise TypeError(
                 "`dist` must be a CountingProcess instance "
@@ -198,7 +195,7 @@ class ProportionalIntensityNHPP:
         num_covariates = data.Z.shape[1]
         init = np.append(init, np.zeros(num_covariates))
 
-        neg_ll = cls.create_negll_func(data, dist)
+        neg_ll = self.create_negll_func(data, dist)
 
         res = minimize(
             neg_ll,
@@ -215,8 +212,7 @@ class ProportionalIntensityNHPP:
 
         return out
 
-    @classmethod
-    def fit(cls, x, Z, i=None, c=None, n=None, dist=Duane, init=None):
+    def fit(self, x, Z, i=None, c=None, n=None, dist=Duane, init=None):
         """
         Fit the model using the provided data and initial parameters.
 
@@ -246,4 +242,4 @@ class ProportionalIntensityNHPP:
             parameter estimates.
         """
         data = handle_xicn(x, i, c, n, Z=Z, as_recurrent_data=True)
-        return cls.fit_from_recurrent_data(data, dist, init)
+        return self.fit_from_recurrent_data(data, dist, init)

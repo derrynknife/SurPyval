@@ -8,9 +8,11 @@ from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
+from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
+@singleton_fitter
 class HPP(CountingProcess):
     """
     Represents the Homogeneous Poisson Process (HPP) model.
@@ -126,8 +128,7 @@ class HPP(CountingProcess):
         """
         return np.array(cif) / rate
 
-    @classmethod
-    def create_negll_func(cls, data):
+    def create_negll_func(self, data):
         x, c, n = data.x, data.c, data.n
         x_prev = data.get_previous_x()
 
@@ -231,8 +232,7 @@ class HPP(CountingProcess):
 
         return negll_func
 
-    @classmethod
-    def fit_from_recurrent_data(cls, data, init=None):
+    def fit_from_recurrent_data(self, data, init=None):
         """
         Fits the HPP model to recurrent data and returns the fitted model.
 
@@ -249,7 +249,7 @@ class HPP(CountingProcess):
             An object containing the fitted model and related information.
         """
         out = ParametricRecurrenceModel()
-        out.dist = cls()
+        out.dist = self
         out.data = data
 
         out.param_names = ["lambda"]
@@ -257,7 +257,7 @@ class HPP(CountingProcess):
         out.support = (0.0, np.inf)
         out.name = "Homogeneous Poisson Process"
 
-        neg_ll = cls.create_negll_func(data)
+        neg_ll = self.create_negll_func(data)
         jac = jacobian(neg_ll)
         hess = hessian(neg_ll)
 
@@ -272,9 +272,8 @@ class HPP(CountingProcess):
 
         return out
 
-    @classmethod
     def fit(
-        cls, x, i=None, c=None, n=None, t=None, tl=None, tr=None, init=None
+        self, x, i=None, c=None, n=None, t=None, tl=None, tr=None, init=None
     ):
         """
         Fits the HPP model to the provided data and returns the fitted model.
@@ -306,4 +305,4 @@ class HPP(CountingProcess):
         data = handle_xicn(
             x, i, c, n, t=t, tl=tl, tr=tr, as_recurrent_data=True
         )
-        return cls.fit_from_recurrent_data(data, init=init)
+        return self.fit_from_recurrent_data(data, init=init)

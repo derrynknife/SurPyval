@@ -2,12 +2,14 @@ from autograd import numpy as np
 from matplotlib import pyplot as plt
 from scipy.stats import norm, t
 
+from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
 
 
+@singleton_fitter
 class NonParametricCounting:
     def mcf(self, x, interp="step"):
         x = np.atleast_1d(x)
@@ -114,10 +116,9 @@ class NonParametricCounting:
                 )
         return ax
 
-    @classmethod
-    def fit_from_recurrent_data(cls, data):
+    def fit_from_recurrent_data(self, data):
         reject_unsupported_nonparametric(data, "NonParametricCounting")
-        out = cls()
+        out = type(self)()
         out.data = data
         out.x, out.r, out.d = data.to_xrd()
         d = out.d
@@ -134,8 +135,7 @@ class NonParametricCounting:
 
         return out
 
-    @classmethod
-    def fit(cls, x, i=None, c=None, n=None, tl=None, tr=None):
+    def fit(self, x, i=None, c=None, n=None, tl=None, tr=None):
         """
         Fit a nonparametric (Nelson-Aalen) MCF.
 
@@ -161,4 +161,4 @@ class NonParametricCounting:
         NonParametricCounting
         """
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, as_recurrent_data=True)
-        return cls.fit_from_recurrent_data(data)
+        return self.fit_from_recurrent_data(data)

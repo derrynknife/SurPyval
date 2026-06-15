@@ -3,6 +3,7 @@ from scipy.optimize import brentq, minimize
 
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_left_truncation,
@@ -34,6 +35,7 @@ def ari_reduction(failure_intensities, rho, m):
     return rho * np.sum(weights * recent)
 
 
+@singleton_fitter
 class ARI:
     """
     Arithmetic Reduction of Intensity (ARI) imperfect-repair model of Doyen and
@@ -109,8 +111,7 @@ class ARI:
 
         return sample
 
-    @classmethod
-    def _make_model(cls, baseline_dist, dist_params, rho, m):
+    def _make_model(self, baseline_dist, dist_params, rho, m):
         from surpyval.recurrent.renewal.renewal_model import RenewalModel
 
         model = baseline_dist.from_params(list(dist_params))
@@ -120,14 +121,13 @@ class ARI:
             "rho",
             "Repair Efficiency",
             "ARI Recurrence",
-            cls._build_sampler,
+            self._build_sampler,
             dist_label="Baseline Intensity",
         )
         out.m = m
         return out
 
-    @classmethod
-    def create_negll_func(cls, data, dist, m):
+    def create_negll_func(self, data, dist, m):
         _, idx = np.unique(data.i, return_index=True)
         x_by_item = np.split(data.x, idx)[1:]
         c_by_item = np.split(data.c, idx)[1:]
@@ -161,8 +161,7 @@ class ARI:
 
         return negll_func
 
-    @classmethod
-    def fit_from_recurrent_data(cls, data, dist=CrowAMSAA, m=1, init=None):
+    def fit_from_recurrent_data(self, data, dist=CrowAMSAA, m=1, init=None):
         """
         Fit the ARI model from recurrent data.
 
@@ -186,9 +185,9 @@ class ARI:
         ARI
             A fitted ARI object.
         """
-        cls._validate_memory(m)
-        validate_renewal_censoring(data.c, cls.__name__)
-        reject_left_truncation(data, cls.__name__)
+        self._validate_memory(m)
+        validate_renewal_censoring(data.c, type(self).__name__)
+        reject_left_truncation(data, type(self).__name__)
 
         if init is None:
             try:
@@ -206,7 +205,7 @@ class ARI:
             data.x, [(0, 1), *dist.bounds], {}, param_map
         )
 
-        neg_ll = cls.create_negll_func(data, dist, m)
+        neg_ll = self.create_negll_func(data, dist, m)
         neg_ll_unbounded = lambda p: neg_ll(inv_trans(p))  # noqa: E731
 
         if init is None:
@@ -232,7 +231,7 @@ class ARI:
                 )
 
         rho, *dist_params = inv_trans(res.x)
-        out = cls._make_model(dist, dist_params, rho, m)
+        out = self._make_model(dist, dist_params, rho, m)
         out.res = res
         out.data = data
         out._neg_ll = neg_ll
@@ -240,8 +239,7 @@ class ARI:
         out._n_obs = int((data.c == 0).sum())
         return out
 
-    @classmethod
-    def fit(cls, x, i=None, c=None, n=None, dist=CrowAMSAA, m=1, init=None):
+    def fit(self, x, i=None, c=None, n=None, dist=CrowAMSAA, m=1, init=None):
         """
         Fit the ARI model.
 
@@ -271,10 +269,9 @@ class ARI:
             A fitted ARI object.
         """
         data = handle_xicn(x, i, c, n, as_recurrent_data=True)
-        return cls.fit_from_recurrent_data(data, dist, m, init=init)
+        return self.fit_from_recurrent_data(data, dist, m, init=init)
 
-    @classmethod
-    def fit_from_parameters(cls, dist_params, rho, m=1, dist=CrowAMSAA):
+    def fit_from_parameters(self, dist_params, rho, m=1, dist=CrowAMSAA):
         """
         Build an ARI model from given parameters.
 
@@ -297,5 +294,5 @@ class ARI:
         ARI
             An ARI object built from the supplied parameters.
         """
-        cls._validate_memory(m)
-        return cls._make_model(dist, dist_params, rho, m)
+        self._validate_memory(m)
+        return self._make_model(dist, dist_params, rho, m)

@@ -1,9 +1,12 @@
 import numpy as np
 
+from surpyval.utils.fitter import singleton_fitter
+
 from .nhpp_fitter import NHPPFitter
 
 
-class CoxLewis_(NHPPFitter):
+@singleton_fitter
+class CoxLewis(NHPPFitter):
     """
     A class to represent the Cox-Lewis model for non-homogeneous Poisson
     processes (NHPP). This model is used in reliability analysis to predict
@@ -143,6 +146,3 @@ class CoxLewis_(NHPPFitter):
         alpha = params[0]
         beta = params[1]
         return np.log(1.0 + N * beta * np.exp(-alpha)) / beta
-
-
-CoxLewis = CoxLewis_()

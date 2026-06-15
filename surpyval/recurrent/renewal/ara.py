@@ -4,6 +4,7 @@ from scipy.optimize import minimize
 from surpyval import Weibull
 from surpyval.recurrent.renewal.renewal_model import RenewalModel
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_left_truncation,
@@ -51,6 +52,7 @@ def ara_virtual_ages(arrival_times, rho, m):
     return v
 
 
+@singleton_fitter
 class ARA:
     """
     Arithmetic Reduction of Age (ARA) imperfect-repair model of Doyen and
@@ -113,21 +115,19 @@ class ARA:
 
         return sample
 
-    @classmethod
-    def _make_model(cls, underlying_model, rho, m):
+    def _make_model(self, underlying_model, rho, m):
         out = RenewalModel(
             underlying_model,
             rho,
             "rho",
             "Repair Efficiency",
             "ARA Renewal",
-            cls._build_sampler,
+            self._build_sampler,
         )
         out.m = m
         return out
 
-    @classmethod
-    def create_negll_func(cls, data, dist, m):
+    def create_negll_func(self, data, dist, m):
         _, idx = np.unique(data.i, return_index=True)
         arrival_by_item = np.split(data.x, idx)[1:]
         interarrival = data.get_interarrival_times()
@@ -156,8 +156,7 @@ class ARA:
 
         return negll_func
 
-    @classmethod
-    def fit_from_recurrent_data(cls, data, dist=Weibull, m=1, init=None):
+    def fit_from_recurrent_data(self, data, dist=Weibull, m=1, init=None):
         """
         Fit the ARA model from recurrent data.
 
@@ -180,9 +179,9 @@ class ARA:
         RenewalModel
             A fitted renewal model.
         """
-        cls._validate_memory(m)
-        validate_renewal_censoring(data.c, cls.__name__)
-        reject_left_truncation(data, cls.__name__)
+        self._validate_memory(m)
+        validate_renewal_censoring(data.c, type(self).__name__)
+        reject_left_truncation(data, type(self).__name__)
 
         if init is None:
             first_events = data.get_times_to_first_events()
@@ -204,7 +203,7 @@ class ARA:
             data.x, [(0, 1), *dist.bounds], {}, param_map
         )
 
-        neg_ll = cls.create_negll_func(data, dist, m)
+        neg_ll = self.create_negll_func(data, dist, m)
         neg_ll_unbounded = lambda p: neg_ll(inv_trans(p))  # noqa: E731
 
         if init is None:
@@ -231,7 +230,7 @@ class ARA:
 
         rho, *dist_params = inv_trans(res.x)
         model = dist.from_params(list(dist_params))
-        out = cls._make_model(model, rho, m)
+        out = self._make_model(model, rho, m)
         out.res = res
         out.data = data
         out._neg_ll = neg_ll
@@ -239,8 +238,7 @@ class ARA:
         out._n_obs = len(data.x)
         return out
 
-    @classmethod
-    def fit(cls, x, i=None, c=None, n=None, dist=Weibull, m=1, init=None):
+    def fit(self, x, i=None, c=None, n=None, dist=Weibull, m=1, init=None):
         """
         Fit the ARA model.
 
@@ -270,10 +268,9 @@ class ARA:
             A fitted renewal model.
         """
         data = handle_xicn(x, i, c, n, as_recurrent_data=True)
-        return cls.fit_from_recurrent_data(data, dist, m, init=init)
+        return self.fit_from_recurrent_data(data, dist, m, init=init)
 
-    @classmethod
-    def fit_from_parameters(cls, params, rho, m=1, dist=Weibull):
+    def fit_from_parameters(self, params, rho, m=1, dist=Weibull):
         """
         Build an ARA model from given parameters.
 
@@ -296,6 +293,6 @@ class ARA:
         ARA
             An ARA object built from the supplied parameters.
         """
-        cls._validate_memory(m)
+        self._validate_memory(m)
         model = dist.from_params(params)
-        return cls._make_model(model, rho, m)
+        return self._make_model(model, rho, m)

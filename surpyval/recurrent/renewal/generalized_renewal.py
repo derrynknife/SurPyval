@@ -4,6 +4,7 @@ from scipy.optimize import minimize
 from surpyval import Weibull
 from surpyval.recurrent.renewal.renewal_model import RenewalModel
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_left_truncation,
@@ -30,6 +31,7 @@ def kijima_ii_from_prev_interarrival(previous_interarrival_times, q):
     )
 
 
+@singleton_fitter
 class GeneralizedRenewal:
     """
     A class to handle the generalized renewal process with different Kijima
@@ -68,20 +70,17 @@ class GeneralizedRenewal:
     array([0.1214   , 1.1772   , 2.406    , 3.919    , 5.804    , 8.6088822])
     """
 
-    @classmethod
     def kijima_i(self, v, x, q):
         return v + q * x
 
-    @classmethod
     def kijima_ii(self, v, x, q):
         return q * (v + x)
 
-    @classmethod
-    def _resolve_virtual_age_function(cls, kijima_type):
+    def _resolve_virtual_age_function(self, kijima_type):
         if kijima_type == "i":
-            return cls.kijima_i
+            return self.kijima_i
         if kijima_type == "ii":
-            return cls.kijima_ii
+            return self.kijima_ii
         raise ValueError(
             "Unknown kijima_type {!r}; must be 'i' or 'ii'".format(kijima_type)
         )
@@ -101,24 +100,22 @@ class GeneralizedRenewal:
 
         return sample
 
-    @classmethod
-    def _make_model(cls, underlying_model, q, kijima_type):
+    def _make_model(self, underlying_model, q, kijima_type):
         out = RenewalModel(
             underlying_model,
             q,
             "q",
             "Restoration Factor",
             "Generalized Renewal",
-            cls._build_sampler,
+            self._build_sampler,
         )
         out.kijima_type = kijima_type
-        out._virtual_age_function = cls._resolve_virtual_age_function(
+        out._virtual_age_function = self._resolve_virtual_age_function(
             kijima_type
         )
         return out
 
-    @classmethod
-    def create_negll_func(cls, data, dist, kijima="i"):
+    def create_negll_func(self, data, dist, kijima="i"):
         _, idx = np.unique(data.i, return_index=True)
         c = data.c
         x_interarrival = data.get_interarrival_times()
@@ -173,9 +170,8 @@ class GeneralizedRenewal:
 
         return negll_func
 
-    @classmethod
     def fit_from_recurrent_data(
-        cls, data, dist=Weibull, kijima="i", init=None
+        self, data, dist=Weibull, kijima="i", init=None
     ):
         """
         Fit the generalized renewal model from recurrent data.
@@ -223,8 +219,8 @@ class GeneralizedRenewal:
             alpha: 2.399029078569064
             beta: 2.753920439616154
         """
-        validate_renewal_censoring(data.c, cls.__name__)
-        reject_left_truncation(data, cls.__name__)
+        validate_renewal_censoring(data.c, type(self).__name__)
+        reject_left_truncation(data, type(self).__name__)
         first_events = data.get_times_to_first_events()
         if init is None:
             if len(first_events.x) < 2:
@@ -251,7 +247,7 @@ class GeneralizedRenewal:
             data.x, [(0, None), *dist.bounds], {}, param_map
         )
 
-        neg_ll_bounded = cls.create_negll_func(data, dist, kijima=kijima)
+        neg_ll_bounded = self.create_negll_func(data, dist, kijima=kijima)
         neg_ll_unbounded = lambda params: neg_ll_bounded(  # noqa: E731
             inv_trans(params)
         )
@@ -291,7 +287,7 @@ class GeneralizedRenewal:
 
         q, *dist_params = inv_trans(res.x)
         model = dist.from_params(list(dist_params))
-        out = cls._make_model(model, q, kijima)
+        out = self._make_model(model, q, kijima)
         out.res = res
         out.data = data
         out._neg_ll = neg_ll_bounded
@@ -300,9 +296,8 @@ class GeneralizedRenewal:
 
         return out
 
-    @classmethod
     def fit(
-        cls, x, i=None, c=None, n=None, dist=Weibull, kijima="i", init=None
+        self, x, i=None, c=None, n=None, dist=Weibull, kijima="i", init=None
     ):
         """
         Fit the generalized renewal model.
@@ -355,10 +350,9 @@ class GeneralizedRenewal:
             beta: 2.753920439616154
         """
         data = handle_xicn(x, i, c, n, as_recurrent_data=True)
-        return cls.fit_from_recurrent_data(data, dist, kijima, init=init)
+        return self.fit_from_recurrent_data(data, dist, kijima, init=init)
 
-    @classmethod
-    def fit_from_parameters(cls, params, q, kijima="i", dist=Weibull):
+    def fit_from_parameters(self, params, q, kijima="i", dist=Weibull):
         """
         Fit the generalized renewal model from given parameters.
 
@@ -403,4 +397,4 @@ class GeneralizedRenewal:
             sigma: 2
         """
         model = dist.from_params(params)
-        return cls._make_model(model, q, kijima)
+        return self._make_model(model, q, kijima)
