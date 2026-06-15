@@ -53,18 +53,6 @@ A current-state audit of the whole `recurrent/` package (parametric intensity,
 renewal, regression, nonparametric, competing risks). Findings are grouped by
 theme; items already resolved are marked **[done]**.
 
-**B. Dead code / stubs / docs**
-- `ParametricRecurrenceRegressionModel` (`parametric_regression.py`) — was a
-  `# TODO` stub, never imported/exported and a duplicate of
-  `ParametricRecurrenceModel`; recurrence-regression results are served by
-  `ProportionalIntensityModel`. **[done]** (file removed)
-- `_validate_memory` duplicated verbatim in `renewal/ara.py` and
-  `renewal/ari.py`.
-- 16 copy-pasted docstrings read "Parameters of the Duane model" inside
-  `CrowAMSAA`/`CoxLewis`.
-- `has_left_censoing` typo (`nhpp_fitter.py`, NHPP regression file).
-- Doubled `to_xrd()` call in `nonparametric/mcf.py:106-107`.
-
 **C. Simplification**
 - The multi-start MLE fit scaffolding is copy-pasted across the four repair
   fitters (`GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI`): the

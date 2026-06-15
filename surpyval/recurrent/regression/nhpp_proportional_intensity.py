@@ -80,7 +80,7 @@ class ProportionalIntensityNHPP:
 
         has_interval_censoring = True if 2 in c else False
         has_observed = True if 0 in c else False
-        has_left_censoing = True if -1 in c else False
+        has_left_censoring = True if -1 in c else False
         has_right_censoring = True if 1 in c else False
 
         x_l = x if x.ndim == 1 else x[:, 0]
@@ -112,9 +112,11 @@ class ProportionalIntensityNHPP:
         )
 
         # Untangle the left censored data
-        x_left = x_l[c == -1] if has_left_censoing else np.array([])
-        n_left = n[c == -1] if has_left_censoing else np.array([])
-        Z_left = Z[c == -1] if has_left_censoing else np.zeros((1, Z.shape[1]))
+        x_left = x_l[c == -1] if has_left_censoring else np.array([])
+        n_left = n[c == -1] if has_left_censoring else np.array([])
+        Z_left = (
+            Z[c == -1] if has_left_censoring else np.zeros((1, Z.shape[1]))
+        )
 
         # Untangle the interval censored data
         x_i_l = x_l[c == 2] if has_interval_censoring else np.array([])

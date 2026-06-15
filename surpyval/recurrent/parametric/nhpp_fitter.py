@@ -16,7 +16,7 @@ class NHPPFitter(CountingProcess):
 
         has_interval_censoring = True if 2 in c else False
         has_observed = True if 0 in c else False
-        has_left_censoing = True if -1 in c else False
+        has_left_censoring = True if -1 in c else False
         has_right_censoring = True if 1 in c else False
 
         x_l = x if x.ndim == 1 else x[:, 0]
@@ -41,8 +41,8 @@ class NHPPFitter(CountingProcess):
                 x_prev_l[c == 1] if has_right_censoring else np.array([])
             )
 
-        x_left = x_l[c == -1] if has_left_censoing else np.array([])
-        n_left = n[c == -1] if has_left_censoing else np.array([])
+        x_left = x_l[c == -1] if has_left_censoring else np.array([])
+        n_left = n[c == -1] if has_left_censoring else np.array([])
 
         x_i_l = x_l[c == 2] if has_interval_censoring else np.array([])
         x_i_r = x_r[c == 2] if has_interval_censoring else np.array([])

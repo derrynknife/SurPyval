@@ -7,6 +7,7 @@ from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_left_truncation,
+    validate_memory,
     validate_renewal_censoring,
 )
 
@@ -68,15 +69,6 @@ class ARI:
     >>>
     >>> model = ARI.fit(x, i, m=1, dist=CrowAMSAA)
     """
-
-    @staticmethod
-    def _validate_memory(m):
-        if m == np.inf:
-            return
-        if not (isinstance(m, (int, np.integer)) and m >= 1):
-            raise ValueError(
-                "m must be a positive integer or numpy.inf; got {!r}".format(m)
-            )
 
     @staticmethod
     def _build_sampler(model):
@@ -185,7 +177,7 @@ class ARI:
         ARI
             A fitted ARI object.
         """
-        self._validate_memory(m)
+        validate_memory(m)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
 
@@ -294,5 +286,5 @@ class ARI:
         ARI
             An ARI object built from the supplied parameters.
         """
-        self._validate_memory(m)
+        validate_memory(m)
         return self._make_model(dist, dist_params, rho, m)
