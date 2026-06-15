@@ -26,9 +26,9 @@ class NonParametricFitter:
         out = NonParametric()
         if data is not None:
             out.data = data
-        out.x = x
-        out.r = r
-        out.d = d
+        out.x = np.asarray(x)
+        out.r = np.asarray(r)
+        out.d = np.asarray(d)
         out.R = nonp.FIT_FUNCS[estimator](r, d)
         out.model = self.how
         out.F = 1 - out.R
@@ -142,7 +142,7 @@ class NonParametricFitter:
             x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
         )
 
-        data = {}
+        data: dict[str, Any] = {}
         data["x"] = x
         data["c"] = c
         data["n"] = n

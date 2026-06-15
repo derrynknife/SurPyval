@@ -80,9 +80,7 @@ def test_accelerated_life_handles_truncation():
         xs.append(xi)
         Zs.append(np.full((xi.size, 1), stress))
         ts.append(
-            np.column_stack(
-                [np.full(xi.size, tl), np.full(xi.size, np.inf)]
-            )
+            np.column_stack([np.full(xi.size, tl), np.full(xi.size, np.inf)])
         )
     x = np.concatenate(xs)
     Z = np.concatenate(Zs)

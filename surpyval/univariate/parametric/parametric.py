@@ -340,13 +340,9 @@ class Parametric(ParametricDistribution):
         >>> model.sf([1, 2, 3, 4, 5])
         array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        return (
-            1
-            - self.p
-            + (self.p - self.f0) * self.dist.sf(x - self.gamma, *self.params)
-        )
+        x = np.asarray(x)
+        xg = x - self.gamma  # type: ignore[operator]
+        return 1 - self.p + (self.p - self.f0) * self.dist.sf(xg, *self.params)
 
     def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -380,11 +376,10 @@ class Parametric(ParametricDistribution):
         >>> model.ff([1, 2, 3, 4, 5])
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
-        if isinstance(x, list):
-            x = np.array(x)
+        x = np.asarray(x)
 
         return self.f0 + (self.p - self.f0) * self.dist.ff(
-            x - self.gamma, *self.params
+            x - self.gamma, *self.params  # type: ignore[operator]
         )
 
     def df(self, x: npt.ArrayLike) -> npt.NDArray:
@@ -419,10 +414,11 @@ class Parametric(ParametricDistribution):
         >>> model.df([1, 2, 3, 4, 5])
         array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
         """
-        if isinstance(x, list):
-            x = np.array(x)
+        x = np.asarray(x)
         if self.f0 == 0:
-            df = self.p * self.dist.df(x - self.gamma, *self.params)
+            df = self.p * self.dist.df(
+                x - self.gamma, *self.params  # type: ignore[operator]
+            )
         else:
             df = np.where(
                 x == 0,
@@ -430,7 +426,9 @@ class Parametric(ParametricDistribution):
                 (
                     (1 - self.f0)
                     * self.p
-                    * self.dist.df(x - self.gamma, *self.params)
+                    * self.dist.df(
+                        x - self.gamma, *self.params  # type: ignore[operator]
+                    )
                 ),
             )
         return df
@@ -467,10 +465,11 @@ class Parametric(ParametricDistribution):
         >>> model.hf([1, 2, 3, 4, 5])
         array([0.003, 0.012, 0.027, 0.048, 0.075])
         """
-        if isinstance(x, list):
-            x = np.array(x)
+        x = np.asarray(x)
         if self.p == 1:
-            return self.dist.hf(x - self.gamma, *self.params)
+            return self.dist.hf(
+                x - self.gamma, *self.params  # type: ignore[operator]
+            )
         else:
             return self.df(x) / self.sf(x)
 
@@ -506,11 +505,12 @@ class Parametric(ParametricDistribution):
         >>> model.Hf([1, 2, 3, 4, 5])
         array([0.001, 0.008, 0.027, 0.064, 0.125])
         """
-        if isinstance(x, list):
-            x = np.array(x)
+        x = np.asarray(x)
 
         if self.p == 1:
-            return self.dist.Hf(x - self.gamma, *self.params)
+            return self.dist.Hf(
+                x - self.gamma, *self.params  # type: ignore[operator]
+            )
         else:
             return -np.log(self.sf(x))
 
@@ -582,8 +582,10 @@ class Parametric(ParametricDistribution):
         >>> model.cs(11, 10)
         0.00025840046151723767
         """
-        x = np.array(x)
-        cs = np.array(self.dist.cs(x, X - self.gamma, *self.params))
+        x = np.asarray(x)
+        X = np.asarray(X)
+        Xg = X - self.gamma  # type: ignore[operator]
+        cs = np.array(self.dist.cs(x, Xg, *self.params))
         cs[cs > 1.0] = 1
         return cs
 

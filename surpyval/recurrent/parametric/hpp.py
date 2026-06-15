@@ -273,8 +273,9 @@ class HPP(CountingProcess):
         return out
 
     @classmethod
-    def fit(cls, x, i=None, c=None, n=None, t=None, tl=None, tr=None,
-            init=None):
+    def fit(
+        cls, x, i=None, c=None, n=None, t=None, tl=None, tr=None, init=None
+    ):
         """
         Fits the HPP model to the provided data and returns the fitted model.
 

@@ -31,9 +31,7 @@ def test_explicit_negative_left_truncation_is_used_as_origin():
 
 
 def test_handle_xicn_scalar_truncation_broadcasts():
-    data = handle_xicn(
-        np.array([3.0, 7.0]), np.array([1, 1]), tl=2.0, tr=10.0
-    )
+    data = handle_xicn(np.array([3.0, 7.0]), np.array([1, 1]), tl=2.0, tr=10.0)
     assert np.all(data.tl == 2.0)
     assert np.all(data.tr == 10.0)
 
@@ -55,9 +53,7 @@ def test_handle_xicn_rejects_inconsistent_window_within_item():
 
 def test_handle_xicn_t_and_tl_conflict():
     with pytest.raises(ValueError, match="Cannot use"):
-        handle_xicn(
-            np.array([3.0]), np.array([1]), t=[[0.0, 10.0]], tl=1.0
-        )
+        handle_xicn(np.array([3.0]), np.array([1]), t=[[0.0, 10.0]], tl=1.0)
 
 
 def test_hpp_left_truncation_matches_analytic_mle():

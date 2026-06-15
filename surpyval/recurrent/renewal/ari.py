@@ -200,8 +200,7 @@ class ARI:
                 base_params = np.asarray(dist.parameter_initialiser(data.x))
 
         param_map = {
-            name: k
-            for k, name in enumerate(["rho", *dist.param_names])
+            name: k for k, name in enumerate(["rho", *dist.param_names])
         }
         transform, inv_trans, _, _, _ = bounds_convert(
             data.x, [(0, 1), *dist.bounds], {}, param_map

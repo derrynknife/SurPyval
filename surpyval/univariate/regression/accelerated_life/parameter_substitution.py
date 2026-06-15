@@ -209,12 +209,13 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
     ) -> ParametricRegressionModel:
+        x_arr: npt.NDArray = np.asarray(x)
         data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
         data.add_covariates(Z)
         life_parameter_idx = self.param_map[self.life_parameter]
         if fixed is None:
             fixed = {}
-        if init is None or len(init) == 0:
+        if init is None or len(init) == 0:  # type: ignore[arg-type]
             stress_data = []
             params_at_Z = []
 
@@ -233,7 +234,7 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
                         params_at_Z.append(params_at_s)
                     except Exception:
                         params_at_s = np.copy(base_line_dist_init)
-                        params_at_s[life_parameter_idx] = x[mask].mean()
+                        params_at_s[life_parameter_idx] = x_arr[mask].mean()
                         params_at_Z.append(params_at_s)
                     finally:
                         stress_data.append(s)

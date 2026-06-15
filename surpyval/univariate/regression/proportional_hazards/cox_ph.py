@@ -146,7 +146,9 @@ class CoxPH_:
     # possibilities for estimating betas
     # http://www-personal.umich.edu/~yili/lect4notes.pdf
 
-    def baseline(self, beta, x, c, n, Z):
+    def baseline(
+        self, beta, x, c, n, Z
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         # Uses the Breslow method to compute the baseline hazard.
 
         unique_x = np.unique(x)

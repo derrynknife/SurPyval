@@ -122,7 +122,7 @@ class AcceleratedFailureTimeFitter:
         if fixed is None:
             fixed = {}
 
-        if init is None or len(init) == 0:
+        if init is None or len(init) == 0:  # type: ignore[arg-type]
             stress_data = np.unique(Z, axis=0)
             params_at_Z = []
             for s in stress_data:

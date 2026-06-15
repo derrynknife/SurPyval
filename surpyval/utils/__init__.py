@@ -2,6 +2,7 @@ import warnings
 from collections import defaultdict
 
 import numpy as np
+import numpy.typing as npt
 from formulaic import Formula
 from pandas import Series
 
@@ -297,7 +298,7 @@ def xrd_handler(x, r, d):
     return x, r, d
 
 
-def coerce_xcnt_x(x):
+def coerce_xcnt_x(x) -> npt.NDArray:
     """
     Coerce the ``x`` variable of xcnt-format data into a numpy array.
 
@@ -343,7 +344,7 @@ def coerce_xcnt_x(x):
     return x
 
 
-def format_truncation(t, tl, tr, n_rows):
+def format_truncation(t, tl, tr, n_rows) -> npt.NDArray:
     """
     Build the ``(n_rows, 2)`` truncation array from either a ``t`` matrix or
     separate ``tl``/``tr`` bounds (scalars broadcast to all rows). The default
@@ -365,14 +366,14 @@ def format_truncation(t, tl, tr, n_rows):
         if tl is None:
             tl_arr = np.ones(n_rows) * -np.inf
         elif np.isscalar(tl):
-            tl_arr = np.ones(n_rows) * tl
+            tl_arr = np.ones(n_rows) * float(tl)  # type: ignore[arg-type]
         else:
             tl_arr = np.array(tl, dtype=float)
 
         if tr is None:
             tr_arr = np.ones(n_rows) * np.inf
         elif np.isscalar(tr):
-            tr_arr = np.ones(n_rows) * tr
+            tr_arr = np.ones(n_rows) * float(tr)  # type: ignore[arg-type]
         else:
             tr_arr = np.array(tr, dtype=float)
 
@@ -412,7 +413,7 @@ def xcnt_handler(
     tl=None,
     tr=None,
     group_and_sort=True,
-):
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Main handler that ensures any input to a surpyval fitter meets the
     requirements to be used in one of the parametric or nonparametric fitters.
@@ -1287,7 +1288,9 @@ def validate_coxph_df_inputs(df, x_col, c_col, n_col, Z_cols, formula):
     return x, c, n, Z, form, feature_names, model_spec
 
 
-def validate_coxph(x, c, n, Z, tl, method):
+def validate_coxph(
+    x, c, n, Z, tl, method
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     if method not in COX_PH_METHODS:
         raise ValueError("Method must be in {}".format(COX_PH_METHODS))
 

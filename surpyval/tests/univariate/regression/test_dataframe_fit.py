@@ -18,9 +18,7 @@ def _make_df(seed=0, n=200):
     beta = 0.03 * (age - 50) + np.where(sex == "M", 0.4, 0.0)
     x = Weibull.random(n, 10, 2) * np.exp(-beta / 2)
     c = np.zeros(n)
-    return pd.DataFrame(
-        {"time": x, "age": age, "sex": sex, "censored": c}
-    )
+    return pd.DataFrame({"time": x, "age": age, "sex": sex, "censored": c})
 
 
 PARAMETRIC_FITTERS = [
@@ -68,9 +66,7 @@ def test_predict_from_df_selects_correct_columns(fitter):
             "sex": ["M", "F", "M"],
         }
     )
-    assert np.allclose(
-        model.sf([7], reordered), model.sf([7], scrambled)
-    )
+    assert np.allclose(model.sf([7], reordered), model.sf([7], scrambled))
 
 
 def test_formula_with_categorical():
@@ -93,9 +89,7 @@ def test_formula_with_categorical():
 def test_formula_and_z_cols_are_mutually_exclusive():
     df = _make_df()
     with pytest.raises(ValueError):
-        WeibullPH.fit_from_df(
-            df, x_col="time", Z_cols=["age"], formula="age"
-        )
+        WeibullPH.fit_from_df(df, x_col="time", Z_cols=["age"], formula="age")
 
 
 def test_requires_z_cols_or_formula():

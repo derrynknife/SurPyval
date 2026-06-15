@@ -999,7 +999,7 @@ class ParametricFitter:
                 init = self._initial_guess(x, c, n, offset, zi, lfp, heuristic)
 
             init = np.atleast_1d(init)
-            if fixed and len(init) == len(not_fixed):
+            if fixed and len(init) == len(not_fixed):  # type: ignore[arg-type]
                 # The initial guess covers only the free parameters;
                 # merge it with the fixed values to get the full vector
                 full_init = np.zeros(len(model.param_map))
@@ -1008,7 +1008,7 @@ class ParametricFitter:
                     full_init[model.param_map[name]] = value
                 init = full_init
             init = transform(init)
-            init = init[not_fixed]
+            init = init[not_fixed]  # type: ignore[index]
             fitting_info["init"] = init
         else:
             # Probability plotting method does not need an initial estimate

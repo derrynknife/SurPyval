@@ -1,5 +1,18 @@
-from . import accelerated_life
-from .accelerated_life import *  # noqa: F401,F403
+from .accelerated_life import (
+    AcceleratedLife,
+    DualExponential,
+    DualPower,
+    ExponentialLifeModel,
+    Eyring,
+    InverseExponential,
+    InverseEyring,
+    InversePower,
+    LifeModel,
+    Linear,
+    ParameterSubstitutionFitter,
+    Power,
+    PowerExponential,
+)
 from .accelerated_failure_time import (
     AFT,
     AFTFitter,
@@ -36,7 +49,20 @@ from .proportional_odds import (
 )
 
 __all__ = [
-    *accelerated_life.__all__,
+    # Accelerated life (parameter-substitution life models)
+    "AcceleratedLife",
+    "DualExponential",
+    "DualPower",
+    "ExponentialLifeModel",
+    "Eyring",
+    "InverseExponential",
+    "InverseEyring",
+    "InversePower",
+    "LifeModel",
+    "Linear",
+    "ParameterSubstitutionFitter",
+    "Power",
+    "PowerExponential",
     # AFT
     "AFT",
     "AFTFitter",

@@ -115,7 +115,7 @@ def prepare_Z(
         unchanged.
     """
     if not isinstance(Z, pd.DataFrame):
-        return Z
+        return np.asarray(Z)
 
     if model_spec is not None:
         return np.asarray(model_spec.get_model_matrix(Z), dtype=float)
