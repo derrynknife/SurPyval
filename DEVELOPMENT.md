@@ -53,41 +53,6 @@ A current-state audit of the whole `recurrent/` package (parametric intensity,
 renewal, regression, nonparametric, competing risks). Findings are grouped by
 theme; items already resolved are marked **[done]**.
 
-**A. Correctness bugs**
-- **[done]** `ProportionalIntensityHPP` crashed on left- or interval-censored
-  data: `Z_left`/`Z_i` were assigned only in the no-censoring `else` branches
-  (`hpp_proportional_intensity.py`) but used in the likelihood → `NameError`.
-  Now bound in the censoring-present branches too. While verifying the
-  end-to-end fit, two adjacent blockers were also fixed: `minimize(neg_ll,
-  [init])` double-wrapped the 1-D `init` into a 2-D array (broke *every*
-  fit, not just censored), and the initial-rate guess called
-  `np.maximum.at(..., data.x)` with a 2-D `x` for interval-censored data.
-  The NHPP sibling had the same `[init]` double-wrap, fixed too. Both
-  proportional-intensity docstring examples passed the event indicator
-  positionally into `i` (so they crashed) — rewritten to derive `c` from
-  `arrest` and supply a per-subject `i`, and now pass `--doctest-modules`.
-  Regression tests in `tests/recurrent/test_hpp_proportional_intensity.py`.
-- **[done]** Left-truncated MCF was wrong: `RecurrentEventData.to_xrd()`
-  built the at-risk set assuming every item enters at `t=0`, ignoring `tl`,
-  which biased the MCF and propagated to `CauseSpecificMCF`. The risk set is
-  now `#{items : tl_i ≤ x ≤ max_x_i}`, so a delayed-entry item only joins
-  once observation begins at its `tl` (and the no-truncation case still
-  reduces exactly to all-enter-at-origin). `tl`/`tr` are now exposed on
-  `NonParametricCounting.fit()` and `CauseSpecificMCF.fit()` so the bound can
-  actually be supplied. The nonparametric estimators now also reject the
-  cases their risk-set construction does *not* yet handle — right truncation
-  (finite `tr`), left censoring (`c=-1`) and interval censoring (`c=2`) —
-  with explanatory `ValueError`s instead of silently returning a wrong MCF.
-  Regression tests in `tests/recurrent/test_mcf_truncation.py`. (Left
-  truncation was already handled for the parametric NHPP likelihood via
-  `get_previous_x`.)
-- `nhpp_proportional_intensity.py:131` calls `dist.log_iif(...)`
-  unconditionally under a `# TODO`; crashes for any baseline lacking it, with
-  no log-path fallback (underflow risk).
-- Lower: NHPP/HPP likelihoods take `np.log(delta_cif)` with no guard against a
-  non-positive delta (pathological params mid-optimisation); `CoxLewis.inv_cif`
-  can return negative times → invalid interarrivals in simulation, unguarded.
-
 **B. Dead code / stubs / docs**
 - `ParametricRecurrenceRegressionModel` (`parametric_regression.py`) — `# TODO`
   stub simulation, never imported/exported. Remove or finish.
