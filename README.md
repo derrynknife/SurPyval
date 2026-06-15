@@ -43,6 +43,27 @@ SurPyval also offers many different distributions for users, and because of the 
 
 This project spawned from a Reliaility Engineering project; due to the history of reliability engineers estimating parameters from a probability plot. SurPyval has continued this tradition to ensure that any parametric distribution can have the estimate plotted on a probability plot. These visualisations enable an analyst to get a sense of the goodness of fit of the parametric distribution with the non-parametric distribution.
 
+# The Model Landscape
+
+SurPyval's models can be placed on a set of orthogonal axes. The table below
+cross-tabulates three of those axes &mdash; **event recurrence**, **competing
+events**, and **covariates** &mdash; against the **time scale** and
+**estimation** axes, and fills each cell with what can be used to implement it.
+A `&mdash;` marks a combination that is
+either not applicable (e.g. semiparametric estimation requires covariates) or
+not yet built.
+
+| Recurrence | Events | Covariates | Continuous &middot; Parametric | Continuous &middot; Semiparametric | Continuous &middot; Nonparametric | Discrete &middot; Parametric | Discrete &middot; Semiparametric | Discrete &middot; Nonparametric |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | &mdash; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` | `Bernoulli` | &mdash; | &mdash; |
+| Single event | Single | With | `WeibullPH`/`WeibullAFT` (PH/AFT/PO families) | `CoxPH` | &mdash; | &mdash; | &mdash; | &mdash; |
+| Single event | Competing | Without | &mdash; | &mdash; | `CompetingRisks` (CIF) | &mdash; | &mdash; | &mdash; |
+| Single event | Competing | With | &mdash; | `FineGray`, `CRPH` | &mdash; | &mdash; | &mdash; | &mdash; |
+| Recurrent | Single | Without | `HPP`, `NHPP`, `CrowAMSAA`, `Duane`, `CoxLewis` | &mdash; | `NonParametricCounting` (MCF) | &mdash; | &mdash; | &mdash; |
+| Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; |
+| Recurrent | Competing | Without | &mdash; | &mdash; | `CauseSpecificMCF` | &mdash; | &mdash; | &mdash; |
+| Recurrent | Competing | With | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; |
+
 # Install and Quick Intro
 
 SurPyval can be installed via pip using the PyPI [repository](https://pypi.org/project/surpyval/)
