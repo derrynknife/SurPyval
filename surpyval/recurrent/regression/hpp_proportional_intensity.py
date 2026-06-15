@@ -1,12 +1,16 @@
+from types import SimpleNamespace
+
 import numpy as np
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import handle_xicn
 
 from .proportional_intensity import ProportionalIntensityModel
 
 
+@singleton_fitter
 class ProportionalIntensityHPP:
     """
     A class representing the Proportional Intensity Homogeneous Poisson Process
@@ -52,20 +56,16 @@ class ProportionalIntensityHPP:
     <BLANKLINE>
     """
 
-    @classmethod
     def iif(self, x, rate):
         return np.ones_like(x) * rate
 
-    @classmethod
     def cif(self, x, rate):
         return rate * x
 
-    @classmethod
     def inv_cif(self, cif, rate):
         return cif / rate
 
-    @classmethod
-    def create_negll_func(cls, data):
+    def create_negll_func(self, data):
         x, c, n = data.x, data.c, data.n
         Z = data.Z
         x_prev = data.get_previous_x()
@@ -191,8 +191,7 @@ class ProportionalIntensityHPP:
 
         return negll_func
 
-    @classmethod
-    def fit(cls, x, Z, i=None, c=None, n=None, init=None):
+    def fit(self, x, Z, i=None, c=None, n=None, init=None):
         """
         Fit the model using the provided data and initial parameters (if given)
 
@@ -222,7 +221,6 @@ class ProportionalIntensityHPP:
         data = handle_xicn(x, i, c, n, Z=Z, as_recurrent_data=True)
 
         out = ProportionalIntensityModel()
-        out.dist = cls
         out.data = data
 
         out.param_names = ["lambda"]
@@ -240,7 +238,7 @@ class ProportionalIntensityHPP:
         num_covariates = Z.shape[1]
         init = np.append(np.log(init), np.zeros(num_covariates))
 
-        neg_ll = cls.create_negll_func(data)
+        neg_ll = self.create_negll_func(data)
 
         res = minimize(neg_ll, init)
         out.res = res
@@ -249,9 +247,9 @@ class ProportionalIntensityHPP:
         out.name = "Homogeneous Poisson Process"
         out.kind = "HPP"
         out.parameterization = "Parametric"
-        # Super hacky way, but it works.
-        dist = lambda x: None  # noqa: E731
-        dist.name = "Constant"
-        out.dist = dist
+        # The baseline rate is constant, so there is no fitted intensity
+        # distribution; expose a lightweight stand-in carrying just the name
+        # used by ``ProportionalIntensityModel``'s repr.
+        out.dist = SimpleNamespace(name="Constant")
 
         return out

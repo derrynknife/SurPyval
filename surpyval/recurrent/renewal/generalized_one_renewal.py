@@ -3,6 +3,7 @@ from scipy.optimize import minimize
 
 from surpyval import Weibull
 from surpyval.recurrent.renewal.renewal_model import RenewalModel
+from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_left_truncation,
@@ -10,6 +11,7 @@ from surpyval.utils.recurrent_utils import (
 )
 
 
+@singleton_fitter
 class GeneralizedOneRenewal:
     """
     A class to handle the G1 renewal process of Kaminskiy and Krivtsov, in
@@ -74,19 +76,17 @@ class GeneralizedOneRenewal:
 
         return sample
 
-    @classmethod
-    def _make_model(cls, underlying_model, q):
+    def _make_model(self, underlying_model, q):
         return RenewalModel(
             underlying_model,
             q,
             "q",
             "Restoration Factor",
             "G1 Renewal",
-            cls._build_sampler,
+            self._build_sampler,
         )
 
-    @classmethod
-    def create_negll_func(cls, x, i, c, n, dist):
+    def create_negll_func(self, x, i, c, n, dist):
         def negll_func(params):
             ll = 0
             q = params[0]
@@ -131,8 +131,7 @@ class GeneralizedOneRenewal:
                 "LogNormal).".format(dist.name, dist.support)
             )
 
-    @classmethod
-    def fit_from_recurrent_data(cls, data, dist=Weibull, init=None):
+    def fit_from_recurrent_data(self, data, dist=Weibull, init=None):
         """
         Fit the generalized renewal model from recurrent data.
 
@@ -176,15 +175,15 @@ class GeneralizedOneRenewal:
             alpha: 1.3494830373118245
              beta: 2.7838386997223212
         """
-        cls._check_dist_eligible(dist)
-        validate_renewal_censoring(data.c, cls.__name__)
-        reject_left_truncation(data, cls.__name__)
+        self._check_dist_eligible(dist)
+        validate_renewal_censoring(data.c, type(self).__name__)
+        reject_left_truncation(data, type(self).__name__)
         if init is None:
             dist_params = dist.fit(
                 data.interarrival_times, data.c, data.n
             ).params
 
-        neg_ll = cls.create_negll_func(
+        neg_ll = self.create_negll_func(
             data.interarrival_times, data.i, data.c, data.n, dist
         )
 
@@ -225,7 +224,7 @@ class GeneralizedOneRenewal:
 
         underlying_model = dist.from_params(list(res.x[1:]))
         q = res.x[0]
-        out = cls._make_model(underlying_model, q)
+        out = self._make_model(underlying_model, q)
         out.res = res
         out.data = data
         out._neg_ll = neg_ll
@@ -233,8 +232,7 @@ class GeneralizedOneRenewal:
         out._n_obs = len(data.x)
         return out
 
-    @classmethod
-    def fit(cls, x, i=None, c=None, n=None, dist=Weibull, init=None):
+    def fit(self, x, i=None, c=None, n=None, dist=Weibull, init=None):
         """
         Fit the generalized renewal model.
 
@@ -282,10 +280,9 @@ class GeneralizedOneRenewal:
              beta: 2.7838386997223212
         """
         data = handle_xicn(x, i, c, n, as_recurrent_data=True)
-        return cls.fit_from_recurrent_data(data, dist=dist, init=init)
+        return self.fit_from_recurrent_data(data, dist=dist, init=init)
 
-    @classmethod
-    def fit_from_parameters(cls, params, q, dist=Weibull):
+    def fit_from_parameters(self, params, q, dist=Weibull):
         """
         Fit the generalized renewal model from given parameters.
 
@@ -326,6 +323,6 @@ class GeneralizedOneRenewal:
              alpha: 10
               beta: 2
         """
-        cls._check_dist_eligible(dist)
+        self._check_dist_eligible(dist)
         model = dist.from_params(params)
-        return cls._make_model(model, q)
+        return self._make_model(model, q)

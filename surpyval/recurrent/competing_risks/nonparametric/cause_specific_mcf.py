@@ -27,7 +27,7 @@ def _counting_model_from_xrd(x, r, d):
     single cause. Mirrors the estimator in
     ``NonParametricCounting.fit_from_recurrent_data``.
     """
-    out = NonParametricCounting()
+    out = type(NonParametricCounting)()
     out.x, out.r, out.d = x, r, d
     out.mcf_hat = np.cumsum(d / r)
     var = 1.0 / r**2 * (d * (1 - 1.0 / r) ** 2 + (r - d) * (0 - 1.0 / r) ** 2)
