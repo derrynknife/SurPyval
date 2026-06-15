@@ -174,18 +174,6 @@ Only one test file with one test covers the entire recurrent module (`tests/recu
 
 ## 5. Code Quality
 
-### Structural refactors in the univariate parametric module
-Deferred from the June 2026 clean-up (sections 1–5 of that review are
-done):
-
-- `MixtureModel` composes rather than inherits: it now shares the
-  probability-plot code but still reimplements `sf/ff/df/mean/random`
-  aggregation and its own `R_cb`, and sets most attributes outside
-  `__init__`. Its `R_cb` is unreachable: it reads `self.res` and
-  `self.hess_inv`, which `_em()` never sets, so it raises
-  `AttributeError` on any fitted model. Either compute a Hessian after
-  EM or remove the method.
-
 ### Type hints are vestigial
 The package ships `py.typed`, but only `ParametricFitter.__init__` is
 annotated. Either grow annotations outward (fitter signatures and
