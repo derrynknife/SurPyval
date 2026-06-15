@@ -7,12 +7,17 @@
 
 
 from copy import copy
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import numpy.ma as ma
+import numpy.typing as npt
 from numpy.linalg import inv, pinv
 from scipy.optimize import root
 from scipy.stats import norm
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
@@ -402,7 +407,16 @@ class CoxPH_:
 
         return log_like, jac_hess, True
 
-    def fit(self, x, Z, c=None, n=None, tl=None, method="breslow", tol=1e-10):
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        method: str = "breslow",
+        tol: float = 1e-10,
+    ) -> SemiParametricRegressionModel:
         """
         Fits Cox Proportional Hazards model to the provided data.
 
@@ -436,6 +450,7 @@ class CoxPH_:
         # Good initial guess assumes no impact
         beta_init = np.zeros(Z.shape[1])
 
+        func_generator: Callable[..., Any]
         if method == "efron":
             func_generator = self.create_efron_ll_jac_hess
         elif method == "breslow":
@@ -489,14 +504,14 @@ class CoxPH_:
 
     def fit_from_df(
         self,
-        df,
-        x_col,
-        Z_cols=None,
-        c_col=None,
-        n_col=None,
-        formula=None,
-        method="efron",
-    ):
+        df: "pd.DataFrame",
+        x_col: str,
+        Z_cols: str | list[str] | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        formula: str | None = None,
+        method: str = "efron",
+    ) -> SemiParametricRegressionModel:
         """
         Fits a Cox PH model using a pandas dataframe as the input.
 

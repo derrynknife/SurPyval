@@ -1,10 +1,17 @@
+from typing import TYPE_CHECKING, Any
+
 import autograd.numpy as np
+import numpy.typing as npt
 from matplotlib import pyplot as plt
 from scipy.stats import uniform
 
 from surpyval.utils import fsli_to_xcnt
 
 from .regression_data import prepare_Z
+
+if TYPE_CHECKING:
+    import pandas as pd
+    from matplotlib.axes import Axes
 
 
 class ParametricRegressionModel:
@@ -21,11 +28,37 @@ class ParametricRegressionModel:
     # Covariate metadata populated when the model is fit from a pandas
     # DataFrame (see ``DataFrameRegressionMixin.fit_from_df``). These defaults
     # keep the array based interface working unchanged.
-    feature_names = None
-    formula = None
-    _model_spec = None
+    feature_names: list[str] | None = None
+    formula: str | None = None
+    _model_spec: Any = None
 
-    def _prepare_Z(self, Z):
+    # Attributes populated after construction (by ``fit`` / ``from_params``).
+    # Declared here so static type checkers know their types.
+    params: npt.NDArray
+    dist_params: npt.NDArray
+    phi_params: npt.NDArray
+    k: int
+    k_dist: int
+    gamma: float
+    p: float
+    f0: float
+    kind: str
+    fixed: dict[str, float]
+    dist: Any
+    distribution: Any
+    distribution_param_map: Any
+    phi_param_map: Any
+    reg_model: Any
+    model: Any
+    data: Any
+    res: Any
+    fun: Any
+    _neg_ll: float
+    _bic: float
+    _aic: float
+    _aic_c: float
+
+    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """
         Convert ``Z`` to a numeric design matrix.
 
@@ -36,7 +69,7 @@ class ParametricRegressionModel:
         """
         return prepare_Z(Z, self.feature_names, self._model_spec)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         dist_params = self.params[0 : self.k_dist]
         reg_model_params = self.params[self.k_dist :]
         dist_param_string = "\n".join(
@@ -86,11 +119,13 @@ class ParametricRegressionModel:
         else:
             return "Unable to fit values"
 
-    def phi(self, Z):
+    def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         Z = self._prepare_Z(Z)
         return self.reg_model.phi(Z, *self.phi_params)
 
-    def sf(self, x, Z):
+    def sf(
+        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+    ) -> npt.NDArray:
         r"""
         Surival (or Reliability) function for a distribution using the
         parameters found in the ``.params`` attribute.
@@ -126,7 +161,9 @@ class ParametricRegressionModel:
         Z = self._prepare_Z(Z)
         return self.model.sf(x, Z, *self.params)
 
-    def ff(self, x, Z):
+    def ff(
+        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+    ) -> npt.NDArray:
         r"""
         The cumulative distribution function, or failure function, for a
         distribution using the parameters found in the ``.params`` attribute.
@@ -163,7 +200,9 @@ class ParametricRegressionModel:
         Z = self._prepare_Z(Z)
         return self.model.ff(x, Z, *self.params)
 
-    def df(self, x, Z):
+    def df(
+        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+    ) -> npt.NDArray:
         r"""
         The density function for a distribution using the parameters found in
         the ``.params`` attribute.
@@ -200,7 +239,9 @@ class ParametricRegressionModel:
         Z = self._prepare_Z(Z)
         return self.model.df(x, Z, *self.params)
 
-    def hf(self, x, Z):
+    def hf(
+        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+    ) -> npt.NDArray:
         r"""
         The instantaneous hazard function for a distribution using the
         parameters found in the ``.params`` attribute.
@@ -238,7 +279,9 @@ class ParametricRegressionModel:
         Z = self._prepare_Z(Z)
         return self.model.hf(x, Z, *self.params)
 
-    def Hf(self, x, Z):
+    def Hf(
+        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+    ) -> npt.NDArray:
         r"""
 
         The cumulative hazard function for a distribution using the parameters
@@ -277,7 +320,9 @@ class ParametricRegressionModel:
         Z = self._prepare_Z(Z)
         return self.model.Hf(x, Z, *self.params)
 
-    def random(self, size, Z):
+    def random(
+        self, size: int, Z: "npt.ArrayLike | pd.DataFrame"
+    ) -> npt.NDArray:
         r"""
 
         A method to draw random samples from the distributions using the
@@ -354,7 +399,7 @@ class ParametricRegressionModel:
             # yet supported")
             return fsli_to_xcnt(f, s)
 
-    def neg_ll(self):
+    def neg_ll(self) -> float:
         r"""
 
         The the negative log-likelihood for the model, if it was fit with the
@@ -388,7 +433,7 @@ class ParametricRegressionModel:
 
         return self._neg_ll
 
-    def bic(self):
+    def bic(self) -> float:
         r"""
 
         The the Bayesian Information Criterion (BIC) for the model, if it was
@@ -433,7 +478,7 @@ class ParametricRegressionModel:
             )
             return self._bic
 
-    def aic(self):
+    def aic(self) -> float:
         r"""
 
         The the Aikake Information Criterion (AIC) for the model, if it was
@@ -468,7 +513,7 @@ class ParametricRegressionModel:
             self._aic = 2 * self.k + 2 * self.neg_ll()
             return self._aic
 
-    def aic_c(self):
+    def aic_c(self) -> float:
         r"""
 
         The the Corrected Aikake Information Criterion (AIC) for the model, if
@@ -505,7 +550,7 @@ class ParametricRegressionModel:
             self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
             return self._aic_c
 
-    def plot(self, ax=None):
+    def plot(self, ax: "Axes | None" = None) -> "Axes":
         r"""
 
         A method to plot the survival function, cumulative hazard function,

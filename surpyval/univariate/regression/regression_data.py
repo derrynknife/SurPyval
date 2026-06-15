@@ -9,12 +9,22 @@ time so that a DataFrame can be passed to ``sf``, ``ff``, ``df``, ``hf``,
 ``Hf`` and ``random`` and the correct columns will be selected automatically.
 """
 
+from typing import TYPE_CHECKING, Any, Callable
+
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from formulaic import Formula
 
+if TYPE_CHECKING:
+    from .parametric_regression_model import ParametricRegressionModel
 
-def design_matrix_from_df(df, Z_cols=None, formula=None):
+
+def design_matrix_from_df(
+    df: pd.DataFrame,
+    Z_cols: str | list[str] | None = None,
+    formula: str | None = None,
+) -> tuple[npt.NDArray, list[str], Any]:
     """
     Build a covariate design matrix ``Z`` from a pandas DataFrame.
 
@@ -59,6 +69,9 @@ def design_matrix_from_df(df, Z_cols=None, formula=None):
         Z = np.asarray(model_matrix, dtype=float)
         return Z, feature_names, model_spec
 
+    # Exactly one of Z_cols / formula is provided (validated above), so at
+    # this point (formula is None) Z_cols must be set.
+    assert Z_cols is not None
     if isinstance(Z_cols, str):
         Z_cols = [Z_cols]
     else:
@@ -72,7 +85,11 @@ def design_matrix_from_df(df, Z_cols=None, formula=None):
     return Z, Z_cols, None
 
 
-def prepare_Z(Z, feature_names=None, model_spec=None):
+def prepare_Z(
+    Z: "npt.ArrayLike | pd.DataFrame",
+    feature_names: list[str] | None = None,
+    model_spec: Any = None,
+) -> npt.NDArray:
     """
     Convert a covariate input ``Z`` into a numeric design matrix.
 
@@ -106,9 +123,7 @@ def prepare_Z(Z, feature_names=None, model_spec=None):
     if feature_names is not None:
         unknown = [c for c in feature_names if c not in Z.columns]
         if len(unknown) > 0:
-            raise ValueError(
-                "{} not in dataframe columns".format(unknown)
-            )
+            raise ValueError("{} not in dataframe columns".format(unknown))
         return Z[feature_names].values.astype(float)
 
     raise ValueError(
@@ -126,19 +141,22 @@ class DataFrameRegressionMixin:
     fixed=None)`` method returning a ``ParametricRegressionModel``.
     """
 
+    # Provided by the host fitter class this mixin is combined with.
+    fit: Callable[..., "ParametricRegressionModel"]
+
     def fit_from_df(
         self,
-        df,
-        x_col,
-        Z_cols=None,
-        c_col=None,
-        n_col=None,
-        tl_col=None,
-        tr_col=None,
-        formula=None,
-        init=None,
-        fixed=None,
-    ):
+        df: pd.DataFrame,
+        x_col: str,
+        Z_cols: str | list[str] | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
+        formula: str | None = None,
+        init: npt.ArrayLike | None = None,
+        fixed: dict[str, float] | None = None,
+    ) -> "ParametricRegressionModel":
         """
         Fit the regression model using a pandas DataFrame as the input.
 

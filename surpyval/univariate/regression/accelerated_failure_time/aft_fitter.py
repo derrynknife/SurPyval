@@ -1,4 +1,5 @@
 import autograd.numpy as np
+import numpy.typing as npt
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import bounds_convert
@@ -88,7 +89,16 @@ class AFTFitter(DataFrameRegressionMixin):
     def neg_ll(self, data, *params):
         return regression_neg_ll(self, data, *params)
 
-    def fit(self, x, Z, c=None, n=None, t=None, init=None, fixed=None):
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        init: npt.ArrayLike | None = None,
+        fixed: dict[str, float] | None = None,
+    ) -> ParametricRegressionModel:
         data = SurpyvalData(x, c, n, t, group_and_sort=False)
         data.add_covariates(Z)
 
@@ -97,6 +107,7 @@ class AFTFitter(DataFrameRegressionMixin):
 
         if init is None:
             ps = self.dist.fit_from_surpyval_data(data).params
+            assert data.Z is not None
             phi_init = np.zeros(data.Z.shape[1])
             init = np.array([*ps, *phi_init])
         else:

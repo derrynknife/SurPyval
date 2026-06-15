@@ -2,6 +2,7 @@ import inspect
 import warnings
 
 import autograd.numpy as np
+import numpy.typing as npt
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import bounds_convert
@@ -198,7 +199,16 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
     def neg_ll(self, data, *params):
         return regression_neg_ll(self, data, *params)
 
-    def fit(self, x, Z, c=None, n=None, t=None, init=None, fixed=None):
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        init: npt.ArrayLike | None = None,
+        fixed: dict[str, float] | None = None,
+    ) -> ParametricRegressionModel:
         data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
         data.add_covariates(Z)
         life_parameter_idx = self.param_map[self.life_parameter]
