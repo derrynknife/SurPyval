@@ -47,14 +47,15 @@ This project spawned from a Reliaility Engineering project; due to the history o
 
 SurPyval's models can be placed on a set of orthogonal axes. The table below
 cross-tabulates four of those axes &mdash; the **outcome** (a time-to-event
-duration vs a single pass/fail trial), **event recurrence**, **competing
+duration vs a pass/fail result), **event recurrence**, **competing
 events**, and **covariates** &mdash; against the **estimation** axis, and fills
-each cell with what can be used to implement it. Every time-to-event model
+each cell with what can be used to implement it. The recurrence axis spans both
+outcomes: a single pass/fail trial is `Bernoulli`, while repeated trials
+(the binomial case) are the recurrent counterpart. Every time-to-event model
 listed is continuous-time.
 A `&mdash;` marks a combination that is
-either not applicable (e.g. semiparametric estimation requires covariates,
-and recurrence/competing events are time-to-event concepts that do not apply
-to a pass/fail trial) or not yet built.
+either not applicable (e.g. semiparametric estimation requires covariates) or
+not yet built (e.g. the recurrent pass/fail / binomial cell).
 
 | Outcome | Recurrence | Events | Covariates | Parametric | Semiparametric | Nonparametric |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -66,7 +67,8 @@ to a pass/fail trial) or not yet built.
 | Time-to-event | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; | &mdash; |
 | Time-to-event | Recurrent | Competing | Without | &mdash; | &mdash; | `CauseSpecificMCF` |
 | Time-to-event | Recurrent | Competing | With | &mdash; | &mdash; | &mdash; |
-| Pass/fail | &mdash; | &mdash; | Without | `Bernoulli` | &mdash; | &mdash; |
+| Pass/fail | Single event | Single | Without | `Bernoulli` | &mdash; | &mdash; |
+| Pass/fail | Recurrent | Single | Without | &mdash; | &mdash; | &mdash; |
 
 # Install and Quick Intro
 
