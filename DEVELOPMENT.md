@@ -67,11 +67,20 @@ theme; items already resolved are marked **[done]**.
   positionally into `i` (so they crashed) — rewritten to derive `c` from
   `arrest` and supply a per-subject `i`, and now pass `--doctest-modules`.
   Regression tests in `tests/recurrent/test_hpp_proportional_intensity.py`.
-- Left-truncated MCF is wrong: `RecurrentEventData.to_xrd()` builds the
-  at-risk set assuming every item enters at `t=0`, ignoring `tl`; inflates the
-  MCF and propagates to `CauseSpecificMCF`. (Left truncation *is* handled for
-  the parametric NHPP likelihood via `get_previous_x`; only the nonparametric
-  risk set is wrong.)
+- **[done]** Left-truncated MCF was wrong: `RecurrentEventData.to_xrd()`
+  built the at-risk set assuming every item enters at `t=0`, ignoring `tl`,
+  which biased the MCF and propagated to `CauseSpecificMCF`. The risk set is
+  now `#{items : tl_i ≤ x ≤ max_x_i}`, so a delayed-entry item only joins
+  once observation begins at its `tl` (and the no-truncation case still
+  reduces exactly to all-enter-at-origin). `tl`/`tr` are now exposed on
+  `NonParametricCounting.fit()` and `CauseSpecificMCF.fit()` so the bound can
+  actually be supplied. The nonparametric estimators now also reject the
+  cases their risk-set construction does *not* yet handle — right truncation
+  (finite `tr`), left censoring (`c=-1`) and interval censoring (`c=2`) —
+  with explanatory `ValueError`s instead of silently returning a wrong MCF.
+  Regression tests in `tests/recurrent/test_mcf_truncation.py`. (Left
+  truncation was already handled for the parametric NHPP likelihood via
+  `get_previous_x`.)
 - `nhpp_proportional_intensity.py:131` calls `dist.log_iif(...)`
   unconditionally under a `# TODO`; crashes for any baseline lacking it, with
   no log-path fallback (underflow risk).
@@ -110,8 +119,10 @@ theme; items already resolved are marked **[done]**.
 **D. Missing capabilities**
 - No goodness-of-fit / trend tests anywhere (Laplace, MIL-HDBK-189C).
 - Truncation half-wired: `tr` not in the NHPP integral (right window-close
-  relies on a `c=1` row); MCF risk set ignores `tl` (see A); not exposed on
-  nonparametric `fit()`, regression `fit()`, or `CauseSpecificMCF.fit()`.
+  relies on a `c=1` row); still not exposed on the proportional-intensity
+  regression `fit()`. (The nonparametric MCF risk set now honours `tl`, and
+  `tl`/`tr` are exposed on `NonParametricCounting.fit()` and
+  `CauseSpecificMCF.fit()` — see A.)
 - `handle_xicn` has no `e` (event-mark) parameter, so `CauseSpecificMCF.fit`
   bypasses it and can't take truncation; no `fit_from_df` for marks.
 - The regression submodule and the nonparametric MCF have **zero tests**.
@@ -178,7 +189,7 @@ No martingale residuals, no cumulative-hazard residuals, no probability-integral
 ### Missing capabilities — medium priority
 
 **Left-truncation support (partial)**
-`handle_xicn` now takes the surpyval `t`/`tl`/`tr` truncation fields, and the calendar-time NHPP models (`HPP`, `CrowAMSAA`, `Duane`, `CoxLewis`) integrate each item's likelihood from its entry time `tl`, so delayed-entry (warranty-from-first-sale) data is analysed correctly there. The virtual-age / history-dependent models (Kijima/G1/ARA/ARI) reject `tl > 0` with an explanatory error, since the virtual age at entry is undefined without the pre-entry history. Still to do: delayed-entry risk sets in the nonparametric MCF (`NonParametricCounting.to_xrd` still assumes entry at 0), truncation passthrough for the proportional-intensity regression fitters, and multi-window (gapped) observation per item.
+`handle_xicn` now takes the surpyval `t`/`tl`/`tr` truncation fields, and the calendar-time NHPP models (`HPP`, `CrowAMSAA`, `Duane`, `CoxLewis`) integrate each item's likelihood from its entry time `tl`, so delayed-entry (warranty-from-first-sale) data is analysed correctly there. The virtual-age / history-dependent models (Kijima/G1/ARA/ARI) reject `tl > 0` with an explanatory error, since the virtual age at entry is undefined without the pre-entry history. The nonparametric MCF now uses delayed-entry risk sets (`RecurrentEventData.to_xrd` honours each item's `tl`, exposed on `NonParametricCounting.fit()` and `CauseSpecificMCF.fit()`). Still to do: truncation passthrough for the proportional-intensity regression fitters, and multi-window (gapped) observation per item.
 
 **No input validation**
 Negative times, NaN/inf values, and empty arrays all pass silently into the optimiser. Add a validation step in `handle_xicn()` with informative `ValueError`s.

@@ -17,6 +17,7 @@ from matplotlib import pyplot as plt
 
 from surpyval.recurrent.nonparametric.mcf import NonParametricCounting
 from surpyval.utils.recurrent_event_data import RecurrentEventData
+from surpyval.utils.recurrent_utils import reject_unsupported_nonparametric
 
 
 def _counting_model_from_xrd(x, r, d):
@@ -73,6 +74,7 @@ class CauseSpecificMCF:
                 "RecurrentEventData has no event-type marks; pass `e` to "
                 "fit a cause-specific MCF."
             )
+        reject_unsupported_nonparametric(data, "CauseSpecificMCF")
         out = cls()
         out.data = data
         out.event_types = data.event_types
@@ -84,7 +86,7 @@ class CauseSpecificMCF:
         return out
 
     @classmethod
-    def fit(cls, x, i=None, c=None, n=None, e=None):
+    def fit(cls, x, i=None, c=None, n=None, e=None, tl=None, tr=None):
         """
         Fit a cause-specific MCF.
 
@@ -100,6 +102,12 @@ class CauseSpecificMCF:
             Count of events at each row. Defaults to 1.
         e : array like
             Event type (mark) for each row. ``None`` for censored rows.
+        tl : array like or scalar, optional
+            Left-truncation (delayed-entry) time per item. The at-risk set
+            is shared across causes, so a delayed entry shrinks the risk set
+            for every cause until the item enters at ``tl``.
+        tr : array like or scalar, optional
+            Right-truncation time per item.
 
         Returns
         -------
@@ -116,5 +124,13 @@ class CauseSpecificMCF:
             c = np.zeros_like(x, dtype=int)
         if n is None:
             n = np.ones_like(x, dtype=int)
-        data = RecurrentEventData(x, i, c, n, e)
+        # RecurrentEventData expects per-row truncation bounds, so broadcast
+        # a scalar tl/tr to the full length here (handle_xicn does this via
+        # format_truncation, but the mark column means we build the data
+        # object directly).
+        if tl is not None:
+            tl = np.broadcast_to(np.asarray(tl, dtype=float), x.shape).copy()
+        if tr is not None:
+            tr = np.broadcast_to(np.asarray(tr, dtype=float), x.shape).copy()
+        data = RecurrentEventData(x, i, c, n, e, tl=tl, tr=tr)
         return cls.fit_from_recurrent_data(data)

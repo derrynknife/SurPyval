@@ -114,16 +114,27 @@ class RecurrentEventData:
                     for xi in x_unique
                 ]
             )
-            # count the number of items at their maximum x for each x_unique
-            # find the maximum x for each item
+            # Each item is at risk over its observation window: from its
+            # entry time up to and including its last observed time.
+            #
+            # The exit time is the item's maximum x (its last event or its
+            # right-censoring time). The entry time is the item's left
+            # truncation bound ``tl`` (delayed entry); when no truncation is
+            # supplied ``tl`` defaults to -inf, so the item is at risk from
+            # the start and this reduces to the all-enter-at-origin case. An
+            # item with a delayed entry only joins the risk set once ``x``
+            # reaches its ``tl``, so event times before that entry see a
+            # correspondingly smaller risk set (ignoring ``tl`` here would
+            # inflate the MCF).
             max_x = np.array(
                 [self.x[self.i == item].max() for item in self.items]
             )
-            # sum the number of items at each x in x_unique
-            # that are at their max
-            r = np.array([(max_x == xi).sum() for xi in x_unique])
-
-            r = len(self.items) * np.ones_like(x_unique) - r.cumsum() + r
+            entry = np.array(
+                [self.tl[self.i == item][0] for item in self.items]
+            )
+            r = np.array(
+                [((entry <= xi) & (xi <= max_x)).sum() for xi in x_unique]
+            )
 
             self.xrd = x_unique, r, d
         return self.xrd
