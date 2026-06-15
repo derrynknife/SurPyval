@@ -144,7 +144,10 @@ class ParametricFitter:
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
     def _plot_x_bounds(self, x, params):
-        """Return (x_scale_min, x_scale_max) for probability plots, or None to auto-compute from data."""
+        """Return (x_scale_min, x_scale_max) for probability plots.
+
+        Returns None to auto-compute the bounds from the data.
+        """
         return None
 
     @_check_x_not_empty

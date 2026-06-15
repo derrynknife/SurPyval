@@ -22,7 +22,8 @@ def test_left_censored_likelihood_evaluates():
 def test_interval_censored_likelihood_evaluates():
     # Regression test: Z_i had the same scoping bug for interval-censored data.
     x = np.array(
-        [[5.0, 5.0], [5.0, 9.0], [6.0, 6.0], [6.0, 11.0], [7.0, 7.0], [7.0, 12.0]]
+        [[5.0, 5.0], [5.0, 9.0], [6.0, 6.0],
+         [6.0, 11.0], [7.0, 7.0], [7.0, 12.0]]
     )
     c = np.array([0, 2, 0, 2, 0, 2])
     n = np.array([1, 2, 1, 3, 1, 2])
@@ -43,7 +44,8 @@ def test_left_censored_fit_succeeds():
 
 def test_interval_censored_fit_succeeds():
     x = np.array(
-        [[5.0, 5.0], [5.0, 9.0], [6.0, 6.0], [6.0, 11.0], [7.0, 7.0], [7.0, 12.0]]
+        [[5.0, 5.0], [5.0, 9.0], [6.0, 6.0],
+         [6.0, 11.0], [7.0, 7.0], [7.0, 12.0]]
     )
     c = np.array([0, 2, 0, 2, 0, 2])
     n = np.array([1, 2, 1, 3, 1, 2])

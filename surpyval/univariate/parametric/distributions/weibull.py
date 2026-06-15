@@ -382,5 +382,4 @@ class Weibull_(ParametricFitter):
         return alpha, beta
 
 
-
 Weibull: ParametricFitter = Weibull_("Weibull")
