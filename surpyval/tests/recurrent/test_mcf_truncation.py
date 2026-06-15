@@ -11,6 +11,7 @@ which shares this risk set).
 """
 
 import numpy as np
+import pytest
 
 from surpyval import RecurrentEventData
 from surpyval.recurrent.competing_risks import CauseSpecificMCF
@@ -102,6 +103,52 @@ def test_cause_specific_mcf_shares_truncated_risk_set():
         model.x, [2.0, 5.0, 6.0, 8.0, 10.0, 12.0]
     )
     np.testing.assert_array_equal(model.r, [1, 2, 2, 2, 2, 1])
+
+
+def test_nonparametric_rejects_right_truncation():
+    # Right truncation is not yet handled by the risk-set construction; the
+    # nonparametric MCF must fail rather than silently ignore tr.
+    with pytest.raises(ValueError, match="right truncation"):
+        NonParametricCounting.fit(
+            np.array([3.0, 7.0]), np.array([1, 1]), tr=10.0
+        )
+
+
+def test_nonparametric_rejects_left_censoring():
+    data = RecurrentEventData(
+        np.array([1.0, 3.0, 5.0]),
+        np.array([1, 1, 1]),
+        np.array([-1, 0, 1]),
+        np.ones(3),
+    )
+    with pytest.raises(ValueError, match="left-censored"):
+        NonParametricCounting.fit_from_recurrent_data(data)
+
+
+def test_nonparametric_rejects_interval_censoring():
+    data = RecurrentEventData(
+        np.array([1.0, 3.0, 5.0]),
+        np.array([1, 1, 1]),
+        np.array([0, 2, 1]),
+        np.ones(3),
+    )
+    with pytest.raises(ValueError, match="interval-censored"):
+        NonParametricCounting.fit_from_recurrent_data(data)
+
+
+def test_cause_specific_mcf_rejects_unsupported():
+    # The same restriction flows through the cause-specific estimator.
+    x = np.array([1.0, 3.0, 5.0])
+    i = np.array([1, 1, 1])
+    e = ["a", "b", None]
+    with pytest.raises(ValueError, match="left-censored"):
+        CauseSpecificMCF.fit(
+            x, i, c=np.array([-1, 0, 1]), e=e
+        )
+    with pytest.raises(ValueError, match="right truncation"):
+        CauseSpecificMCF.fit(
+            x, i, c=np.array([0, 0, 1]), e=e, tr=10.0
+        )
 
 
 def test_cause_specific_mcf_scalar_truncation_broadcasts():

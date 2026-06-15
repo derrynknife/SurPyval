@@ -17,6 +17,7 @@ from matplotlib import pyplot as plt
 
 from surpyval.recurrent.nonparametric.mcf import NonParametricCounting
 from surpyval.utils.recurrent_event_data import RecurrentEventData
+from surpyval.utils.recurrent_utils import reject_unsupported_nonparametric
 
 
 def _counting_model_from_xrd(x, r, d):
@@ -73,6 +74,7 @@ class CauseSpecificMCF:
                 "RecurrentEventData has no event-type marks; pass `e` to "
                 "fit a cause-specific MCF."
             )
+        reject_unsupported_nonparametric(data, "CauseSpecificMCF")
         out = cls()
         out.data = data
         out.event_types = data.event_types

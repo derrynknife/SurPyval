@@ -2,7 +2,10 @@ from autograd import numpy as np
 from matplotlib import pyplot as plt
 from scipy.stats import norm, t
 
-from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.recurrent_utils import (
+    handle_xicn,
+    reject_unsupported_nonparametric,
+)
 
 
 class NonParametricCounting:
@@ -113,6 +116,7 @@ class NonParametricCounting:
 
     @classmethod
     def fit_from_recurrent_data(cls, data):
+        reject_unsupported_nonparametric(data, "NonParametricCounting")
         out = cls()
         out.data = data
         out.x, out.r, out.d = data.to_xrd()

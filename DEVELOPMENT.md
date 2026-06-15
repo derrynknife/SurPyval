@@ -74,9 +74,13 @@ theme; items already resolved are marked **[done]**.
   once observation begins at its `tl` (and the no-truncation case still
   reduces exactly to all-enter-at-origin). `tl`/`tr` are now exposed on
   `NonParametricCounting.fit()` and `CauseSpecificMCF.fit()` so the bound can
-  actually be supplied. Regression tests in
-  `tests/recurrent/test_mcf_truncation.py`. (Left truncation was already
-  handled for the parametric NHPP likelihood via `get_previous_x`.)
+  actually be supplied. The nonparametric estimators now also reject the
+  cases their risk-set construction does *not* yet handle — right truncation
+  (finite `tr`), left censoring (`c=-1`) and interval censoring (`c=2`) —
+  with explanatory `ValueError`s instead of silently returning a wrong MCF.
+  Regression tests in `tests/recurrent/test_mcf_truncation.py`. (Left
+  truncation was already handled for the parametric NHPP likelihood via
+  `get_previous_x`.)
 - `nhpp_proportional_intensity.py:131` calls `dist.log_iif(...)`
   unconditionally under a `# TODO`; crashes for any baseline lacking it, with
   no log-path fallback (underflow risk).
