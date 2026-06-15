@@ -115,8 +115,9 @@ class NonParametricCounting:
     def fit_from_recurrent_data(cls, data):
         out = cls()
         out.data = data
-        x, r, d = data.to_xrd()
         out.x, out.r, out.d = data.to_xrd()
+        d = out.d
+        r = out.r
 
         out.mcf_hat = np.cumsum(d / r)
         var = (
@@ -130,6 +131,32 @@ class NonParametricCounting:
         return out
 
     @classmethod
-    def fit(cls, x, i=None, c=None, n=None):
-        data = handle_xicn(x, i, c, n, as_recurrent_data=True)
+    def fit(cls, x, i=None, c=None, n=None, tl=None, tr=None):
+        """
+        Fit a nonparametric (Nelson-Aalen) MCF.
+
+        Parameters
+        ----------
+        x : array like
+            Event (and censoring) times.
+        i : array like, optional
+            Item / subject id for each row. Defaults to a single item.
+        c : array like, optional
+            Censoring flag for each row (0 observed, 1 right censored).
+        n : array like, optional
+            Count of events at each row. Defaults to 1.
+        tl : array like or scalar, optional
+            Left-truncation (delayed-entry) time per item. An item only
+            enters the at-risk set once observation begins at ``tl``, so
+            earlier event times are estimated over a smaller risk set.
+        tr : array like or scalar, optional
+            Right-truncation time per item.
+
+        Returns
+        -------
+        NonParametricCounting
+        """
+        data = handle_xicn(
+            x, i, c, n, tl=tl, tr=tr, as_recurrent_data=True
+        )
         return cls.fit_from_recurrent_data(data)
