@@ -68,6 +68,7 @@ not yet built (e.g. the recurrent pass/fail / binomial cell).
 | Time-to-event | Recurrent | Competing | Without | &mdash; | &mdash; | `CauseSpecificMCF` |
 | Time-to-event | Recurrent | Competing | With | &mdash; | &mdash; | &mdash; |
 | Pass/fail | Single event | Single | Without | `Bernoulli` | &mdash; | &mdash; |
+| Pass/fail | Single event | Single | With | use logistic regression (out of scope for this package) | &mdash; | &mdash; |
 | Pass/fail | Recurrent | Single | Without | &mdash; | &mdash; | &mdash; |
 
 # Install and Quick Intro
