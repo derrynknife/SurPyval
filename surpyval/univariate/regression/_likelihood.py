@@ -75,27 +75,19 @@ def regression_neg_ll(model, data, *params):
     ll = 0.0
 
     if data.x_o.size > 0:
-        ll = ll + (
-            data.n_o * model.log_df(data.x_o, data.Z_o, *params)
-        ).sum()
+        ll = ll + (data.n_o * model.log_df(data.x_o, data.Z_o, *params)).sum()
 
     if data.x_r.size > 0:
-        ll = ll + (
-            data.n_r * model.log_sf(data.x_r, data.Z_r, *params)
-        ).sum()
+        ll = ll + (data.n_r * model.log_sf(data.x_r, data.Z_r, *params)).sum()
 
     if data.x_l.size > 0:
-        ll = ll + (
-            data.n_l * model.log_ff(data.x_l, data.Z_l, *params)
-        ).sum()
+        ll = ll + (data.n_l * model.log_ff(data.x_l, data.Z_l, *params)).sum()
 
     if data.x_il.size > 0:
         # Interval censoring: P(xl < X < xr | Z) = F(xr) - F(xl).
         right = model.ff(data.x_ir, data.Z_i, *params)
         left = model.ff(data.x_il, data.Z_i, *params)
-        ll = ll + (
-            data.n_i * np.log(np.maximum(right - left, _TINY))
-        ).sum()
+        ll = ll + (data.n_i * np.log(np.maximum(right - left, _TINY))).sum()
 
     ll = ll - truncation_correction(model, data, *params)
 

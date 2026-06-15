@@ -256,7 +256,7 @@ class ProportionalHazardsFitter(DataFrameRegressionMixin):
         if fixed is None:
             fixed = {}
 
-        if init is None or len(init) == 0:
+        if init is None or len(init) == 0:  # type: ignore[arg-type]
             ps = self.dist.fit_from_surpyval_data(data).params
             if callable(self.phi_init):
                 init_phi = self.phi_init(Z)

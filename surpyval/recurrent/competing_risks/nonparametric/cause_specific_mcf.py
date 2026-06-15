@@ -106,8 +106,9 @@ class CauseSpecificMCF:
         CauseSpecificMCF
         """
         if e is None:
-            raise ValueError("`e` (event types) is required for a "
-                             "cause-specific MCF.")
+            raise ValueError(
+                "`e` (event types) is required for a " "cause-specific MCF."
+            )
         x = np.asarray(x)
         if i is None:
             i = np.ones_like(x, dtype=int)

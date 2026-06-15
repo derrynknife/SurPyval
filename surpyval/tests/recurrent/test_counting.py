@@ -159,9 +159,7 @@ def test_count_terminated_simulation_via_mixin():
     model = GeneralizedOneRenewal.fit(x, dist=Weibull)
     np.random.seed(0)
     np_model = model.count_terminated_simulation(len(x), 5000)
-    expected = np.array(
-        [0.1696, 1.181, 2.287, 3.6694, 5.58237925, 8.54474531]
-    )
+    expected = np.array([0.1696, 1.181, 2.287, 3.6694, 5.58237925, 8.54474531])
     assert np.allclose(np_model.mcf(np.array([1, 2, 3, 4, 5, 6])), expected)
 
 
@@ -279,9 +277,7 @@ def test_seed_none_defers_to_global_rng():
     got = model.count_terminated_simulation(len(x), 5000).mcf(
         np.array([1, 2, 3, 4, 5, 6])
     )
-    expected = np.array(
-        [0.1696, 1.181, 2.287, 3.6694, 5.58237925, 8.54474531]
-    )
+    expected = np.array([0.1696, 1.181, 2.287, 3.6694, 5.58237925, 8.54474531])
     assert np.allclose(got, expected)
 
 

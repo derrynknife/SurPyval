@@ -1166,7 +1166,7 @@ class NonParametric(NonParametricDistribution):
         )
         # MAKE THE PLOT
         # Set the y limits
-        ax.set_ylim([d["y_scale_min"], d["y_scale_max"]])
+        ax.set_ylim((d["y_scale_min"], d["y_scale_max"]))
 
         # Label it
         ax.set_title("Model Survival Plot")
@@ -1179,7 +1179,11 @@ class NonParametric(NonParametricDistribution):
 
         if plot_bounds:
             cbs = d["cbs"]
-            band_kwargs = {"alpha": 0.3, "color": color, "linewidth": 0}
+            band_kwargs: dict[str, Any] = {
+                "alpha": 0.3,
+                "color": color,
+                "linewidth": 0,
+            }
             if interp == "step":
                 band_kwargs["step"] = "post"
             if np.ndim(cbs) == 2:
@@ -1214,13 +1218,13 @@ class NonParametric(NonParametricDistribution):
     ) -> "NonParametric":
         out = cls()
         out.model = "from_ecdf"
-        out.R = R
-        out.x = x
+        out.R = np.asarray(R)
+        out.x = np.asarray(x)
         out.F = 1 - out.R
         with np.errstate(all="ignore"):
             out.H = -np.log(out.R)
         # Without r and d there is no variance estimate, and therefore
         # no confidence bounds, for the model.
-        out.greenwood = None
+        out.greenwood = None  # type: ignore[assignment]
 
         return out
