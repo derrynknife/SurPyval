@@ -10,6 +10,8 @@ a fitter class rather than a class that is only ever instantiated once.
 ``Foo = Foo_(...)`` boilerplate that this otherwise requires.
 """
 
+import sys
+
 
 def singleton_fitter(cls):
     """Bind the decorated class' name to a single configured instance.
@@ -24,8 +26,14 @@ def singleton_fitter(cls):
                 ...
 
         HPP.fit(x)        # HPP is the instance; fit is an instance method
-        type(HPP)         # the underlying class, if it is ever needed
 
-    The underlying class remains reachable via ``type(instance)``.
+    The underlying class remains reachable via ``type(instance)`` and, for
+    Sphinx ``autoclass`` and other import-by-name introspection, is also kept
+    in its defining module under the conventional ``<Name>_`` alias (e.g.
+    ``HPP_``) -- the same private name the explicit ``Foo_`` + ``Foo = Foo_()``
+    pattern used before.
     """
+    module = sys.modules.get(cls.__module__)
+    if module is not None:
+        setattr(module, cls.__name__ + "_", cls)
     return cls()

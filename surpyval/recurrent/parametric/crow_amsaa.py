@@ -1,9 +1,12 @@
 import numpy as np
 
+from surpyval.utils.fitter import singleton_fitter
+
 from .nhpp_fitter import NHPPFitter
 
 
-class CrowAMSAA_(NHPPFitter):
+@singleton_fitter
+class CrowAMSAA(NHPPFitter):
     """
     A class to represent the Crow-AMSAA model for non-homogeneous Poisson
     processes (NHPP). This model is used in reliability analysis to predict
@@ -139,6 +142,3 @@ class CrowAMSAA_(NHPPFitter):
         alpha = params[0]
         beta = params[1]
         return alpha * (N ** (1.0 / beta))
-
-
-CrowAMSAA = CrowAMSAA_()
