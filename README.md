@@ -45,11 +45,11 @@ This project spawned from a Reliaility Engineering project; due to the history o
 
 # The Model Landscape
 
-SurPyval's models can be placed on a set of orthogonal axes (see
-[`MODEL_ATLAS.md`](MODEL_ATLAS.md)). The table below cross-tabulates three of
-those axes &mdash; **event recurrence**, **competing events**, and **covariates**
-&mdash; against the **time scale** and **estimation** axes, and fills each cell
-with what can be used to implement it. A `&mdash;` marks a combination that is
+SurPyval's models can be placed on a set of orthogonal axes. The table below
+cross-tabulates three of those axes &mdash; **event recurrence**, **competing
+events**, and **covariates** &mdash; against the **time scale** and
+**estimation** axes, and fills each cell with what can be used to implement it.
+A `&mdash;` marks a combination that is
 either not applicable (e.g. semiparametric estimation requires covariates) or
 not yet built.
 
