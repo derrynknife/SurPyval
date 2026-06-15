@@ -8,6 +8,7 @@ from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_left_truncation,
+    validate_memory,
     validate_renewal_censoring,
 )
 
@@ -80,15 +81,6 @@ class ARA:
     >>>
     >>> model = ARA.fit(x, i, c=c, m=2)
     """
-
-    @staticmethod
-    def _validate_memory(m):
-        if m == np.inf:
-            return
-        if not (isinstance(m, (int, np.integer)) and m >= 1):
-            raise ValueError(
-                "m must be a positive integer or numpy.inf; got {!r}".format(m)
-            )
 
     @staticmethod
     def _build_sampler(model):
@@ -179,7 +171,7 @@ class ARA:
         RenewalModel
             A fitted renewal model.
         """
-        self._validate_memory(m)
+        validate_memory(m)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
 
@@ -293,6 +285,6 @@ class ARA:
         ARA
             An ARA object built from the supplied parameters.
         """
-        self._validate_memory(m)
+        validate_memory(m)
         model = dist.from_params(params)
         return self._make_model(model, rho, m)

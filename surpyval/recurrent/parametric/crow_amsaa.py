@@ -61,7 +61,7 @@ class CrowAMSAA(NHPPFitter):
         x : float
             The value at which CIF is evaluated.
         params : tuple
-            Parameters of the Duane model.
+            Parameters of the Crow-AMSAA model.
 
 
         Returns
@@ -85,7 +85,7 @@ class CrowAMSAA(NHPPFitter):
         x : float
             The value at which IIF is evaluated.
         params : tuple
-            Parameters of the Duane model.
+            Parameters of the Crow-AMSAA model.
 
         Returns
         -------
@@ -108,7 +108,7 @@ class CrowAMSAA(NHPPFitter):
         x : float
             The value at which log(IIF) is evaluated.
         params : tuple
-            Parameters of the Duane model.
+            Parameters of the Crow-AMSAA model.
 
         Returns
         -------
@@ -131,7 +131,7 @@ class CrowAMSAA(NHPPFitter):
         N : float
             The number of events expected to have occured.
         params : tuple
-            Parameters of the Duane model.
+            Parameters of the Crow-AMSAA model.
 
         Returns
         -------

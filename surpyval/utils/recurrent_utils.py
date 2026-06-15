@@ -54,6 +54,21 @@ def reject_unsupported_nonparametric(
         )
 
 
+def validate_memory(m: object) -> None:
+    """
+    The Arithmetic Reduction of Age/Intensity models (``ARA``/``ARI``) are
+    parameterised by an integer memory ``m`` (how many prior failures the
+    repair acts on), with ``m = numpy.inf`` recovering the infinite-memory
+    limit. Reject anything that is neither a positive integer nor ``inf``.
+    """
+    if m == np.inf:
+        return
+    if not (isinstance(m, (int, np.integer)) and m >= 1):
+        raise ValueError(
+            "m must be a positive integer or numpy.inf; got {!r}".format(m)
+        )
+
+
 def validate_renewal_censoring(c: npt.ArrayLike, model_name: str) -> None:
     """
     The renewal models only define likelihood contributions for exact events
