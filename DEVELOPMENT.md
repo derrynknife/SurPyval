@@ -192,11 +192,12 @@ done):
   a `support_param_index` naming which fitted parameters supply the
   bounds, and `fit_from_surpyval_data`/`from_params` resolve the
   support from them. The new four-parameter Beta (`Beta4`) uses this
-  path with `support_param_index=(2, 3)`. `Uniform` still declares
-  `support=(-np.inf, np.inf)` rather than NaN (see the comment in
-  `distributions/uniform.py`); it could be migrated to the NaN path
-  with `support_param_index=(0, 1)` (the default) for consistency, but
-  the current workaround is harmless.
+  path with `support_param_index=(2, 3)`, and `Uniform` now uses it too
+  with the default `support_param_index=(0, 1)` (June 2026): it
+  previously declared `support=(-np.inf, np.inf)`, which made a fitted
+  uniform report its support as the whole real line instead of the
+  estimated `[a, b]`. `from_params` now also rejects offsetting any
+  data-dependent (NaN) support, matching the `fit` path.
 - `MixtureModel` composes rather than inherits: it now shares the
   probability-plot code but still reimplements `sf/ff/df/mean/random`
   aggregation and its own `R_cb`, and sets most attributes outside

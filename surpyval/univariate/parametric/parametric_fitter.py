@@ -1087,7 +1087,13 @@ class ParametricFitter:
             detail = f"Must have {self.k} params for {self.name} distribution"
             raise ValueError(detail)
 
-        if gamma is not None and np.isinf(self.support).all():
+        # Offsetting only makes sense for a half-line support; a fully
+        # unbounded support (Normal) or a data-dependent one whose bounds
+        # are themselves estimated (Uniform/Beta4, declared NaN) cannot be
+        # offset. This mirrors the ``offsettable`` check in ``fit``.
+        if gamma is not None and (
+            np.isinf(self.support).all() or np.isnan(self.support).any()
+        ):
             detail = f"{self.name} distribution cannot be offset"
             raise ValueError(detail)
 

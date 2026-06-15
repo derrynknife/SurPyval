@@ -189,9 +189,9 @@ def test_set_support_matches_from_params():
     assert np.array_equal(model.support, via_from_params.support)
 
 
-def test_set_support_uniform_workaround():
-    # Uniform keeps the (-inf, inf) declaration rather than NaN; the helper
-    # must reproduce that rather than read the fitted a/b.
+def test_set_support_uniform_is_data_dependent():
+    # Uniform declares NaN support and resolves [a, b] from the fitted
+    # params (support_param_index defaults to (0, 1)).
     model = _make_model([2.0, 7.0])
     Uniform._set_support(model, offset=False)
-    assert np.array_equal(model.support, [-np.inf, np.inf])
+    assert np.array_equal(model.support, [2.0, 7.0])

@@ -8,8 +8,11 @@ class Uniform_(ParametricFitter):
             name=name,
             k=2,
             bounds=((None, None), (None, None)),
-            # I don't like this being -Inf to +Inf, but it works well.
-            support=(-np.inf, np.inf),
+            # The support of a uniform is its fitted [a, b] interval, so it
+            # is data-dependent (undefined until the model is set), not the
+            # whole real line. Declare it NaN and let support_param_index
+            # (default (0, 1) == a, b) resolve it once the params are known.
+            support=(np.nan, np.nan),
             param_names=["a", "b"],
             param_map={"a": 0, "b": 1},
             plot_x_scale="linear",
