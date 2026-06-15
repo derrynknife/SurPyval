@@ -4,6 +4,15 @@ Changelog
 v0.11.0 (planned)
 -----------------
 
+- Standardised the recurrent-model API on the same instance-based fitters the
+  univariate distributions use. Every recurrent fitter (``HPP``, ``CrowAMSAA``,
+  ``Duane``, ``CoxLewis``, ``NonParametricCounting``, the renewal fitters
+  ``GeneralizedRenewal``/``GeneralizedOneRenewal``/``ARA``/``ARI`` and the
+  proportional-intensity fitters) is now a configured singleton instance with
+  an instance-method ``fit()`` rather than a class with a ``@classmethod fit``.
+  Public ``Model.fit(...)`` calls are unchanged. Internally this is provided by
+  the new ``surpyval.utils.fitter.singleton_fitter`` decorator. Also removed the
+  unused ``ParametricRecurrenceRegressionModel`` stub.
 - General ALT fitter full release
 - General PH fitter full release
 - Formulas

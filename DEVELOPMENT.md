@@ -54,8 +54,10 @@ renewal, regression, nonparametric, competing risks). Findings are grouped by
 theme; items already resolved are marked **[done]**.
 
 **B. Dead code / stubs / docs**
-- `ParametricRecurrenceRegressionModel` (`parametric_regression.py`) — `# TODO`
-  stub simulation, never imported/exported. Remove or finish.
+- `ParametricRecurrenceRegressionModel` (`parametric_regression.py`) — was a
+  `# TODO` stub, never imported/exported and a duplicate of
+  `ParametricRecurrenceModel`; recurrence-regression results are served by
+  `ProportionalIntensityModel`. **[done]** (file removed)
 - `_validate_memory` duplicated verbatim in `renewal/ara.py` and
   `renewal/ari.py`.
 - 16 copy-pasted docstrings read "Parameters of the Duane model" inside
@@ -97,8 +99,9 @@ theme; items already resolved are marked **[done]**.
 - `ProportionalIntensityModel.cif(x, Z)` / `time_terminated_simulation(T, Z,
   ...)` require `Z` at call time vs `ParametricRecurrenceModel.cif(x)`.
 - `HPP` is not an `NHPPFitter`; `how=` only on `NHPPFitter`; `__repr__`
-  hardcodes "Fitted by: MLE"; string dispatch `dist.name == "CoxLewis"`;
-  `@classmethod` on `iif`/`cif` that take `self`.
+  hardcodes "Fitted by: MLE"; string dispatch `dist.name == "CoxLewis"`.
+  (The `@classmethod`-on-`iif`/`cif`-that-take-`self` inconsistency is **[done]**
+  — see F, all recurrent fitters are now instance-based.)
 
 **F. Resolved since this review began** *(this branch)*
 - Renewal fitters now return a generic `RenewalModel` (fitter/model split
@@ -111,6 +114,16 @@ theme; items already resolved are marked **[done]**.
   **[done]**
 - `kijima_type` validation; `q` bounded `≥ 0`; dead `q = q` removed;
   `RecurrenceSimulationMixin` de-duplication. **[done]**
+- Fitter API standardised on instances: every recurrent fitter (`HPP`,
+  `CrowAMSAA`, `Duane`, `CoxLewis`, `NonParametricCounting`, the renewal and
+  proportional-intensity fitters) is now a configured singleton instance with
+  an instance-method `fit()`, matching the univariate `Weibull_ → Weibull`
+  pattern, via the `surpyval.utils.fitter.singleton_fitter` decorator.
+  Classmethod `fit`/`fit_from_recurrent_data` and the `@classmethod` `iif`/`cif`
+  are gone; public `X.fit(...)` calls are unchanged. The dead
+  `ParametricRecurrenceRegressionModel` stub was removed and the
+  `ProportionalIntensityHPP` "dummy dist" lambda replaced with a
+  `SimpleNamespace`. **[done]**
 
 ---
 
@@ -123,9 +136,6 @@ Variable is never read back so it is silent dead code today, but it will break a
 **`log_iif()` not implemented for proportional-intensity NHPP**
 **File:** `surpyval/recurrent/regression/nhpp_proportional_intensity.py:129` — marked TODO.
 The MLE likelihood falls back to the non-log path; for small intensities this causes underflow and silent NaN log-likelihoods.
-
-**`ParametricRecurrenceRegressionModel` is incomplete and unexported**
-**File:** `surpyval/recurrent/regression/parametric_regression.py:137` — simulation methods are marked TODO, class is defined but never imported in `__init__.py`.
 
 **`CoxLewis.inv_cif()` can return negative times**
 When `ln(N) < alpha`, the expression `(ln(N) - alpha) / beta` is negative. No guard or error is raised; simulation silently produces invalid (negative) event times.
@@ -199,14 +209,14 @@ Decide a policy: either render with `np.float64(...)` reprs and run
 doctests in CI, or keep the readable plain-float style and accept that
 examples are unchecked.
 
-### Triplicated simulation block
-The same "simulate timelines to `T`" loop appears three times:
+### Duplicated simulation block
+The same "simulate timelines to `T`" loop appears twice (it was three times
+before `parametric_regression.py` was removed):
 
 - `surpyval/recurrent/parametric/parametric_recurrence.py` (`time_terminated_simulation`)
 - `surpyval/recurrent/regression/proportional_intensity.py` (`time_terminated_simulation`)
-- `surpyval/recurrent/regression/parametric_regression.py` (`time_terminated_simulation`)
 
-The broken convergence-failure handling in each copy was fixed (all three now emit the same `warnings.warn`), but the duplication remains. Extract a shared helper. The `count_terminated_simulation` methods are similarly triplicated.
+The broken convergence-failure handling in each copy was fixed (both now emit the same `warnings.warn`), but the duplication remains. Extract a shared helper. The `count_terminated_simulation` methods are similarly duplicated.
 
 ---
 
