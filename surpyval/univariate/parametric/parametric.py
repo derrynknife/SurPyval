@@ -1,8 +1,11 @@
 import json
 from collections import namedtuple
 from copy import copy, deepcopy
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable
 
 import matplotlib.pyplot as plt
+import numpy.typing as npt
 from autograd import jacobian
 from scipy.special import ndtri as z
 from scipy.stats import uniform
@@ -10,6 +13,11 @@ from scipy.stats import uniform
 import surpyval as surv
 from surpyval import ParametricDistribution, np
 from surpyval.utils import fsli_to_xcnt
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+
+    from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -35,7 +43,36 @@ class Parametric(ParametricDistribution):
     analysis and numeric integration.
     """
 
-    def __init__(self, dist, method, data, offset, lfp, zi):
+    # Attributes populated after construction (by ``fit``, ``from_dict``
+    # or ``from_params``). Declared here so static type checkers know
+    # their types; the bare annotations do not create the attributes, so
+    # the ``hasattr``/``getattr`` guards throughout still behave.
+    params: npt.NDArray
+    gamma: float
+    p: float
+    f0: float
+    support: tuple[float, float]
+    hess_inv: npt.NDArray
+    cov_matrix: npt.NDArray
+    surv_data: "SurpyvalData"
+    fitting_info: dict[str, Any]
+    tl: Any
+    tr: Any
+    _neg_ll: float
+    _mean: float
+    _bic: float
+    _aic: float
+    _aic_c: float
+
+    def __init__(
+        self,
+        dist: Any,
+        method: str,
+        data: Any,
+        offset: bool,
+        lfp: bool,
+        zi: bool,
+    ) -> None:
         self.dist = dist
         self.k = copy(dist.k)
         self.method = method
@@ -82,12 +119,12 @@ class Parametric(ParametricDistribution):
         self.param_map = param_map
 
     @classmethod
-    def from_json(cls, fp):
+    def from_json(cls, fp: str | Path) -> "Parametric":
         with open(fp, "r") as f:
             return cls.from_dict(json.load(f))
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict) -> "Parametric":
         # Imported here since parametric_fitter imports this module
         from surpyval.univariate.parametric.parametric_fitter import (
             ParametricFitter,
@@ -137,14 +174,14 @@ class Parametric(ParametricDistribution):
 
         return out
 
-    def to_dict(self, with_data=False):
-        out = {}
+    def to_dict(self, with_data: bool = False) -> dict:
+        out: dict[str, Any] = {}
         out["parameterization"] = "parametric"
         out["distribution"] = self.dist.name
         out["how"] = self.method
         out["param_names"] = self.dist.param_names
 
-        data_dict = {}
+        data_dict: dict[str, Any] = {}
         if with_data:
             if self.data is not None:
                 for ch in ["x", "c", "n", "t"]:
@@ -186,11 +223,11 @@ class Parametric(ParametricDistribution):
 
         return out
 
-    def to_json(self, fp):
+    def to_json(self, fp: str | Path) -> None:
         with open(fp, "w+") as f:
             json.dump(self.to_dict(), f)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if hasattr(self, "params"):
             param_string = "\n".join(
                 [
@@ -219,7 +256,9 @@ class Parametric(ParametricDistribution):
         else:
             return "Unable to fit values"
 
-    def param_cb(self, name, alpha_ci=0.05, bound="two-sided"):
+    def param_cb(
+        self, name: str, alpha_ci: float = 0.05, bound: str = "two-sided"
+    ) -> npt.NDArray:
         """
         Method to calculate the confidence bound on a parameter.
         """
@@ -270,7 +309,7 @@ class Parametric(ParametricDistribution):
             bounds = -bounds * factor
             return p_hat + bounds
 
-    def sf(self, x):
+    def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
 
         Survival (or Reliability) function for a distribution using the
@@ -309,7 +348,7 @@ class Parametric(ParametricDistribution):
             + (self.p - self.f0) * self.dist.sf(x - self.gamma, *self.params)
         )
 
-    def ff(self, x):
+    def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
 
         The cumulative distribution function, or failure function, for a
@@ -348,7 +387,7 @@ class Parametric(ParametricDistribution):
             x - self.gamma, *self.params
         )
 
-    def df(self, x):
+    def df(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
 
         The density function for a distribution using the parameters found
@@ -396,7 +435,7 @@ class Parametric(ParametricDistribution):
             )
         return df
 
-    def hf(self, x):
+    def hf(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
         The instantaneous hazard function for a distribution using the
         parameters found in the ``.params`` attribute.
@@ -435,7 +474,7 @@ class Parametric(ParametricDistribution):
         else:
             return self.df(x) / self.sf(x)
 
-    def Hf(self, x):
+    def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """
         The cumulative hazard function for a distribution using the
         parameters found in the ``.params`` attribute.
@@ -475,7 +514,7 @@ class Parametric(ParametricDistribution):
         else:
             return -np.log(self.sf(x))
 
-    def qf(self, p):
+    def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""
 
         The quantile function for a distribution using the parameters found
@@ -511,7 +550,7 @@ class Parametric(ParametricDistribution):
         else:
             raise NotImplementedError("Quantile for LFP not implemented.")
 
-    def cs(self, x, X):
+    def cs(self, x: npt.ArrayLike, X: npt.ArrayLike) -> npt.NDArray:
         r"""
 
         The conditional survival of the model; that is, the probability
@@ -548,7 +587,12 @@ class Parametric(ParametricDistribution):
         cs[cs > 1.0] = 1
         return cs
 
-    def random(self, size, a=None, b=None):
+    def random(
+        self,
+        size: int | tuple[int, ...],
+        a: float | None = None,
+        b: float | None = None,
+    ) -> npt.NDArray:
         r"""
 
         A method to draw random samples from the distributions using the
@@ -658,7 +702,7 @@ class Parametric(ParametricDistribution):
             s = np.ones(n_cens) * np.max(f) + 1
             return fsli_to_xcnt(f, s)
 
-    def mean(self):
+    def mean(self) -> float:
         r"""
         The mean of the distribution using the parameters found in the
         ``.params`` attribute.
@@ -679,7 +723,7 @@ class Parametric(ParametricDistribution):
             self._mean = self.p * (self.dist.mean(*self.params) + self.gamma)
         return self._mean
 
-    def var(self):
+    def var(self) -> float:
         r"""
         The variance of the distribution using the parameters found in the
         ``.params`` attribute.
@@ -700,7 +744,7 @@ class Parametric(ParametricDistribution):
         m2 = self.dist._moment(2, *self.params)
         return m2 - m1**2
 
-    def moment(self, n):
+    def moment(self, n: int) -> float:
         r"""
 
         The n-th moment of the distribution using the parameters found
@@ -731,7 +775,7 @@ class Parametric(ParametricDistribution):
             msg = "LFP distributions cannot yet have their moment calculated"
             raise NotImplementedError(msg)
 
-    def entropy(self):
+    def entropy(self) -> float:
         r"""
         The entropy of the distribution using the parameters found in
         the ``.params`` attribute.
@@ -755,7 +799,13 @@ class Parametric(ParametricDistribution):
             msg = "Entropy not available for LFP distribution"
             raise NotImplementedError(msg)
 
-    def cb(self, t, on="sf", alpha_ci=0.05, bound="two-sided"):
+    def cb(
+        self,
+        t: npt.ArrayLike,
+        on: str = "sf",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
         r"""
         Confidence bounds of the ``on`` function at the ``alpa_ci`` level of
         significance. Can be the upper, lower, or two-sided confidence by
@@ -922,7 +972,7 @@ class Parametric(ParametricDistribution):
             cb = cb.T
         return cb
 
-    def neg_ll(self):
+    def neg_ll(self) -> float:
         r"""
 
         The negative log-likelihood for the model, if it was fit with the
@@ -951,7 +1001,7 @@ class Parametric(ParametricDistribution):
 
         return self._neg_ll
 
-    def bic(self):
+    def bic(self) -> float:
         r"""
 
         The Bayesian Information Criterion (BIC) for the model, if it
@@ -991,7 +1041,7 @@ class Parametric(ParametricDistribution):
             )
             return self._bic
 
-    def aic(self):
+    def aic(self) -> float:
         r"""
         The Aikake Information Criterion (AIC) for the model, if it was
         fit with the ``fit()`` method. Not available if fit with the
@@ -1020,7 +1070,7 @@ class Parametric(ParametricDistribution):
             self._aic = 2 * self.k + 2 * self.neg_ll()
             return self._aic
 
-    def aic_c(self):
+    def aic_c(self) -> float:
         r"""
         The Corrected Aikake Information Criterion (AIC) for the model,
         if it was fit with the ``fit()`` method. Not available if fit with
@@ -1051,7 +1101,9 @@ class Parametric(ParametricDistribution):
             self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
             return self._aic_c
 
-    def get_plot_data(self, heuristic="Nelson-Aalen", alpha_ci=0.05):
+    def get_plot_data(
+        self, heuristic: str = "Nelson-Aalen", alpha_ci: float = 0.05
+    ) -> dict:
         """
 
         A method to gather plot data
@@ -1083,14 +1135,17 @@ class Parametric(ParametricDistribution):
         >>> model = Weibull.fit(x)
         >>> data = model.get_plot_data()
         """
-        if hasattr(self, "hess_inv") and (self.method == "MLE"):
-            if self.hess_inv is not None:
+        cb_func: Callable[[Any], Any] | None
+        if (
+            hasattr(self, "hess_inv")
+            and (self.method == "MLE")
+            and (self.hess_inv is not None)
+        ):
 
-                def cb_func(x_model):
-                    return self.cb(x_model, on="ff", alpha_ci=alpha_ci)
+            def _cb_func(x_model):
+                return self.cb(x_model, on="ff", alpha_ci=alpha_ci)
 
-            else:
-                cb_func = None
+            cb_func = _cb_func
         else:
             cb_func = None
 
@@ -1109,11 +1164,11 @@ class Parametric(ParametricDistribution):
 
     def plot(
         self,
-        heuristic="Nelson-Aalen",
-        plot_bounds=True,
-        alpha_ci=0.05,
-        ax=None,
-    ):
+        heuristic: str = "Nelson-Aalen",
+        plot_bounds: bool = True,
+        alpha_ci: float = 0.05,
+        ax: "Axes | None" = None,
+    ) -> list:
         """
         A method to do a probability plot
 

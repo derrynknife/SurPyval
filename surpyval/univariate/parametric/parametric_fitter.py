@@ -1,3 +1,6 @@
+from numbers import Number
+
+import numpy.typing as npt
 import pandas as pd
 from scipy.integrate import quad
 from scipy.special import expit
@@ -438,25 +441,25 @@ class ParametricFitter:
 
     def fit(
         self,
-        x=None,
-        c=None,
-        n=None,
-        t=None,
-        how="MLE",
-        offset=False,
-        zi=False,
-        lfp=False,
-        tl=None,
-        tr=None,
-        xl=None,
-        xr=None,
-        fixed=None,
-        heuristic="Nelson-Aalen",
-        init=[],
-        rr="y",
-        on_d_is_0=False,
-        turnbull_estimator="Fleming-Harrington",
-    ):
+        x: npt.ArrayLike | None = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        how: str = "MLE",
+        offset: bool = False,
+        zi: bool = False,
+        lfp: bool = False,
+        tl: npt.ArrayLike | Number | None = None,
+        tr: npt.ArrayLike | Number | None = None,
+        xl: npt.ArrayLike | None = None,
+        xr: npt.ArrayLike | None = None,
+        fixed: dict[str, float] | None = None,
+        heuristic: str = "Nelson-Aalen",
+        init: npt.ArrayLike = [],
+        rr: str = "y",
+        on_d_is_0: bool = False,
+        turnbull_estimator: str = "Fleming-Harrington",
+    ) -> Parametric:
         """
 
         The central feature to SurPyval's capability. This function aimed to
@@ -626,16 +629,16 @@ class ParametricFitter:
 
     def fit_from_df(
         self,
-        df,
-        x=None,
-        c=None,
-        n=None,
-        xl=None,
-        xr=None,
-        tl=None,
-        tr=None,
+        df: pd.DataFrame,
+        x: str | None = None,
+        c: str | None = None,
+        n: str | None = None,
+        xl: str | None = None,
+        xr: str | None = None,
+        tl: str | float | None = None,
+        tr: str | float | None = None,
         **fit_options,
-    ):
+    ) -> Parametric:
         r"""
         The central feature to SurPyval's capability. This function aimed to
         have an API to mimic the simplicity of the scipy API. That is, to use
@@ -755,7 +758,7 @@ class ParametricFitter:
 
         return self.fit(x=x, c=c, n=n, t=t, **fit_options)
 
-    def fit_from_ecdf(self, x, F):
+    def fit_from_ecdf(self, x: npt.ArrayLike, F: npt.ArrayLike) -> Parametric:
         model = Parametric(self, "given ecdf", None, False, False, False)
         res = mpp_from_ecfd(self, x, F)
         model.dist = self
@@ -764,7 +767,7 @@ class ParametricFitter:
 
         return model
 
-    def fit_from_non_parametric(self, non_parametric_model):
+    def fit_from_non_parametric(self, non_parametric_model) -> Parametric:
         x, F = non_parametric_model.x, 1 - non_parametric_model.R
         return self.fit_from_ecdf(x, F)
 
@@ -911,18 +914,18 @@ class ParametricFitter:
 
     def fit_from_surpyval_data(
         self,
-        surv_data,
-        how="MLE",
-        offset=False,
-        zi=False,
-        lfp=False,
-        fixed=None,
-        heuristic="Nelson-Aalen",
-        init=[],
-        rr="y",
-        on_d_is_0=False,
-        turnbull_estimator="Fleming-Harrington",
-    ):
+        surv_data: SurpyvalData,
+        how: str = "MLE",
+        offset: bool = False,
+        zi: bool = False,
+        lfp: bool = False,
+        fixed: dict[str, float] | None = None,
+        heuristic: str = "Nelson-Aalen",
+        init: npt.ArrayLike = [],
+        rr: str = "y",
+        on_d_is_0: bool = False,
+        turnbull_estimator: str = "Fleming-Harrington",
+    ) -> Parametric:
         """
 
         The central feature to SurPyval's capability. This function aimed to
@@ -990,9 +993,7 @@ class ParametricFitter:
             fitting_info["not_fixed"] = not_fixed
 
             if init == []:
-                init = self._initial_guess(
-                    x, c, n, offset, zi, lfp, heuristic
-                )
+                init = self._initial_guess(x, c, n, offset, zi, lfp, heuristic)
 
             init = np.atleast_1d(init)
             if fixed and len(init) == len(not_fixed):
