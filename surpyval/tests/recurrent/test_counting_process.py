@@ -24,7 +24,7 @@ def test_nhpp_intensity_models_are_counting_processes(dist):
 
 
 def test_hpp_is_a_counting_process():
-    assert isinstance(HPP(), CountingProcess)
+    assert isinstance(HPP, CountingProcess)
 
 
 def test_counting_process_cannot_be_instantiated():
