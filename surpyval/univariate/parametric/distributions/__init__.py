@@ -1,6 +1,7 @@
 from .bernoulli import Bernoulli, FixedEventProbability
 from .beta import Beta
 from .beta4 import Beta4
+from .binomial import Binomial
 from .custom_distribution import CustomDistribution
 from .exact_event_time import ExactEventTime
 from .expo_weibull import ExpoWeibull

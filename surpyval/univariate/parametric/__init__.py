@@ -19,6 +19,7 @@ from .distributions import (
     Bernoulli,
     Beta,
     Beta4,
+    Binomial,
     CustomDistribution,
     ExactEventTime,
     ExpoWeibull,

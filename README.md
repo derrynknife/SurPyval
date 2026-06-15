@@ -50,12 +50,12 @@ cross-tabulates four of those axes &mdash; the **outcome** (a time-to-event
 duration vs a pass/fail result), **event recurrence**, **competing
 events**, and **covariates** &mdash; against the **estimation** axis, and fills
 each cell with what can be used to implement it. The recurrence axis spans both
-outcomes: a single pass/fail trial is `Bernoulli`, while repeated trials
-(the binomial case) are the recurrent counterpart. Every time-to-event model
+outcomes: a single pass/fail trial is `Bernoulli`, while repeated trials are
+the recurrent counterpart, `Binomial`. Every time-to-event model
 listed is continuous-time.
 A `&mdash;` marks a combination that is
 either not applicable (e.g. semiparametric estimation requires covariates) or
-not yet built (e.g. the recurrent pass/fail / binomial cell).
+not yet built.
 
 | Outcome | Recurrence | Events | Covariates | Parametric | Semiparametric | Nonparametric |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -69,7 +69,8 @@ not yet built (e.g. the recurrent pass/fail / binomial cell).
 | Time-to-event | Recurrent | Competing | With | &mdash; | &mdash; | &mdash; |
 | Pass/fail | Single event | Single | Without | `Bernoulli` | &mdash; | &mdash; |
 | Pass/fail | Single event | Single | With | use logistic regression (out of scope for this package) | &mdash; | &mdash; |
-| Pass/fail | Recurrent | Single | Without | &mdash; | &mdash; | &mdash; |
+| Pass/fail | Recurrent | Single | Without | `Binomial` | &mdash; | &mdash; |
+| Pass/fail | Recurrent | Single | With | use binomial regression (out of scope for this package) | &mdash; | &mdash; |
 
 # Install and Quick Intro
 
