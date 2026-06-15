@@ -46,23 +46,31 @@ This project spawned from a Reliaility Engineering project; due to the history o
 # The Model Landscape
 
 SurPyval's models can be placed on a set of orthogonal axes. The table below
-cross-tabulates three of those axes &mdash; **event recurrence**, **competing
-events**, and **covariates** &mdash; against the **time scale** and
-**estimation** axes, and fills each cell with what can be used to implement it.
+cross-tabulates four of those axes &mdash; the **outcome** (a time-to-event
+duration vs a pass/fail result), **event recurrence**, **competing
+events**, and **covariates** &mdash; against the **estimation** axis, and fills
+each cell with what can be used to implement it. The recurrence axis spans both
+outcomes: a single pass/fail trial is `Bernoulli`, while repeated trials are
+the recurrent counterpart, `Binomial`. Every time-to-event model
+listed is continuous-time.
 A `&mdash;` marks a combination that is
 either not applicable (e.g. semiparametric estimation requires covariates) or
 not yet built.
 
-| Recurrence | Events | Covariates | Continuous &middot; Parametric | Continuous &middot; Semiparametric | Continuous &middot; Nonparametric | Discrete &middot; Parametric | Discrete &middot; Semiparametric | Discrete &middot; Nonparametric |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | &mdash; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` | `Bernoulli` | &mdash; | &mdash; |
-| Single event | Single | With | `WeibullPH`/`WeibullAFT` (PH/AFT/PO families) | `CoxPH` | &mdash; | &mdash; | &mdash; | &mdash; |
-| Single event | Competing | Without | &mdash; | &mdash; | `CompetingRisks` (CIF) | &mdash; | &mdash; | &mdash; |
-| Single event | Competing | With | &mdash; | `FineGray`, `CRPH` | &mdash; | &mdash; | &mdash; | &mdash; |
-| Recurrent | Single | Without | `HPP`, `NHPP`, `CrowAMSAA`, `Duane`, `CoxLewis` | &mdash; | `NonParametricCounting` (MCF) | &mdash; | &mdash; | &mdash; |
-| Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; |
-| Recurrent | Competing | Without | &mdash; | &mdash; | `CauseSpecificMCF` | &mdash; | &mdash; | &mdash; |
-| Recurrent | Competing | With | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; |
+| Outcome | Recurrence | Events | Covariates | Parametric | Semiparametric | Nonparametric |
+| --- | --- | --- | --- | --- | --- | --- |
+| Time-to-event | Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | &mdash; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` |
+| Time-to-event | Single event | Single | With | `WeibullPH`/`WeibullAFT` (PH/AFT/PO families) | `CoxPH` | &mdash; |
+| Time-to-event | Single event | Competing | Without | &mdash; | &mdash; | `CompetingRisks` (CIF) |
+| Time-to-event | Single event | Competing | With | &mdash; | `FineGray`, `CRPH` | &mdash; |
+| Time-to-event | Recurrent | Single | Without | `HPP`, `NHPP`, `CrowAMSAA`, `Duane`, `CoxLewis` | &mdash; | `NonParametricCounting` (MCF) |
+| Time-to-event | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; | &mdash; |
+| Time-to-event | Recurrent | Competing | Without | &mdash; | &mdash; | `CauseSpecificMCF` |
+| Time-to-event | Recurrent | Competing | With | &mdash; | &mdash; | &mdash; |
+| Pass/fail | Single event | Single | Without | `Bernoulli` | &mdash; | &mdash; |
+| Pass/fail | Single event | Single | With | use logistic regression (out of scope for this package) | &mdash; | &mdash; |
+| Pass/fail | Recurrent | Single | Without | `Binomial` | &mdash; | &mdash; |
+| Pass/fail | Recurrent | Single | With | use binomial regression (out of scope for this package) | &mdash; | &mdash; |
 
 # Install and Quick Intro
 
