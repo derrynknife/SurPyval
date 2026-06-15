@@ -178,11 +178,6 @@ Only one test file with one test covers the entire recurrent module (`tests/recu
 Deferred from the June 2026 clean-up (sections 1–5 of that review are
 done):
 
-- `probability_plotting.probability_plot_data` special-cases
-  distributions by name with `dist.name in ("Beta")` — string
-  membership on a *string*, not a tuple, so any distribution whose name
-  is a substring of "Beta" would match. Replace the name-based
-  branching with a `plot_x_limits` hook on the distribution.
 - `MixtureModel` composes rather than inherits: it now shares the
   probability-plot code but still reimplements `sf/ff/df/mean/random`
   aggregation and its own `R_cb`, and sets most attributes outside
