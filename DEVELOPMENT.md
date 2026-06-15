@@ -4,16 +4,6 @@ This document tracks known issues, technical debt, and improvement priorities fo
 
 ---
 
-## Priority Order
-
-1. Correctness (silent wrong results)
-2. Stability (features that crash)
-3. Test infrastructure
-4. API consistency
-5. Code quality / tooling
-
----
-
 ## 1. Type Hints — Finish the Package
 
 The package ships `py.typed` and `mypy` runs in CI, so the typing
