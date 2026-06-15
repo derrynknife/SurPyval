@@ -20,14 +20,17 @@ class ProportionalIntensityHPP:
     Examples
     --------
 
+    >>> import numpy as np
     >>> from surpyval.datasets import load_rossi_static
     >>> from surpyval.recurrent import ProportionalIntensityHPP
     >>>
     >>> data = load_rossi_static()
     >>> x = data['week'].values
-    >>> c = data['arrest'].values
+    >>> # 'arrest' == 1 is an observed event (c=0); 0 is right-censored (c=1)
+    >>> c = np.where(data['arrest'].values == 1, 0, 1)
+    >>> i = np.arange(len(data))
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
-    >>> model = ProportionalIntensityHPP.fit(x, Z, c)
+    >>> model = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
     >>> model
     Proportional Intensity Recurrence Model
     =======================================
@@ -36,15 +39,17 @@ class ProportionalIntensityHPP:
     Parameterization    : Parametric
     Hazard Rate Model   : Constant
     Base Rate Parameters:
-        lambda  :  5.687176190869141
+        lambda  :  0.012395105741757225
+    <BLANKLINE>
     Covariate Coefficients:
-        beta_0  :  0.5666297135140156
-        beta_1  :  0.031175577872654184
-        beta_2  :  -0.6796807726448314
-        beta_3  :  0.6602827681955281
-        beta_4  :  -2.577091221089804
-        beta_5  :  -0.4523927241350517
-        beta_6  :  -0.016388459191916338
+       beta_0  :  0.06397367067847898
+       beta_1  :  0.011491178797116433
+       beta_2  :  -0.02147901865302258
+       beta_3  :  -0.014676664859873595
+       beta_4  :  0.04738275470382102
+       beta_5  :  0.019109337775930837
+       beta_6  :  -0.01905662860143533
+    <BLANKLINE>
     """
 
     @classmethod
@@ -115,6 +120,7 @@ class ProportionalIntensityHPP:
         if has_left_censoring:
             x_left = x_l[c == -1]
             n_left = n[c == -1]
+            Z_left = Z[c == -1]
             log_xl = np.log(x_left)
             n_log_x_left = n_left * log_xl
             n_log_x_left_sum = n_log_x_left.sum()
@@ -133,6 +139,7 @@ class ProportionalIntensityHPP:
             x_i_l = x_l[c == 2]
             x_i_r = x_r[c == 2]
             delta_xi = x_i_r - x_i_l
+            Z_i = Z[c == 2]
 
             n_interval = n[c == 2]
             n_interval_sum = n_interval.sum()
@@ -222,9 +229,12 @@ class ProportionalIntensityHPP:
         out.bounds = ((0, None),)
         out.support = (0.0, np.inf)
 
+        # Use the right endpoint for interval-censored (2D) observations when
+        # estimating each item's latest event time for the initial rate guess.
+        _x_max = data.x if data.x.ndim == 1 else data.x[:, 1]
         _, _inv = np.unique(data.i, return_inverse=True)
         _max_x = np.full(_inv.max() + 1, -np.inf)
-        np.maximum.at(_max_x, _inv, data.x)
+        np.maximum.at(_max_x, _inv, _x_max)
         init = (data.n[data.c == 0]).sum() / _max_x.sum()
 
         num_covariates = Z.shape[1]
@@ -232,7 +242,7 @@ class ProportionalIntensityHPP:
 
         neg_ll = cls.create_negll_func(data)
 
-        res = minimize(neg_ll, [init])
+        res = minimize(neg_ll, init)
         out.res = res
         out.params = np.atleast_1d(np.exp(res.x[0]))
         out.coeffs = np.atleast_1d(res.x[1:])

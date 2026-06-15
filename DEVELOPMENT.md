@@ -54,10 +54,19 @@ renewal, regression, nonparametric, competing risks). Findings are grouped by
 theme; items already resolved are marked **[done]**.
 
 **A. Correctness bugs**
-- `ProportionalIntensityHPP` crashes on left- or interval-censored data:
-  `Z_left`/`Z_i` are assigned only in the no-censoring `else` branches
-  (`hpp_proportional_intensity.py:130,147`) but used in the likelihood
-  (`:165,174`) → `NameError`. The NHPP sibling is fine (it uses ternaries).
+- **[done]** `ProportionalIntensityHPP` crashed on left- or interval-censored
+  data: `Z_left`/`Z_i` were assigned only in the no-censoring `else` branches
+  (`hpp_proportional_intensity.py`) but used in the likelihood → `NameError`.
+  Now bound in the censoring-present branches too. While verifying the
+  end-to-end fit, two adjacent blockers were also fixed: `minimize(neg_ll,
+  [init])` double-wrapped the 1-D `init` into a 2-D array (broke *every*
+  fit, not just censored), and the initial-rate guess called
+  `np.maximum.at(..., data.x)` with a 2-D `x` for interval-censored data.
+  The NHPP sibling had the same `[init]` double-wrap, fixed too. Both
+  proportional-intensity docstring examples passed the event indicator
+  positionally into `i` (so they crashed) — rewritten to derive `c` from
+  `arrest` and supply a per-subject `i`, and now pass `--doctest-modules`.
+  Regression tests in `tests/recurrent/test_hpp_proportional_intensity.py`.
 - Left-truncated MCF is wrong: `RecurrentEventData.to_xrd()` builds the
   at-risk set assuming every item enters at `t=0`, ignoring `tl`; inflates the
   MCF and propagates to `CauseSpecificMCF`. (Left truncation *is* handled for

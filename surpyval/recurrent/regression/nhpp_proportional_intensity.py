@@ -22,31 +22,43 @@ class ProportionalIntensityNHPP:
     Examples
     --------
 
-    >>> from surpyval.datasets import load_rossi_static
+    >>> import numpy as np
     >>> from surpyval.recurrent import ProportionalIntensityNHPP
-    >>> data = load_rossi_static()
-    >>> x = data['week'].values
-    >>> c = data['arrest'].values
-    >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
-    >>> model = ProportionalIntensityNHPP.fit(x, Z, c)
+    >>>
+    >>> # Four repairable systems observed until t=20; failures get more
+    >>> # frequent over time and the Z=1 group fails faster than the Z=0 group.
+    >>> x = [9, 14, 18, 20,
+    ...      7, 12, 16, 19, 20,
+    ...      5, 9, 13, 16, 18, 20,
+    ...      6, 10, 13, 15, 17, 19, 20]
+    >>> i = [1, 1, 1, 1,
+    ...      2, 2, 2, 2, 2,
+    ...      3, 3, 3, 3, 3, 3,
+    ...      4, 4, 4, 4, 4, 4, 4]
+    >>> # c = 0 is an observed failure, c = 1 the right-censored window close
+    >>> c = [0, 0, 0, 1,
+    ...      0, 0, 0, 0, 1,
+    ...      0, 0, 0, 0, 0, 1,
+    ...      0, 0, 0, 0, 0, 0, 1]
+    >>> Z = np.array([0, 0, 0, 0,
+    ...               0, 0, 0, 0, 0,
+    ...               1, 1, 1, 1, 1, 1,
+    ...               1, 1, 1, 1, 1, 1, 1]).reshape(-1, 1)
+    >>> model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c)
     >>> model
     Proportional Intensity Recurrence Model
     =======================================
     Type                : Proportional Intensity
     Kind                : NHPP
     Parameterization    : Parametric
-    Hazard Rate Model   : Crow-AMSAA
+    Hazard Rate Model   : Duane
     Base Rate Parameters:
-        alpha  :  31.79321229839296
-        beta  :  4.980117330166502
+        alpha  :  2.0294701249769567
+        b  :  0.008010947012813689
+    <BLANKLINE>
     Covariate Coefficients:
-        beta_0  :  -0.09016653537772656
-        beta_1  :  0.12020391565561556
-        beta_2  :  0.08804834095964903
-        beta_3  :  -0.010992803410986032
-        beta_4  :  -0.5059158682824993
-        beta_5  :  -0.21305472747115095
-        beta_6  :  0.16760620140256433
+       beta_0  :  0.45194475814452534
+    <BLANKLINE>
     """
 
     @classmethod
@@ -190,7 +202,7 @@ class ProportionalIntensityNHPP:
 
         res = minimize(
             neg_ll,
-            [init],
+            init,
             method="Nelder-Mead",
         )
         out.res = res

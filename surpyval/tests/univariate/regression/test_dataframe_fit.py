@@ -133,7 +133,6 @@ def test_single_string_z_col():
 
 
 def test_accelerated_life_fit_from_df():
-    rng = np.random.default_rng(3)
     stresses = np.repeat([1.0, 2.0, 3.0, 4.0], 40)
     x = Weibull.random(len(stresses), 100 / stresses, 3)
     df = pd.DataFrame(
