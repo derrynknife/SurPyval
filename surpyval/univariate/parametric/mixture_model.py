@@ -1,9 +1,7 @@
 import warnings
 
-from autograd import jacobian
 from matplotlib import pyplot as plt
 from scipy.optimize import minimize
-from scipy.special import ndtri as z
 
 from surpyval import Distribution, np
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -41,9 +39,14 @@ class MixtureModel(Distribution):
     def __init__(self, dist, m=2):
         self.m = m
         self.dist = dist
+        self.data = None
+        self.params = None
+        self.w = None
+        self.p = None
+        self.loglike = None
 
     def __repr__(self):
-        if hasattr(self, "params"):
+        if self.params is not None:
             param_string = "\n".join(
                 [
                     f"{name:>10}: {p}"
@@ -223,25 +226,6 @@ class MixtureModel(Distribution):
 
         self._em()
 
-    def R_cb(self, t, cb=0.05):
-        def ssf(params):
-            params = np.reshape(params, (self.m, self.dist.k + 1))
-            F = np.zeros_like(t)
-            for i in range(self.m):
-                F = F + params[i, 0] * self.dist.ff(t, *params[i, 1::])
-            return 1 - F
-
-        with np.errstate(all="ignore"):
-            jac = np.atleast_2d(jacobian(ssf)(self.res.x))
-
-        # First-order delta method: Var(R) = J Sigma J^T
-        var_u = np.einsum("ij,jk,ik->i", jac, self.hess_inv, jac)
-        diff = z(cb / 2) * np.sqrt(var_u) * np.array([1.0, -1.0]).reshape(2, 1)
-        R_hat = self.sf(t)
-        exponent = diff / (R_hat * (1 - R_hat))
-        R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
-        return R_cb.T
-
     def mean(self):
         mean = 0
         for i in range(self.m):
@@ -254,7 +238,7 @@ class MixtureModel(Distribution):
         s_last = 0
         for i, s in enumerate(sizes):
             rvs[s_last : s + s_last] = self.dist.random(s, *self.params[i, :])
-            s_last = s
+            s_last += s
         # Shuffles the data (inplace) so that the data is random
         np.random.shuffle(rvs)
         return rvs
@@ -385,7 +369,7 @@ class MixtureModel(Distribution):
         if ax is None:
             ax = plt.gcf().gca()
 
-        if not hasattr(self, "params"):
+        if self.params is None:
             raise ValueError("Can't plot model that failed to fit")
 
         heuristic = adjust_heuristic(self.data.c, self.data.t, heuristic)
