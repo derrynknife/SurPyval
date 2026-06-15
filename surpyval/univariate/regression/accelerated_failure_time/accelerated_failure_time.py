@@ -1,4 +1,5 @@
 import autograd.numpy as np
+import numpy.typing as npt
 from scipy.optimize import minimize
 
 import surpyval
@@ -104,7 +105,16 @@ class AcceleratedFailureTimeFitter:
             Z_out.append(np.ones(size) * stress)
         return np.concatenate(x), np.concatenate(Z_out)
 
-    def fit(self, x, Z, c=None, n=None, t=None, init=None, fixed=None):
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        init: npt.ArrayLike | None = None,
+        fixed: dict[str, float] | None = None,
+    ) -> ParametricRegressionModel:
         x, c, n, t = surpyval.xcnt_handler(
             x=x, c=c, n=n, t=t, group_and_sort=False
         )

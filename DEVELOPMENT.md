@@ -4,13 +4,44 @@ This document tracks known issues, technical debt, and improvement priorities fo
 
 ---
 
-## Priority Order
+## 1. Type Hints — Finish the Package
 
-1. Correctness (silent wrong results)
-2. Stability (features that crash)
-3. Test infrastructure
-4. API consistency
-5. Code quality / tooling
+The package ships `py.typed` and `mypy` runs in CI, so the typing
+contract is live and must be honoured across the whole package, not
+just the parts done so far.
+
+**Done (public APIs, all mypy-clean, no new errors over baseline):**
+- Univariate **parametric**: `ParametricFitter.fit`/`fit_from_df`/
+  `fit_from_surpyval_data`/`fit_from_ecdf` and the `Parametric` model
+  (sf/ff/df/hf/Hf/qf/cs/random/mean/var/moment/entropy/cb/param_cb,
+  the AIC/BIC family, serialization, plotting).
+- Univariate **nonparametric**: `NonParametricFitter.fit`/`from_xrd`
+  and the `NonParametric` model methods, plus the `FIT_FUNCS`/
+  `VAR_FUNCS` dispatch dicts.
+- Univariate **regression**: `fit`/`fit_from_df` on the AFT/PH/PO/
+  parameter-substitution fitters and `CoxPH`, the `DataFrameRegression
+  Mixin`, and the `ParametricRegressionModel`/`SemiParametricRegression
+  Model` prediction methods.
+- Top-level helpers: `fit_best`, `handle_xicn` (and the recurrent
+  validators), `SurpyvalData`, `RecurrentEventData`.
+
+**Still to do (in suggested order):**
+- Public APIs of the remaining modules: univariate **competing risks**
+  (Fine-Gray, cause-specific PH), the **recurrent** package
+  (parametric intensity, renewal, regression, nonparametric MCF,
+  competing risks), and the **experimental** forest.
+- A second pass to annotate the *internal* helpers in every module
+  (the `_cb_*` confidence-bound helpers, the `mle`/`mpp`/`mps`/`mse`/
+  `mom` fitters, etc.) — public-API typing only annotates the surface.
+- Once a module is fully typed (public **and** internal defs), turn on
+  `disallow_untyped_defs` for it in `[tool.mypy]` so coverage ratchets
+  and cannot regress. This cannot be enabled per-module until that
+  module has zero unannotated defs.
+
+Convention used so far: annotate array-like inputs as `npt.ArrayLike`
+and array returns as `npt.NDArray`; declare dynamically-set instance
+attributes as class-level annotations; leave the autograd-`numpy`
+numeric kernels loosely typed (they buy little from precise typing).
 
 ---
 
@@ -174,12 +205,6 @@ Only one test file with one test covers the entire recurrent module (`tests/recu
 
 ## 5. Code Quality
 
-### Type hints are vestigial
-The package ships `py.typed`, but only `ParametricFitter.__init__` is
-annotated. Either grow annotations outward (fitter signatures and
-`fit()` are the highest-value targets) or remove the `py.typed`
-marker; the current state advertises typing that doesn't exist.
-
 ### Docstring examples are not doctested
 Most distribution docstring examples now execute correctly (Rayleigh's
 and GumbelLEV's were rewritten with verified outputs in June 2026),
@@ -260,12 +285,10 @@ last point). It is retained only for backward compatibility; decide
 whether to formally deprecate and remove it, or keep it and accept the
 maintenance of a statistically unjustified path.
 
-### Type hints and residual test gaps
-The module is untyped despite the package shipping `py.typed` (see also
-section 4). The new behaviour is well covered, but `plot()` with
-non-step `interp`, the `set_lower_limit` path in
-`NonParametricFitter.fit`, and the `from_xrd` entry point still have no
-direct tests.
+### Residual test gaps
+The new behaviour is well covered, but `plot()` with non-step
+`interp`, the `set_lower_limit` path in `NonParametricFitter.fit`, and
+the `from_xrd` entry point still have no direct tests.
 
 ---
 

@@ -1,13 +1,21 @@
+from typing import TYPE_CHECKING, Any, Callable
+
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.stats import norm, t
 
 from surpyval.distribution import NonParametricDistribution
 
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
-def interp_function(x, y, kind):
+
+def interp_function(
+    x: npt.ArrayLike, y: npt.ArrayLike, kind: str
+) -> Callable[[npt.ArrayLike], npt.NDArray]:
     return interp1d(x, y, kind=kind, bounds_error=False, fill_value=np.nan)
 
 
@@ -20,7 +28,20 @@ class NonParametric(NonParametricDistribution):
     ``FlemingHarrington``, or ``Turnbull`` estimators.
     """
 
-    def __repr__(self):
+    # Attributes populated by the fitter (``NonParametricFitter.fit`` /
+    # ``from_xrd`` / ``fit_from_ecdf``). Declared here so static type
+    # checkers know their types.
+    x: npt.NDArray
+    r: npt.NDArray
+    d: npt.NDArray
+    R: npt.NDArray
+    F: npt.NDArray
+    H: npt.NDArray
+    model: str
+    greenwood: npt.NDArray
+    data: dict[str, Any]
+
+    def __repr__(self) -> str:
         out = (
             "Non-Parametric SurPyval Model"
             + "\n============================="
@@ -35,7 +56,7 @@ class NonParametric(NonParametricDistribution):
 
         return out
 
-    def sf(self, x, interp="step"):
+    def sf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
         Surival (or Reliability) function with the
@@ -84,7 +105,7 @@ class NonParametric(NonParametricDistribution):
         # R = np.where(x > self.x.max(), np.nan, R)
         return R
 
-    def ff(self, x, interp="step"):
+    def ff(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
         CDF (failure or unreliability) function with the
@@ -116,7 +137,7 @@ class NonParametric(NonParametricDistribution):
         """
         return 1 - self.sf(x, interp=interp)
 
-    def hf(self, x, interp="step"):
+    def hf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
         Instantaneous hazard function with the non-parametric
@@ -161,7 +182,7 @@ class NonParametric(NonParametricDistribution):
         hf = hf.ffill().values
         return hf[rev]
 
-    def df(self, x, interp="step"):
+    def df(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
         Density function with the non-parametric estimates
@@ -195,7 +216,7 @@ class NonParametric(NonParametricDistribution):
         """
         return self.hf(x, interp=interp) * np.exp(-self.Hf(x, interp=interp))
 
-    def Hf(self, x, interp="step"):
+    def Hf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
         Cumulative hazard rate with the non-parametric estimates
@@ -232,14 +253,14 @@ class NonParametric(NonParametricDistribution):
 
     def cb(
         self,
-        x,
-        on="sf",
-        bound="two-sided",
-        interp="step",
-        alpha_ci=0.05,
-        bound_type="exp",
-        dist="z",
-    ):
+        x: npt.ArrayLike,
+        on: str = "sf",
+        bound: str = "two-sided",
+        interp: str = "step",
+        alpha_ci: float = 0.05,
+        bound_type: str = "exp",
+        dist: str = "z",
+    ) -> npt.NDArray:
         r"""
 
         Confidence bounds of the ``on`` function at the
@@ -363,13 +384,13 @@ class NonParametric(NonParametricDistribution):
 
     def R_cb(
         self,
-        x,
-        bound="two-sided",
-        interp="step",
-        alpha_ci=0.05,
-        bound_type="exp",
-        dist="z",
-    ):
+        x: npt.ArrayLike,
+        bound: str = "two-sided",
+        interp: str = "step",
+        alpha_ci: float = 0.05,
+        bound_type: str = "exp",
+        dist: str = "z",
+    ) -> npt.NDArray:
         if bound_type not in ["exp", "normal"]:
             raise ValueError("'bound_type' must be in ['exp', 'normal']")
         if dist not in ["t", "z"]:
@@ -453,7 +474,7 @@ class NonParametric(NonParametricDistribution):
 
         return R_out
 
-    def random(self, size):
+    def random(self, size: int) -> npt.NDArray:
         r"""
         Draws random samples from the fitted distribution. Each observed
         value x is drawn with the probability mass the estimated survival
@@ -468,7 +489,7 @@ class NonParametric(NonParametricDistribution):
         p = p / p.sum()
         return np.random.choice(self.x, size=size, p=p)
 
-    def qf(self, p):
+    def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""
         Quantile function of the non-parametric estimate. Returns the
         smallest observed value at which the estimated CDF reaches, or
@@ -506,7 +527,7 @@ class NonParametric(NonParametricDistribution):
         return x_padded[np.minimum(idx, len(self.x))]
 
     @property
-    def median(self):
+    def median(self) -> float:
         r"""
         The median survival time; the smallest observed value at which
         the estimated CDF reaches, or exceeds, 0.5. NaN if the estimate
@@ -514,7 +535,13 @@ class NonParametric(NonParametricDistribution):
         """
         return self.qf(0.5)[0]
 
-    def quantile_cb(self, p, alpha_ci=0.05, bound_type="exp", dist="z"):
+    def quantile_cb(
+        self,
+        p: npt.ArrayLike,
+        alpha_ci: float = 0.05,
+        bound_type: str = "exp",
+        dist: str = "z",
+    ) -> npt.NDArray:
         r"""
         Two-sided confidence interval of the quantile at each
         probability p using the Brookmeyer-Crowley method: the interval
@@ -575,7 +602,7 @@ class NonParametric(NonParametricDistribution):
             )
         return out
 
-    def mean(self, tau=None):
+    def mean(self, tau: float | None = None) -> float:
         r"""
         The (restricted) mean survival time: the area under the
         estimated survival function from 0 to tau.
@@ -622,7 +649,9 @@ class NonParametric(NonParametricDistribution):
         surv = np.hstack([[1.0], self.R[: xs.size]])
         return float(np.sum(np.diff(times) * surv))
 
-    def mean_cb(self, tau=None, alpha_ci=0.05):
+    def mean_cb(
+        self, tau: float | None = None, alpha_ci: float = 0.05
+    ) -> npt.NDArray:
         r"""
         Two-sided confidence interval of the (restricted) mean survival
         time, using the normal approximation with the standard variance
@@ -684,12 +713,12 @@ class NonParametric(NonParametricDistribution):
 
     def bootstrap_cb(
         self,
-        x,
-        bound="two-sided",
-        alpha_ci=0.05,
-        B=200,
-        random_state=None,
-    ):
+        x: npt.ArrayLike,
+        bound: str = "two-sided",
+        alpha_ci: float = 0.05,
+        B: int = 200,
+        random_state: int | None = None,
+    ) -> npt.NDArray:
         r"""
         Confidence bounds of the survival function computed with a
         non-parametric bootstrap: the data are resampled with
@@ -797,8 +826,13 @@ class NonParametric(NonParametricDistribution):
 
     @staticmethod
     def _band_critical_value(
-        a_l, a_u, alpha_ci, standardized, n_sims, random_state
-    ):
+        a_l: float,
+        a_u: float,
+        alpha_ci: float,
+        standardized: bool,
+        n_sims: int,
+        random_state: int | None,
+    ) -> float:
         # Critical value of the supremum of a Brownian bridge (for the
         # Hall-Wellner band), or of a standardized Brownian bridge
         # B(u)/sqrt(u(1 - u)) (for the equal precision band), over
@@ -822,13 +856,13 @@ class NonParametric(NonParametricDistribution):
 
     def band(
         self,
-        x=None,
-        method="hall-wellner",
-        bound_type="exp",
-        alpha_ci=0.05,
-        n_sims=10_000,
-        random_state=1,
-    ):
+        x: npt.ArrayLike | None = None,
+        method: str = "hall-wellner",
+        bound_type: str = "exp",
+        alpha_ci: float = 0.05,
+        n_sims: int = 10_000,
+        random_state: int | None = 1,
+    ) -> npt.NDArray:
         r"""
         Simultaneous confidence band of the survival function.
 
@@ -980,7 +1014,9 @@ class NonParametric(NonParametricDistribution):
 
         return out
 
-    def smoothed_hf(self, x, bandwidth=None):
+    def smoothed_hf(
+        self, x: npt.ArrayLike, bandwidth: float | None = None
+    ) -> npt.NDArray:
         r"""
         Kernel smoothed estimate of the hazard rate, using an
         Epanechnikov kernel over the increments of the cumulative
@@ -1054,7 +1090,7 @@ class NonParametric(NonParametricDistribution):
         h = np.where((x < x_min) | (x > x_max), np.nan, h)
         return h
 
-    def get_plot_data(self, **kwargs):
+    def get_plot_data(self, **kwargs) -> dict:
         y_scale_min = 0
         y_scale_max = 1
 
@@ -1079,7 +1115,7 @@ class NonParametric(NonParametricDistribution):
             "F": self.F,
         }
 
-    def plot(self, ax=None, **kwargs):
+    def plot(self, ax: "Axes | None" = None, **kwargs) -> Any:
         r"""
         Creates a plot of the survival function.
 
@@ -1173,7 +1209,9 @@ class NonParametric(NonParametricDistribution):
         return ax
 
     @classmethod
-    def fit_from_ecdf(cls, x, R):
+    def fit_from_ecdf(
+        cls, x: npt.ArrayLike, R: npt.ArrayLike
+    ) -> "NonParametric":
         out = cls()
         out.model = "from_ecdf"
         out.R = R

@@ -1,11 +1,12 @@
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.utils import coerce_xcnt_x, format_truncation
 
 from .recurrent_event_data import RecurrentEventData
 
 
-def reject_left_truncation(data, model_name):
+def reject_left_truncation(data: RecurrentEventData, model_name: str) -> None:
     """
     Virtual-age and history-dependent models (Kijima/G1/ARA/ARI) cannot be
     fitted to left-truncated (delayed-entry) data: the virtual age or
@@ -21,7 +22,7 @@ def reject_left_truncation(data, model_name):
         )
 
 
-def validate_renewal_censoring(c, model_name):
+def validate_renewal_censoring(c: npt.ArrayLike, model_name: str) -> None:
     """
     The renewal models only define likelihood contributions for exact events
     (``c=0``) and right-censored observations (``c=1``). Interval (``c=2``) and
@@ -39,8 +40,18 @@ def validate_renewal_censoring(c, model_name):
 
 
 def handle_xicn(
-    x, i=None, c=None, n=None, t=None, tl=None, tr=None, Z=None,
-    as_recurrent_data=True,
+    x: npt.ArrayLike,
+    i: npt.ArrayLike | None = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    t: npt.ArrayLike | None = None,
+    tl: npt.ArrayLike | None = None,
+    tr: npt.ArrayLike | None = None,
+    Z: npt.ArrayLike | dict | None = None,
+    as_recurrent_data: bool = True,
+) -> (
+    RecurrentEventData
+    | tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]
 ):
     x = coerce_xcnt_x(x)
 
@@ -68,11 +79,12 @@ def handle_xicn(
     tl_arr = truncation[:, 0]
     tr_arr = truncation[:, 1]
 
+    Z_arr: npt.NDArray | None = None
     if Z is not None:
         if isinstance(Z, dict):
-            Z = np.array([Z[ii] for ii in i])
+            Z_arr = np.array([Z[ii] for ii in i])
         else:
-            Z = np.array(Z, ndmin=2)
+            Z_arr = np.array(Z, ndmin=2)
     # TODO: Z as a dict where the keys are the item numbers and the arrays
     # are the covariates for each i at all times (x)
 
@@ -83,8 +95,8 @@ def handle_xicn(
     if x.shape[0] != n.shape[0]:
         raise ValueError("x and n must have the same length")
 
-    if Z is not None:
-        if x.shape[0] != Z.shape[0]:
+    if Z_arr is not None:
+        if x.shape[0] != Z_arr.shape[0]:
             raise ValueError("x and Z must have the same length")
 
     if np.any((n > 1) & ((c == 0) | (c == 1))):
@@ -102,8 +114,8 @@ def handle_xicn(
     x, i, c, n = x[sort_order], i[sort_order], c[sort_order], n[sort_order]
     tl_arr, tr_arr = tl_arr[sort_order], tr_arr[sort_order]
 
-    if Z is not None:
-        Z = Z[sort_order]
+    if Z_arr is not None:
+        Z_arr = Z_arr[sort_order]
 
     unique_i, idx = np.unique(i, return_index=True)
     censoring_by_i = np.split(c, idx)[1:]
@@ -162,7 +174,7 @@ def handle_xicn(
 
     if as_recurrent_data:
         data = RecurrentEventData(x, i, c, n, tl=tl_arr, tr=tr_arr)
-        data.Z = Z
+        data.Z = Z_arr
         return data
     else:
         return x, i, c, n

@@ -1,4 +1,8 @@
+from numbers import Number
+from typing import Any, Callable
+
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.univariate import nonparametric as nonp
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
@@ -6,7 +10,19 @@ from surpyval.utils import xcnt_handler, xcnt_to_xrd, xrd_handler
 
 
 class NonParametricFitter:
-    def _create_non_p_model(self, x, r, d, estimator, data=None):
+    how: str
+    # Provided by the Turnbull estimator subclass; only called on the
+    # ``how == "Turnbull"`` path.
+    _fit: Callable[..., dict[str, Any]]
+
+    def _create_non_p_model(
+        self,
+        x: npt.ArrayLike,
+        r: npt.ArrayLike,
+        d: npt.ArrayLike,
+        estimator: str,
+        data: dict | None = None,
+    ) -> NonParametric:
         out = NonParametric()
         if data is not None:
             out.data = data
@@ -32,17 +48,17 @@ class NonParametricFitter:
 
     def fit(
         self,
-        x=None,
-        c=None,
-        n=None,
-        t=None,
-        xl=None,
-        xr=None,
-        tl=None,
-        tr=None,
-        turnbull_estimator="Fleming-Harrington",
-        set_lower_limit=None,
-    ):
+        x: npt.ArrayLike | None = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        xl: npt.ArrayLike | None = None,
+        xr: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | Number | None = None,
+        tr: npt.ArrayLike | Number | None = None,
+        turnbull_estimator: str = "Fleming-Harrington",
+        set_lower_limit: float | None = None,
+    ) -> NonParametric:
         r"""
 
         The central feature to SurPyval's capability. This function aimed to
@@ -159,7 +175,9 @@ class NonParametricFitter:
             x, r, d, estimator=estimator, data=data
         )
 
-    def from_xrd(self, x, r, d):
+    def from_xrd(
+        self, x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
+    ) -> NonParametric:
         r"""
         The central feature to SurPyval's capability. This function aimed to
         have an API to mimic the simplicity of the scipy API. That is, to use a

@@ -1,9 +1,13 @@
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class RecurrentEventData:
+    # Optional covariate matrix, attached by ``handle_xicn`` for regression.
+    Z: npt.NDArray | None = None
+
     """
     A class to handle and manipulate recurrent event data. Recurrent events are
     those that can occur more than once for each subject or item.

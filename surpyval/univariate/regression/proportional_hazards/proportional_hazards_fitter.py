@@ -1,6 +1,8 @@
 import inspect
+from typing import Any
 
 import autograd.numpy as np
+import numpy.typing as npt
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import bounds_convert
@@ -12,7 +14,10 @@ from ..regression_data import DataFrameRegressionMixin
 
 
 class Phi:
-    pass
+    # Lightweight namespace whose attributes are populated by the fitter.
+    phi: Any
+    phi_param_map: Any
+    name: str
 
 
 class ProportionalHazardsFitter(DataFrameRegressionMixin):
@@ -148,7 +153,16 @@ class ProportionalHazardsFitter(DataFrameRegressionMixin):
             phi_init=lambda Z: np.zeros(Z.shape[1]),
         )
 
-    def fit(self, x, Z, c=None, n=None, t=None, init=None, fixed=None):
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        init: npt.ArrayLike | None = None,
+        fixed: dict[str, float] | None = None,
+    ) -> ParametricRegressionModel:
         """
         Fit the proportional hazards model to the data.
 
