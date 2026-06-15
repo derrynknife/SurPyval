@@ -115,6 +115,7 @@ class ProportionalIntensityHPP:
         if has_left_censoring:
             x_left = x_l[c == -1]
             n_left = n[c == -1]
+            Z_left = Z[c == -1]
             log_xl = np.log(x_left)
             n_log_x_left = n_left * log_xl
             n_log_x_left_sum = n_log_x_left.sum()
@@ -133,6 +134,7 @@ class ProportionalIntensityHPP:
             x_i_l = x_l[c == 2]
             x_i_r = x_r[c == 2]
             delta_xi = x_i_r - x_i_l
+            Z_i = Z[c == 2]
 
             n_interval = n[c == 2]
             n_interval_sum = n_interval.sum()
@@ -222,9 +224,12 @@ class ProportionalIntensityHPP:
         out.bounds = ((0, None),)
         out.support = (0.0, np.inf)
 
+        # Use the right endpoint for interval-censored (2D) observations when
+        # estimating each item's latest event time for the initial rate guess.
+        _x_max = data.x if data.x.ndim == 1 else data.x[:, 1]
         _, _inv = np.unique(data.i, return_inverse=True)
         _max_x = np.full(_inv.max() + 1, -np.inf)
-        np.maximum.at(_max_x, _inv, data.x)
+        np.maximum.at(_max_x, _inv, _x_max)
         init = (data.n[data.c == 0]).sum() / _max_x.sum()
 
         num_covariates = Z.shape[1]
@@ -232,7 +237,7 @@ class ProportionalIntensityHPP:
 
         neg_ll = cls.create_negll_func(data)
 
-        res = minimize(neg_ll, [init])
+        res = minimize(neg_ll, init)
         out.res = res
         out.params = np.atleast_1d(np.exp(res.x[0]))
         out.coeffs = np.atleast_1d(res.x[1:])
