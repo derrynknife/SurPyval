@@ -23,14 +23,27 @@ class ProportionalIntensityNHPP:
     --------
 
     >>> import numpy as np
-    >>> from surpyval.datasets import load_rossi_static
     >>> from surpyval.recurrent import ProportionalIntensityNHPP
-    >>> data = load_rossi_static()
-    >>> x = data['week'].values
-    >>> # 'arrest' == 1 is an observed event (c=0); 0 is right-censored (c=1)
-    >>> c = np.where(data['arrest'].values == 1, 0, 1)
-    >>> i = np.arange(len(data))
-    >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
+    >>>
+    >>> # Four repairable systems observed until t=20; failures get more
+    >>> # frequent over time and the Z=1 group fails faster than the Z=0 group.
+    >>> x = [9, 14, 18, 20,
+    ...      7, 12, 16, 19, 20,
+    ...      5, 9, 13, 16, 18, 20,
+    ...      6, 10, 13, 15, 17, 19, 20]
+    >>> i = [1, 1, 1, 1,
+    ...      2, 2, 2, 2, 2,
+    ...      3, 3, 3, 3, 3, 3,
+    ...      4, 4, 4, 4, 4, 4, 4]
+    >>> # c = 0 is an observed failure, c = 1 the right-censored window close
+    >>> c = [0, 0, 0, 1,
+    ...      0, 0, 0, 0, 1,
+    ...      0, 0, 0, 0, 0, 1,
+    ...      0, 0, 0, 0, 0, 0, 1]
+    >>> Z = np.array([0, 0, 0, 0,
+    ...               0, 0, 0, 0, 0,
+    ...               1, 1, 1, 1, 1, 1,
+    ...               1, 1, 1, 1, 1, 1, 1]).reshape(-1, 1)
     >>> model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c)
     >>> model
     Proportional Intensity Recurrence Model
@@ -40,17 +53,11 @@ class ProportionalIntensityNHPP:
     Parameterization    : Parametric
     Hazard Rate Model   : Duane
     Base Rate Parameters:
-        alpha  :  8.66160614039418
-        b  :  1.4595294695090125e-15
+        alpha  :  2.0294701249769567
+        b  :  0.008010947012813689
     <BLANKLINE>
     Covariate Coefficients:
-       beta_0  :  0.04165485427630197
-       beta_1  :  -0.005241786199609709
-       beta_2  :  -0.006555560918222524
-       beta_3  :  -0.03912275371411811
-       beta_4  :  -0.020323791104350994
-       beta_5  :  -0.01093907588859648
-       beta_6  :  0.007067185098201159
+       beta_0  :  0.45194475814452534
     <BLANKLINE>
     """
 
