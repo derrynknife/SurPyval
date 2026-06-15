@@ -20,14 +20,17 @@ class ProportionalIntensityHPP:
     Examples
     --------
 
+    >>> import numpy as np
     >>> from surpyval.datasets import load_rossi_static
     >>> from surpyval.recurrent import ProportionalIntensityHPP
     >>>
     >>> data = load_rossi_static()
     >>> x = data['week'].values
-    >>> c = data['arrest'].values
+    >>> # 'arrest' == 1 is an observed event (c=0); 0 is right-censored (c=1)
+    >>> c = np.where(data['arrest'].values == 1, 0, 1)
+    >>> i = np.arange(len(data))
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
-    >>> model = ProportionalIntensityHPP.fit(x, Z, c)
+    >>> model = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
     >>> model
     Proportional Intensity Recurrence Model
     =======================================
@@ -36,15 +39,17 @@ class ProportionalIntensityHPP:
     Parameterization    : Parametric
     Hazard Rate Model   : Constant
     Base Rate Parameters:
-        lambda  :  5.687176190869141
+        lambda  :  0.012395105741757225
+    <BLANKLINE>
     Covariate Coefficients:
-        beta_0  :  0.5666297135140156
-        beta_1  :  0.031175577872654184
-        beta_2  :  -0.6796807726448314
-        beta_3  :  0.6602827681955281
-        beta_4  :  -2.577091221089804
-        beta_5  :  -0.4523927241350517
-        beta_6  :  -0.016388459191916338
+       beta_0  :  0.06397367067847898
+       beta_1  :  0.011491178797116433
+       beta_2  :  -0.02147901865302258
+       beta_3  :  -0.014676664859873595
+       beta_4  :  0.04738275470382102
+       beta_5  :  0.019109337775930837
+       beta_6  :  -0.01905662860143533
+    <BLANKLINE>
     """
 
     @classmethod

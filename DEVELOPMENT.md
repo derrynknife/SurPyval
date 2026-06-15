@@ -62,6 +62,10 @@ theme; items already resolved are marked **[done]**.
   [init])` double-wrapped the 1-D `init` into a 2-D array (broke *every*
   fit, not just censored), and the initial-rate guess called
   `np.maximum.at(..., data.x)` with a 2-D `x` for interval-censored data.
+  The NHPP sibling had the same `[init]` double-wrap, fixed too. Both
+  proportional-intensity docstring examples passed the event indicator
+  positionally into `i` (so they crashed) — rewritten to derive `c` from
+  `arrest` and supply a per-subject `i`, and now pass `--doctest-modules`.
   Regression tests in `tests/recurrent/test_hpp_proportional_intensity.py`.
 - Left-truncated MCF is wrong: `RecurrentEventData.to_xrd()` builds the
   at-risk set assuming every item enters at `t=0`, ignoring `tl`; inflates the
