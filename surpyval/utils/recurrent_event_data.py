@@ -254,6 +254,51 @@ class RecurrentEventData:
 
         return np.concatenate(x_previous)
 
+    def get_right_truncation_close(self):
+        """
+        Per-item integration bounds for the NHPP likelihood's right
+        window-close.
+
+        The NHPP integral runs from each item's entry time (its left
+        truncation ``tl``, handled by :meth:`get_previous_x`) to the time its
+        observation window closes. Historically that close was only known from
+        an explicit right-censoring (``c=1``) row, so the integral stopped at
+        the item's last recorded time. When an item instead carries a finite
+        right-truncation time ``tr`` the window closes there, and the integral
+        must be extended from the last in-window time out to ``tr``.
+
+        Returns three aligned arrays ``(x_last, x_close, rep_idx)`` with one
+        entry per item whose ``tr`` is finite: ``x_last`` is the item's last
+        in-window time (its last event or right-censoring row), ``x_close`` is
+        its ``tr``, and ``rep_idx`` is a representative row index for the item
+        (so per-item covariates ``Z`` can be gathered). Items with the default
+        ``tr = inf`` are omitted, so untruncated data yields empty arrays and
+        contributes nothing to the integral. Adding
+        ``cif(x_last) - cif(x_close)`` to the log-likelihood therefore extends
+        the telescoped integral to ``tr`` (and is exactly zero when a ``c=1``
+        row already sits at ``tr``, so the two ways of closing the window never
+        double-count).
+
+        Returns
+        -------
+        tuple of numpy.ndarray
+            ``(x_last, x_close, rep_idx)`` as described above.
+        """
+        x_upper = self.x if self.x.ndim == 1 else self.x[:, 1]
+        x_last, x_close, rep_idx = [], [], []
+        for item in self.items:
+            mask = self.i == item
+            tr_item = float(self.tr[mask][0])
+            if np.isfinite(tr_item):
+                x_last.append(float(x_upper[mask].max()))
+                x_close.append(tr_item)
+                rep_idx.append(int(np.flatnonzero(mask)[0]))
+        return (
+            np.array(x_last, dtype=float),
+            np.array(x_close, dtype=float),
+            np.array(rep_idx, dtype=int),
+        )
+
     def get_events_for_item(self, item):
         """
         Get all events for a specific item or subject.

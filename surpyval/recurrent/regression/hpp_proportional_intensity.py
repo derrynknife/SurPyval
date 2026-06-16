@@ -154,6 +154,14 @@ class ProportionalIntensityHPP:
             Z_i = np.zeros((1, Z.shape[1]))
             delta_xi = 0.0
 
+        # Right window-close: for items with a finite right-truncation time
+        # ``tr`` the integral closes at ``tr``. For the constant-rate HPP the
+        # extension contributes rate * phi * (x_last - tr). Empty for
+        # untruncated data.
+        x_close_last, x_close_tr, close_idx = data.get_right_truncation_close()
+        x_close = x_close_last - x_close_tr
+        Z_close = Z[close_idx]
+
         def negll_func(params):
             log_rate = params[0]
             rate = np.exp(log_rate)
@@ -168,6 +176,9 @@ class ProportionalIntensityHPP:
 
             phi_right = np.exp(np.dot(Z_right, beta_coeffs))
             ll += rate * (x_right * phi_right).sum()
+
+            phi_close = np.exp(np.dot(Z_close, beta_coeffs))
+            ll += rate * (x_close * phi_close).sum()
 
             phi_exponent_left = np.dot(Z_left, beta_coeffs)
             ll += (
@@ -191,7 +202,9 @@ class ProportionalIntensityHPP:
 
         return negll_func
 
-    def fit(self, x, Z, i=None, c=None, n=None, init=None):
+    def fit(
+        self, x, Z, i=None, c=None, n=None, t=None, tl=None, tr=None, init=None
+    ):
         """
         Fit the model using the provided data and initial parameters (if given)
 
@@ -208,6 +221,15 @@ class ProportionalIntensityHPP:
             Censoring indicators.
         n : array_like, optional
             Number of events.
+        t : array_like, optional
+            (N, 2) array of [left, right] truncation bounds per observation.
+        tl : array_like or scalar, optional
+            Left truncation (delayed entry) time per item; the observation of
+            each item begins here. Scalar broadcasts to all items.
+        tr : array_like or scalar, optional
+            Right truncation time per item; the observation window closes here,
+            so the intensity is integrated out to ``tr`` even without an
+            explicit right-censoring (``c=1``) row.
         init : array_like, optional
             Initial parameter estimates.
 
@@ -218,7 +240,9 @@ class ProportionalIntensityHPP:
             An object containing the results of the fitting process, including
             parameter estimates.
         """
-        data = handle_xicn(x, i, c, n, Z=Z, as_recurrent_data=True)
+        data = handle_xicn(
+            x, i, c, n, t=t, tl=tl, tr=tr, Z=Z, as_recurrent_data=True
+        )
 
         out = ProportionalIntensityModel()
         out.data = data
