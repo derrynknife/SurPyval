@@ -1,15 +1,24 @@
-import warnings
-
 import numpy as np
 from matplotlib import pyplot as plt
 
-from surpyval.recurrent.nonparametric import NonParametricCounting
+from surpyval.recurrent.inference import LikelihoodInferenceMixin
+from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 
 
-class ProportionalIntensityModel:
+class ProportionalIntensityModel(
+    RecurrenceSimulationMixin, LikelihoodInferenceMixin
+):
     """
     Model to provide methods and attributes when using a fitted proportional
     intensity model.
+
+    Simulation reuses the shared :class:`RecurrenceSimulationMixin` (seeding,
+    ``max_events`` backstop and the count/time-terminated drivers); the only
+    addition here is the per-item covariate vector ``Z``, which the simulation
+    entry points take and thread through to the sampler. When the model was
+    fitted by maximum likelihood it also carries the likelihood-inference
+    behaviour (``log_likelihood``, ``aic``, ``bic``, ``standard_errors``) from
+    :class:`LikelihoodInferenceMixin`.
 
     Examples
     --------
@@ -123,22 +132,50 @@ class ProportionalIntensityModel:
         ax.plot(x_plot, self.cif(x_plot, Z_0), color="b")
         return ax
 
-    def count_terminated_simulation(self, events, Z, items=1):
+    def _parameter_names(self):
+        # The base-rate (intensity) parameters lead ``_mle``, followed by the
+        # covariate coefficients.
+        return [
+            *self.param_names,
+            *["beta_{}".format(i) for i in range(len(self.coeffs))],
+        ]
+
+    def _new_sequence_sampler(self):
+        # The shared simulation driver requests one of these per item; the
+        # covariate vector for the run is stashed on ``_sim_Z`` by the public
+        # simulation entry points below.
+        Z = self._sim_Z
+        x_prev = 0.0
+
+        def sample(ui):
+            nonlocal x_prev
+            u_adj = ui * np.exp(-self.cif(x_prev, Z))
+            xi = self.inv_cif(-np.log(u_adj), Z) - x_prev
+            x_prev += xi
+            return xi
+
+        return sample
+
+    def _postprocess_simulated_model(self, model):
+        if self.dist.name == "CoxLewis":
+            model.mcf_hat += np.exp(self.params[0])
+        return model
+
+    def count_terminated_simulation(self, events, Z, items=1, seed=None):
         """
         Simulate count-terminated recurrence data based on the fitted model.
-        That is, if you want to simulate up to 10 events terminating the
-        simulation at 10 events, this is the method to use.
-
-        This method is for use with monte carlo methods that use the NHPP model
-        to simulate recurrence data.
 
         Parameters
         ----------
 
         events: int
-            Number of events to simulate.
+            Number of events to simulate per sequence.
+        Z: array_like
+            Covariate vector applied to every simulated sequence.
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible simulation.
 
         Returns
         -------
@@ -146,57 +183,34 @@ class ProportionalIntensityModel:
         NonParametricCounting
             An NonParametricCounting model built from the simulated data.
         """
-        self.initialize_simulation()
+        self._sim_Z = np.asarray(Z, dtype=float)
+        return super().count_terminated_simulation(
+            events, items=items, seed=seed
+        )
 
-        xicn = {"x": [], "i": [], "c": [], "n": []}
-
-        for i in range(0, items):
-            running = 0
-            j = 0
-            x_prev = 0
-            for j in range(0, events + 1):
-                ui = self.get_uniform_random_number()
-                u_adj = ui * np.exp(-self.cif(x_prev, Z))
-                xi = self.inv_cif(-np.log(u_adj), Z) - x_prev
-                running += xi
-                x_prev = running
-                xicn["i"].append(i + 1)
-                xicn["n"].append(1)
-                xicn["x"].append(running)
-                xicn["c"].append(0)
-
-        self.clear_simulation()
-
-        model = NonParametricCounting.fit(**xicn)
-
-        if self.dist.name == "CoxLewis":
-            model.mcf_hat += np.exp(self.params[0])
-
-        mask = model.mcf_hat <= events
-        model.x = model.x[mask]
-        model.mcf_hat = model.mcf_hat[mask]
-        model.var = None
-        return model
-
-    def time_terminated_simulation(self, T, Z, items=1, tol=1e-5):
+    def time_terminated_simulation(
+        self, T, Z, items=1, tol=1e-8, max_events=10_000, seed=None
+    ):
         """
-        Simulate time-terminated recurrence data based on the fitted model. If
-        you want to simulate up to some time T, this is the method to use. This
-        simulation can run into errors when a sequence approaches very steep
-        hazard rates. Warnings are provided if this is likely the case.
-
-        This model is useful for doing monte carlo simulations with the NHPP
-        model.
+        Simulate time-terminated recurrence data based on the fitted model.
 
         Parameters
         ----------
 
         T: float
             Time termination value.
+        Z: array_like
+            Covariate vector applied to every simulated sequence.
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
         tol: float, optional
-            Tolerance for interarrival times to stop an individual sequence.
+            Interarrival times below this value end a sequence early (a
+            possible asymptote). Default is 1e-8.
+        max_events: int, optional
+            Hard per-sequence event cap that guarantees termination.
+            Default is 10000.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible simulation.
 
         Returns
         -------
@@ -207,53 +221,47 @@ class ProportionalIntensityModel:
         Warnings
         --------
 
-        If any of the simulated sequences seem to not reach the time
-        termination value T due to possible asymptote, a warning message will
-        be printed to notify the user about potential convergence problems in
-        the simulation.
+        A sequence is terminated early and right-censored at its last event if
+        an interarrival time falls below ``tol`` or it reaches ``max_events``
+        before T. A warning is raised in either case.
         """
-        self.initialize_simulation()
-        convergence_problem = False
+        self._sim_Z = np.asarray(Z, dtype=float)
+        return super().time_terminated_simulation(
+            T, items=items, tol=tol, max_events=max_events, seed=seed
+        )
 
-        xicn = {"x": [], "i": [], "c": [], "n": []}
+    def count_terminated_simulation_data(self, events, Z, items=1, seed=None):
+        """
+        Simulate count-terminated recurrence data and return the raw events.
+        Like :meth:`count_terminated_simulation` but yields the simulated
+        ``RecurrentEventData`` rather than the fitted MCF.
+        """
+        self._sim_Z = np.asarray(Z, dtype=float)
+        return super().count_terminated_simulation_data(
+            events, items=items, seed=seed
+        )
 
-        for i in range(0, items):
-            running = 0
-            j = 0
-            x_prev = 0
-            while True:
-                ui = self.get_uniform_random_number()
-                u_adj = ui * np.exp(-self.cif(x_prev, Z))
-                xi = self.inv_cif(-np.log(u_adj), Z) - x_prev
-                running += xi
-                x_prev = running
-                xicn["i"].append(i + 1)
-                xicn["n"].append(1)
-                if running > T:
-                    xicn["x"].append(T)
-                    xicn["c"].append(1)
-                    break
-                elif xi < tol:
-                    convergence_problem = True
-                    xicn["x"].append(running)
-                    xicn["c"].append(0)
-                    break
-                else:
-                    xicn["x"].append(running)
-                    xicn["c"].append(0)
-                    j += 1
+    def time_terminated_simulation_data(
+        self, T, Z, items=1, tol=1e-8, max_events=10_000, seed=None
+    ):
+        """
+        Simulate time-terminated recurrence data and return the raw events.
+        Like :meth:`time_terminated_simulation` but yields the simulated
+        ``RecurrentEventData`` rather than the fitted MCF.
+        """
+        self._sim_Z = np.asarray(Z, dtype=float)
+        return super().time_terminated_simulation_data(
+            T, items=items, tol=tol, max_events=max_events, seed=seed
+        )
 
-        self.clear_simulation()
-
-        if convergence_problem:
-            warnings.warn(
-                "Some timelines unable to reach T due to possible asymptote"
-            )
-
-        model = NonParametricCounting.fit(**xicn)
-
-        if self.dist.name == "CoxLewis":
-            model.mcf_hat += np.exp(self.params[0])
-        model.var = None
-
-        return model
+    def mcf(self, x, Z, items=1000, seed=None):
+        """
+        Estimate the mean cumulative function at ``x`` for covariates ``Z`` by
+        simulating ``items`` time-terminated sequences out to ``max(x)``.
+        """
+        self._sim_Z = np.asarray(Z, dtype=float)
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        np_model = self.time_terminated_simulation(
+            float(x.max()), Z, items=items, seed=seed
+        )
+        return np_model.mcf(x)

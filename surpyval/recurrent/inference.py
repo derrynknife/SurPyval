@@ -36,10 +36,19 @@ class LikelihoodInferenceMixin:
     Likelihood-based inference for fitted recurrent-event models.
 
     The fitting routine must set ``_neg_ll`` (the negative log-likelihood in
-    natural parameter space), ``_mle`` (the fitted parameter vector, with the
-    leading repair/restoration parameter first) and ``_n_obs`` (the number of
-    events contributing to the likelihood). Models built with
-    ``fit_from_parameters`` carry no likelihood and these methods raise.
+    natural parameter space), ``_mle`` (the fitted parameter vector in that same
+    space) and ``_n_obs`` (the number of events contributing to the
+    likelihood). Models built with ``fit_from_parameters`` (or by a non-
+    likelihood method such as MSE) carry no likelihood and these methods raise.
+
+    This is shared by every fitted recurrent model that has a likelihood: the
+    renewal / imperfect-repair models (``RenewalModel``), the parametric
+    intensity models (``ParametricRecurrenceModel``) and the proportional-
+    intensity regression models (``ProportionalIntensityModel``). Only the
+    parameter labelling differs between them, so subclasses supply
+    :meth:`_parameter_names`; everything numeric (log-likelihood, AIC, BIC,
+    covariance, standard errors) is computed here from ``_neg_ll``/``_mle``/
+    ``_n_obs`` alone.
 
     Standard errors come from inverting a numerical Hessian of the negative
     log-likelihood (the observed Fisher information). When a parameter sits on
@@ -55,14 +64,18 @@ class LikelihoodInferenceMixin:
                 "fit_from_parameters does not compute a likelihood."
             )
 
-    # Name of the leading repair/restoration parameter in ``_mle``. Subclasses
-    # using a different symbol (e.g. ARA's ``rho``) override this.
-    _restoration_param_name = "q"
+    def _parameter_names(self):
+        """
+        Names of the entries of ``_mle``, in order. Subclasses override this to
+        label their parameters (e.g. the renewal models prepend the restoration
+        parameter, the regression models append the covariate coefficients).
+        """
+        raise NotImplementedError
 
     @property
     def parameter_names(self):
         self._check_fitted()
-        return [self._restoration_param_name, *self.model.dist.param_names]
+        return list(self._parameter_names())
 
     @property
     def log_likelihood(self):
@@ -83,9 +96,9 @@ class LikelihoodInferenceMixin:
 
     def covariance(self):
         """
-        Approximate parameter covariance matrix, ordered as
-        ``[q, *dist_params]``. Computed as the inverse of the numerical Hessian
-        of the negative log-likelihood at the MLE.
+        Approximate parameter covariance matrix, ordered to match
+        :attr:`parameter_names`. Computed as the inverse of the numerical
+        Hessian of the negative log-likelihood at the MLE.
         """
         self._check_fitted()
         H = numerical_hessian(self._neg_ll, self._mle)
@@ -104,8 +117,9 @@ class LikelihoodInferenceMixin:
 
     def standard_errors(self):
         """
-        Standard errors of ``[q, *dist_params]`` (the square roots of the
-        diagonal of :meth:`covariance`). Entries are NaN where the variance is
+        Standard errors of the fitted parameters (the square roots of the
+        diagonal of :meth:`covariance`), ordered to match
+        :attr:`parameter_names`. Entries are NaN where the variance is
         non-positive, which typically indicates a boundary optimum.
         """
         var = np.diag(self.covariance())

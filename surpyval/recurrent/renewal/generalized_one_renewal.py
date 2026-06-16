@@ -2,6 +2,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from surpyval import Weibull
+from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import RenewalModel
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
@@ -12,7 +13,7 @@ from surpyval.utils.recurrent_utils import (
 
 
 @singleton_fitter
-class GeneralizedOneRenewal:
+class GeneralizedOneRenewal(RenewalFitMixin):
     """
     A class to handle the G1 renewal process of Kaminskiy and Krivtsov, in
     which the jth interarrival time is the underlying lifetime distribution
@@ -178,58 +179,35 @@ class GeneralizedOneRenewal:
         self._check_dist_eligible(dist)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
-        if init is None:
-            dist_params = dist.fit(
-                data.interarrival_times, data.c, data.n
-            ).params
 
         neg_ll = self.create_negll_func(
             data.interarrival_times, data.i, data.c, data.n, dist
         )
 
-        results = []
-        # Iterate over different initial values for q
-        # result is sensitive to initial value of q
-        if init is None:
-            for q_init in [0.0001, 1.0, 2.0]:
-                init = [q_init, *dist_params]
-                res = minimize(
-                    neg_ll,
-                    init,
-                    bounds=[(-1, None), *dist.bounds],
-                    method="Nelder-Mead",
-                )
-                if res.success:
-                    results.append(res)
-
-            if results == []:
-                raise ValueError(
-                    "Could not find a good solution. "
-                    + "Try using `init` for better initial guess."
-                )
-            else:
-                res = results[np.argmin([res.fun for res in results])]
-        else:
-            res = minimize(
+        # The G1 likelihood only needs ``q > -1``, so it is optimised directly
+        # under simple box bounds rather than an unconstrained transform.
+        # result is sensitive to the initial value of q.
+        def fit_once(x0):
+            return minimize(
                 neg_ll,
-                init,
+                np.asarray(x0, dtype=float),
                 bounds=[(-1, None), *dist.bounds],
                 method="Nelder-Mead",
             )
-            if not res.success:
-                raise ValueError(
-                    "Optimization with the provided `init` did not "
-                    "converge. Try a different initial guess."
-                )
+
+        if init is None:
+            dist_params = dist.fit(
+                data.interarrival_times, data.c, data.n
+            ).params
+            inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
+        else:
+            inits = None
+        res = self._multistart(fit_once, inits, init)
 
         underlying_model = dist.from_params(list(res.x[1:]))
         q = res.x[0]
         out = self._make_model(underlying_model, q)
-        out.res = res
-        out.data = data
-        out._neg_ll = neg_ll
-        out._mle = np.asarray(res.x, dtype=float)
-        out._n_obs = len(data.x)
+        self._attach_inference(out, neg_ll, res.x, len(data.x), res, data)
         return out
 
     def fit(self, x, i=None, c=None, n=None, dist=Weibull, init=None):

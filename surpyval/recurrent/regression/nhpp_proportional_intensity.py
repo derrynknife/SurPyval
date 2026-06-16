@@ -211,6 +211,12 @@ class ProportionalIntensityNHPP:
         out.kind = "NHPP"
         out.parameterization = "Parametric"
         out.param_names = dist.param_names
+        # The likelihood is in natural parameter space, so the full fitted
+        # vector ``[*dist_params, *coeffs]`` is the MLE the shared inference
+        # machinery needs for AIC/BIC/standard errors.
+        out._neg_ll = neg_ll
+        out._mle = np.asarray(res.x, dtype=float)
+        out._n_obs = len(data.x)
 
         return out
 

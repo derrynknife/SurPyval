@@ -52,85 +52,15 @@ class Duane(NHPPFitter):
         return np.array([1.0, 1.0])
 
     def cif(self, x, *params):
-        """
-        Cumulative intensity function (CIF) of the Duane model.
-
-        Parameters
-        ----------
-
-        x : float
-            The value at which CIF is evaluated.
-        params : tuple
-            Parameters of the Duane model.
-
-        Returns
-        -------
-
-        float
-            The CIF value.
-        """
         return params[1] * x ** params[0]
 
     def iif(self, x, *params):
-        """
-        Instantaneous intensity function (IIF) or the failure rate of the
-        Duane model.
-
-        Parameters
-        ----------
-
-        x : float
-            The value at which IIF is evaluated.
-        params : tuple
-            Parameters of the Duane model.
-
-        Returns
-        -------
-
-        float
-            The IIF value.
-        """
         return params[0] * params[1] * x ** (params[0] - 1.0)
 
     def log_iif(self, x, *params):
-        """
-        Natural logarithm of the instantaneous intensity function (IIF) of the
-        Duane model.
-
-        Parameters
-        ----------
-
-        x : float
-            The value at which log(IIF) is evaluated.
-        params : tuple
-            Parameters of the Duane model.
-
-        Returns
-        -------
-
-        float
-            The log(IIF) value.
-        """
         return (
             np.log(params[0]) + np.log(params[1]) + (params[0] - 1) * np.log(x)
         )
 
     def inv_cif(self, N, *params):
-        """
-        Inverse of the cumulative intensity function (CIF) of the Duane model.
-
-        Parameters
-        ----------
-
-        N : float
-            The value at which inverse CIF is evaluated.
-        params : tuple
-            Parameters of the Duane model.
-
-        Returns
-        -------
-
-        float
-            The inverse CIF value.
-        """
         return (N / params[1]) ** (1.0 / params[0])

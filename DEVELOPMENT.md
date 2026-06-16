@@ -54,22 +54,38 @@ renewal, regression, nonparametric, competing risks). Findings are grouped by
 theme; items already resolved are marked **[done]**.
 
 **C. Simplification**
-- The multi-start MLE fit scaffolding is copy-pasted across the four repair
-  fitters (`GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI`): the
-  `for X_init in [...]` loop, `bounds_convert`, the identical "Could not find a
-  good solution" raise, and the `_neg_ll`/`_mle`/`_n_obs` storage → a
-  `RenewalFitMixin._fit_repair_model(...)`.
-- Regression simulation is the stale pre-mixin copy (`tol=1e-5`, no `seed`/
-  `max_events`) in `ProportionalIntensityModel` → should inherit
-  `RecurrenceSimulationMixin`.
-- The parametric (`HPP`/`CrowAMSAA`/`Duane`/`CoxLewis`) and regression fitters never
-  set `_neg_ll`/`_mle`/`_n_obs`, so they get no AIC/BIC/SE even though
-  `LikelihoodInferenceMixin` exists and the repair models use it (~3 lines per
-  fit).
-- `Duane`/`CrowAMSAA`/`CoxLewis` each redefine `iif`/`log_iif`/`cif`/
-  `inv_cif` with identical docstring boilerplate (the models are mathematically
-  distinct — do not merge the math) → an `IntensityModel` ABC for the contract.
-  `HPP` could subclass `NHPPFitter` (overriding `create_negll_func`).
+- The multi-start MLE fit scaffolding that was copy-pasted across the four
+  repair fitters (`GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI`)
+  now lives in a shared `RenewalFitMixin` (`recurrent/renewal/fit_mixin.py`):
+  `_multistart` owns the `for X_init in [...]` loop, the best-start selection
+  and the two identical convergence-failure raises; `_bounds_transform` owns
+  the `bounds_convert` setup; `_attach_inference` owns the
+  `_neg_ll`/`_mle`/`_n_obs` storage; and `_initial_dist_params` de-duplicates
+  the first-event initialisation shared by `GeneralizedRenewal`/`ARA`. Each
+  fitter keeps only its own likelihood and optimiser call, so the numerics are
+  unchanged (`GeneralizedOneRenewal` still uses bounded Nelder-Mead, not the
+  transform, to keep its pinned results identical). **[done]**
+- `ProportionalIntensityModel` now inherits `RecurrenceSimulationMixin` instead
+  of carrying the stale pre-mixin simulation copy, so the regression model
+  gains seeding, the `max_events` backstop and the data-returning simulators;
+  the covariate vector `Z` is threaded to the sampler by the public entry
+  points. **[done]**
+- The parametric intensity models (`HPP`/`CrowAMSAA`/`Duane`/`CoxLewis`) and
+  the proportional-intensity regression fitters now set
+  `_neg_ll`/`_mle`/`_n_obs` and inherit `LikelihoodInferenceMixin`, so they
+  expose `log_likelihood`/`aic`/`bic`/`standard_errors` like the repair models.
+  `ParametricRecurrenceModel`/`ProportionalIntensityModel` define
+  `_parameter_names` for the labelling; the inference helpers were generalised
+  off the renewal-only `[q, *dist_params]` assumption. An MSE fit (or a
+  `from_params` model) sets nothing, so inference still raises there. **[done]**
+- `Duane`/`CrowAMSAA`/`CoxLewis` no longer repeat the `iif`/`log_iif`/`cif`/
+  `inv_cif` docstring boilerplate: the contract (plus `inv_cif` and
+  `parameter_initialiser`) lives once on a new `IntensityModel` ABC that
+  `NHPPFitter` subclasses, and the concrete models supply only the maths (which
+  is left distinct). `HPP` was *not* folded into `NHPPFitter` — its bespoke
+  log-space root-finding fit and pinned outputs differ enough from the
+  MSE/Nelder-Mead NHPP path that the subclassing would change behaviour for no
+  real saving; it stays a `CountingProcess`. **[done]**
 
 **D. Missing capabilities**
 - No goodness-of-fit / trend tests anywhere (Laplace, MIL-HDBK-189C).
@@ -80,7 +96,8 @@ theme; items already resolved are marked **[done]**.
   `CauseSpecificMCF.fit()` — see A.)
 - `handle_xicn` has no `e` (event-mark) parameter, so `CauseSpecificMCF.fit`
   bypasses it and can't take truncation; no `fit_from_df` for marks.
-- The regression submodule and the nonparametric MCF have **zero tests**.
+- The nonparametric MCF has **zero tests**. (The regression submodule now has
+  fit/inference and simulation tests — see C and the Test coverage note below.)
 - No residual diagnostics; no parametric CI band on `plot()`.
 
 **E. API inconsistencies**
@@ -177,12 +194,20 @@ Multiple event types in a single recurrent process (e.g., two failure modes on t
 
 ### Test coverage
 
-Only one test file with one test covers the entire recurrent module (`tests/recurrent/test_counting.py` — a single `GeneralizedOneRenewal` fit). The parametric, nonparametric, and regression sub-packages have no tests at all. Minimum viable coverage:
+The renewal, parametric and regression sub-packages now have tests
+(`tests/recurrent/test_counting.py`, `test_ara.py`, `test_ari.py`,
+`test_cox_lewis.py`, `test_counting_process.py`, `test_parametric_inference.py`,
+`test_hpp_proportional_intensity.py`, `test_regression_simulation.py`, …). The
+remaining gaps for minimum viable coverage:
 
-- Round-trip fit + CIF/IIF evaluation for each parametric model (HPP, CrowAMSAA, Duane, CoxLewis)
-- MCF and confidence bounds for `NonParametricCounting`
+- Round-trip fit + CIF/IIF evaluation for each parametric model (HPP,
+  CrowAMSAA, Duane, CoxLewis) — likelihood/AIC/BIC/SE now covered by
+  `test_parametric_inference.py`; CIF/IIF round-trips still thin.
+- MCF and confidence bounds for `NonParametricCounting`.
 - Simulation outputs for `GeneralizedRenewal` and `GeneralizedOneRenewal`
-- Proportional intensity HPP and NHPP fit + predict
+  (covered in `test_counting.py`).
+- Proportional intensity HPP and NHPP fit + predict (fit/inference covered;
+  predict round-trips still thin).
 
 ---
 

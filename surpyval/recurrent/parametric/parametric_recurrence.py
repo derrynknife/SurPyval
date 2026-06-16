@@ -1,14 +1,23 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
+from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 
 
-class ParametricRecurrenceModel(RecurrenceSimulationMixin):
+class ParametricRecurrenceModel(
+    RecurrenceSimulationMixin, LikelihoodInferenceMixin
+):
     """
     A class for holding the parameters, data, and usefult methods for a
     fitted parametric recurrence model. This is the result of the ``fit`` calls
     from the counting distributions.
+
+    When fitted by maximum likelihood the model also carries the likelihood-
+    inference behaviour (``log_likelihood``, ``aic``, ``bic``,
+    ``standard_errors``) from :class:`LikelihoodInferenceMixin`. Models built
+    by ``from_params`` or fitted by ``how="MSE"`` carry no likelihood, so those
+    methods raise.
 
     Example
     -------
@@ -20,6 +29,9 @@ class ParametricRecurrenceModel(RecurrenceSimulationMixin):
     >>> x = Exponential.random(10, 1e-3).cumsum()
     >>> model = HPP.fit(x)
     """
+
+    def _parameter_names(self):
+        return list(self.dist.param_names)
 
     def __repr__(self):
         param_string = "\n".join(
