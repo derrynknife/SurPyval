@@ -15,10 +15,10 @@ class RenewalFitMixin:
     ``_mle``, ``_n_obs``). The genuinely model-specific pieces -- how the
     negative log-likelihood is built, whether the search runs in an
     unconstrained transform space, the multi-start values to try, and what
-    counts as an observation -- are supplied by the caller. The parts that were
-    copy-pasted across all four fitters live here: the multi-start loop, the two
-    convergence-failure errors, picking the best start, the bounded->unbounded
-    parameter transform, and storing the inference attributes.
+    counts as an observation -- are supplied by the caller. The parts that
+    were copy-pasted across all four fitters live here: the multi-start loop,
+    the two convergence-failure errors, picking the best start, the bounded-to-
+    unbounded parameter transform, and storing the inference attributes.
     """
 
     @staticmethod
@@ -64,8 +64,8 @@ class RenewalFitMixin:
         """
         Drive the multi-start fit. ``fit_once(x0) -> OptimizeResult`` runs the
         optimiser from a single natural-space start ``x0``. With no user
-        ``init`` every start in ``inits`` is tried and the converged result with
-        the lowest objective is returned; with a user ``init`` it is run once.
+        ``init`` every start in ``inits`` is tried and the converged result
+        with the lowest objective is returned; a user ``init`` is run once.
 
         Raises ``ValueError`` with the shared messages when nothing converges.
         """

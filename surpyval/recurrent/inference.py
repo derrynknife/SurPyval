@@ -36,8 +36,8 @@ class LikelihoodInferenceMixin:
     Likelihood-based inference for fitted recurrent-event models.
 
     The fitting routine must set ``_neg_ll`` (the negative log-likelihood in
-    natural parameter space), ``_mle`` (the fitted parameter vector in that same
-    space) and ``_n_obs`` (the number of events contributing to the
+    natural parameter space), ``_mle`` (the fitted parameter vector in that
+    same space) and ``_n_obs`` (the number of events contributing to the
     likelihood). Models built with ``fit_from_parameters`` (or by a non-
     likelihood method such as MSE) carry no likelihood and these methods raise.
 
