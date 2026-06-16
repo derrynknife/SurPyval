@@ -88,7 +88,14 @@ theme; items already resolved are marked **[done]**.
   real saving; it stays a `CountingProcess`. **[done]**
 
 **D. Missing capabilities**
-- No goodness-of-fit / trend tests anywhere (Laplace, MIL-HDBK-189C).
+- Trend tests are now available as standalone functions in
+  `surpyval.recurrent.tests`: `laplace` (the centroid test, asymptotically
+  normal) and `mil_hdbk_189c` (the Military Handbook / total-time-on-test
+  statistic, chi-squared). Both take `(x, i, T)` and an `alternative`
+  direction, support single- and multi-system data and both time- and
+  failure-truncation, and return a `TrendTestResult`. Still to do: a
+  Cramér-von Mises NHPP goodness-of-fit test, and exposing the trend tests
+  as a method on fitted NHPP models. **[done]**
 - Truncation half-wired: `tr` not in the NHPP integral (right window-close
   relies on a `c=1` row); still not exposed on the proportional-intensity
   regression `fit()`. (The nonparametric MCF risk set now honours `tl`, and
@@ -181,8 +188,13 @@ Log-likelihood is computed during fitting but discarded. Store it on the returne
 
 ### Missing capabilities — lower priority
 
-**Laplace and trend-test standalone functions**
-Implement `surpyval.recurrent.tests.laplace(x, i, T)` and `mil_hdbk_189c(x, i, T)` as module-level functions independent of any fitted model.
+**Laplace and trend-test standalone functions** — **done**
+`surpyval.recurrent.tests.laplace(x, i, T)` and `mil_hdbk_189c(x, i, T)` are
+implemented as module-level functions independent of any fitted model (also
+re-exported from `surpyval.recurrent`). Each accepts single- or multi-system
+data, scalar/array/dict observation windows `T` (failure-truncated when `T` is
+omitted), and a `two-sided`/`increasing`/`decreasing` alternative, returning a
+`TrendTestResult` with the statistic, p-value and suggested trend direction.
 
 **Additional virtual-age models**
 Both Doyen & Gaudoin imperfect-repair families are now implemented: `surpyval.recurrent.ARA` (Arithmetic Reduction of Age, on the lifetime-distribution machinery) and `surpyval.recurrent.ARI` (Arithmetic Reduction of Intensity, built on the NHPP baseline intensity models — `CrowAMSAA`/`Duane`/`CoxLewis`), each parameterised by repair efficiency `rho` and memory `m`. Note the equivalences already covered elsewhere: ARA₁ = Kijima-I and ARA∞ = Kijima-II (both in `GeneralizedRenewal`), the geometric process (Lam) = `GeneralizedOneRenewal` reparameterised by `a = 1/(1+q)`, and ARI at `rho = 0` is the plain NHPP of its baseline intensity (used as the correctness check). The leftover virtual-age model worth adding is the general geometric-process estimator if a first-class `a` parameterisation is wanted.

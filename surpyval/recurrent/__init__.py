@@ -8,3 +8,4 @@ from .renewal import (
     GeneralizedRenewal,
     RenewalModel,
 )
+from .tests import TrendTestResult, laplace, mil_hdbk_189c
