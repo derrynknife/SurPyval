@@ -190,6 +190,13 @@ class HPP(CountingProcess):
         else:
             right_censored_time = 0.0
 
+        # Right window-close: extend the integral to each item's finite
+        # right-truncation time tr. For the HPP cif(x) = rate * x, so the
+        # extension cif(x_last) - cif(tr) contributes rate * (x_last - tr).
+        # Empty / zero when no item carries a finite tr.
+        x_close_last, x_close_tr, _ = data.get_right_truncation_close()
+        right_truncation_time = (x_close_last - x_close_tr).sum()
+
         if has_interval_censoring:
             interval_mask = c == 2
             x_i_l = x_l[interval_mask]
@@ -215,6 +222,7 @@ class HPP(CountingProcess):
             rate = anp.exp(log_rate)
             ll = len_observed * log_rate + rate * observed_time
             ll += rate * right_censored_time
+            ll += rate * right_truncation_time
             ll += (
                 log_rate * n_left_sum
                 + n_log_x_left_sum

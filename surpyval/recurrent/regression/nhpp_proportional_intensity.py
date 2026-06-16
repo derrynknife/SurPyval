@@ -126,6 +126,14 @@ class ProportionalIntensityNHPP:
             Z[c == 2] if has_interval_censoring else np.zeros((1, Z.shape[1]))
         )
 
+        # Right window-close: for items with a finite right-truncation time
+        # ``tr`` the baseline intensity is integrated out to ``tr`` (scaled by
+        # the item's proportional factor). Empty for untruncated data.
+        x_close_last, x_close_tr, close_idx = (
+            data.get_right_truncation_close()
+        )
+        Z_close = Z[close_idx]
+
         # Using the empty arrays avoids the need for if statements in the
         # likelihood function. It also means that the likelihood function
         # will not encounter any invalid values since taking the log of 0
@@ -178,6 +186,13 @@ class ProportionalIntensityNHPP:
                 - gammaln(n_i + 1)
             ).sum()
 
+            # right window-close: extend each item's integral to its tr
+            phi_close = np.exp(np.dot(Z_close, beta_coeffs))
+            delta_cif_close = dist.cif(x_close_last, *dist_params) - dist.cif(
+                x_close_tr, *dist_params
+            )
+            ll += (phi_close * delta_cif_close).sum()
+
             return -ll
 
         return negll_func
@@ -220,7 +235,19 @@ class ProportionalIntensityNHPP:
 
         return out
 
-    def fit(self, x, Z, i=None, c=None, n=None, dist=Duane, init=None):
+    def fit(
+        self,
+        x,
+        Z,
+        i=None,
+        c=None,
+        n=None,
+        t=None,
+        tl=None,
+        tr=None,
+        dist=Duane,
+        init=None,
+    ):
         """
         Fit the model using the provided data and initial parameters.
 
@@ -237,6 +264,15 @@ class ProportionalIntensityNHPP:
             Censoring indicators.
         n : array_like, optional
             Number of events.
+        t : array_like, optional
+            (N, 2) array of [left, right] truncation bounds per observation.
+        tl : array_like or scalar, optional
+            Left truncation (delayed entry) time per item; the observation of
+            each item begins here. Scalar broadcasts to all items.
+        tr : array_like or scalar, optional
+            Right truncation time per item; the observation window closes here,
+            so the baseline intensity is integrated out to ``tr`` even without
+            an explicit right-censoring (``c=1``) row.
         dist : surpyval.recurrent.regression.NHPPFitter, optional
             The parametric model to use for the hazard rate.
         init : array_like, optional
@@ -249,5 +285,7 @@ class ProportionalIntensityNHPP:
             An object containing the results of the fitting process, including
             parameter estimates.
         """
-        data = handle_xicn(x, i, c, n, Z=Z, as_recurrent_data=True)
+        data = handle_xicn(
+            x, i, c, n, t=t, tl=tl, tr=tr, Z=Z, as_recurrent_data=True
+        )
         return self.fit_from_recurrent_data(data, dist, init)

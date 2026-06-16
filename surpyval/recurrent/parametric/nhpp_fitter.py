@@ -48,6 +48,12 @@ class NHPPFitter(IntensityModel):
         x_i_r = x_r[c == 2] if has_interval_censoring else np.array([])
         n_i = n[c == 2] if has_interval_censoring else np.array([])
 
+        # Right window-close: for items with a finite right-truncation time
+        # ``tr`` the intensity is integrated out to ``tr`` rather than merely to
+        # the last observed event / censoring row. These arrays are empty for
+        # untruncated data, so the term adds nothing in that case.
+        x_close_last, x_close_tr, _ = data.get_right_truncation_close()
+
         # Using the empty arrays avoids the need for if statements in the
         # likelihood function. It also means that the likelihood function
         # will not encounter any invalid values since taking the log of 0
@@ -83,6 +89,14 @@ class NHPPFitter(IntensityModel):
                 n_i * np.log(interval_delta_cif)
                 - (interval_delta_cif)
                 - gammaln(n_i + 1)
+            ).sum()
+
+            # extend the integral from each item's last in-window time to its
+            # right-truncation time tr (zero when tr is infinite or already
+            # coincides with a right-censoring row)
+            ll += (
+                self.cif(x_close_last, *params)
+                - self.cif(x_close_tr, *params)
             ).sum()
 
             return -ll
