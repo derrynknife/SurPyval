@@ -63,6 +63,11 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
     def _new_sequence_sampler(self):
         return self._sampler_factory(self)
 
+    def _parameter_names(self):
+        # The restoration parameter (``q``/``rho``) leads ``_mle``, followed by
+        # the underlying lifetime/intensity model's parameters.
+        return [self._restoration_param_name, *self.model.dist.param_names]
+
     def __repr__(self):
         title = f"{self.kind} SurPyval Model"
         lines = [

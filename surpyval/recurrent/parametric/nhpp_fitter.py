@@ -2,14 +2,14 @@ from autograd import numpy as np
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
-from surpyval.recurrent.parametric.counting_process import CountingProcess
+from surpyval.recurrent.parametric.counting_process import IntensityModel
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
-class NHPPFitter(CountingProcess):
+class NHPPFitter(IntensityModel):
     def create_negll_func(self, data):
         x, c, n = data.x, data.c, data.n
         x_prev = data.get_previous_x()
@@ -127,6 +127,7 @@ class NHPPFitter(CountingProcess):
         res = minimize(fun, param_init, bounds=self.bounds)
         param_init = res.x
 
+        ll_func = None
         if how == "MSE":
             params = res.x
 
@@ -147,6 +148,14 @@ class NHPPFitter(CountingProcess):
         model.data = data
         model.dist = self
         model.how = how
+        # The MLE objective is already in natural parameter space, so it serves
+        # directly as the likelihood used for AIC/BIC/standard errors. The MSE
+        # fit has no likelihood, so leave the inference attributes unset (the
+        # inference methods then raise).
+        if ll_func is not None:
+            model._neg_ll = ll_func
+            model._mle = np.asarray(params, dtype=float)
+            model._n_obs = len(data.x)
         return model
 
     def fit(

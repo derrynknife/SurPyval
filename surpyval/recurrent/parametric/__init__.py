@@ -1,4 +1,4 @@
-from .counting_process import CountingProcess
+from .counting_process import CountingProcess, IntensityModel
 from .cox_lewis import CoxLewis
 from .crow_amsaa import CrowAMSAA
 from .duane import Duane

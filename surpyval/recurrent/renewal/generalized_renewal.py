@@ -2,8 +2,8 @@ import numpy as np
 from scipy.optimize import minimize
 
 from surpyval import Weibull
+from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import RenewalModel
-from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -32,7 +32,7 @@ def kijima_ii_from_prev_interarrival(previous_interarrival_times, q):
 
 
 @singleton_fitter
-class GeneralizedRenewal:
+class GeneralizedRenewal(RenewalFitMixin):
     """
     A class to handle the generalized renewal process with different Kijima
     models.
@@ -221,79 +221,33 @@ class GeneralizedRenewal:
         """
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
-        first_events = data.get_times_to_first_events()
-        if init is None:
-            if len(first_events.x) < 2:
-                dist_params = None
-            else:
-                try:
-                    dist_params = dist.fit(
-                        first_events.x, first_events.c, first_events.n
-                    ).params
-                    if np.isnan(dist_params).any():
-                        dist_params = None
-                except Exception:
-                    dist_params = None
 
-            if dist_params is None:
-                dist_params = dist.fit(
-                    data.interarrival_times,
-                    data.c,
-                    data.n,
-                ).params
-
-        param_map = {"q": 0, **dist.param_map}
-        transform, inv_trans, _, _, not_fixed = bounds_convert(
-            data.x, [(0, None), *dist.bounds], {}, param_map
+        neg_ll = self.create_negll_func(data, dist, kijima=kijima)
+        transform, inv_trans = self._bounds_transform(
+            data.x, [(0, None), *dist.bounds], ["q", *dist.param_names]
         )
 
-        neg_ll_bounded = self.create_negll_func(data, dist, kijima=kijima)
-        neg_ll_unbounded = lambda params: neg_ll_bounded(  # noqa: E731
-            inv_trans(params)
-        )
-
-        if init is None:
-            # Iterate over different initial values for q
-            # result is (very!!) sensitive to initial value of q
-            results = []
-            for q_init in [0.0001, 1.0, 2.0]:
-                init = transform(np.array([q_init, *dist_params]))
-                res = minimize(
-                    neg_ll_unbounded,
-                    init,
-                    method="Nelder-Mead",
-                )
-                if res.success:
-                    results.append(res)
-            if not results:
-                raise ValueError(
-                    "Could not find a good solution. "
-                    + "Try using `init` for better initial guess."
-                )
-            else:
-                res = results[np.argmin([res.fun for res in results])]
-        else:
-            init = transform(np.array(init))
-            res = minimize(
-                neg_ll_unbounded,
-                init,
+        # result is (very!!) sensitive to the initial value of q
+        def fit_once(x0):
+            return minimize(
+                lambda p: neg_ll(inv_trans(p)),
+                transform(np.asarray(x0, dtype=float)),
                 method="Nelder-Mead",
             )
-            if not res.success:
-                raise ValueError(
-                    "Optimization with the provided `init` did not "
-                    "converge. Try a different initial guess."
-                )
+
+        if init is None:
+            dist_params = self._initial_dist_params(data, dist)
+            inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
+        else:
+            inits = None
+        res = self._multistart(fit_once, inits, init)
 
         q, *dist_params = inv_trans(res.x)
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, q, kijima)
-        out.res = res
-        out.data = data
-        out._neg_ll = neg_ll_bounded
-        out._mle = np.asarray([q, *dist_params], dtype=float)
-        out._n_obs = len(data.x)
-
+        self._attach_inference(
+            out, neg_ll, [q, *dist_params], len(data.x), res, data
+        )
         return out
 
     def fit(

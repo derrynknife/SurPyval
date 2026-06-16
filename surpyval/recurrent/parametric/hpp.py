@@ -270,6 +270,13 @@ class HPP(CountingProcess):
         out.res = res
         out.params = np.exp(res.x)
 
+        # ``neg_ll`` is parameterised by ``log_rate`` for a stable optimiser;
+        # expose it in natural (rate) space so the shared likelihood-inference
+        # machinery sees ``_neg_ll(_mle)`` with ``_mle`` the fitted rate.
+        out._neg_ll = lambda params: neg_ll(np.log(np.asarray(params)))
+        out._mle = np.asarray(out.params, dtype=float)
+        out._n_obs = len(data.x)
+
         return out
 
     def fit(

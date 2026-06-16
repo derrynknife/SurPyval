@@ -10,6 +10,8 @@ from surpyval.recurrent import (
     ProportionalIntensityNHPP,
 )
 from surpyval.recurrent.parametric import CountingProcess as ParametricCP
+from surpyval.recurrent.parametric import IntensityModel
+from surpyval.recurrent.parametric.nhpp_fitter import NHPPFitter
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -21,6 +23,24 @@ def test_countingprocess_exported_consistently():
 @pytest.mark.parametrize("dist", [Duane, CrowAMSAA, CoxLewis])
 def test_nhpp_intensity_models_are_counting_processes(dist):
     assert isinstance(dist, CountingProcess)
+
+
+@pytest.mark.parametrize("dist", [Duane, CrowAMSAA, CoxLewis])
+def test_nhpp_intensity_models_satisfy_intensity_contract(dist):
+    # The closed-form NHPP baselines share the IntensityModel contract, which
+    # is what lets ARI accept any of them as a baseline interchangeably.
+    assert isinstance(dist, IntensityModel)
+    for name in ("iif", "cif", "log_iif", "inv_cif", "parameter_initialiser"):
+        assert callable(getattr(dist, name))
+
+
+def test_intensity_model_is_abstract():
+    # IntensityModel only declares the contract; the maths is supplied by the
+    # concrete models, so neither it nor the partial NHPPFitter can be built.
+    with pytest.raises(TypeError):
+        IntensityModel()
+    with pytest.raises(TypeError):
+        NHPPFitter()
 
 
 def test_hpp_is_a_counting_process():

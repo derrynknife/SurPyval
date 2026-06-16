@@ -38,3 +38,39 @@ class CountingProcess(ABC):
     def log_iif(self, x: ArrayLike, *params) -> ArrayLike:
         """Natural logarithm of the instantaneous intensity at ``x``."""
         ...
+
+
+class IntensityModel(CountingProcess):
+    """
+    Contract shared by the closed-form NHPP intensity baselines
+    (:class:`Crow-AMSAA <surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA_>`,
+    :class:`Duane <surpyval.recurrent.parametric.duane.Duane_>`,
+    :class:`Cox-Lewis <surpyval.recurrent.parametric.cox_lewis.CoxLewis_>`).
+
+    These models are mathematically distinct but expose the *same* four
+    functions of time and their parameters, plus a parameter initialiser. The
+    contract -- and the docstrings describing each function -- lives here once
+    so the concrete models only have to supply the maths:
+
+    - ``cif(x, *params)`` cumulative intensity (expected event count) by ``x``,
+      the integral of ``iif`` from the origin, with ``cif(0) == 0``;
+    - ``iif(x, *params)`` instantaneous intensity (event rate) at ``x``;
+    - ``log_iif(x, *params)`` natural logarithm of ``iif``, used directly in
+      the log-likelihood for numerical stability;
+    - ``inv_cif(N, *params)`` the time at which ``N`` events are expected to
+      have occurred, i.e. the inverse of ``cif``;
+    - ``parameter_initialiser(x)`` a starting parameter vector for the
+      optimiser given the event times ``x``.
+
+    All array arguments are evaluated elementwise.
+    """
+
+    @abstractmethod
+    def inv_cif(self, N: ArrayLike, *params) -> ArrayLike:
+        """Time by which ``N`` events are expected; the inverse of ``cif``."""
+        ...
+
+    @abstractmethod
+    def parameter_initialiser(self, x: ArrayLike) -> ArrayLike:
+        """Starting parameter vector for the optimiser given event times."""
+        ...

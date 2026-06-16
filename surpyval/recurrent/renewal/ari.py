@@ -2,7 +2,7 @@ import numpy as np
 from scipy.optimize import brentq, minimize
 
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
-from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -37,7 +37,7 @@ def ari_reduction(failure_intensities, rho, m):
 
 
 @singleton_fitter
-class ARI:
+class ARI(RenewalFitMixin):
     """
     Arithmetic Reduction of Intensity (ARI) imperfect-repair model of Doyen and
     Gaudoin (2004).
@@ -181,55 +181,56 @@ class ARI:
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
 
-        if init is None:
-            try:
-                base_params = dist.fit_from_recurrent_data(data).params
-                base_params = np.asarray(base_params, dtype=float)
-                if not np.all(np.isfinite(base_params)):
-                    raise ValueError
-            except Exception:
-                base_params = np.asarray(dist.parameter_initialiser(data.x))
-
-        param_map = {
-            name: k for k, name in enumerate(["rho", *dist.param_names])
-        }
-        transform, inv_trans, _, _, _ = bounds_convert(
-            data.x, [(0, 1), *dist.bounds], {}, param_map
+        neg_ll = self.create_negll_func(data, dist, m)
+        transform, inv_trans = self._bounds_transform(
+            data.x, [(0, 1), *dist.bounds], ["rho", *dist.param_names]
         )
 
-        neg_ll = self.create_negll_func(data, dist, m)
-        neg_ll_unbounded = lambda p: neg_ll(inv_trans(p))  # noqa: E731
+        def fit_once(x0):
+            return minimize(
+                lambda p: neg_ll(inv_trans(p)),
+                transform(np.asarray(x0, dtype=float)),
+                method="Nelder-Mead",
+            )
 
         if init is None:
-            results = []
-            for rho_init in [0.1, 0.5, 0.9]:
-                x0 = transform(np.array([rho_init, *base_params]))
-                res = minimize(neg_ll_unbounded, x0, method="Nelder-Mead")
-                if res.success:
-                    results.append(res)
-            if not results:
-                raise ValueError(
-                    "Could not find a good solution. "
-                    + "Try using `init` for better initial guess."
-                )
-            res = results[np.argmin([r.fun for r in results])]
+            base_params = self._initial_baseline_params(data, dist)
+            inits = [[rho_init, *base_params] for rho_init in (0.1, 0.5, 0.9)]
         else:
-            x0 = transform(np.array(init))
-            res = minimize(neg_ll_unbounded, x0, method="Nelder-Mead")
-            if not res.success:
-                raise ValueError(
-                    "Optimization with the provided `init` did not "
-                    "converge. Try a different initial guess."
-                )
+            inits = None
+        res = self._multistart(fit_once, inits, init)
 
         rho, *dist_params = inv_trans(res.x)
         out = self._make_model(dist, dist_params, rho, m)
-        out.res = res
-        out.data = data
-        out._neg_ll = neg_ll
-        out._mle = np.asarray([rho, *dist_params], dtype=float)
-        out._n_obs = int((data.c == 0).sum())
+        # Only the observed failures (c == 0) contribute an intensity term, so
+        # they are the events that enter the BIC sample size.
+        self._attach_inference(
+            out,
+            neg_ll,
+            [rho, *dist_params],
+            int((data.c == 0).sum()),
+            res,
+            data,
+        )
         return out
+
+    @staticmethod
+    def _initial_baseline_params(data, dist):
+        """
+        Initial parameters for the baseline intensity model: the plain NHPP fit
+        of that baseline if it succeeds, otherwise its own parameter
+        initialiser. (ARI's baseline is an intensity model, not a lifetime
+        distribution, so this differs from the other repair fitters.)
+        """
+        try:
+            base_params = np.asarray(
+                dist.fit_from_recurrent_data(data).params, dtype=float
+            )
+            if not np.all(np.isfinite(base_params)):
+                raise ValueError
+        except Exception:
+            base_params = np.asarray(dist.parameter_initialiser(data.x))
+        return base_params
 
     def fit(self, x, i=None, c=None, n=None, dist=CrowAMSAA, m=1, init=None):
         """

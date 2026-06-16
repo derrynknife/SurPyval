@@ -2,8 +2,8 @@ import numpy as np
 from scipy.optimize import minimize
 
 from surpyval import Weibull
+from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import RenewalModel
-from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -54,7 +54,7 @@ def ara_virtual_ages(arrival_times, rho, m):
 
 
 @singleton_fitter
-class ARA:
+class ARA(RenewalFitMixin):
     """
     Arithmetic Reduction of Age (ARA) imperfect-repair model of Doyen and
     Gaudoin (2004).
@@ -175,59 +175,31 @@ class ARA:
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
 
-        if init is None:
-            first_events = data.get_times_to_first_events()
-            try:
-                dist_params = dist.fit(
-                    first_events.x, first_events.c, first_events.n
-                ).params
-                if np.isnan(dist_params).any():
-                    dist_params = None
-            except Exception:
-                dist_params = None
-            if dist_params is None:
-                dist_params = dist.fit(
-                    data.interarrival_times, data.c, data.n
-                ).params
-
-        param_map = {"rho": 0, **dist.param_map}
-        transform, inv_trans, _, _, _ = bounds_convert(
-            data.x, [(0, 1), *dist.bounds], {}, param_map
+        neg_ll = self.create_negll_func(data, dist, m)
+        transform, inv_trans = self._bounds_transform(
+            data.x, [(0, 1), *dist.bounds], ["rho", *dist.param_names]
         )
 
-        neg_ll = self.create_negll_func(data, dist, m)
-        neg_ll_unbounded = lambda p: neg_ll(inv_trans(p))  # noqa: E731
+        def fit_once(x0):
+            return minimize(
+                lambda p: neg_ll(inv_trans(p)),
+                transform(np.asarray(x0, dtype=float)),
+                method="Nelder-Mead",
+            )
 
         if init is None:
-            results = []
-            for rho_init in [0.1, 0.5, 0.9]:
-                x0 = transform(np.array([rho_init, *dist_params]))
-                res = minimize(neg_ll_unbounded, x0, method="Nelder-Mead")
-                if res.success:
-                    results.append(res)
-            if not results:
-                raise ValueError(
-                    "Could not find a good solution. "
-                    + "Try using `init` for better initial guess."
-                )
-            res = results[np.argmin([r.fun for r in results])]
+            dist_params = self._initial_dist_params(data, dist)
+            inits = [[rho_init, *dist_params] for rho_init in (0.1, 0.5, 0.9)]
         else:
-            x0 = transform(np.array(init))
-            res = minimize(neg_ll_unbounded, x0, method="Nelder-Mead")
-            if not res.success:
-                raise ValueError(
-                    "Optimization with the provided `init` did not "
-                    "converge. Try a different initial guess."
-                )
+            inits = None
+        res = self._multistart(fit_once, inits, init)
 
         rho, *dist_params = inv_trans(res.x)
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, rho, m)
-        out.res = res
-        out.data = data
-        out._neg_ll = neg_ll
-        out._mle = np.asarray([rho, *dist_params], dtype=float)
-        out._n_obs = len(data.x)
+        self._attach_inference(
+            out, neg_ll, [rho, *dist_params], len(data.x), res, data
+        )
         return out
 
     def fit(self, x, i=None, c=None, n=None, dist=Weibull, m=1, init=None):

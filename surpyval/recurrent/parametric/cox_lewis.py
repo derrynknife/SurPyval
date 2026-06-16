@@ -52,97 +52,23 @@ class CoxLewis(NHPPFitter):
         return np.array([1.0, 1.0])
 
     def cif(self, x, *params):
-        """
-        Cumulative intensity function (CIF) of the Cox-Lewis model.
-
-        This is the integral of the instantaneous intensity from 0 to ``x``,
-        i.e. the expected number of events by ``x``. It satisfies
-        ``cif(0) == 0``.
-
-        Parameters
-        ----------
-
-        x : float
-            The value at which CIF is evaluated.
-        params : tuple
-            Parameters of the Cox-Lewis model.
-
-        Returns
-        -------
-
-        float
-            The CIF value.
-        """
+        # The Cox-Lewis intensity is log-linear, so its cumulative intensity
+        # is the integral of ``exp(alpha + beta * x)`` from 0 to ``x``.
         alpha = params[0]
         beta = params[1]
         return np.exp(alpha) / beta * (np.exp(beta * x) - 1.0)
 
     def iif(self, x, *params):
-        """
-        Instantaneous intensity function (IIF) or the failure rate of the
-        Cox-Lewis model. This is the log-linear intensity that defines the
-        Cox-Lewis model.
-
-        Parameters
-        ----------
-
-        x : float
-            The value at which IIF is evaluated.
-        params : tuple
-            Parameters of the Cox-Lewis model.
-
-        Returns
-        -------
-
-        float
-            The IIF value.
-        """
         alpha = params[0]
         beta = params[1]
         return np.exp(alpha + beta * x)
 
     def log_iif(self, x, *params):
-        """
-        Natural logarithm of the instantaneous intensity function (IIF) of
-        the Cox-Lewis model.
-
-        Parameters
-        ----------
-
-        x : float
-            The value at which log(IIF) is evaluated.
-        params : tuple
-            Parameters of the Cox-Lewis model.
-
-        Returns
-        -------
-
-        float
-            The log(IIF) value.
-        """
         alpha = params[0]
         beta = params[1]
         return alpha + beta * x
 
     def inv_cif(self, N, *params):
-        """
-        Inverse of the cumulative intensity function (CIF) of the
-        Cox-Lewis model.
-
-        Parameters
-        ----------
-
-        N : float
-            The number of events expected to have occured.
-        params : tuple
-            Parameters of the Cox-Lewis model.
-
-        Returns
-        -------
-
-        float
-            The value of x at which N events are expected to have occured.
-        """
         alpha = params[0]
         beta = params[1]
         return np.log(1.0 + N * beta * np.exp(-alpha)) / beta

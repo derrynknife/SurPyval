@@ -247,6 +247,12 @@ class ProportionalIntensityHPP:
         out.name = "Homogeneous Poisson Process"
         out.kind = "HPP"
         out.parameterization = "Parametric"
+        # ``neg_ll`` is parameterised by ``log_rate``; expose it in natural
+        # (rate) space so ``_neg_ll(_mle)`` works with ``_mle`` the fitted rate
+        # and covariate coefficients.
+        out._neg_ll = lambda p: neg_ll(np.concatenate([[np.log(p[0])], p[1:]]))
+        out._mle = np.concatenate([out.params, out.coeffs])
+        out._n_obs = len(data.x)
         # The baseline rate is constant, so there is no fitted intensity
         # distribution; expose a lightweight stand-in carrying just the name
         # used by ``ProportionalIntensityModel``'s repr.
