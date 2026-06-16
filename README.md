@@ -56,18 +56,18 @@ A `&mdash;` marks a combination that is
 either not applicable (e.g. semiparametric estimation requires covariates) or
 not yet built.
 
-| Time | Recurrence | Events | Covariates | Parametric | Semiparametric | Nonparametric |
-| --- | --- | --- | --- | --- | --- | --- |
-| Continuous time | Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | &mdash; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` |
-| Continuous time | Single event | Single | With | `WeibullPH`/`WeibullAFT` (PH/AFT/PO families) | `CoxPH` | &mdash; |
-| Continuous time | Single event | Competing | Without | &mdash; | &mdash; | `CompetingRisks` (CIF) |
-| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CRPH` | &mdash; |
-| Continuous time | Recurrent | Single | Without | `HPP`, `NHPP`, `CrowAMSAA`, `Duane`, `CoxLewis` | &mdash; | `NonParametricCounting` (MCF) |
-| Continuous time | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; | &mdash; |
-| Continuous time | Recurrent | Competing | Without | &mdash; | &mdash; | `CauseSpecificMCF` |
-| Continuous time | Recurrent | Competing | With | &mdash; | &mdash; | &mdash; |
-| Discrete time | Single event | Single | Without | `Bernoulli` (single trial), `Binomial` (`n` trials) | &mdash; | &mdash; |
-| Discrete time | Single event | Single | With | use logistic / binomial regression (out of scope for this package) | &mdash; | &mdash; |
+| Time | Recurrence | Events | Covariates | Parametric | Semi-/Nonparametric |
+| --- | --- | --- | --- | --- | --- |
+| Continuous time | Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` |
+| Continuous time | Single event | Single | With | `WeibullPH`/`WeibullAFT` (PH/AFT/PO families) | `CoxPH` |
+| Continuous time | Single event | Competing | Without | &mdash; | `CompetingRisks` (CIF) |
+| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CRPH` |
+| Continuous time | Recurrent | Single | Without | `HPP`, `NHPP`, `CrowAMSAA`, `Duane`, `CoxLewis` | `NonParametricCounting` (MCF) |
+| Continuous time | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; |
+| Continuous time | Recurrent | Competing | Without | &mdash; | `CauseSpecificMCF` |
+| Continuous time | Recurrent | Competing | With | &mdash; | &mdash; |
+| Discrete time | Single event | Single | Without | `Bernoulli` (single trial), `Binomial` (`n` trials) | &mdash; |
+| Discrete time | Single event | Single | With | use logistic / binomial regression (out of scope for this package) | &mdash; |
 
 # Install and Quick Intro
 
