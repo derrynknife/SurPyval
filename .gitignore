@@ -8,6 +8,10 @@
 .ipynb_checkpoints/
 *.egg-info
 .pytest_cache
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 .vscode/
 build
 dist
