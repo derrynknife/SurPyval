@@ -66,3 +66,36 @@ class NonParametricDistribution(Distribution):
 
     @abstractmethod
     def random(self, size: int, *args, **kwargs) -> ArrayLike: ...
+
+
+class MultivariateDistribution(ABC):
+    """
+    A jointly-specified model of several correlated event-time series
+    (the ``multivariate`` outcome-dimension axis of ``MODEL_ATLAS.md``).
+
+    Unlike :class:`Distribution`, whose functions take a single random
+    variable, the multivariate interface is evaluated at a *point in
+    several dimensions* -- ``x`` is array-like with one column per series.
+    Concrete implementations (e.g. copula models) glue together ordinary
+    univariate surpyval margins with a dependence structure, so the
+    contract is the joint survival interface plus sampling:
+
+    - ``cdf()`` the joint cumulative distribution ``P(X_1<=x_1, ...)``
+    - ``sf()``  the joint survival ``P(X_1>x_1, ...)``
+    - ``pdf()`` the joint density
+    - ``random()`` draw correlated samples (one row per realisation)
+    """
+
+    @abstractmethod
+    def cdf(self, x: ArrayLike, *args, **kwargs) -> ArrayLike: ...
+
+    @abstractmethod
+    def sf(self, x: ArrayLike, *args, **kwargs) -> ArrayLike: ...
+
+    @abstractmethod
+    def pdf(self, x: ArrayLike, *args, **kwargs) -> ArrayLike: ...
+
+    @abstractmethod
+    def random(
+        self, size: int | tuple[int, ...], *args, **kwargs
+    ) -> ArrayLike: ...

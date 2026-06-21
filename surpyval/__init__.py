@@ -4,6 +4,7 @@ from autograd import numpy as np
 
 from surpyval.distribution import (
     Distribution,
+    MultivariateDistribution,
     NonParametricDistribution,
     ParametricDistribution,
 )

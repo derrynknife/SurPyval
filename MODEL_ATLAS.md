@@ -91,9 +91,17 @@ Worked classifications:
 | Bernoulli, success-run | univariate | single_event | single | terminal | none | discrete | parametric |
 | (future) illness-death, progressive | univariate | single_event | single/competing | multi_state | none/with | continuous | any |
 
-Every model SurPyval ships today is `univariate`; the `multivariate` branch
-(jointly-modelled correlated series, via frailty or copula) is entirely future
-work.
+Almost every model SurPyval ships today is `univariate`. The first
+`multivariate` models now exist: `surpyval.multivariate` provides **bivariate
+copulas** (Independence, Clayton, Gumbel, Frank, Gaussian) that glue existing
+univariate margins together with a dependence parameter, with full
+censoring/truncation support in the joint likelihood. The frailty branch of
+`multivariate` dependence (the random-effect dual of Archimedean copulas)
+remains future work.
+
+| Model | dim | recurrence | events | states | covariates | time | estimation |
+|-------|-----|-----------|--------|--------|------------|------|------------|
+| Clayton/Gumbel/Frank/Gaussian copula | multivariate | single_event | single | terminal | none | continuous | parametric |
 
 ## Deferred orthogonal axes (out of scope for now)
 
