@@ -34,7 +34,9 @@ class DegradationModel:
     and the lifetime distribution fitted to those pseudo failure times.
     The usual lifetime functions (``sf``, ``ff``, ``df``, ``hf``,
     ``Hf``, ``qf``, ``mean``, ``random``) are forwarded to the fitted
-    life model.
+    life model, and the failure time of a new, partially observed unit
+    can be estimated from its trajectory with
+    :meth:`predict_failure_time` / :meth:`predict_remaining_life`.
 
     Parameters
     ----------
@@ -101,6 +103,88 @@ class DegradationModel:
         """Evaluate the fitted degradation path of ``unit`` at ``x``."""
         idx = self._unit_index[unit]
         return self.path_model.path(x, *self.path_params[idx])
+
+    def predict_failure_time(
+        self, x: npt.ArrayLike, y: npt.ArrayLike
+    ) -> float:
+        """
+        Estimate the failure time of a new unit from its (partial)
+        degradation trajectory.
+
+        Fits this model's path model to the new unit's measurements
+        and extrapolates the fitted path to this model's failure
+        threshold, exactly as was done for each unit during fitting.
+
+        Parameters
+        ----------
+        x : array like
+            Times at which the new unit's measurements were taken.
+        y : array like
+            The new unit's degradation measurements.
+
+        Returns
+        -------
+        float
+            The time at which the new unit's fitted path reaches the
+            threshold. This can be smaller than the last observed time
+            if the trajectory has already crossed the threshold.
+            Returns ``nan`` (with a warning) if the fitted path never
+            reaches the threshold.
+        """
+        x_arr, y_arr = self._handle_new_trajectory(x, y)
+        params = self.path_model.fit(x_arr, y_arr)
+        t = float(self.path_model.inv_path(self.threshold, *params))
+        if not (np.isfinite(t) and t > 0):
+            warnings.warn(
+                "The fitted degradation path of the new trajectory never "
+                "reaches the threshold {}; returning nan".format(
+                    self.threshold
+                ),
+                stacklevel=2,
+            )
+            return float("nan")
+        return t
+
+    def predict_remaining_life(
+        self, x: npt.ArrayLike, y: npt.ArrayLike
+    ) -> float:
+        """
+        Estimate the remaining life of a new unit from its (partial)
+        degradation trajectory.
+
+        This is :meth:`predict_failure_time` minus the new unit's last
+        observed time. A negative value means the fitted path crossed
+        the threshold before the last observation (the unit is
+        predicted to have already failed); ``nan`` (with a warning)
+        means the fitted path never reaches the threshold.
+        """
+        x_arr, y_arr = self._handle_new_trajectory(x, y)
+        return self.predict_failure_time(x_arr, y_arr) - float(x_arr.max())
+
+    def _handle_new_trajectory(
+        self, x: npt.ArrayLike, y: npt.ArrayLike
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        y = np.atleast_1d(np.asarray(y, dtype=float))
+        if x.ndim != 1 or y.ndim != 1:
+            raise ValueError("x and y must be one dimensional")
+        if len(x) != len(y):
+            raise ValueError(
+                "x and y must have the same length; got {} and {}".format(
+                    len(x), len(y)
+                )
+            )
+        if not (np.isfinite(x).all() and np.isfinite(y).all()):
+            raise ValueError("x and y must contain only finite values")
+        n_params = len(self.path_model.param_names)
+        if len(x) < n_params or len(np.unique(x)) < 2:
+            raise ValueError(
+                "The trajectory needs at least {} measurements at 2 or "
+                "more distinct times to fit the {} path model".format(
+                    n_params, self.path_model.name
+                )
+            )
+        return x, y
 
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Survival function of the fitted life model."""

@@ -115,6 +115,30 @@ be changed with the ``distribution`` and ``how`` arguments (e.g.
 used by passing a ``surpyval.degradation.PathModel`` subclass instance as
 ``path``.
 
+Predicting a new unit's failure time
+------------------------------------
+
+A fitted model can estimate the failure time of a *new*, partially
+observed unit from its degradation trajectory. The model fits its path
+shape to the new measurements and extrapolates to the same threshold:
+
+.. code:: python
+
+    # a new unit observed for only 300 hours, degrading at ~0.35/hour
+    x_new = [100, 200, 300]
+    y_new = [45, 80, 115]
+
+    model.predict_failure_time(x_new, y_new)   # ~400: when y reaches 150
+    model.predict_remaining_life(x_new, y_new) # ~100: minus its age (300)
+
+If the trajectory has already crossed the threshold, the predicted
+failure time is in the past and the remaining life is negative. If the
+new unit's fitted path never reaches the threshold (it is not
+degrading), both return ``nan`` with a warning. For a population-level
+view instead of a per-unit extrapolation, the fitted life model can be
+used directly — e.g. the survival of a unit that has already survived
+to time ``a``: ``model.life_model.cs(t, a)``.
+
 A note on uncertainty
 ---------------------
 

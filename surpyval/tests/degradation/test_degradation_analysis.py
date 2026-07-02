@@ -169,6 +169,62 @@ def test_custom_path_model_instance():
     assert model.path_model is ExponentialPath
 
 
+def test_predict_failure_time_new_trajectory():
+    slopes = np.array([0.31, 0.28, 0.44, 0.37])
+    x, y, i = linear_data(slopes)
+    model = DegradationAnalysis.fit(x, y, i, threshold=150)
+    # a new unit observed for only 300 hours, degrading at 0.5/hour
+    x_new = np.array([100.0, 200.0, 300.0])
+    y_new = 10 + 0.5 * x_new
+    predicted = model.predict_failure_time(x_new, y_new)
+    assert np.isclose(predicted, (150 - 10) / 0.5)
+    remaining = model.predict_remaining_life(x_new, y_new)
+    assert np.isclose(remaining, (150 - 10) / 0.5 - 300)
+
+
+def test_predict_failure_time_already_crossed():
+    slopes = np.array([0.31, 0.28, 0.44, 0.37])
+    x, y, i = linear_data(slopes)
+    model = DegradationAnalysis.fit(x, y, i, threshold=150)
+    # a unit whose trajectory crossed the threshold before its last
+    # observation: predicted failure is in the past, remaining life < 0
+    x_new = np.array([100.0, 200.0, 300.0])
+    y_new = 10 + 1.0 * x_new
+    assert np.isclose(model.predict_failure_time(x_new, y_new), 140)
+    assert model.predict_remaining_life(x_new, y_new) < 0
+
+
+def test_predict_failure_time_non_degrading_is_nan():
+    slopes = np.array([0.31, 0.28, 0.44, 0.37])
+    x, y, i = linear_data(slopes)
+    model = DegradationAnalysis.fit(x, y, i, threshold=150)
+    x_new = np.array([100.0, 200.0, 300.0])
+    y_new = 10 - 0.1 * x_new
+    with pytest.warns(UserWarning, match="never\\s+reaches"):
+        predicted = model.predict_failure_time(x_new, y_new)
+    assert np.isnan(predicted)
+    with pytest.warns(UserWarning, match="never\\s+reaches"):
+        remaining = model.predict_remaining_life(x_new, y_new)
+    assert np.isnan(remaining)
+
+
+@pytest.mark.parametrize(
+    "x_new,y_new",
+    [
+        ([1, 2, 3], [1, 2]),  # mismatched lengths
+        ([100], [20]),  # too few points
+        ([100, 100], [20, 21]),  # single distinct time
+        ([100, 200], [20, np.nan]),  # non-finite measurement
+    ],
+)
+def test_predict_failure_time_validation(x_new, y_new):
+    slopes = np.array([0.31, 0.28, 0.44, 0.37])
+    x, y, i = linear_data(slopes)
+    model = DegradationAnalysis.fit(x, y, i, threshold=150)
+    with pytest.raises(ValueError):
+        model.predict_failure_time(x_new, y_new)
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
