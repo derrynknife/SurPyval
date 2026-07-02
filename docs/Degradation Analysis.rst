@@ -1,0 +1,128 @@
+Degradation Analysis
+====================
+
+Sometimes failure data is scarce or takes too long to collect: items are
+highly reliable, test time is limited, and few (or no) units fail during
+the observation window. But failure is often the end point of a gradual,
+measurable process — a crack grows, a resistance drifts, a lumen output
+fades, a material wears. Degradation analysis exploits this: instead of
+waiting for units to fail, we track a *degradation measurement* over time
+on each unit, define failure as the measurement crossing a *threshold*,
+and extrapolate each unit's degradation trend to that threshold to obtain
+a failure time — even for units that never actually failed on test.
+
+SurPyval implements the classic *pseudo-failure-time* approach:
+
+1. A degradation *path model* (e.g. linear) is fitted, by least squares,
+   to each unit's measurements.
+2. Each unit's fitted path is extrapolated to the failure threshold. The
+   crossing time is that unit's *pseudo failure time*.
+3. A lifetime distribution (Weibull by default) is fitted to the pseudo
+   failure times, and can then be used like any other SurPyval parametric
+   model.
+
+If a unit's fitted path never reaches the threshold (for example, the
+unit is not degrading, or is trending away from the threshold), the unit
+is treated as right censored at its last observed time, and the censoring
+is passed through to the lifetime distribution fit.
+
+Degradation path models
+-----------------------
+
+The path models available, and the pseudo failure time each implies for a
+threshold :math:`y_{t}`, are:
+
+.. list-table::
+    :header-rows: 1
+
+    * - Name
+      - Path
+      - Threshold crossing time
+    * - ``"linear"``
+      - :math:`y = a + b x`
+      - :math:`(y_{t} - a) / b`
+    * - ``"exponential"``
+      - :math:`y = a e^{b x}`
+      - :math:`\ln(y_{t} / a) / b`
+    * - ``"power"``
+      - :math:`y = a x^{b}`
+      - :math:`(y_{t} / a)^{1/b}`
+    * - ``"logarithmic"``
+      - :math:`y = a + b \ln(x)`
+      - :math:`e^{(y_{t} - a) / b}`
+    * - ``"lloyd-lipow"``
+      - :math:`y = a - b / x`
+      - :math:`b / (a - y_{t})`
+
+Degradation can be increasing (crack length) or decreasing (luminous
+flux); the direction is captured by the sign of the fitted parameters and
+needs no configuration. Models that are linear in their parameters
+(linear, logarithmic, Lloyd-Lipow) are fitted in closed form; the others
+(exponential, power) are fitted by nonlinear least squares started from
+the log-linearised fit.
+
+Example
+-------
+
+Consider four units whose degradation is measured every 100 hours, with
+failure defined as the measurement reaching 150:
+
+.. code:: python
+
+    import numpy as np
+    from surpyval.degradation import DegradationAnalysis
+
+    x = np.tile(np.arange(100, 1100, 100), 4)
+    i = np.repeat([1, 2, 3, 4], 10)
+    slopes = np.repeat([0.31, 0.28, 0.44, 0.37], 10)
+    y = 10 + slopes * x
+
+    model = DegradationAnalysis.fit(x, y, i, threshold=150)
+    print(model)
+
+.. code:: text
+
+    Degradation Analysis SurPyval Model
+    ===================================
+    Path Model          : Linear
+    Threshold           : 150.0
+    Number of Units     : 4
+    Censored Units      : 0
+    Life Distribution   : Weibull
+    Parameters          :
+         alpha: 441.4780882117898
+          beta: 6.987078993008337
+
+The fitted model exposes the per-unit results and forwards the usual
+lifetime functions to the fitted life model:
+
+.. code:: python
+
+    model.pseudo_failure_times
+    # array([451.61290323, 500.        , 318.18181818, 378.37837838])
+
+    model.sf([300, 400, 500])
+    # array([0.93496716, 0.60538471, 0.09196813])
+
+    model.life_model    # the underlying Parametric Weibull model
+    model.plot()        # data, fitted paths, and the threshold
+
+Data can also come straight from a DataFrame with
+``DegradationAnalysis.fit_from_df(df, x="time", y="measurement",
+i="unit", threshold=150)``, the life distribution and fitting method can
+be changed with the ``distribution`` and ``how`` arguments (e.g.
+``distribution=LogNormal, how="MPP"``), and a custom path shape can be
+used by passing a ``surpyval.degradation.PathModel`` subclass instance as
+``path``.
+
+A note on uncertainty
+---------------------
+
+The pseudo-failure-time approach is a two-stage method: the life
+distribution is fitted to *estimated* failure times as if they had been
+observed exactly, so the reported confidence bounds on the life model do
+not include the path-fitting or extrapolation uncertainty. This is the
+standard, pragmatic form of degradation analysis; random-effects
+(Lu-Meeker) and stochastic-process (Wiener, gamma process) degradation
+models, which propagate that uncertainty, are candidates for future
+work.

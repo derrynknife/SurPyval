@@ -338,6 +338,34 @@ The semi-parametric counterpart to Cox PH. Fits `log(T) = β'Z + ε` without ass
 
 ---
 
+## 7a. Degradation Analysis — Future Work
+
+`surpyval.degradation` ships the classic pseudo-failure-time approach: per-unit
+least-squares path fits (linear, exponential, power, logarithmic, Lloyd-Lipow),
+extrapolation to a threshold, and a lifetime-distribution fit to the resulting
+pseudo failure times (units whose path never reaches the threshold are right
+censored at their last observation). Natural extensions, roughly in priority
+order:
+
+- **Uncertainty propagation.** The two-stage method treats pseudo failure
+  times as exact, so life-model confidence bounds understate the true
+  uncertainty. A bootstrap over units (refit paths + life model per resample)
+  is the cheap fix; expose it as a `cb`/`bootstrap` option on the model.
+- **Random-effects (Lu–Meeker) degradation models.** Path parameters as draws
+  from a population distribution, fitted jointly; failure-time distribution
+  induced by the path model rather than via pseudo failures.
+- **Stochastic-process degradation models.** Wiener process with drift (first
+  passage → inverse Gaussian lifetimes) and gamma process (monotone
+  degradation) — these are genuine models with proper likelihoods, and they
+  handle measurement error and irregular sampling more honestly.
+- **Accelerated degradation testing (ADT).** Stress covariates on the path
+  parameters (Arrhenius/power-law links), the degradation counterpart of the
+  existing ALT regression models.
+- **Destructive degradation** (one measurement per unit) — needs a different
+  data model since per-unit path fits are impossible.
+
+---
+
 ## 8. Time-Varying Covariates and Truncation (to be confirmed)
 
 Full support for time-varying covariates (TVCs) and left/right truncation across all regression model families needs to be designed and confirmed before implementation. Key points established so far:
