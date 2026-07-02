@@ -169,6 +169,71 @@ def test_custom_path_model_instance():
     assert model.path_model is ExponentialPath
 
 
+def test_noiseless_population_estimates():
+    slopes = np.array([0.31, 0.28, 0.44, 0.37])
+    x, y, i = linear_data(slopes)
+    model = DegradationAnalysis.fit(x, y, i, threshold=150)
+    # exact paths: no measurement noise, so no correction is applied
+    assert model.measurement_var == pytest.approx(0.0, abs=1e-12)
+    assert np.allclose(model.path_param_mean, [10.0, slopes.mean()])
+    assert np.allclose(model.path_param_cov, model.path_param_sample_cov)
+    true_cov = np.cov(
+        np.column_stack([np.full(4, 10.0), slopes]), rowvar=False, ddof=1
+    )
+    assert np.allclose(model.path_param_sample_cov, true_cov)
+
+
+def test_noise_correction_recovers_between_unit_covariance():
+    # Small design (4 points close together) so the least-squares
+    # estimation noise is comparable to the between-unit variance and
+    # the correction is material.
+    rng = np.random.default_rng(7)
+    n_units = 200
+    x_times = np.array([10.0, 20.0, 30.0, 40.0])
+    a_true = rng.normal(10.0, 1.0, n_units)  # var(a) = 1.0
+    b_true = rng.normal(0.4, 0.05, n_units)  # var(b) = 0.0025
+    sigma = 1.0  # measurement noise
+    x = np.tile(x_times, n_units)
+    i = np.repeat(np.arange(n_units), len(x_times))
+    y = (
+        np.repeat(a_true, len(x_times))
+        + np.repeat(b_true, len(x_times)) * x
+        + rng.normal(0, sigma, len(x))
+    )
+    model = DegradationAnalysis.fit(x, y, i, threshold=100)
+
+    assert np.isclose(model.measurement_var, sigma**2, rtol=0.25)
+
+    # for this design: V_a = sigma^2 * 3000 / (4 * 500) = 1.5 and
+    # V_b = sigma^2 / 500 = 0.002, so the naive sample covariance is
+    # inflated to ~2.5 and ~0.0045 respectively
+    naive_a = model.path_param_sample_cov[0, 0]
+    naive_b = model.path_param_sample_cov[1, 1]
+    corrected_a = model.path_param_cov[0, 0]
+    corrected_b = model.path_param_cov[1, 1]
+    assert naive_a > 1.7
+    assert naive_b > 0.0035
+    assert abs(corrected_a - 1.0) < 0.6
+    assert abs(corrected_b - 0.0025) < 0.0012
+    assert abs(corrected_a - 1.0) < abs(naive_a - 1.0)
+    assert abs(corrected_b - 0.0025) < abs(naive_b - 0.0025)
+
+
+def test_clip_psd():
+    from surpyval.degradation.degradation_analysis import _clip_psd
+
+    # eigenvalues 3 and -1: must be clipped
+    clipped_matrix, clipped = _clip_psd(np.array([[1.0, 2.0], [2.0, 1.0]]))
+    assert clipped
+    assert np.allclose(clipped_matrix, clipped_matrix.T)
+    assert (np.linalg.eigvalsh(clipped_matrix) >= 0).all()
+    # already PSD: unchanged and not flagged
+    psd = np.array([[2.0, 0.5], [0.5, 1.0]])
+    same_matrix, clipped = _clip_psd(psd)
+    assert not clipped
+    assert np.allclose(same_matrix, psd)
+
+
 def test_predict_failure_time_new_trajectory():
     slopes = np.array([0.31, 0.28, 0.44, 0.37])
     x, y, i = linear_data(slopes)

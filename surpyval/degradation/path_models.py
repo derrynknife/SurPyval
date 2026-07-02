@@ -64,6 +64,30 @@ class PathModel(ABC):
         positive finite time.
         """
 
+    def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
+        """
+        Partial derivatives of ``path`` with respect to the
+        parameters, evaluated at time(s) ``x``: a
+        ``(len(x), n_params)`` matrix.
+
+        Used to estimate the least-squares estimation covariance of
+        per-unit fitted parameters. The base implementation uses
+        central finite differences; the built-in models override it
+        with the analytic derivatives.
+        """
+        x = np.asarray(x, dtype=float)
+        params_arr = np.asarray(params, dtype=float)
+        columns = []
+        for j in range(len(params_arr)):
+            h = 1e-6 * max(abs(params_arr[j]), 1.0)
+            upper, lower = params_arr.copy(), params_arr.copy()
+            upper[j] += h
+            lower[j] -= h
+            columns.append(
+                (self.path(x, *upper) - self.path(x, *lower)) / (2.0 * h)
+            )
+        return np.column_stack(columns)
+
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         """Raise ``ValueError`` if the data is outside the model domain."""
 
@@ -103,6 +127,10 @@ class LinearPath_(PathModel):
         with np.errstate(divide="ignore", invalid="ignore"):
             return (y - a) / b
 
+    def jacobian(self, x, *params):
+        x = np.asarray(x, dtype=float)
+        return np.column_stack([np.ones_like(x), x])
+
     def fit(self, x, y):
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
@@ -125,6 +153,12 @@ class ExponentialPath_(PathModel):
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return np.log(y / a) / b
+
+    def jacobian(self, x, *params):
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        e = np.exp(b * x)
+        return np.column_stack([e, a * x * e])
 
     def check_data(self, x, y):
         if (y <= 0).any():
@@ -154,6 +188,12 @@ class PowerPath_(PathModel):
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return np.power(y / a, 1.0 / b)
+
+    def jacobian(self, x, *params):
+        a, b = params
+        x = np.asarray(x, dtype=float)
+        xb = np.power(x, b)
+        return np.column_stack([xb, a * xb * np.log(x)])
 
     def check_data(self, x, y):
         if (x <= 0).any():
@@ -188,6 +228,10 @@ class LogarithmicPath_(PathModel):
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             return np.exp((y - a) / b)
 
+    def jacobian(self, x, *params):
+        x = np.asarray(x, dtype=float)
+        return np.column_stack([np.ones_like(x), np.log(x)])
+
     def check_data(self, x, y):
         if (x <= 0).any():
             raise ValueError(
@@ -217,6 +261,10 @@ class LloydLipowPath_(PathModel):
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return b / (a - y)
+
+    def jacobian(self, x, *params):
+        x = np.asarray(x, dtype=float)
+        return np.column_stack([np.ones_like(x), -1.0 / x])
 
     def check_data(self, x, y):
         if (x <= 0).any():

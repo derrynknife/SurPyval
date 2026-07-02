@@ -351,9 +351,23 @@ order:
   times as exact, so life-model confidence bounds understate the true
   uncertainty. A bootstrap over units (refit paths + life model per resample)
   is the cheap fix; expose it as a `cb`/`bootstrap` option on the model.
-- **Random-effects (Lu–Meeker) degradation models.** Path parameters as draws
-  from a population distribution, fitted jointly; failure-time distribution
-  induced by the path model rather than via pseudo failures.
+- **Bayesian RUL prediction.** The two-stage noise-corrected population
+  path-parameter distribution (Lu–Meeker: pooled `measurement_var`, mean
+  `path_param_mean`, corrected between-unit `path_param_cov` via
+  `S - V̄` with a PSD clip) is now computed at fit time and exposed on the
+  model. The consumer to build on it: a `predict_rul(x, y)` that forms the
+  Gaussian posterior for a new unit's path parameters (conjugate for the
+  linear-in-parameter paths) and pushes it through `inv_path` by Monte Carlo
+  to give an RUL distribution with credible intervals — shrinking short noisy
+  trajectories toward the population instead of trusting the raw
+  extrapolation.
+- **Random-effects (Lu–Meeker) degradation models fitted properly.** The
+  moments correction above can go rank-deficient with few units; the robust
+  upgrade is marginal ML/REML on `y_i ~ N(X_i mu, X_i Sigma X_i' + sigma^2 I)`
+  (REML to avoid the fixed-effect small-sample bias in the variance
+  components, Cholesky-parameterised `Sigma` so it stays PSD). This also
+  yields the failure-time distribution induced by the path model rather than
+  via pseudo failures.
 - **Stochastic-process degradation models.** Wiener process with drift (first
   passage → inverse Gaussian lifetimes) and gamma process (monotone
   degradation) — these are genuine models with proper likelihoods, and they

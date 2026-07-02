@@ -139,6 +139,38 @@ view instead of a per-unit extrapolation, the fitted life model can be
 used directly — e.g. the survival of a unit that has already survived
 to time ``a``: ``model.life_model.cs(t, a)``.
 
+The population path-parameter distribution
+------------------------------------------
+
+The fitted model also estimates the *population* distribution of the
+path parameters, which is what a random-effects treatment (and any
+Bayesian blending of a new unit's trajectory with the population) needs
+as its prior:
+
+.. code:: python
+
+    model.path_param_mean        # mean path parameters across units
+    model.path_param_cov         # between-unit covariance (corrected)
+    model.path_param_sample_cov  # raw sample covariance (uncorrected)
+    model.measurement_var        # pooled measurement-error variance
+
+Because each unit's fitted parameters are least-squares *estimates*,
+their scatter across units mixes two sources: real unit-to-unit
+variability and per-unit estimation noise
+(:math:`\mathrm{Cov}(\hat{\theta}_i) = \Sigma + V_i`). The raw sample
+covariance therefore overstates the between-unit variability.
+``path_param_cov`` applies the Lu-Meeker two-stage correction: the
+measurement variance is pooled from the per-unit residuals, each
+unit's estimation covariance :math:`V_i = \sigma^2 (J_i^T J_i)^{-1}`
+is computed from the path Jacobian, and the average is subtracted from
+the sample covariance. The result is projected onto the positive
+semi-definite cone; if material clipping was needed (estimation noise
+comparable to the between-unit scatter — few units or few measurements
+per unit), a warning is raised and the corrected covariance should be
+treated as unreliable. When every unit has only as many measurements
+as path parameters, the measurement variance cannot be estimated and
+no correction is applied.
+
 A note on uncertainty
 ---------------------
 
@@ -147,6 +179,6 @@ distribution is fitted to *estimated* failure times as if they had been
 observed exactly, so the reported confidence bounds on the life model do
 not include the path-fitting or extrapolation uncertainty. This is the
 standard, pragmatic form of degradation analysis; random-effects
-(Lu-Meeker) and stochastic-process (Wiener, gamma process) degradation
-models, which propagate that uncertainty, are candidates for future
-work.
+(Lu-Meeker, fitted by REML) and stochastic-process (Wiener, gamma
+process) degradation models, which propagate that uncertainty, are
+candidates for future work.

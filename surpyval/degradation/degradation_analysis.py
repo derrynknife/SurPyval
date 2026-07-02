@@ -24,6 +24,22 @@ from surpyval.univariate.parametric.parametric import Parametric
 from .path_models import PathModel, get_path_model
 
 
+def _clip_psd(matrix: npt.NDArray) -> tuple[npt.NDArray, bool]:
+    """
+    Project a symmetric matrix onto the positive semi-definite cone
+    by clipping negative eigenvalues to zero.
+
+    Returns the projected matrix and whether any eigenvalue was
+    *materially* negative (beyond floating-point noise).
+    """
+    matrix = (matrix + matrix.T) / 2.0
+    eigvals, eigvecs = np.linalg.eigh(matrix)
+    tol = 1e-10 * max(np.abs(eigvals).max(), np.finfo(float).tiny)
+    clipped = bool((eigvals < -tol).any())
+    eigvals = np.clip(eigvals, 0.0, None)
+    return eigvecs @ np.diag(eigvals) @ eigvecs.T, clipped
+
+
 class DegradationModel:
     """
     A fitted degradation analysis model.
@@ -61,6 +77,25 @@ class DegradationModel:
         threshold, 1 (right censored) where it never does.
     life_model : Parametric
         The lifetime distribution fitted to the pseudo failure times.
+    measurement_var : float
+        Pooled estimate of the measurement-error variance around the
+        per-unit paths (the per-unit residual sums of squares over the
+        total residual degrees of freedom). Zero when every unit has
+        exactly as many measurements as path parameters.
+    path_param_mean : ndarray
+        Mean of the per-unit fitted path parameters: the estimated
+        population mean path.
+    path_param_cov : ndarray
+        Noise-corrected estimate of the *between-unit* covariance of
+        the true path parameters (Lu-Meeker two-stage): the sample
+        covariance of the per-unit estimates minus the average
+        least-squares estimation covariance, projected onto the
+        positive semi-definite cone.
+    path_param_sample_cov : ndarray
+        The raw (uncorrected) sample covariance of the per-unit
+        fitted path parameters. This overstates the between-unit
+        variability because each per-unit estimate also carries
+        least-squares estimation noise.
     """
 
     x: npt.NDArray
@@ -73,6 +108,10 @@ class DegradationModel:
     pseudo_failure_times: npt.NDArray
     c: npt.NDArray
     life_model: Parametric
+    measurement_var: float
+    path_param_mean: npt.NDArray
+    path_param_cov: npt.NDArray
+    path_param_sample_cov: npt.NDArray
 
     def __init__(
         self,
@@ -86,6 +125,10 @@ class DegradationModel:
         pseudo_failure_times,
         c,
         life_model,
+        measurement_var,
+        path_param_mean,
+        path_param_cov,
+        path_param_sample_cov,
     ):
         self.x = x
         self.y = y
@@ -97,6 +140,10 @@ class DegradationModel:
         self.pseudo_failure_times = pseudo_failure_times
         self.c = c
         self.life_model = life_model
+        self.measurement_var = measurement_var
+        self.path_param_mean = path_param_mean
+        self.path_param_cov = path_param_cov
+        self.path_param_sample_cov = path_param_sample_cov
         self._unit_index = {unit: idx for idx, unit in enumerate(units)}
 
     def path(self, x: npt.ArrayLike, unit) -> npt.NDArray:
@@ -383,6 +430,9 @@ class DegradationAnalysis_:
         path_params = np.empty((len(units), n_params))
         pseudo = np.empty(len(units))
         last_time = np.empty(len(units))
+        rss_total = 0.0
+        dof_total = 0
+        estimation_cov_sum = np.zeros((n_params, n_params))
 
         for idx, unit in enumerate(units):
             mask = i_arr == unit
@@ -398,6 +448,38 @@ class DegradationAnalysis_:
             path_params[idx] = params
             pseudo[idx] = path_model.inv_path(threshold, *params)
             last_time[idx] = x_unit.max()
+
+            residuals = y_unit - path_model.path(x_unit, *params)
+            rss_total += residuals @ residuals
+            dof_total += len(x_unit) - n_params
+            jacobian = path_model.jacobian(x_unit, *params)
+            jtj = jacobian.T @ jacobian
+            try:
+                estimation_cov_sum += np.linalg.inv(jtj)
+            except np.linalg.LinAlgError:
+                estimation_cov_sum += np.linalg.pinv(jtj)
+
+        # Two-stage (Lu-Meeker) noise correction: the scatter of the
+        # per-unit estimates is Sigma + V_i, so subtracting the average
+        # estimation covariance leaves the between-unit covariance.
+        measurement_var = rss_total / dof_total if dof_total > 0 else 0.0
+        path_param_mean = path_params.mean(axis=0)
+        path_param_sample_cov = np.atleast_2d(
+            np.cov(path_params, rowvar=False, ddof=1)
+        )
+        mean_estimation_cov = measurement_var * estimation_cov_sum / len(units)
+        path_param_cov, was_clipped = _clip_psd(
+            path_param_sample_cov - mean_estimation_cov
+        )
+        if was_clipped:
+            warnings.warn(
+                "The noise-corrected between-unit covariance of the path "
+                "parameters was not positive semi-definite (the estimation "
+                "noise is comparable to the between-unit scatter); negative "
+                "eigenvalues were clipped to zero. With this few units or "
+                "measurements per unit, path_param_cov is unreliable",
+                stacklevel=2,
+            )
 
         events = np.isfinite(pseudo) & (pseudo > 0)
         if not events.any():
@@ -431,6 +513,10 @@ class DegradationAnalysis_:
             pseudo_failure_times=pseudo_failure_times,
             c=c,
             life_model=life_model,
+            measurement_var=measurement_var,
+            path_param_mean=path_param_mean,
+            path_param_cov=path_param_cov,
+            path_param_sample_cov=path_param_sample_cov,
         )
 
     def fit_from_df(
