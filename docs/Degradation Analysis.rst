@@ -139,6 +139,42 @@ view instead of a per-unit extrapolation, the fitted life model can be
 used directly — e.g. the survival of a unit that has already survived
 to time ``a``: ``model.life_model.cs(t, a)``.
 
+Bayesian remaining-life prediction
+----------------------------------
+
+``predict_failure_time`` trusts the new unit's least-squares fit
+completely — dangerous when the trajectory is short or noisy.
+``predict_rul`` instead blends the unit's own trend with the
+population: the population path-parameter distribution (below) is the
+prior, the unit's measurements are the likelihood, and the Gaussian
+posterior of the unit's path parameters is pushed through the
+threshold crossing by Monte Carlo:
+
+.. code:: python
+
+    pred = model.predict_rul(x_new, y_new, alpha_ci=0.05)
+
+    pred.failure_time           # posterior median failure time
+    pred.failure_time_interval  # 95% credible interval
+    pred.rul                    # median remaining useful life
+    pred.rul_interval           # 95% credible interval
+    pred.prob_failed            # P(already crossed the threshold)
+    pred.prob_never_fails       # P(path never reaches the threshold)
+    pred.posterior_mean         # the unit's posterior path parameters
+    pred.posterior_cov
+
+The posterior mean is a precision-weighted compromise: a short or
+noisy trajectory is shrunk toward the population's typical path, and
+as measurements accumulate the prediction converges to the plain
+least-squares extrapolation. Unlike ``predict_failure_time``, it works
+from a single measurement, and a not-yet-degrading trajectory yields a
+long-but-finite prediction with wide bounds rather than ``nan``. The
+posterior is exact (conjugate) for path models that are linear in
+their parameters (linear, logarithmic, Lloyd-Lipow) and an
+iterated-linearisation (Laplace) approximation for the others. It
+requires a positive ``measurement_var`` — with noiseless training
+paths there is nothing to blend.
+
 The population path-parameter distribution
 ------------------------------------------
 
@@ -170,6 +206,42 @@ per unit), a warning is raised and the corrected covariance should be
 treated as unreliable. When every unit has only as many measurements
 as path parameters, the measurement variance cannot be estimated and
 no correction is applied.
+
+REML estimation of the population
+---------------------------------
+
+The moments correction can go rank-deficient when the estimation noise
+rivals the between-unit scatter. The robust alternative is to fit the
+random-effects (Lu-Meeker) formulation directly as a linear mixed
+model — each unit's parameters are draws
+:math:`\theta_i \sim MVN(\mu, \Sigma)`, so with the random effects
+integrated out each unit's measurement vector is marginally
+
+.. math::
+
+    y_i \sim N(X_i \mu, \; X_i \Sigma X_i^T + \sigma^2 I)
+
+and :math:`(\mu, \Sigma, \sigma^2)` are estimated by maximising the
+restricted (REML) marginal likelihood — REML rather than plain ML so
+the variance components do not inherit the small-sample downward bias
+from estimating :math:`\mu`. Select it with:
+
+.. code:: python
+
+    model = DegradationAnalysis.fit(
+        x, y, i, threshold=150, population_method="reml"
+    )
+
+The estimates land in the same attributes (``path_param_mean``,
+``path_param_cov``, ``measurement_var``), so ``predict_rul`` and
+everything else work unchanged. :math:`\Sigma` is parameterised by its
+Cholesky factor, so it is positive definite by construction — no
+clipping. On balanced designs (every unit measured at the same times)
+REML coincides with the corrected moments estimate; they differ on
+unbalanced data and when the unit count is small, where REML is
+preferable. REML is available for path models that are linear in
+their parameters (linear, logarithmic, Lloyd-Lipow) and requires a
+positive measurement variance.
 
 A note on uncertainty
 ---------------------

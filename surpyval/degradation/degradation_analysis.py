@@ -11,6 +11,7 @@ observed time.
 """
 
 import warnings
+from dataclasses import dataclass, field
 from numbers import Number
 
 import matplotlib.pyplot as plt
@@ -22,6 +23,7 @@ from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
 
 from .path_models import PathModel, get_path_model
+from .population import reml_estimate
 
 
 def _clip_psd(matrix: npt.NDArray) -> tuple[npt.NDArray, bool]:
@@ -38,6 +40,62 @@ def _clip_psd(matrix: npt.NDArray) -> tuple[npt.NDArray, bool]:
     clipped = bool((eigvals < -tol).any())
     eigvals = np.clip(eigvals, 0.0, None)
     return eigvecs @ np.diag(eigvals) @ eigvecs.T, clipped
+
+
+@dataclass
+class RULPrediction:
+    """
+    Posterior failure-time / remaining-useful-life prediction for a
+    new unit, returned by :meth:`DegradationModel.predict_rul`.
+
+    All summaries come from Monte Carlo samples of the new unit's
+    path parameters drawn from their Gaussian posterior and pushed
+    through the path model's threshold crossing. Samples whose path
+    never reaches the threshold contribute ``inf`` failure times, so
+    the median and interval endpoints can be ``inf`` when much of the
+    posterior mass never fails.
+
+    Parameters
+    ----------
+    failure_time : float
+        Posterior median of the unit's failure time (measured from
+        the unit's time zero, like the fitted life model).
+    failure_time_interval : tuple of float
+        Equal-tailed ``1 - alpha_ci`` credible interval for the
+        failure time.
+    rul : float
+        Posterior median remaining useful life: failure time minus
+        the unit's last observed time. Negative means the unit has
+        most likely already crossed the threshold.
+    rul_interval : tuple of float
+        Equal-tailed ``1 - alpha_ci`` credible interval for the
+        remaining useful life.
+    prob_failed : float
+        Posterior probability that the unit's path has already
+        crossed the threshold (failure time at or before its last
+        observed time).
+    prob_never_fails : float
+        Posterior probability that the unit's path never reaches the
+        threshold.
+    posterior_mean, posterior_cov : ndarray
+        The Gaussian posterior of the unit's path parameters.
+    alpha_ci : float
+        The interval significance level used.
+    samples : ndarray
+        The Monte Carlo failure-time samples (``inf`` where the
+        sampled path never reaches the threshold).
+    """
+
+    failure_time: float
+    failure_time_interval: "tuple[float, float]"
+    rul: float
+    rul_interval: "tuple[float, float]"
+    prob_failed: float
+    prob_never_fails: float
+    posterior_mean: npt.NDArray
+    posterior_cov: npt.NDArray
+    alpha_ci: float
+    samples: npt.NDArray = field(repr=False)
 
 
 class DegradationModel:
@@ -96,6 +154,10 @@ class DegradationModel:
         fitted path parameters. This overstates the between-unit
         variability because each per-unit estimate also carries
         least-squares estimation noise.
+    population_method : str
+        How the population estimates (``measurement_var``,
+        ``path_param_mean``, ``path_param_cov``) were obtained:
+        ``"moments"`` (two-stage correction) or ``"reml"``.
     """
 
     x: npt.NDArray
@@ -112,6 +174,7 @@ class DegradationModel:
     path_param_mean: npt.NDArray
     path_param_cov: npt.NDArray
     path_param_sample_cov: npt.NDArray
+    population_method: str
 
     def __init__(
         self,
@@ -129,6 +192,7 @@ class DegradationModel:
         path_param_mean,
         path_param_cov,
         path_param_sample_cov,
+        population_method,
     ):
         self.x = x
         self.y = y
@@ -144,6 +208,7 @@ class DegradationModel:
         self.path_param_mean = path_param_mean
         self.path_param_cov = path_param_cov
         self.path_param_sample_cov = path_param_sample_cov
+        self.population_method = population_method
         self._unit_index = {unit: idx for idx, unit in enumerate(units)}
 
     def path(self, x: npt.ArrayLike, unit) -> npt.NDArray:
@@ -207,6 +272,173 @@ class DegradationModel:
         """
         x_arr, y_arr = self._handle_new_trajectory(x, y)
         return self.predict_failure_time(x_arr, y_arr) - float(x_arr.max())
+
+    def predict_rul(
+        self,
+        x: npt.ArrayLike,
+        y: npt.ArrayLike,
+        alpha_ci: float = 0.05,
+        n_samples: int = 10_000,
+        random_state=None,
+    ) -> RULPrediction:
+        """
+        Bayesian remaining-useful-life prediction for a new unit.
+
+        The population distribution of path parameters estimated at
+        fit time (``path_param_mean``, ``path_param_cov``) is used as
+        a prior, the new unit's measurements as the likelihood (with
+        the pooled ``measurement_var`` as the noise variance), and the
+        Gaussian posterior of the unit's path parameters is pushed
+        through the threshold crossing by Monte Carlo. The posterior
+        is exact (conjugate) for path models that are linear in their
+        parameters, and an iterated-linearisation (Laplace)
+        approximation otherwise.
+
+        Compared to :meth:`predict_failure_time`, this shrinks short
+        or noisy trajectories toward the population instead of
+        trusting the raw extrapolation, works from a single
+        measurement, and returns credible intervals. With many
+        measurements the posterior concentrates on the least-squares
+        fit and the two agree.
+
+        Parameters
+        ----------
+        x : array like
+            Times at which the new unit's measurements were taken.
+            One or more measurements are required.
+        y : array like
+            The new unit's degradation measurements.
+        alpha_ci : float, optional
+            Significance level for the equal-tailed credible
+            intervals. Defaults to 0.05 (95% intervals).
+        n_samples : int, optional
+            Number of Monte Carlo posterior samples. Defaults to
+            10,000.
+        random_state : optional
+            Seed passed to ``numpy.random.default_rng`` for
+            reproducible sampling.
+
+        Returns
+        -------
+        RULPrediction
+            Posterior medians, credible intervals, failure
+            probabilities, and the parameter posterior.
+        """
+        # a numerically-zero variance (exact path fits) makes the
+        # posterior degenerate; compare against the scale of y
+        noise_floor = np.finfo(float).eps * float(np.mean(self.y**2))
+        if not self.measurement_var > noise_floor:
+            raise ValueError(
+                "predict_rul requires a positive measurement variance, but "
+                "the fitted model's measurement_var is 0 (every training "
+                "unit's path fitted its measurements exactly, or there were "
+                "no residual degrees of freedom); use predict_failure_time "
+                "instead"
+            )
+        x_arr = np.atleast_1d(np.asarray(x, dtype=float))
+        y_arr = np.atleast_1d(np.asarray(y, dtype=float))
+        if x_arr.ndim != 1 or y_arr.ndim != 1 or len(x_arr) != len(y_arr):
+            raise ValueError(
+                "x and y must be one dimensional and the same length"
+            )
+        if len(x_arr) == 0:
+            raise ValueError("At least one measurement is required")
+        if not (np.isfinite(x_arr).all() and np.isfinite(y_arr).all()):
+            raise ValueError("x and y must contain only finite values")
+        self.path_model.check_data(x_arr, y_arr)
+
+        posterior_mean, posterior_cov = self._path_posterior(x_arr, y_arr)
+
+        rng = np.random.default_rng(random_state)
+        theta_samples = rng.multivariate_normal(
+            posterior_mean, posterior_cov, size=n_samples
+        )
+        try:
+            failure_times = np.asarray(
+                self.path_model.inv_path(self.threshold, *theta_samples.T),
+                dtype=float,
+            )
+            if failure_times.shape != (n_samples,):
+                raise ValueError("inv_path did not broadcast")
+        except Exception:
+            # custom path models need not broadcast over parameter
+            # arrays; fall back to a per-sample loop
+            failure_times = np.array(
+                [
+                    float(self.path_model.inv_path(self.threshold, *theta))
+                    for theta in theta_samples
+                ]
+            )
+        reaches = np.isfinite(failure_times) & (failure_times > 0)
+        failure_times = np.where(reaches, failure_times, np.inf)
+
+        age = float(x_arr.max())
+        quantiles = [0.5, alpha_ci / 2.0, 1.0 - alpha_ci / 2.0]
+        ft_med, ft_lower, ft_upper = np.quantile(failure_times, quantiles)
+        rul_samples = failure_times - age
+        rul_med, rul_lower, rul_upper = np.quantile(rul_samples, quantiles)
+
+        return RULPrediction(
+            failure_time=float(ft_med),
+            failure_time_interval=(float(ft_lower), float(ft_upper)),
+            rul=float(rul_med),
+            rul_interval=(float(rul_lower), float(rul_upper)),
+            prob_failed=float((failure_times <= age).mean()),
+            prob_never_fails=float((~reaches).mean()),
+            posterior_mean=posterior_mean,
+            posterior_cov=posterior_cov,
+            alpha_ci=alpha_ci,
+            samples=failure_times,
+        )
+
+    def _path_posterior(
+        self, x: npt.NDArray, y: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Gaussian posterior of a new unit's path parameters given the
+        population prior and the unit's measurements.
+
+        Exact for linear-in-parameter path models (one Gauss-Newton
+        step is the conjugate update); iterated linearisation to the
+        MAP otherwise.
+        """
+        prior_mean = self.path_param_mean
+        # floor the prior covariance's eigenvalues so a clipped
+        # (rank-deficient) covariance still gives a proper, very tight
+        # prior in the deficient directions
+        eigvals, eigvecs = np.linalg.eigh(self.path_param_cov)
+        floor = max(eigvals.max() * 1e-8, np.finfo(float).tiny)
+        prior_precision = (
+            eigvecs @ np.diag(1.0 / np.clip(eigvals, floor, None)) @ eigvecs.T
+        )
+        noise_var = self.measurement_var
+
+        theta = prior_mean.copy()
+        precision = prior_precision
+        max_iter = 1 if self.path_model.linear_in_parameters else 100
+        for _ in range(max_iter):
+            jacobian = self.path_model.jacobian(x, *theta)
+            fitted = self.path_model.path(x, *theta)
+            precision = prior_precision + jacobian.T @ jacobian / noise_var
+            rhs = (
+                prior_precision @ prior_mean
+                + jacobian.T @ (y - fitted + jacobian @ theta) / noise_var
+            )
+            theta_new = np.linalg.solve(precision, rhs)
+            if not np.isfinite(theta_new).all():
+                raise ValueError(
+                    "The linearised posterior update diverged for this "
+                    "trajectory; the {} path model could not be updated "
+                    "against the population prior".format(self.path_model.name)
+                )
+            if np.allclose(theta_new, theta, rtol=1e-10, atol=1e-12):
+                theta = theta_new
+                break
+            theta = theta_new
+
+        posterior_cov = np.linalg.inv(precision)
+        posterior_cov = (posterior_cov + posterior_cov.T) / 2.0
+        return theta, posterior_cov
 
     def _handle_new_trajectory(
         self, x: npt.ArrayLike, y: npt.ArrayLike
@@ -377,6 +609,7 @@ class DegradationAnalysis_:
         path: "str | PathModel" = "linear",
         distribution=Weibull,
         how: str = "MLE",
+        population_method: str = "moments",
     ) -> DegradationModel:
         """
         Fit a degradation analysis model.
@@ -404,6 +637,17 @@ class DegradationAnalysis_:
         how : str, optional
             The method used to fit the lifetime distribution (passed
             to ``distribution.fit``). Defaults to ``"MLE"``.
+        population_method : str, optional
+            How the population path-parameter distribution
+            (``path_param_mean``, ``path_param_cov``,
+            ``measurement_var``) is estimated. ``"moments"`` (default)
+            uses the two-stage noise-corrected sample moments;
+            ``"reml"`` maximises the restricted marginal likelihood of
+            the linear mixed model, which cannot go rank-deficient and
+            is preferable with few units. REML is available for path
+            models that are linear in their parameters (linear,
+            logarithmic, lloyd-lipow) and requires measurement noise
+            (some unit with more measurements than path parameters).
 
         Returns
         -------
@@ -419,6 +663,19 @@ class DegradationAnalysis_:
 
         path_model = get_path_model(path)
 
+        if population_method not in ("moments", "reml"):
+            raise ValueError(
+                "population_method must be 'moments' or 'reml', got "
+                "'{}'".format(population_method)
+            )
+        if population_method == "reml" and not path_model.linear_in_parameters:
+            raise ValueError(
+                "population_method='reml' requires a path model that is "
+                "linear in its parameters (linear, logarithmic, "
+                "lloyd-lipow); the {} path model is not. Use "
+                "population_method='moments'".format(path_model.name)
+            )
+
         units = np.unique(i_arr)
         if len(units) < 2:
             raise ValueError(
@@ -433,6 +690,8 @@ class DegradationAnalysis_:
         rss_total = 0.0
         dof_total = 0
         estimation_cov_sum = np.zeros((n_params, n_params))
+        y_by_unit = []
+        design_by_unit = []
 
         for idx, unit in enumerate(units):
             mask = i_arr == unit
@@ -458,6 +717,8 @@ class DegradationAnalysis_:
                 estimation_cov_sum += np.linalg.inv(jtj)
             except np.linalg.LinAlgError:
                 estimation_cov_sum += np.linalg.pinv(jtj)
+            y_by_unit.append(y_unit)
+            design_by_unit.append(jacobian)
 
         # Two-stage (Lu-Meeker) noise correction: the scatter of the
         # per-unit estimates is Sigma + V_i, so subtracting the average
@@ -471,15 +732,42 @@ class DegradationAnalysis_:
         path_param_cov, was_clipped = _clip_psd(
             path_param_sample_cov - mean_estimation_cov
         )
-        if was_clipped:
+        if was_clipped and population_method == "moments":
             warnings.warn(
                 "The noise-corrected between-unit covariance of the path "
                 "parameters was not positive semi-definite (the estimation "
                 "noise is comparable to the between-unit scatter); negative "
                 "eigenvalues were clipped to zero. With this few units or "
-                "measurements per unit, path_param_cov is unreliable",
+                "measurements per unit, path_param_cov is unreliable; "
+                "consider population_method='reml'",
                 stacklevel=2,
             )
+
+        if population_method == "reml":
+            noise_floor = np.finfo(float).eps * float(np.mean(y_arr**2))
+            if not measurement_var > noise_floor:
+                raise ValueError(
+                    "population_method='reml' requires measurement noise, "
+                    "but the pooled measurement variance is 0 (every unit's "
+                    "path fitted its measurements exactly, or no unit has "
+                    "more measurements than path parameters)"
+                )
+            # the moment estimates are the starting values
+            reml_mean, reml_cov, reml_var, converged = reml_estimate(
+                y_by_unit,
+                design_by_unit,
+                path_param_cov,
+                measurement_var,
+            )
+            if not converged:
+                warnings.warn(
+                    "The REML optimisation did not report convergence; the "
+                    "population path-parameter estimates may be inaccurate",
+                    stacklevel=2,
+                )
+            path_param_mean = reml_mean
+            path_param_cov = reml_cov
+            measurement_var = reml_var
 
         events = np.isfinite(pseudo) & (pseudo > 0)
         if not events.any():
@@ -517,6 +805,7 @@ class DegradationAnalysis_:
             path_param_mean=path_param_mean,
             path_param_cov=path_param_cov,
             path_param_sample_cov=path_param_sample_cov,
+            population_method=population_method,
         )
 
     def fit_from_df(

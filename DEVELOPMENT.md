@@ -347,27 +347,31 @@ pseudo failure times (units whose path never reaches the threshold are right
 censored at their last observation). Natural extensions, roughly in priority
 order:
 
-- **Uncertainty propagation.** The two-stage method treats pseudo failure
-  times as exact, so life-model confidence bounds understate the true
-  uncertainty. A bootstrap over units (refit paths + life model per resample)
-  is the cheap fix; expose it as a `cb`/`bootstrap` option on the model.
-- **Bayesian RUL prediction.** The two-stage noise-corrected population
-  path-parameter distribution (Lu–Meeker: pooled `measurement_var`, mean
-  `path_param_mean`, corrected between-unit `path_param_cov` via
-  `S - V̄` with a PSD clip) is now computed at fit time and exposed on the
-  model. The consumer to build on it: a `predict_rul(x, y)` that forms the
-  Gaussian posterior for a new unit's path parameters (conjugate for the
-  linear-in-parameter paths) and pushes it through `inv_path` by Monte Carlo
-  to give an RUL distribution with credible intervals — shrinking short noisy
-  trajectories toward the population instead of trusting the raw
-  extrapolation.
-- **Random-effects (Lu–Meeker) degradation models fitted properly.** The
-  moments correction above can go rank-deficient with few units; the robust
-  upgrade is marginal ML/REML on `y_i ~ N(X_i mu, X_i Sigma X_i' + sigma^2 I)`
-  (REML to avoid the fixed-effect small-sample bias in the variance
-  components, Cholesky-parameterised `Sigma` so it stays PSD). This also
-  yields the failure-time distribution induced by the path model rather than
-  via pseudo failures.
+Shipped so far beyond the basic pipeline: the two-stage noise-corrected
+population path-parameter distribution (Lu–Meeker moments: pooled
+`measurement_var`, `path_param_mean`, `path_param_cov` via `S - V̄` with a PSD
+clip); `population_method="reml"` fitting the same quantities by restricted
+marginal likelihood of the linear mixed model (Cholesky-parameterised `Sigma`,
+GLS-profiled mean; linear-in-parameter paths only, coincides with moments on
+balanced designs); and `DegradationModel.predict_rul(x, y)` — the Gaussian
+posterior for a new unit's path parameters (conjugate for linear-in-parameter
+paths, iterated linearisation otherwise) pushed through `inv_path` by Monte
+Carlo, giving shrinkage RUL predictions with credible intervals.
+
+- **Uncertainty propagation for the life model.** The two-stage method treats
+  pseudo failure times as exact, so life-model confidence bounds understate
+  the true uncertainty. A bootstrap over units (refit paths + life model per
+  resample) is the cheap fix; expose it as a `cb`/`bootstrap` option on the
+  model.
+- **Induced failure-time distribution.** With `(mu, Sigma, sigma^2)` fitted
+  (especially by REML), the population failure-time distribution can be
+  derived from the path model directly (Monte Carlo over `theta ~ MVN` through
+  `inv_path`) instead of via noisy pseudo failures — the full Lu–Meeker
+  program. Compare against the pseudo-failure Weibull as a diagnostic.
+- **REML for nonlinear paths.** Exponential/power paths need FO/FOCE-style
+  linearisation of the mixed model (or fitting the exponential path on the
+  log scale, where it is linear). Uncertainty in `(mu, Sigma)` itself
+  (hierarchical bands) is also unmodelled.
 - **Stochastic-process degradation models.** Wiener process with drift (first
   passage → inverse Gaussian lifetimes) and gamma process (monotone
   degradation) — these are genuine models with proper likelihoods, and they

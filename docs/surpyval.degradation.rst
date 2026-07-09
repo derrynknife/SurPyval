@@ -13,6 +13,9 @@ Degradation Model
 .. autoclass:: surpyval.degradation.degradation_analysis.DegradationModel
    :members:
 
+.. autoclass:: surpyval.degradation.degradation_analysis.RULPrediction
+   :members:
+
 Path Models
 -----------
 

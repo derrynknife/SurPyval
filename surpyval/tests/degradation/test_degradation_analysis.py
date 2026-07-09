@@ -234,6 +234,219 @@ def test_clip_psd():
     assert np.allclose(same_matrix, psd)
 
 
+def _noisy_population_data(n_units=100, seed=7):
+    """Balanced noisy linear degradation data: a ~ N(10, 1),
+    b ~ N(0.4, 0.05^2), measurement noise sd 1."""
+    rng = np.random.default_rng(seed)
+    x_times = np.array([10.0, 20.0, 30.0, 40.0])
+    a = rng.normal(10.0, 1.0, n_units)
+    b = rng.normal(0.4, 0.05, n_units)
+    x = np.tile(x_times, n_units)
+    i = np.repeat(np.arange(n_units), len(x_times))
+    y = (
+        np.repeat(a, len(x_times))
+        + np.repeat(b, len(x_times)) * x
+        + rng.normal(0, 1.0, len(x))
+    )
+    return x, y, i
+
+
+def _unbalanced_population_data(n_units=100, seed=3):
+    """Unbalanced noisy linear degradation data (different measurement
+    schedules per unit), same population as _noisy_population_data."""
+    rng = np.random.default_rng(seed)
+    xs, ys, iis = [], [], []
+    for k in range(n_units):
+        n_k = int(rng.integers(3, 9))
+        x_k = np.sort(rng.uniform(5, 60, n_k))
+        a_k, b_k = rng.normal(10.0, 1.0), rng.normal(0.4, 0.05)
+        y_k = a_k + b_k * x_k + rng.normal(0, 1.0, n_k)
+        xs.append(x_k)
+        ys.append(y_k)
+        iis.append(np.full(n_k, k))
+    return np.concatenate(xs), np.concatenate(ys), np.concatenate(iis)
+
+
+def _noisy_model(**kwargs):
+    x, y, i = _noisy_population_data()
+    return DegradationAnalysis.fit(x, y, i, threshold=100, **kwargs)
+
+
+def test_predict_rul_agrees_with_extrapolation_given_much_data():
+    model = _noisy_model()
+    rng = np.random.default_rng(11)
+    x_new = np.arange(10.0, 210.0, 10.0)
+    y_new = 10 + 0.4 * x_new + rng.normal(0, 1.0, len(x_new))
+    pred = model.predict_rul(x_new, y_new, random_state=1)
+    plain = model.predict_failure_time(x_new, y_new)
+    assert abs(pred.failure_time - plain) / plain < 0.1
+    lower, upper = pred.failure_time_interval
+    assert lower < pred.failure_time < upper
+    assert pred.rul == pytest.approx(pred.failure_time - 200.0, rel=1e-9)
+    assert pred.prob_failed == 0.0
+    assert pred.prob_never_fails == 0.0
+
+
+def test_predict_rul_single_measurement():
+    model = _noisy_model()
+    pred_one = model.predict_rul([20.0], [18.0], random_state=2)
+    assert np.isfinite(pred_one.failure_time)
+    assert pred_one.failure_time > 0
+    # a single point must give a wider interval than a long trajectory
+    rng = np.random.default_rng(11)
+    x_new = np.arange(10.0, 210.0, 10.0)
+    y_new = 10 + 0.4 * x_new + rng.normal(0, 1.0, len(x_new))
+    pred_long = model.predict_rul(x_new, y_new, random_state=2)
+    width_one = np.diff(pred_one.failure_time_interval)[0]
+    width_long = np.diff(pred_long.failure_time_interval)[0]
+    assert width_one > width_long
+
+
+def test_predict_rul_shrinks_toward_population():
+    model = _noisy_model()
+    # two points implying a slope of 1.2, way above the population
+    x_new = np.array([10.0, 20.0])
+    y_new = np.array([22.0, 34.0])
+    pred = model.predict_rul(x_new, y_new, random_state=3)
+    ls_slope = 1.2
+    population_slope = model.path_param_mean[1]
+    assert population_slope < pred.posterior_mean[1] < ls_slope
+
+
+def test_predict_rul_already_failed_unit():
+    model = _noisy_model()
+    # a plausible fast unit (slope ~0.5, intercept ~10) observed well
+    # past its threshold crossing at ~185
+    x_new = np.array([150.0, 200.0, 250.0])
+    y_new = np.array([85.0, 110.0, 135.0])
+    pred = model.predict_rul(x_new, y_new, random_state=4)
+    assert pred.prob_failed > 0.9
+    assert pred.rul < 0
+
+
+def test_predict_rul_reproducible():
+    model = _noisy_model()
+    pred_a = model.predict_rul([20.0, 40.0], [18.0, 26.0], random_state=5)
+    pred_b = model.predict_rul([20.0, 40.0], [18.0, 26.0], random_state=5)
+    assert pred_a.failure_time == pred_b.failure_time
+    assert pred_a.rul_interval == pred_b.rul_interval
+    assert np.array_equal(pred_a.samples, pred_b.samples)
+
+
+def test_predict_rul_raises_without_measurement_noise():
+    slopes = np.array([0.31, 0.28, 0.44, 0.37])
+    x, y, i = linear_data(slopes)
+    model = DegradationAnalysis.fit(x, y, i, threshold=150)
+    with pytest.raises(ValueError, match="measurement"):
+        model.predict_rul([100.0, 200.0], [40.0, 70.0])
+
+
+@pytest.mark.parametrize(
+    "x_new,y_new",
+    [
+        ([], []),
+        ([1, 2, 3], [1, 2]),
+        ([100, 200], [20, np.nan]),
+    ],
+)
+def test_predict_rul_validation(x_new, y_new):
+    model = _noisy_model()
+    with pytest.raises(ValueError):
+        model.predict_rul(x_new, y_new)
+
+
+def test_predict_rul_nonlinear_path():
+    rng = np.random.default_rng(21)
+    n_units, x_times = 40, np.arange(50.0, 550.0, 50.0)
+    a = rng.normal(2.0, 0.05, n_units)
+    b = rng.normal(0.005, 0.0003, n_units)
+    x = np.tile(x_times, n_units)
+    i = np.repeat(np.arange(n_units), len(x_times))
+    y = np.repeat(a, len(x_times)) * np.exp(
+        np.repeat(b, len(x_times)) * x
+    ) + rng.normal(0, 0.1, len(x))
+    model = DegradationAnalysis.fit(x, y, i, threshold=20, path="exponential")
+    # new unit: a = 2, b = 0.0055, observed to 200 hours
+    x_new = np.arange(25.0, 225.0, 25.0)
+    y_new = 2.0 * np.exp(0.0055 * x_new)
+    pred = model.predict_rul(x_new, y_new, random_state=6)
+    truth = np.log(20 / 2.0) / 0.0055
+    assert 0.5 * truth < pred.failure_time < 2.0 * truth
+    assert pred.rul == pytest.approx(pred.failure_time - 200.0, rel=1e-9)
+
+
+def test_reml_matches_moments_on_balanced_data():
+    # classical result: for balanced designs (every unit measured at
+    # the same times) REML coincides with the two-stage moments
+    # estimator
+    x, y, i = _noisy_population_data()
+    moments = DegradationAnalysis.fit(x, y, i, threshold=100)
+    reml = DegradationAnalysis.fit(
+        x, y, i, threshold=100, population_method="reml"
+    )
+    assert moments.population_method == "moments"
+    assert reml.population_method == "reml"
+    assert np.allclose(
+        reml.path_param_mean, moments.path_param_mean, rtol=1e-4
+    )
+    assert np.allclose(reml.path_param_cov, moments.path_param_cov, rtol=1e-3)
+    assert np.isclose(reml.measurement_var, moments.measurement_var, rtol=1e-4)
+
+
+def test_reml_on_unbalanced_data():
+    x, y, i = _unbalanced_population_data()
+    reml = DegradationAnalysis.fit(
+        x, y, i, threshold=100, population_method="reml"
+    )
+    moments = DegradationAnalysis.fit(x, y, i, threshold=100)
+    # recovers the generating population
+    assert np.allclose(reml.path_param_mean, [10.0, 0.4], atol=[0.5, 0.03])
+    assert np.isclose(reml.measurement_var, 1.0, rtol=0.3)
+    assert np.isclose(reml.path_param_cov[0, 0], 1.0, rtol=0.6)
+    assert np.isclose(reml.path_param_cov[1, 1], 0.0025, rtol=0.6)
+    # a genuine optimisation: positive definite and not identical to
+    # the moments starting point on unbalanced data
+    assert (np.linalg.eigvalsh(reml.path_param_cov) > 0).all()
+    assert not np.allclose(
+        reml.path_param_cov, moments.path_param_cov, rtol=1e-6
+    )
+    # the fitted model supports Bayesian prediction
+    pred = reml.predict_rul([20.0, 40.0], [18.0, 26.0], random_state=8)
+    assert np.isfinite(pred.failure_time)
+
+
+def test_reml_rejects_nonlinear_path():
+    x, y, i = _noisy_population_data()
+    # rejected before any per-unit fitting happens
+    with pytest.raises(ValueError, match="linear in its parameters"):
+        DegradationAnalysis.fit(
+            x,
+            y,
+            i,
+            threshold=100,
+            path="exponential",
+            population_method="reml",
+        )
+
+
+def test_reml_requires_noise():
+    slopes = np.array([0.31, 0.28, 0.44, 0.37])
+    x, y, i = linear_data(slopes)
+    with pytest.raises(ValueError, match="measurement"):
+        DegradationAnalysis.fit(
+            x, y, i, threshold=150, population_method="reml"
+        )
+
+
+def test_invalid_population_method():
+    slopes = np.array([0.31, 0.28, 0.44, 0.37])
+    x, y, i = linear_data(slopes)
+    with pytest.raises(ValueError, match="population_method"):
+        DegradationAnalysis.fit(
+            x, y, i, threshold=150, population_method="bayes"
+        )
+
+
 def test_predict_failure_time_new_trajectory():
     slopes = np.array([0.31, 0.28, 0.44, 0.37])
     x, y, i = linear_data(slopes)

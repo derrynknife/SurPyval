@@ -49,6 +49,11 @@ class PathModel(ABC):
 
     name: str
     param_names: list[str]
+    #: True when ``path`` is linear in its parameters, i.e.
+    #: ``path(x, *theta) == jacobian(x) @ theta`` with a Jacobian that
+    #: does not depend on ``theta``. Enables exact conjugate posterior
+    #: updates and REML population estimation.
+    linear_in_parameters: bool = False
 
     @abstractmethod
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
@@ -116,6 +121,7 @@ class LinearPath_(PathModel):
 
     name = "Linear"
     param_names = ["a", "b"]
+    linear_in_parameters = True
 
     def path(self, x, *params):
         a, b = params
@@ -216,6 +222,7 @@ class LogarithmicPath_(PathModel):
 
     name = "Logarithmic"
     param_names = ["a", "b"]
+    linear_in_parameters = True
 
     def path(self, x, *params):
         a, b = params
@@ -250,6 +257,7 @@ class LloydLipowPath_(PathModel):
 
     name = "Lloyd-Lipow"
     param_names = ["a", "b"]
+    linear_in_parameters = True
 
     def path(self, x, *params):
         a, b = params
