@@ -15,11 +15,15 @@ Examples
 from .path_models import (
     PATH_MODELS,
     ExponentialPath,
+    GompertzPath,
     LinearPath,
     LloydLipowPath,
     LogarithmicPath,
+    MichaelisMentenPath,
+    OffsetExponentialPath,
     PathModel,
     PowerPath,
+    QuadraticPath,
     get_path_model,
 )
 

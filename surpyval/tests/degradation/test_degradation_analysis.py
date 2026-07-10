@@ -8,6 +8,7 @@ import pytest  # noqa: E402
 
 from surpyval import LogNormal, Weibull  # noqa: E402
 from surpyval.degradation import (  # noqa: E402
+    PATH_MODELS,
     DegradationAnalysis,
     ExponentialPath,
 )
@@ -445,6 +446,91 @@ def test_invalid_population_method():
         DegradationAnalysis.fit(
             x, y, i, threshold=150, population_method="bayes"
         )
+
+
+def test_best_path_selects_linear_on_linear_data():
+    x, y, i = _noisy_population_data(n_units=30)
+    model = DegradationAnalysis.fit(x, y, i, threshold=100, path="best")
+    assert model.path_model.name == "Linear"
+    assert set(model.path_selection) == {m.name for m in PATH_MODELS.values()}
+    assert np.isfinite(model.path_selection["Linear"])
+    # a model fitted with an explicit path records no selection
+    explicit = DegradationAnalysis.fit(x, y, i, threshold=100)
+    assert explicit.path_selection is None
+    # the selected model feeds the normal pipeline
+    pred = model.predict_rul([20.0, 40.0], [18.0, 26.0], random_state=9)
+    assert np.isfinite(pred.failure_time)
+
+
+def test_best_path_selects_exponential_on_exponential_data():
+    a = np.array([2.0, 2.5, 1.8, 2.2])
+    b = np.array([0.004, 0.005, 0.006, 0.0045])
+    n_obs = 10
+    x = np.tile(np.arange(50, 50 * (n_obs + 1), 50), len(a))
+    i = np.repeat(np.arange(1, len(a) + 1), n_obs)
+    y = np.repeat(a, n_obs) * np.exp(np.repeat(b, n_obs) * x)
+    model = DegradationAnalysis.fit(x, y, i, threshold=20, path="best")
+    assert model.path_model.name == "Exponential"
+    # the linear candidate was fitted but scored worse
+    assert model.path_selection["Exponential"] < model.path_selection["Linear"]
+
+
+def test_best_path_selects_quadratic_on_quadratic_data():
+    rng = np.random.default_rng(17)
+    n_units, x_times = 4, np.arange(10.0, 110.0, 10.0)
+    a = rng.normal(5.0, 0.2, n_units)
+    b = rng.normal(0.2, 0.01, n_units)
+    c = rng.normal(0.005, 0.0002, n_units)
+    x = np.tile(x_times, n_units)
+    i = np.repeat(np.arange(n_units), len(x_times))
+    y = (
+        np.repeat(a, len(x_times))
+        + np.repeat(b, len(x_times)) * x
+        + np.repeat(c, len(x_times)) * x**2
+    )
+    model = DegradationAnalysis.fit(x, y, i, threshold=60, path="best")
+    assert model.path_model.name == "Quadratic"
+
+
+def test_best_path_excludes_domain_violating_models():
+    # decreasing linear degradation through negative values: the
+    # positive-measurement models cannot be fitted and score nan
+    slopes = np.array([-0.09, -0.11, -0.1, -0.105])
+    x, y, i = linear_data(slopes)  # y reaches ~ -100 at x = 1000
+    model = DegradationAnalysis.fit(x, y, i, threshold=-50, path="best")
+    assert model.path_model.name == "Linear"
+    assert np.isnan(model.path_selection["Exponential"])
+    assert np.isnan(model.path_selection["Michaelis-Menten"])
+    assert (model.c == 0).all()
+
+
+def test_quadratic_pipeline_with_reml_and_prediction():
+    rng = np.random.default_rng(23)
+    n_units, x_times = 20, np.arange(10.0, 60.0, 10.0)
+    a = rng.normal(5.0, 0.5, n_units)
+    b = rng.normal(0.2, 0.02, n_units)
+    c = rng.normal(0.01, 0.001, n_units)
+    x = np.tile(x_times, n_units)
+    i = np.repeat(np.arange(n_units), len(x_times))
+    y = (
+        np.repeat(a, len(x_times))
+        + np.repeat(b, len(x_times)) * x
+        + np.repeat(c, len(x_times)) * x**2
+        + rng.normal(0, 0.3, len(x))
+    )
+    model = DegradationAnalysis.fit(
+        x,
+        y,
+        i,
+        threshold=60,
+        path="quadratic",
+        population_method="reml",
+    )
+    assert model.path_param_cov.shape == (3, 3)
+    assert (np.linalg.eigvalsh(model.path_param_cov) > 0).all()
+    pred = model.predict_rul([10.0, 20.0], [8.0, 13.0], random_state=10)
+    assert np.isfinite(pred.failure_time)
+    assert pred.failure_time > 0
 
 
 def test_predict_failure_time_new_trajectory():

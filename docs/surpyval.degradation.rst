@@ -25,7 +25,13 @@ Path Models
 .. autoclass:: surpyval.degradation.path_models.LinearPath_
    :members:
 
+.. autoclass:: surpyval.degradation.path_models.QuadraticPath_
+   :members:
+
 .. autoclass:: surpyval.degradation.path_models.ExponentialPath_
+   :members:
+
+.. autoclass:: surpyval.degradation.path_models.OffsetExponentialPath_
    :members:
 
 .. autoclass:: surpyval.degradation.path_models.PowerPath_
@@ -35,6 +41,12 @@ Path Models
    :members:
 
 .. autoclass:: surpyval.degradation.path_models.LloydLipowPath_
+   :members:
+
+.. autoclass:: surpyval.degradation.path_models.GompertzPath_
+   :members:
+
+.. autoclass:: surpyval.degradation.path_models.MichaelisMentenPath_
    :members:
 
 .. autofunction:: surpyval.degradation.path_models.get_path_model

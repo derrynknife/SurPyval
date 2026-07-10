@@ -341,11 +341,12 @@ The semi-parametric counterpart to Cox PH. Fits `log(T) = β'Z + ε` without ass
 ## 7a. Degradation Analysis — Future Work
 
 `surpyval.degradation` ships the classic pseudo-failure-time approach: per-unit
-least-squares path fits (linear, exponential, power, logarithmic, Lloyd-Lipow),
-extrapolation to a threshold, and a lifetime-distribution fit to the resulting
-pseudo failure times (units whose path never reaches the threshold are right
-censored at their last observation). Natural extensions, roughly in priority
-order:
+least-squares path fits (linear, quadratic, exponential, offset-exponential,
+power, logarithmic, Lloyd-Lipow, Gompertz, Michaelis-Menten — plus
+`path="best"` AICc selection across all of them), extrapolation to a
+threshold, and a lifetime-distribution fit to the resulting pseudo failure
+times (units whose path never reaches the threshold are right censored at
+their last observation). Natural extensions, roughly in priority order:
 
 Shipped so far beyond the basic pipeline: the two-stage noise-corrected
 population path-parameter distribution (Lu–Meeker moments: pooled

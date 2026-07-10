@@ -22,7 +22,7 @@ import pandas as pd
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
 
-from .path_models import PathModel, get_path_model
+from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate
 
 
@@ -158,6 +158,11 @@ class DegradationModel:
         How the population estimates (``measurement_var``,
         ``path_param_mean``, ``path_param_cov``) were obtained:
         ``"moments"`` (two-stage correction) or ``"reml"``.
+    path_selection : dict or None
+        When fitted with ``path="best"``, the AICc score of every
+        candidate path model (``nan`` for candidates that could not be
+        fitted to every unit); ``None`` otherwise. The fitted
+        ``path_model`` is the candidate with the smallest score.
     """
 
     x: npt.NDArray
@@ -175,6 +180,7 @@ class DegradationModel:
     path_param_cov: npt.NDArray
     path_param_sample_cov: npt.NDArray
     population_method: str
+    path_selection: "dict[str, float] | None"
 
     def __init__(
         self,
@@ -193,6 +199,7 @@ class DegradationModel:
         path_param_cov,
         path_param_sample_cov,
         population_method,
+        path_selection=None,
     ):
         self.x = x
         self.y = y
@@ -209,6 +216,7 @@ class DegradationModel:
         self.path_param_cov = path_param_cov
         self.path_param_sample_cov = path_param_sample_cov
         self.population_method = population_method
+        self.path_selection = path_selection
         self._unit_index = {unit: idx for idx, unit in enumerate(units)}
 
     def path(self, x: npt.ArrayLike, unit) -> npt.NDArray:
@@ -628,9 +636,15 @@ class DegradationAnalysis_:
             failed.
         path : str or PathModel, optional
             The degradation path model fitted to each unit: one of
-            ``"linear"`` (default), ``"exponential"``, ``"power"``,
-            ``"logarithmic"``, ``"lloyd-lipow"``, or a
-            :class:`~surpyval.degradation.PathModel` instance.
+            ``"linear"`` (default), ``"quadratic"``, ``"exponential"``,
+            ``"offset-exponential"``, ``"power"``, ``"logarithmic"``,
+            ``"lloyd-lipow"``, ``"gompertz"``, ``"michaelis-menten"``,
+            a :class:`~surpyval.degradation.PathModel` instance, or
+            ``"best"`` to fit every registered model to all units and
+            select the one with the smallest AICc (the per-candidate
+            scores are exposed as ``path_selection`` on the returned
+            model; candidates that cannot be fitted to every unit are
+            excluded).
         distribution : ParametricFitter, optional
             The lifetime distribution fitted to the pseudo failure
             times. Defaults to ``Weibull``.
@@ -646,8 +660,9 @@ class DegradationAnalysis_:
             the linear mixed model, which cannot go rank-deficient and
             is preferable with few units. REML is available for path
             models that are linear in their parameters (linear,
-            logarithmic, lloyd-lipow) and requires measurement noise
-            (some unit with more measurements than path parameters).
+            quadratic, logarithmic, lloyd-lipow) and requires
+            measurement noise (some unit with more measurements than
+            path parameters).
 
         Returns
         -------
@@ -661,19 +676,10 @@ class DegradationAnalysis_:
             raise ValueError("threshold must be a finite number")
         threshold = float(threshold)
 
-        path_model = get_path_model(path)
-
         if population_method not in ("moments", "reml"):
             raise ValueError(
                 "population_method must be 'moments' or 'reml', got "
                 "'{}'".format(population_method)
-            )
-        if population_method == "reml" and not path_model.linear_in_parameters:
-            raise ValueError(
-                "population_method='reml' requires a path model that is "
-                "linear in its parameters (linear, logarithmic, "
-                "lloyd-lipow); the {} path model is not. Use "
-                "population_method='moments'".format(path_model.name)
             )
 
         units = np.unique(i_arr)
@@ -681,6 +687,22 @@ class DegradationAnalysis_:
             raise ValueError(
                 "Degradation analysis requires at least 2 units; "
                 "got {}".format(len(units))
+            )
+
+        path_selection = None
+        if isinstance(path, str) and path.lower() == "best":
+            path_model, path_selection = self._select_path_model(
+                x_arr, y_arr, i_arr, units
+            )
+        else:
+            path_model = get_path_model(path)
+
+        if population_method == "reml" and not path_model.linear_in_parameters:
+            raise ValueError(
+                "population_method='reml' requires a path model that is "
+                "linear in its parameters (linear, quadratic, logarithmic, "
+                "lloyd-lipow); the {} path model is not. Use "
+                "population_method='moments'".format(path_model.name)
             )
 
         n_params = len(path_model.param_names)
@@ -696,10 +718,10 @@ class DegradationAnalysis_:
         for idx, unit in enumerate(units):
             mask = i_arr == unit
             x_unit, y_unit = x_arr[mask], y_arr[mask]
-            if len(x_unit) < n_params or len(np.unique(x_unit)) < 2:
+            if len(np.unique(x_unit)) < n_params:
                 raise ValueError(
-                    "Unit {} needs at least {} measurements at 2 or more "
-                    "distinct times to fit the {} path model".format(
+                    "Unit {} needs measurements at {} or more distinct "
+                    "times to fit the {} path model".format(
                         unit, n_params, path_model.name
                     )
                 )
@@ -806,7 +828,70 @@ class DegradationAnalysis_:
             path_param_cov=path_param_cov,
             path_param_sample_cov=path_param_sample_cov,
             population_method=population_method,
+            path_selection=path_selection,
         )
+
+    @staticmethod
+    def _select_path_model(
+        x_arr, y_arr, i_arr, units
+    ) -> "tuple[PathModel, dict[str, float]]":
+        """
+        Select the registered path model with the smallest AICc over
+        all units' measurements.
+
+        Every unit is fitted with every candidate; the residual sums
+        of squares are pooled under a common Gaussian error variance,
+        so a candidate's AICc is
+        ``N ln(RSS/N) + 2k + 2k(k+1)/(N - k - 1)`` with
+        ``k = n_units * n_params + 1``. Candidates that cannot be
+        fitted to every unit (domain violations, too few distinct
+        times, non-convergence, or too few total measurements for the
+        AICc correction) are excluded and scored ``nan``.
+        """
+        n_total = len(x_arr)
+        rss_floor = n_total * np.finfo(float).eps * float(np.mean(y_arr**2))
+        scores: "dict[str, float]" = {}
+        for candidate in PATH_MODELS.values():
+            n_params = len(candidate.param_names)
+            k = n_params * len(units) + 1
+            if n_total - k - 1 < 1:
+                scores[candidate.name] = np.nan
+                continue
+            rss = 0.0
+            try:
+                for unit in units:
+                    mask = i_arr == unit
+                    x_unit, y_unit = x_arr[mask], y_arr[mask]
+                    if len(np.unique(x_unit)) < n_params:
+                        raise ValueError("too few distinct times")
+                    params = candidate.fit(x_unit, y_unit)
+                    residuals = y_unit - candidate.path(x_unit, *params)
+                    if not np.isfinite(residuals).all():
+                        raise ValueError("non-finite fit")
+                    rss += float(residuals @ residuals)
+            except Exception:
+                scores[candidate.name] = np.nan
+                continue
+            rss = max(rss, rss_floor)
+            scores[candidate.name] = (
+                n_total * np.log(rss / n_total)
+                + 2.0 * k
+                + 2.0 * k * (k + 1.0) / (n_total - k - 1.0)
+            )
+
+        finite = {
+            name: score for name, score in scores.items() if np.isfinite(score)
+        }
+        if not finite:
+            raise ValueError(
+                "path='best' could not fit any registered path model to "
+                "every unit's measurements"
+            )
+        best_name = min(finite, key=lambda name: finite[name])
+        best_model = next(
+            model for model in PATH_MODELS.values() if model.name == best_name
+        )
+        return best_model, scores
 
     def fit_from_df(
         self,

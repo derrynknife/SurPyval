@@ -41,9 +41,15 @@ threshold :math:`y_{t}`, are:
     * - ``"linear"``
       - :math:`y = a + b x`
       - :math:`(y_{t} - a) / b`
+    * - ``"quadratic"``
+      - :math:`y = a + b x + c x^{2}`
+      - first positive root of :math:`c t^{2} + b t + (a - y_{t})`
     * - ``"exponential"``
       - :math:`y = a e^{b x}`
       - :math:`\ln(y_{t} / a) / b`
+    * - ``"offset-exponential"``
+      - :math:`y = a + b e^{c x}`
+      - :math:`\ln((y_{t} - a) / b) / c`
     * - ``"power"``
       - :math:`y = a x^{b}`
       - :math:`(y_{t} / a)^{1/b}`
@@ -53,13 +59,39 @@ threshold :math:`y_{t}`, are:
     * - ``"lloyd-lipow"``
       - :math:`y = a - b / x`
       - :math:`b / (a - y_{t})`
+    * - ``"gompertz"``
+      - :math:`y = a e^{-b e^{-c x}}`
+      - :math:`-\ln(-\ln(y_{t}/a)/b) / c`
+    * - ``"michaelis-menten"``
+      - :math:`y = a x / (b + x)`
+      - :math:`b y_{t} / (a - y_{t})`
 
 Degradation can be increasing (crack length) or decreasing (luminous
 flux); the direction is captured by the sign of the fitted parameters and
 needs no configuration. Models that are linear in their parameters
-(linear, logarithmic, Lloyd-Lipow) are fitted in closed form; the others
-(exponential, power) are fitted by nonlinear least squares started from
-the log-linearised fit.
+(linear, quadratic, logarithmic, Lloyd-Lipow) are fitted in closed form;
+the others are fitted by nonlinear least squares started from a
+linearised fit. The offset-exponential covers growth or decay toward an
+asymptote (``a = 0`` reduces it to the exponential); Gompertz is
+S-shaped; Michaelis-Menten saturates from zero toward ``a``.
+
+Not sure which shape fits? Pass ``path="best"``:
+
+.. code:: python
+
+    model = DegradationAnalysis.fit(x, y, i, threshold=150, path="best")
+    model.path_model.name   # the selected model
+    model.path_selection    # AICc score per candidate
+
+Every registered path model is fitted to every unit and the model with
+the smallest AICc (pooled over all units, penalising the per-unit
+parameter count) is selected; candidates that cannot be fitted to every
+unit — domain violations such as negative measurements for the
+exponential, too few distinct measurement times for their parameter
+count, or non-convergence — are excluded and score ``nan``. The
+selection is by measurement fit only; as always, prefer a shape with
+physical justification when one is known, since the winner is
+extrapolated well beyond the data.
 
 Example
 -------
@@ -170,7 +202,7 @@ least-squares extrapolation. Unlike ``predict_failure_time``, it works
 from a single measurement, and a not-yet-degrading trajectory yields a
 long-but-finite prediction with wide bounds rather than ``nan``. The
 posterior is exact (conjugate) for path models that are linear in
-their parameters (linear, logarithmic, Lloyd-Lipow) and an
+their parameters (linear, quadratic, logarithmic, Lloyd-Lipow) and an
 iterated-linearisation (Laplace) approximation for the others. It
 requires a positive ``measurement_var`` — with noiseless training
 paths there is nothing to blend.
@@ -240,7 +272,8 @@ clipping. On balanced designs (every unit measured at the same times)
 REML coincides with the corrected moments estimate; they differ on
 unbalanced data and when the unit count is small, where REML is
 preferable. REML is available for path models that are linear in
-their parameters (linear, logarithmic, Lloyd-Lipow) and requires a
+their parameters (linear, quadratic, logarithmic, Lloyd-Lipow) and
+requires a
 positive measurement variance.
 
 A note on uncertainty

@@ -4,22 +4,31 @@ import pytest
 from surpyval.degradation import (
     PATH_MODELS,
     ExponentialPath,
+    GompertzPath,
     LinearPath,
     LloydLipowPath,
     LogarithmicPath,
+    MichaelisMentenPath,
+    OffsetExponentialPath,
     PathModel,
     PowerPath,
+    QuadraticPath,
     get_path_model,
 )
 
 MODELS_AND_PARAMS = [
     (LinearPath, (2.0, 0.5)),
     (LinearPath, (10.0, -0.3)),
+    (QuadraticPath, (1.0, 0.3, 0.01)),
+    (QuadraticPath, (20.0, -0.5, -0.02)),
     (ExponentialPath, (2.0, 0.05)),
     (ExponentialPath, (5.0, -0.1)),
+    (OffsetExponentialPath, (10.0, -8.0, -0.2)),
     (PowerPath, (2.0, 0.8)),
     (LogarithmicPath, (1.0, 2.0)),
     (LloydLipowPath, (10.0, 5.0)),
+    (GompertzPath, (10.0, 3.0, 0.3)),
+    (MichaelisMentenPath, (10.0, 5.0)),
 ]
 
 
@@ -84,11 +93,24 @@ def test_unreachable_levels_are_not_positive_finite():
         (PowerPath, [1, 2, 3], [1.0, 0.0, 3.0]),
         (LogarithmicPath, [-1, 1, 2], [1.0, 2.0, 3.0]),
         (LloydLipowPath, [0, 1, 2], [1.0, 2.0, 3.0]),
+        (GompertzPath, [1, 2, 3], [1.0, -1.0, 2.0]),
+        (MichaelisMentenPath, [0, 1, 2], [1.0, 2.0, 3.0]),
+        (MichaelisMentenPath, [1, 2, 3], [1.0, 0.0, 3.0]),
     ],
 )
 def test_domain_validation(model, x, y):
     with pytest.raises(ValueError):
         model.fit(x, y)
+
+
+def test_quadratic_inv_path_takes_first_crossing():
+    # downward parabola y = x - 0.01 x^2 crosses 16 at t=20 and t=80
+    assert np.isclose(QuadraticPath.inv_path(16.0, 0.0, 1.0, -0.01), 20.0)
+    # the vertex peaks at 25, so 30 is never reached
+    t = QuadraticPath.inv_path(30.0, 0.0, 1.0, -0.01)
+    assert not (np.isfinite(t) and t > 0)
+    # degenerate c = 0 falls back to the linear crossing
+    assert np.isclose(QuadraticPath.inv_path(6.0, 2.0, 0.5, 0.0), 8.0)
 
 
 def test_get_path_model():
