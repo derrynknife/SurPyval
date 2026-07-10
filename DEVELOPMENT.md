@@ -346,7 +346,7 @@ power, logarithmic, Lloyd-Lipow, Gompertz, Michaelis-Menten — plus
 `path="best"` AICc selection across all of them), extrapolation to a
 threshold, and a lifetime-distribution fit to the resulting pseudo failure
 times (units whose path never reaches the threshold are right censored at
-their last observation). Natural extensions, roughly in priority order:
+their last observation).
 
 Shipped so far beyond the basic pipeline: the two-stage noise-corrected
 population path-parameter distribution (Lu–Meeker moments: pooled
@@ -358,6 +358,8 @@ balanced designs); and `DegradationModel.predict_rul(x, y)` — the Gaussian
 posterior for a new unit's path parameters (conjugate for linear-in-parameter
 paths, iterated linearisation otherwise) pushed through `inv_path` by Monte
 Carlo, giving shrinkage RUL predictions with credible intervals.
+
+Natural extensions, roughly in priority order:
 
 - **Uncertainty propagation for the life model.** The two-stage method treats
   pseudo failure times as exact, so life-model confidence bounds understate
@@ -377,11 +379,54 @@ Carlo, giving shrinkage RUL predictions with credible intervals.
   passage → inverse Gaussian lifetimes) and gamma process (monotone
   degradation) — these are genuine models with proper likelihoods, and they
   handle measurement error and irregular sampling more honestly.
-- **Accelerated degradation testing (ADT).** Stress covariates on the path
-  parameters (Arrhenius/power-law links), the degradation counterpart of the
-  existing ALT regression models.
 - **Destructive degradation** (one measurement per unit) — needs a different
   data model since per-unit path fits are impossible.
+
+### Covariates / accelerated degradation testing (design)
+
+Covariates (accelerating stresses such as temperature/voltage/humidity, or
+observational factors such as lot/supplier/load) can enter the pipeline at two
+different stages, and they are genuinely different features:
+
+**Stage 1 — covariates on the life fit (classic ADT; build first).** Keep the
+per-unit path fits unchanged; each unit also carries a covariate vector `Z_i`
+(constant per unit — one row per unit, or a column in `fit_from_df`). Instead
+of fitting a plain distribution to the pseudo failure times, feed
+`(pseudo_failure_time_i, c_i, Z_i)` into the *existing* univariate regression
+fitters (AFT / PH / parameter-substitution life-stress models, formulaic
+formulas and all). API sketch: `DegradationAnalysis.fit(x, y, i, Z=...,
+distribution=<regression fitter>)`, with `Z` forwarded through the delegated
+lifetime functions (`model.sf(t, Z=use_stress)`) so life at use conditions is
+one call. Censored (non-degrading) units flow through naturally since the
+regression fitters already take `c`. Mostly plumbing — a small, separate PR.
+Theoretical justification: for a linear path with stress acting on the rate,
+`T = (y_t - a) / b(Z)`, so `log T = log(y_t - a) - log b(Z)` — exactly an AFT
+model. For rate-acting stresses on threshold-crossing models the
+pseudo-failure + AFT composition is the correct functional form, not just a
+pragmatic one. Open design point: interaction with `path="best"` (default:
+select on the pooled data as now, since the path stage stays per-unit either
+way).
+
+**Stage 2 — covariates on the path parameters (mechanistic).** Model the
+degradation rate itself: `theta_i = Gamma z_i + u_i` (e.g. Arrhenius when a
+rate is log-linear in `1/T`). This buys what Stage 1 cannot: pooling strength
+across units (a unit with two points at high stress still informs `Gamma`, so
+per-unit fits need not be possible), stress-conditional priors for
+`predict_rul` (`theta ~ MVN(mu(Z), Sigma)` — the blend then knows a hot unit
+should be degrading faster *before* seeing its data), and stresses that change
+the path *shape* rather than just its scale. Implementation: for
+linear-in-parameter paths with identity links this stays a linear mixed model
+— `y_i = (z_i' ⊗ X_i) vec(Gamma) + X_i u_i + eps` — so the existing REML code
+needs only a wider fixed-effects design matrix; the GLS profiling and
+variance-parameter optimisation are untouched. Physically-motivated links
+(log/Arrhenius, to keep rates positive) make the fixed effects nonlinear:
+either fit on a transformed scale or wrap one Gauss-Newton layer around the
+LMM.
+
+**Stage 3 — time-varying stress (step-stress profiles).** Cumulative-exposure
+/ cumulative-damage models where the rate changes with the stress profile
+mid-test. Hardest by far (same reasons as time-varying covariates for the
+regression module — see section 8); defer until Stages 1-2 are stable.
 
 ---
 
