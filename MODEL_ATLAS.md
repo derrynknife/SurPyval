@@ -103,6 +103,17 @@ remains future work.
 |-------|-----|-----------|--------|--------|------------|------|------------|
 | Clayton/Gumbel/Frank/Gaussian copula | multivariate | single_event | single | terminal | none | continuous | parametric |
 
+One shipped capability sits deliberately *outside* the axes:
+`surpyval.degradation` (pseudo-failure-time degradation analysis) is not itself
+an event-time model but a **data bridge** — it converts repeated degradation
+measurements into per-unit (possibly right-censored) failure times by
+extrapolating a fitted degradation path to a failure threshold, then hands
+those times to an ordinary univariate parametric fitter. The life model it
+produces classifies as univariate / single_event / single / terminal /
+parametric; the degradation stage itself is least-squares regression on
+measurements, not survival modelling. (Stochastic degradation *processes* —
+Wiener, gamma — would be genuine models on the atlas and remain future work.)
+
 ## Deferred orthogonal axes (out of scope for now)
 
 - **Inference paradigm** — frequentist vs Bayesian. The entire library is

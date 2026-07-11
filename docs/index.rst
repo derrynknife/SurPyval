@@ -98,6 +98,7 @@ Contents:
    Competing Risks Analysis
    Recurrent Event Analysis
    Recurrent Event Regression Analysis
+   Degradation Analysis
 
 .. toctree::
    :maxdepth: 2

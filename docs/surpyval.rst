@@ -8,5 +8,6 @@ API
    surpyval.parametric
    surpyval.regression
    surpyval.counting
+   surpyval.degradation
    surpyval.utilities
    surpyval.datasets
