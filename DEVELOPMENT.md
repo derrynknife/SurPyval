@@ -1,6 +1,6 @@
 # Development Notes
 
-This document tracks known issues, technical debt, and improvement priorities for surpyval. Issues are grouped by theme and ordered by severity within each section. Implemented items are removed; this reflects the state of the codebase as of 2026-06-12. The full test suite passes on Python 3.11+ with numpy 2.x / scipy 1.17 / pandas 3.x.
+This document tracks known issues, technical debt, and improvement priorities for surpyval. Issues are grouped by theme and ordered by severity within each section. Implemented items are removed; this reflects the state of the codebase as of 2026-07-11. The full test suite passes on Python 3.11+ with numpy 2.x / scipy 1.17 / pandas 3.x.
 
 ---
 
@@ -9,21 +9,6 @@ This document tracks known issues, technical debt, and improvement priorities fo
 The package ships `py.typed` and `mypy` runs in CI, so the typing
 contract is live and must be honoured across the whole package, not
 just the parts done so far.
-
-**Done (public APIs, all mypy-clean, no new errors over baseline):**
-- Univariate **parametric**: `ParametricFitter.fit`/`fit_from_df`/
-  `fit_from_surpyval_data`/`fit_from_ecdf` and the `Parametric` model
-  (sf/ff/df/hf/Hf/qf/cs/random/mean/var/moment/entropy/cb/param_cb,
-  the AIC/BIC family, serialization, plotting).
-- Univariate **nonparametric**: `NonParametricFitter.fit`/`from_xrd`
-  and the `NonParametric` model methods, plus the `FIT_FUNCS`/
-  `VAR_FUNCS` dispatch dicts.
-- Univariate **regression**: `fit`/`fit_from_df` on the AFT/PH/PO/
-  parameter-substitution fitters and `CoxPH`, the `DataFrameRegression
-  Mixin`, and the `ParametricRegressionModel`/`SemiParametricRegression
-  Model` prediction methods.
-- Top-level helpers: `fit_best`, `handle_xicn` (and the recurrent
-  validators), `SurpyvalData`, `RecurrentEventData`.
 
 **Still to do (in suggested order):**
 - Public APIs of the remaining modules: univariate **competing risks**
@@ -45,107 +30,7 @@ numeric kernels loosely typed (they buy little from precise typing).
 
 ---
 
-## 4. Recurrent Module — Bugs and Gaps
-
-### Fresh deep-dive — 2026-06-14 (full-package audit)
-
-A current-state audit of the whole `recurrent/` package (parametric intensity,
-renewal, regression, nonparametric, competing risks). Findings are grouped by
-theme; items already resolved are marked **[done]**.
-
-**C. Simplification**
-- The multi-start MLE fit scaffolding that was copy-pasted across the four
-  repair fitters (`GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI`)
-  now lives in a shared `RenewalFitMixin` (`recurrent/renewal/fit_mixin.py`):
-  `_multistart` owns the `for X_init in [...]` loop, the best-start selection
-  and the two identical convergence-failure raises; `_bounds_transform` owns
-  the `bounds_convert` setup; `_attach_inference` owns the
-  `_neg_ll`/`_mle`/`_n_obs` storage; and `_initial_dist_params` de-duplicates
-  the first-event initialisation shared by `GeneralizedRenewal`/`ARA`. Each
-  fitter keeps only its own likelihood and optimiser call, so the numerics are
-  unchanged (`GeneralizedOneRenewal` still uses bounded Nelder-Mead, not the
-  transform, to keep its pinned results identical). **[done]**
-- `ProportionalIntensityModel` now inherits `RecurrenceSimulationMixin` instead
-  of carrying the stale pre-mixin simulation copy, so the regression model
-  gains seeding, the `max_events` backstop and the data-returning simulators;
-  the covariate vector `Z` is threaded to the sampler by the public entry
-  points. **[done]**
-- The parametric intensity models (`HPP`/`CrowAMSAA`/`Duane`/`CoxLewis`) and
-  the proportional-intensity regression fitters now set
-  `_neg_ll`/`_mle`/`_n_obs` and inherit `LikelihoodInferenceMixin`, so they
-  expose `log_likelihood`/`aic`/`bic`/`standard_errors` like the repair models.
-  `ParametricRecurrenceModel`/`ProportionalIntensityModel` define
-  `_parameter_names` for the labelling; the inference helpers were generalised
-  off the renewal-only `[q, *dist_params]` assumption. An MSE fit (or a
-  `from_params` model) sets nothing, so inference still raises there. **[done]**
-- `Duane`/`CrowAMSAA`/`CoxLewis` no longer repeat the `iif`/`log_iif`/`cif`/
-  `inv_cif` docstring boilerplate: the contract (plus `inv_cif` and
-  `parameter_initialiser`) lives once on a new `IntensityModel` ABC that
-  `NHPPFitter` subclasses, and the concrete models supply only the maths (which
-  is left distinct). `HPP` was *not* folded into `NHPPFitter` — its bespoke
-  log-space root-finding fit and pinned outputs differ enough from the
-  MSE/Nelder-Mead NHPP path that the subclassing would change behaviour for no
-  real saving; it stays a `CountingProcess`. **[done]**
-
-**D. Missing capabilities**
-- Trend tests are now available as standalone functions in
-  `surpyval.recurrent.tests`: `laplace` (the centroid test, asymptotically
-  normal) and `mil_hdbk_189c` (the Military Handbook / total-time-on-test
-  statistic, chi-squared). Both take `(x, i, T)` and an `alternative`
-  direction, support single- and multi-system data and both time- and
-  failure-truncation, and return a `TrendTestResult`. Still to do: a
-  Cramér-von Mises NHPP goodness-of-fit test, and exposing the trend tests
-  as a method on fitted NHPP models. **[done]**
-- Truncation now fully wired into the parametric NHPP family: a finite right
-  truncation `tr` closes the observation window directly in the likelihood
-  integral, so the intensity is integrated out to `tr` without relying on an
-  explicit `c=1` row. The window-close term (`cif(x_last) - cif(tr)` per item,
-  exactly zero when `tr` is infinite or a `c=1` row already sits at `tr`, so
-  the two ways of closing the window never double-count) is shared via
-  `RecurrentEventData.get_right_truncation_close()` across `HPP`, the
-  `NHPPFitter` models (`CrowAMSAA`/`Duane`/`CoxLewis`) and both
-  proportional-intensity regression fitters. `t`/`tl`/`tr` are now exposed on
-  `ProportionalIntensityNHPP.fit()` and `ProportionalIntensityHPP.fit()`. (The
-  nonparametric MCF risk set honours `tl`, and `tl`/`tr` are exposed on
-  `NonParametricCounting.fit()` and `CauseSpecificMCF.fit()` — see A.) Still to
-  do: multi-window (gapped) observation per item. **[done]**
-- `handle_xicn` has no `e` (event-mark) parameter, so `CauseSpecificMCF.fit`
-  bypasses it and can't take truncation; no `fit_from_df` for marks.
-- The nonparametric MCF has **zero tests**. (The regression submodule now has
-  fit/inference and simulation tests — see C and the Test coverage note below.)
-- No residual diagnostics; no parametric CI band on `plot()`.
-
-**E. API inconsistencies**
-- `ProportionalIntensityModel.cif(x, Z)` / `time_terminated_simulation(T, Z,
-  ...)` require `Z` at call time vs `ParametricRecurrenceModel.cif(x)`.
-- `HPP` is not an `NHPPFitter`; `how=` only on `NHPPFitter`; `__repr__`
-  hardcodes "Fitted by: MLE"; string dispatch `dist.name == "CoxLewis"`.
-  (The `@classmethod`-on-`iif`/`cif`-that-take-`self` inconsistency is **[done]**
-  — see F, all recurrent fitters are now instance-based.)
-
-**F. Resolved since this review began** *(this branch)*
-- Renewal fitters now return a generic `RenewalModel` (fitter/model split
-  matching univariate `Weibull_ → Parametric`); `ARI` folded into the same
-  `RenewalModel` (its "distribution" is an intensity model). **[done]**
-- AIC/BIC/standard errors for the repair models via `LikelihoodInferenceMixin`.
-  **[done]**
-- Left-truncation support for the NHPP family; interval-censoring validation
-  fix in `handle_xicn`; shared `coerce_xcnt_x`/`format_truncation` helpers.
-  **[done]**
-- `kijima_type` validation; `q` bounded `≥ 0`; dead `q = q` removed;
-  `RecurrenceSimulationMixin` de-duplication. **[done]**
-- Fitter API standardised on instances: every recurrent fitter (`HPP`,
-  `CrowAMSAA`, `Duane`, `CoxLewis`, `NonParametricCounting`, the renewal and
-  proportional-intensity fitters) is now a configured singleton instance with
-  an instance-method `fit()`, matching the univariate `Weibull_ → Weibull`
-  pattern, via the `surpyval.utils.fitter.singleton_fitter` decorator.
-  Classmethod `fit`/`fit_from_recurrent_data` and the `@classmethod` `iif`/`cif`
-  are gone; public `X.fit(...)` calls are unchanged. The dead
-  `ParametricRecurrenceRegressionModel` stub was removed and the
-  `ProportionalIntensityHPP` "dummy dist" lambda replaced with a
-  `SimpleNamespace`. **[done]**
-
----
+## 2. Recurrent Module — Bugs and Gaps
 
 ### Confirmed bugs
 
@@ -168,7 +53,7 @@ When `ln(N) < alpha`, the expression `(ln(N) - alpha) / beta` is negative. No gu
 All models return point estimates only. No standard errors, covariance matrix, or confidence intervals for fitted parameters. For HPP, `autograd` already computes the Hessian; use `np.linalg.inv(-H)` to get the observed Fisher information. For NHPP, `scipy.optimize.minimize` returns `result.hess_inv` (BFGS) or a numerical Hessian can be computed via `numdifftools`. This is the single highest-value missing feature across the entire recurrent sub-package.
 
 **No goodness-of-fit or trend tests**
-There is no Laplace test for trend, no Military Handbook (MIL-HDBK-189C) test, no Cramér-von Mises test for NHPP, and no AIC/BIC for model comparison. The Laplace statistic is a one-liner given the event times; it should be a standalone function and a method on fitted NHPP models.
+There is no Cramér-von Mises test for NHPP goodness-of-fit, and no method to run the existing trend tests directly on a fitted NHPP model.
 
 **No residual diagnostics**
 No martingale residuals, no cumulative-hazard residuals, no probability-integral-transform (PIT) check. Without these, model validation is limited to eyeballing the MCF overlay.
@@ -184,83 +69,65 @@ No martingale residuals, no cumulative-hazard residuals, no probability-integral
 ### Missing capabilities — medium priority
 
 **Left-truncation support (partial)**
-`handle_xicn` now takes the surpyval `t`/`tl`/`tr` truncation fields, and the calendar-time NHPP models (`HPP`, `CrowAMSAA`, `Duane`, `CoxLewis`) integrate each item's likelihood from its entry time `tl`, so delayed-entry (warranty-from-first-sale) data is analysed correctly there. The virtual-age / history-dependent models (Kijima/G1/ARA/ARI) reject `tl > 0` with an explanatory error, since the virtual age at entry is undefined without the pre-entry history. The nonparametric MCF now uses delayed-entry risk sets (`RecurrentEventData.to_xrd` honours each item's `tl`, exposed on `NonParametricCounting.fit()` and `CauseSpecificMCF.fit()`). The proportional-intensity regression fitters (`ProportionalIntensityNHPP`/`ProportionalIntensityHPP`) now accept `t`/`tl`/`tr` and close each item's window at `tr` in the likelihood (see D). Still to do: multi-window (gapped) observation per item.
+`handle_xicn` takes the surpyval `t`/`tl`/`tr` truncation fields, and the calendar-time NHPP models (`HPP`, `CrowAMSAA`, `Duane`, `CoxLewis`) integrate each item's likelihood from its entry time `tl`, so delayed-entry (warranty-from-first-sale) data is analysed correctly there. The virtual-age / history-dependent models (Kijima/G1/ARA/ARI) reject `tl > 0` with an explanatory error, since the virtual age at entry is undefined without the pre-entry history. Still to do: multi-window (gapped) observation per item.
 
 **No input validation**
 Negative times, NaN/inf values, and empty arrays all pass silently into the optimiser. Add a validation step in `handle_xicn()` with informative `ValueError`s.
-
-**No AIC/BIC on fitted models**
-Log-likelihood is computed during fitting but discarded. Store it on the returned model object and expose `aic` / `bic` properties.
 
 ---
 
 ### Missing capabilities — lower priority
 
-**Laplace and trend-test standalone functions** — **done**
-`surpyval.recurrent.tests.laplace(x, i, T)` and `mil_hdbk_189c(x, i, T)` are
-implemented as module-level functions independent of any fitted model (also
-re-exported from `surpyval.recurrent`). Each accepts single- or multi-system
-data, scalar/array/dict observation windows `T` (failure-truncated when `T` is
-omitted), and a `two-sided`/`increasing`/`decreasing` alternative, returning a
-`TrendTestResult` with the statistic, p-value and suggested trend direction.
+**`handle_xicn` has no `e` (event-mark) parameter**
+`CauseSpecificMCF.fit` bypasses it and can't take truncation; no `fit_from_df` for marks.
 
-**Additional virtual-age models**
-Both Doyen & Gaudoin imperfect-repair families are now implemented: `surpyval.recurrent.ARA` (Arithmetic Reduction of Age, on the lifetime-distribution machinery) and `surpyval.recurrent.ARI` (Arithmetic Reduction of Intensity, built on the NHPP baseline intensity models — `CrowAMSAA`/`Duane`/`CoxLewis`), each parameterised by repair efficiency `rho` and memory `m`. Note the equivalences already covered elsewhere: ARA₁ = Kijima-I and ARA∞ = Kijima-II (both in `GeneralizedRenewal`), the geometric process (Lam) = `GeneralizedOneRenewal` reparameterised by `a = 1/(1+q)`, and ARI at `rho = 0` is the plain NHPP of its baseline intensity (used as the correctness check). The leftover virtual-age model worth adding is the general geometric-process estimator if a first-class `a` parameterisation is wanted.
+**General geometric-process estimator**
+Both Doyen & Gaudoin imperfect-repair families (ARA, ARI) are implemented, along with their equivalences to Kijima-I/II and the Lam geometric process. The leftover virtual-age model worth adding is the general geometric-process estimator if a first-class `a` parameterisation is wanted.
 
-**Competing failure modes**
-Multiple event types in a single recurrent process (e.g., two failure modes on the same repairable system). The nonparametric scaffold is in place: `RecurrentEventData` now carries an optional event-type (mark) column and `surpyval.recurrent.competing_risks.CauseSpecificMCF` produces per-cause MCF curves over a shared at-risk set. Still to do: parametric cause-specific intensity models (cause-specific NHPP) and proportional-intensity regression, plus `fit_from_df`/`handle_xicn` support for the mark column.
+**Competing failure modes (partial)**
+The nonparametric scaffold is in place: `RecurrentEventData` carries an optional event-type (mark) column and `surpyval.recurrent.competing_risks.CauseSpecificMCF` produces per-cause MCF curves over a shared at-risk set. Still to do: parametric cause-specific intensity models (cause-specific NHPP) and proportional-intensity regression, plus `fit_from_df`/`handle_xicn` support for the mark column.
 
 ---
 
 ### Test coverage
 
-The renewal, parametric and regression sub-packages now have tests
+The renewal, parametric and regression sub-packages have tests
 (`tests/recurrent/test_counting.py`, `test_ara.py`, `test_ari.py`,
 `test_cox_lewis.py`, `test_counting_process.py`, `test_parametric_inference.py`,
 `test_hpp_proportional_intensity.py`, `test_regression_simulation.py`, …). The
 remaining gaps for minimum viable coverage:
 
-- Round-trip fit + CIF/IIF evaluation for each parametric model (HPP,
-  CrowAMSAA, Duane, CoxLewis) — likelihood/AIC/BIC/SE now covered by
-  `test_parametric_inference.py`; CIF/IIF round-trips still thin.
+- CIF/IIF round-trips for each parametric model (HPP, CrowAMSAA, Duane,
+  CoxLewis) are still thin (likelihood/AIC/BIC/SE are already covered).
 - MCF and confidence bounds for `NonParametricCounting`.
-- Simulation outputs for `GeneralizedRenewal` and `GeneralizedOneRenewal`
-  (covered in `test_counting.py`).
-- Proportional intensity HPP and NHPP fit + predict (fit/inference covered;
-  predict round-trips still thin).
+- Predict round-trips for proportional intensity HPP and NHPP (fit/inference
+  already covered).
 
 ---
 
-## 5. Code Quality
+## 3. Code Quality
 
 ### Docstring examples are not doctested
-Most distribution docstring examples now execute correctly (Rayleigh's
-and GumbelLEV's were rewritten with verified outputs in June 2026),
-but scalar-returning examples (`mean`, `moment`) print pre-numpy-2
-style plain floats, so `pytest --doctest-modules` fails on them.
-Decide a policy: either render with `np.float64(...)` reprs and run
-doctests in CI, or keep the readable plain-float style and accept that
-examples are unchecked.
+Most distribution docstring examples now execute correctly, but
+scalar-returning examples (`mean`, `moment`) print pre-numpy-2 style
+plain floats, so `pytest --doctest-modules` fails on them. Decide a
+policy: either render with `np.float64(...)` reprs and run doctests in
+CI, or keep the readable plain-float style and accept that examples
+are unchecked.
 
 ### Duplicated simulation block
-The same "simulate timelines to `T`" loop appears twice (it was three times
-before `parametric_regression.py` was removed):
+The same "simulate timelines to `T`" loop appears twice:
 
 - `surpyval/recurrent/parametric/parametric_recurrence.py` (`time_terminated_simulation`)
 - `surpyval/recurrent/regression/proportional_intensity.py` (`time_terminated_simulation`)
 
-The broken convergence-failure handling in each copy was fixed (both now emit the same `warnings.warn`), but the duplication remains. Extract a shared helper. The `count_terminated_simulation` methods are similarly duplicated.
+Extract a shared helper. The `count_terminated_simulation` methods are similarly duplicated.
 
 ---
 
-## 6. Univariate Non-Parametric Module — Remaining Work
+## 4. Univariate Non-Parametric Module — Remaining Work
 
-The June 2026 confidence-bound review fixed the per-estimator variance
-formulas (Greenwood for KM, Aalen for NA, tie-corrected for FH), the
-`random()`/`qf`/`mean` correctness bugs, and added quantile and RMST
-intervals, a bootstrap, simultaneous confidence bands, the log-rank
-test, and a smoothed hazard estimator. The following engineering debt
-in `surpyval/univariate/nonparametric/` remains.
+The following engineering debt in `surpyval/univariate/nonparametric/` remains.
 
 ### Turnbull EM performance and convergence control
 **File:** `surpyval/univariate/nonparametric/turnbull.py`
@@ -281,7 +148,7 @@ iteration on the sparse matrices.
 
 `random()` calls `np.random.choice`, drawing on the legacy global
 random state, so it cannot be seeded locally and is inconsistent with
-the new `bootstrap_cb`/`band` methods that already accept a
+the `bootstrap_cb`/`band` methods that already accept a
 `random_state`. Add a `random_state` argument and route through
 `np.random.default_rng`, matching the parametric side.
 
@@ -314,13 +181,13 @@ whether to formally deprecate and remove it, or keep it and accept the
 maintenance of a statistically unjustified path.
 
 ### Residual test gaps
-The new behaviour is well covered, but `plot()` with non-step
-`interp`, the `set_lower_limit` path in `NonParametricFitter.fit`, and
-the `from_xrd` entry point still have no direct tests.
+`plot()` with non-step `interp`, the `set_lower_limit` path in
+`NonParametricFitter.fit`, and the `from_xrd` entry point still have
+no direct tests.
 
 ---
 
-## 7. Semi-Parametric Regression — Future Work
+## 5. Semi-Parametric Regression — Future Work
 
 Four semi-parametric models are candidates for addition, in priority order:
 
@@ -338,7 +205,7 @@ The semi-parametric counterpart to Cox PH. Fits `log(T) = β'Z + ε` without ass
 
 ---
 
-## 7a. Degradation Analysis — Future Work
+## 6. Degradation Analysis — Future Work
 
 `surpyval.degradation` ships the classic pseudo-failure-time approach: per-unit
 least-squares path fits (linear, quadratic, exponential, offset-exponential,
@@ -346,18 +213,10 @@ power, logarithmic, Lloyd-Lipow, Gompertz, Michaelis-Menten — plus
 `path="best"` AICc selection across all of them), extrapolation to a
 threshold, and a lifetime-distribution fit to the resulting pseudo failure
 times (units whose path never reaches the threshold are right censored at
-their last observation).
-
-Shipped so far beyond the basic pipeline: the two-stage noise-corrected
-population path-parameter distribution (Lu–Meeker moments: pooled
-`measurement_var`, `path_param_mean`, `path_param_cov` via `S - V̄` with a PSD
-clip); `population_method="reml"` fitting the same quantities by restricted
-marginal likelihood of the linear mixed model (Cholesky-parameterised `Sigma`,
-GLS-profiled mean; linear-in-parameter paths only, coincides with moments on
-balanced designs); and `DegradationModel.predict_rul(x, y)` — the Gaussian
-posterior for a new unit's path parameters (conjugate for linear-in-parameter
-paths, iterated linearisation otherwise) pushed through `inv_path` by Monte
-Carlo, giving shrinkage RUL predictions with credible intervals.
+their last observation). It also has a two-stage noise-corrected population
+path-parameter distribution (moments and REML variants) and
+`DegradationModel.predict_rul(x, y)` for shrinkage RUL predictions with
+credible intervals.
 
 Natural extensions, roughly in priority order:
 
@@ -426,11 +285,11 @@ LMM.
 **Stage 3 — time-varying stress (step-stress profiles).** Cumulative-exposure
 / cumulative-damage models where the rate changes with the stress profile
 mid-test. Hardest by far (same reasons as time-varying covariates for the
-regression module — see section 8); defer until Stages 1-2 are stable.
+regression module — see section 7); defer until Stages 1-2 are stable.
 
 ---
 
-## 8. Time-Varying Covariates and Truncation (to be confirmed)
+## 7. Time-Varying Covariates and Truncation (to be confirmed)
 
 Full support for time-varying covariates (TVCs) and left/right truncation across all regression model families needs to be designed and confirmed before implementation. Key points established so far:
 
@@ -444,6 +303,6 @@ Full support for time-varying covariates (TVCs) and left/right truncation across
 
 ---
 
-## 9. Long-term: Replace `autograd` with JAX (deferred)
+## 8. Long-term: Replace `autograd` with JAX (deferred)
 
 `autograd` (HIPS/autograd) is in low-activity maintenance mode with no GPU support. JAX is the spiritual successor and a near-drop-in replacement for `autograd.numpy` patterns. The interim steps (inlining the `autograd_gamma` gradients into `surpyval/utils/autograd_gamma_compat.py` and upgrading to `autograd` 1.8 for numpy 2.x compatibility) are done, so there is no urgency. A JAX migration can be revisited once the library is otherwise stable — it is a multi-week effort touching every gradient computation.
