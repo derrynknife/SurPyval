@@ -37,6 +37,10 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
     sampler_factory : callable
         ``sampler_factory(model) -> sample`` returning a fresh per-sequence
         sampler ``sample(ui) -> interarrival`` for simulation.
+    restoration_bounds : tuple, optional
+        Natural-space ``(lower, upper)`` bounds of the restoration parameter
+        (e.g. ``(0, 1)`` for ARA/ARI's ``rho``), used by ``param_cb`` to pick
+        a transform that keeps its confidence bounds inside the support.
     """
 
     def __init__(
@@ -48,11 +52,13 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         kind,
         sampler_factory,
         dist_label="Distribution",
+        restoration_bounds=(None, None),
     ):
         self.model = model
         self.restoration = restoration
         self._restoration_param_name = restoration_name
         self._restoration_label = restoration_label
+        self._restoration_bounds = restoration_bounds
         self._dist_label = dist_label
         self.kind = kind
         self._sampler_factory = sampler_factory
@@ -67,6 +73,9 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         # The restoration parameter (``q``/``rho``) leads ``_mle``, followed by
         # the underlying lifetime/intensity model's parameters.
         return [self._restoration_param_name, *self.model.dist.param_names]
+
+    def _parameter_bounds(self):
+        return [self._restoration_bounds, *self.model.dist.bounds]
 
     def __repr__(self):
         title = f"{self.kind} SurPyval Model"

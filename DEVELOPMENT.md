@@ -34,20 +34,18 @@ numeric kernels loosely typed (they buy little from precise typing).
 
 ### Missing capabilities — high priority
 
-**No parameter uncertainty**
-All models return point estimates only. No standard errors, covariance matrix, or confidence intervals for fitted parameters. For HPP, `autograd` already computes the Hessian; use `np.linalg.inv(-H)` to get the observed Fisher information. For NHPP, `scipy.optimize.minimize` returns `result.hess_inv` (BFGS) or a numerical Hessian can be computed via `numdifftools`. This is the single highest-value missing feature across the entire recurrent sub-package.
+Parameter uncertainty is done: every likelihood-fitted recurrent model
+(parametric intensity, proportional-intensity regression, renewal) exposes
+`covariance()`, `standard_errors()` and `param_cb()` (Wald bounds on a
+transformed scale respecting each parameter's support) via
+`LikelihoodInferenceMixin`, and the parametric and regression models have a
+delta-method `cif_cb()` drawn as a band by `plot()`. The remaining gaps:
 
 **No goodness-of-fit or trend tests**
 There is no Cramér-von Mises test for NHPP goodness-of-fit, and no method to run the existing trend tests directly on a fitted NHPP model.
 
 **No residual diagnostics**
 No martingale residuals, no cumulative-hazard residuals, no probability-integral-transform (PIT) check. Without these, model validation is limited to eyeballing the MCF overlay.
-
-**Renewal models have no `plot()` method**
-`GeneralizedRenewal` and `GeneralizedOneRenewal` fit and simulate but cannot plot — unlike every other model in the module. Add the same MCF-overlay `plot()` that `ParametricRecurrenceModel` already implements.
-
-**Parametric `plot()` shows no confidence band**
-`ParametricRecurrenceModel.plot()` overlays the fitted CIF on the nonparametric MCF but draws no band around the parametric curve. Once parameter covariance is available (see above), add a delta-method band using the same Greenwood logic already in `NonParametricCounting.mcf_cb`.
 
 ---
 

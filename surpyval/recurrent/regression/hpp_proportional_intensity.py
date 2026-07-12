@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 import numpy as np
 from scipy.optimize import minimize
 from scipy.special import gammaln
@@ -56,14 +54,18 @@ class ProportionalIntensityHPP:
     <BLANKLINE>
     """
 
+    # Display name of the (constant) baseline hazard rate model, used by
+    # ``ProportionalIntensityModel``'s repr via ``dist.name``.
+    name = "Constant"
+
     def iif(self, x, rate):
-        return np.ones_like(x) * rate
+        return np.ones_like(np.asarray(x, dtype=float)) * rate
 
     def cif(self, x, rate):
-        return rate * x
+        return rate * np.asarray(x, dtype=float)
 
     def inv_cif(self, cif, rate):
-        return cif / rate
+        return np.asarray(cif, dtype=float) / rate
 
     def create_negll_func(self, data):
         x, c, n = data.x, data.c, data.n
@@ -277,9 +279,9 @@ class ProportionalIntensityHPP:
         out._neg_ll = lambda p: neg_ll(np.concatenate([[np.log(p[0])], p[1:]]))
         out._mle = np.concatenate([out.params, out.coeffs])
         out._n_obs = len(data.x)
-        # The baseline rate is constant, so there is no fitted intensity
-        # distribution; expose a lightweight stand-in carrying just the name
-        # used by ``ProportionalIntensityModel``'s repr.
-        out.dist = SimpleNamespace(name="Constant")
+        # The baseline hazard is this fitter's own constant-rate model, so the
+        # fitted model's ``cif``/``iif``/``inv_cif`` (and everything built on
+        # them: simulation, ``cif_cb``, ``plot``) delegate back to it.
+        out.dist = self
 
         return out
