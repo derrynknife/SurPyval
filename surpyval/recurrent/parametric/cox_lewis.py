@@ -71,4 +71,11 @@ class CoxLewis(NHPPFitter):
     def inv_cif(self, N, *params):
         alpha = params[0]
         beta = params[1]
-        return np.log(1.0 + N * beta * np.exp(-alpha)) / beta
+        # For an improving system (beta < 0) the cumulative intensity is
+        # bounded above by exp(alpha) / -beta, so counts at or beyond that
+        # asymptote are never reached: return inf rather than log of a
+        # non-positive number.
+        arg = 1.0 + np.asarray(N, dtype=float) * beta * np.exp(-alpha)
+        reached = arg > 0.0
+        safe_arg = np.where(reached, arg, 1.0)
+        return np.where(reached, np.log(safe_arg) / beta, np.inf)

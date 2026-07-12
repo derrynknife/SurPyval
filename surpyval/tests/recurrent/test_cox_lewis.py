@@ -37,6 +37,35 @@ def test_inv_cif_inverts_cif(alpha, beta):
     assert np.allclose(CoxLewis.cif(x, alpha, beta), N)
 
 
+def test_inv_cif_beyond_asymptote_is_inf():
+    # For an improving system (beta < 0) the cumulative intensity is bounded
+    # above by exp(alpha) / -beta; counts at or beyond that asymptote are
+    # never reached, so their inverse must be inf -- not NaN or a negative
+    # time.
+    alpha, beta = 0.0, -0.5
+    asymptote = np.exp(alpha) / -beta  # = 2 expected events, ever
+    N = np.array([1.0, asymptote, asymptote + 1.0])
+    x = CoxLewis.inv_cif(N, alpha, beta)
+    assert np.isfinite(x[0]) and x[0] > 0
+    assert np.isinf(x[1]) and np.isinf(x[2])
+    assert not np.isnan(x).any()
+
+
+def test_time_terminated_simulation_with_improving_system():
+    # An improving system generates finitely many events; simulation must
+    # right-censor each sequence at T with valid (finite, non-NaN) event
+    # times instead of spinning out NaNs.
+    model = CoxLewis.fit(np.array([0.5, 1.0, 2.0, 4.0]), tl=0, tr=10)
+    model.params = np.array([0.0, -0.5])
+    data = model.time_terminated_simulation_data(T=100.0, items=5, seed=1)
+    assert np.isfinite(data.x).all()
+    assert (data.x >= 0).all()
+    assert (data.x <= 100.0).all()
+    # every sequence ends right-censored at the window close
+    for item in np.unique(data.i):
+        assert data.c[data.i == item][-1] == 1
+
+
 def test_fit_recovers_log_linear_intensity():
     # Events simulated from a known log-linear intensity should recover the
     # generating parameters (alpha, beta) via the intensity, not an offset

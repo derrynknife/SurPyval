@@ -1,6 +1,6 @@
 # Development Notes
 
-This document tracks known issues, technical debt, and improvement priorities for surpyval. Issues are grouped by theme and ordered by severity within each section. Implemented items are removed; this reflects the state of the codebase as of 2026-07-11. The full test suite passes on Python 3.11+ with numpy 2.x / scipy 1.17 / pandas 3.x.
+This document tracks known issues, technical debt, and improvement priorities for surpyval. Issues are grouped by theme and ordered by severity within each section. Implemented items are removed; this reflects the state of the codebase as of 2026-07-12. The full test suite passes on Python 3.11+ with numpy 2.x / scipy 1.17 / pandas 3.x.
 
 ---
 
@@ -30,22 +30,7 @@ numeric kernels loosely typed (they buy little from precise typing).
 
 ---
 
-## 2. Recurrent Module — Bugs and Gaps
-
-### Confirmed bugs
-
-**Typo `has_left_censoing` (missing 'r')**
-**Files:** `surpyval/recurrent/parametric/nhpp_fitter.py:18`, `surpyval/recurrent/regression/nhpp_proportional_intensity.py:72`
-Variable is never read back so it is silent dead code today, but it will break any future code that reads the flag.
-
-**`log_iif()` not implemented for proportional-intensity NHPP**
-**File:** `surpyval/recurrent/regression/nhpp_proportional_intensity.py:129` — marked TODO.
-The MLE likelihood falls back to the non-log path; for small intensities this causes underflow and silent NaN log-likelihoods.
-
-**`CoxLewis.inv_cif()` can return negative times**
-When `ln(N) < alpha`, the expression `(ln(N) - alpha) / beta` is negative. No guard or error is raised; simulation silently produces invalid (negative) event times.
-
----
+## 2. Recurrent Module — Gaps
 
 ### Missing capabilities — high priority
 
