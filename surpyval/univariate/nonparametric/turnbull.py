@@ -170,10 +170,73 @@ def turnbull(
             "inaccurate.".format(tol, max_iter)
         )
 
+    if any_truncated:
+        # Variance ladder from *observed* information only. The estimation
+        # ladder above includes the ghost events -- they are what make the
+        # estimate correct under truncation -- but ghosts are not data, and
+        # a risk set inflated by them understates the variance. Instead,
+        # each observed item contributes its conditional probability of
+        # still being event-free at each bound, and only while that bound
+        # lies inside its observation window (so delayed entry removes it
+        # from the early risk sets, exactly as in the Kaplan-Meier
+        # delayed-entry risk set, to which this reduces for exactly
+        # observed left-truncated data):
+        #
+        #   r_var[j] = sum_i n_i * 1[w_lo_i <= j <= w_hi_i] * P_i(T >= j)
+        #
+        # with P_i(T >= j) equal to 1 before the item's support, the
+        # conditional tail (cum[hi+1] - cum[j]) / P(support) inside it, and
+        # 0 after it. Piece one and the constant part of piece two are
+        # range-adds; the j-dependent part is cum[j] times a range-added
+        # weight -- all still O(N + M). For untruncated data this ladder
+        # equals the estimation ladder, so it is only computed (and only
+        # used for the variance) when truncation is present.
+        cumulative = np.concatenate([[0.0], np.cumsum(p)])
+        support_p = cumulative[hi + 1] - cumulative[lo]
+        weight = np.where(support_p > 0, n / support_p, 0.0)
+        delta = np.zeros(M + 1)
+        np.add.at(delta, lo, weight)
+        np.add.at(delta, hi + 1, -weight)
+        d_var = p * np.cumsum(delta[:M])
+
+        w_lo_all = np.where(
+            np.isfinite(tl), np.searchsorted(bounds, tl, side="right"), 0
+        )
+        w_hi_all = np.where(
+            np.isfinite(tr),
+            np.searchsorted(bounds, tr, side="right") - 1,
+            M - 1,
+        )
+
+        const = np.zeros(M + 1)
+        coeff = np.zeros(M + 1)
+        # Before the support (probability 1), within the window.
+        a1 = w_lo_all
+        b1 = np.minimum(lo, w_hi_all)
+        ok = a1 <= b1
+        np.add.at(const, a1[ok], n[ok])
+        np.add.at(const, b1[ok] + 1, -n[ok])
+        # Within the support (conditional tail), within the window.
+        a2 = np.maximum(lo + 1, w_lo_all)
+        b2 = np.minimum(hi, w_hi_all)
+        ok = (a2 <= b2) & (support_p > 0)
+        tail_const = np.where(
+            support_p > 0, n * cumulative[hi + 1] / support_p, 0.0
+        )
+        np.add.at(const, a2[ok], tail_const[ok])
+        np.add.at(const, b2[ok] + 1, -tail_const[ok])
+        np.add.at(coeff, a2[ok], weight[ok])
+        np.add.at(coeff, b2[ok] + 1, -weight[ok])
+
+        r_var = np.cumsum(const[:M]) - np.cumsum(coeff[:M]) * cumulative[:M]
+
     out = {}
     out["x"] = bounds[1:-1]
     out["r"] = r[1:-1]
     out["d"] = d[1:-1]
+    if any_truncated:
+        out["var_r"] = r_var[1:-1]
+        out["var_d"] = d_var[1:-1]
     out["R"] = R[0:-2]
     out["F"] = 1 - R[0:-2]
     out["R_upper"] = R[0:-2]

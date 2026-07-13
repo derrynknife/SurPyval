@@ -138,6 +138,27 @@ def test_turnbull_against_lifelines_npmle_reference():
     assert np.allclose(model.sf(probe), reference, atol=1e-3)
 
 
+def test_turnbull_truncated_confidence_bounds_match_kaplan_meier():
+    # The estimation ladder's ghost events make the truncated *estimate*
+    # correct, but they are not observations: a variance computed from
+    # the ghost-inflated risk set was up to ~33% too narrow. The variance
+    # now comes from an observed-information ladder that reduces to the
+    # Kaplan-Meier delayed-entry risk set for exactly observed
+    # left-truncated data, so the bounds must match KM's.
+    x, tl = _left_truncated_sample()
+    km = surpyval.KaplanMeier.fit(x, tl=tl)
+    tb = surpyval.Turnbull.fit(
+        x, tl=tl, turnbull_estimator="Kaplan-Meier", max_iter=20_000
+    )
+    grid = np.array([6.0, 8.0, 10.0, 12.0])
+    assert np.allclose(tb.R_cb(grid), km.R_cb(grid), atol=2e-3)
+
+    # Untruncated fits keep using the estimation ladder for the variance
+    # (no separate attributes appear).
+    plain = surpyval.Turnbull.fit(x)
+    assert not hasattr(plain, "var_r") and not hasattr(plain, "var_d")
+
+
 def test_turnbull_estimator_options_on_fractional_ladder():
     # The Kaplan-Meier / Nelson-Aalen / Fleming-Harrington choice is
     # applied to the EM's expected-count ladder inside every iteration,

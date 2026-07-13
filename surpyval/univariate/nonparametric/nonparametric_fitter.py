@@ -163,9 +163,12 @@ class NonParametricFitter:
             out = NonParametric()
             t_obj = self._fit(x, c, n, t, turnbull_estimator, tol, max_iter)
 
-            out.greenwood = self._compute_var(
-                turnbull_estimator, t_obj["r"], t_obj["d"]
-            )
+            # Truncated fits supply a separate observed-information ladder
+            # for the variance (the estimation ladder's ghost events would
+            # understate it); untruncated fits use the estimation ladder.
+            var_r = t_obj.pop("var_r", t_obj["r"])
+            var_d = t_obj.pop("var_d", t_obj["d"])
+            out.greenwood = self._compute_var(turnbull_estimator, var_r, var_d)
             for k, v in t_obj.items():
                 setattr(out, k, v)
 
