@@ -132,13 +132,14 @@ no direct tests.
 
 ## 5. Semi-Parametric Regression — Future Work
 
-Four semi-parametric models are candidates for addition, in priority order:
+`AdditiveHazards` (Lin & Ying 1994) is now implemented: the closed-form
+semi-parametric additive-hazards estimator `h(x|Z) = h₀(x) + β'Z`, with
+the sandwich covariance, p-values, a Breslow-type baseline, `sf`/`ff`/
+`hf`/`Hf`/`df` prediction and `fit_from_df`. Three candidates remain, in
+priority order:
 
 ### Buckley-James (semi-parametric AFT) — High priority
 The semi-parametric counterpart to Cox PH. Fits `log(T) = β'Z + ε` without assuming a parametric baseline distribution. Uses an iterative censoring-imputation (Buckley-James) algorithm. Completes the semi-parametric trio alongside `CoxPH`. Supported in R's `survival::survreg` with no baseline assumption.
-
-### Additive Hazards / Lin-Ying — Medium priority
-`h(x|Z) = h₀(x) + β'Z` — covariate effects are additive on the absolute hazard scale rather than multiplicative. Has a closed-form estimator (no iterative optimisation needed), making it numerically fast. Useful in epidemiology for risk-difference interpretation. Implemented in R's `timereg`.
 
 ### Semi-parametric Proportional Odds — Low priority
 `O(x|Z) = O₀(x) · exp(β'Z)` with a non-parametric baseline odds step function. Requires joint NPMLE of (β, Λ₀) — profile likelihood with isotonic regression inner loop (Murphy, Rossini & van der Vaart, 1997). Significantly more complex than Cox PH to implement. Parametric PO (`WeibullPO`, `LogisticPO`, etc.) already covers most practical cases.

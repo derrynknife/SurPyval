@@ -7,10 +7,11 @@ Proportional Hazards Models
 Semi-Parametric Models
 ~~~~~~~~~~~~~~~~~~~~~~
 
-.. toctree:: 
+.. toctree::
     :maxdepth: 1
-    
+
     regression/cox_ph
+    regression/additive_hazards
 
 
 Parametric Models
