@@ -176,6 +176,23 @@ def test_from_params_and_prediction(dist, params):
     assert np.isfinite(fitted.aic())
 
 
+@pytest.mark.parametrize("dist,params", DISTS)
+def test_fitted_model_methods_use_uncorrupted_parameters(dist, params):
+    # Distributions whose parameter is named "p" (Geometric,
+    # NegativeBinomial) must not overwrite the reserved limited-failure
+    # proportion ``model.p`` when the fitted parameters are exposed by
+    # name, or the survival functions silently compute against the wrong
+    # mixing. Fit (not from_params, which took a different path) and check
+    # the model's sf/mean match the distribution evaluated at the fitted
+    # parameters directly.
+    x = dist.random(3000, *params)
+    model = dist.fit(x)
+    assert model.p == 1.0  # no limited-failure component was requested
+    k = np.array([1.0, 2.0, 3.0, 5.0])
+    assert np.allclose(model.sf(k), dist.sf(k, *model.params))
+    assert np.isclose(model.mean(), dist.mean(*model.params))
+
+
 def test_supports_mpp_is_false():
     # Probability plotting is not defined for these discrete lifetimes, so
     # the MPP method must be rejected rather than silently misbehave.
