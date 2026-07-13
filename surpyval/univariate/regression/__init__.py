@@ -1,3 +1,14 @@
+from .accelerated_failure_time import (
+    AFT,
+    AFTFitter,
+    ExponentialAFT,
+    GammaAFT,
+    GumbelAFT,
+    LogisticAFT,
+    LogNormalAFT,
+    NormalAFT,
+    WeibullAFT,
+)
 from .accelerated_life import (
     AcceleratedLife,
     DualExponential,
@@ -13,18 +24,9 @@ from .accelerated_life import (
     Power,
     PowerExponential,
 )
-from .accelerated_failure_time import (
-    AFT,
-    AFTFitter,
-    ExponentialAFT,
-    GammaAFT,
-    GumbelAFT,
-    LogisticAFT,
-    LogNormalAFT,
-    NormalAFT,
-    WeibullAFT,
-)
+from .additive_hazards import AdditiveHazards, AdditiveHazardsModel
 from .proportional_hazards import (
+    PH,
     CoxPH,
     ExponentialPH,
     GammaPH,
@@ -32,23 +34,25 @@ from .proportional_hazards import (
     LogisticPH,
     LogNormalPH,
     NormalPH,
-    PH,
     ProportionalHazardsFitter,
     WeibullPH,
 )
 from .proportional_odds import (
+    PO,
     ExponentialPO,
     GammaPO,
     GumbelPO,
     LogisticPO,
     LogNormalPO,
     NormalPO,
-    PO,
     ProportionalOddsFitter,
     WeibullPO,
 )
 
 __all__ = [
+    # Additive hazards (Lin-Ying semi-parametric)
+    "AdditiveHazards",
+    "AdditiveHazardsModel",
     # Accelerated life (parameter-substitution life models)
     "AcceleratedLife",
     "DualExponential",
