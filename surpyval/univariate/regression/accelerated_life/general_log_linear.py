@@ -16,8 +16,7 @@ class GeneralLogLinear_(LifeModel):
         return np.exp(np.dot(Z, np.array(params)))
 
     def phi_init(self, life: float, Z: ndarray) -> list[float]:
-        # return np.zeros(Z.shape[1])
-        return 1.0 / Z.mean(axis=0)
+        return (1.0 / Z.mean(axis=0)).tolist()
 
 
 GeneralLogLinear = GeneralLogLinear_()

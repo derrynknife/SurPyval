@@ -1,6 +1,6 @@
 # Development Notes
 
-This document tracks known issues, technical debt, and improvement priorities for surpyval. Issues are grouped by theme and ordered by severity within each section. Implemented items are removed; this reflects the state of the codebase as of 2026-07-11. The full test suite passes on Python 3.11+ with numpy 2.x / scipy 1.17 / pandas 3.x.
+This document tracks known issues, technical debt, and improvement priorities for surpyval. Issues are grouped by theme and ordered by severity within each section. Implemented items are removed; this reflects the state of the codebase as of 2026-07-12. The full test suite passes on Python 3.11+ with numpy 2.x / scipy 1.17 / pandas 3.x.
 
 ---
 
@@ -30,43 +30,28 @@ numeric kernels loosely typed (they buy little from precise typing).
 
 ---
 
-## 2. Recurrent Module — Bugs and Gaps
+## 2. Recurrent Module — Gaps
 
-### Confirmed bugs
-
-**Typo `has_left_censoing` (missing 'r')**
-**Files:** `surpyval/recurrent/parametric/nhpp_fitter.py:18`, `surpyval/recurrent/regression/nhpp_proportional_intensity.py:72`
-Variable is never read back so it is silent dead code today, but it will break any future code that reads the flag.
-
-**`log_iif()` not implemented for proportional-intensity NHPP**
-**File:** `surpyval/recurrent/regression/nhpp_proportional_intensity.py:129` — marked TODO.
-The MLE likelihood falls back to the non-log path; for small intensities this causes underflow and silent NaN log-likelihoods.
-
-**`CoxLewis.inv_cif()` can return negative times**
-When `ln(N) < alpha`, the expression `(ln(N) - alpha) / beta` is negative. No guard or error is raised; simulation silently produces invalid (negative) event times.
-
----
-
-### Missing capabilities — high priority
-
-**No parameter uncertainty**
-All models return point estimates only. No standard errors, covariance matrix, or confidence intervals for fitted parameters. For HPP, `autograd` already computes the Hessian; use `np.linalg.inv(-H)` to get the observed Fisher information. For NHPP, `scipy.optimize.minimize` returns `result.hess_inv` (BFGS) or a numerical Hessian can be computed via `numdifftools`. This is the single highest-value missing feature across the entire recurrent sub-package.
-
-**No goodness-of-fit or trend tests**
-There is no Cramér-von Mises test for NHPP goodness-of-fit, and no method to run the existing trend tests directly on a fitted NHPP model.
-
-**No residual diagnostics**
-No martingale residuals, no cumulative-hazard residuals, no probability-integral-transform (PIT) check. Without these, model validation is limited to eyeballing the MCF overlay.
-
-**Renewal models have no `plot()` method**
-`GeneralizedRenewal` and `GeneralizedOneRenewal` fit and simulate but cannot plot — unlike every other model in the module. Add the same MCF-overlay `plot()` that `ParametricRecurrenceModel` already implements.
-
-**Parametric `plot()` shows no confidence band**
-`ParametricRecurrenceModel.plot()` overlays the fitted CIF on the nonparametric MCF but draws no band around the parametric curve. Once parameter covariance is available (see above), add a delta-method band using the same Greenwood logic already in `NonParametricCounting.mcf_cb`.
-
----
+The former high-priority gaps are closed. Parameter uncertainty: every
+likelihood-fitted recurrent model (parametric intensity,
+proportional-intensity regression, renewal) exposes `covariance()`,
+`standard_errors()` and `param_cb()` (Wald bounds on a transformed scale
+respecting each parameter's support) via `LikelihoodInferenceMixin`, and the
+parametric and regression models have a delta-method `cif_cb()` drawn as a
+band by `plot()`. Model validation: `ParametricRecurrenceModel` has
+`residuals()` (cumulative-hazard / PIT / per-item martingale, via the
+time-rescaling theorem), `trend_test()` (runs the standalone Laplace /
+MIL-HDBK-189C tests on the fitted data's windows) and `cramer_von_mises()`
+(conditional-uniform CvM statistic with a parametric-bootstrap p-value).
 
 ### Missing capabilities — medium priority
+
+**Diagnostics for the regression and renewal families**
+`residuals()`, `trend_test()` and `cramer_von_mises()` exist only on
+`ParametricRecurrenceModel`. The proportional-intensity extension is
+mostly plumbing (scale each item's CIF by its `exp(Z'beta)` factor); the
+renewal/virtual-age models need conditional-intensity residuals instead,
+which is a genuinely different construction.
 
 **Left-truncation support (partial)**
 `handle_xicn` takes the surpyval `t`/`tl`/`tr` truncation fields, and the calendar-time NHPP models (`HPP`, `CrowAMSAA`, `Duane`, `CoxLewis`) integrate each item's likelihood from its entry time `tl`, so delayed-entry (warranty-from-first-sale) data is analysed correctly there. The virtual-age / history-dependent models (Kijima/G1/ARA/ARI) reject `tl > 0` with an explanatory error, since the virtual age at entry is undefined without the pre-entry history. Still to do: multi-window (gapped) observation per item.

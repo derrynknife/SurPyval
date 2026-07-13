@@ -4,9 +4,9 @@ import pytest
 from surpyval.recurrent import (
     ARA,
     ARI,
+    HPP,
     CrowAMSAA,
     GeneralizedRenewal,
-    HPP,
     ProportionalIntensityHPP,
     ProportionalIntensityNHPP,
 )

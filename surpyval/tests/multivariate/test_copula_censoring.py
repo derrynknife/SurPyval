@@ -32,7 +32,7 @@ def test_interval_censoring_matches_brute_force_integral():
     gy = np.linspace(a2, b2, 400)
     GX, GY = np.meshgrid(gx, gy)
     pdf = m.pdf(np.column_stack([GX.ravel(), GY.ravel()])).reshape(GX.shape)
-    integral = np.trapz(np.trapz(pdf, gy, axis=0), gx)
+    integral = np.trapezoid(np.trapezoid(pdf, gy, axis=0), gx)
 
     assert np.isclose(L, integral, rtol=1e-3)
 

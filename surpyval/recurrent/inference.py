@@ -1,6 +1,7 @@
 import warnings
 
 import numpy as np
+from scipy.stats import norm
 
 
 def numerical_hessian(func, x):
@@ -29,6 +30,68 @@ def numerical_hessian(func, x):
                 + func(x - ei - ej)
             ) / (4.0 * step[i] * step[j])
     return H
+
+
+def delta_method_std_errors(func, mle, cov):
+    """
+    Standard errors of the (possibly vector-valued) function ``func`` of the
+    parameters, evaluated at the MLE, via the delta method with a
+    central-difference Jacobian: ``se_i = sqrt(J_i' cov J_i)``.
+    """
+    mle = np.asarray(mle, dtype=float)
+    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(mle), 1e-2)
+    cols = []
+    for i in range(mle.size):
+        ei = np.zeros(mle.size)
+        ei[i] = step[i]
+        cols.append(
+            (
+                np.asarray(func(mle + ei), dtype=float)
+                - np.asarray(func(mle - ei), dtype=float)
+            )
+            / (2.0 * step[i])
+        )
+    J = np.stack(cols, axis=-1)
+    var = np.einsum("...i,ij,...j->...", J, cov, J)
+    with np.errstate(invalid="ignore"):
+        return np.sqrt(var)
+
+
+def _bound_signs(alpha_ci, bound):
+    """
+    The one-sided tail probability and the signs of the normal quantile for
+    each requested bound: ``[-1, 1]`` (lower, upper) for two-sided bounds,
+    a single sign otherwise.
+    """
+    if bound == "two-sided":
+        return alpha_ci / 2.0, np.array([-1.0, 1.0])
+    elif bound == "lower":
+        return alpha_ci, np.array([-1.0])
+    elif bound == "upper":
+        return alpha_ci, np.array([1.0])
+    raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+
+
+def log_transformed_cb(estimate, se, alpha_ci=0.05, bound="two-sided"):
+    """
+    Log-transformed normal confidence bounds ``est * exp(+/- z * se / est)``
+    for a positive curve (the same construction as the exponential Greenwood
+    bounds on the nonparametric MCF). Where the estimate is zero (e.g. a CIF
+    at ``x = 0``) both bounds are zero.
+
+    For two-sided bounds the last axis holds ``[lower, upper]``; one-sided
+    bounds are returned with the shape of ``estimate``.
+    """
+    estimate = np.asarray(estimate, dtype=float)
+    se = np.asarray(se, dtype=float)
+    alpha, signs = _bound_signs(alpha_ci, bound)
+    z = norm.ppf(1.0 - alpha)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.where(estimate > 0, se / estimate, 0.0)
+    cb = estimate[..., None] * np.exp(signs * z * ratio[..., None])
+    if bound == "two-sided":
+        return cb
+    return cb[..., 0]
 
 
 class LikelihoodInferenceMixin:
@@ -131,3 +194,71 @@ class LikelihoodInferenceMixin:
                 "be at a boundary); their standard errors are NaN."
             )
         return se
+
+    def _parameter_bounds(self):
+        """
+        Natural-space ``(lower, upper)`` bounds for each entry of ``_mle``,
+        ordered to match :attr:`parameter_names`. Subclasses override this so
+        :meth:`param_cb` can pick a transform that keeps the confidence bounds
+        inside the parameter's support; the default is unbounded.
+        """
+        return [(None, None)] * self._mle.size
+
+    def param_cb(self, name, alpha_ci=0.05, bound="two-sided"):
+        """
+        Confidence bound(s) on a fitted parameter, mirroring the univariate
+        ``Parametric.param_cb`` API.
+
+        Wald bounds from the observed information, computed on a transformed
+        scale chosen from the parameter's bounds so the result respects its
+        support: log scale for one-sided-bounded parameters (e.g. a positive
+        rate), logit scale for interval-bounded parameters (e.g. a repair
+        efficiency in ``(0, 1)``), and the natural scale for unbounded ones.
+
+        Parameters
+        ----------
+
+        name : str
+            The parameter to bound; one of :attr:`parameter_names`.
+        alpha_ci : float, optional
+            The total tail probability of the bound(s). Default is 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are returned as ``[lower, upper]``.
+
+        Returns
+        -------
+
+        numpy array
+            The confidence bound(s) on the parameter.
+        """
+        self._check_fitted()
+        names = self.parameter_names
+        if name not in names:
+            raise ValueError(
+                "Unknown parameter {!r}; expected one of {}".format(
+                    name, names
+                )
+            )
+        idx = names.index(name)
+        p_hat = float(self._mle[idx])
+        var = float(self.covariance()[idx, idx])
+        lower, upper = self._parameter_bounds()[idx]
+
+        alpha, signs = _bound_signs(alpha_ci, bound)
+        offsets = signs * norm.ppf(1.0 - alpha) * np.sqrt(var)
+
+        if lower is not None and upper is not None:
+            # Bounds on the generalised logit keep the result in (lower,
+            # upper).
+            width = upper - lower
+            frac = (p_hat - lower) / width
+            u_hat = np.log(frac / (1.0 - frac))
+            du = offsets / (width * frac * (1.0 - frac))
+            return lower + width / (1.0 + np.exp(-(u_hat + du)))
+        elif lower is not None:
+            # Bounds on log(p - lower) keep the result above ``lower``.
+            return lower + (p_hat - lower) * np.exp(offsets / (p_hat - lower))
+        elif upper is not None:
+            # Bounds on log(upper - p) keep the result below ``upper``.
+            return upper - (upper - p_hat) * np.exp(-offsets / (upper - p_hat))
+        return p_hat + offsets

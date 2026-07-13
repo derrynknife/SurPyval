@@ -129,9 +129,7 @@ class ProportionalIntensityNHPP:
         # Right window-close: for items with a finite right-truncation time
         # ``tr`` the baseline intensity is integrated out to ``tr`` (scaled by
         # the item's proportional factor). Empty for untruncated data.
-        x_close_last, x_close_tr, close_idx = (
-            data.get_right_truncation_close()
-        )
+        x_close_last, x_close_tr, close_idx = data.get_right_truncation_close()
         Z_close = Z[close_idx]
 
         # Using the empty arrays avoids the need for if statements in the
@@ -147,7 +145,6 @@ class ProportionalIntensityNHPP:
             delta_cif_o = dist.cif(x_o_prev, *dist_params) - dist.cif(
                 x_o, *dist_params
             )
-            # TODO: Implement log_iif functions
             ll = (
                 dist.log_iif(x_o, *dist_params)
                 + phi_exponents_observed

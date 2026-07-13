@@ -115,6 +115,7 @@ class ARA(RenewalFitMixin):
             "Repair Efficiency",
             "ARA Renewal",
             self._build_sampler,
+            restoration_bounds=(0, 1),
         )
         out.m = m
         return out

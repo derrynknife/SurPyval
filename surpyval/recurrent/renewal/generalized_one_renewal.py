@@ -85,6 +85,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             "Restoration Factor",
             "G1 Renewal",
             self._build_sampler,
+            restoration_bounds=(-1, None),
         )
 
     def create_negll_func(self, x, i, c, n, dist):

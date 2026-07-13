@@ -115,6 +115,7 @@ class ARI(RenewalFitMixin):
             "ARI Recurrence",
             self._build_sampler,
             dist_label="Baseline Intensity",
+            restoration_bounds=(0, 1),
         )
         out.m = m
         return out

@@ -108,6 +108,7 @@ class GeneralizedRenewal(RenewalFitMixin):
             "Restoration Factor",
             "Generalized Renewal",
             self._build_sampler,
+            restoration_bounds=(0, None),
         )
         out.kijima_type = kijima_type
         out._virtual_age_function = self._resolve_virtual_age_function(
