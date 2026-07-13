@@ -148,6 +148,20 @@ def test_cb_invalid_bound_type_raises():
         model.cb([2.0], bound_type="regular")
 
 
+def test_cb_dist_t_removed():
+    # The unjustified Student-t heuristic was removed; only the normal ('z')
+    # statistic is supported, and 't' now raises an informative error
+    # pointing to the principled alternatives.
+    model = surpyval.KaplanMeier.fit(np.array([1.0, 2.0, 3.0, 4.0, 5.0]))
+    with pytest.raises(ValueError, match="bootstrap_cb"):
+        model.cb([2.0, 3.0], dist="t")
+    with pytest.raises(ValueError, match="'dist' must be 'z'"):
+        model.R_cb([2.0, 3.0], dist="t")
+    # 'z' (the default) is unaffected.
+    assert model.cb([2.0, 3.0], dist="z").shape == (2, 2)
+    assert np.allclose(model.cb([2.0, 3.0]), model.cb([2.0, 3.0], dist="z"))
+
+
 def test_cb_turnbull_uses_selected_estimator_variance():
     left = np.array([1, 8, 8, 7, 7, 17, 37, 46, 46, 45.0])
     right = np.array([7, 8, 10, 16, 14, np.inf, 44, np.inf, np.inf, np.inf])

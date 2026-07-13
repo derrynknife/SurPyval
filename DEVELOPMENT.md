@@ -110,23 +110,19 @@ Extract a shared helper. The `count_terminated_simulation` methods are similarly
 
 ---
 
-## 4. Univariate Non-Parametric Module — Remaining Work
+## 4. Univariate Non-Parametric Module — Complete
 
-The following engineering debt in `surpyval/univariate/nonparametric/` remains.
+The tracked engineering debt in `surpyval/univariate/nonparametric/` is
+cleared: monotone (PCHIP) smooth interpolation, seedable `random()`, and
+`to_dict`/`from_dict`/JSON serialization are done; the unjustified
+`dist='t'` confidence-bound heuristic has been removed (`R_cb`/`cb` now
+accept only `dist='z'`, raising an informative error for `'t'` that
+points to `bootstrap_cb`/`band`); and the previously-untested `from_xrd`,
+`set_lower_limit`, and non-step `plot()` paths now have direct tests.
 
-### `dist='t'` confidence-bound heuristic
-**File:** `nonparametric.py` (`R_cb`)
-
-The `dist='t'` option is documented as an unfounded conservative
-heuristic (degrees of freedom from the at-risk count, undefined at the
-last point). It is retained only for backward compatibility; decide
-whether to formally deprecate and remove it, or keep it and accept the
-maintenance of a statistically unjustified path.
-
-### Residual test gaps
-`plot()` with non-step `interp`, the `set_lower_limit` path in
-`NonParametricFitter.fit`, and the `from_xrd` entry point still have
-no direct tests.
+Note (out of scope here, tracked under §2): `NonParametricCounting.mcf_cb`
+in the recurrent module carries the same `dist='t'` heuristic and could be
+removed for consistency.
 
 ---
 
