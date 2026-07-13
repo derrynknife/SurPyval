@@ -246,3 +246,27 @@ Full support for time-varying covariates (TVCs) and left/right truncation across
 ## 8. Long-term: Replace `autograd` with JAX (deferred)
 
 `autograd` (HIPS/autograd) is in low-activity maintenance mode with no GPU support. JAX is the spiritual successor and a near-drop-in replacement for `autograd.numpy` patterns. The interim steps (inlining the `autograd_gamma` gradients into `surpyval/utils/autograd_gamma_compat.py` and upgrading to `autograd` 1.8 for numpy 2.x compatibility) are done, so there is no urgency. A JAX migration can be revisited once the library is otherwise stable — it is a multi-week effort touching every gradient computation.
+
+---
+
+## 9. Discrete Lifetime Distributions
+
+Tier 1 is implemented: `Geometric`, `DiscreteWeibull` (Nakagawa–Osaki Type
+I) and `NegativeBinomial`, all discrete lifetimes on `{1, 2, 3, ...}` with
+zero-inflation living at 0. They flow through the standard MLE machinery
+(censoring, truncation, counts, `zi`/`lfp`) by overriding `log_df`/`log_sf`
+and the function set, with `supports_mpp = False`. Validated against
+`scipy.stats` and by parameter recovery under censoring/truncation/ZI.
+
+Natural extensions:
+
+- **Tier 2:** a standalone `Poisson` distribution (count data; distinct
+  from the recurrent Poisson *processes*); `BetaGeometric` (discrete-time
+  frailty — Geometric with Beta-mixed `p`); and a general "discretize any
+  continuous distribution" wrapper (`P(k) = F(k+1) − F(k)`) to cheaply
+  yield discrete Gamma/Lognormal/Normal.
+- **Tier 3 (niche / heavy-tailed):** Zeta / discrete Pareto / Yule–Simon,
+  the logarithmic (log-series) distribution, and discrete
+  Rayleigh/Gompertz hazard shapes.
+- **Probability plotting** for the discrete families (step-aware plotting
+  positions) so they are not MLE-only; and a discrete-aware `plot()`.
