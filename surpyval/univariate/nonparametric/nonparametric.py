@@ -7,7 +7,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from scipy.interpolate import PchipInterpolator, interp1d
-from scipy.stats import norm, t
+from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
 
@@ -314,14 +314,11 @@ class NonParametric(NonParametricDistribution):
             undercover in small samples. Defaults to 'exp' (the
             log(-log) transformed interval) as this ensures the bounds
             are within 0 and 1 and has better coverage.
-        dist : ('t', 'z'), str, optional
-            The statistic to use in calculating the bounds (student-t or
-            normal). Defaults to the normal (z). The 't' option is a
-            conservative heuristic which uses the at risk count minus one
-            at each point as the degrees of freedom; it is not supported
-            by asymptotic theory, widens (overcovers) as the at risk
-            count falls, and is undefined when only one item remains at
-            risk.
+        dist : ('z',), str, optional
+            The statistic used for the bounds. Only the normal ('z') is
+            supported, which is what the asymptotic theory of the estimator
+            justifies. For small-sample or Turnbull bounds use
+            ``bootstrap_cb``; for a simultaneous band use ``band``.
 
         Returns
         -------
@@ -409,8 +406,15 @@ class NonParametric(NonParametricDistribution):
     ) -> npt.NDArray:
         if bound_type not in ["exp", "normal"]:
             raise ValueError("'bound_type' must be in ['exp', 'normal']")
-        if dist not in ["t", "z"]:
-            raise ValueError("'dist' must be in ['t', 'z']")
+        if dist != "z":
+            raise ValueError(
+                "'dist' must be 'z'. The 't' option (Student-t with the "
+                "at-risk count as degrees of freedom) has been removed: it "
+                "had no asymptotic justification, was undefined at the last "
+                "event, and widened bounds arbitrarily as the risk set "
+                "shrank. For small-sample or Turnbull confidence bounds use "
+                "`bootstrap_cb`, and for a simultaneous band use `band`."
+            )
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
                 "Model has no variance estimate so confidence bounds "
@@ -425,17 +429,11 @@ class NonParametric(NonParametricDistribution):
 
         x = np.atleast_1d(x)
         if bound in ["upper", "lower"]:
-            if dist == "t":
-                stat = t.ppf(1 - confidence, self.r - 1)
-            else:
-                stat = norm.ppf(1 - confidence, 0, 1)
+            stat = norm.ppf(1 - confidence, 0, 1)
             if bound == "upper":
                 stat = -stat
         elif bound == "two-sided":
-            if dist == "t":
-                stat = t.ppf((1 - confidence) / 2, self.r - 1)
-            else:
-                stat = norm.ppf((1 - confidence) / 2, 0, 1)
+            stat = norm.ppf((1 - confidence) / 2, 0, 1)
             stat = np.array([-1, 1]).reshape(2, 1) * stat
 
         if bound_type == "exp":
@@ -593,9 +591,9 @@ class NonParametric(NonParametricDistribution):
             computed. Defaults to 0.05.
         bound_type : ('exp', 'normal'), str, optional
             The method for the underlying survival function bounds.
-        dist : ('t', 'z'), str, optional
+        dist : ('z',), str, optional
             The statistic used in the underlying survival function
-            bounds.
+            bounds. Only the normal ('z') is supported.
 
         Returns
         -------
