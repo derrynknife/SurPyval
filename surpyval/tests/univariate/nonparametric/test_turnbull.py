@@ -138,6 +138,40 @@ def test_turnbull_against_lifelines_npmle_reference():
     assert np.allclose(model.sf(probe), reference, atol=1e-3)
 
 
+def test_turnbull_estimator_options_on_fractional_ladder():
+    # The Kaplan-Meier / Nelson-Aalen / Fleming-Harrington choice is
+    # applied to the EM's expected-count ladder inside every iteration,
+    # so the three options must produce distinct, correctly ordered
+    # survival curves (NA >= FH >= KM), each fitted on fractional
+    # (partial) event counts.
+    xl = [2.0, 4.0, 5.0, 3.0, 1.0, 4.0, 2.0, 6.0, 7.0, 2.5, 3.6, 5.5]
+    xr = [2.0, 4.0, 5.0, 3.0, 1.0, 6.0, 5.0, 6.0, 7.0, 2.5, 8.0, 9.0]
+    c = np.array([0, 0, 1, -1, 0, 2, 2, 1, 0, 0, 2, 2])
+    n = np.array([1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 3, 1])
+    models = {
+        est: surpyval.Turnbull.fit(
+            xl=xl, xr=xr, c=c, n=n, turnbull_estimator=est
+        )
+        for est in ("Kaplan-Meier", "Nelson-Aalen", "Fleming-Harrington")
+    }
+    # The EM distributes events across intervals, so the death ladder
+    # must contain genuinely fractional counts.
+    d = models["Kaplan-Meier"].d
+    fractional = d[(d > 1e-9) & (np.abs(d - np.round(d)) > 1e-6)]
+    assert fractional.size > 0
+
+    grid = [2.6, 4.1, 6.5]
+    km = models["Kaplan-Meier"].sf(grid)
+    na = models["Nelson-Aalen"].sf(grid)
+    fh = models["Fleming-Harrington"].sf(grid)
+    assert not np.allclose(km, na)
+    assert np.all(na >= km - 1e-12)
+    assert np.all((fh >= km - 1e-12) & (fh <= na + 1e-12))
+    # Each model carries the variance for its own estimator.
+    for model in models.values():
+        assert np.isfinite(model.greenwood).any()
+
+
 def test_turnbull_docstring_example_unchanged():
     # The rewrite must reproduce the long-standing example output.
     x = np.array([[1, 5], [2, 3], [3, 6], [1, 8], [9, 10]])
