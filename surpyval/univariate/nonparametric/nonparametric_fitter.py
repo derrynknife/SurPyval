@@ -58,6 +58,8 @@ class NonParametricFitter:
         tr: npt.ArrayLike | Number | None = None,
         turnbull_estimator: str = "Fleming-Harrington",
         set_lower_limit: float | None = None,
+        tol: float = 1e-10,
+        max_iter: int = 1000,
     ) -> NonParametric:
         r"""
 
@@ -115,6 +117,14 @@ class NonParametricFitter:
             KM, NA, or FH estimator with the Turnbull estimates of r, and d.
             Defaults to FH.
 
+        tol : float, optional
+            Turnbull only. The EM stops once the largest change in any
+            interval's probability mass falls below this. Defaults to 1e-10.
+
+        max_iter : int, optional
+            Turnbull only. Cap on EM iterations; a warning is raised if it
+            is reached before ``tol`` is. Defaults to 1000.
+
         Returns
         -------
 
@@ -151,11 +161,14 @@ class NonParametricFitter:
         if self.how == "Turnbull":
             data["estimator"] = turnbull_estimator
             out = NonParametric()
-            t_obj = self._fit(x, c, n, t, turnbull_estimator)
+            t_obj = self._fit(x, c, n, t, turnbull_estimator, tol, max_iter)
 
-            out.greenwood = self._compute_var(
-                turnbull_estimator, t_obj["r"], t_obj["d"]
-            )
+            # Truncated fits supply a separate observed-information ladder
+            # for the variance (the estimation ladder's ghost events would
+            # understate it); untruncated fits use the estimation ladder.
+            var_r = t_obj.pop("var_r", t_obj["r"])
+            var_d = t_obj.pop("var_d", t_obj["d"])
+            out.greenwood = self._compute_var(turnbull_estimator, var_r, var_d)
             for k, v in t_obj.items():
                 setattr(out, k, v)
 

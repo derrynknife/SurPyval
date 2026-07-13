@@ -1,5 +1,6 @@
+import warnings
+
 import numpy as np
-from scipy.sparse import dok_matrix
 
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
@@ -10,15 +11,28 @@ from .kaplan_meier import kaplan_meier as km
 from .nelson_aalen import nelson_aalen as na
 
 
-def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
+def turnbull(
+    x, c, n, t, estimator="Fleming-Harrington", tol=1e-10, max_iter=1000
+):
+    """
+    Turnbull NPMLE via the EM (self-consistency) algorithm.
+
+    Every observation's support -- the set of Turnbull interval endpoints
+    its event could have occurred at -- is a *contiguous* run of indices
+    into the sorted ``bounds`` array, as is its truncation (observation)
+    window. The E-step therefore never needs an (N x M) matrix: the
+    per-observation support probabilities are range sums of ``p``
+    (prefix sums), and the per-interval expected event counts are sums of
+    per-observation weights over ranges (difference arrays). Each
+    iteration is O(N + M) in both time and memory.
+    """
     any_truncated = np.isfinite(t).any()
     # Find all unique bounding points
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
     # Add the times at which there was an observation again since
     # the failure occurs in a 0 bound e.g. in the [1, 1] "interval".
-    bounds = np.sort(np.concatenate([bounds, np.unique(x[c == 0])]))
-    # Total items observed
-    N = n.sum()
+    exact_times = np.unique(x[c == 0])
+    bounds = np.sort(np.concatenate([bounds, exact_times]))
 
     if x.ndim == 1:
         x_new = np.empty(shape=(x.shape[0], 2))
@@ -27,8 +41,8 @@ def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
         x = x_new
 
     # Unpack x array
-    xl = x[:, 0]
-    xr = x[:, 1]
+    xl = x[:, 0].astype(float)
+    xr = x[:, 1].astype(float)
 
     # Unpack t array
     tl = t[:, 0]
@@ -43,40 +57,50 @@ def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
     M = bounds.size
     N = xl.size
 
-    alpha = dok_matrix((N, M), dtype="int32")
-    beta = dok_matrix((N, M), dtype="int32")
+    # Each observation's support is the contiguous index range [lo, hi] of
+    # the bound points its event may sit on:
+    # - an exactly observed event sits on the zero-width "interval" at the
+    #   first copy of its (duplicated) time;
+    # - a right-censored event may sit on any bound strictly after the
+    #   censoring time;
+    # - an interval-censored event (including left censored, whose interval
+    #   is (-inf, xr)) may sit on any bound in [xl, xr), *except* the
+    #   zero-width exact interval at xl when xl is also an exactly observed
+    #   time -- the event is known to be after xl.
+    exact = xl == xr
+    right = ~exact & np.isinf(xr)
+    interval = ~exact & ~right
 
-    for i in range(0, N):
-        x1, x2 = xl[i], xr[i]
-        t1, t2 = tl[i], tr[i]
-        if x1 == x2:
-            # Find first index of repeated value
-            idx = np.searchsorted(bounds, x1)
-            alpha[i, idx] = n[i]
-        elif x2 == np.inf:
-            alpha[i, :] = ((bounds > x1) & (bounds <= x2)).astype(int) * n[i]
-            if x1 in x[c == 0]:
-                idx = np.searchsorted(bounds, x1)
-                alpha[i, idx] = 0
-        else:
-            alpha[i, :] = ((bounds >= x1) & (bounds < x2)).astype(int) * n[i]
-            if x1 in x[c == 0]:
-                idx = np.searchsorted(bounds, x1)
-                alpha[i, idx] = 0
-        # Find the indices of the bounds that are outside the interval
-        if any_truncated:
-            where_truncated = np.multiply((bounds < t1), (bounds >= t2))
-            # Assign a value of 1 in the sparse matrix for the intervals where
-            # the observation window is truncated
-            for j in np.where(where_truncated == x1)[0]:
-                beta[i, j] = 1
+    lo = np.empty(N, dtype=np.int64)
+    hi = np.empty(N, dtype=np.int64)
+    lo[exact] = np.searchsorted(bounds, xl[exact], side="left")
+    hi[exact] = lo[exact]
+    lo[right] = np.searchsorted(bounds, xl[right], side="right")
+    hi[right] = M - 1
+    lo[interval] = np.searchsorted(
+        bounds, xl[interval], side="left"
+    ) + np.isin(xl[interval], exact_times)
+    hi[interval] = np.searchsorted(bounds, xr[interval], side="left") - 1
 
-    n = n.reshape(-1, 1)
+    # Each observation's truncation window is likewise a contiguous index
+    # range [w_lo, w_hi]: the bound points at which an event was observable
+    # -- strictly after its left truncation time and at or before its right
+    # truncation time.
+    if any_truncated:
+        w_lo = np.where(
+            np.isfinite(tl), np.searchsorted(bounds, tl, side="right"), 0
+        )
+        w_hi = np.where(
+            np.isfinite(tr),
+            np.searchsorted(bounds, tr, side="right") - 1,
+            M - 1,
+        )
+        truncated = np.isfinite(tl) | np.isfinite(tr)
+        w_lo, w_hi = w_lo[truncated], w_hi[truncated]
+        n_truncated = n[truncated]
+
     d = np.zeros(M)
     p = np.ones(M) / M
-
-    iters = 0
-    p_prev = np.zeros_like(p)
 
     if estimator == "Kaplan-Meier":
         func = km
@@ -86,45 +110,45 @@ def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
         func = fh
 
     old_err_state = np.seterr(all="ignore")
-    expected = dok_matrix(alpha.shape, dtype="float64")
 
-    while (iters < 1000) & (
-        not np.allclose(p, p_prev, rtol=1e-30, atol=1e-30)
-    ):
-        p_prev = p
-        iters += 1
-        # TODO: Change this so that it does row iterations on sparse matrices
-        # Row wise should, in the majority of cases, be more memory efficient
-        denominator = np.zeros(N)
+    converged = False
+    for iters in range(1, max_iter + 1):
+        # Prefix sums of p turn every range sum into two lookups.
+        cumulative = np.concatenate([[0.0], np.cumsum(p)])
 
-        for (i, j), v in zip(alpha.keys(), alpha.values()):
-            denominator[i] += v * p[j]
-            expected[i, j] = v**2 * p[j]
+        # E-step, observed events: each observation distributes its n
+        # events over its support in proportion to p, i.e. it adds
+        # n * p_j / P(support) to every interval j in [lo, hi]. Summing
+        # the weights n / P(support) over observations via a difference
+        # array gives all M totals in one cumsum.
+        support_p = cumulative[hi + 1] - cumulative[lo]
+        # A row whose support carries no mass (or is empty) contributes
+        # nothing, rather than propagating inf/nan through the totals.
+        weight = np.where(support_p > 0, n / support_p, 0.0)
+        delta = np.zeros(M + 1)
+        np.add.at(delta, lo, weight)
+        np.add.at(delta, hi + 1, -weight)
+        d_observed = p * np.cumsum(delta[:M])
 
-        d_observed = np.array(
-            expected.multiply(1 / denominator[:, np.newaxis]).sum(0)
-        ).ravel()
-
-        d_ghosts = np.zeros(M)
+        # E-step, ghosts: a truncated observation was only observable
+        # because its event fell inside its window, so for every one seen,
+        # unseen "ghost" events fell outside it at rate p_j / P(window).
+        # Add n / P(window) everywhere, subtract it back over the window.
         if any_truncated:
-            beta_denominator = np.zeros(N)
-            for (i, j), v in zip(beta.keys(), beta.values()):
-                beta_denominator[i] += (1 - v) * p[j]
-            beta_denominator = np.where(
-                beta_denominator == 0, 1, beta_denominator
-            )
-
-            d_ghosts = np.array(
-                beta.power(2)
-                .multiply(n * p)
-                .multiply(1 / beta_denominator[:, np.newaxis])
-                .sum(0)
-            ).ravel()
+            window_p = cumulative[w_hi + 1] - cumulative[w_lo]
+            ghost_weight = np.where(window_p > 0, n_truncated / window_p, 0.0)
+            delta = np.zeros(M + 1)
+            delta[0] = ghost_weight.sum()
+            np.add.at(delta, w_lo, -ghost_weight)
+            np.add.at(delta, w_hi + 1, ghost_weight)
+            d_ghosts = p * np.cumsum(delta[:M])
+        else:
+            d_ghosts = 0.0
 
         # Deaths/Failures/Events
         d = d_ghosts + d_observed
         # total observed and unobserved failures.
-        total_events = (d_ghosts + d_observed).sum()
+        total_events = d.sum()
         # Risk set, i.e the number of items at risk at immediately before x
         r = total_events - d.cumsum() + d
         # Find the survival function values (R) using the deaths and risk set
@@ -132,21 +156,96 @@ def turnbull(x, c, n, t, estimator="Fleming-Harrington"):
         # is to do p = (nu + mu).sum(axis=0)/(nu + mu).sum()
         R = func(r, d)
         # Calculate the probability mass in each interval
-        p = np.abs(np.diff(np.hstack([[1], R])))
-        expected.clear()
+        p_new = np.abs(np.diff(np.hstack([[1], R])))
+        if np.nanmax(np.abs(p_new - p)) < tol:
+            p = p_new
+            converged = True
+            break
+        p = p_new
+
+    if not converged:
+        warnings.warn(
+            "The Turnbull EM did not converge to within `tol` ({}) in "
+            "`max_iter` ({}) iterations; the estimate may be "
+            "inaccurate.".format(tol, max_iter)
+        )
+
+    if any_truncated:
+        # Variance ladder from *observed* information only. The estimation
+        # ladder above includes the ghost events -- they are what make the
+        # estimate correct under truncation -- but ghosts are not data, and
+        # a risk set inflated by them understates the variance. Instead,
+        # each observed item contributes its conditional probability of
+        # still being event-free at each bound, and only while that bound
+        # lies inside its observation window (so delayed entry removes it
+        # from the early risk sets, exactly as in the Kaplan-Meier
+        # delayed-entry risk set, to which this reduces for exactly
+        # observed left-truncated data):
+        #
+        #   r_var[j] = sum_i n_i * 1[w_lo_i <= j <= w_hi_i] * P_i(T >= j)
+        #
+        # with P_i(T >= j) equal to 1 before the item's support, the
+        # conditional tail (cum[hi+1] - cum[j]) / P(support) inside it, and
+        # 0 after it. Piece one and the constant part of piece two are
+        # range-adds; the j-dependent part is cum[j] times a range-added
+        # weight -- all still O(N + M). For untruncated data this ladder
+        # equals the estimation ladder, so it is only computed (and only
+        # used for the variance) when truncation is present.
+        cumulative = np.concatenate([[0.0], np.cumsum(p)])
+        support_p = cumulative[hi + 1] - cumulative[lo]
+        weight = np.where(support_p > 0, n / support_p, 0.0)
+        delta = np.zeros(M + 1)
+        np.add.at(delta, lo, weight)
+        np.add.at(delta, hi + 1, -weight)
+        d_var = p * np.cumsum(delta[:M])
+
+        w_lo_all = np.where(
+            np.isfinite(tl), np.searchsorted(bounds, tl, side="right"), 0
+        )
+        w_hi_all = np.where(
+            np.isfinite(tr),
+            np.searchsorted(bounds, tr, side="right") - 1,
+            M - 1,
+        )
+
+        const = np.zeros(M + 1)
+        coeff = np.zeros(M + 1)
+        # Before the support (probability 1), within the window.
+        a1 = w_lo_all
+        b1 = np.minimum(lo, w_hi_all)
+        ok = a1 <= b1
+        np.add.at(const, a1[ok], n[ok])
+        np.add.at(const, b1[ok] + 1, -n[ok])
+        # Within the support (conditional tail), within the window.
+        a2 = np.maximum(lo + 1, w_lo_all)
+        b2 = np.minimum(hi, w_hi_all)
+        ok = (a2 <= b2) & (support_p > 0)
+        tail_const = np.where(
+            support_p > 0, n * cumulative[hi + 1] / support_p, 0.0
+        )
+        np.add.at(const, a2[ok], tail_const[ok])
+        np.add.at(const, b2[ok] + 1, -tail_const[ok])
+        np.add.at(coeff, a2[ok], weight[ok])
+        np.add.at(coeff, b2[ok] + 1, -weight[ok])
+
+        r_var = np.cumsum(const[:M]) - np.cumsum(coeff[:M]) * cumulative[:M]
 
     out = {}
     out["x"] = bounds[1:-1]
     out["r"] = r[1:-1]
     out["d"] = d[1:-1]
+    if any_truncated:
+        out["var_r"] = r_var[1:-1]
+        out["var_d"] = d_var[1:-1]
     out["R"] = R[0:-2]
     out["F"] = 1 - R[0:-2]
     out["R_upper"] = R[0:-2]
     out["R_lower"] = R[1:-1]
-    out["alpha"] = alpha
     out["bounds"] = bounds
     out["model"] = "Turnbull"
     out["turnbull_estimator"] = estimator
+    out["iters"] = iters
+    out["converged"] = converged
 
     np.seterr(**old_err_state)
 
@@ -158,6 +257,10 @@ class Turnbull_(NonParametricFitter):
     Turnbull estimator class. Returns a `NonParametric` object from method
     :code:`fit()`. Calculates the Non-Parametric estimate of the survival
     function using the Turnbull NPMLE.
+
+    The EM iterates until the largest change in any interval's probability
+    mass falls below ``tol`` or ``max_iter`` iterations have run (with a
+    warning in the latter case); both can be passed to :code:`fit()`.
 
     Examples
     --------
@@ -173,8 +276,10 @@ class Turnbull_(NonParametricFitter):
     def __init__(self):
         self.how = "Turnbull"
 
-    def _fit(self, x, c, n, t, turnbull_estimator):
-        return turnbull(x, c, n, t, turnbull_estimator)
+    def _fit(self, x, c, n, t, turnbull_estimator, tol, max_iter):
+        return turnbull(
+            x, c, n, t, turnbull_estimator, tol=tol, max_iter=max_iter
+        )
 
 
 Turnbull = Turnbull_()
