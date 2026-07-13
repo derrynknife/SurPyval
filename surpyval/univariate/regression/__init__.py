@@ -24,7 +24,19 @@ from .accelerated_life import (
     Power,
     PowerExponential,
 )
-from .additive_hazards import AdditiveHazards, AdditiveHazardsModel
+from .additive_hazards import (
+    AH,
+    AdditiveHazards,
+    AdditiveHazardsFitter,
+    AdditiveHazardsModel,
+    ExponentialAH,
+    GammaAH,
+    GumbelAH,
+    LogisticAH,
+    LogNormalAH,
+    NormalAH,
+    WeibullAH,
+)
 from .proportional_hazards import (
     PH,
     CoxPH,
@@ -50,9 +62,18 @@ from .proportional_odds import (
 )
 
 __all__ = [
-    # Additive hazards (Lin-Ying semi-parametric)
+    # Additive hazards — semi-parametric (Lin-Ying) and parametric
+    "AH",
     "AdditiveHazards",
+    "AdditiveHazardsFitter",
     "AdditiveHazardsModel",
+    "ExponentialAH",
+    "GammaAH",
+    "GumbelAH",
+    "LogisticAH",
+    "LogNormalAH",
+    "NormalAH",
+    "WeibullAH",
     # Accelerated life (parameter-substitution life models)
     "AcceleratedLife",
     "DualExponential",

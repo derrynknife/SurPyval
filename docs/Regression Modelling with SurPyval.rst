@@ -251,6 +251,16 @@ interaction term counteracts — the same story, told on the additive scale.
    model — whose exponential form keeps the hazard positive — is often the
    safer choice.
 
+Just as Cox has parametric proportional-hazards counterparts (the next
+section), there is also a *parametric* additive-hazards model — a parametric
+baseline hazard with the same additive covariate term, ``h(x|Z) = h_0(x;θ) +
+β'Z``, fit by maximum likelihood. It is available as the ``AH(distribution)``
+factory and as pre-built ``WeibullAH``, ``ExponentialAH``, … instances, and
+gives a smooth, extrapolatable version of what ``AdditiveHazards`` estimates
+non-parametrically. The positivity caveat above applies more sharply here:
+because the likelihood needs ``log(h)`` at every event, a fit whose optimum
+requires a negative hazard raises rather than returning an invalid model.
+
 
 Parametric Proportional Hazards (PH)
 --------------------------------------

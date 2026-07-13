@@ -128,11 +128,21 @@ removed for consistency.
 
 ## 5. Semi-Parametric Regression — Future Work
 
-`AdditiveHazards` (Lin & Ying 1994) is now implemented: the closed-form
-semi-parametric additive-hazards estimator `h(x|Z) = h₀(x) + β'Z`, with
-the sandwich covariance, p-values, a Breslow-type baseline, `sf`/`ff`/
-`hf`/`Hf`/`df` prediction and `fit_from_df`. Three candidates remain, in
-priority order:
+Additive hazards is implemented on both scales, completing the symmetry
+with proportional hazards (semi-parametric `CoxPH` + parametric
+`WeibullPH` etc.):
+
+- **Semi-parametric** `AdditiveHazards` (Lin & Ying 1994) — the closed-form
+  estimator `h(x|Z) = h₀(x) + β'Z` with an unspecified baseline, sandwich
+  covariance, p-values, a Breslow-type baseline, `sf`/`ff`/`hf`/`Hf`/`df`
+  prediction and `fit_from_df`.
+- **Parametric** `AH(dist)` factory + pre-built `WeibullAH`,
+  `ExponentialAH`, … — `h(x|Z) = h₀(x; θ) + β'Z` with a parametric
+  baseline, fit by plain MLE. Positivity is not enforced: the fit finds
+  the best positive-hazard solution and raises (pointing at PH) only if
+  the optimum genuinely needs a negative hazard.
+
+Three candidates remain, in priority order:
 
 ### Buckley-James (semi-parametric AFT) — High priority
 The semi-parametric counterpart to Cox PH. Fits `log(T) = β'Z + ε` without assuming a parametric baseline distribution. Uses an iterative censoring-imputation (Buckley-James) algorithm. Completes the semi-parametric trio alongside `CoxPH`. Supported in R's `survival::survreg` with no baseline assumption.
