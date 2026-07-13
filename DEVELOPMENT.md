@@ -1,6 +1,6 @@
 # Development Notes
 
-This document tracks known issues, technical debt, and improvement priorities for surpyval. Issues are grouped by theme and ordered by severity within each section. Implemented items are removed; this reflects the state of the codebase as of 2026-07-12. The full test suite passes on Python 3.11+ with numpy 2.x / scipy 1.17 / pandas 3.x.
+This document tracks known issues, technical debt, and improvement priorities for surpyval. Issues are grouped by theme and ordered by severity within each section. Implemented items are removed; this reflects the state of the codebase as of 2026-07-13. The full test suite passes on Python 3.11+ with numpy 2.x / scipy 1.17 / pandas 3.x.
 
 ---
 
@@ -113,20 +113,6 @@ Extract a shared helper. The `count_terminated_simulation` methods are similarly
 ## 4. Univariate Non-Parametric Module — Remaining Work
 
 The following engineering debt in `surpyval/univariate/nonparametric/` remains.
-
-### Turnbull EM performance and convergence control
-**File:** `surpyval/univariate/nonparametric/turnbull.py`
-
-The EM loop builds `dok_matrix` sparse matrices and iterates over
-`.keys()`/`.values()` in Python, which dominates runtime (the bootstrap
-and any simulation involving Turnbull are noticeably slow). The
-convergence criterion is hardcoded — `np.allclose(p, p_prev,
-rtol=1e-30, atol=1e-30)` with a silent `iters < 1000` cap — so a
-non-converged fit is returned without warning, and callers cannot
-trade accuracy for speed. Expose `tol` and `max_iter` as `fit`
-parameters, emit a `warnings.warn` when the cap is hit without
-convergence, and act on the existing in-file TODO to do row-wise
-iteration on the sparse matrices.
 
 ### `random()` uses the legacy global RNG
 **File:** `nonparametric.py` (`NonParametric.random`, ~line 454)
