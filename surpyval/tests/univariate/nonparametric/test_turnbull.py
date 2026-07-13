@@ -88,6 +88,56 @@ def test_turnbull_tol_controls_iterations():
     assert np.allclose(loose.R, tight.R, atol=1e-3, equal_nan=True)
 
 
+def test_turnbull_equals_kaplan_meier_with_right_censoring():
+    # Classical identity: on exactly observed + right-censored data the
+    # Turnbull NPMLE *is* the Kaplan-Meier estimator. This exercises the
+    # zero-width Turnbull intervals (every exact time is a duplicated
+    # bound carrying a point mass) against surpyval's R-validated KM.
+    np.random.seed(3)
+    x = np.round(surpyval.Weibull.random(300, 10, 2), 2)
+    c = (np.random.uniform(size=300) < 0.3).astype(int)
+    km = surpyval.KaplanMeier.fit(x, c=c)
+    tb = surpyval.Turnbull.fit(x, c=c, turnbull_estimator="Kaplan-Meier")
+    grid = np.quantile(x, [0.1, 0.3, 0.5, 0.7, 0.9])
+    assert np.allclose(tb.sf(grid), km.sf(grid), atol=1e-12)
+
+
+def test_turnbull_all_censoring_types_together():
+    # Exact (0), right (1), left (-1) and interval (2) censoring in one
+    # dataset: the fit must run, keep the duplicated zero-width bounds
+    # for every exact time, and return a monotone survival curve.
+    xl = [2.0, 4.0, 5.0, 3.0, 1.0, 4.0, 2.0, 6.0, 7.0, 2.5]
+    xr = [2.0, 4.0, 5.0, 3.0, 1.0, 6.0, 5.0, 6.0, 7.0, 2.5]
+    c = np.array([0, 0, 1, -1, 0, 2, 2, 1, 0, 0])
+    n = np.array([1, 2, 1, 1, 1, 1, 1, 2, 1, 1])
+    model = surpyval.Turnbull.fit(xl=xl, xr=xr, c=c, n=n)
+    for v in (1.0, 2.0, 2.5, 4.0, 7.0):
+        assert (model.bounds == v).sum() == 2
+    R = model.R[np.isfinite(model.R)]
+    assert np.all(np.diff(R) <= 1e-12)
+
+
+def test_turnbull_against_lifelines_npmle_reference():
+    # Overlapping intervals whose endpoints are all distinct, so the
+    # NPMLE does not depend on open/closed interval conventions (which
+    # differ between packages: surpyval uses [l, r), icenReg (l, r],
+    # lifelines [l, r]). Reference survival values computed with
+    # lifelines 0.30.3 ``KaplanMeierFitter.fit_interval_censoring``
+    # (its residual ~1e-4 unconverged mass is inside the tolerance).
+    left = [0.5, 1.2, 2.1, 1.8, 3.4, 4.2, 5.1, 4.8, 6.3, 7.2, 2.7, 8.4]
+    right = [2.4, 3.1, 4.5, 6.1, 5.6, 6.8, 7.9, 9.2, 8.8, 9.9, 10.4, 11.3]
+    model = surpyval.Turnbull.fit(
+        xl=left,
+        xr=right,
+        turnbull_estimator="Kaplan-Meier",
+        tol=1e-12,
+        max_iter=100_000,
+    )
+    probe = [2.5, 3.2, 4.6, 5.7, 6.9, 8.0]
+    reference = [0.714780, 0.714780, 0.714622, 0.326064, 0.326064, 0.325946]
+    assert np.allclose(model.sf(probe), reference, atol=1e-3)
+
+
 def test_turnbull_docstring_example_unchanged():
     # The rewrite must reproduce the long-standing example output.
     x = np.array([[1, 5], [2, 3], [3, 6], [1, 8], [9, 10]])
