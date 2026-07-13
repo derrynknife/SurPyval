@@ -1,10 +1,12 @@
+import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from scipy.interpolate import interp1d
+from scipy.interpolate import PchipInterpolator, interp1d
 from scipy.stats import norm, t
 
 from surpyval.distribution import NonParametricDistribution
@@ -16,6 +18,20 @@ if TYPE_CHECKING:
 def interp_function(
     x: npt.ArrayLike, y: npt.ArrayLike, kind: str
 ) -> Callable[[npt.ArrayLike], npt.NDArray]:
+    if kind == "cubic":
+        # A plain cubic spline can overshoot and produce a non-monotone
+        # (even out-of-[0, 1]) survival curve, which then propagates into
+        # ``Hf``, ``hf`` and the interpolated confidence bounds. PCHIP is a
+        # shape-preserving piecewise-cubic Hermite interpolant, so it stays
+        # monotone wherever the data are monotone. It requires strictly
+        # increasing abscissae, so collapse any duplicated ``x`` (e.g. the
+        # zero-width Turnbull bounds at exactly observed times) to the last
+        # value there, which is where the step function has settled.
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        keep = np.append(np.diff(x) > 0, True)
+        pchip = PchipInterpolator(x[keep], y[keep], extrapolate=False)
+        return lambda q: pchip(np.asarray(q, dtype=float))
     return interp1d(x, y, kind=kind, bounds_error=False, fill_value=np.nan)
 
 
@@ -474,7 +490,9 @@ class NonParametric(NonParametricDistribution):
 
         return R_out
 
-    def random(self, size: int) -> npt.NDArray:
+    def random(
+        self, size: int, random_state: int | None = None
+    ) -> npt.NDArray:
         r"""
         Draws random samples from the fitted distribution. Each observed
         value x is drawn with the probability mass the estimated survival
@@ -482,12 +500,28 @@ class NonParametric(NonParametricDistribution):
         due to right censoring) the remaining mass is distributed over the
         observed values, i.e. sampling is conditional on an event occurring
         at one of the observed values.
+
+        Parameters
+        ----------
+
+        size : int
+            The number of random samples to draw.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for reproducible sampling. Matches the
+            ``random_state`` argument of ``bootstrap_cb`` and ``band``.
+
+        Returns
+        -------
+
+        random : numpy array
+            The random samples drawn from the observed values.
         """
         with np.errstate(all="ignore"):
             p = -np.diff(np.hstack([[1.0], self.R]))
         p = np.where(np.isfinite(p), p, 0)
         p = p / p.sum()
-        return np.random.choice(self.x, size=size, p=p)
+        rng = np.random.default_rng(random_state)
+        return rng.choice(self.x, size=size, p=p)
 
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -1228,3 +1262,97 @@ class NonParametric(NonParametricDistribution):
         out.greenwood = None  # type: ignore[assignment]
 
         return out
+
+    # The estimator ladder and derived curves that fully describe a fitted
+    # model; everything the public methods need is a function of these.
+    _SERIALIZED_ARRAYS = ("x", "r", "d", "R", "F", "H", "greenwood")
+
+    def to_dict(self, with_data: bool = False) -> dict:
+        r"""
+        Serialize the fitted non-parametric model to a plain dictionary,
+        mirroring the parametric ``to_dict``. The estimator ladder
+        (``x``, ``r``, ``d``), the derived curves (``R``, ``F``, ``H``),
+        the variance estimate (``greenwood``) and the estimator name are
+        stored, which is everything the model's methods need to be
+        reconstructed with :meth:`from_dict`.
+
+        Parameters
+        ----------
+
+        with_data : bool, optional
+            Also store the raw ``x``/``c``/``n``/``t`` data the model was
+            fitted with (needed to reconstruct a model that can call
+            :meth:`bootstrap_cb`). Defaults to False.
+
+        Returns
+        -------
+
+        model_dict : dict
+            The serialized model.
+        """
+        out: dict[str, Any] = {"parameterization": "non-parametric"}
+        out["model"] = self.model
+        for attr in self._SERIALIZED_ARRAYS:
+            value = getattr(self, attr, None)
+            out[attr] = None if value is None else np.asarray(value).tolist()
+
+        if "estimator" in getattr(self, "data", {}):
+            out["estimator"] = self.data["estimator"]
+
+        if with_data and getattr(self, "data", None) is not None:
+            data_dict: dict[str, Any] = {}
+            for ch in ["x", "c", "n", "t"]:
+                value = self.data.get(ch, None)
+                data_dict[ch] = (
+                    None if value is None else np.asarray(value).tolist()
+                )
+            out["data"] = data_dict
+
+        return out
+
+    def to_json(self, fp: str | Path) -> None:
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "NonParametric":
+        r"""
+        Reconstruct a fitted non-parametric model from a dictionary
+        produced by :meth:`to_dict`.
+        """
+        if model_dict.get("parameterization") != "non-parametric":
+            raise ValueError(
+                "Must create a non-parametric model from a non-parametric "
+                "model dict"
+            )
+        out = cls()
+        out.model = model_dict["model"]
+        for attr in cls._SERIALIZED_ARRAYS:
+            value = model_dict.get(attr, None)
+            if value is None:
+                # ``greenwood`` is legitimately absent (no variance
+                # estimate, e.g. ``fit_from_ecdf``); leave it as None so
+                # the confidence-bound guards fire as they would on the
+                # original model.
+                if attr == "greenwood":
+                    out.greenwood = None  # type: ignore[assignment]
+            else:
+                setattr(out, attr, np.asarray(value))
+
+        if "data" in model_dict or "estimator" in model_dict:
+            data: dict[str, Any] = {}
+            raw = model_dict.get("data", {})
+            for ch in ["x", "c", "n", "t"]:
+                value = raw.get(ch, None)
+                if value is not None:
+                    data[ch] = np.asarray(value)
+            if "estimator" in model_dict:
+                data["estimator"] = model_dict["estimator"]
+            out.data = data
+
+        return out
+
+    @classmethod
+    def from_json(cls, fp: str | Path) -> "NonParametric":
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))

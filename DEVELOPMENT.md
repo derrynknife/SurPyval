@@ -114,34 +114,6 @@ Extract a shared helper. The `count_terminated_simulation` methods are similarly
 
 The following engineering debt in `surpyval/univariate/nonparametric/` remains.
 
-### `random()` uses the legacy global RNG
-**File:** `nonparametric.py` (`NonParametric.random`, ~line 454)
-
-`random()` calls `np.random.choice`, drawing on the legacy global
-random state, so it cannot be seeded locally and is inconsistent with
-the `bootstrap_cb`/`band` methods that already accept a
-`random_state`. Add a `random_state` argument and route through
-`np.random.default_rng`, matching the parametric side.
-
-### No serialization
-Parametric models expose `to_dict`/`to_json`; `NonParametric` has
-nothing. A fitted non-parametric model (its `x`, `R`, `r`, `d`,
-`greenwood`, and estimator metadata) cannot be persisted or
-round-tripped. Add `to_dict`/`from_dict` (and the JSON wrappers) and
-fold the result into the empty `test_to_dict.py` once the general
-parametric path is also covered.
-
-### `interp='cubic'` can violate monotonicity
-**File:** `nonparametric.py` (`interp_function`)
-
-The survival function is monotone non-increasing, but `interp1d(...,
-kind='cubic')` can overshoot and produce a non-monotone — even
-out-of-`[0, 1]` — interpolated curve, which then propagates into `Hf`,
-`hf`, and the interpolated confidence bounds. Switch the smooth
-interpolation to a shape-preserving monotone scheme
-(`scipy.interpolate.PchipInterpolator`) so interpolated curves remain
-valid survival functions.
-
 ### `dist='t'` confidence-bound heuristic
 **File:** `nonparametric.py` (`R_cb`)
 
