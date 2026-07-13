@@ -707,6 +707,91 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
 
 Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data.
 
+Discrete Distributions
+----------------------
+
+Every distribution used so far is *continuous* -- a failure time can be any positive real number. But many reliability problems are naturally *discrete*: an item does not fail after "3.7 cycles", it fails **on** the 4th cycle. A switch is toggled until it breaks, a component absorbs shocks until it fractures, a system is inspected once per period until a defect appears. When the lifetime is a count -- a positive integer -- a discrete distribution is the honest model, and reaching for a continuous one can bias the answer.
+
+*SurPyval* provides three discrete lifetime distributions, all supported on the positive integers :math:`\{1, 2, 3, \dots\}`:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Distribution
+     - Continuous analogue
+     - Discrete hazard
+   * - ``Geometric``
+     - Exponential
+     - constant (memoryless)
+   * - ``DiscreteWeibull``
+     - Weibull
+     - increasing, constant, or decreasing
+   * - ``NegativeBinomial``
+     - Gamma
+     - cycles until the ``r``-th shock
+
+They are used exactly like the continuous distributions -- the same ``fit()`` call, the same ``sf``, ``ff``, ``hf``, ``Hf`` and ``df`` methods, and the same support for censoring, truncation, and counts.
+
+The ``Geometric`` distribution is the discrete analogue of the ``Exponential``: each cycle fails independently with a constant probability ``p``, so it is *memoryless*. It models the number of cycles until the first failure.
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    import numpy as np
+
+    np.random.seed(1)
+    # 200 items; each cycle fails with probability 0.15
+    x = surv.Geometric.random(200, 0.15)
+    surv.Geometric.fit(x)
+
+The ``DiscreteWeibull`` distribution (the Nakagawa-Osaki Type I) is the discrete analogue of the ``Weibull``, and like it has a flexible hazard: ``beta`` controls the shape, with ``beta < 1`` a decreasing (infant-mortality) hazard, ``beta = 1`` the constant-hazard Geometric, and ``beta > 1`` an increasing (wear-out) hazard.
+
+.. jupyter-execute::
+
+    np.random.seed(2)
+    # beta = 2 -> a wearing-out item
+    x = surv.DiscreteWeibull.random(200, 0.95, 2.0)
+    model = surv.DiscreteWeibull.fit(x)
+    model
+
+Because ``beta > 1`` here, the discrete hazard rises with each cycle -- the chance of failing on the next cycle grows as the item wears:
+
+.. jupyter-execute::
+
+    model.hf([1, 5, 10, 15])
+
+The ``NegativeBinomial`` distribution models the number of cycles until an item accumulates enough shocks to fail: with ``T = 1 + Y`` where ``Y`` is the number of failures before the ``r``-th success. It is overdispersed relative to a Poisson count and reduces to the ``Geometric`` when ``r = 1``.
+
+.. jupyter-execute::
+
+    np.random.seed(3)
+    x = surv.NegativeBinomial.random(1000, 3.0, 0.4)
+    surv.NegativeBinomial.fit(x)
+
+Since ``r`` and ``p`` trade off against each other, the negative binomial usually needs more data than the single-parameter Geometric to pin both down.
+
+The full ``fit()`` API carries over. Censored and truncated discrete data are handled exactly as for the continuous distributions -- here every item still running after 10 cycles is right censored:
+
+.. jupyter-execute::
+
+    np.random.seed(4)
+    x = surv.DiscreteWeibull.random(200, 0.95, 2.0)
+    c = np.zeros_like(x)
+    c[x > 10] = 1
+    x[x > 10] = 10
+    surv.DiscreteWeibull.fit(x, c=c)
+
+Because the support is :math:`\{1, 2, 3, \dots\}`, the value ``0`` is left free to carry a **zero-inflation** mass -- the "dead on arrival" units from the previous section. Fitting with ``zi=True`` recovers both the lifetime parameters and the structural-zero fraction:
+
+.. jupyter-execute::
+
+    np.random.seed(5)
+    x = surv.Geometric.random(200, 0.2)
+    x = np.concatenate([x, np.zeros(40)])  # 40 dead-on-arrival units
+    surv.Geometric.fit(x, zi=True)
+
+A note on estimation: probability plotting (MPP) is not defined for these discrete lifetimes, so they are fit by maximum likelihood (the default) and calling ``plot()`` on a discrete model raises. All the other model methods -- ``sf``, ``ff``, ``hf``, ``Hf``, ``df``, ``mean``, ``moment``, ``random`` and the confidence bounds ``cb`` -- work as usual.
+
 Confidence Intervals
 --------------------
 
