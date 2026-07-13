@@ -1,3 +1,4 @@
+from .diagnostics import GoodnessOfFitResult
 from .nonparametric import NonParametricCounting
 from .parametric import HPP, CountingProcess, CoxLewis, CrowAMSAA, Duane
 from .regression import ProportionalIntensityHPP, ProportionalIntensityNHPP

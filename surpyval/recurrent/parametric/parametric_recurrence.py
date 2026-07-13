@@ -1,12 +1,14 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
+from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
     delta_method_std_errors,
     log_transformed_cb,
 )
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
+from surpyval.recurrent.tests import laplace, mil_hdbk_189c
 
 
 class ParametricRecurrenceModel(
@@ -142,6 +144,141 @@ class ParametricRecurrenceModel(
             raise ValueError(
                 "Inverse cif undefined for {}".format(self.dist.name)
             )
+
+    def _check_has_data(self, what):
+        if not hasattr(self, "data"):
+            raise ValueError(
+                "{} requires a model fitted from data; fit_from_parameters "
+                "models carry no data.".format(what)
+            )
+
+    def residuals(self, kind="cumulative_hazard"):
+        """
+        Residual diagnostics for the fitted model, from the time-rescaling
+        theorem.
+
+        Parameters
+        ----------
+
+        kind: {'cumulative_hazard', 'pit', 'martingale'}, optional
+            ``'cumulative_hazard'`` returns the rescaled interarrival times
+            ``cif(t_k) - cif(t_{k-1})`` of every observed event (pooled
+            across items), which are iid Exp(1) under the fitted model.
+            ``'pit'`` applies the probability integral transform
+            ``1 - exp(-e)`` to those residuals, giving iid U(0, 1) values.
+            ``'martingale'`` returns one residual per (sorted-unique) item:
+            its observed event count minus the count the model expects over
+            its observation window; positive values mean the item saw more
+            events than predicted.
+
+        Returns
+        -------
+
+        numpy array
+            The residuals.
+        """
+        self._check_has_data("residuals")
+        if kind in ("cumulative_hazard", "pit"):
+            e = diagnostics.cumulative_hazard_residuals(self.data, self.cif)
+            if kind == "pit":
+                return 1.0 - np.exp(-e)
+            return e
+        elif kind == "martingale":
+            return diagnostics.martingale_residuals(self.data, self.cif)
+        raise ValueError(
+            "`kind` must be 'cumulative_hazard', 'pit' or 'martingale'; "
+            "got {!r}".format(kind)
+        )
+
+    def trend_test(self, test="laplace", alternative="two-sided"):
+        """
+        Run a trend test on the data this model was fitted to.
+
+        This is a convenience wrapper around the standalone tests in
+        ``surpyval.recurrent.tests`` -- the null hypothesis is that the
+        events follow a *homogeneous* Poisson process (no trend), so it
+        checks whether the data warranted a time-varying intensity at all.
+        The model's parameters play no part in the statistic.
+
+        Parameters
+        ----------
+
+        test: {'laplace', 'mil_hdbk_189c'}, optional
+            The trend test to run. Default is 'laplace'.
+        alternative: {'two-sided', 'increasing', 'decreasing'}, optional
+            The alternative hypothesis. Default is 'two-sided'.
+
+        Returns
+        -------
+
+        TrendTestResult
+            The test result, carrying the statistic, p-value and suggested
+            trend direction.
+        """
+        self._check_has_data("trend_test")
+        data = self.data
+        diagnostics._validate_diagnostic_data(data, "trend_test")
+        tests = {"laplace": laplace, "mil_hdbk_189c": mil_hdbk_189c}
+        if test not in tests:
+            raise ValueError(
+                "`test` must be one of {}; got {!r}".format(
+                    sorted(tests), test
+                )
+            )
+
+        # The trend tests assume every system is observed from time 0.
+        x, i, T = [], [], {}
+        for item_id, (events, entry, close, explicit_close) in enumerate(
+            diagnostics._per_item_windows(data)
+        ):
+            if entry != 0.0:
+                raise ValueError(
+                    "trend tests assume observation from time 0; this data "
+                    "has delayed entry (left truncation)."
+                )
+            if not explicit_close:
+                # Failure-truncated: the last event is the truncation point,
+                # exactly as the standalone tests treat T=None data.
+                events = events[:-1]
+            x.extend(events)
+            i.extend([item_id] * events.size)
+            T[item_id] = close
+        return tests[test](x, i=i, T=T, alternative=alternative)
+
+    def cramer_von_mises(self, n_boot=200, seed=None):
+        """
+        Cramer-von Mises goodness-of-fit test of the fitted intensity.
+
+        Conditional on the number of events an item shows in its
+        observation window, the transformed times ``[cif(t) - cif(entry)] /
+        [cif(close) - cif(entry)]`` are iid U(0, 1) when the fitted
+        intensity is the true one; the Cramer-von Mises statistic measures
+        their departure from uniformity (for the power-law process this is
+        the construction behind Crow's goodness-of-fit test). Because the
+        parameters were estimated from the same data, the p-value is
+        computed by a parametric bootstrap: data is simulated from the
+        fitted model over the same observation windows, refitted, and the
+        statistic recomputed. Failure-truncated items (no explicit window
+        close) are approximated in the bootstrap by a window fixed at their
+        last observed event.
+
+        Parameters
+        ----------
+
+        n_boot: int, optional
+            Number of bootstrap replicates for the p-value. Default is 200.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible p-value.
+
+        Returns
+        -------
+
+        GoodnessOfFitResult
+            The observed statistic and its bootstrap p-value.
+        """
+        self._check_fitted()
+        self._check_has_data("cramer_von_mises")
+        return diagnostics.cramer_von_mises(self, n_boot=n_boot, seed=seed)
 
     def cif_cb(self, x, alpha_ci=0.05, bound="two-sided"):
         """
