@@ -175,6 +175,71 @@ made a poor assumption in using the HPP model. Let's try another one.
 This is clearly a much better fit. Have a look at the api documentation to see
 what other parametric models are available in SurPyval.
 
+Inference and model checking
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A fitted parametric recurrence model is more than a point estimate. Every
+model fit by maximum likelihood exposes the usual likelihood quantities for
+comparing models — the log-likelihood and the ``aic`` / ``bic`` information
+criteria (these are attributes, not methods):
+
+.. jupyter-execute::
+
+    print("AIC:", model.aic, " BIC:", model.bic)
+
+It also carries the uncertainty of the fitted parameters. ``standard_errors()``
+returns the standard error of each parameter (from the observed information),
+and ``param_cb`` gives a confidence interval on a named parameter — computed on
+a transformed scale so the interval respects the parameter's support (a rate,
+for instance, cannot go negative):
+
+.. jupyter-execute::
+
+    print("parameters :", model.parameter_names)
+    print("std errors :", model.standard_errors())
+    print("alpha 95% CI:", model.param_cb("alpha"))
+
+That parameter uncertainty propagates to the fitted curve. ``plot()`` draws a
+delta-method confidence band around the cumulative intensity function, and
+``cif_cb`` returns the band directly:
+
+.. jupyter-execute::
+
+    model.plot()
+
+Having a model is not the same as having a *good* model. SurPyval provides three
+complementary checks. First, a **trend test** on the fitted data — the same
+Laplace / Military-Handbook tests used to decide whether a time-varying
+intensity was warranted in the first place:
+
+.. jupyter-execute::
+
+    result = model.trend_test()
+    print(result.trend, "trend, p-value", round(result.p_value, 3))
+
+Second, **residuals**. Via the time-rescaling theorem, the fitted model turns
+the event times into what should be a unit-rate Poisson process, so the
+cumulative-hazard residuals are (under the model) an i.i.d. Exp(1) sample with
+mean 1:
+
+.. jupyter-execute::
+
+    print(model.residuals().round(3))
+
+Third, a **goodness-of-fit test**. ``cramer_von_mises`` measures how far the
+transformed event times fall from uniformity and calibrates the statistic with
+a parametric bootstrap, so its p-value accounts for the parameters having been
+estimated. A large p-value means the fitted intensity is consistent with the
+data:
+
+.. jupyter-execute::
+
+    gof = model.cramer_von_mises(n_boot=100, seed=1)
+    print("statistic", round(gof.statistic, 3), " p-value", round(gof.p_value, 3))
+
+The same inference and diagnostic methods are available on the
+proportional-intensity regression models and the renewal models below.
+
 Renewal Modelling in SurPyval
 -----------------------------
 
