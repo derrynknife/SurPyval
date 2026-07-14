@@ -26,8 +26,9 @@ Two genuine blockers, both process rather than code:
   features, the simulation/`dist='t'` cleanups, the Fine-Gray regression
   implementation, the Efron-Hessian fix, delta-method confidence bounds
   (`cb`/`param_cb`/`covariance`) on the parametric regression models, and the
-  cause-specific Cox competing-risks CIF fix plus `fit_from_df`, and the
-  Buckley-James semi-parametric AFT model). Write real per-version entries
+  cause-specific Cox competing-risks CIF fix plus `fit_from_df`, the
+  Buckley-James semi-parametric AFT model, and two-stage degradation
+  confidence bounds (`DegradationModel.cb`)). Write real per-version entries
   before tagging.
 - **Add a publish workflow.** `.github/workflows/actions.yml` is CI-only (lint +
   pytest matrix + coverage, `on: [push]`). There is no tag-triggered
@@ -175,13 +176,12 @@ into `SurpyvalData`, and `ProportionalHazardsFitter` handles left-truncation via
 fits over 9 forms with `path="best"` AICc selection, extrapolation to a
 threshold, lifetime fit to the pseudo failure times), a two-stage
 noise-corrected population path-parameter distribution (moment and REML
-variants), and `predict_rul` shrinkage RUL predictions. Natural extensions,
-roughly in priority order:
+variants), `predict_rul` shrinkage RUL predictions, and `DegradationModel.cb`
+two-stage confidence bounds on the reliability (an analytic delta-method /
+generated-regressor correction that folds the first-stage path-fit and
+extrapolation uncertainty into the life-model covariance, plus a `method=
+"bootstrap"` cross-check). Natural extensions, roughly in priority order:
 
-- **Uncertainty propagation for the life model.** The two-stage method treats
-  pseudo failure times as exact, so life-model confidence bounds understate the
-  true uncertainty. A bootstrap over units (refit paths + life model per
-  resample) is the cheap fix; expose it as a `cb`/`bootstrap` option.
 - **Induced failure-time distribution.** With `(μ, Σ, σ²)` fitted (especially by
   REML), derive the population failure-time distribution from the path model
   directly (Monte Carlo over `θ ~ MVN` through `inv_path`) instead of via noisy

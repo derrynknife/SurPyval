@@ -52,8 +52,10 @@ def test_cox_ph_sim():
     """
     Generates samples randomly and tests convergence.
     """
-    # Instantiate random number generator
-    rng = np.random.default_rng()
+    # Instantiate random number generator. Seeded so the tight
+    # parameter-recovery tolerance below cannot flake (a bare default_rng()
+    # ignores the module seed fixture and was non-deterministic).
+    rng = np.random.default_rng(2)
 
     # Construct covariant (Z) matrix
     n_samples = 100
@@ -89,8 +91,10 @@ def test_exponential_ph_sim():
     Same as test_cox_ph_sim_example but for ExponentialPH, checking the
     baseline hazard rate is fitted correctly.
     """
-    # Instantiate random number generator
-    rng = np.random.default_rng()
+    # Instantiate random number generator. Seeded so the tight
+    # parameter-recovery tolerance below cannot flake (a bare default_rng()
+    # ignores the module seed fixture and was non-deterministic).
+    rng = np.random.default_rng(2)
 
     # Construct covariant (Z) matrix
     n_samples = 100
@@ -129,8 +133,10 @@ def test_weibull_ph_sim():
     Same as test_cox_ph_sim_example but with a Weibull baseline hazard, and
     testing WeibullPH can get the Weibull and covariant parameters correct.
     """
-    # Instantiate random number generator
-    rng = np.random.default_rng()
+    # Instantiate random number generator. Seeded so the tight
+    # parameter-recovery tolerance below cannot flake (a bare default_rng()
+    # ignores the module seed fixture and was non-deterministic).
+    rng = np.random.default_rng(2)
 
     # Construct covariant (Z) matrix
     n_samples = 100
