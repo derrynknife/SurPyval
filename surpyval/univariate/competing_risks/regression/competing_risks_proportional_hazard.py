@@ -15,10 +15,17 @@ from surpyval.utils import _get_idx, _scale, validate_fine_gray_inputs
 from .fine_gray import FineGray, _step
 
 
-class CompetingRiskProportionalHazard:
+class CompetingRisksProportionalHazards:
     """
+    Competing-risks proportional-hazards regression.
+
+    Fits either a cause-specific proportional-hazards model (``how="Cox"``,
+    one Cox model per cause with the other causes treated as censored) or a
+    Fine-Gray subdistribution-hazards model (``how="Fine-Gray"``). The naming
+    follows the package convention (compare ``CompetingRisks`` and
+    ``ProportionalHazards``).
+
     TODO: Time-Varying Implementation
-    TODO: Change this to SemiParametricCompetingRiskProportionalHazard ??
     """
 
     def _fg_model(self, event):
@@ -203,13 +210,15 @@ class CompetingRiskProportionalHazard:
         Returns
         -------
 
-        model : CompetingRiskProportionalHazard
-            A Competing Risk Proportional Hazard model with fitted params
+        model : CompetingRisksProportionalHazards
+            A competing-risks proportional-hazards model with fitted params
             and helper methods using the fitted params.
 
         Examples
         --------
-        >>> from surpyval.univariate.competing_risks import CRPH
+        >>> from surpyval.univariate.competing_risks import (
+        ...     CompetingRisksProportionalHazards,
+        ... )
 
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
@@ -277,6 +286,3 @@ class CompetingRiskProportionalHazard:
         model.H0_e = baselines.cumsum(axis=1)
         model.x = unique_x
         return model
-
-
-CRPH = CompetingRiskProportionalHazard

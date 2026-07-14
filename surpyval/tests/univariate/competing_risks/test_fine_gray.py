@@ -10,7 +10,10 @@ naive (unweighted) subdistribution risk set would be biased.
 import numpy as np
 import pytest
 
-from surpyval.univariate.competing_risks import CRPH, FineGray
+from surpyval.univariate.competing_risks import (
+    CompetingRisksProportionalHazards,
+    FineGray,
+)
 
 
 def _simulate_fine_gray(N, seed, beta=(0.7, -0.4), p=0.5, cens_scale=3.0):
@@ -135,12 +138,12 @@ def test_unknown_cause_rejected():
         FineGray.fit(x, Z, e, c=c, cause=99)
 
 
-# --- CRPH integration -----------------------------------------------------
+# --- CompetingRisksProportionalHazards integration -----------------------
 
 
 def test_crph_fine_gray_matches_standalone():
     x, Z, e, c = _simulate_fine_gray(5000, 9)
-    crph = CRPH.fit(x, Z, e, c=c, how="Fine-Gray")
+    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Fine-Gray")
     standalone = FineGray.fit(x, Z, e, c=c, cause=1)
     i1 = crph.event_idx_map[1]
     assert np.allclose(crph.betas[i1], standalone.beta, atol=1e-6)
@@ -152,7 +155,7 @@ def test_crph_fine_gray_matches_standalone():
 
 def test_crph_fine_gray_cif_identities():
     x, Z, e, c = _simulate_fine_gray(4000, 10)
-    crph = CRPH.fit(x, Z, e, c=c, how="Fine-Gray")
+    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Fine-Gray")
     t = np.array([0.5, 1.0, 2.0])
     Z0 = [0.1, 0.1]
     assert np.allclose(crph.sf(t, Z0, 1) + crph.cif(t, Z0, 1), 1.0)
@@ -161,7 +164,7 @@ def test_crph_fine_gray_cif_identities():
 
 def test_crph_fine_gray_hf_df_raise():
     x, Z, e, c = _simulate_fine_gray(2000, 11)
-    crph = CRPH.fit(x, Z, e, c=c, how="Fine-Gray")
+    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Fine-Gray")
     with pytest.raises(ValueError, match="no pointwise"):
         crph.hf([1.0], [0.0, 0.0], 1)
     with pytest.raises(ValueError, match="no pointwise"):
@@ -170,7 +173,7 @@ def test_crph_fine_gray_hf_df_raise():
 
 def test_crph_fine_gray_requires_event():
     x, Z, e, c = _simulate_fine_gray(2000, 12)
-    crph = CRPH.fit(x, Z, e, c=c, how="Fine-Gray")
+    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Fine-Gray")
     with pytest.raises(ValueError, match="pass `event`"):
         crph.sf([1.0], [0.0, 0.0])
 
@@ -179,6 +182,6 @@ def test_crph_cox_path_still_runs():
     # Regression guard: the cause-specific Cox path (a sibling of the same
     # public entry point) fits and predicts.
     x, Z, e, c = _simulate_fine_gray(3000, 13)
-    crph = CRPH.fit(x, Z, e, c=c, how="Cox")
+    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Cox")
     cif = crph.cif(np.array([0.5, 1.0, 2.0]), [0.1, -0.1], 1)
     assert np.all(np.isfinite(cif))

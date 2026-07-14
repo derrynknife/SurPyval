@@ -41,15 +41,15 @@ forest).
 
 ## 2. Correctness — broken or fragile public API (high priority)
 
-- **`CRPH.fit_from_df` is unimplemented** (`raise NotImplementedError("Not
-  yet...")`). Add the DataFrame entry point for both the Cox and Fine-Gray
-  competing-risks paths.
+- **`CompetingRisksProportionalHazards.fit_from_df` is unimplemented** (`raise
+  NotImplementedError("Not yet...")`). Add the DataFrame entry point for both
+  the Cox and Fine-Gray competing-risks paths.
 - **Competing-risks regression needs test coverage and Cox-path review.** The
   Fine-Gray path is now implemented (IPCW subdistribution model, with tests);
-  the cause-specific Cox path (`CRPH.fit(how="Cox")`) fits and predicts but is
-  thinly tested, and its shared Breslow `baseline()` (all-cause event counts
-  with a Fine-Gray-style risk set) should be reviewed for the cause-specific
-  CIF before it is relied on.
+  the cause-specific Cox path (`CompetingRisksProportionalHazards.fit(
+  how="Cox")`) fits and predicts but is thinly tested, and its shared Breslow
+  `baseline()` (all-cause event counts with a Fine-Gray-style risk set) should
+  be reviewed for the cause-specific CIF before it is relied on.
 - **Cox PH exact / Kalbfleisch-Prentice tie methods.** `cox_ph.py` now supports
   Breslow and Efron ties, both with analytic-Hessian standard errors and
   p-values (the Efron Hessian, previously computed with an inner product in
