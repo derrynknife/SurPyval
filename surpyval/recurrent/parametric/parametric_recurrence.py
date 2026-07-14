@@ -58,22 +58,9 @@ class ParametricRecurrenceModel(
             + param_string
         )
 
-    def _new_sequence_sampler(self):
-        x_prev = 0.0
-
-        def sample(ui):
-            nonlocal x_prev
-            u_adj = ui * np.exp(-self.cif(x_prev))
-            xi = self.inv_cif(-np.log(u_adj)) - x_prev
-            x_prev += xi
-            return xi
-
-        return sample
-
-    def _postprocess_simulated_model(self, model):
-        if self.dist.name == "CoxLewis":
-            model.mcf_hat += np.exp(self.params[0])
-        return model
+    # Simulation uses the shared conditional inverse-CIF sampler and the
+    # CoxLewis post-processing from RecurrenceSimulationMixin; this model is
+    # unconditional, so it needs no extra cif args (_cif_args defaults to ()).
 
     def cif(self, x):
         """

@@ -210,26 +210,12 @@ class ProportionalIntensityModel(
         dist_bounds = getattr(self, "bounds", None) or self.dist.bounds
         return [*dist_bounds, *[(None, None)] * len(self.coeffs)]
 
-    def _new_sequence_sampler(self):
-        # The shared simulation driver requests one of these per item; the
+    def _cif_args(self):
+        # The shared inverse-CIF sampler threads these into cif/inv_cif; the
         # covariate vector for the run is stashed on ``_sim_Z`` by the public
-        # simulation entry points below.
-        Z = self._sim_Z
-        x_prev = 0.0
-
-        def sample(ui):
-            nonlocal x_prev
-            u_adj = ui * np.exp(-self.cif(x_prev, Z))
-            xi = self.inv_cif(-np.log(u_adj), Z) - x_prev
-            x_prev += xi
-            return xi
-
-        return sample
-
-    def _postprocess_simulated_model(self, model):
-        if self.dist.name == "CoxLewis":
-            model.mcf_hat += np.exp(self.params[0])
-        return model
+        # simulation entry points below. (CoxLewis post-processing is handled
+        # by the shared mixin.)
+        return (self._sim_Z,)
 
     def count_terminated_simulation(self, events, Z, items=1, seed=None):
         """

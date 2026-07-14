@@ -100,13 +100,15 @@ policy: either render with `np.float64(...)` reprs and run doctests in
 CI, or keep the readable plain-float style and accept that examples
 are unchecked.
 
-### Duplicated simulation block
-The same "simulate timelines to `T`" loop appears twice:
-
-- `surpyval/recurrent/parametric/parametric_recurrence.py` (`time_terminated_simulation`)
-- `surpyval/recurrent/regression/proportional_intensity.py` (`time_terminated_simulation`)
-
-Extract a shared helper. The `count_terminated_simulation` methods are similarly duplicated.
+### Duplicated simulation block (done)
+The count/time-terminated simulation loops and their public drivers live once
+in `RecurrenceSimulationMixin` (`surpyval/recurrent/simulation.py`), shared by
+the parametric, proportional-intensity and renewal models. The residual
+per-family duplication has also been removed: the conditional inverse-CIF
+`_new_sequence_sampler` and the CoxLewis `_postprocess_simulated_model` now
+live in the mixin, and subclasses only declare the extra `cif`/`inv_cif`
+arguments via `_cif_args` (empty for unconditional models; the covariate
+vector for proportional-intensity models).
 
 ---
 
