@@ -21,13 +21,12 @@ class RecurrenceSimulationMixin:
     """
     Shared simulation machinery for fitted recurrent-event models.
 
-    Subclasses provide the per-event sampling logic by implementing
-    ``_new_sequence_sampler``, which returns a callable mapping a uniform
-    random number to the next interarrival time and which carries its own
-    per-sequence state. Subclasses may optionally override
-    ``_postprocess_simulated_model`` to adjust the fitted
-    ``NonParametricCounting`` model (e.g. the CoxLewis offset) before it is
-    returned.
+    Every recurrence model here samples the next event by the same
+    conditional inverse-CIF construction, so that lives in
+    ``_new_sequence_sampler``. The only per-family difference is the extra
+    arguments threaded into ``cif``/``inv_cif``: unconditional models pass
+    none, proportional-intensity models pass the covariate vector. Subclasses
+    declare those via ``_cif_args`` rather than reimplementing the sampler.
     """
 
     def _set_simulation_seed(self, seed):
@@ -54,19 +53,50 @@ class RecurrenceSimulationMixin:
             self.initialize_simulation()
             return self.us.pop()
 
+    def _cif_args(self):
+        """
+        Extra positional arguments threaded into ``cif``/``inv_cif`` for each
+        simulated sequence. Empty for unconditional models; the covariate
+        vector for proportional-intensity models (which override this).
+        """
+        return ()
+
     def _new_sequence_sampler(self):
         """
         Return a callable ``sample(ui) -> xi`` that draws the next interarrival
-        time from a uniform random number, maintaining any per-sequence state
+        time from a uniform random number, maintaining per-sequence state
         internally. A fresh sampler is requested for each simulated sequence.
+
+        The next event is sampled by inverting the cumulative intensity
+        conditional on the time of the previous event: given the CIF value at
+        ``x_prev``, a uniform ``ui`` maps to the next event time via
+        ``inv_cif(-log(ui) + cif(x_prev))``. Any per-family arguments (e.g. the
+        covariate vector) come from :meth:`_cif_args`.
         """
-        raise NotImplementedError
+        cif_args = self._cif_args()
+        x_prev = 0.0
+
+        def sample(ui):
+            nonlocal x_prev
+            u_adj = ui * np.exp(-self.cif(x_prev, *cif_args))
+            xi = self.inv_cif(-np.log(u_adj), *cif_args) - x_prev
+            x_prev += xi
+            return xi
+
+        return sample
 
     def _postprocess_simulated_model(self, model):
         """
-        Hook to adjust the fitted ``NonParametricCounting`` model in place
-        before it is returned. Default is a no-op.
+        Adjust the fitted ``NonParametricCounting`` model in place before it is
+        returned. A CoxLewis (log-linear) intensity has a non-zero baseline
+        rate ``exp(alpha)`` at time zero that the simulated event counts do not
+        carry, so it is added back to the MCF here. Other intensity models --
+        and renewal models, which carry no top-level ``dist`` -- are left
+        unchanged.
         """
+        dist = getattr(self, "dist", None)
+        if dist is not None and dist.name == "CoxLewis":
+            model.mcf_hat += np.exp(self.params[0])
         return model
 
     def _simulate_count_xicn(self, events, items, seed):
