@@ -26,8 +26,9 @@ Two genuine blockers, both process rather than code:
   features, the simulation/`dist='t'` cleanups, the Fine-Gray regression
   implementation, the Efron-Hessian fix, delta-method confidence bounds
   (`cb`/`param_cb`/`covariance`) on the parametric regression models, and the
-  cause-specific Cox competing-risks CIF fix plus `fit_from_df`). Write real
-  per-version entries before tagging.
+  cause-specific Cox competing-risks CIF fix plus `fit_from_df`, and the
+  Buckley-James semi-parametric AFT model). Write real per-version entries
+  before tagging.
 - **Add a publish workflow.** `.github/workflows/actions.yml` is CI-only (lint +
   pytest matrix + coverage, `on: [push]`). There is no tag-triggered
   `pypa/gh-action-pypi-publish` step, so releasing to PyPI is fully manual. Add
@@ -125,13 +126,14 @@ remains:
 
 ## 5. Semi-Parametric Regression — future work
 
-Proportional hazards (`CoxPH` + parametric `WeibullPH` …) and additive hazards
-(semi-parametric `AdditiveHazards` + parametric `AH(dist)`) are both complete.
-Three candidates remain, in priority order:
+The semi-parametric trio is complete: proportional hazards (`CoxPH`), additive
+hazards (`AdditiveHazards`), and now accelerated failure time (`BuckleyJames` —
+`log T = β'Z + ε` with an unspecified error distribution, fit by the
+Buckley-James imputation iteration with an Efron-corrected residual KM,
+two-cycle handling, bootstrap CIs, and `fit_from_df`; coefficients follow the
+package's accelerated-failure sign convention). Two lower-priority candidates
+remain:
 
-- **Buckley-James (semi-parametric AFT) — high.** The semi-parametric
-  counterpart to Cox PH: fits `log(T) = β'Z + ε` with no parametric baseline via
-  iterative censoring imputation. Completes the semi-parametric trio.
 - **Semi-parametric proportional odds — low.** `O(x|Z) = O₀(x)·exp(β'Z)` with a
   non-parametric baseline odds step function; needs joint NPMLE of `(β, Λ₀)`
   (profile likelihood with an isotonic inner loop). Much harder than Cox PH;

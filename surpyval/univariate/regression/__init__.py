@@ -9,6 +9,7 @@ from .accelerated_failure_time import (
     NormalAFT,
     WeibullAFT,
 )
+from .buckley_james import BuckleyJames, BuckleyJamesModel
 from .accelerated_life import (
     AcceleratedLife,
     DualExponential,
@@ -62,6 +63,9 @@ from .proportional_odds import (
 )
 
 __all__ = [
+    # Buckley-James semi-parametric AFT
+    "BuckleyJames",
+    "BuckleyJamesModel",
     # Additive hazards — semi-parametric (Lin-Ying) and parametric
     "AH",
     "AdditiveHazards",
