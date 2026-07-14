@@ -1,2 +1,8 @@
 from .nonparametric import CompetingRisks
-from .regression import CRPH, CompetingRiskProportionalHazard, FineGray
+from .regression import CompetingRisksProportionalHazards, FineGray
+
+__all__ = [
+    "CompetingRisks",
+    "CompetingRisksProportionalHazards",
+    "FineGray",
+]

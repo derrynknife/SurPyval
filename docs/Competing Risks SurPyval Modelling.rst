@@ -5,14 +5,12 @@ Competing Risks SurPyval Modelling
 This page shows how to use SurPyval's competing risks classes. For the
 theoretical background see :doc:`Competing Risks Analysis`.
 
-.. warning::
+.. note::
 
     The competing risks subsystem is under active development. The
-    ``CompetingRisks`` examples on this page are executed when the
-    documentation is built and work as shown. The ``FineGray`` and
-    ``CompetingRiskProportionalHazard`` fitters, however, currently crash on
-    first call; their sections below show the intended API only. These
-    issues are tracked in ``DEVELOPMENT.md``.
+    ``CompetingRisks`` example on this page is executed when the documentation
+    is built; the ``FineGray`` and ``CompetingRisksProportionalHazards``
+    snippets show the (working) regression API.
 
 Standard imports used throughout this page:
 
@@ -66,31 +64,37 @@ Once fitted, you can query the CIF for each cause:
     plt.title('Competing Risks CIF by Cause')
 
 
-Fine-Gray Sub-distribution Hazards (Planned)
----------------------------------------------
+Fine-Gray Sub-distribution Hazards
+----------------------------------
 
 The Fine-Gray model estimates the effect of covariates directly on the
-cumulative incidence function. The intended API mirrors the single-event
-regression fitters:
+cumulative incidence function of a chosen cause, using an
+inverse-probability-of-censoring-weighted subdistribution risk set. ``e`` is
+the per-observation cause label (``None`` for a censored row) and ``cause``
+selects the cause of interest:
 
 .. code-block:: python
 
-    # Planned API — not yet working (see DEVELOPMENT.md)
     from surpyval.univariate.competing_risks import FineGray
 
-    model = FineGray.fit(x=x, c=c, Z=Z, cause=cause, cause_of_interest=0)
-    print(model.summary())
+    # x times, Z covariates, e cause labels, c censoring flags
+    model = FineGray.fit(x, Z, e, c=c, cause=0)
+    print(model)                 # coefficients, standard errors, p-values
+    model.cif(t, Z=[0.5, 1.2])   # cumulative incidence of cause 0
 
-Cause-Specific Proportional Hazards (Planned)
-----------------------------------------------
+Cause-Specific Proportional Hazards
+-----------------------------------
 
-Fit a separate proportional hazards model per cause, censoring all other
-events:
+``CompetingRisksProportionalHazards`` fits a proportional-hazards model per
+cause. With ``how="Cox"`` (the default) each cause is a Cox model with the
+other causes treated as censored; ``how="Fine-Gray"`` fits the subdistribution
+model above for every cause:
 
 .. code-block:: python
 
-    # Planned API — not yet working (see DEVELOPMENT.md)
-    from surpyval.univariate.competing_risks import CompetingRiskProportionalHazard
+    from surpyval.univariate.competing_risks import (
+        CompetingRisksProportionalHazards,
+    )
 
-    model = CompetingRiskProportionalHazard.fit(x=x, c=c, Z=Z, cause=cause)
-    print(model.summary())
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Cox")
+    model.cif(t, Z=[0.5, 1.2], event=0)

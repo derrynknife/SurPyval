@@ -12,14 +12,32 @@ import numpy as np
 from surpyval.univariate.regression import CoxPH
 from surpyval.utils import _get_idx, _scale, validate_fine_gray_inputs
 
-from .fine_gray import FineGray
+from .fine_gray import FineGray, _step
 
 
-class CompetingRiskProportionalHazard:
+class CompetingRisksProportionalHazards:
     """
+    Competing-risks proportional-hazards regression.
+
+    Fits either a cause-specific proportional-hazards model (``how="Cox"``,
+    one Cox model per cause with the other causes treated as censored) or a
+    Fine-Gray subdistribution-hazards model (``how="Fine-Gray"``). The naming
+    follows the package convention (compare ``CompetingRisks`` and
+    ``ProportionalHazards``).
+
     TODO: Time-Varying Implementation
-    TODO: Change this to SemiParametricCompetingRiskProportionalHazard ??
     """
+
+    def _fg_model(self, event):
+        # Resolve the per-cause Fine-Gray subdistribution model, requiring an
+        # explicit cause (the Fine-Gray CIF is defined one cause at a time).
+        if event is None:
+            raise ValueError(
+                "A Fine-Gray model predicts one cause at a time; pass `event`."
+            )
+        if event not in self._fg_models:
+            raise ValueError("Unrecognised event type for this model")
+        return self._fg_models[event]
 
     def _f(self, arr, x, Z, event=None, interp="step"):
         idx, rev = _get_idx(self.x, x)
@@ -34,28 +52,48 @@ class CompetingRiskProportionalHazard:
             return (arr[e_i, idx] * self.phi_e(Z, e_i))[rev]
 
     def hf(self, x, Z, event=None, interp="step"):
+        if self.how == "Fine-Gray":
+            raise ValueError(
+                "The Fine-Gray subdistribution hazard has no pointwise "
+                "density from the step baseline; use `cif` or `Hf`."
+            )
         return self._f(self.h0_e, x, Z, event=event, interp=interp)
 
     def Hf(self, x, Z, event=None, interp="step"):
+        if self.how == "Fine-Gray":
+            # Cumulative subdistribution hazard H0_k(x) * exp(beta'Z) = -log S.
+            return -np.log(self.sf(x, Z, event=event))
         return self._f(self.H0_e, x, Z, event=event, interp=interp)
 
     def sf(self, x, Z, event=None, interp="step"):
+        if self.how == "Fine-Gray":
+            return self._fg_model(event).sf(x, Z)
         return np.exp(-self.Hf(x, Z, event=event, interp=interp))
 
     def ff(self, x, Z, event=None, interp="step"):
+        if self.how == "Fine-Gray":
+            return self.cif(x, Z, event)
         return 1 - self.sf(x, Z, event=event, interp=interp)
 
     def df(self, x, Z, event=None, interp="step"):
+        if self.how == "Fine-Gray":
+            raise ValueError(
+                "The Fine-Gray subdistribution density has no pointwise form "
+                "from the step baseline; use `cif`."
+            )
         return self.hf(x, Z, event=event, interp=interp) * self.sf(
             x, Z, event=event, interp=interp
         )
 
     def cif(self, x, Z, event):
-        # Index and reverse index
-        # in case x is not in order.
+        if self.how == "Fine-Gray":
+            # Direct subdistribution CIF: 1 - exp(-H0_k(x) exp(beta'Z)).
+            return self._fg_model(event).cif(x, Z)
+
+        # Cause-specific CIF: integrate this cause's hazard against the
+        # all-cause survival. Index and reverse index in case x is unordered.
         idx, rev = _get_idx(self.x, x)
 
-        # CIF
         lambda_e = self.hf(self.x, Z, event)
         S = self.sf(self.x, Z)
         # iif = instantaneous incidence function
@@ -172,13 +210,15 @@ class CompetingRiskProportionalHazard:
         Returns
         -------
 
-        model : CompetingRiskProportionalHazard
-            A Competing Risk Proportional Hazard model with fitted params
+        model : CompetingRisksProportionalHazards
+            A competing-risks proportional-hazards model with fitted params
             and helper methods using the fitted params.
 
         Examples
         --------
-        >>> from surpyval.univariate.competing_risks import CRPH
+        >>> from surpyval.univariate.competing_risks import (
+        ...     CompetingRisksProportionalHazards,
+        ... )
 
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
@@ -210,21 +250,30 @@ class CompetingRiskProportionalHazard:
             for i, event in enumerate(unique_e):
                 c_e = np.where(e == event, 0, 1)
 
-                res = CoxPH.fit(
-                    x, Z, c_e, n, method=tie_method, with_hess=False
-                ).res
+                res = CoxPH.fit(x, Z, c_e, n, method=tie_method).res
 
                 results.append(res)
                 betas[i, :] = res.x
                 baselines[i, :] = cls.baseline(res.x, x, c, n, Z, e, event)
 
         elif how == "Fine-Gray":
-            results, unique_e = FineGray.fit(x, Z, e, c, n)
-            for i, res in enumerate(results):
-                betas[i, :] = res.x
-                baselines[i, :] = cls.baseline(
-                    res.x, x, c, n, Z, e, unique_e[i]
-                )
+            # Delegate to the IPCW Fine-Gray fitter, one subdistribution model
+            # per cause. The authoritative predictions come from these models
+            # (see ``_fg_models`` and the ``cif``/``sf`` branches below); the
+            # ``baselines`` grid is filled with each cause's cumulative
+            # subdistribution hazard for a coherent ``H0_e``.
+            fg_models = {}
+            results = []
+            for i, event in enumerate(unique_e):
+                fg = FineGray.fit(x, Z, e, c=c, n=n, cause=event)
+                fg_models[event] = fg
+                results.append(fg.res)
+                betas[i, :] = fg.beta
+                # Store increments so the shared ``H0_e = baselines.cumsum``
+                # equals this cause's cumulative subdistribution hazard.
+                H_grid = _step(fg._times, fg._cumhaz, unique_x, before=0.0)
+                baselines[i, :] = np.diff(H_grid, prepend=0.0)
+            model._fg_models = fg_models
         else:
             raise ValueError("`how` must be either 'Cox' or 'Fine-Gray")
 
@@ -237,6 +286,3 @@ class CompetingRiskProportionalHazard:
         model.H0_e = baselines.cumsum(axis=1)
         model.x = unique_x
         return model
-
-
-CRPH = CompetingRiskProportionalHazard

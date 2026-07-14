@@ -1,5 +1,6 @@
 from .competing_risks_proportional_hazard import (
-    CRPH,
-    CompetingRiskProportionalHazard,
+    CompetingRisksProportionalHazards,
 )
 from .fine_gray import FineGray
+
+__all__ = ["CompetingRisksProportionalHazards", "FineGray"]

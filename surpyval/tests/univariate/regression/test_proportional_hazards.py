@@ -194,15 +194,68 @@ def test_count_weights_equivalent_to_repeated():
     assert np.allclose(m_rep.beta, m_cnt.beta, atol=1e-6)
 
 
-def test_efron_p_values_is_none():
-    # Efron root-finding does not return a Hessian, so p_values should be None.
+def test_efron_returns_p_values():
+    # Efron now returns its (corrected) analytic Hessian, so p_values are
+    # produced -- finite probabilities in [0, 1], one per covariate.
     x = [1.0, 2.0, 3.0, 4.0, 5.0]
     Z = [[0.1], [0.5], [0.3], [0.8], [0.2]]
     c = [0, 0, 0, 0, 0]
 
     model = CoxPH.fit(x=x, Z=Z, c=c, method="efron")
 
-    assert model.p_values is None
+    assert model.p_values is not None
+    assert model.p_values.shape == (1,)
+    assert np.all(np.isfinite(model.p_values))
+    assert np.all((model.p_values >= 0) & (model.p_values <= 1))
+
+
+def test_efron_hessian_matches_finite_difference():
+    # The analytic Efron information (returned as the root-finding Jacobian)
+    # must match a central-difference Jacobian of the score, including the
+    # off-diagonal terms that the old inner-product bug corrupted. Uses a
+    # multi-covariate design with tied event times.
+    from surpyval.utils import validate_coxph
+
+    rng = np.random.default_rng(0)
+    N, p = 300, 3
+    Z = rng.normal(size=(N, p))
+    eta = np.exp(Z @ [0.5, 0.0, -0.4])
+    t = np.round(-np.log(rng.uniform(size=N)) / eta, 1)
+    c = (rng.uniform(size=N) < 0.25).astype(int)
+
+    x, cc, nn, tl, ZZ = validate_coxph(t, c, np.ones(N), Z, None, "efron")
+    _, jac_hess, has_hess = CoxPH.create_efron_ll_jac_hess(x, ZZ, cc, nn, tl)
+    assert has_hess
+
+    beta = np.array([0.1, -0.1, 0.2])
+    H = jac_hess(beta)[1]
+    eps = 1e-6
+    H_num = np.zeros((p, p))
+    for k in range(p):
+        bp, bm = beta.copy(), beta.copy()
+        bp[k] += eps
+        bm[k] -= eps
+        H_num[:, k] = (jac_hess(bp)[0] - jac_hess(bm)[0]) / (2 * eps)
+
+    assert np.allclose(H, H_num, atol=1e-5)
+    assert np.allclose(H, H.T)  # symmetric
+    assert np.all(np.linalg.eigvalsh(H) > 0)  # positive definite
+
+
+def test_efron_and_breslow_p_values_agree_without_ties():
+    # With no tied event times Efron and Breslow reduce to the same partial
+    # likelihood, so their standard errors (hence p-values) should agree.
+    rng = np.random.default_rng(1)
+    N = 2000
+    Z = rng.normal(size=(N, 2))
+    x = -np.log(rng.uniform(size=N)) / np.exp(Z @ [0.7, -0.5])
+    c = (rng.uniform(size=N) < 0.2).astype(int)
+
+    m_ef = CoxPH.fit(x=x, Z=Z, c=c, method="efron")
+    m_br = CoxPH.fit(x=x, Z=Z, c=c, method="breslow")
+
+    assert np.allclose(m_ef.beta, m_br.beta, atol=1e-3)
+    assert np.allclose(m_ef.p_values, m_br.p_values, atol=1e-2)
 
 
 def test_baseline_hazard_properties():

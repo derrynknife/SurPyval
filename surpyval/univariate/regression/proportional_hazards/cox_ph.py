@@ -109,8 +109,16 @@ def efron_jac(n_d, Ri, ZRi, Di, ZDi, masked_array):
 
 
 def efron_hess_jit(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di, out):
-    # TODO: Vectorised implementation like for the jacobian above
-    # Not sure my brain can handle that many dimensions.
+    # Per-tied-time contribution to the observed information (the Hessian of
+    # the negative Efron partial log-likelihood). For each of the ``n_d[i]``
+    # tied deaths the Efron correction shrinks the risk set by ``c * D``:
+    #
+    #     sum_j (Z2R - c Z2D) / (R - c D) - a a' / (R - c D)^2,
+    #
+    # with ``a = ZR - c ZD``. The second term is the *outer* product ``a a'``
+    # (a p x p matrix), which is where this previously went wrong -- an inner
+    # product collapses it to a scalar and silently corrupts the off-diagonal
+    # information for any model with more than one covariate.
     for i in range(len(n_d)):
         val = np.zeros(out.shape[1:])
         if n_d[i] == 0:
@@ -119,18 +127,8 @@ def efron_hess_jit(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di, out):
             c = j / n_d[i]
             dRD = Ri[i] - c * Di[i]
             a = ZRi[i] - c * ZDi[i]
-            # If einsum ever supported by numba, remove this
-            if a.shape == (1,):
-                a2 = a * a
-            else:
-                a2 = a @ a.reshape(-1, 1)
-            val += (
-                +dRD * (Z2Ri[i] - c * Z2Di[i])
-                # Einsum not supported by numba
-                # Change if this ever is the case.
-                # - np.einsum('i, j -> ij', a, a)
-                - a2
-            ) / dRD**2
+            a2 = np.outer(a, a)
+            val += (dRD * (Z2Ri[i] - c * Z2Di[i]) - a2) / dRD**2
         out[i] = val
     return out
 
@@ -172,12 +170,8 @@ class CoxPH_:
     ):
         # The reference used to compute the jacobian and hessian
         # was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
-        # TODO: Incorporate left-truncation... somehow.
-        # left truncation allows for implementation of time-varying covariates
-
-        # To do left truncation. All one needs to do is to adjust the risk set.
-        # I am aiming to implement this by:
-        # Ri - TRi.. that's it!
+        # Left-truncation is handled by subtracting the pre-entry risk set
+        # (``Ri - TRi``) below, so delayed-entry data is fitted correctly.
 
         # Groupby object for repeated use
         gb_x = _GroupBy(x)
@@ -286,26 +280,29 @@ class CoxPH_:
             diff = S_d - expected_S_d
             jacobian = -diff.sum(axis=0)
 
-            # Something remains incorrect with the Hessian
+            # Observed information (Hessian of the negative log-likelihood),
+            # accumulated per tied time then summed. Same positive-definite
+            # convention as the Breslow branch, so ``inv(hess)`` gives the
+            # parameter covariance directly.
             Z2Di = np.einsum("ijk, ij -> ijk", Z2, n_d_x * e_beta_z)
             Z2Di = gb_x.sum(Z2Di)[1]
 
-            hess_matrix = np.zeros_like(Z2)
+            n_params = Z.shape[1]
+            hess_matrix = np.zeros((len(n_d), n_params, n_params))
             hess_matrix = efron_hess_jit(
                 n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di, hess_matrix
             )
-            hess_matrix = -hess_matrix.sum(axis=0)
+            hess_matrix = hess_matrix.sum(axis=0)
 
-            return jacobian  # , hess_matrix
+            return jacobian, hess_matrix
 
-        return log_like, jac_hess, False
+        return log_like, jac_hess, True
 
     def create_breslow_ll_jac_hess(self, x, Z, c, n, tl):
         # The reference used to compute the jacobian and hessian
         # was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
-
-        # TODO: Incorporate left-truncation... somehow.
-        # left truncation allows for implementation of time-varying covariates
+        # Left-truncation is handled by subtracting the pre-entry risk set
+        # (``Ri - TRi``) below, so delayed-entry data is fitted correctly.
 
         gb_x = _GroupBy(x)
         gb_tl = _GroupBy(tl)
