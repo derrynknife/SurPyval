@@ -67,9 +67,7 @@ def _step(times, values, query, before):
     first time.
     """
     idx = np.searchsorted(times, query, side="right") - 1
-    out = np.where(
-        idx < 0, before, values[np.clip(idx, 0, len(values) - 1)]
-    )
+    out = np.where(idx < 0, before, values[np.clip(idx, 0, len(values) - 1)])
     return out
 
 
@@ -116,9 +114,7 @@ def _fit_cause(x, Z, e, c, n, cause):
         weighted_exp = n * anp.exp(eta)
         denom = anp.dot(W, weighted_exp)
         eta_event = anp.dot(Z_event, beta)
-        ll = anp.sum(n_event * eta_event) - anp.sum(
-            n_event * anp.log(denom)
-        )
+        ll = anp.sum(n_event * eta_event) - anp.sum(n_event * anp.log(denom))
         return -ll
 
     beta0 = np.zeros(Z.shape[1])
@@ -209,12 +205,8 @@ class FineGrayModel:
             f"Cause of interest   : {self.cause}",
             "Coefficients (beta'Z acts on the subdistribution hazard):",
         ]
-        for i, (b, s, p) in enumerate(
-            zip(self.beta, self.se, self.p_values)
-        ):
-            lines.append(
-                f"   beta_{i}  :  {b: .6f}  (se {s:.6f}, p {p:.4f})"
-            )
+        for i, (b, s, p) in enumerate(zip(self.beta, self.se, self.p_values)):
+            lines.append(f"   beta_{i}  :  {b: .6f}  (se {s:.6f}, p {p:.4f})")
         return "\n".join(lines)
 
 
