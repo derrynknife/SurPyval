@@ -1025,8 +1025,16 @@ class ParametricFitter:
         for k, v in results.items():
             setattr(model, k, v)
 
+        # Expose each fitted parameter by name (e.g. ``model.alpha``), but
+        # never overwrite the reserved offset / limited-failure /
+        # zero-inflation attributes, which the survival functions rely on.
+        # A distribution may legitimately name a parameter ``p`` (e.g.
+        # ``Geometric``, ``NegativeBinomial``); those remain available via
+        # ``model.params``.
+        reserved = {"gamma", "p", "f0"}
         for k, v in zip(self.param_names, model.params):
-            setattr(model, k, v)
+            if k not in reserved:
+                setattr(model, k, v)
 
         self._set_support(model, offset)
 

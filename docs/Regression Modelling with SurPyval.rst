@@ -26,7 +26,7 @@ For the rest of this page we assume the following imports:
 Choosing a regression model family
 ------------------------------------
 
-There are three fundamentally different ways a covariate can affect a survival
+There are four fundamentally different ways a covariate can affect a survival
 distribution. Each gives rise to a distinct model family:
 
 **Proportional Hazards (PH)** — the covariate multiplies the *rate of dying*:
@@ -65,6 +65,21 @@ converges toward failure regardless of their covariates. When you believe the
 PH assumption ("constant hazard ratio for all time") is too strong, PO is often
 a better default.
 
+**Additive Hazards (AH)** — the covariate *adds* to the hazard instead of
+multiplying it:
+
+.. math::
+
+    h(x \mid Z) = h_0(x) + \beta' Z
+
+Here :math:`\beta_j` is a *risk difference* — the change in the absolute hazard
+per unit of covariate, constant over time — rather than a hazard *ratio*. This
+is the natural scale when you care about *how many extra failures per unit time*
+a factor causes: excess risk in epidemiology, or reliability settings where
+hazards from independent mechanisms genuinely add. Because the effect is
+additive rather than exponential it is not constrained to be positive, which is
+both its interpretive appeal and its main caveat (discussed below).
+
 **Accelerated Life (AL)** — the covariate substitutes the distribution's *life
 parameter*:
 
@@ -89,8 +104,10 @@ because the exponential guarantees :math:`\phi > 0` for any covariate value and
 any β — no parameter constraints needed. A positive β makes failure faster;
 negative makes it slower.
 
-SurPyval supports all four families, each available as pre-built instances for
-every standard distribution and as factory functions for custom combinations:
+SurPyval supports all of these families, each available as pre-built instances
+for every standard distribution and as factory functions for custom
+combinations (with additive hazards provided as a single semi-parametric
+model):
 
 .. list-table::
    :header-rows: 1
@@ -108,6 +125,9 @@ every standard distribution and as factory functions for custom combinations:
    * - Proportional Odds (PO)
      - Scales the survival odds :math:`O(x|Z) = O_0(x)\,\phi(Z)`
      - ``WeibullPO``, ``LogisticPO``, …
+   * - Additive Hazards (AH)
+     - Adds to the hazard rate :math:`h(x|Z) = h_0(x) + \beta'Z`
+     - ``AdditiveHazards``
    * - Accelerated Life (AL)
      - Substitutes the life parameter with a physics-motivated function
      - ``AcceleratedLife(Weibull, Power)``, ``AcceleratedLife(Weibull, Eyring)``
@@ -182,6 +202,64 @@ mean tire against 10% above and below average:
 
 The step-function shape is the signature of the non-parametric baseline —
 the model makes no smoothness assumptions about :math:`h_0(x)`.
+
+
+Semi-Parametric — Additive Hazards
+----------------------------------
+
+The Lin & Ying additive hazards model is the additive-scale companion to Cox.
+Like Cox it leaves the baseline hazard :math:`h_0(x)` completely unspecified,
+but the covariate effect is a *risk difference* rather than a hazard *ratio*:
+
+.. math::
+
+    h(x \mid Z) = h_0(x) + \beta' Z
+
+Its practical convenience is that, unlike Cox's iterative partial likelihood,
+the coefficient estimator is *closed form* — a ratio of sums accumulated over
+the risk sets — so there is no optimisation and nothing to converge. Standard
+errors come from the Lin-Ying sandwich estimator. We can reuse the tire data
+and the significant covariates from the Cox fit above:
+
+.. jupyter-execute::
+
+    from surpyval import AdditiveHazards
+
+    model = AdditiveHazards.fit(x=x, Z=Z, c=c)
+    model
+
+.. jupyter-execute::
+
+    print(model.p_values)
+
+The coefficients read as risk differences: a one-unit change in a covariate
+shifts the absolute hazard by :math:`\beta` at every time. As in the Cox fit,
+higher gauge and peel-force values reduce the hazard (improving life) while the
+interaction term counteracts — the same story, told on the additive scale.
+
+.. note::
+
+   An additive hazard can go **negative** when :math:`\beta' Z` is sufficiently
+   negative — nothing constrains :math:`h_0(x) + \beta' Z > 0`. When that
+   happens the fitted cumulative hazard is no longer monotone and the implied
+   survival can rise above 1. SurPyval returns the raw estimate without
+   clamping; a survival above 1 is a signal that the additive model is a poor
+   description at that covariate value (or that you are outside the range where
+   it is well behaved), and is best read as a caution rather than a prediction.
+   This is an inherent property of additive-hazards models, not a defect of the
+   fit. When covariate effects are strongly protective, a proportional-hazards
+   model — whose exponential form keeps the hazard positive — is often the
+   safer choice.
+
+Just as Cox has parametric proportional-hazards counterparts (the next
+section), there is also a *parametric* additive-hazards model — a parametric
+baseline hazard with the same additive covariate term, ``h(x|Z) = h_0(x;θ) +
+β'Z``, fit by maximum likelihood. It is available as the ``AH(distribution)``
+factory and as pre-built ``WeibullAH``, ``ExponentialAH``, … instances, and
+gives a smooth, extrapolatable version of what ``AdditiveHazards`` estimates
+non-parametrically. The positivity caveat above applies more sharply here:
+because the likelihood needs ``log(h)`` at every event, a fit whose optimum
+requires a negative hazard raises rather than returning an invalid model.
 
 
 Parametric Proportional Hazards (PH)
