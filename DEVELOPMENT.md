@@ -48,15 +48,22 @@ forest).
   thinly tested, and its shared Breslow `baseline()` (all-cause event counts
   with a Fine-Gray-style risk set) should be reviewed for the cause-specific
   CIF before it is relied on.
-- **Cox PH tie-handling and Efron inference.** `cox_ph.py` implements only
-  Breslow and Efron ties — no exact or Kalbfleisch-Prentice. The Efron branch
-  computes but discards its Hessian ("something remains incorrect"), so p-values
-  are available only under Breslow. Fixing the Efron Hessian (or documenting the
-  limitation) and adding exact/K&P tie methods are the outstanding items. Note:
-  the `# TODO: Incorporate left-truncation... somehow` comments at
-  `cox_ph.py:175/307` are **stale** — left-truncation via `tl` is already wired
-  through both Breslow and Efron; only right/interval truncation is missing (see
-  §6). Clean the comments up.
+- **Cox PH exact / Kalbfleisch-Prentice tie methods.** `cox_ph.py` now supports
+  Breslow and Efron ties, both with analytic-Hessian standard errors and
+  p-values (the Efron Hessian, previously computed with an inner product in
+  place of the outer product `a a'` and then discarded, is fixed and validated
+  against finite differences). Two lower-value tie methods remain unimplemented
+  (`# TODO: Cox-Exact` / `# TODO: K&P` at `cox_ph.py:460-461`):
+  - **Exact partial likelihood** — averages over all orderings of tied events;
+    combinatorially expensive and only meaningfully different from Efron under
+    heavy ties. Niche.
+  - **Kalbfleisch-Prentice** — the discrete-time (grouped) proportional-hazards
+    likelihood for tied data. Also niche; Breslow + Efron already match what
+    R's `survival` and lifelines offer by default.
+
+  Neither is a common need, so both are deferred. Also: only right-censoring
+  and left-truncation (`tl`) are wired; right/interval truncation is missing
+  (see §6).
 - **`Beta` MPP guard.** `Beta` does not set `supports_mpp = False`, so
   `Beta.fit(how="MPP")` passes the support check and hits a raw
   `NotImplementedError` (`beta.py:404`) instead of the clean `ValueError` other
