@@ -39,18 +39,15 @@ forest).
 
 ## 2. Correctness — broken or fragile public API (high priority)
 
-- **Fine-Gray competing-risks regression is broken.**
-  `univariate/competing_risks/regression/fine_gray.py` — `FineGray.fit()` raises
-  `NotImplementedError` (its log-likelihood/jacobian/hessian are commented out),
-  and it is **publicly exported** (`surpyval.univariate.competing_risks.FineGray`).
-  `CompetingRiskProportionalHazard.fit(how="Fine-Gray")` calls into it and so
-  raises too. Either finish the sub-distribution-hazard likelihood or mark the
-  Fine-Gray path clearly experimental / remove it from the public surface until
-  it works. The **cause-specific** path (`CRPH.fit(how="Cox")`, the default —
-  one Cox PH per event type) is fully functional, as are the predictors
-  (`hf`/`Hf`/`sf`/`ff`/`df`/`cif`).
 - **`CRPH.fit_from_df` is unimplemented** (`raise NotImplementedError("Not
-  yet...")`). Add the DataFrame entry point once the Fine-Gray path is sorted.
+  yet...")`). Add the DataFrame entry point for both the Cox and Fine-Gray
+  competing-risks paths.
+- **Competing-risks regression needs test coverage and Cox-path review.** The
+  Fine-Gray path is now implemented (IPCW subdistribution model, with tests);
+  the cause-specific Cox path (`CRPH.fit(how="Cox")`) fits and predicts but is
+  thinly tested, and its shared Breslow `baseline()` (all-cause event counts
+  with a Fine-Gray-style risk set) should be reviewed for the cause-specific
+  CIF before it is relied on.
 - **Cox PH tie-handling and Efron inference.** `cox_ph.py` implements only
   Breslow and Efron ties — no exact or Kalbfleisch-Prentice. The Efron branch
   computes but discards its Hessian ("something remains incorrect"), so p-values
