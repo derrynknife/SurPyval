@@ -120,9 +120,10 @@ accept only `dist='z'`, raising an informative error for `'t'` that
 points to `bootstrap_cb`/`band`); and the previously-untested `from_xrd`,
 `set_lower_limit`, and non-step `plot()` paths now have direct tests.
 
-Note (out of scope here, tracked under §2): `NonParametricCounting.mcf_cb`
-in the recurrent module carries the same `dist='t'` heuristic and could be
-removed for consistency.
+Note (done): `NonParametricCounting.mcf_cb` in the recurrent module carried
+the same `dist='t'` heuristic; it has been removed for consistency (`mcf_cb`
+now accepts only `dist='z'`, raising an informative `ValueError` for `'t'`,
+and validates `bound_type` the same way).
 
 ---
 

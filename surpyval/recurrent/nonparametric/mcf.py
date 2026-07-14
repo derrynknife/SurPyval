@@ -1,6 +1,6 @@
 from autograd import numpy as np
 from matplotlib import pyplot as plt
-from scipy.stats import norm, t
+from scipy.stats import norm
 
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
@@ -39,23 +39,27 @@ class NonParametricCounting:
         bound_type="exp",
         dist="z",
     ):
-        # Greenwoods variance using t-stat. Ref found:
+        # Greenwood's variance with a normal (z) critical value. Ref found:
         # http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
-        assert bound_type in ["exp", "normal"]
-        assert dist in ["t", "z"]
+        if bound_type not in ["exp", "normal"]:
+            raise ValueError("'bound_type' must be in ['exp', 'normal']")
+        if dist != "z":
+            raise ValueError(
+                "'dist' must be 'z'. The 't' option (Student-t with the "
+                "at-risk count as degrees of freedom) has been removed: it "
+                "had no asymptotic justification, was undefined once the "
+                "risk set fell to one item, and widened the bounds "
+                "arbitrarily as the risk set shrank. The normal ('z') "
+                "critical value is what the asymptotic theory of the MCF "
+                "estimator justifies."
+            )
         x = np.atleast_1d(x)
         if bound in ["upper", "lower"]:
-            if dist == "t":
-                stat = t.ppf(1 - confidence, self.r - 1)
-            else:
-                stat = norm.ppf(1 - confidence, 0, 1)
+            stat = norm.ppf(1 - confidence, 0, 1)
             if bound == "upper":
                 stat = -stat
         elif bound == "two-sided":
-            if dist == "t":
-                stat = t.ppf((1 - confidence) / 2, self.r - 1)
-            else:
-                stat = norm.ppf((1 - confidence) / 2, 0, 1)
+            stat = norm.ppf((1 - confidence) / 2, 0, 1)
             stat = np.array([-1, 1]).reshape(2, 1) * stat
 
         if bound_type == "exp":

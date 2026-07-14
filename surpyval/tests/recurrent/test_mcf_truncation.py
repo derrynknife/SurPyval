@@ -155,3 +155,23 @@ def test_cause_specific_mcf_scalar_truncation_broadcasts():
 
     model = CauseSpecificMCF.fit(x, i, c=c, e=e, tl=2.0)
     assert np.all(model.data.tl == 2.0)
+
+
+def test_mcf_cb_rejects_t_distribution():
+    # The Student-t confidence-bound heuristic has been removed for the same
+    # reason as in the univariate module: no asymptotic justification and
+    # arbitrarily wide bounds as the risk set shrinks. Only 'z' is supported.
+    x, i, c, tl = _delayed_entry_data()
+    model = NonParametricCounting.fit(x, i, c=c, tl=tl)
+    with pytest.raises(ValueError, match="'dist' must be 'z'"):
+        model.mcf_cb(3.0, dist="t")
+    # The normal ('z') default still returns finite bounds.
+    cb = model.mcf_cb(3.0)
+    assert np.asarray(cb).shape[-1] == 2
+
+
+def test_mcf_cb_rejects_bad_bound_type():
+    x, i, c, tl = _delayed_entry_data()
+    model = NonParametricCounting.fit(x, i, c=c, tl=tl)
+    with pytest.raises(ValueError, match="'bound_type' must be in"):
+        model.mcf_cb(3.0, bound_type="student")
