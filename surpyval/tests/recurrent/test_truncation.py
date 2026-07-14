@@ -14,18 +14,21 @@ from surpyval.utils.recurrent_utils import handle_xicn
 
 
 def test_handle_xicn_default_truncation():
-    # Without truncation the window defaults to the whole real line, so no
-    # assumption is made about the sign of x.
+    # Without truncation the window defaults to the whole real line on the
+    # right, with the fallback origin 0 on the left.
     data = handle_xicn(np.array([1.0, 2.0, 3.0]), np.array([1, 1, 1]))
     assert np.all(data.tl == -np.inf)
     assert np.all(data.tr == np.inf)
 
 
-def test_handle_xicn_allows_negative_x_when_untruncated():
-    # A variable on a native/transformed scale (e.g. a log-intensity) can be
-    # negative; the default window must not reject it.
-    data = handle_xicn(np.array([-3.0, -1.0, 2.0]), np.array([1, 1, 1]))
-    assert np.allclose(data.x, [-3.0, -1.0, 2.0])
+def test_handle_xicn_rejects_negative_x_when_untruncated():
+    # Untruncated event times are integrated from the fallback origin 0, so a
+    # negative time would give a negative interarrival. It is rejected rather
+    # than silently corrupting the likelihood. (Genuinely negative event
+    # times are admitted only with an explicit negative left-truncation
+    # window; see test_explicit_negative_left_truncation_is_used_as_origin.)
+    with pytest.raises(ValueError, match="outside its observation window"):
+        handle_xicn(np.array([-3.0, -1.0, 2.0]), np.array([1, 1, 1]))
 
 
 def test_explicit_negative_left_truncation_is_used_as_origin():
@@ -45,7 +48,7 @@ def test_handle_xicn_scalar_truncation_broadcasts():
 
 
 def test_handle_xicn_rejects_events_outside_window():
-    with pytest.raises(ValueError, match="outside its truncation window"):
+    with pytest.raises(ValueError, match="outside its observation window"):
         handle_xicn(np.array([1.0, 5.0]), np.array([1, 1]), tl=2.0)
 
 

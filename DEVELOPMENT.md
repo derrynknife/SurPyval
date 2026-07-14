@@ -56,8 +56,8 @@ which is a genuinely different construction.
 **Left-truncation support (partial)**
 `handle_xicn` takes the surpyval `t`/`tl`/`tr` truncation fields, and the calendar-time NHPP models (`HPP`, `CrowAMSAA`, `Duane`, `CoxLewis`) integrate each item's likelihood from its entry time `tl`, so delayed-entry (warranty-from-first-sale) data is analysed correctly there. The virtual-age / history-dependent models (Kijima/G1/ARA/ARI) reject `tl > 0` with an explanatory error, since the virtual age at entry is undefined without the pre-entry history. Still to do: multi-window (gapped) observation per item.
 
-**No input validation**
-Negative times, NaN/inf values, and empty arrays all pass silently into the optimiser. Add a validation step in `handle_xicn()` with informative `ValueError`s.
+**Input validation (done)**
+`handle_xicn()` now validates its input up front with informative `ValueError`s: empty arrays, non-finite (NaN/inf) event times, invalid censoring codes (outside `{-1, 0, 1, 2}`), non-positive or non-finite counts, NaN truncation bounds, and non-finite covariates are all rejected. Event times are checked against each item's integration origin — its left-truncation bound when finite, otherwise the fallback origin `0` — so untruncated negative times are rejected while a genuine (possibly negative) left-truncation window still admits negative times.
 
 ---
 

@@ -43,7 +43,7 @@ def test_single_interval_row_does_not_crash():
 def test_interval_censoring_respects_truncation_window():
     # An interval beginning below the left-truncation bound is rejected.
     x = np.array([[1.0, 5.0], [6.0, 9.0]])
-    with pytest.raises(ValueError, match="outside its truncation window"):
+    with pytest.raises(ValueError, match="outside its observation window"):
         HPP.fit(
             x, np.array([1, 1]), c=np.array([2, 2]), n=np.array([1, 1]), tl=3.0
         )

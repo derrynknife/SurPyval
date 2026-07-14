@@ -102,6 +102,9 @@ def handle_xicn(
 ):
     x = coerce_xcnt_x(x)
 
+    if x.shape[0] == 0:
+        raise ValueError("'x' cannot be empty")
+
     if i is None:
         i = np.ones(x.shape[0])
     else:
@@ -118,10 +121,12 @@ def handle_xicn(
         c = np.array(c)
 
     # Truncation follows surpyval's xcnt convention (shared with the univariate
-    # handler): the default window is the whole real line, so no assumption is
-    # made about the sign of ``x`` (e.g. a log-intensity model can take
-    # negative values); the integration origin for untruncated NHPP data falls
-    # back to 0 in ``get_previous_x``.
+    # handler): the default window is the whole real line. No global sign
+    # assumption is made about ``x`` here -- each item is instead validated
+    # against its own observation window below. An item with an explicit
+    # (possibly negative) left-truncation bound legitimately admits negative
+    # event times; an untruncated item is integrated from the fallback origin
+    # 0 (see ``get_previous_x``) and so must have non-negative event times.
     truncation = format_truncation(t, tl, tr, x.shape[0])
     tl_arr = truncation[:, 0]
     tr_arr = truncation[:, 1]
@@ -145,6 +150,44 @@ def handle_xicn(
     if Z_arr is not None:
         if x.shape[0] != Z_arr.shape[0]:
             raise ValueError("x and Z must have the same length")
+
+    # --- Value validation ------------------------------------------------
+    # Reject malformed input with informative errors rather than letting
+    # NaN/inf or nonsensical counts and codes flow silently into the
+    # optimiser. NaN in ``x`` is already rejected by ``coerce_xcnt_x``; here
+    # the remaining degenerate values are caught.
+    if not np.isfinite(x).all():
+        raise ValueError("Event times 'x' must be finite (no inf values)")
+
+    if np.issubdtype(i.dtype, np.number) and not np.isfinite(i).all():
+        raise ValueError("Item identifiers 'i' must be finite (no NaN or inf)")
+
+    # Censoring codes: -1 left, 0 observed, 1 right, 2 interval. ``np.isin``
+    # also flags NaN, which is never a valid code.
+    valid_c = np.isin(c, [-1, 0, 1, 2])
+    if not valid_c.all():
+        bad = np.unique(c[~valid_c]).tolist()
+        raise ValueError(
+            "Censoring 'c' must be one of -1 (left), 0 (observed), "
+            f"1 (right), or 2 (interval); got {bad}"
+        )
+
+    if not np.isfinite(n).all():
+        raise ValueError("Counts 'n' must be finite")
+    if np.any(n <= 0):
+        raise ValueError("Counts 'n' must be strictly positive")
+
+    # Truncation bounds may be +/-inf (the default open window) but a NaN
+    # bound is meaningless.
+    if np.isnan(tl_arr).any() or np.isnan(tr_arr).any():
+        raise ValueError("Truncation bounds must not contain NaN")
+
+    if (
+        Z_arr is not None
+        and np.issubdtype(Z_arr.dtype, np.number)
+        and not np.isfinite(Z_arr).all()
+    ):
+        raise ValueError("Covariates 'Z' must be finite (no NaN or inf)")
 
     if np.any((n > 1) & ((c == 0) | (c == 1))):
         raise ValueError(
@@ -213,10 +256,18 @@ def handle_xicn(
             )
         if tl_i[0] > tr_i[0]:
             raise ValueError(f"Item {ii} has left truncation beyond right")
-        if (xl_i < tl_i[0]).any() or (xu_i > tr_i[0]).any():
+        # The item's first interval is integrated from its entry time: the
+        # left-truncation bound when finite, otherwise the fallback origin 0
+        # (see RecurrentEventData.get_previous_x). Events below that origin
+        # would give negative interarrival times, so they are rejected. This
+        # is why untruncated event times must be non-negative while an
+        # explicit (possibly negative) left-truncation window admits negative
+        # times.
+        lower = tl_i[0] if np.isfinite(tl_i[0]) else 0.0
+        if (xl_i < lower).any() or (xu_i > tr_i[0]).any():
             raise ValueError(
-                f"Item {ii} has events outside its truncation window "
-                f"[{tl_i[0]}, {tr_i[0]}]"
+                f"Item {ii} has events outside its observation window "
+                f"[{lower}, {tr_i[0]}]"
             )
 
     if as_recurrent_data:
