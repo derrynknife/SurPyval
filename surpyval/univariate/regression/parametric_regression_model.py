@@ -3,10 +3,17 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
-from scipy.stats import uniform
+from scipy.stats import norm, uniform
 
 from surpyval.utils import fsli_to_xcnt
 
+from ._bounds import (
+    bound_signs,
+    delta_method_se,
+    log_transformed_cb,
+    logit_sf_bound,
+    numerical_hessian,
+)
 from .regression_data import prepare_Z
 
 if TYPE_CHECKING:
@@ -550,13 +557,232 @@ class ParametricRegressionModel:
             self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
             return self._aic_c
 
-    def plot(self, ax: "Axes | None" = None) -> "Axes":
+    # -- confidence bounds -------------------------------------------------
+
+    def _check_inference(self) -> None:
+        if not hasattr(self, "data") or getattr(self, "res", None) is None:
+            raise ValueError(
+                "Confidence bounds are only available for models fit from "
+                "data; from_params models carry no likelihood."
+            )
+
+    def parameter_names(self) -> list[str]:
+        """
+        Names of the fitted parameters in ``.params`` order: the distribution's
+        parameters followed by the covariate coefficients.
+        """
+        dist_names = list(self.distribution.param_names)
+        phi_map = self.reg_model.phi_param_map
+        phi_names = [
+            k for k, _ in sorted(phi_map.items(), key=lambda kv: kv[1])
+        ]
+        return dist_names + phi_names
+
+    def covariance(self) -> npt.NDArray:
+        """
+        Approximate covariance matrix of the fitted parameters, ordered to
+        match :meth:`parameter_names`. Computed as the inverse of the numerical
+        Hessian of the negative log-likelihood at the MLE (the observed
+        information). Fixed parameters get a zero row/column.
+
+        A parameter driven to a boundary breaks the Wald approximation; the
+        covariance is then returned filled with ``nan`` (with a warning).
+        """
+        self._check_inference()
+        names = self.parameter_names()
+        p_hat = np.asarray(self.params, dtype=float)
+        free = [i for i, nm in enumerate(names) if nm not in self.fixed]
+        n = len(names)
+        cov = np.zeros((n, n))
+        if not free:
+            return cov
+
+        def neg_ll_free(free_vals: npt.NDArray) -> float:
+            full = p_hat.copy()
+            full[free] = free_vals
+            return self.model.neg_ll(self.data, *full)
+
+        H = numerical_hessian(neg_ll_free, p_hat[free])
+        bad = not np.all(np.isfinite(H))
+        if not bad:
+            try:
+                cov_free = np.linalg.inv(H)
+            except np.linalg.LinAlgError:
+                bad = True
+        if bad:
+            import warnings
+
+            warnings.warn(
+                "The information matrix could not be inverted (the optimum "
+                "may be at a parameter boundary); covariance is unavailable."
+            )
+            return np.full((n, n), np.nan)
+        cov[np.ix_(free, free)] = cov_free
+        return cov
+
+    def standard_errors(self) -> npt.NDArray:
+        """
+        Standard errors of the fitted parameters (square roots of the diagonal
+        of :meth:`covariance`), ordered to match :meth:`parameter_names`.
+        """
+        with np.errstate(invalid="ignore"):
+            return np.sqrt(np.diag(self.covariance()))
+
+    def param_cb(
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """
+        Confidence bound(s) on a single fitted parameter.
+
+        Wald bounds from the observed information, computed on a scale chosen
+        from the parameter's support so the result stays inside it: log for a
+        one-sided-bounded distribution parameter (e.g. a positive scale), the
+        natural scale for the unbounded covariate coefficients.
+
+        Parameters
+        ----------
+        name : str
+            The parameter to bound; one of :meth:`parameter_names`.
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are returned as ``[lower, upper]``.
+        """
+        self._check_inference()
+        names = self.parameter_names()
+        if name not in names:
+            raise ValueError(
+                "Unknown parameter {!r}; expected one of {}".format(
+                    name, names
+                )
+            )
+        idx = names.index(name)
+        p_hat = float(self.params[idx])
+        var = float(self.covariance()[idx, idx])
+
+        # Distribution parameters carry the distribution's support bounds; the
+        # covariate coefficients are unbounded.
+        dist_bounds = list(self.distribution.bounds)
+        n_phi = len(names) - self.k_dist
+        all_bounds = dist_bounds + [(None, None)] * n_phi
+        lower, upper = all_bounds[idx]
+
+        alpha, signs = bound_signs(alpha_ci, bound)
+        offsets = signs * norm.ppf(1.0 - alpha) * np.sqrt(var)
+
+        if lower is not None and upper is not None:
+            width = upper - lower
+            frac = (p_hat - lower) / width
+            u_hat = np.log(frac / (1.0 - frac))
+            du = offsets / (width * frac * (1.0 - frac))
+            return lower + width / (1.0 + np.exp(-(u_hat + du)))
+        elif lower is not None:
+            return lower + (p_hat - lower) * np.exp(offsets / (p_hat - lower))
+        elif upper is not None:
+            return upper - (upper - p_hat) * np.exp(-offsets / (upper - p_hat))
+        return p_hat + offsets
+
+    def cb(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        on: str = "sf",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on a predicted function at covariate vector ``Z``.
+
+        The bounds propagate the fitted parameter covariance through the
+        requested function by the delta method. ``sf``/``ff``/``Hf`` are
+        derived from a survival-function bound taken on the logit scale (so it
+        stays in ``(0, 1)``); ``hf``/``df`` use a log-scale bound (so they stay
+        positive).
+
+        Parameters
+        ----------
+        x : array like or scalar
+            Times at which to evaluate the bound(s).
+        Z : array like
+            A single covariate vector.
+        on : {'sf', 'ff', 'Hf', 'hf', 'df'}, optional
+            The function to bound. Default ``'sf'``.
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis.
+
+        Returns
+        -------
+        numpy array
+            The confidence bound(s) on ``on`` at each ``x``.
+        """
+        self._check_inference()
+        valid = ("sf", "R", "ff", "F", "Hf", "hf", "df")
+        if on not in valid:
+            raise ValueError("`on` must be one of {}".format(valid))
+        if bound not in ("two-sided", "lower", "upper"):
+            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        Zp = self._prepare_Z(Z)
+        params = np.asarray(self.params, dtype=float)
+        cov = self.covariance()
+
+        if on in ("hf", "df"):
+            fn = self.model.hf if on == "hf" else self.model.df
+            est = np.asarray(fn(x, Zp, *params), dtype=float)
+            se = delta_method_se(lambda p: fn(x, Zp, *p), params, cov)
+            return log_transformed_cb(est, se, alpha_ci, bound)
+
+        # sf, ff and Hf all derive from a survival-function bound.
+        sf_hat = np.asarray(self.model.sf(x, Zp, *params), dtype=float)
+        se = delta_method_se(lambda p: self.model.sf(x, Zp, *p), params, cov)
+
+        if bound == "two-sided":
+            sf_lo = logit_sf_bound(sf_hat, se, -1.0, alpha_ci / 2.0)
+            sf_hi = logit_sf_bound(sf_hat, se, +1.0, alpha_ci / 2.0)
+            if on in ("sf", "R"):
+                return np.stack([sf_lo, sf_hi], axis=-1)
+            elif on in ("ff", "F"):
+                return np.stack([1.0 - sf_hi, 1.0 - sf_lo], axis=-1)
+            else:  # Hf: -log(sf) is decreasing in sf
+                return np.stack([-np.log(sf_hi), -np.log(sf_lo)], axis=-1)
+
+        # One-sided. ff and Hf decrease in sf, so their bound uses the
+        # opposite survival-function tail.
+        if on in ("sf", "R"):
+            sign = -1.0 if bound == "lower" else 1.0
+            return logit_sf_bound(sf_hat, se, sign, alpha_ci)
+        sign = 1.0 if bound == "lower" else -1.0
+        sf_b = logit_sf_bound(sf_hat, se, sign, alpha_ci)
+        if on in ("ff", "F"):
+            return 1.0 - sf_b
+        return -np.log(sf_b)
+
+    def plot(
+        self,
+        ax: "Axes | None" = None,
+        plot_bounds: bool = True,
+        alpha_ci: float = 0.05,
+    ) -> "Axes":
         r"""
 
-        A method to plot the survival function, cumulative hazard function,
-        hazard function and density function of the distribution using the
-        parameters found in the ``.params`` attribute.
+        A method to plot the survival function of the distribution at the mean
+        covariate vector against the empirical (Kaplan-Meier) survival of the
+        fitted data, with a delta-method confidence band.
 
+        Parameters
+        ----------
+        ax : matplotlib axes, optional
+            Axes to draw on; a new one is created if not provided.
+        plot_bounds : bool, optional
+            Whether to draw the confidence band around the fitted survival
+            curve. Default True.
+        alpha_ci : float, optional
+            Total tail probability of the band. Default 0.05.
         """
 
         if ax is None:
@@ -565,7 +791,18 @@ class ParametricRegressionModel:
         x, r, d = self.data.to_xrd()
         x_plot = np.linspace(self.data.x.min(), self.data.x.max(), 1000)
 
+        Z_mean = self.data.Z.mean(axis=0)
         ax.step(x, np.exp(-(d / r).cumsum()), color="r", where="post")
-        sf = self.sf(x_plot, self.data.Z.mean(axis=0))
+        sf = self.sf(x_plot, Z_mean)
         ax.plot(x_plot, sf, color="b")
+        if plot_bounds:
+            cb = self.cb(x_plot, Z_mean, on="sf", alpha_ci=alpha_ci)
+            ax.fill_between(
+                x_plot,
+                cb[:, 0],
+                cb[:, 1],
+                color="b",
+                alpha=0.2,
+                label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
+            )
         return ax

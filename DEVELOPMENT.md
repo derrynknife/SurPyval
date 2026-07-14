@@ -23,8 +23,10 @@ Two genuine blockers, both process rather than code:
   no `0.11.1` entry and nothing for the large body of work since (parametric
   additive hazards, recurrent parameter-uncertainty + diagnostics, discrete
   lifetime distributions, `handle_xicn` validation, copula and degradation
-  features, the simulation/`dist='t'` cleanups). Write real per-version entries
-  before tagging.
+  features, the simulation/`dist='t'` cleanups, the Fine-Gray regression
+  implementation, the Efron-Hessian fix, and delta-method confidence bounds
+  (`cb`/`param_cb`/`covariance`) on the parametric regression models). Write
+  real per-version entries before tagging.
 - **Add a publish workflow.** `.github/workflows/actions.yml` is CI-only (lint +
   pytest matrix + coverage, `on: [push]`). There is no tag-triggered
   `pypa/gh-action-pypi-publish` step, so releasing to PyPI is fully manual. Add
