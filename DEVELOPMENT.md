@@ -144,15 +144,24 @@ minimisation fallback so staggered-risk-set data converges). Right/interval
 truncation for Cox is rejected with a clear error (a 2-D `tl`), since the
 forward partial likelihood cannot express it. The outstanding work is:
 
-- **Time-varying covariates via start-stop format** `(t_start, t_stop, event,
-  Z)` — each interval is a left-truncated observation. The delayed-entry
-  machinery this needs is now verified (episode-splitting invariance holds), so
-  this is buildable; what remains is the ergonomic start-stop input handling and
-  per-interval covariates. Difficulty varies by family:
+- **Time-varying covariates for Cox — done.** `CoxPH.fit_tvc` /
+  `fit_tvc_from_df` take counting-process (start-stop) data `(ident, start,
+  stop, event, Z)`, one row per interval on which the covariates are constant.
+  `handle_tvc` validates the structure (non-overlapping intervals, at most one
+  terminal event on a subject's last interval) and maps each interval to a
+  delayed-entry observation `(x = stop, tl = start, c = 1 − event)`, which the
+  partial likelihood fits exactly. The Breslow baseline was fixed to respect
+  `tl` (and to weight by `n`), so `H0` is now correct for delayed-entry /
+  start-stop data. `SemiParametricRegressionModel.predict_tvc` gives the
+  survival of a subject along a supplied covariate path,
+  `H(t) = Σ_{u_j ≤ t} h0(u_j) exp(β'Z(u_j))`, reducing to `sf(t, Z)` for a
+  constant covariate.
+- **Time-varying covariates for the parametric families — future work.** Each
+  interval is a left-truncated observation; difficulty varies by family:
   - Additive hazards (Lin-Ying): easiest — `H(t) = H₀(t) + β'·∫Z(s)ds`
     accumulates linearly; interval contributions are just `β'·Z·Δt`.
-  - Cox PH and parametric PH: medium — cumulative hazard is additive over
-    intervals, so segments compose cleanly.
+  - Parametric PH: medium — cumulative hazard is additive over intervals, so
+    segments compose cleanly (as in the Cox case above).
   - Parametric AFT: harder — must track cumulative "accelerated age"
     `φ(Z₁)·t₁ + φ(Z₂)·(t₂−t₁) + …` across prior intervals.
   - Parametric PO: not practical — no additive structure; needs numerical
