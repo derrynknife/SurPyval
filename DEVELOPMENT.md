@@ -248,13 +248,16 @@ are stable.
 ## 8. Discrete Lifetime Distributions — Tier 2/3
 
 Tier 1 (`Geometric`, `DiscreteWeibull`, `NegativeBinomial` on `{1, 2, 3, …}`
-with zero-inflation at 0) is done. Extensions:
+with zero-inflation at 0) and Tier 2 are done. Extensions:
 
-- **Tier 2:** a standalone `Poisson` distribution (count data; distinct from the
-  recurrent Poisson *processes*); `BetaGeometric` (discrete-time frailty —
-  Geometric with Beta-mixed `p`); and a general "discretize any continuous
-  distribution" wrapper (`P(k) = F(k+1) − F(k)`) to cheaply yield discrete
-  Gamma/Lognormal/Normal.
+- **Tier 2 — done.** A standalone `Poisson` distribution on `{0, 1, 2, …}`
+  (count data; distinct from the recurrent Poisson *processes*);
+  `BetaGeometric` (discrete-time frailty — Geometric with Beta-mixed `p`, whose
+  marginal hazard decreases with time); and a general `Discretize(distribution)`
+  wrapper that turns any non-negative continuous distribution into its
+  integer-binned counterpart (`K = ⌈T⌉`, so `P(K=k) = F(k) − F(k−1)` and
+  `R_K(k) = R(k)`), yielding a discrete Gamma / Log-Normal / Weibull etc. fit by
+  MLE on the underlying parameters.
 - **Tier 3 (niche / heavy-tailed):** Zeta / discrete Pareto / Yule–Simon, the
   logarithmic (log-series) distribution, and discrete Rayleigh/Gompertz hazard
   shapes.

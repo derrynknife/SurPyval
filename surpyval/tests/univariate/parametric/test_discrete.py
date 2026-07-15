@@ -9,11 +9,25 @@ and zero-inflation.
 
 import numpy as np
 import pytest
-from scipy.stats import geom, nbinom
+from scipy.stats import geom, nbinom, poisson
 
-from surpyval import DiscreteWeibull, Geometric, NegativeBinomial
+from surpyval import (
+    BetaGeometric,
+    DiscreteWeibull,
+    Discretize,
+    Gamma,
+    Geometric,
+    LogNormal,
+    NegativeBinomial,
+    Normal,
+    Poisson,
+    Weibull,
+)
 
 INTS = np.array([1, 2, 3, 4, 5, 6], dtype=float)
+
+# A continuous distribution discretized onto {1, 2, 3, ...}.
+DiscretizedWeibull = Discretize(Weibull)
 
 
 # --- internal consistency shared by every discrete distribution -----------
@@ -24,6 +38,8 @@ DISTS = [
     (DiscreteWeibull, (0.7, 1.6)),
     (DiscreteWeibull, (0.5, 0.7)),
     (NegativeBinomial, (2.5, 0.4)),
+    (BetaGeometric, (2.5, 3.0)),
+    (DiscretizedWeibull, (10.0, 2.0)),
 ]
 
 
@@ -200,3 +216,86 @@ def test_supports_mpp_is_false():
         assert dist.supports_mpp is False
     with pytest.raises(ValueError):
         Geometric.fit(Geometric.random(200, 0.3), how="MPP")
+
+
+# --- Tier 2: Poisson, Beta-Geometric, and the Discretize wrapper ----------
+
+
+def test_poisson_matches_scipy():
+    mu = 3.5
+    k = np.arange(0, 12, dtype=float)
+    assert np.allclose(Poisson.df(k, mu), poisson.pmf(k, mu))
+    assert np.allclose(Poisson.sf(k, mu), poisson.sf(k, mu))
+    assert np.allclose(Poisson.ff(k, mu), poisson.cdf(k, mu))
+    assert np.isclose(Poisson.mean(mu), mu)
+
+
+def test_poisson_pmf_sums_to_one_from_zero():
+    # Poisson lives on {0, 1, 2, ...}, so the mass at 0 must be counted.
+    assert np.isclose(np.sum(Poisson.df(np.arange(0, 60.0), 4.0)), 1.0)
+
+
+def test_poisson_mle_recovers_parameter():
+    x = poisson.rvs(4.0, size=6000, random_state=1).astype(float)
+    model = Poisson.fit(x)
+    assert np.isclose(model.params[0], 4.0, rtol=0.05)
+
+
+def test_beta_geometric_hazard_decreases():
+    # The frailty signature: mixing p over a Beta makes the marginal hazard
+    # fall with time (a single Geometric has constant hazard).
+    k = np.arange(1, 30, dtype=float)
+    h = BetaGeometric.hf(k, 2.5, 3.0)
+    assert np.all(np.diff(h) < 1e-9)
+
+
+def test_beta_geometric_mean_matches_truncated_sum():
+    a, b = 2.5, 3.0  # a > 1 so the mean is finite
+    k = np.arange(1, 200000, dtype=float)
+    mean_sum = np.sum(k * BetaGeometric.df(k, a, b))
+    assert np.isclose(BetaGeometric.mean(a, b), mean_sum, rtol=1e-3)
+    assert np.isinf(BetaGeometric.mean(0.5, 3.0))  # a <= 1 diverges
+
+
+def test_beta_geometric_mle_recovers_parameters():
+    np.random.seed(7)
+    x = BetaGeometric.random(8000, 2.0, 4.0)
+    model = BetaGeometric.fit(x)
+    assert np.allclose(model.params, [2.0, 4.0], rtol=0.2)
+
+
+def test_discretize_equals_continuous_survival_and_binned_mass():
+    w = Weibull.from_params([10.0, 2.0])
+    k = np.arange(1, 30, dtype=float)
+    # discrete survival at an integer is the continuous survival there
+    assert np.allclose(DiscretizedWeibull.sf(k, 10.0, 2.0), w.sf(k))
+    # the pmf is the continuous probability of the bin (k-1, k]
+    assert np.allclose(
+        DiscretizedWeibull.df(k, 10.0, 2.0), w.ff(k) - w.ff(k - 1.0)
+    )
+    assert np.isclose(
+        np.sum(DiscretizedWeibull.df(np.arange(1, 500.0), 10.0, 2.0)), 1.0
+    )
+
+
+@pytest.mark.parametrize(
+    "dist,params",
+    [(Weibull, (12.0, 1.8)), (Gamma, (3.0, 2.0)), (LogNormal, (2.0, 0.4))],
+)
+def test_discretize_mle_recovers_parameters(dist, params):
+    np.random.seed(8)
+    discrete = Discretize(dist)
+    x = np.ceil(dist.random(6000, *params)).astype(float)
+    model = discrete.fit(x)
+    assert np.allclose(model.params, params, rtol=0.1)
+
+
+def test_discretize_rejects_negative_support():
+    # Discretize is for non-negative lifetimes; the Normal spans the reals.
+    with pytest.raises(ValueError, match="non-negative"):
+        Discretize(Normal)
+
+
+def test_discretize_name_is_distinct_from_discrete_weibull():
+    assert DiscretizedWeibull.name == "Discretize(Weibull)"
+    assert DiscretizedWeibull.name != DiscreteWeibull.name
