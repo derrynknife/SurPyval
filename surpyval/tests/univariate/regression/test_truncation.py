@@ -12,7 +12,7 @@ the regression likelihoods to SurPyval's known-correct base implementation.
 import numpy as np
 import pytest
 
-from surpyval import Weibull, WeibullPH, WeibullPO
+from surpyval import ExponentialPH, Weibull, WeibullPH, WeibullPO
 from surpyval.univariate.regression import AFT, AcceleratedLife
 from surpyval.univariate.regression.accelerated_life import Power
 
@@ -49,6 +49,41 @@ def test_truncation_changes_estimate(fitter):
     assert not np.allclose(truncated.params[:2], naive.params[:2], atol=1e-2)
     # Truncation-corrected scale should be the smaller (less biased) one.
     assert truncated.params[0] < naive.params[0]
+
+
+def _exp_ph_left_truncated_with_covariate(
+    seed=0, n=8000, rate=0.05, coef=0.9, tl=8.0
+):
+    # Simulate ExponentialPH: hazard = rate*exp(coef*Z), then keep only x > tl.
+    # High-hazard (large exp(coef*Z)) units fail earlier, so they are dropped
+    # more often -- the retained sample is selection-biased in Z. Exponential
+    # is used (over Weibull) because its regression MLE is convex and platform
+    # stable, so the recovery assertion cannot flake on a bad local optimum.
+    rng = np.random.default_rng(seed)
+    Z = rng.normal(size=(n, 1))
+    phi = np.exp(Z[:, 0] * coef)
+    x = rng.exponential(1.0 / (rate * phi))
+    keep = x > tl
+    x, Z = x[keep], Z[keep]
+    t = np.column_stack([np.full(x.size, tl), np.full(x.size, np.inf)])
+    return x, Z, t, (rate, coef)
+
+
+def test_left_truncation_recovers_covariate_effect():
+    # The zero-covariate tests above only check that the correction reduces to
+    # the baseline. This checks the harder property: with a genuine covariate
+    # effect the per-row correction must use each row's OWN covariates (Z_t
+    # alignment) to undo the Z-selection that truncation induces, recovering
+    # the true coefficient. Ignoring truncation must not.
+    x, Z, t, (rate, coef) = _exp_ph_left_truncated_with_covariate()
+    corrected = ExponentialPH.fit(x=x, Z=Z, t=t)
+    naive = ExponentialPH.fit(x=x, Z=Z)
+
+    assert np.allclose(corrected.params, [rate, coef], rtol=0.1)
+    # Ignoring truncation biases the rate and the coefficient; the corrected
+    # fit must be closer to the truth on the coefficient and pull the rate up.
+    assert abs(naive.params[1] - coef) > abs(corrected.params[1] - coef)
+    assert naive.params[0] < corrected.params[0]
 
 
 def test_interval_censoring_matches_baseline():
