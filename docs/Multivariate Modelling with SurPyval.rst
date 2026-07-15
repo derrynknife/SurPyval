@@ -47,22 +47,35 @@ Fitting a copula
 ----------------
 
 The copulas live in their own package (like ``surpyval.recurrent``) and are
-not imported into the top-level namespace:
+not imported into the top-level namespace. Here we simulate correlated
+lifetimes from a known Clayton copula (see the last section) and check the fit
+recovers it:
 
-.. code:: python
+.. jupyter-execute::
 
+    import warnings
+    warnings.filterwarnings("ignore")   # copula optimisers explore log(0) regions
+
+    import numpy as np
     import surpyval as surv
     from surpyval.multivariate import Clayton
 
-    # x1, x2 are correlated lifetimes; margins are SurPyval distributions
+    truth = Clayton.from_params(
+        2.0,
+        margins=[surv.Weibull.from_params([10.0, 2.0]),
+                 surv.LogNormal.from_params([2.5, 0.5])],
+    )
+    data = truth.random(3000, random_state=1)
+    x1, x2 = data[:, 0], data[:, 1]
+
+    # margins are SurPyval distributions, fitted along with the copula
     model = Clayton.fit(
         [x1, x2],
         margins=[surv.Weibull, surv.LogNormal],
         how="IFM",
     )
-
-    model.params          # fitted copula parameter (theta)
-    model.kendall_tau()   # implied Kendall's tau
+    print("theta       :", model.params)
+    print("Kendall's tau:", round(model.kendall_tau(), 3))
     model.margins         # the two fitted univariate models
 
 Two estimation strategies are available via ``how``:
@@ -81,16 +94,24 @@ likelihood supports the **full** censoring and truncation matrix, per
 dimension, using the same convention as the univariate models
 (``c`` of ``0`` observed, ``1`` right, ``-1`` left, ``2`` interval; ``t`` for
 a truncation window). Each series of a joint observation may be censored
-independently:
+independently — pass one censoring column per series. Here each series is
+right-censored at its own threshold, and the fit still recovers the copula
+parameter:
 
-.. code:: python
+.. jupyter-execute::
 
-    # dimension-wise censoring codes, one column per series
-    model = Clayton.fit(
-        [x1, x2],
-        c=[c1, c2],
+    thresholds = np.array([14.0, 16.0])
+    c = (data > thresholds).astype(int)          # per-series right-censoring
+    x_obs = np.minimum(data, thresholds)
+
+    model_c = Clayton.fit(
+        [x_obs[:, 0], x_obs[:, 1]],
+        c=[c[:, 0], c[:, 1]],                    # one column per series
         margins=[surv.Weibull, surv.Weibull],
+        how="IFM",
     )
+    print("censored fraction:", round(c.mean(), 2))
+    print("theta (censored) :", model_c.params)
 
 Internally every censoring type reduces to evaluating the copula CDF and its
 partial derivatives at the margin-transformed bounds (interval censoring, for
@@ -99,29 +120,34 @@ example, is inclusion-exclusion on the rectangle corners of ``C``).
 Working with a fitted model
 ---------------------------
 
-.. code:: python
+The fitted model exposes the joint distribution functions, the dependence
+measures, and a correlated sampler:
 
-    model.cdf([[10, 18], [5, 25]])   # joint P(X1 <= x1, X2 <= x2)
-    model.sf([[10, 18]])             # joint survival P(X1 > x1, X2 > x2)
-    model.pdf([[10, 18]])            # joint density
-    model.conditional_cdf(x, given_dim=0)   # the copula h-function
+.. jupyter-execute::
 
-    samples = model.random(1000)     # correlated (N, 2) samples
-    model.kendall_tau()
-    model.spearman_rho()
-    model.tail_dependence()          # (lambda_lower, lambda_upper)
+    print("joint cdf  :", model.cdf([[10, 18], [5, 25]]))  # P(X1<=x1, X2<=x2)
+    print("joint sf   :", model.sf([[10, 18]]))            # P(X1>x1, X2>x2)
+    print("joint pdf  :", model.pdf([[10, 18]]))
+    print("cond. cdf  :", model.conditional_cdf(np.array([[10, 18]]),
+                                                 given_dim=0))  # h-function
+    print("Kendall tau:", round(model.kendall_tau(), 3))
+    print("Spearman   :", round(model.spearman_rho(), 3))
+    print("tail dep.  :", model.tail_dependence())          # (lower, upper)
+
+    model.random(3, random_state=0)     # correlated (N, 2) samples
 
 Building a model from known parameters
 --------------------------------------
 
 As with the univariate distributions, a model can be created directly from
-parameters and pre-built margins -- useful for Monte-Carlo simulation:
+parameters and pre-built margins -- useful for Monte-Carlo simulation (this is
+exactly how the data above was generated):
 
-.. code:: python
+.. jupyter-execute::
 
-    model = Clayton.from_params(
+    sim = Clayton.from_params(
         2.0,
         margins=[surv.Weibull.from_params([10, 2]),
                  surv.LogNormal.from_params([3, 0.4])],
     )
-    correlated_draws = model.random(10_000)
+    sim.random(5, random_state=0)
