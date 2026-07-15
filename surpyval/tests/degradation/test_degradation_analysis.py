@@ -6,7 +6,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import pytest  # noqa: E402
 
-from surpyval import LogNormal, Weibull  # noqa: E402
+from surpyval import AFT, LogNormal, Weibull, WeibullPH  # noqa: E402
 from surpyval.degradation import (  # noqa: E402
     PATH_MODELS,
     DegradationAnalysis,
@@ -621,3 +621,157 @@ def test_predict_failure_time_validation(x_new, y_new):
 def test_input_validation(kwargs):
     with pytest.raises(ValueError):
         DegradationAnalysis.fit(**kwargs)
+
+
+# -- accelerated degradation testing (ADT) --------------------------------
+
+
+def adt_data(gamma=0.8, b0=0.5, threshold=100.0, intercept=10.0, seed=0):
+    """
+    Linear degradation whose rate accelerates with a stress covariate:
+    ``y = a + b(Z) t`` with ``b(Z) = b0 exp(gamma Z)``. Higher stress means a
+    faster rate, an earlier threshold crossing, and a shorter life -- so the
+    fitted AFT coefficient should recover ``gamma``.
+    """
+    rng = np.random.default_rng(seed)
+    times = np.arange(1, 11) * 5.0
+    xs, ys, ii, ZZ = [], [], [], []
+    uid = 0
+    for Z in [0.0, 0.5, 1.0, 1.5]:
+        for _ in range(12):
+            b = b0 * np.exp(gamma * Z) * np.exp(rng.normal(0, 0.15))
+            a = intercept + rng.normal(0, 1.0)
+            y = a + b * times + rng.normal(0, 0.5, size=times.size)
+            xs.append(times)
+            ys.append(y)
+            ii.append(np.full(times.size, uid))
+            ZZ.append(np.full(times.size, Z))
+            uid += 1
+    return (
+        np.concatenate(xs),
+        np.concatenate(ys),
+        np.concatenate(ii),
+        np.concatenate(ZZ),
+    )
+
+
+def test_adt_recovers_stress_coefficient():
+    x, y, i, Z = adt_data(gamma=0.8)
+    model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    assert model.is_accelerated
+    # last fitted parameter is the AFT covariate coefficient; it should be
+    # close to the simulated stress coefficient gamma.
+    assert model.life_model.params[-1] == pytest.approx(0.8, abs=0.2)
+
+
+def test_adt_wraps_plain_distribution_in_aft():
+    x, y, i, Z = adt_data()
+    model = DegradationAnalysis.fit(
+        x, y, i, threshold=100.0, distribution=Weibull, Z=Z
+    )
+    assert model.is_accelerated
+    assert model.life_model.kind == "Accelerated Failure Time"
+
+
+def test_adt_accepts_explicit_regression_fitter():
+    x, y, i, Z = adt_data()
+    m_aft = DegradationAnalysis.fit(
+        x, y, i, threshold=100.0, distribution=AFT(LogNormal), Z=Z
+    )
+    m_ph = DegradationAnalysis.fit(
+        x, y, i, threshold=100.0, distribution=WeibullPH, Z=Z
+    )
+    assert m_aft.is_accelerated
+    assert m_ph.is_accelerated
+    # AFT and PH with a Weibull baseline are equivalent; their predicted mean
+    # life at a stress should agree closely even though the coefficients live
+    # on different scales.
+    m_wb = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    assert m_ph.mean(Z=[1.0]) == pytest.approx(m_wb.mean(Z=[1.0]), rel=0.05)
+
+
+def test_adt_predictions_require_and_use_Z():
+    x, y, i, Z = adt_data()
+    model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    # higher stress => shorter life across every predictor
+    assert model.mean(Z=[0.0]) > model.mean(Z=[1.5])
+    assert model.sf(50.0, Z=[0.0]) > model.sf(50.0, Z=[1.5])
+    assert model.qf(0.5, Z=[0.0]) > model.qf(0.5, Z=[1.5])
+    # qf inverts sf: sf(qf(p)) == 1 - p
+    q = float(np.ravel(model.qf(0.3, Z=[0.5]))[0])
+    assert float(np.ravel(model.sf(q, Z=[0.5]))[0]) == pytest.approx(
+        0.7, abs=1e-3
+    )
+    # random draws match the analytic mean
+    draws = model.random(5000, Z=[1.0], random_state=1)
+    assert len(draws) == 5000
+    assert draws.mean() == pytest.approx(model.mean(Z=[1.0]), rel=0.1)
+
+
+def test_adt_missing_Z_raises():
+    x, y, i, Z = adt_data()
+    model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    for call in (
+        lambda: model.sf(50.0),
+        lambda: model.ff(50.0),
+        lambda: model.qf(0.5),
+        lambda: model.mean(),
+        lambda: model.random(3),
+    ):
+        with pytest.raises(ValueError):
+            call()
+
+
+def test_plain_model_rejects_Z():
+    slopes = np.array([0.31, 0.28, 0.44, 0.37])
+    x, y, i = linear_data(slopes)
+    model = DegradationAnalysis.fit(x, y, i, threshold=150)
+    assert not model.is_accelerated
+    with pytest.raises(ValueError):
+        model.sf(300.0, Z=[1.0])
+
+
+def test_adt_two_stage_bounds_not_implemented():
+    x, y, i, Z = adt_data()
+    model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    with pytest.raises(NotImplementedError):
+        model.cb(50.0)
+    with pytest.raises(NotImplementedError):
+        model.life_parameter_covariance()
+    # the first-stage regression bounds are still available on the life model
+    band = model.life_model.cb(50.0, [1.0], on="sf")
+    assert band.shape[-1] == 2
+
+
+def test_adt_fit_from_df_with_Z_cols():
+    x, y, i, Z = adt_data()
+    df = pd.DataFrame({"x": x, "y": y, "i": i, "stress": Z})
+    m_df = DegradationAnalysis.fit_from_df(
+        df, threshold=100.0, Z_cols="stress"
+    )
+    m_arr = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    assert m_df.is_accelerated
+    assert np.allclose(m_df.life_model.params, m_arr.life_model.params)
+
+
+def test_adt_Z_must_be_constant_within_unit():
+    x, y, i, Z = adt_data()
+    Z_bad = Z.copy()
+    Z_bad[0] = 99.0  # perturb one measurement of one unit
+    with pytest.raises(ValueError):
+        DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z_bad)
+
+
+def test_adt_Z_length_must_match():
+    x, y, i, Z = adt_data()
+    with pytest.raises(ValueError):
+        DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z[:-1])
+
+
+def test_adt_repr():
+    x, y, i, Z = adt_data()
+    model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    out = repr(model)
+    assert "Degradation Analysis SurPyval Model" in out
+    assert "covariates" in out
+    assert "beta_0" in out

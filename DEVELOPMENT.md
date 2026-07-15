@@ -27,9 +27,10 @@ Two genuine blockers, both process rather than code:
   implementation, the Efron-Hessian fix, delta-method confidence bounds
   (`cb`/`param_cb`/`covariance`) on the parametric regression models, and the
   cause-specific Cox competing-risks CIF fix plus `fit_from_df`, the
-  Buckley-James semi-parametric AFT model, and two-stage degradation
-  confidence bounds (`DegradationModel.cb`)). Write real per-version entries
-  before tagging.
+  Buckley-James semi-parametric AFT model, two-stage degradation
+  confidence bounds (`DegradationModel.cb`), and Stage-1 accelerated
+  degradation testing covariates (`DegradationAnalysis.fit(..., Z=...)`)).
+  Write real per-version entries before tagging.
 - **Add a publish workflow.** `.github/workflows/actions.yml` is CI-only (lint +
   pytest matrix + coverage, `on: [push]`). There is no tag-triggered
   `pypa/gh-action-pypi-publish` step, so releasing to PyPI is fully manual. Add
@@ -205,18 +206,28 @@ Covariates (accelerating stresses such as temperature/voltage/humidity, or
 observational factors such as lot/supplier/load) can enter at two different
 stages, and they are genuinely different features:
 
-**Stage 1 — covariates on the life fit (classic ADT; build first).** Keep the
-per-unit path fits unchanged; each unit carries a constant covariate vector
-`Z_i`. Instead of fitting a plain distribution to the pseudo failure times, feed
-`(pseudo_failure_time_i, c_i, Z_i)` into the *existing* univariate regression
-fitters (AFT / PH / parameter-substitution life-stress models). API sketch:
-`DegradationAnalysis.fit(x, y, i, Z=..., distribution=<regression fitter>)`, with
-`Z` forwarded through the delegated lifetime functions so life at use conditions
-is one call. Censored units flow through since the regression fitters take `c`.
-Mostly plumbing. Theoretical justification: for a linear path with stress acting
-on the rate, `T = (y_t − a)/b(Z)`, so `log T = log(y_t − a) − log b(Z)` — exactly
-an AFT model. Open design point: interaction with `path="best"` (default: select
-on pooled data, since the path stage stays per-unit).
+**Stage 1 — covariates on the life fit (classic ADT).** *Shipped.* The
+per-unit path fits are unchanged; each unit carries a constant covariate vector
+`Z_i`. Passing `Z` to `DegradationAnalysis.fit(x, y, i, Z=..., distribution=...)`
+feeds `(pseudo_failure_time_i, c_i, Z_i)` into the univariate regression fitters
+instead of a plain distribution — a plain `distribution` (e.g. `Weibull`) is
+auto-wrapped in `AFT(distribution)`, while an explicit regression fitter (e.g.
+`AFT(LogNormal)`, `WeibullPH`, `CoxPH`) is used directly. `Z` is aligned to the
+measurement arrays and validated constant within each unit, then reduced to one
+row per unit. The delegated lifetime functions (`sf`/`ff`/`df`/`hf`/`Hf`/`qf`/
+`mean`/`random`) take the stress vector `Z` at which to evaluate life, so life at
+use conditions is one call; `qf`/`mean` come from inverting/integrating the
+regression survival function (the fitters expose no closed `qf`/`mean`), and
+`random` uses inverse-transform sampling. First-stage regression confidence
+bounds are available via `life_model.cb(x, Z, ...)`; the two-stage
+`DegradationModel.cb` / `life_parameter_covariance` raise `NotImplementedError`
+for covariate models (the generated-regressor correction is not yet derived for
+the regression life fit). `fit_from_df` gains `Z_cols`. Theoretical
+justification: for a linear path with stress acting on the rate, `T = (y_t −
+a)/b(Z)`, so `log T = log(y_t − a) − log b(Z)` — exactly an AFT model, and the
+fitted AFT coefficient recovers the simulated stress coefficient. Remaining open
+point: two-stage bounds for the covariate life fit, and interaction with
+`path="best"` (path stage stays per-unit, selected on pooled data).
 
 **Stage 2 — covariates on the path parameters (mechanistic).** Model the
 degradation rate itself: `θ_i = Γ z_i + u_i` (e.g. Arrhenius when a rate is

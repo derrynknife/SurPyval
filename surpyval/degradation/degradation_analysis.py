@@ -10,10 +10,11 @@ reaches the threshold are treated as right censored at their last
 observed time.
 """
 
+import inspect
 import warnings
 from dataclasses import dataclass, field
 from numbers import Number
-from typing import Any
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,10 +23,24 @@ import pandas as pd
 
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
+from surpyval.univariate.regression import AFT
+from surpyval.univariate.regression.parametric_regression_model import (
+    ParametricRegressionModel,
+)
 
 from ._bounds import analytic_cb, bootstrap_cb, life_parameter_covariance
 from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate
+
+
+def _is_regression_fitter(fitter) -> bool:
+    """True if ``fitter.fit`` takes a covariate matrix ``Z`` (i.e. it is one of
+    the regression fitters -- AFT, PH, PO, additive hazards, accelerated
+    life)."""
+    try:
+        return "Z" in inspect.signature(fitter.fit).parameters
+    except (TypeError, ValueError):
+        return False
 
 
 def _clip_psd(matrix: npt.NDArray) -> tuple[npt.NDArray, bool]:
@@ -183,6 +198,9 @@ class DegradationModel:
     path_param_sample_cov: npt.NDArray
     population_method: str
     path_selection: "dict[str, float] | None"
+    #: Per-unit covariates when fitted as an accelerated-degradation model
+    #: (``Z`` given to :meth:`DegradationAnalysis.fit`); ``None`` otherwise.
+    Z: "npt.NDArray | None"
     # Recorded after construction so the bootstrap bounds can rerun the fit.
     _distribution: Any
     _how: str
@@ -205,6 +223,7 @@ class DegradationModel:
         path_param_sample_cov,
         population_method,
         path_selection=None,
+        Z=None,
     ):
         self.x = x
         self.y = y
@@ -222,7 +241,36 @@ class DegradationModel:
         self.path_param_sample_cov = path_param_sample_cov
         self.population_method = population_method
         self.path_selection = path_selection
+        self.Z = Z
         self._unit_index = {unit: idx for idx, unit in enumerate(units)}
+
+    @property
+    def is_accelerated(self) -> bool:
+        """True when the life model is a covariate (ADT) regression model."""
+        return isinstance(self.life_model, ParametricRegressionModel)
+
+    @property
+    def _reg(self) -> ParametricRegressionModel:
+        """The life model viewed as a regression model (accelerated only)."""
+        return cast(ParametricRegressionModel, self.life_model)
+
+    def _predict_Z(self, Z):
+        """Validate the covariate argument for the prediction methods: an
+        accelerated model needs a stress vector ``Z``; a plain model rejects
+        one."""
+        if self.is_accelerated:
+            if Z is None:
+                raise ValueError(
+                    "This is an accelerated-degradation (covariate) model; "
+                    "pass the covariate vector Z (the stress conditions) to "
+                    "predict life."
+                )
+            return Z
+        if Z is not None:
+            raise ValueError(
+                "This degradation model has no covariates; do not pass Z."
+            )
+        return None
 
     def path(self, x: npt.ArrayLike, unit) -> npt.NDArray:
         """Evaluate the fitted degradation path of ``unit`` at ``x``."""
@@ -478,37 +526,149 @@ class DegradationModel:
             )
         return x, y
 
-    def sf(self, x: npt.ArrayLike) -> npt.NDArray:
-        """Survival function of the fitted life model."""
+    def sf(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
+        """
+        Survival function of the fitted life model.
+
+        For an accelerated-degradation model (fitted with covariates) the
+        stress vector ``Z`` at which to evaluate life is required.
+        """
+        Z = self._predict_Z(Z)
+        if self.is_accelerated:
+            return self._reg.sf(x, Z)
         return self.life_model.sf(x)
 
-    def ff(self, x: npt.ArrayLike) -> npt.NDArray:
-        """CDF of the fitted life model."""
+    def ff(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
+        """CDF of the fitted life model (pass ``Z`` for accelerated models)."""
+        Z = self._predict_Z(Z)
+        if self.is_accelerated:
+            return self._reg.ff(x, Z)
         return self.life_model.ff(x)
 
-    def df(self, x: npt.ArrayLike) -> npt.NDArray:
-        """Density of the fitted life model."""
+    def df(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
+        """Density of the fitted life model (``Z`` for accelerated models)."""
+        Z = self._predict_Z(Z)
+        if self.is_accelerated:
+            return self._reg.df(x, Z)
         return self.life_model.df(x)
 
-    def hf(self, x: npt.ArrayLike) -> npt.NDArray:
-        """Hazard rate of the fitted life model."""
+    def hf(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
+        """Hazard rate of the fitted life model (``Z`` for accelerated)."""
+        Z = self._predict_Z(Z)
+        if self.is_accelerated:
+            return self._reg.hf(x, Z)
         return self.life_model.hf(x)
 
-    def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
-        """Cumulative hazard of the fitted life model."""
+    def Hf(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
+        """Cumulative hazard of the life model (``Z`` for accelerated)."""
+        Z = self._predict_Z(Z)
+        if self.is_accelerated:
+            return self._reg.Hf(x, Z)
         return self.life_model.Hf(x)
 
-    def qf(self, p: npt.ArrayLike) -> npt.NDArray:
-        """Quantile function of the fitted life model."""
+    def qf(self, p: npt.ArrayLike, Z=None) -> npt.NDArray:
+        """
+        Quantile function of the fitted life model.
+
+        Plain life models expose their own ``qf``; accelerated regression
+        models do not, so the quantile at stress ``Z`` is obtained by
+        numerically inverting the survival function.
+        """
+        Z = self._predict_Z(Z)
+        if self.is_accelerated:
+            return self._reg_qf(p, Z)
         return self.life_model.qf(p)
 
-    def mean(self) -> float:
-        """Mean of the fitted life model."""
+    def mean(self, Z=None) -> float:
+        """
+        Mean of the fitted life model.
+
+        For an accelerated model the mean life at stress ``Z`` is obtained by
+        integrating the survival function (the regression model has no closed
+        ``mean``).
+        """
+        Z = self._predict_Z(Z)
+        if self.is_accelerated:
+            return self._reg_mean(Z)
         return self.life_model.mean()
 
-    def random(self, size: int) -> npt.NDArray:
-        """Random pseudo failure times from the fitted life model."""
+    def random(self, size: int, Z=None, random_state=None) -> npt.NDArray:
+        """
+        Random pseudo failure times from the fitted life model.
+
+        For an accelerated model, ``size`` samples are drawn at stress ``Z`` by
+        inverse-transform sampling of the fitted survival function (the
+        regression models do not all expose ``random`` directly).
+        """
+        Z = self._predict_Z(Z)
+        if self.is_accelerated:
+            rng = np.random.default_rng(random_state)
+            u = rng.uniform(size=size)
+            return self._reg_qf(u, Z)
         return self.life_model.random(size)
+
+    def _reg_qf(self, p: npt.ArrayLike, Z) -> npt.NDArray:
+        """
+        Quantile function of an accelerated life model by bisection.
+
+        Inverts the (monotone decreasing) survival function ``sf(t | Z) = 1 -
+        p`` for each requested probability. Brackets are grown geometrically
+        from the fitted pseudo-failure-time scale until they straddle the
+        target, then bisected.
+        """
+        p_arr = np.atleast_1d(np.asarray(p, dtype=float))
+        if np.any((p_arr < 0) | (p_arr > 1)):
+            raise ValueError("qf probabilities must lie in [0, 1]")
+        scale = float(np.median(self.pseudo_failure_times))
+        if not (np.isfinite(scale) and scale > 0):
+            scale = 1.0
+
+        def target_sf(t):
+            return float(self._reg.sf(np.array([t]), Z).ravel()[0])
+
+        out = np.empty_like(p_arr)
+        for k, pk in enumerate(p_arr):
+            if pk <= 0.0:
+                out[k] = 0.0
+                continue
+            if pk >= 1.0:
+                out[k] = np.inf
+                continue
+            want = 1.0 - pk  # survival at the quantile
+            lo, hi = 0.0, scale
+            # grow the upper bracket until sf(hi) drops below the target
+            for _ in range(200):
+                if target_sf(hi) <= want:
+                    break
+                lo = hi
+                hi *= 2.0
+            else:
+                out[k] = np.inf
+                continue
+            for _ in range(200):
+                mid = 0.5 * (lo + hi)
+                if target_sf(mid) > want:
+                    lo = mid
+                else:
+                    hi = mid
+                if hi - lo <= 1e-10 * max(hi, 1.0):
+                    break
+            out[k] = 0.5 * (lo + hi)
+        return out
+
+    def _reg_mean(self, Z) -> float:
+        """
+        Mean life of an accelerated model at stress ``Z``.
+
+        ``E[T] = \\int_0^\\infty S(t | Z) dt`` by numerical integration over a
+        grid that extends to a high survival quantile.
+        """
+        upper = float(np.ravel(self._reg_qf(0.999, Z))[0])
+        if not np.isfinite(upper):
+            upper = float(np.max(self.pseudo_failure_times)) * 100.0
+        grid = np.linspace(0.0, upper, 4000)
+        sf = np.asarray(self._reg.sf(grid, Z), dtype=float).ravel()
+        return float(np.trapezoid(sf, grid))
 
     def life_parameter_covariance(
         self, method: str = "analytic"
@@ -522,6 +682,13 @@ class DegradationModel:
         the delta-method / generated-regressor correction
         ``H^{-1} + sum_i v_i (dphi/dt_i)(dphi/dt_i)'``.
         """
+        if self.is_accelerated:
+            raise NotImplementedError(
+                "The two-stage life-parameter covariance is not implemented "
+                "for accelerated-degradation (covariate) models; use "
+                "life_model.covariance() for the (first-stage-only) "
+                "regression parameter covariance."
+            )
         return life_parameter_covariance(self, method=method)
 
     def cb(
@@ -567,6 +734,13 @@ class DegradationModel:
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
+        if self.is_accelerated:
+            raise NotImplementedError(
+                "Two-stage confidence bounds are not implemented for "
+                "accelerated-degradation (covariate) models; call "
+                "life_model.cb(x, Z, on=...) for the (first-stage-only) "
+                "regression confidence bounds at a given stress Z."
+            )
         valid = ("sf", "R", "ff", "F", "Hf")
         if on not in valid:
             raise ValueError("`on` must be one of {}".format(valid))
@@ -623,6 +797,24 @@ class DegradationModel:
         return ax
 
     def __repr__(self):
+        if self.is_accelerated:
+            names = self.life_model.parameter_names()
+            dist_name = self.life_model.distribution.name
+            reg_name = self.life_model.reg_model.name
+            param_string = "\n".join(
+                f"{name:>10}: {p}"
+                for name, p in zip(names, self.life_model.params)
+            )
+            return (
+                "Degradation Analysis SurPyval Model"
+                "\n==================================="
+                f"\nPath Model          : {self.path_model.name}"
+                f"\nThreshold           : {self.threshold}"
+                f"\nNumber of Units     : {len(self.units)}"
+                f"\nCensored Units      : {int((self.c == 1).sum())}"
+                f"\nLife Distribution   : {dist_name} ({reg_name} covariates)"
+                "\nParameters          :\n" + param_string
+            )
         param_string = "\n".join(
             [
                 f"{name:>10}: {p}"
@@ -691,6 +883,7 @@ class DegradationAnalysis_:
         distribution=Weibull,
         how: str = "MLE",
         population_method: str = "moments",
+        Z: npt.ArrayLike | None = None,
     ) -> DegradationModel:
         """
         Fit a degradation analysis model.
@@ -736,6 +929,20 @@ class DegradationAnalysis_:
             quadratic, logarithmic, lloyd-lipow) and requires
             measurement noise (some unit with more measurements than
             path parameters).
+        Z : array like, optional
+            Stress covariates for accelerated degradation testing (ADT).
+            When given, the life model is fitted as a *regression* on the
+            pseudo failure times -- ``log(pseudo failure time) = f(Z) +
+            noise`` -- so that life can be predicted at any stress. ``Z`` is
+            aligned to ``x``/``y``/``i`` (one row per measurement) and must be
+            constant within each unit (a unit is tested at a single stress);
+            it is reduced to one covariate row per unit. If ``distribution``
+            is already a regression fitter (e.g. ``AFT(Weibull)``,
+            ``WeibullPH``, ``CoxPH``) it is used directly; a plain
+            distribution (e.g. ``Weibull``) is wrapped in an accelerated
+            failure time model, ``AFT(distribution)``. The returned model's
+            prediction methods (``sf``, ``ff``, ``qf``, ``random`` ...) then
+            take the stress vector ``Z`` at which to evaluate life.
 
         Returns
         -------
@@ -883,7 +1090,17 @@ class DegradationAnalysis_:
         pseudo_failure_times = np.where(events, pseudo, last_time)
         c = np.where(events, 0, 1)
 
-        life_model = distribution.fit(x=pseudo_failure_times, c=c, how=how)
+        Z_units = None
+        if Z is None:
+            life_model = distribution.fit(x=pseudo_failure_times, c=c, how=how)
+        else:
+            Z_units = self._handle_Z(Z, i_arr, units)
+            reg = (
+                distribution
+                if _is_regression_fitter(distribution)
+                else AFT(distribution)
+            )
+            life_model = reg.fit(x=pseudo_failure_times, Z=Z_units, c=c)
 
         model = DegradationModel(
             x=x_arr,
@@ -902,6 +1119,7 @@ class DegradationAnalysis_:
             path_param_sample_cov=path_param_sample_cov,
             population_method=population_method,
             path_selection=path_selection,
+            Z=Z_units,
         )
         # Recorded so the bootstrap confidence bounds can rerun the pipeline
         # (with the selected path model held fixed) on resampled units.
@@ -977,6 +1195,7 @@ class DegradationAnalysis_:
         x: str = "x",
         y: str = "y",
         i: str = "i",
+        Z_cols: "str | list[str] | None" = None,
         **fit_kwargs,
     ) -> DegradationModel:
         """
@@ -993,6 +1212,10 @@ class DegradationAnalysis_:
             ``"y"``.
         i : str, optional
             Column of the unit identifiers. Defaults to ``"i"``.
+        Z_cols : str or list of str, optional
+            Column(s) of the stress covariates for accelerated degradation
+            testing. When given, the selected columns are passed as ``Z`` to
+            :meth:`fit`, fitting a covariate (ADT) life model.
         **fit_kwargs
             Remaining arguments (``threshold``, ``path``,
             ``distribution``, ``how``) passed to :meth:`fit`.
@@ -1002,9 +1225,51 @@ class DegradationAnalysis_:
         DegradationModel
             The fitted degradation model.
         """
+        if Z_cols is not None:
+            cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+            fit_kwargs["Z"] = df[cols].to_numpy()
         return self.fit(
             df[x].to_numpy(), df[y].to_numpy(), df[i].to_numpy(), **fit_kwargs
         )
+
+    @staticmethod
+    def _handle_Z(
+        Z: npt.ArrayLike, i_arr: npt.NDArray, units: npt.NDArray
+    ) -> npt.NDArray:
+        """
+        Reduce a per-measurement covariate array to one row per unit.
+
+        ``Z`` is aligned to the measurement arrays (one row per measurement,
+        like ``x``/``y``/``i``); a unit is tested at a single stress, so ``Z``
+        must be constant within each unit. Returns a ``(n_units, n_cov)`` array
+        aligned to ``units``.
+        """
+        Z_arr = np.asarray(Z, dtype=float)
+        if Z_arr.ndim == 1:
+            Z_arr = Z_arr.reshape(-1, 1)
+        if Z_arr.ndim != 2:
+            raise ValueError("Z must be one or two dimensional")
+        if len(Z_arr) != len(i_arr):
+            raise ValueError(
+                "Z must have one row per measurement (same length as x, y, "
+                "and i); got {} rows for {} measurements".format(
+                    len(Z_arr), len(i_arr)
+                )
+            )
+        if not np.isfinite(Z_arr).all():
+            raise ValueError("Z must contain only finite values")
+
+        Z_units = np.empty((len(units), Z_arr.shape[1]))
+        for idx, unit in enumerate(units):
+            rows = Z_arr[i_arr == unit]
+            if not np.allclose(rows, rows[0]):
+                raise ValueError(
+                    "Z must be constant within each unit (unit {} has "
+                    "varying covariates); a unit is tested at a single "
+                    "stress".format(unit)
+                )
+            Z_units[idx] = rows[0]
+        return Z_units
 
     @staticmethod
     def _handle_xyi(
