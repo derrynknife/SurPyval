@@ -5,41 +5,27 @@ debt, and improvement priorities. It is forward-looking only: completed work is
 not recorded here (see `docs/changelog.rst` for release history). Items are
 grouped by theme and ordered by priority within each section.
 
-**Package state (2026-07-14).** Version `0.11.1`. The full test suite (994
-tests, 1 documented skip) passes on Python 3.11–3.13 with numpy 2.x / scipy
-1.13+ / pandas 2.2+. The parametric, nonparametric, regression (PH / AFT / PO /
-additive-hazards / accelerated-life), recurrent-event, degradation, copula and
-(experimental) survival-forest modules are all implemented and tested. The
-correctness and release items in §1–§2 are the highest-value next steps.
+**Package state (2026-07-15).** Version `0.12.0` (released to PyPI). The full
+test suite (1078 tests, 1 documented skip) passes on Python 3.11–3.13 with numpy
+2.x / scipy 1.13+ / pandas 2.2+. The parametric, nonparametric, regression (PH /
+AFT / PO / additive-hazards / accelerated-life), recurrent-event, degradation,
+copula and (experimental) survival-forest modules are all implemented and
+tested. With 0.12.0 shipped, the degradation extensions (§7) and correctness
+hardening (§2, §6) are the highest-value next steps.
 
 ---
 
-## 1. Release — cut 0.12.0
+## 1. Release & docs polish
 
-Two genuine blockers, both process rather than code:
+0.12.0 is released to PyPI. The changelog (`docs/changelog.rst`) carries a real
+per-version history, and `.github/workflows/publish.yml` builds the sdist/wheel
+and uploads on a `v*` tag via PyPI Trusted Publishing (OIDC), with a guard that
+the tag matches the packaged version. Remaining polish (non-blocking):
 
-- **Rewrite the changelog.** `docs/changelog.rst` tops out at `v0.11.0
-  (planned)`, whose bullets are a TODO wishlist rather than a record; there is
-  no `0.11.1` entry and nothing for the large body of work since (parametric
-  additive hazards, recurrent parameter-uncertainty + diagnostics, discrete
-  lifetime distributions, `handle_xicn` validation, copula and degradation
-  features, the simulation/`dist='t'` cleanups, the Fine-Gray regression
-  implementation, the Efron-Hessian fix, delta-method confidence bounds
-  (`cb`/`param_cb`/`covariance`) on the parametric regression models, and the
-  cause-specific Cox competing-risks CIF fix plus `fit_from_df`, the
-  Buckley-James semi-parametric AFT model, two-stage degradation
-  confidence bounds (`DegradationModel.cb`), and Stage-1 accelerated
-  degradation testing covariates (`DegradationAnalysis.fit(..., Z=...)`)).
-  Write real per-version entries before tagging.
-- **Add a publish workflow.** `.github/workflows/actions.yml` is CI-only (lint +
-  pytest matrix + coverage, `on: [push]`). There is no tag-triggered
-  `pypa/gh-action-pypi-publish` step, so releasing to PyPI is fully manual. Add
-  a release workflow and tag `v0.12.0`.
-
-Polish (non-blocking): add a `docs` optional-dependency group (docs deps
-currently live only in `docs/requirements.txt`); add API doc pages for the
-newer surfaces (multivariate copulas, degradation RUL, the experimental
-forest).
+- Add a `docs` optional-dependency group (docs deps currently live only in
+  `docs/requirements.txt`).
+- Add API doc pages for the newer surfaces (multivariate copulas, degradation
+  RUL / ADT covariates, the experimental forest).
 
 ---
 
@@ -61,10 +47,6 @@ forest).
   Neither is a common need, so both are deferred. Also: only right-censoring
   and left-truncation (`tl`) are wired; right/interval truncation is missing
   (see §6).
-- **`Beta` MPP guard.** `Beta` does not set `supports_mpp = False`, so
-  `Beta.fit(how="MPP")` passes the support check and hits a raw
-  `NotImplementedError` (`beta.py:404`) instead of the clean `ValueError` other
-  MPP-unsupported distributions raise. One-line consistency fix.
 
 ---
 

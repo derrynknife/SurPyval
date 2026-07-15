@@ -18,6 +18,13 @@ class Beta_(ParametricFitter):
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="linear",
         )
+        # The Beta distribution has no linearising probability plot: its CDF
+        # is the regularised incomplete beta function (no closed-form inverse),
+        # and with two interacting shape parameters on bounded support it is
+        # not a location-scale family, so there is no parameter-free transform
+        # that turns the probability plot into a straight line. Fit by MLE, MSE
+        # or MOM instead (MOM is analytic for the Beta).
+        self.supports_mpp = False
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         if (c is not None) and (c == 0).all():

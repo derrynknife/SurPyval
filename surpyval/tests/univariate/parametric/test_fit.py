@@ -367,6 +367,16 @@ def test_beta_cannot_be_offset(how):
         Beta.fit(x, offset=True, how=how)
 
 
+def test_beta_rejects_mpp():
+    # Beta has no linearising probability plot (its CDF is the incomplete
+    # beta function and it is not a location-scale family), so MPP fitting
+    # must raise the clean ValueError rather than a raw NotImplementedError.
+    assert Beta.supports_mpp is False
+    x = Beta.random(200, 2.0, 5.0)
+    with pytest.raises(ValueError, match="probability plot"):
+        Beta.fit(x, how="MPP")
+
+
 def test_beta4_recovers_parameters():
     # The four-parameter Beta estimates the support bounds (a, b) along
     # with the two shape parameters.
