@@ -204,6 +204,80 @@ The step-function shape is the signature of the non-parametric baseline —
 the model makes no smoothness assumptions about :math:`h_0(x)`.
 
 
+Time-Varying Covariates
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes a covariate changes *during* a subject's follow-up — a dose is
+increased, a treatment begins, a machine is moved to a harsher environment.
+Cox handles this through the **counting-process (start-stop) format**: each
+subject contributes one row per interval :math:`(\text{start}, \text{stop}]`
+on which its covariates are constant, and ``event`` is 1 only on the interval
+that ends at the subject's failure. Because each interval is exactly a
+delayed-entry (left-truncated) observation, the partial likelihood fits this
+format directly — splitting a subject into intervals with the same covariates
+leaves the fit unchanged.
+
+Use :meth:`CoxPH.fit_tvc` (arrays) or :meth:`CoxPH.fit_tvc_from_df` (a
+start-stop ``DataFrame``). In the example below a covariate ``stress`` switches
+from 0 to 1 at a random time for each unit and genuinely raises the hazard once
+it turns on; units that fail before the switch contribute a single interval,
+those that survive it contribute two:
+
+.. jupyter-execute::
+
+    import pandas as pd
+    from surpyval import CoxPH
+
+    rng = np.random.default_rng(0)
+    n, lam, beta = 2000, 0.5, 1.0
+    switch = rng.uniform(0.3, 1.5, size=n)
+    t_low = rng.exponential(1 / lam, size=n)
+    t_high = switch + rng.exponential(1 / (lam * np.exp(beta)), size=n)
+    T = np.where(t_low > switch, t_high, t_low)
+
+    rows = []
+    for i in range(n):
+        if T[i] <= switch[i]:                    # failed before the switch
+            rows.append((i, 0.0, T[i], 1, 0.0))
+        else:                                    # survived it: two intervals
+            rows.append((i, 0.0, switch[i], 0, 0.0))
+            rows.append((i, switch[i], T[i], 1, 1.0))
+    df = pd.DataFrame(rows, columns=['id', 'start', 'stop', 'event', 'stress'])
+
+    model = CoxPH.fit_tvc_from_df(
+        df, id_col='id', start_col='start', stop_col='stop',
+        event_col='event', Z_cols='stress',
+    )
+    model
+
+The fitted coefficient recovers the simulated log-hazard-ratio of the stress
+(:math:`\beta \approx 1`) — a plain Cox fit that ignored the timing of the
+switch could not.
+
+Because survival now depends on the *whole* covariate path, evaluate it with
+:meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.predict_tvc`,
+passing a subject's intervals. It returns the times, survival and cumulative
+hazard along that path; with a single constant interval it reduces exactly to
+``sf``. Here a unit stressed from ``t = 1`` onward has visibly lower survival
+than one never stressed:
+
+.. jupyter-execute::
+
+    t_never, s_never, _ = model.predict_tvc(start=[0.0], stop=[3.0], Z=[[0.0]])
+    t_late, s_late, _ = model.predict_tvc(
+        start=[0.0, 1.0], stop=[1.0, 3.0], Z=[[0.0], [1.0]]
+    )
+    plt.step(t_never, s_never, where='post', label='never stressed')
+    plt.step(t_late, s_late, where='post', label='stressed after t=1')
+    plt.legend()
+    plt.xlabel('Time')
+    plt.ylabel('S(t)')
+
+Only left-truncation / delayed entry is available for Cox (supply a 1-D ``tl``
+to :meth:`CoxPH.fit`); right or interval truncation is rejected, because the
+forward partial likelihood cannot express it.
+
+
 Semi-Parametric — Additive Hazards
 ----------------------------------
 
