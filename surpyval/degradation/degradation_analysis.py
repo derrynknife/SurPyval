@@ -13,6 +13,7 @@ observed time.
 import warnings
 from dataclasses import dataclass, field
 from numbers import Number
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,6 +23,7 @@ import pandas as pd
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
 
+from ._bounds import analytic_cb, bootstrap_cb, life_parameter_covariance
 from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate
 
@@ -181,6 +183,9 @@ class DegradationModel:
     path_param_sample_cov: npt.NDArray
     population_method: str
     path_selection: "dict[str, float] | None"
+    # Recorded after construction so the bootstrap bounds can rerun the fit.
+    _distribution: Any
+    _how: str
 
     def __init__(
         self,
@@ -505,6 +510,74 @@ class DegradationModel:
         """Random pseudo failure times from the fitted life model."""
         return self.life_model.random(size)
 
+    def life_parameter_covariance(
+        self, method: str = "analytic"
+    ) -> npt.NDArray:
+        """
+        Covariance of the fitted life-model parameters, corrected for the
+        first-stage (path-fit and extrapolation) uncertainty that the plain
+        life-model MLE ignores.
+
+        See :meth:`cb` for the two-stage rationale; ``method='analytic'`` is
+        the delta-method / generated-regressor correction
+        ``H^{-1} + sum_i v_i (dphi/dt_i)(dphi/dt_i)'``.
+        """
+        return life_parameter_covariance(self, method=method)
+
+    def cb(
+        self,
+        x: npt.ArrayLike,
+        on: str = "sf",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "analytic",
+        n_boot: int = 200,
+        seed=None,
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the reliability of the fitted life model that
+        account for the degradation analysis being a *two-stage* estimator.
+
+        The pseudo failure times are extrapolated per-unit path fits, not
+        observed failures, so ``life_model.cb`` -- which treats them as
+        exact -- gives intervals that are too narrow. These bounds fold the
+        first-stage (measurement + extrapolation) uncertainty back in.
+
+        Parameters
+        ----------
+        x : array like
+            Times at which to evaluate the bound(s).
+        on : {'sf', 'ff', 'Hf'}, optional
+            The function to bound. Default ``'sf'``.
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'analytic', 'bootstrap'}, optional
+            ``'analytic'`` (default) is a fast delta-method correction;
+            ``'bootstrap'`` resamples units and reruns the whole pipeline (a
+            slower, assumption-light cross-check).
+        n_boot : int, optional
+            Bootstrap resamples (``method='bootstrap'`` only). Default 200.
+        seed : optional
+            Seed for the bootstrap resampling.
+
+        Returns
+        -------
+        numpy array
+            The confidence bound(s) on ``on`` at each ``x``.
+        """
+        valid = ("sf", "R", "ff", "F", "Hf")
+        if on not in valid:
+            raise ValueError("`on` must be one of {}".format(valid))
+        if bound not in ("two-sided", "lower", "upper"):
+            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        if method == "analytic":
+            return analytic_cb(self, x, on, alpha_ci, bound)
+        elif method == "bootstrap":
+            return bootstrap_cb(self, x, on, alpha_ci, bound, n_boot, seed)
+        raise ValueError("`method` must be 'analytic' or 'bootstrap'")
+
     def plot(self, ax=None):
         """
         Plot the degradation data, the fitted per-unit paths (extended
@@ -812,7 +885,7 @@ class DegradationAnalysis_:
 
         life_model = distribution.fit(x=pseudo_failure_times, c=c, how=how)
 
-        return DegradationModel(
+        model = DegradationModel(
             x=x_arr,
             y=y_arr,
             i=i_arr,
@@ -830,6 +903,11 @@ class DegradationAnalysis_:
             population_method=population_method,
             path_selection=path_selection,
         )
+        # Recorded so the bootstrap confidence bounds can rerun the pipeline
+        # (with the selected path model held fixed) on resampled units.
+        model._distribution = distribution
+        model._how = how
+        return model
 
     @staticmethod
     def _select_path_model(

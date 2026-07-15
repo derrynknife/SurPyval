@@ -24,9 +24,12 @@ Two genuine blockers, both process rather than code:
   additive hazards, recurrent parameter-uncertainty + diagnostics, discrete
   lifetime distributions, `handle_xicn` validation, copula and degradation
   features, the simulation/`dist='t'` cleanups, the Fine-Gray regression
-  implementation, the Efron-Hessian fix, and delta-method confidence bounds
-  (`cb`/`param_cb`/`covariance`) on the parametric regression models). Write
-  real per-version entries before tagging.
+  implementation, the Efron-Hessian fix, delta-method confidence bounds
+  (`cb`/`param_cb`/`covariance`) on the parametric regression models, and the
+  cause-specific Cox competing-risks CIF fix plus `fit_from_df`, the
+  Buckley-James semi-parametric AFT model, and two-stage degradation
+  confidence bounds (`DegradationModel.cb`)). Write real per-version entries
+  before tagging.
 - **Add a publish workflow.** `.github/workflows/actions.yml` is CI-only (lint +
   pytest matrix + coverage, `on: [push]`). There is no tag-triggered
   `pypa/gh-action-pypi-publish` step, so releasing to PyPI is fully manual. Add
@@ -41,15 +44,6 @@ forest).
 
 ## 2. Correctness — broken or fragile public API (high priority)
 
-- **`CompetingRisksProportionalHazards.fit_from_df` is unimplemented** (`raise
-  NotImplementedError("Not yet...")`). Add the DataFrame entry point for both
-  the Cox and Fine-Gray competing-risks paths.
-- **Competing-risks regression needs test coverage and Cox-path review.** The
-  Fine-Gray path is now implemented (IPCW subdistribution model, with tests);
-  the cause-specific Cox path (`CompetingRisksProportionalHazards.fit(
-  how="Cox")`) fits and predicts but is thinly tested, and its shared Breslow
-  `baseline()` (all-cause event counts with a Fine-Gray-style risk set) should
-  be reviewed for the cause-specific CIF before it is relied on.
 - **Cox PH exact / Kalbfleisch-Prentice tie methods.** `cox_ph.py` now supports
   Breslow and Efron ties, both with analytic-Hessian standard errors and
   p-values (the Efron Hessian, previously computed with an inner product in
@@ -133,13 +127,14 @@ remains:
 
 ## 5. Semi-Parametric Regression — future work
 
-Proportional hazards (`CoxPH` + parametric `WeibullPH` …) and additive hazards
-(semi-parametric `AdditiveHazards` + parametric `AH(dist)`) are both complete.
-Three candidates remain, in priority order:
+The semi-parametric trio is complete: proportional hazards (`CoxPH`), additive
+hazards (`AdditiveHazards`), and now accelerated failure time (`BuckleyJames` —
+`log T = β'Z + ε` with an unspecified error distribution, fit by the
+Buckley-James imputation iteration with an Efron-corrected residual KM,
+two-cycle handling, bootstrap CIs, and `fit_from_df`; coefficients follow the
+package's accelerated-failure sign convention). Two lower-priority candidates
+remain:
 
-- **Buckley-James (semi-parametric AFT) — high.** The semi-parametric
-  counterpart to Cox PH: fits `log(T) = β'Z + ε` with no parametric baseline via
-  iterative censoring imputation. Completes the semi-parametric trio.
 - **Semi-parametric proportional odds — low.** `O(x|Z) = O₀(x)·exp(β'Z)` with a
   non-parametric baseline odds step function; needs joint NPMLE of `(β, Λ₀)`
   (profile likelihood with an isotonic inner loop). Much harder than Cox PH;
@@ -181,13 +176,12 @@ into `SurpyvalData`, and `ProportionalHazardsFitter` handles left-truncation via
 fits over 9 forms with `path="best"` AICc selection, extrapolation to a
 threshold, lifetime fit to the pseudo failure times), a two-stage
 noise-corrected population path-parameter distribution (moment and REML
-variants), and `predict_rul` shrinkage RUL predictions. Natural extensions,
-roughly in priority order:
+variants), `predict_rul` shrinkage RUL predictions, and `DegradationModel.cb`
+two-stage confidence bounds on the reliability (an analytic delta-method /
+generated-regressor correction that folds the first-stage path-fit and
+extrapolation uncertainty into the life-model covariance, plus a `method=
+"bootstrap"` cross-check). Natural extensions, roughly in priority order:
 
-- **Uncertainty propagation for the life model.** The two-stage method treats
-  pseudo failure times as exact, so life-model confidence bounds understate the
-  true uncertainty. A bootstrap over units (refit paths + life model per
-  resample) is the cheap fix; expose it as a `cb`/`bootstrap` option.
 - **Induced failure-time distribution.** With `(μ, Σ, σ²)` fitted (especially by
   REML), derive the population failure-time distribution from the path model
   directly (Monte Carlo over `θ ~ MVN` through `inv_path`) instead of via noisy

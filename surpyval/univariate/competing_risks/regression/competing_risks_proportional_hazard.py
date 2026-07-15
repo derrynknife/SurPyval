@@ -10,7 +10,11 @@ Copyright 2022 Cartiga LLC
 import numpy as np
 
 from surpyval.univariate.regression import CoxPH
-from surpyval.utils import _get_idx, _scale, validate_fine_gray_inputs
+from surpyval.utils import (
+    _get_idx,
+    validate_fine_gray_inputs,
+    wrangle_and_check_form_and_Z_cols,
+)
 
 from .fine_gray import FineGray, _step
 
@@ -42,14 +46,20 @@ class CompetingRisksProportionalHazards:
     def _f(self, arr, x, Z, event=None, interp="step"):
         idx, rev = _get_idx(self.x, x)
 
-        if event is not None and event not in self.event_idx_map:
-            raise ValueError("Unrecognised event type for this model")
-
-        if event is None:
-            return (arr.sum(axis=0)[idx] * self.phi(Z))[rev]
-        else:
-            e_i = self.event_idx_map.get(event, None)
+        if event is not None:
+            if event not in self.event_idx_map:
+                raise ValueError("Unrecognised event type for this model")
+            e_i = self.event_idx_map[event]
             return (arr[e_i, idx] * self.phi_e(Z, e_i))[rev]
+
+        # All causes combined: each cause contributes with its OWN
+        # coefficients, so the all-cause (cumulative) hazard is the sum of
+        # H0_e(t) * exp(beta_e'Z), not a single summed-coefficient term.
+        total = sum(
+            arr[e_i, idx] * self.phi_e(Z, e_i)
+            for e_i in self.event_idx_map.values()
+        )
+        return total[rev]
 
     def hf(self, x, Z, event=None, interp="step"):
         if self.how == "Fine-Gray":
@@ -103,72 +113,71 @@ class CompetingRisksProportionalHazards:
         return cif[idx][rev]
 
     @classmethod
-    def cox_risk_set_indices(cls, x_i, e_i, x, e):
-        return x >= x_i
-
-    @classmethod
-    def fine_gray_risk_set_indices(cls, x_i, e_i, x, e):
-        return (x >= x_i) | (e != e_i)
-
-    @classmethod
-    def partial_log_like(
-        cls, beta, x, c, n, Z, e, event, how="Cox", scale=False
+    def fit_from_df(
+        cls,
+        df,
+        x_col,
+        e_col,
+        Z_cols=None,
+        c_col=None,
+        n_col=None,
+        formula=None,
+        how="Cox",
+        tie_method="efron",
     ):
         """
-        This is the Breslow implementation
-        TODO:
-        - Efron, and
-        - Kalbfleisch and Prentice (This is what we need!)
+        Fit a competing-risks proportional-hazards model from a pandas
+        DataFrame.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The data.
+        x_col : str
+            Column of observed times.
+        e_col : str
+            Column of event-type (cause) labels. Use ``None`` (or a blank/NaN
+            cell) for a censored observation.
+        Z_cols : str or list of str, optional
+            Covariate columns. Either ``Z_cols`` or ``formula`` must be given.
+        c_col : str, optional
+            Column of censoring flags (0 observed, 1 right-censored).
+        n_col : str, optional
+            Column of counts per row.
+        formula : str, optional
+            A patsy/formulaic formula for the covariates, as an alternative to
+            ``Z_cols``.
+        how : {'Cox', 'Fine-Gray'}, optional
+            Cause-specific proportional hazards or Fine-Gray subdistribution
+            hazards. Default 'Cox'.
+        tie_method : {'efron', 'breslow'}, optional
+            Tie handling for the ``how='Cox'`` path. Default 'efron'.
+
+        Returns
+        -------
+        CompetingRisksProportionalHazards
+            The fitted model. Predictions still take a covariate array ``Z``.
         """
-        # print(beta)
-        if how == "Cox":
-            risk_set_indices = cls.cox_risk_set_indices
-        elif how == "Fine-Gray":
-            risk_set_indices = cls.fine_gray_risk_set_indices
-        N = len(x)
+        import pandas as pd
 
-        ll = np.zeros_like(x)
-        idx = np.array(range(N))
+        Z, mask, form, feature_names, model_spec = (
+            wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+        )
+        sub = df.loc[mask]
+        x = sub[x_col].values
+        # A censored row's cause is ``None``; accept a blank/NaN cell for it.
+        e = np.array(
+            [None if pd.isna(v) else v for v in sub[e_col].values],
+            dtype=object,
+        )
+        c = sub[c_col].values if c_col is not None else None
+        n = sub[n_col].values if n_col is not None else None
 
-        for i, x_i in enumerate(x):
-            if c[i] == 1:
-                continue
-            elif e[i] != event:
-                continue
-            # This is the key insight:
-            # all non e failures are still at risk!
-            at_risk = risk_set_indices(x_i, event, x, e)
-            Z_ri = Z[at_risk, :]
-            # Sum of 'Z's is sometimes also called 'S'
-            # e.g. see https://myweb.uiowa.edu/pbreheny/7210/f15/notes/11-5.pdf
-            Z_i = n[i] * Z[i, :]
-            # Breslow log-like
-            ll_i = (Z_i @ beta) - (n[i] * np.log(np.exp(Z_ri @ beta).sum()))
-            ll = np.where(i == idx, ll_i, ll)
-
-        return _scale(ll, n, scale)
-
-    @classmethod
-    def baseline(cls, beta, x, c, n, Z, e, event):
-        unique_x = np.unique(x)
-
-        d = np.zeros_like(unique_x)
-        r = np.zeros_like(unique_x)
-        for i, tau_i in enumerate(unique_x):
-            mask_d_i = (x == tau_i) & (c == 0)
-            d[i] = n[mask_d_i].sum()
-
-            mask_at_risk_i = (x >= tau_i) | (e != event)
-            Z_ri = Z[mask_at_risk_i, :]
-
-            r[i] = np.exp(Z_ri @ beta).sum()
-
-        return d / r
-
-    @classmethod
-    def fit_from_df(self, *args, **kwargs):
-        # TODO: Finish this
-        raise NotImplementedError("Not yet...")
+        model = cls.fit(x, Z, e, c=c, n=n, how=how, tie_method=tie_method)
+        model.formula = form
+        model.feature_names = feature_names
+        model._model_spec = model_spec
+        return model
 
     @classmethod
     def fit(cls, x, Z, e, c=None, n=None, how="Cox", tie_method="efron"):
@@ -244,17 +253,22 @@ class CompetingRisksProportionalHazards:
         model.how = how
 
         if how == "Cox":
-            # The Cox method is just assuming the other methods
-            # are right censored.
+            # Cause-specific proportional hazards: one Cox model per cause,
+            # treating every other cause (and censoring) as right-censored.
             results = []
             for i, event in enumerate(unique_e):
                 c_e = np.where(e == event, 0, 1)
+                cox_model = CoxPH.fit(x, Z, c_e, n, method=tie_method)
 
-                res = CoxPH.fit(x, Z, c_e, n, method=tie_method).res
-
-                results.append(res)
-                betas[i, :] = res.x
-                baselines[i, :] = cls.baseline(res.x, x, c, n, Z, e, event)
+                results.append(cox_model.res)
+                betas[i, :] = cox_model.res.x
+                # Cause-specific baseline hazard: reuse the fitted Cox model's
+                # own Breslow baseline, which is built from c_e (the
+                # cause-specific event indicator) and the standard risk set.
+                # Map its cumulative hazard onto the shared unique_x grid and
+                # store increments so H0_e = baselines.cumsum stays coherent.
+                H_grid = _step(cox_model.x, cox_model.H0, unique_x, before=0.0)
+                baselines[i, :] = np.diff(H_grid, prepend=0.0)
 
         elif how == "Fine-Gray":
             # Delegate to the IPCW Fine-Gray fitter, one subdistribution model
