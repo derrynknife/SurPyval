@@ -250,4 +250,39 @@ But what about truncated data
 Maximum Product of Spacings (MPS)
 ---------------------------------
 
-Coming soon
+Maximum product of spacings — also called maximum spacing estimation, after Cheng & Amin and, independently, Ranneby — is a close cousin of MLE that repairs the situations where MLE misbehaves. Where MLE maximises the geometric mean of the density *heights* at each observation, MPS maximises the geometric mean of the *gaps between the CDF values* of the ordered data.
+
+The intuition is this. If a distribution really did generate the data, then pushing the observations through its own CDF, :math:`u_{i} = F(x_{i} \mid \theta)`, should produce values that look uniformly spread across :math:`[0, 1]` — this is the probability integral transform. A good fit is therefore one whose ordered CDF values are spaced as *evenly* as possible, and MPS makes that precise by scoring the spacings between consecutive ordered CDF values.
+
+Order the observations :math:`x_{(1)} \leq x_{(2)} \leq \dots \leq x_{(n)}` and define the spacings
+
+.. math::
+
+    D_{i}(\theta) = F(x_{(i)} \mid \theta) - F(x_{(i-1)} \mid \theta),
+    \qquad i = 1, \dots, n + 1,
+
+with the conventions :math:`F(x_{(0)}) = 0` and :math:`F(x_{(n+1)}) = 1` for the two end gaps. There are :math:`n + 1` spacings and, because :math:`F` runs from 0 to 1, they always sum to one. MPS chooses the parameters that maximise their geometric mean,
+
+.. math::
+
+    S(\theta) = \left( \prod_{i=1}^{n+1} D_{i}(\theta) \right)^{1/(n+1)},
+
+or, taking logs and negating for the optimiser exactly as we did for MLE,
+
+.. math::
+
+    -\frac{1}{n + 1} \sum_{i=1}^{n+1} \ln D_{i}(\theta).
+
+Because a geometric mean is largest when its terms are equal, this is maximised when the spacings are as uniform as possible — precisely the "evenly spread" condition above.
+
+Why bother, when MLE already works so well? The answer is those two *end* spacings, :math:`D_{1} = F(x_{(1)}) - 0` and :math:`D_{n+1} = 1 - F(x_{(n)})`. They let MPS "see" the room beyond the smallest and largest observations — information MLE simply throws away. This matters most when a parameter controls where the distribution's support *starts or ends*: an offset (three-parameter) distribution, or a finitely bounded one such as the Uniform, Generalised Beta or Triangular. There the likelihood is badly behaved, because MLE can drive the density to infinity by sliding the support boundary right up against the most extreme data point — a degenerate, unbounded likelihood. MPS cannot be fooled this way: pushing the boundary onto :math:`x_{(1)}` forces the first spacing :math:`D_{1}` to zero, and :math:`\ln 0 = -\infty` is the *worst* possible score, so the estimator is pulled back to a sensible interior solution. This is exactly why, in the :doc:`Parametric SurPyval Modelling` notes, the Uniform and the offset Log-Logistic are recovered far better with ``how='MPS'`` than with MLE.
+
+Censoring, ties and truncation are folded in with the same reasoning used for the likelihood. A right- or left-censored point contributes its survival :math:`R(x \mid \theta)` or CDF :math:`F(x \mid \theta)` — all we know is that the true value lies beyond the one we saw — and repeated (tied) observations contribute density terms, so exact ties do not collapse a spacing to zero. Left and right truncation are handled by renormalising the spacings over the observation window: every CDF value is rescaled as :math:`\left(F(x) - F(t_{l})\right) / \left(F(t_{r}) - F(t_{l})\right)` before the gaps are taken, so the spacings again run over a unit interval, now *conditional* on the observation having fallen inside the window. This renormalisation is what lets surpyval fit right-truncated data with MPS, which is otherwise awkward for the other estimators.
+
+Trading the density for spacings costs nothing asymptotically: under the usual regularity conditions MPS is consistent and asymptotically as efficient as MLE, attaining the same asymptotic variance. Its advantage is that it *stays* consistent in the awkward cases — J- or U-shaped densities, and distributions with unknown support — where the maximum likelihood estimate is inconsistent or fails to exist at all. In surpyval it is requested with ``how='MPS'`` and, like every other estimator, returns a fully-featured model:
+
+.. code:: python
+
+    model = surv.Weibull.fit(x, how='MPS')
+
+which makes it a robust fall-back whenever an MLE fit struggles with an offset or a bounded support.
