@@ -1,30 +1,82 @@
 Changelog
 =========
 
-v0.11.0 (planned)
------------------
+v0.12.0 (15 Jul 2026)
+---------------------
+
+A large release consolidating the regression, recurrent-event, competing-risks,
+degradation, and multivariate work accumulated since ``v0.10.1``. Requires
+Python 3.11+ and NumPy 2.
+
+Regression
+~~~~~~~~~~
+
+- Standardised every univariate regression fitter (accelerated failure time,
+  proportional hazards, proportional odds, additive hazards, accelerated life)
+  on a common instance-based ``fit()`` / ``fit_from_df()`` API with pandas and
+  `formulaic <https://matthewwardrop.github.io/formulaic/>`_ formula support.
+- ``CoxPH`` gained the Efron tie handling in addition to Breslow, and its
+  analytic (Efron) information matrix is now correct, so standard errors and
+  p-values are produced for tied data.
+- Added delta-method confidence bounds to the parametric regression models:
+  ``cb()`` on a predicted function at a covariate vector, ``param_cb()`` on a
+  single coefficient, and ``covariance()`` / ``standard_errors()`` /
+  ``parameter_names()`` on the fitted parameters.
+- Added ``BuckleyJames``, a semi-parametric accelerated-failure-time model with
+  an unspecified error distribution (the accelerated-time counterpart of Cox),
+  fitted by the Buckley-James imputation iteration with percentile-bootstrap
+  coefficient intervals.
+- Added a parametric ``AdditiveHazards`` regression fitter.
+
+Competing risks
+~~~~~~~~~~~~~~~~
+
+- Added a competing-risks regression module with a cause-specific Cox model and
+  a Fine-Gray subdistribution-hazard model (``CompetingRisksProportionalHazards``),
+  each with ``fit()`` / ``fit_from_df()`` and cumulative-incidence prediction.
+
+Recurrent events
+~~~~~~~~~~~~~~~~~
 
 - Standardised the recurrent-model API on the same instance-based fitters the
-  univariate distributions use. Every recurrent fitter (``HPP``, ``CrowAMSAA``,
-  ``Duane``, ``CoxLewis``, ``NonParametricCounting``, the renewal fitters
-  ``GeneralizedRenewal``/``GeneralizedOneRenewal``/``ARA``/``ARI`` and the
-  proportional-intensity fitters) is now a configured singleton instance with
-  an instance-method ``fit()`` rather than a class with a ``@classmethod fit``.
-  Public ``Model.fit(...)`` calls are unchanged. Internally this is provided by
-  the new ``surpyval.utils.fitter.singleton_fitter`` decorator. Also removed the
-  unused ``ParametricRecurrenceRegressionModel`` stub.
-- General ALT fitter full release
-- General PH fitter full release
-- Formulas
-- Add more than `Breslow <http://www-personal.umich.edu/~yili/lect4notes.pdf>`_ to the CoxPH methods.
-- Parameter confidence bound
-- Document the rationale behind using Fleming-Harrington as the default.
-- Docs on how to integrate with Pandas
-- Docs for CoxPH
-- Docs for Accelerated Life fitters
-- Create a ``RegressionFitter`` class. I keep copying code across the three fitters.
-- Allow truncation with zi and lfp models.
-- Allow truncation with regression
+  univariate distributions use: ``HPP``, ``CrowAMSAA``, ``Duane``,
+  ``CoxLewis``, ``NonParametricCounting``, the renewal fitters
+  (``GeneralizedRenewal``/``GeneralizedOneRenewal``/``ARA``/``ARI``) and the
+  proportional-intensity fitters are now configured singleton instances with an
+  instance-method ``fit()``. Public ``Model.fit(...)`` calls are unchanged;
+  internally provided by the ``surpyval.utils.fitter.singleton_fitter``
+  decorator. Removed the unused ``ParametricRecurrenceRegressionModel`` stub.
+- Added parameter-uncertainty and diagnostic support to the recurrent models,
+  and removed the ``dist='t'`` heuristic from the recurrent ``mcf_cb``.
+
+Degradation
+~~~~~~~~~~~
+
+- Added the ``surpyval.degradation`` pseudo-failure-time analysis module:
+  per-unit path fits over a library of path models, extrapolation to a failure
+  threshold, and a fitted life distribution, with population path-parameter
+  estimation (Lu-Meeker two-stage and REML) and Bayesian remaining-useful-life
+  prediction (``predict_rul``).
+- Added two-stage (delta-method and bootstrap) confidence bounds on the fitted
+  life model that fold in the first-stage path/extrapolation uncertainty
+  (``DegradationModel.cb`` / ``life_parameter_covariance``).
+- Added Stage-1 accelerated degradation testing (ADT) covariates: passing
+  ``Z`` to ``DegradationAnalysis.fit`` fits a regression life model on the
+  pseudo failure times so life can be predicted at any stress condition.
+
+Multivariate
+~~~~~~~~~~~~~
+
+- Added a ``surpyval.multivariate`` module with copula models over the
+  univariate distributions.
+
+Distributions and core
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Added discrete lifetime distributions.
+- Hardened input validation in the ``handle_xicn`` / ``xcnt_handler`` data
+  handlers, and fixed a reserved-attribute clash.
+- Simulation and ``dist='t'`` cleanups.
 
 v0.10.1.0 (25 Mar 2022)
 -----------------------
