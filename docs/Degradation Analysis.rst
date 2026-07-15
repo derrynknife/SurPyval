@@ -276,14 +276,107 @@ their parameters (linear, quadratic, logarithmic, Lloyd-Lipow) and
 requires a
 positive measurement variance.
 
-A note on uncertainty
----------------------
+Confidence bounds
+-----------------
 
-The pseudo-failure-time approach is a two-stage method: the life
-distribution is fitted to *estimated* failure times as if they had been
-observed exactly, so the reported confidence bounds on the life model do
-not include the path-fitting or extrapolation uncertainty. This is the
-standard, pragmatic form of degradation analysis; random-effects
-(Lu-Meeker, fitted by REML) and stochastic-process (Wiener, gamma
-process) degradation models, which propagate that uncertainty, are
-candidates for future work.
+The pseudo-failure-time approach is a *two-stage* estimator: the life
+distribution is fitted to *extrapolated* failure times as if they had been
+observed exactly. The plain life-model bounds therefore treat the pseudo
+failure times as certain and are too narrow. ``DegradationModel.cb`` corrects
+this, folding the first-stage (path-fit and extrapolation) uncertainty back
+into the life-model covariance with an analytic delta-method /
+generated-regressor correction:
+
+.. jupyter-execute::
+
+    import numpy as np
+    from matplotlib import pyplot as plt
+    from surpyval.degradation import DegradationAnalysis
+
+    rng = np.random.default_rng(0)
+    times = np.arange(1, 9) * 100.0
+    n_units = 60
+    x = np.tile(times, n_units)
+    unit = np.repeat(np.arange(n_units), times.size)
+    slopes = rng.normal(0.22, 0.05, size=n_units)     # between-unit spread
+    y = 10 + np.repeat(slopes, times.size) * x + rng.normal(0, 2.0, size=x.size)
+
+    model = DegradationAnalysis.fit(x, y, unit, threshold=150)
+
+    t = np.linspace(400, 800, 200)
+    band = model.cb(t, on='sf')                # (n, 2): two-stage [lower, upper]
+    plt.plot(t, model.sf(t), 'b', label='S(t)')
+    plt.fill_between(t, band[:, 0], band[:, 1], alpha=0.2,
+                     label='95% two-stage band')
+    plt.legend()
+    plt.xlabel('Time')
+    plt.ylabel('S(t)')
+
+The correction adds a positive term to the life-model information inverse, so
+the two-stage parameter covariance (``model.life_parameter_covariance()``) is
+the ordinary MLE covariance *plus* the propagated first-stage variance — the
+bounds widen to their correct coverage. A slower, assumption-light cross-check
+resamples whole units and reruns the whole pipeline:
+
+.. jupyter-execute::
+
+    model.cb(np.array([500.0, 600.0]), on='sf', method='bootstrap',
+             n_boot=100, seed=0)
+
+Random-effects (Lu-Meeker, fitted by REML) and stochastic-process (Wiener,
+gamma-process) degradation models, which propagate this uncertainty through a
+single likelihood rather than a two-stage correction, are candidates for future
+work.
+
+
+Accelerated degradation testing (covariates)
+--------------------------------------------
+
+In accelerated degradation testing (ADT) units are run at *elevated stress*
+(temperature, voltage, load) so they degrade fast enough to measure, and life
+is then extrapolated back to use conditions. Passing a per-unit stress
+covariate ``Z`` to :meth:`DegradationAnalysis.fit` fits a *regression* life
+model on the pseudo failure times instead of a plain distribution, so life can
+be predicted at any stress. A plain distribution is wrapped automatically in an
+accelerated-failure-time model; an explicit regression fitter
+(``AFT(LogNormal)``, ``WeibullPH``, …) is used as given.
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(0)
+    times = np.arange(1, 11) * 5.0
+    xs, ys, ids, Zs = [], [], [], []
+    uid = 0
+    for stress in [0.0, 0.5, 1.0, 1.5]:        # four stress levels
+        for _ in range(12):
+            rate = 0.5 * np.exp(0.8 * stress) * np.exp(rng.normal(0, 0.1))
+            path = 10 + rng.normal(0, 1) + rate * times
+            xs.append(times)
+            ys.append(path + rng.normal(0, 0.5, times.size))
+            ids.append(np.full(times.size, uid))
+            Zs.append(np.full(times.size, stress))
+            uid += 1
+    xd, yd, idd, Zd = (np.concatenate(a) for a in (xs, ys, ids, Zs))
+
+    model = DegradationAnalysis.fit(xd, yd, idd, threshold=100.0, Z=Zd)
+    model
+
+The last fitted coefficient is the stress effect (higher stress ⇒ faster
+degradation ⇒ shorter life). The prediction methods now take the stress vector
+``Z`` at which to evaluate life, so life at use conditions is one call:
+
+.. jupyter-execute::
+
+    for stress in [0.0, 0.5, 1.0]:
+        print(f'stress {stress}: mean life = {model.mean(Z=[stress]):.1f}')
+
+    t = np.linspace(0, 300, 200)
+    for stress in [0.0, 0.5, 1.0]:
+        plt.plot(t, model.sf(t, Z=[stress]), label=f'stress {stress}')
+    plt.legend()
+    plt.xlabel('Time')
+    plt.ylabel('Reliability at stress')
+
+``qf`` and ``mean`` invert / integrate the regression survival function, and
+``random`` draws from it. First-stage regression confidence bounds are available
+through ``model.life_model.cb(x, Z, ...)``.

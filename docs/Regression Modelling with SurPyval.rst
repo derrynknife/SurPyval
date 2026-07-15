@@ -278,6 +278,61 @@ to :meth:`CoxPH.fit`); right or interval truncation is rejected, because the
 forward partial likelihood cannot express it.
 
 
+Semi-Parametric — Buckley-James (AFT)
+-------------------------------------
+
+Cox leaves the baseline *hazard* unspecified; Buckley-James is its
+accelerated-time counterpart, leaving the error *distribution* unspecified:
+
+.. math::
+
+    \log T = \beta' Z + \varepsilon,
+
+with :math:`\varepsilon` drawn from an arbitrary distribution estimated from the
+data. It is fitted by the Buckley-James iteration — repeatedly imputing each
+censored log-time by its conditional expectation under the Kaplan-Meier of the
+current residuals, then re-fitting by least squares, until the coefficients stop
+moving. As with Cox, coefficients are in surpyval's accelerated-failure sign: a
+*positive* coefficient shortens life.
+
+.. jupyter-execute::
+
+    from surpyval import BuckleyJames
+
+    # log T = 3 - 0.8 Z + noise, right-censored: higher Z shortens life, so
+    # the accelerated-failure coefficient is +0.8.
+    rng = np.random.default_rng(0)
+    Z_bj = rng.normal(size=(400, 1))
+    T_bj = np.exp(3.0 - 0.8 * Z_bj[:, 0] + rng.normal(0, 0.5, size=400))
+    cens = np.exp(3.6)
+    c_bj = (T_bj > cens).astype(int)
+    x_bj = np.minimum(T_bj, cens)
+
+    model = BuckleyJames.fit(x=x_bj, Z=Z_bj, c=c_bj)
+    model
+
+Buckley-James has no simple closed-form standard error, so uncertainty comes
+from a percentile bootstrap — resampling, refitting, and taking coefficient
+percentiles:
+
+.. jupyter-execute::
+
+    model.bootstrap_ci(n_boot=200, seed=1)
+
+Predictions use the fitted residual distribution directly,
+:math:`S(t \mid Z) = S_\varepsilon(\log t + \beta' Z)`, so the survival curves
+shift with the covariate:
+
+.. jupyter-execute::
+
+    t = np.linspace(1, 60, 200)
+    for z in [-1.0, 0.0, 1.0]:
+        plt.step(t, model.sf(t, Z=[z]), where='post', label=f'Z = {z:g}')
+    plt.legend()
+    plt.xlabel('Time')
+    plt.ylabel('S(t)')
+
+
 Semi-Parametric — Additive Hazards
 ----------------------------------
 
@@ -503,6 +558,58 @@ The ``PO`` factory accepts any distribution:
 A practical rule of thumb: if the Kaplan-Meier curves for different covariate
 groups converge at long times (rather than remaining parallel on the log-hazard
 scale), PO is likely a better fit than PH.
+
+
+Confidence Bounds
+-----------------
+
+A point estimate is only half the story. The parametric regression models (PH,
+AFT, PO, AL) carry the full parameter covariance, so every coefficient and every
+predicted curve comes with an interval. After a fit, the parameter covariance
+and standard errors are available directly:
+
+.. jupyter-execute::
+
+    from surpyval import WeibullPH
+
+    rng = np.random.default_rng(0)
+    Z_cb = rng.normal(size=(300, 1))
+    x_cb = 10.0 * (
+        -np.log(rng.uniform(size=300)) / np.exp(Z_cb[:, 0] * 0.8)
+    ) ** (1 / 2.0)
+    m_cb = WeibullPH.fit(x=x_cb, Z=Z_cb, c=np.zeros(300, dtype=int))
+
+    print(m_cb.parameter_names())
+    print(m_cb.standard_errors())
+
+``param_cb`` gives a Wald confidence bound on a single parameter, computed on a
+scale chosen from the parameter's support (log for a positive scale, natural for
+an unbounded coefficient) so the interval always stays valid:
+
+.. jupyter-execute::
+
+    m_cb.param_cb('beta_0')      # 95% CI for the covariate coefficient
+
+``cb`` propagates the parameter covariance through a predicted function by the
+delta method, returning a confidence *band*. Here is the survival at a covariate
+value with its 95% band:
+
+.. jupyter-execute::
+
+    x_grid = np.linspace(1, 40, 200)
+    band = m_cb.cb(x_grid, Z=[0.5], on='sf')      # (n, 2): [lower, upper]
+    sf = m_cb.sf(x_grid, Z=[0.5])
+    plt.plot(x_grid, sf, 'b', label='S(x | Z=0.5)')
+    plt.fill_between(x_grid, band[:, 0], band[:, 1], alpha=0.2,
+                     label='95% confidence band')
+    plt.legend()
+    plt.xlabel('Time')
+    plt.ylabel('S(x)')
+
+``cb`` accepts ``on='ff'``, ``'Hf'``, ``'hf'`` or ``'df'``, one- or two-sided
+bounds via ``bound=``, and any ``alpha_ci``. The convenience method
+``model.plot()`` draws the fitted survival at the mean covariate against the
+Kaplan-Meier with this band already applied.
 
 
 .. _accelerated-life:
