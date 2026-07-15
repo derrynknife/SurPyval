@@ -338,7 +338,8 @@ class ParametricFitter:
         if how == "MPP" and not self.supports_mpp:
             detail = (
                 f"{self.name} distribution does not work"
-                " with probability plot fitting"
+                " with probability plot fitting; use how='MLE', 'MSE' or"
+                " 'MOM' instead"
             )
             raise ValueError(detail)
 
