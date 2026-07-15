@@ -6,6 +6,12 @@ call to the ``fit()`` method. However, the parametric models have more options t
 for count of each ``x``, ``xl`` and ``xr`` for intervally censored data (can't be used with ``x``) ``t``
 for the truncation matrix, ``tl`` for the left truncation scalar or array, and ``tr`` for the right truncation scalar or array all remain.
 
+These ingredients compose freely — any mix of censoring, counts and truncation
+in a single ``fit`` call — and the same convention is used by every model in
+the package (non-parametric, regression, recurrent, competing-risks and
+copula). See :doc:`Data Wrangler Examples` for worked examples that combine
+them and convert between input formats.
+
 Complete Data
 -------------
 
