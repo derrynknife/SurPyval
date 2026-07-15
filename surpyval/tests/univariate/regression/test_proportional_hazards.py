@@ -264,6 +264,47 @@ def test_efron_and_breslow_p_values_agree_without_ties():
     assert np.allclose(m_ef.p_values, m_br.p_values, atol=1e-2)
 
 
+def test_cox_delayed_entry_episode_split_invariance():
+    # Splitting each subject's follow-up at an interior time, carrying the
+    # SAME covariate on both pieces (the first piece censored, the second a
+    # delayed entry), is an exact identity of the Cox partial likelihood: it
+    # must not change the estimated coefficient. This is the foundation of
+    # start-stop / time-varying-covariate fitting, and it exercises the
+    # staggered-risk-set (delayed-entry) path, which MINPACK's root-finder
+    # used to stall on before the minimisation fallback was added.
+    rng = np.random.default_rng(1)
+    n = 500
+    Z = rng.normal(size=(n, 1))
+    T = rng.exponential(1 / np.exp(Z[:, 0] * 0.7))
+    c = np.zeros(n, dtype=int)
+
+    ref = CoxPH.fit(x=T, Z=Z, c=c, tl=np.zeros(n))
+
+    s = T * rng.uniform(0.2, 0.8, size=n)
+    split = CoxPH.fit(
+        x=np.concatenate([s, T]),
+        Z=np.vstack([Z, Z]),
+        c=np.concatenate([np.ones(n, dtype=int), np.zeros(n, dtype=int)]),
+        tl=np.concatenate([np.zeros(n), s]),
+    )
+
+    assert split.res.success
+    assert np.isclose(ref.beta[0], split.beta[0], atol=1e-3)
+
+
+def test_cox_rejects_right_truncation():
+    # The Cox partial likelihood has no way to incorporate right or interval
+    # truncation, so a 2-D ``tl`` (a [tl, tr] pair) must raise a clear,
+    # Cox-specific error rather than the generic truncation message.
+    rng = np.random.default_rng(0)
+    x = rng.exponential(10, 40)
+    Z = rng.normal(size=(40, 1))
+    c = np.zeros(40, dtype=int)
+    t_pair = np.column_stack([np.zeros(40), x + 5.0])
+    with pytest.raises(ValueError, match="left-truncation"):
+        CoxPH.fit(x=x, Z=Z, c=c, tl=t_pair)
+
+
 def test_baseline_hazard_properties():
     # h0 must be non-negative and H0 must be monotonically non-decreasing.
     n = 100

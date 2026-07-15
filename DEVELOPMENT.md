@@ -130,18 +130,25 @@ remain:
 
 ## 6. Truncation and Time-Varying Covariates
 
-Current state to build on (correcting an earlier note): `AFTFitter` and
-`ProportionalOddsFitter` **do** accept a truncation argument `t` and thread it
-into `SurpyvalData`, and `ProportionalHazardsFitter` handles left-truncation via
-`tl`. The outstanding work is:
+Current state to build on: the parametric `AFTFitter`, `ProportionalOddsFitter`
+and `ProportionalHazardsFitter` accept a truncation argument `t` and thread it
+into `SurpyvalData`, and the `regression_neg_ll` truncation correction
+(`− log[F(t_R|Z) − F(t_L|Z)]` per row, each with its own covariates) is now
+*verified* correct: a covariate-truncation recovery test confirms the
+coefficient and scale are recovered from left-, right-, interval- and
+partially-truncated data, while the naive (ignore-truncation) fit is biased.
+Semi-parametric `CoxPH` handles left-truncation (delayed entry) via `tl`; its
+partial likelihood matches a brute-force reference on staggered-entry data and
+now satisfies the episode-splitting identity (the `fit` optimiser gained a
+minimisation fallback so staggered-risk-set data converges). Right/interval
+truncation for Cox is rejected with a clear error (a 2-D `tl`), since the
+forward partial likelihood cannot express it. The outstanding work is:
 
-- **Confirm and test truncated-likelihood correctness.** Verify that the
-  `S(t_L|Z) − S(t_R|Z)` normalisation is actually applied (not merely accepted)
-  across AFT / PO / PH, and add regression tests for double truncation. Add
-  right/interval truncation to Cox PH (only `tl` is wired today).
 - **Time-varying covariates via start-stop format** `(t_start, t_stop, event,
-  Z)` — each interval is a left-truncated observation, so truncation support is
-  the prerequisite. Difficulty varies by family:
+  Z)` — each interval is a left-truncated observation. The delayed-entry
+  machinery this needs is now verified (episode-splitting invariance holds), so
+  this is buildable; what remains is the ergonomic start-stop input handling and
+  per-interval covariates. Difficulty varies by family:
   - Additive hazards (Lin-Ying): easiest — `H(t) = H₀(t) + β'·∫Z(s)ds`
     accumulates linearly; interval contributions are just `β'·Z·Δt`.
   - Cox PH and parametric PH: medium — cumulative hazard is additive over

@@ -1294,6 +1294,21 @@ def validate_coxph(
     if method not in COX_PH_METHODS:
         raise ValueError("Method must be in {}".format(COX_PH_METHODS))
 
+    # The Cox partial likelihood accommodates left-truncation (delayed entry)
+    # by adjusting the risk sets, but has no way to incorporate right or
+    # interval truncation (that needs a reverse-time / retro-hazard model). A
+    # 2-D ``tl`` is the natural way a user would try to pass a [tl, tr] pair,
+    # so reject it with a clear, Cox-specific message rather than the generic
+    # truncation error (which points at a ``t`` argument CoxPH does not have).
+    if tl is not None and np.ndim(tl) == 2:
+        raise ValueError(
+            "CoxPH supports left-truncation (delayed entry) only, supplied "
+            "as a one-dimensional `tl`. Right or interval truncation is not "
+            "available for the Cox partial likelihood; use a parametric "
+            "proportional-hazards fitter (e.g. WeibullPH) with t=[tl, tr] "
+            "for right/interval-truncated data."
+        )
+
     x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
 
     tl = t[:, 0]

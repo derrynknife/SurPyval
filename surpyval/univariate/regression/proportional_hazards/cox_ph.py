@@ -13,7 +13,7 @@ import numpy as np
 import numpy.ma as ma
 import numpy.typing as npt
 from numpy.linalg import inv, pinv
-from scipy.optimize import root
+from scipy.optimize import minimize, root
 from scipy.stats import norm
 
 if TYPE_CHECKING:
@@ -463,6 +463,19 @@ class CoxPH_:
         # Have found that root finding is faster than minimization
         res = root(jac, beta_init, jac=hess, tol=tol)
 
+        # MINPACK's hybr root-finder can stall on delayed-entry data with
+        # staggered risk sets (e.g. the start-stop representation used for
+        # time-varying covariates) even though the partial log-likelihood is
+        # well behaved there. Fall back to a direct minimisation of the
+        # negative partial log-likelihood whenever root-finding fails to
+        # converge or lands at a worse point, so such fits still succeed.
+        if not res.success:
+            fallback = minimize(
+                lambda b: float(neg_ll(b)), beta_init, method="BFGS"
+            )
+            if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
+                res = fallback
+
         # The hessian is at [1] of the jac function
         if hess:
             # Finds the p-value for the null hypothesis
@@ -473,7 +486,13 @@ class CoxPH_:
             # diagonal that is all positive.
             if np.any(var <= 0):
                 var = np.diag(pinv(hessian_matrix))
-            z_score = res.x / np.sqrt(var)
+            # A near-singular information matrix (e.g. a degenerate
+            # start-stop design with duplicated rows) can still leave a
+            # non-positive variance; the resulting standard error is simply
+            # unavailable (nan), which is the correct signal, so suppress the
+            # sqrt-of-negative warning rather than emit it.
+            with np.errstate(invalid="ignore"):
+                z_score = res.x / np.sqrt(var)
             p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
         else:
             p_values = None
