@@ -1,6 +1,57 @@
 Changelog
 =========
 
+v0.13.0 (unreleased)
+--------------------
+
+Distributions
+~~~~~~~~~~~~~~
+
+- Added three Tier-2 discrete distributions: ``Poisson`` (the count
+  distribution on ``{0, 1, 2, ...}``, distinct from the recurrent Poisson
+  *processes*), ``BetaGeometric`` (a discrete-time frailty model — Geometric
+  with a Beta-mixed failure probability, whose marginal hazard decreases with
+  time), and ``Discretize(distribution)``, a factory that turns any
+  non-negative continuous distribution into its integer-binned counterpart
+  (``K = ceil(T)``, so ``P(K=k) = F(k) - F(k-1)`` and the discrete survival
+  equals the continuous survival), fit by MLE on the underlying parameters.
+- ``Beta.fit(how="MPP")`` now raises a clear ``ValueError`` (the Beta has no
+  linearising probability plot) instead of a raw ``NotImplementedError``, and
+  points to ``MLE`` / ``MSE`` / ``MOM``.
+
+Regression — Cox proportional hazards
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Added time-varying-covariate support in counting-process (start-stop)
+  format: ``CoxPH.fit_tvc`` / ``fit_tvc_from_df`` take one row per interval
+  ``(ident, start, stop, event, Z)``, validated by ``handle_tvc``, and
+  ``SemiParametricRegressionModel.predict_tvc`` gives a subject's survival
+  along a supplied covariate path.
+- **Fixed** the Breslow baseline hazard to respect left-truncation / delayed
+  entry (``tl``) and case weights (``n``); ``H0`` was previously wrong for any
+  delayed-entry fit even though the coefficients were correct.
+- ``CoxPH.fit`` gained a minimisation fallback so staggered delayed-entry data
+  (e.g. the start-stop representation) converges where the root-finder stalled.
+- Right / interval truncation is now rejected with a clear, Cox-specific error
+  (a 2-D ``tl``), since the forward partial likelihood cannot express it.
+
+Truncation
+~~~~~~~~~~
+
+- Verified and tested that the parametric AFT / PO / PH truncation correction
+  uses each row's own covariates: a covariate-recovery test confirms the
+  coefficient and scale are recovered from left-, right-, interval- and
+  partially-truncated data.
+
+Documentation
+~~~~~~~~~~~~~~
+
+- Added worked, executed examples for regression confidence bounds,
+  Buckley-James AFT, competing-risks regression (Fine-Gray + cause-specific
+  Cox), degradation ADT covariates and two-stage bounds, the copula module,
+  and the combined data-input flexibility; wrote the Maximum Product of
+  Spacings (MPS) estimation theory section.
+
 v0.12.0 (15 Jul 2026)
 ---------------------
 

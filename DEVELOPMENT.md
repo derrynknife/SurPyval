@@ -5,27 +5,37 @@ debt, and improvement priorities. It is forward-looking only: completed work is
 not recorded here (see `docs/changelog.rst` for release history). Items are
 grouped by theme and ordered by priority within each section.
 
-**Package state (2026-07-15).** Version `0.12.0` (released to PyPI). The full
-test suite (1078 tests, 1 documented skip) passes on Python 3.11–3.13 with numpy
-2.x / scipy 1.13+ / pandas 2.2+. The parametric, nonparametric, regression (PH /
-AFT / PO / additive-hazards / accelerated-life), recurrent-event, degradation,
-copula and (experimental) survival-forest modules are all implemented and
-tested. With 0.12.0 shipped, the degradation extensions (§7) and correctness
-hardening (§2, §6) are the highest-value next steps.
+**Package state (2026-07-15).** Version `0.12.0` is released to PyPI; `0.13.0`
+is in progress on `master` (unreleased — see `docs/changelog.rst`, which adds
+the Tier-2 discrete distributions, Cox time-varying covariates, the Cox
+delayed-entry baseline fix, and a broad documentation pass). The full test
+suite (1116 tests, 1 documented skip) passes on Python 3.11–3.13 with numpy
+2.x / scipy 1.13+ / pandas 2.2+. The parametric, nonparametric, regression
+(PH / AFT / PO / additive-hazards / accelerated-life), recurrent-event,
+degradation, copula and (experimental) survival-forest modules are all
+implemented and tested. The highest-value remaining threads are the
+degradation extensions (§7), the recurrent-module gaps (§4), and the
+type-hint ratchet (§3).
 
 ---
 
 ## 1. Release & docs polish
 
-0.12.0 is released to PyPI. The changelog (`docs/changelog.rst`) carries a real
-per-version history, and `.github/workflows/publish.yml` builds the sdist/wheel
-and uploads on a `v*` tag via PyPI Trusted Publishing (OIDC), with a guard that
-the tag matches the packaged version. Remaining polish (non-blocking):
+Release tooling is in place: `.github/workflows/publish.yml` builds the
+sdist/wheel and uploads on a `v*` tag via PyPI Trusted Publishing (OIDC), with
+a guard that the tag matches the packaged version, and `docs/changelog.rst`
+carries a real per-version history. The narrative guides now have executed,
+worked examples across the model families (regression, competing risks,
+degradation, copulas, data-input flexibility) and the estimation-theory
+sections are complete. Remaining polish (non-blocking):
 
+- **Cut 0.13.0** when ready: bump `pyproject.toml` / `surpyval/__init__.py` to
+  `0.13.0`, finalise the changelog entry's date, tag `v0.13.0`.
 - Add a `docs` optional-dependency group (docs deps currently live only in
   `docs/requirements.txt`).
-- Add API doc pages for the newer surfaces (multivariate copulas, degradation
-  RUL / ADT covariates, the experimental forest).
+- Add API (autodoc) reference pages for the newer surfaces (multivariate
+  copulas, degradation RUL / ADT covariates, the experimental forest); only
+  narrative examples exist for these today.
 
 ---
 
@@ -44,9 +54,10 @@ the tag matches the packaged version. Remaining polish (non-blocking):
     likelihood for tied data. Also niche; Breslow + Efron already match what
     R's `survival` and lifelines offer by default.
 
-  Neither is a common need, so both are deferred. Also: only right-censoring
-  and left-truncation (`tl`) are wired; right/interval truncation is missing
-  (see §6).
+  Neither is a common need, so both are deferred. Cox wires right-censoring and
+  left-truncation (`tl`, including delayed-entry / start-stop time-varying
+  covariates); right/interval truncation is intentionally rejected with a clear
+  error, as the forward partial likelihood cannot express it.
 
 ---
 
@@ -128,44 +139,23 @@ remain:
 
 ---
 
-## 6. Truncation and Time-Varying Covariates
+## 6. Time-Varying Covariates for the parametric families
 
-Current state to build on: the parametric `AFTFitter`, `ProportionalOddsFitter`
-and `ProportionalHazardsFitter` accept a truncation argument `t` and thread it
-into `SurpyvalData`, and the `regression_neg_ll` truncation correction
-(`− log[F(t_R|Z) − F(t_L|Z)]` per row, each with its own covariates) is now
-*verified* correct: a covariate-truncation recovery test confirms the
-coefficient and scale are recovered from left-, right-, interval- and
-partially-truncated data, while the naive (ignore-truncation) fit is biased.
-Semi-parametric `CoxPH` handles left-truncation (delayed entry) via `tl`; its
-partial likelihood matches a brute-force reference on staggered-entry data and
-now satisfies the episode-splitting identity (the `fit` optimiser gained a
-minimisation fallback so staggered-risk-set data converges). Right/interval
-truncation for Cox is rejected with a clear error (a 2-D `tl`), since the
-forward partial likelihood cannot express it. The outstanding work is:
+Truncation and Cox time-varying covariates are done (0.13.0): the parametric
+AFT / PO / PH truncation correction is verified with active covariates, and
+`CoxPH.fit_tvc` / `fit_tvc_from_df` / `predict_tvc` fit counting-process
+(start-stop) data with a delayed-entry-correct baseline. What remains is
+time-varying covariates for the *parametric* families. Each interval is a
+left-truncated observation; difficulty varies by family:
 
-- **Time-varying covariates for Cox — done.** `CoxPH.fit_tvc` /
-  `fit_tvc_from_df` take counting-process (start-stop) data `(ident, start,
-  stop, event, Z)`, one row per interval on which the covariates are constant.
-  `handle_tvc` validates the structure (non-overlapping intervals, at most one
-  terminal event on a subject's last interval) and maps each interval to a
-  delayed-entry observation `(x = stop, tl = start, c = 1 − event)`, which the
-  partial likelihood fits exactly. The Breslow baseline was fixed to respect
-  `tl` (and to weight by `n`), so `H0` is now correct for delayed-entry /
-  start-stop data. `SemiParametricRegressionModel.predict_tvc` gives the
-  survival of a subject along a supplied covariate path,
-  `H(t) = Σ_{u_j ≤ t} h0(u_j) exp(β'Z(u_j))`, reducing to `sf(t, Z)` for a
-  constant covariate.
-- **Time-varying covariates for the parametric families — future work.** Each
-  interval is a left-truncated observation; difficulty varies by family:
-  - Additive hazards (Lin-Ying): easiest — `H(t) = H₀(t) + β'·∫Z(s)ds`
-    accumulates linearly; interval contributions are just `β'·Z·Δt`.
-  - Parametric PH: medium — cumulative hazard is additive over intervals, so
-    segments compose cleanly (as in the Cox case above).
-  - Parametric AFT: harder — must track cumulative "accelerated age"
-    `φ(Z₁)·t₁ + φ(Z₂)·(t₂−t₁) + …` across prior intervals.
-  - Parametric PO: not practical — no additive structure; needs numerical
-    integration per interval.
+- Additive hazards (Lin-Ying): easiest — `H(t) = H₀(t) + β'·∫Z(s)ds`
+  accumulates linearly; interval contributions are just `β'·Z·Δt`.
+- Parametric PH: medium — cumulative hazard is additive over intervals, so
+  segments compose cleanly (as in the Cox case).
+- Parametric AFT: harder — must track cumulative "accelerated age"
+  `φ(Z₁)·t₁ + φ(Z₂)·(t₂−t₁) + …` across prior intervals.
+- Parametric PO: not practical — no additive structure; needs numerical
+  integration per interval.
 
 ---
 
@@ -198,34 +188,17 @@ extrapolation uncertainty into the life-model covariance, plus a `method=
 - **Destructive degradation** (one measurement per unit) — needs a different
   data model since per-unit path fits are impossible.
 
-### Covariates / accelerated degradation testing (design)
+### Covariates / accelerated degradation testing
 
-Covariates (accelerating stresses such as temperature/voltage/humidity, or
-observational factors such as lot/supplier/load) can enter at two different
-stages, and they are genuinely different features:
-
-**Stage 1 — covariates on the life fit (classic ADT).** *Shipped.* The
-per-unit path fits are unchanged; each unit carries a constant covariate vector
-`Z_i`. Passing `Z` to `DegradationAnalysis.fit(x, y, i, Z=..., distribution=...)`
-feeds `(pseudo_failure_time_i, c_i, Z_i)` into the univariate regression fitters
-instead of a plain distribution — a plain `distribution` (e.g. `Weibull`) is
-auto-wrapped in `AFT(distribution)`, while an explicit regression fitter (e.g.
-`AFT(LogNormal)`, `WeibullPH`, `CoxPH`) is used directly. `Z` is aligned to the
-measurement arrays and validated constant within each unit, then reduced to one
-row per unit. The delegated lifetime functions (`sf`/`ff`/`df`/`hf`/`Hf`/`qf`/
-`mean`/`random`) take the stress vector `Z` at which to evaluate life, so life at
-use conditions is one call; `qf`/`mean` come from inverting/integrating the
-regression survival function (the fitters expose no closed `qf`/`mean`), and
-`random` uses inverse-transform sampling. First-stage regression confidence
-bounds are available via `life_model.cb(x, Z, ...)`; the two-stage
-`DegradationModel.cb` / `life_parameter_covariance` raise `NotImplementedError`
-for covariate models (the generated-regressor correction is not yet derived for
-the regression life fit). `fit_from_df` gains `Z_cols`. Theoretical
-justification: for a linear path with stress acting on the rate, `T = (y_t −
-a)/b(Z)`, so `log T = log(y_t − a) − log b(Z)` — exactly an AFT model, and the
-fitted AFT coefficient recovers the simulated stress coefficient. Remaining open
-point: two-stage bounds for the covariate life fit, and interaction with
-`path="best"` (path stage stays per-unit, selected on pooled data).
+Stage-1 accelerated degradation testing (covariates on the life fit) is done:
+`DegradationAnalysis.fit(x, y, i, Z=..., distribution=...)` feeds
+`(pseudo_failure_time_i, c_i, Z_i)` into the univariate regression fitters, and
+the prediction methods take the stress vector `Z` at which to evaluate life.
+Two open points remain there: two-stage confidence bounds for the covariate
+life fit (`DegradationModel.cb` / `life_parameter_covariance` currently raise
+`NotImplementedError` for covariate models — the generated-regressor correction
+is not yet derived for the regression life fit), and the interaction with
+`path="best"`. The larger remaining features are Stages 2 and 3:
 
 **Stage 2 — covariates on the path parameters (mechanistic).** Model the
 degradation rate itself: `θ_i = Γ z_i + u_i` (e.g. Arrhenius when a rate is
@@ -245,19 +218,12 @@ are stable.
 
 ---
 
-## 8. Discrete Lifetime Distributions — Tier 2/3
+## 8. Discrete Lifetime Distributions — Tier 3
 
-Tier 1 (`Geometric`, `DiscreteWeibull`, `NegativeBinomial` on `{1, 2, 3, …}`
-with zero-inflation at 0) and Tier 2 are done. Extensions:
+Tier 1 (`Geometric`, `DiscreteWeibull`, `NegativeBinomial`, with zero-inflation)
+and Tier 2 (`Poisson`, `BetaGeometric`, and the `Discretize(distribution)`
+wrapper) are done. Remaining extensions:
 
-- **Tier 2 — done.** A standalone `Poisson` distribution on `{0, 1, 2, …}`
-  (count data; distinct from the recurrent Poisson *processes*);
-  `BetaGeometric` (discrete-time frailty — Geometric with Beta-mixed `p`, whose
-  marginal hazard decreases with time); and a general `Discretize(distribution)`
-  wrapper that turns any non-negative continuous distribution into its
-  integer-binned counterpart (`K = ⌈T⌉`, so `P(K=k) = F(k) − F(k−1)` and
-  `R_K(k) = R(k)`), yielding a discrete Gamma / Log-Normal / Weibull etc. fit by
-  MLE on the underlying parameters.
 - **Tier 3 (niche / heavy-tailed):** Zeta / discrete Pareto / Yule–Simon, the
   logarithmic (log-series) distribution, and discrete Rayleigh/Gompertz hazard
   shapes.
