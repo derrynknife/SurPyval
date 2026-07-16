@@ -245,7 +245,14 @@ class ProportionalIntensityHPP:
         data = handle_xicn(
             x, i, c, n, t=t, tl=tl, tr=tr, Z=Z, as_recurrent_data=True
         )
+        return self.fit_from_recurrent_data(data, init=init)
 
+    def fit_from_recurrent_data(self, data, dist=None, init=None):
+        """
+        Fit from a prepared ``RecurrentEventData``. ``dist`` is accepted for a
+        uniform interface with the NHPP fitter but is ignored: the homogeneous
+        baseline is this fitter's own constant-rate model.
+        """
         out = ProportionalIntensityModel()
         out.data = data
 
@@ -261,7 +268,7 @@ class ProportionalIntensityHPP:
         np.maximum.at(_max_x, _inv, _x_max)
         init = (data.n[data.c == 0]).sum() / _max_x.sum()
 
-        num_covariates = Z.shape[1]
+        num_covariates = data.Z.shape[1]
         init = np.append(np.log(init), np.zeros(num_covariates))
 
         neg_ll = self.create_negll_func(data)
@@ -283,5 +290,10 @@ class ProportionalIntensityHPP:
         # fitted model's ``cif``/``iif``/``inv_cif`` (and everything built on
         # them: simulation, ``cif_cb``, ``plot``) delegate back to it.
         out.dist = self
+        # Keep a reference to this fitter so the Cramer-von Mises bootstrap can
+        # refit the full regression model per replicate (``_fitter_dist`` is
+        # None: the homogeneous baseline is this fitter itself).
+        out._fitter = self
+        out._fitter_dist = None
 
         return out

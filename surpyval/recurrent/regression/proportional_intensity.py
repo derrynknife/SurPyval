@@ -180,6 +180,39 @@ class ProportionalIntensityModel(
             self.data, test=test, alternative=alternative
         )
 
+    def cramer_von_mises(self, n_boot=200, seed=None):
+        """
+        Cramer-von Mises goodness-of-fit test of the fitted proportional-
+        intensity model.
+
+        Conditional on the number of events an item shows in its window, the
+        transforms ``[cif(t) - cif(entry)] / [cif(close) - cif(entry)]`` under
+        the item's own covariate-scaled intensity ``Lambda_0(t) exp(Z'beta)``
+        are iid U(0, 1) when the fitted model is the true one; the statistic
+        measures their departure from uniformity. Because the parameters
+        (base-rate and coefficients) were estimated from the same data, the
+        p-value is a parametric bootstrap: data is simulated from the fitted
+        model over the same per-item windows and covariates, the full
+        regression model is refitted, and the statistic recomputed.
+
+        Parameters
+        ----------
+
+        n_boot: int, optional
+            Number of bootstrap replicates for the p-value. Default is 200.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible p-value.
+
+        Returns
+        -------
+
+        GoodnessOfFitResult
+            The observed statistic and its bootstrap p-value.
+        """
+        return diagnostics.cramer_von_mises_regression(
+            self, n_boot=n_boot, seed=seed
+        )
+
     def cif_cb(self, x, Z, alpha_ci=0.05, bound="two-sided"):
         """
         Confidence bounds on the fitted CIF at ``x`` for covariates ``Z``,

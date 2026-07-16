@@ -17,6 +17,11 @@ from surpyval.recurrent import (
     ProportionalIntensityNHPP,
     laplace,
 )
+from surpyval.recurrent.diagnostics import (
+    GoodnessOfFitResult,
+    _conditional_uniforms,
+    cvm_statistic,
+)
 
 
 def _two_group_data():
@@ -217,3 +222,77 @@ def test_hpp_proportional_intensity_diagnostics():
     assert np.all(
         (model.residuals("pit") >= 0) & (model.residuals("pit") <= 1)
     )
+
+
+# --- Cramer-von Mises goodness of fit --------------------------------------
+
+
+def test_cvm_observed_statistic_uses_per_item_covariate_transforms():
+    # The observed statistic must be the CvM statistic of the conditionally-
+    # uniform transforms under each item's own covariate-scaled CIF.
+    model = _fitted()
+    result = model.cramer_von_mises(n_boot=20, seed=0)
+    u, _ = _conditional_uniforms(model.data, model._item_cif_map())
+    assert np.isclose(result.statistic, cvm_statistic(u))
+    assert isinstance(result, GoodnessOfFitResult)
+    assert result.n_systems == np.unique(model.data.i).size
+    assert 0.0 < result.p_value <= 1.0
+
+
+def test_cvm_is_reproducible_with_seed():
+    model = _fitted()
+    a = model.cramer_von_mises(n_boot=30, seed=123)
+    b = model.cramer_von_mises(n_boot=30, seed=123)
+    assert a.statistic == b.statistic
+    assert a.p_value == b.p_value
+
+
+def test_cvm_hpp_regression_runs():
+    x, i, c, Z = _two_group_data()
+    model = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
+    result = model.cramer_von_mises(n_boot=20, seed=1)
+    assert isinstance(result, GoodnessOfFitResult)
+    assert 0.0 < result.p_value <= 1.0
+
+
+def test_cvm_flags_a_misspecified_baseline():
+    # Data with a strongly increasing intensity fit with a homogeneous
+    # (constant-rate) baseline should look like a poor fit: the CvM p-value
+    # is much smaller than for the correct non-homogeneous baseline.
+    truth = ProportionalIntensityNHPP.fit(
+        [1, 2, 3, 4],
+        np.array([0, 0, 1, 1]).reshape(-1, 1),
+        i=[1, 1, 2, 2],
+        c=[0, 1, 0, 1],
+        dist=CrowAMSAA,
+    )
+    truth.params = np.array([12.0, 3.0])  # sharply increasing intensity
+    truth.coeffs = np.array([0.5])
+    rng = np.random.default_rng(3)
+    xs, iis, cs, Zs = [], [], [], []
+    item = 0
+    for _ in range(30):
+        Zi = float(rng.integers(0, 2))
+        item += 1
+        d = truth.time_terminated_simulation_data(
+            30.0, np.array([Zi]), items=1, seed=int(rng.integers(1e9))
+        )
+        for t in d.x[d.c == 0]:
+            xs.append(float(t))
+            iis.append(item)
+            cs.append(0)
+            Zs.append(Zi)
+        xs.append(30.0)
+        iis.append(item)
+        cs.append(1)
+        Zs.append(Zi)
+    Zs = np.array(Zs).reshape(-1, 1)
+
+    good = ProportionalIntensityNHPP.fit(
+        xs, Zs, i=iis, c=cs, dist=CrowAMSAA
+    ).cramer_von_mises(n_boot=60, seed=10)
+    bad = ProportionalIntensityHPP.fit(xs, Zs, i=iis, c=cs).cramer_von_mises(
+        n_boot=60, seed=11
+    )
+    assert bad.p_value < good.p_value
+    assert bad.p_value < 0.1

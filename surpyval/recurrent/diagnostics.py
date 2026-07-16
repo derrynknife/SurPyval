@@ -260,68 +260,30 @@ def cvm_statistic(u):
     return float(1.0 / (12.0 * m) + np.sum((u - (2 * j - 1) / (2 * m)) ** 2))
 
 
-def cramer_von_mises(model, n_boot=200, seed=None):
+def _cvm_pvalue(data, item_cif, simulate_refit, n_boot, seed):
     """
-    Cramer-von Mises goodness-of-fit test of a fitted parametric recurrent
-    model; see :meth:`ParametricRecurrenceModel.cramer_von_mises` for the
-    user-facing documentation.
+    Shared Cramer-von Mises core: the observed statistic comes from the
+    conditionally-uniform transforms of ``data`` under ``item_cif``; the
+    p-value is a parametric bootstrap driven by ``simulate_refit(rng)``,
+    which simulates one dataset from the fitted model, refits it, and returns
+    ``(sim_data, refit_item_cif)`` (or raises to signal a failed replicate).
     """
-    from surpyval.utils.recurrent_event_data import RecurrentEventData
-
-    data = model.data
     _validate_diagnostic_data(data, "The Cramer-von Mises test")
-    if not hasattr(model.dist, "inv_cif"):
-        raise ValueError(
-            "The Cramer-von Mises test requires an invertible CIF; {} does "
-            "not define inv_cif.".format(model.dist.name)
-        )
-
-    u, n_systems = _conditional_uniforms(data, model.cif)
+    u, n_systems = _conditional_uniforms(data, item_cif)
     observed = cvm_statistic(u)
 
-    # Parametric bootstrap: simulate each item's window from the fitted
-    # model (conditional on the fitted intensity the event count in a
-    # window is Poisson and the times are iid with density proportional to
-    # the intensity), refit, and recompute the statistic -- so the p-value
-    # accounts for the parameters having been estimated. Failure-truncated
-    # items are approximated by a window fixed at their last observed
-    # event.
     rng = np.random.default_rng(seed)
-    windows = _per_item_windows(data)
     statistics = []
     failures = 0
     while len(statistics) < n_boot and failures < 2 * n_boot:
-        x_b, i_b, c_b, tl_b = [], [], [], []
-        for item_id, (_, _, entry, close, _) in enumerate(windows):
-            span = float(model.cif(close) - model.cif(entry))
-            count = rng.poisson(span) if span > 0 else 0
-            times = np.sort(
-                model.inv_cif(
-                    model.cif(entry) + span * rng.uniform(size=count)
-                )
-            )
-            x_b.extend([*times, close])
-            i_b.extend([item_id] * (count + 1))
-            c_b.extend([0] * count + [1])
-            tl_b.extend([entry] * (count + 1))
-        if (np.asarray(c_b) == 0).sum() < 2:
-            failures += 1
-            continue
-        sim_data = RecurrentEventData(
-            np.asarray(x_b, dtype=float),
-            np.asarray(i_b),
-            np.asarray(c_b),
-            np.ones(len(x_b), dtype=int),
-            tl=np.asarray(tl_b, dtype=float),
-        )
         try:
             # The optimiser explores extreme parameter values on its way to
             # the optimum; the resulting numerical warnings are routine, and
             # over hundreds of refits they would swamp the console.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
-                refit = model.dist.fit_from_recurrent_data(sim_data)
-                u_b, _ = _conditional_uniforms(sim_data, refit.cif)
+                sim_data, refit_item_cif = simulate_refit(rng)
+                u_b, _ = _conditional_uniforms(sim_data, refit_item_cif)
         except (ValueError, RuntimeError, np.linalg.LinAlgError):
             failures += 1
             continue
@@ -348,3 +310,135 @@ def cramer_von_mises(model, n_boot=200, seed=None):
         n_events=int(u.size),
         n_systems=n_systems,
     )
+
+
+def _simulate_window(rng, entry, close, span, e0, inv_cif):
+    """
+    Simulate one item's window from the fitted intensity: the event count over
+    ``[entry, close]`` is Poisson with mean ``span`` and the times are the
+    inverse-CIF images of ``e0 + span * U`` for iid uniforms ``U``. Returns the
+    sorted event times and the (right-censoring) window close.
+    """
+    count = rng.poisson(span) if span > 0 else 0
+    times = np.sort(inv_cif(e0 + span * rng.uniform(size=count)))
+    return times, close
+
+
+def cramer_von_mises(model, n_boot=200, seed=None):
+    """
+    Cramer-von Mises goodness-of-fit test of a fitted parametric recurrent
+    model; see :meth:`ParametricRecurrenceModel.cramer_von_mises` for the
+    user-facing documentation.
+
+    Parametric bootstrap: simulate each item's window from the fitted model
+    (conditional on the fitted intensity the event count in a window is
+    Poisson and the times are iid with density proportional to the intensity),
+    refit, and recompute the statistic -- so the p-value accounts for the
+    parameters having been estimated. Failure-truncated items are approximated
+    by a window fixed at their last observed event.
+    """
+    from surpyval.utils.recurrent_event_data import RecurrentEventData
+
+    data = model.data
+    if not hasattr(model.dist, "inv_cif"):
+        raise ValueError(
+            "The Cramer-von Mises test requires an invertible CIF; {} does "
+            "not define inv_cif.".format(model.dist.name)
+        )
+    windows = _per_item_windows(data)
+
+    def simulate_refit(rng):
+        x_b, i_b, c_b, tl_b = [], [], [], []
+        for item_id, (_, _, entry, close, _) in enumerate(windows):
+            span = float(model.cif(close) - model.cif(entry))
+            times, close = _simulate_window(
+                rng, entry, close, span, model.cif(entry), model.inv_cif
+            )
+            count = times.size
+            x_b.extend([*times, close])
+            i_b.extend([item_id] * (count + 1))
+            c_b.extend([0] * count + [1])
+            tl_b.extend([entry] * (count + 1))
+        if (np.asarray(c_b) == 0).sum() < 2:
+            raise ValueError("too few simulated events to refit")
+        sim_data = RecurrentEventData(
+            np.asarray(x_b, dtype=float),
+            np.asarray(i_b),
+            np.asarray(c_b),
+            np.ones(len(x_b), dtype=int),
+            tl=np.asarray(tl_b, dtype=float),
+        )
+        refit = model.dist.fit_from_recurrent_data(sim_data)
+        return sim_data, refit.cif
+
+    return _cvm_pvalue(data, model.cif, simulate_refit, n_boot, seed)
+
+
+def cramer_von_mises_regression(model, n_boot=200, seed=None):
+    """
+    Cramer-von Mises goodness-of-fit test of a fitted proportional-intensity
+    regression model; see
+    :meth:`ProportionalIntensityModel.cramer_von_mises` for the user-facing
+    documentation. Each item's window is simulated and its transforms are
+    computed under its own covariate-scaled intensity ``Lambda_0 exp(Z'beta)``,
+    and the bootstrap refits the full regression model per replicate.
+    """
+    from surpyval.utils.recurrent_event_data import RecurrentEventData
+
+    data = model.data
+    if not hasattr(model.dist, "inv_cif"):
+        raise ValueError(
+            "The Cramer-von Mises test requires an invertible CIF; {} does "
+            "not define inv_cif.".format(model.dist.name)
+        )
+    Z_by_item = {
+        item: np.asarray(data.Z[data.i == item][0], dtype=float)
+        for item in np.unique(data.i)
+    }
+    item_cif = model._item_cif_map()
+    windows = _per_item_windows(data)
+
+    def simulate_refit(rng):
+        x_b, i_b, c_b, tl_b, Z_b = [], [], [], [], []
+        for item_id, (item, _, entry, close, _) in enumerate(windows):
+            Z_item = Z_by_item[item]
+            e0 = float(model.cif(entry, Z_item))
+            span = float(model.cif(close, Z_item)) - e0
+            times, close = _simulate_window(
+                rng,
+                entry,
+                close,
+                span,
+                e0,
+                lambda x, Z=Z_item: model.inv_cif(x, Z),
+            )
+            count = times.size
+            x_b.extend([*times, close])
+            i_b.extend([item_id] * (count + 1))
+            c_b.extend([0] * count + [1])
+            tl_b.extend([entry] * (count + 1))
+            Z_b.extend([Z_item] * (count + 1))
+        if (np.asarray(c_b) == 0).sum() < 2:
+            raise ValueError("too few simulated events to refit")
+        sim_data = RecurrentEventData(
+            np.asarray(x_b, dtype=float),
+            np.asarray(i_b),
+            np.asarray(c_b),
+            np.ones(len(x_b), dtype=int),
+            tl=np.asarray(tl_b, dtype=float),
+        )
+        sim_data.Z = np.asarray(Z_b, dtype=float)
+        refit = model._fitter.fit_from_recurrent_data(
+            sim_data, model._fitter_dist
+        )
+        refit_cif = {
+            it: (
+                lambda x, r=refit, Z=sim_data.Z[sim_data.i == it][0]: r.cif(
+                    np.asarray(x, dtype=float), Z
+                )
+            )
+            for it in np.unique(sim_data.i)
+        }
+        return sim_data, refit_cif
+
+    return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, seed)

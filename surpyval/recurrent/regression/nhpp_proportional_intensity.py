@@ -223,6 +223,10 @@ class ProportionalIntensityNHPP:
         out.kind = "NHPP"
         out.parameterization = "Parametric"
         out.param_names = dist.param_names
+        # Keep a reference to this fitter and the baseline so the Cramer-von
+        # Mises bootstrap can refit the full regression model per replicate.
+        out._fitter = self
+        out._fitter_dist = dist
         # The likelihood is in natural parameter space, so the full fitted
         # vector ``[*dist_params, *coeffs]`` is the MLE the shared inference
         # machinery needs for AIC/BIC/standard errors.
