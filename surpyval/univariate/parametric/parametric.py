@@ -1,6 +1,7 @@
 import json
 from collections import namedtuple
 from copy import copy, deepcopy
+from math import comb
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -793,12 +794,29 @@ class Parametric(ParametricDistribution):
         10.0
         >>> model.moment(5)
         202150.0
+
+        Notes
+        -----
+        For an offset, limited-failure or zero-inflated model this is the
+        *defective* moment of the failure-time density, consistent with
+        :meth:`mean` (``moment(1) == mean()``): the offset shifts the failure
+        times and the cured fraction ``1 - p`` contributes nothing (rather than
+        the raw moment, which diverges when a cured fraction is present because
+        those units never fail). It is
+        :math:`p\\,\\mathbb{E}\\!\\left[(\\gamma + X)^n\\right]` for :math:`X`
+        the base distribution.
         """
-        if self.p == 1:
-            return self.dist.moment(n, *self.params)
-        else:
-            msg = "LFP distributions cannot yet have their moment calculated"
-            raise NotImplementedError(msg)
+        # Defective n-th moment E[(gamma + X)^n] weighted by the failing
+        # proportion p; the binomial expansion recombines the base raw
+        # moments. Reduces to the base moment for a plain model (gamma = 0,
+        # p = 1) and to mean() for n = 1.
+        base = [1.0] + [
+            float(self.dist.moment(k, *self.params)) for k in range(1, n + 1)
+        ]
+        shifted = sum(
+            comb(n, k) * self.gamma ** (n - k) * base[k] for k in range(n + 1)
+        )
+        return float(self.p * shifted)
 
     def entropy(self) -> float:
         r"""
@@ -817,12 +835,28 @@ class Parametric(ParametricDistribution):
         >>> model = Normal.from_params([10, 3])
         >>> model.entropy()
         2.5175508218727822
+
+        Notes
+        -----
+        The (differential) entropy is translation-invariant, so an offset does
+        not change it. It is only defined when the distribution has no
+        probability atom; a limited-failure model places mass ``1 - p`` at
+        infinity (the cured fraction) and a zero-inflated model places mass
+        ``f0`` at the offset, so a single differential entropy does not exist
+        for those and a ``ValueError`` is raised. The entropy *conditional on
+        failure* of a limited-failure model equals the entropy of the same
+        model fitted without ``lfp``.
         """
-        if self.p == 1:
+        if self.p == 1 and self.f0 == 0:
             return self.dist.entropy(*self.params)
-        else:
-            msg = "Entropy not available for LFP distribution"
-            raise NotImplementedError(msg)
+        raise ValueError(
+            "Differential entropy is undefined for a distribution with a "
+            "probability atom: a limited-failure model places mass 1 - p at "
+            "infinity (the cured fraction never fails) and a zero-inflated "
+            "model places mass f0 at the offset. Fit without lfp / zi to take "
+            "the entropy (which, for lfp, is the entropy conditional on "
+            "failure)."
+        )
 
     def cb(
         self,

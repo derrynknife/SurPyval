@@ -18,6 +18,17 @@ Distributions
 - ``Beta.fit(how="MPP")`` now raises a clear ``ValueError`` (the Beta has no
   linearising probability plot) instead of a raw ``NotImplementedError``, and
   points to ``MLE`` / ``MSE`` / ``MOM``.
+- ``Parametric.moment`` now works for limited-failure, zero-inflated and
+  offset models (it previously raised ``NotImplementedError`` under a cure
+  fraction, and silently dropped the offset). It returns the defective moment
+  of the failure-time density, consistent with ``mean`` (``moment(1) ==
+  mean()``): the offset shifts the failure times and the cured fraction
+  contributes nothing. ``Parametric.entropy`` likewise handles the offset
+  (differential entropy is translation-invariant) and now raises a clear
+  ``ValueError`` for models with a probability atom (a limited-failure mass at
+  infinity or a zero-inflation mass at the offset), where a single differential
+  entropy does not exist -- it previously returned a wrong value for
+  zero-inflated models.
 - ``Parametric.qf`` now works for limited-failure, zero-inflated and offset
   models (it previously raised ``NotImplementedError`` whenever a cure fraction
   was present). It inverts the full mixture ``F(x) = f0 + (p - f0) F0(x -
