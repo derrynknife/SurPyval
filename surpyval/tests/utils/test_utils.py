@@ -4,11 +4,43 @@ import pytest
 from surpyval.utils import (
     fsli_handler,
     group_xcnt,
+    is_missing_event,
+    resolve_cr_censoring,
     xcn_to_fs,
     xcnt_handler,
     xcnt_sort,
     xrd_handler,
 )
+
+
+def test_is_missing_event():
+    assert is_missing_event(None)
+    assert is_missing_event(np.nan)
+    assert is_missing_event(float("nan"))
+    assert not is_missing_event(0)
+    assert not is_missing_event(1)
+    assert not is_missing_event(2.0)
+
+
+def test_resolve_cr_censoring_canonicalises_missing_to_none():
+    e_in = [1, 2, np.nan, 1, None]
+    e, c = resolve_cr_censoring(e_in, [0, 0, 1, 0, 1])
+    # NaN and None both become None
+    assert e[2] is None and e[4] is None
+    assert list(e[[0, 1, 3]]) == [1, 2, 1]
+
+
+def test_resolve_cr_censoring_derives_c_from_missing():
+    e_in = [1, 2, np.nan, 1, None]
+    e, c = resolve_cr_censoring(e_in, None)
+    # missing events -> censored (1), present -> observed (0)
+    assert list(c) == [0, 0, 1, 0, 1]
+
+
+def test_resolve_cr_censoring_keeps_supplied_c():
+    e_in = [1, 2, None]
+    e, c = resolve_cr_censoring(e_in, [0, 0, 1])
+    assert list(c) == [0, 0, 1]
 
 
 def test_group_xcnt():

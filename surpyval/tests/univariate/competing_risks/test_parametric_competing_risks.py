@@ -288,3 +288,71 @@ def test_from_fitted_rejects_non_model():
 
     with pytest.raises(ValueError, match="does not look like"):
         ParametricCompetingRisks.from_fitted({1: NotAModel()})
+
+
+# --- censoring: a missing event (None / NaN) is a censored observation -----
+
+
+def test_nan_marks_censored_like_none():
+    # NaN in the event vector is treated the same as None -- a censored
+    # observation with no attributed cause.
+    x, e, c = _simulate(4000, 30)
+    e_none = np.asarray(e, dtype=object)
+    e_nan = np.array(
+        [np.nan if ev is None else ev for ev in e_none], dtype=object
+    )
+    from_none = ParametricCompetingRisks.fit(x, e_none, c=c)
+    from_nan = ParametricCompetingRisks.fit(x, e_nan, c=c)
+    assert from_nan.causes == from_none.causes
+    for k in from_none.causes:
+        assert np.allclose(
+            from_nan.models[k].params, from_none.models[k].params
+        )
+
+
+def test_derives_censoring_from_missing_event():
+    # Omitting c derives it from e: a missing event is censored, an event
+    # present is observed. The result must match passing c explicitly.
+    x, e, c = _simulate(4000, 31)
+    derived = ParametricCompetingRisks.fit(x, e)  # no c
+    explicit = ParametricCompetingRisks.fit(x, e, c=c)
+    assert derived.causes == explicit.causes
+    for k in explicit.causes:
+        assert np.allclose(derived.models[k].params, explicit.models[k].params)
+
+
+def test_derives_censoring_from_nan_without_c():
+    x, e, c = _simulate(3000, 32)
+    e_nan = np.array([np.nan if ev is None else ev for ev in e], dtype=object)
+    model = ParametricCompetingRisks.fit(x, e_nan)  # no c, NaN censored
+    assert model.causes == [1, 2]
+    # the censored rows are still in the risk set for each cause
+    n_cens = int(np.sum(~np.isfinite(np.asarray(e_nan, dtype=float))))
+    assert n_cens > 0
+
+
+def test_fit_from_df_with_nan_causes_and_no_censoring_column():
+    # The natural pandas representation: the cause column carries NaN for
+    # censored rows and there is no separate censoring column.
+    x, e, c = _simulate(3000, 33)
+    cause_col = [np.nan if ev is None else ev for ev in e]
+    df = pd.DataFrame({"time": x, "cause": cause_col})
+    model = ParametricCompetingRisks.fit_from_df(
+        df, x_col="time", e_col="cause"
+    )
+    assert len(model.causes) == 2
+    # recovers the cause-1 Weibull truth despite censoring being implicit
+    k1 = model.causes[0]
+    assert np.allclose(model.models[k1].params, [30.0, 2.0], rtol=0.15)
+
+
+def test_nonparametric_also_derives_censoring():
+    # The same missing-event / derived-c handling applies to the
+    # nonparametric estimator (it shares the input validator).
+    x, e, c = _simulate(3000, 34)
+    e_nan = np.array([np.nan if ev is None else ev for ev in e], dtype=object)
+    derived = CompetingRisks.fit(x, e_nan)  # no c, NaN censored
+    explicit = CompetingRisks.fit(x, e, c=c)
+    grid = np.array([10.0, 20.0, 30.0, 40.0])
+    for k in (1, 2):
+        assert np.allclose(derived.cif(grid, k), explicit.cif(grid, k))
