@@ -107,3 +107,61 @@ def test_offset_zi():
     assert model.res.success
     assert abs(model.gamma - 10) < 1
     assert abs(model.f0 - 100 / 1100) < 0.02
+
+
+# --- quantile function for the mixture (LFP / zero-inflation / offset) -----
+
+
+def test_qf_inverts_ff_for_lfp():
+    # Below the cure ceiling p, the quantile inverts the failure function.
+    model = Weibull.from_params([10.0, 2.0], p=0.6)
+    u = np.array([0.05, 0.2, 0.4, 0.59])
+    q = model.qf(u)
+    assert np.all(np.isfinite(q))
+    assert np.allclose(model.ff(q), u)
+
+
+def test_qf_infinite_above_cure_fraction():
+    # A cure fraction 1 - p never fails, so any quantile at or above p is
+    # infinite -- and the median of a majority-cured population is infinite.
+    model = Weibull.from_params([10.0, 2.0], p=0.6)
+    assert np.isinf(model.qf(0.6))
+    assert np.isinf(model.qf(0.85))
+    cured = Weibull.from_params([10.0, 2.0], p=0.4)
+    assert np.isinf(cured.qf(0.5))
+
+
+def test_qf_inverts_ff_for_zero_inflation():
+    # The zero-inflation mass f0 sits at the offset (here 0), and above it
+    # the quantile inverts the failure function.
+    model = LogNormal.from_params([2.0, 0.4], f0=0.2)
+    assert model.qf(0.1) == 0.0
+    assert model.qf(0.2) == 0.0
+    u = np.array([0.3, 0.5, 0.9])
+    assert np.allclose(model.ff(model.qf(u)), u)
+
+
+def test_qf_respects_offset_with_cure_and_inflation():
+    # gamma + f0 + p all together: mass below f0 lands on the offset, the
+    # interior inverts ff, and u >= p is infinite.
+    model = Weibull.from_params([10.0, 2.0], gamma=5.0, p=0.7, f0=0.1)
+    assert model.qf(0.05) == 5.0
+    u = np.array([0.2, 0.4, 0.6])
+    q = model.qf(u)
+    assert np.all(q > 5.0)
+    assert np.allclose(model.ff(q), u)
+    assert np.isinf(model.qf(0.7))
+
+
+def test_qf_scalar_and_array_shape():
+    model = Weibull.from_params([10.0, 2.0], p=0.8)
+    assert np.ndim(model.qf(0.3)) == 0
+    out = model.qf([0.1, 0.3, 0.5])
+    assert out.shape == (3,)
+
+
+def test_qf_matches_plain_distribution_without_mixture():
+    # With no offset, cure or inflation the quantile is exactly the base
+    # distribution's, so ordinary models are unchanged.
+    model = Weibull.from_params([10.0, 3.0])
+    assert np.isclose(model.qf(0.2), Weibull.qf(0.2, 10.0, 3.0))

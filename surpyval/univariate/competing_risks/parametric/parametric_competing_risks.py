@@ -159,17 +159,21 @@ class ParametricCompetingRisks:
         latent-failure-time representation: draw a latent time from each cause
         and take the earliest, recording its cause.
 
-        Sampling is by numerical inversion of each cause's cumulative
-        distribution, so it works for *any* per-cause model, including limited-
-        failure (cure) models where some latent times are infinite. A unit
-        whose every latent time is infinite never fails; it is returned with
-        ``x = inf`` and cause ``None``.
+        Each latent time is drawn by inverse-transform sampling through the
+        cause's quantile function, so it works for *any* per-cause model,
+        including limited-failure (cure) models -- there the quantile is
+        infinite above the cure ceiling, so a draw in the cure region yields an
+        infinite latent time. A unit whose every latent time is infinite never
+        fails; it is returned with ``x = inf`` and cause ``None``.
 
         Returns a structured array with fields ``x`` and ``e``.
         """
         rng = np.random.default_rng(random_state)
         latent = np.column_stack(
-            [self._latent_sample(k, size, rng) for k in self.causes]
+            [
+                np.ravel(self.models[k].qf(rng.uniform(size=size)))
+                for k in self.causes
+            ]
         )
         idx = np.argmin(latent, axis=1)
         x = latent[np.arange(size), idx]
@@ -209,9 +213,10 @@ class ParametricCompetingRisks:
 
     def _model_horizon(self, k):
         # The time by which cause k has essentially played out, used as the
-        # finite upper limit for CIF(inf). Its very high quantile if available;
-        # otherwise (e.g. a limited-failure model, whose quantile is not
-        # defined) grow a bound until the cause's incidence stops rising.
+        # finite upper limit for the (numerically integrated) CIF(inf). Its
+        # very high quantile when that is finite; for a cure fraction the
+        # quantile saturates to infinity, so grow a bound on the failure time
+        # until the cause's incidence stops rising.
         model = self.models[k]
         try:
             q = float(np.ravel(model.qf(1.0 - 1e-6))[0])
@@ -234,19 +239,6 @@ class ParametricCompetingRisks:
             prev = val
             t *= 1.5
         return t
-
-    def _latent_sample(self, k, size, rng):
-        # A latent failure time for cause k by numerical inversion of its CDF.
-        # Draws in the (possible) cure region above the model's attainable CDF
-        # are mapped to infinity: that unit never fails from this cause.
-        model = self.models[k]
-        u = rng.uniform(size=size)
-        upper = self._model_horizon(k)
-        grid = np.linspace(0.0, upper, 8000)
-        cdf = np.ravel(model.ff(grid))
-        cdf_max = float(cdf[-1])
-        t = np.interp(u, cdf, grid)
-        return np.where(u <= cdf_max, t, np.inf)
 
     # -- construction -----------------------------------------------------
 

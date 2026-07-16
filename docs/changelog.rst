@@ -18,6 +18,15 @@ Distributions
 - ``Beta.fit(how="MPP")`` now raises a clear ``ValueError`` (the Beta has no
   linearising probability plot) instead of a raw ``NotImplementedError``, and
   points to ``MLE`` / ``MSE`` / ``MOM``.
+- ``Parametric.qf`` now works for limited-failure, zero-inflated and offset
+  models (it previously raised ``NotImplementedError`` whenever a cure fraction
+  was present). It inverts the full mixture ``F(x) = f0 + (p - f0) F0(x -
+  gamma)``: quantiles at or below the zero-inflation mass ``f0`` return the
+  offset, and quantiles at or above the attainable proportion ``p`` are
+  infinite (that cured fraction never fails, so e.g. the median of a
+  majority-cured population is ``inf``). This also **fixes** the quantile of a
+  zero-inflated (``p == 1``, ``f0 > 0``) model, which previously ignored
+  ``f0`` and returned the wrong value.
 
 Competing risks
 ~~~~~~~~~~~~~~~
