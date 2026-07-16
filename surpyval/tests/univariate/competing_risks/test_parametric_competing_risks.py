@@ -199,3 +199,92 @@ def test_unknown_cause_raises():
     model = ParametricCompetingRisks.fit(x, e, c=c)
     with pytest.raises(ValueError, match="Unknown cause"):
         model.cif(10.0, 99)
+
+
+# --- from_fitted: assemble from pre-fitted per-cause models ----------------
+
+
+def _fit_cause(x, e, c, cause, dist):
+    """Fit ``dist`` to one cause's cause-specific hazard (its events observed,
+    every other event and every censored unit right-censored)."""
+    c_k = np.where((np.asarray(e, dtype=object) == cause) & (c == 0), 0, 1)
+    return dist.fit(x=x, c=c_k)
+
+
+def test_from_fitted_matches_fit():
+    # Fitting each cause by hand and assembling with from_fitted must give
+    # the same model as fit() doing it internally.
+    x, e, c = _simulate(5000, 20)
+    m1 = _fit_cause(x, e, c, 1, Weibull)
+    m2 = _fit_cause(x, e, c, 2, Weibull)
+    assembled = ParametricCompetingRisks.from_fitted({1: m1, 2: m2})
+    fitted = ParametricCompetingRisks.fit(x, e, c=c)
+    assert assembled.causes == [1, 2]
+    grid = np.array([10.0, 25.0, 40.0])
+    for k in (1, 2):
+        assert np.allclose(assembled.cif(grid, k), fitted.cif(grid, k))
+
+
+def test_from_fitted_heterogeneous_families():
+    # A different distribution family per cause.
+    x, e, c = _simulate(5000, 21)
+    m1 = _fit_cause(x, e, c, 1, Weibull)
+    m2 = _fit_cause(x, e, c, 2, LogNormal)
+    model = ParametricCompetingRisks.from_fitted({1: m1, 2: m2})
+    assert model.models[1].dist.name == "Weibull"
+    assert model.models[2].dist.name == "LogNormal"
+    # still a coherent competing-risks model: CIFs sum to 1 - S
+    grid = np.linspace(1.0, 55.0, 20)
+    total = sum(model.cif(grid, k) for k in model.causes)
+    assert np.allclose(total, model.ff(grid), atol=1e-3)
+
+
+def test_from_fitted_agrees_with_nonparametric():
+    x, e, c = _simulate(6000, 22)
+    m1 = _fit_cause(x, e, c, 1, Weibull)
+    m2 = _fit_cause(x, e, c, 2, LogNormal)
+    model = ParametricCompetingRisks.from_fitted({1: m1, 2: m2})
+    nonp = CompetingRisks.fit(x, e, c=c)
+    grid = np.array([15.0, 25.0, 35.0, 45.0])
+    for k in (1, 2):
+        assert np.allclose(model.cif(grid, k), nonp.cif(grid, k), atol=0.03)
+
+
+def test_from_fitted_sequence_gives_positional_causes():
+    m0 = Weibull.from_params([30.0, 2.0])
+    m1 = LogNormal.from_params([3.6, 0.4])
+    model = ParametricCompetingRisks.from_fitted([m0, m1])
+    assert model.causes == [0, 1]
+    assert model.models[0].dist.name == "Weibull"
+
+
+def test_from_fitted_all_causes_cured_gives_never_fail_units():
+    # Every cause carries a cure fraction, so all-cause survival stays
+    # positive: some units never fail, and the cause probabilities sum to
+    # 1 - S(inf) < 1 rather than to one.
+    a = Weibull.from_params([15.0, 2.5], p=0.6)  # 60% ever fail from a
+    b = Weibull.from_params([25.0, 1.5], p=0.5)  # 50% ever fail from b
+    model = ParametricCompetingRisks.from_fitted([a, b])
+    probs = [model.probability_of_cause(k) for k in model.causes]
+    # S(inf) = 0.4 * 0.5 = 0.2, so incidence sums to ~0.8
+    assert np.isclose(sum(probs), 0.8, atol=1e-2)
+    assert np.isclose(model.ff(1e6), 0.8, atol=1e-3)
+    draws = model.random(4000, random_state=0)
+    never = ~np.isfinite(draws["x"])
+    assert np.isclose(never.mean(), 0.2, atol=0.03)
+    # never-fail units carry no cause
+    assert all(e is None for e in draws["e"][never])
+    assert all(e in model.causes for e in draws["e"][~never])
+
+
+def test_from_fitted_rejects_empty():
+    with pytest.raises(ValueError, match="At least one cause"):
+        ParametricCompetingRisks.from_fitted({})
+
+
+def test_from_fitted_rejects_non_model():
+    class NotAModel:
+        pass
+
+    with pytest.raises(ValueError, match="does not look like"):
+        ParametricCompetingRisks.from_fitted({1: NotAModel()})

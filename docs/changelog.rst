@@ -33,6 +33,12 @@ Competing risks
   via ``random``, and ``aic`` / ``bic`` / ``neg_ll``. Complements the existing
   nonparametric ``CompetingRisks`` estimator and the semi-parametric
   cause-specific Cox / Fine-Gray regression models.
+- ``ParametricCompetingRisks.from_fitted`` assembles a competing-risks model
+  from already-fitted per-cause models, each of any family and configuration
+  (e.g. a limited-failure Weibull for one cause, a LogNormal for another): pass
+  a ``{cause: model}`` mapping or a sequence of models. Sampling handles cure
+  fractions -- when every cause carries one, some units never fail and are
+  returned with cause ``None``.
 
 Regression — Cox proportional hazards
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
