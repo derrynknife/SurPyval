@@ -542,13 +542,36 @@ class Parametric(ParametricDistribution):
         6.06542793124108
         >>> model.qf([.1, .2, .3, .4, .5])
         array([4.72308719, 6.06542793, 7.09181722, 7.99387877, 8.84997045])
+
+        Notes
+        -----
+        For a model with a limited-failure (cure) fraction the failure
+        function only reaches ``p`` in the limit, so any quantile at or above
+        ``p`` is infinite (that proportion of the population never fails). For
+        a zero-inflated model the mass ``f0`` sits at the offset, so quantiles
+        at or below ``f0`` return the offset.
         """
         if isinstance(p, list):
             p = np.array(p)
-        if self.p == 1:
-            return self.dist.qf(p, *self.params) + self.gamma
-        else:
-            raise NotImplementedError("Quantile for LFP not implemented.")
+        u = np.asarray(p, dtype=float)
+        scalar = u.ndim == 0
+        u = np.atleast_1d(u)
+
+        # Invert the mixture failure function
+        #   F(x) = f0 + (p - f0) F0(x - gamma):
+        #   u <= f0    -> the zero-inflation mass, which sits at the offset
+        #   f0 < u < p -> gamma + F0^{-1}((u - f0) / (p - f0))
+        #   u >= p     -> beyond the attainable proportion (cure), so infinite
+        with np.errstate(divide="ignore", invalid="ignore"):
+            base = (u - self.f0) / (self.p - self.f0)
+            base = np.clip(base, 0.0, 1.0)
+            # base == 1 (the u >= p region) makes the base quantile diverge;
+            # it is overwritten with inf just below, so silence it here.
+            q = self.gamma + self.dist.qf(base, *self.params)
+        q = np.where(u <= self.f0, float(self.gamma), q)
+        q = np.where(u >= self.p, np.inf, q)
+        q = np.asarray(q, dtype=float)
+        return q[0] if scalar else q
 
     def cs(self, x: npt.ArrayLike, X: npt.ArrayLike) -> npt.NDArray:
         r"""
