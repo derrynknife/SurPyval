@@ -66,6 +66,16 @@ Competing risks
   -- so competing-risks data can be given as ``(x, e)`` alone, and a pandas
   cause column with ``NaN`` for censored rows works directly.
 
+Recurrent events
+~~~~~~~~~~~~~~~~
+
+- Added residual (``residuals``: ``cumulative_hazard`` / ``pit`` /
+  ``martingale``) and trend-test (``trend_test``) diagnostics to the
+  proportional-intensity regression models (``ProportionalIntensityHPP`` /
+  ``ProportionalIntensityNHPP``), matching those already on the parametric
+  recurrence models. Each item's time-rescaling residuals use its own
+  covariate-scaled cumulative intensity ``Lambda_0(t) exp(Z'beta)``.
+
 Regression — Cox proportional hazards
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

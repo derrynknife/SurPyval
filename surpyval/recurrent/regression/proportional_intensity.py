@@ -1,6 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
+from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import (
     LikelihoodInferenceMixin,
     delta_method_std_errors,
@@ -101,6 +102,83 @@ class ProportionalIntensityModel(
             raise ValueError(
                 "Inverse cif undefined for {}".format(self.dist.name)
             )
+
+    def _item_cif_map(self):
+        # Each item's cumulative intensity is the baseline scaled by its own
+        # ``exp(Z'beta)`` factor. The covariates are per item (static), so the
+        # item's Z is taken from its first row. Returns ``{item: cif(x)}`` for
+        # the recurrence diagnostics.
+        data = self.data
+        cif_map = {}
+        for item in np.unique(data.i):
+            Z_item = np.asarray(data.Z[data.i == item][0], dtype=float)
+            cif_map[item] = lambda x, Z=Z_item: self.cif(
+                np.asarray(x, dtype=float), Z
+            )
+        return cif_map
+
+    def residuals(self, kind="cumulative_hazard"):
+        """
+        Residual diagnostics for the fitted model, from the time-rescaling
+        theorem applied per item (each item's intensity is the baseline
+        scaled by its covariate factor ``exp(Z'beta)``).
+
+        Parameters
+        ----------
+
+        kind: {'cumulative_hazard', 'pit', 'martingale'}, optional
+            ``'cumulative_hazard'`` returns the rescaled interarrival times
+            ``cif(t_k) - cif(t_{k-1})`` of every observed event (pooled across
+            items), which are iid Exp(1) under the fitted model. ``'pit'``
+            applies the probability integral transform ``1 - exp(-e)`` to
+            those residuals, giving iid U(0, 1) values. ``'martingale'``
+            returns one residual per item: its observed event count minus the
+            count the model expects over its observation window.
+
+        Returns
+        -------
+
+        numpy array
+            The residuals.
+        """
+        cif_map = self._item_cif_map()
+        if kind in ("cumulative_hazard", "pit"):
+            e = diagnostics.cumulative_hazard_residuals(self.data, cif_map)
+            if kind == "pit":
+                return 1.0 - np.exp(-e)
+            return e
+        elif kind == "martingale":
+            return diagnostics.martingale_residuals(self.data, cif_map)
+        raise ValueError(
+            "`kind` must be 'cumulative_hazard', 'pit' or 'martingale'; "
+            "got {!r}".format(kind)
+        )
+
+    def trend_test(self, test="laplace", alternative="two-sided"):
+        """
+        Run a trend test on the data this model was fitted to. The null
+        hypothesis is a *homogeneous* Poisson process (no trend); the
+        statistic uses only the event times and windows, not the covariates,
+        so it checks whether a time-varying intensity was warranted at all.
+
+        Parameters
+        ----------
+
+        test: {'laplace', 'mil_hdbk_189c'}, optional
+            The trend test to run. Default is 'laplace'.
+        alternative: {'two-sided', 'increasing', 'decreasing'}, optional
+            The alternative hypothesis. Default is 'two-sided'.
+
+        Returns
+        -------
+
+        TrendTestResult
+            The test result, carrying the statistic, p-value and suggested
+            trend direction.
+        """
+        return diagnostics.trend_test(
+            self.data, test=test, alternative=alternative
+        )
 
     def cif_cb(self, x, Z, alpha_ci=0.05, bound="two-sided"):
         """

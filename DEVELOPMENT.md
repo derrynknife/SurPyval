@@ -89,12 +89,14 @@ remains:
 
 **Medium priority**
 
-- **Diagnostics for the regression and renewal families.** `residuals()`,
-  `trend_test()` and `cramer_von_mises()` exist only on
-  `ParametricRecurrenceModel`. The proportional-intensity extension is mostly
-  plumbing (scale each item's CIF by its `exp(Z'β)` factor); the
-  renewal/virtual-age models need conditional-intensity residuals instead, which
-  is a genuinely different construction.
+- **Diagnostics for the regression and renewal families.** `residuals()` and
+  `trend_test()` now also exist on the proportional-intensity regression models
+  (each item's time-rescaling residuals use its own `exp(Z'β)`-scaled CIF).
+  Still missing: `cramer_von_mises()` for the regression family (its parametric
+  bootstrap needs a covariate-aware refit — the model does not yet hold a
+  reference to its fitter), and all three diagnostics for the renewal/virtual-
+  age models, which need conditional-intensity residuals instead — a genuinely
+  different construction.
 - **Multi-window (gapped) observation per item.** `handle_xicn` supports a
   single `[tl, tr]` window per item; genuinely gapped observation is not yet
   modelled.

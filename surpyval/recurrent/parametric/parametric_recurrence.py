@@ -8,7 +8,6 @@ from surpyval.recurrent.inference import (
     log_transformed_cb,
 )
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
-from surpyval.recurrent.tests import laplace, mil_hdbk_189c
 
 
 class ParametricRecurrenceModel(
@@ -203,34 +202,9 @@ class ParametricRecurrenceModel(
             trend direction.
         """
         self._check_has_data("trend_test")
-        data = self.data
-        diagnostics._validate_diagnostic_data(data, "trend_test")
-        tests = {"laplace": laplace, "mil_hdbk_189c": mil_hdbk_189c}
-        if test not in tests:
-            raise ValueError(
-                "`test` must be one of {}; got {!r}".format(
-                    sorted(tests), test
-                )
-            )
-
-        # The trend tests assume every system is observed from time 0.
-        x, i, T = [], [], {}
-        for item_id, (events, entry, close, explicit_close) in enumerate(
-            diagnostics._per_item_windows(data)
-        ):
-            if entry != 0.0:
-                raise ValueError(
-                    "trend tests assume observation from time 0; this data "
-                    "has delayed entry (left truncation)."
-                )
-            if not explicit_close:
-                # Failure-truncated: the last event is the truncation point,
-                # exactly as the standalone tests treat T=None data.
-                events = events[:-1]
-            x.extend(events)
-            i.extend([item_id] * events.size)
-            T[item_id] = close
-        return tests[test](x, i=i, T=T, alternative=alternative)
+        return diagnostics.trend_test(
+            self.data, test=test, alternative=alternative
+        )
 
     def cramer_von_mises(self, n_boot=200, seed=None):
         """

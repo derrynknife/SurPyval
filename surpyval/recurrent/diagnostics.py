@@ -49,14 +49,14 @@ def _per_item_windows(data):
     Group the data by item and resolve each item's observation window.
 
     Returns a list with one entry per (sorted-unique) item:
-    ``(events, entry, close, explicit_close)`` where ``events`` are the
-    item's observed event times (sorted, repeated per their counts ``n``),
-    ``entry`` is its observation start (its finite left-truncation bound,
-    else 0), ``close`` is the time its window closes (its finite
-    right-truncation bound, else its right-censoring row, else its last
-    event) and ``explicit_close`` says whether that close was given by the
-    data (``tr`` or a ``c = 1`` row) or inferred from the last event
-    (failure-truncated).
+    ``(item, events, entry, close, explicit_close)`` where ``item`` is the
+    item identifier, ``events`` are the item's observed event times (sorted,
+    repeated per their counts ``n``), ``entry`` is its observation start (its
+    finite left-truncation bound, else 0), ``close`` is the time its window
+    closes (its finite right-truncation bound, else its right-censoring row,
+    else its last event) and ``explicit_close`` says whether that close was
+    given by the data (``tr`` or a ``c = 1`` row) or inferred from the last
+    event (failure-truncated).
     """
     items = []
     for item in np.unique(data.i):
@@ -75,8 +75,21 @@ def _per_item_windows(data):
             close, explicit_close = float(events[-1]), False
         else:
             continue
-        items.append((events, entry, close, explicit_close))
+        items.append((item, events, entry, close, explicit_close))
     return items
+
+
+def _as_item_cif(cif):
+    """
+    Normalise the ``cif`` argument of the diagnostics into a factory that
+    maps an item identifier to that item's CIF callable. A plain callable
+    (the unconditional model's ``cif``) is reused for every item; a mapping
+    of ``item -> callable`` (a regression model's per-item, covariate-scaled
+    CIF) is looked up per item.
+    """
+    if callable(cif):
+        return lambda item: cif
+    return lambda item: cif[item]
 
 
 def cumulative_hazard_residuals(data, cif):
@@ -85,13 +98,18 @@ def cumulative_hazard_residuals(data, cif):
     observed event (with ``t_0`` each item's entry time), pooled across
     items in sorted-item then time order. Under the fitted model these are
     iid Exp(1).
+
+    ``cif`` is either a single callable used for every item (an unconditional
+    model) or an ``item -> callable`` mapping (a regression model, whose
+    intensity is scaled per item by ``exp(Z'beta)``).
     """
     _validate_diagnostic_data(data, "Residuals")
+    item_cif = _as_item_cif(cif)
     residuals = []
-    for events, entry, _, _ in _per_item_windows(data):
+    for item, events, entry, _, _ in _per_item_windows(data):
         if events.size == 0:
             continue
-        transformed = cif(np.concatenate([[entry], events]))
+        transformed = item_cif(item)(np.concatenate([[entry], events]))
         residuals.append(np.diff(transformed))
     if not residuals:
         raise ValueError("No observed events; no residuals to compute.")
@@ -104,11 +122,16 @@ def martingale_residuals(data, cif):
     expected count ``cif(close) - cif(entry)`` over the item's observation
     window, one per sorted-unique item. Positive values mean the item had
     more events than the model expects.
+
+    ``cif`` is either a single callable or an ``item -> callable`` mapping
+    (see :func:`cumulative_hazard_residuals`).
     """
     _validate_diagnostic_data(data, "Residuals")
+    item_cif = _as_item_cif(cif)
     residuals = []
-    for events, entry, close, _ in _per_item_windows(data):
-        expected = float(cif(close) - cif(entry))
+    for item, events, entry, close, _ in _per_item_windows(data):
+        cif_i = item_cif(item)
+        expected = float(cif_i(close) - cif_i(entry))
         residuals.append(events.size - expected)
     return np.array(residuals)
 
@@ -165,23 +188,65 @@ def _conditional_uniforms(data, cif):
     a failure-truncated item the last event is the (random) window close,
     so the remaining events are normalised by the transform at that last
     event and it is itself excluded (Crow's ``M = N - 1`` convention).
+
+    ``cif`` is either a single callable or an ``item -> callable`` mapping
+    (see :func:`cumulative_hazard_residuals`).
     """
+    item_cif = _as_item_cif(cif)
     u = []
     n_systems = 0
-    for events, entry, close, explicit_close in _per_item_windows(data):
+    for item, events, entry, close, explicit_close in _per_item_windows(data):
         n_systems += 1
+        cif_i = item_cif(item)
         used = events if explicit_close else events[:-1]
         if used.size == 0:
             continue
-        span = float(cif(close) - cif(entry))
+        span = float(cif_i(close) - cif_i(entry))
         if span <= 0:
             continue
-        u.append((cif(used) - cif(entry)) / span)
+        u.append((cif_i(used) - cif_i(entry)) / span)
     if not u:
         raise ValueError(
             "No usable event times for the Cramer-von Mises statistic."
         )
     return np.concatenate(u), n_systems
+
+
+def trend_test(data, test="laplace", alternative="two-sided"):
+    """
+    Trend test for recurrent-event data: the null hypothesis is that the
+    events follow a *homogeneous* Poisson process (no trend), so it checks
+    whether the data warranted a time-varying intensity at all. The
+    statistic uses only the event times and windows, not the fitted model,
+    so it is shared by the parametric and proportional-intensity models.
+    """
+    from surpyval.recurrent.tests import laplace, mil_hdbk_189c
+
+    _validate_diagnostic_data(data, "trend_test")
+    tests = {"laplace": laplace, "mil_hdbk_189c": mil_hdbk_189c}
+    if test not in tests:
+        raise ValueError(
+            "`test` must be one of {}; got {!r}".format(sorted(tests), test)
+        )
+
+    # The trend tests assume every system is observed from time 0.
+    x, i, T = [], [], {}
+    for item_id, (_, events, entry, close, explicit_close) in enumerate(
+        _per_item_windows(data)
+    ):
+        if entry != 0.0:
+            raise ValueError(
+                "trend tests assume observation from time 0; this data "
+                "has delayed entry (left truncation)."
+            )
+        if not explicit_close:
+            # Failure-truncated: the last event is the truncation point,
+            # exactly as the standalone tests treat T=None data.
+            events = events[:-1]
+        x.extend(events)
+        i.extend([item_id] * events.size)
+        T[item_id] = close
+    return tests[test](x, i=i, T=T, alternative=alternative)
 
 
 def cvm_statistic(u):
@@ -227,7 +292,7 @@ def cramer_von_mises(model, n_boot=200, seed=None):
     failures = 0
     while len(statistics) < n_boot and failures < 2 * n_boot:
         x_b, i_b, c_b, tl_b = [], [], [], []
-        for item_id, (_, entry, close, _) in enumerate(windows):
+        for item_id, (_, _, entry, close, _) in enumerate(windows):
             span = float(model.cif(close) - model.cif(entry))
             count = rng.poisson(span) if span > 0 else 0
             times = np.sort(
