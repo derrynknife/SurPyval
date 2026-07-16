@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from surpyval import (
     Beta,
@@ -165,3 +166,75 @@ def test_qf_matches_plain_distribution_without_mixture():
     # distribution's, so ordinary models are unchanged.
     model = Weibull.from_params([10.0, 3.0])
     assert np.isclose(model.qf(0.2), Weibull.qf(0.2, 10.0, 3.0))
+
+
+# --- moment for the mixture (LFP / zero-inflation / offset) ----------------
+
+
+def test_moment_matches_plain_distribution_without_mixture():
+    model = Weibull.from_params([10.0, 3.0])
+    assert np.isclose(model.moment(2), Weibull.moment(2, 10.0, 3.0))
+    assert np.isclose(model.moment(3), Weibull.moment(3, 10.0, 3.0))
+
+
+def test_moment_one_equals_mean_across_mixtures():
+    # moment(1) must be consistent with mean() for every configuration.
+    for model in (
+        Weibull.from_params([10.0, 2.0]),
+        Weibull.from_params([10.0, 2.0], gamma=5.0),
+        Weibull.from_params([10.0, 2.0], p=0.6),
+        Weibull.from_params([10.0, 2.0], gamma=5.0, p=0.7),
+    ):
+        assert np.isclose(model.moment(1), model.mean())
+
+
+def test_offset_moment_includes_offset():
+    # Regression: the offset previously dropped out of moment. E[(gamma+X)^2]
+    # is strictly greater than E[X^2].
+    base = Weibull.from_params([10.0, 2.0])
+    offset = Weibull.from_params([10.0, 2.0], gamma=5.0)
+    assert offset.moment(2) > base.moment(2)
+    # exact binomial value: E[(g+X)^2] = g^2 + 2 g E[X] + E[X^2]
+    g = 5.0
+    expected = g**2 + 2 * g * base.moment(1) + base.moment(2)
+    assert np.isclose(offset.moment(2), expected)
+
+
+def test_lfp_moment_is_finite_and_defective():
+    # With a cure fraction the defective moment is finite and equals the base
+    # moment scaled by the failing proportion p (no offset).
+    p = 0.6
+    model = Weibull.from_params([10.0, 2.0], p=p)
+    assert np.isclose(model.moment(2), p * Weibull.moment(2, 10.0, 2.0))
+
+
+def test_defective_moment_matches_monte_carlo():
+    # cured units contribute nothing; offset shifts the failures.
+    g, p, params = 6.0, 0.7, (10.0, 2.0)
+    model = Weibull.from_params(list(params), gamma=g, p=p)
+    rng = np.random.default_rng(0)
+    n = 2_000_000
+    fail = rng.uniform(size=n) < p
+    t = np.where(fail, g + Weibull.random(n, *params), 0.0)
+    assert np.isclose(model.moment(1), t.mean(), rtol=0.02)
+    assert np.isclose(model.moment(2), (t**2).mean(), rtol=0.02)
+
+
+# --- entropy for the mixture ----------------------------------------------
+
+
+def test_entropy_is_offset_invariant():
+    # Differential entropy is translation-invariant, so an offset model has
+    # the same entropy as the un-offset one.
+    base = Weibull.from_params([10.0, 2.0])
+    offset = Weibull.from_params([10.0, 2.0], gamma=5.0)
+    assert np.isclose(offset.entropy(), base.entropy())
+
+
+def test_entropy_raises_with_a_probability_atom():
+    # A cure fraction (mass at infinity) or zero-inflation (mass at the
+    # offset) leaves no single differential entropy.
+    with pytest.raises(ValueError, match="probability atom"):
+        Weibull.from_params([10.0, 2.0], p=0.6).entropy()
+    with pytest.raises(ValueError, match="probability atom"):
+        LogNormal.from_params([2.0, 0.4], f0=0.2).entropy()

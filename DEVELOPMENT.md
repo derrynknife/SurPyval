@@ -257,10 +257,13 @@ MLE fitting, dependence measures and conditional-inversion sampling. Outstanding
   fundamental limitation of probability-plotting the family, not a bug
   (`test_fit.py:352` skips it deliberately). Worth a clear docstring/warning
   pointing users to MLE.
-- **Niche unimplemented paths (deferred, genuine but low-value):** defective
-  (LFP) `qf`/`moment`/`entropy`; MSE estimation with truncation;
-  `ExactEventTime` for interval-censored data. Each raises an explicit
-  `NotImplementedError` today; implement only if a use case appears.
+- **Niche unimplemented paths (deferred, genuine but low-value):** MSE
+  estimation with truncation and `ExactEventTime` for interval-censored data
+  each raise an explicit `NotImplementedError` today; implement only if a use
+  case appears. (Defective/offset/zero-inflated `qf` and `moment` are now
+  implemented; `entropy` is defined where it exists — no probability atom —
+  and raises a clear error for limited-failure / zero-inflated models, whose
+  mixed discrete-continuous law has no single differential entropy.)
 
 ---
 
