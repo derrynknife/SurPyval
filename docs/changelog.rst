@@ -48,6 +48,12 @@ Competing risks
   a ``{cause: model}`` mapping or a sequence of models. Sampling handles cure
   fractions -- when every cause carries one, some units never fail and are
   returned with cause ``None``.
+- Every competing-risks model (parametric, nonparametric, and the Fine-Gray /
+  cause-specific Cox regression) now treats a *missing* event value (``None``,
+  ``NaN`` or pandas ``NA``) as a censored observation with no attributed cause,
+  and derives the censoring flag ``c`` from the events when it is not supplied
+  -- so competing-risks data can be given as ``(x, e)`` alone, and a pandas
+  cause column with ``NaN`` for censored rows works directly.
 
 Regression — Cox proportional hazards
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

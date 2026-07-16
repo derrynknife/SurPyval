@@ -4,7 +4,7 @@ from collections import defaultdict
 import numpy as np
 import numpy.typing as npt
 from formulaic import Formula
-from pandas import Series
+from pandas import Series, isna
 
 COX_PH_METHODS = ["breslow", "efron"]
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
@@ -1038,8 +1038,43 @@ def check_c_and_e(c, e):
         e_i is None for e_i in e[c != 1]
     ):
         raise ValueError(
-            "None can only be used as event type for censored observation"
+            "A missing event type (None / NaN) is allowed only for a "
+            "censored observation (c = 1), and every censored observation "
+            "must have one."
         )
+
+
+def is_missing_event(value):
+    """Whether a competing-risks event value marks *no* attributed cause -- a
+    censored observation. That is Python ``None`` or any missing value
+    (``NaN``, pandas ``NA``)."""
+    if value is None:
+        return True
+    try:
+        return bool(isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def resolve_cr_censoring(e, c):
+    """Canonicalise a competing-risks event vector and its censoring flag.
+
+    A *missing* event value (``None``, ``NaN`` or pandas ``NA``) marks a
+    right-censored observation with no attributed cause; such values are
+    canonicalised to ``None``. When ``c`` is not supplied it is derived from
+    the events -- a missing event is censored (``c = 1``), an event present is
+    observed (``c = 0``) -- so competing-risks data may be given as ``(x, e)``
+    alone, without a separate censoring array.
+
+    Returns the canonicalised event array (object dtype, ``None`` for censored)
+    and the censoring flag (unchanged if supplied, otherwise derived).
+    """
+    e = np.asarray(e, dtype=object)
+    missing = np.array([is_missing_event(v) for v in e], dtype=bool)
+    e = np.array([None if m else v for v, m in zip(e, missing)], dtype=object)
+    if c is None:
+        c = np.where(missing, 1, 0)
+    return e, c
 
 
 def wrangle_and_check_form_and_Z_cols(Z_cols, formula, df):
@@ -1109,6 +1144,9 @@ def validate_cr_inputs(x, c, n, e, method):
     # Validates the inputs prior to be used by the CoxPH model.
     # Use existing surpyval validator. But don't group and sort
     # so as to put it out of order of the event array, e.
+    # A missing event (None / NaN) marks a censored observation; if c is not
+    # given it is derived from the events.
+    e, c = resolve_cr_censoring(e, c)
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
     e = np.array(e)
@@ -1125,12 +1163,7 @@ def validate_cr_inputs(x, c, n, e, method):
 
     # Ensure all cases where c is 0, e is not None and
     # where c is 1 e is None
-    if any(e_i is not None for e_i in e[c == 1]) or any(
-        e_i is None for e_i in e[c != 1]
-    ):
-        raise ValueError(
-            "None can only be used as event type for censored observation"
-        )
+    check_c_and_e(c, e)
 
     # Two baselines
     # TODO: Add fleming-harrington
@@ -1325,6 +1358,9 @@ def validate_coxph(
 
 
 def validate_fine_gray_inputs(x, Z, e, c, n):
+    # A missing event (None / NaN) marks a censored observation; if c is not
+    # given it is derived from the events.
+    e, c = resolve_cr_censoring(e, c)
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
     e = np.array(e)

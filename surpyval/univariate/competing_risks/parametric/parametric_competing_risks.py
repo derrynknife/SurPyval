@@ -28,12 +28,19 @@ import numpy as np
 from scipy.integrate import cumulative_trapezoid
 
 from surpyval.univariate.parametric import Weibull
-from surpyval.utils import check_e_and_x, xcnt_handler
+from surpyval.utils import (
+    check_e_and_x,
+    resolve_cr_censoring,
+    xcnt_handler,
+)
 
 
 def _validate(x, c, n, e):
     """Wrangle ``x``/``c``/``n`` and check the event labels: ``e`` is the
-    per-observation cause, and must be ``None`` exactly for censored rows."""
+    per-observation cause. A missing event (``None`` / ``NaN``) marks a
+    censored observation; if ``c`` is not given it is derived from the events.
+    """
+    e, c = resolve_cr_censoring(e, c)
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
     x, c, n = (np.asarray(a, dtype=float) for a in (x, c, n))
     e = np.asarray(e, dtype=object)
@@ -46,8 +53,9 @@ def _validate(x, c, n, e):
         ev is None for ev in e[c != 1]
     ):
         raise ValueError(
-            "None can only be used as the event type for a censored "
-            "observation (c = 1)."
+            "A missing event type (None / NaN) is allowed only for a "
+            "censored observation (c = 1), and every censored observation "
+            "must have one."
         )
     return x, c, n, e
 
@@ -320,10 +328,13 @@ class ParametricCompetingRisks:
         x : array_like
             Observed times.
         e : array_like
-            The cause of each observation; ``None`` for a censored row.
+            The cause of each observation. A missing value (``None`` / ``NaN``)
+            marks a censored observation with no attributed cause.
         c : array_like, optional
-            Censoring flag (0 observed, 1 right-censored). Defaults to all
-            observed. Left/interval censoring is not supported.
+            Censoring flag (0 observed, 1 right-censored). If omitted it is
+            derived from ``e`` -- a missing event is censored, an event present
+            is observed -- so data can be passed as ``(x, e)`` alone.
+            Left/interval censoring is not supported.
         n : array_like, optional
             Counts per observation.
         dist : ParametricFitter or dict, optional
