@@ -19,6 +19,27 @@ Distributions
   linearising probability plot) instead of a raw ``NotImplementedError``, and
   points to ``MLE`` / ``MSE`` / ``MOM``.
 
+Competing risks
+~~~~~~~~~~~~~~~
+
+- Added ``ParametricCompetingRisks``, a fully parametric competing-risks model:
+  a parametric distribution is fitted to each cause's cause-specific hazard
+  (the joint likelihood factorises, so each cause is fitted with the other
+  causes' events treated as right-censored) and smooth, extrapolatable
+  cumulative-incidence functions are assembled from them. Provides ``fit`` /
+  ``fit_from_df`` (with a per-cause distribution mapping), all-cause and
+  cause-specific ``hf`` / ``Hf`` / ``sf`` / ``ff``, the subdistribution density
+  ``iif``, the cumulative incidence ``cif``, ``probability_of_cause``, sampling
+  via ``random``, and ``aic`` / ``bic`` / ``neg_ll``. Complements the existing
+  nonparametric ``CompetingRisks`` estimator and the semi-parametric
+  cause-specific Cox / Fine-Gray regression models.
+- ``ParametricCompetingRisks.from_fitted`` assembles a competing-risks model
+  from already-fitted per-cause models, each of any family and configuration
+  (e.g. a limited-failure Weibull for one cause, a LogNormal for another): pass
+  a ``{cause: model}`` mapping or a sequence of models. Sampling handles cure
+  fractions -- when every cause carries one, some units never fail and are
+  returned with cause ``None``.
+
 Regression — Cox proportional hazards
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

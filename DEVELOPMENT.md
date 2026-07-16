@@ -8,8 +8,8 @@ grouped by theme and ordered by priority within each section.
 **Package state (2026-07-15).** Version `0.12.0` is released to PyPI; `0.13.0`
 is in progress on `master` (unreleased — see `docs/changelog.rst`, which adds
 the Tier-2 discrete distributions, Cox time-varying covariates, the Cox
-delayed-entry baseline fix, and a broad documentation pass). The full test
-suite (1116 tests, 1 documented skip) passes on Python 3.11–3.13 with numpy
+delayed-entry baseline fix, a parametric competing-risks model, and a broad
+documentation pass). The full test suite passes on Python 3.11–3.13 with numpy
 2.x / scipy 1.13+ / pandas 2.2+. The parametric, nonparametric, regression
 (PH / AFT / PO / additive-hazards / accelerated-life), recurrent-event,
 degradation, copula and (experimental) survival-forest modules are all
