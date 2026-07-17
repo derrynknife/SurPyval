@@ -70,11 +70,14 @@ Recurrent events
 ~~~~~~~~~~~~~~~~
 
 - Added residual (``residuals``: ``cumulative_hazard`` / ``pit`` /
-  ``martingale``) and trend-test (``trend_test``) diagnostics to the
+  ``martingale``), trend-test (``trend_test``) and Cramer-von Mises
+  goodness-of-fit (``cramer_von_mises``) diagnostics to the
   proportional-intensity regression models (``ProportionalIntensityHPP`` /
   ``ProportionalIntensityNHPP``), matching those already on the parametric
-  recurrence models. Each item's time-rescaling residuals use its own
-  covariate-scaled cumulative intensity ``Lambda_0(t) exp(Z'beta)``.
+  recurrence models. Each item's time-rescaling residuals and conditionally-
+  uniform transforms use its own covariate-scaled cumulative intensity
+  ``Lambda_0(t) exp(Z'beta)``, and the Cramer-von Mises p-value comes from a
+  parametric bootstrap that refits the full regression model per replicate.
 
 Regression — Cox proportional hazards
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
