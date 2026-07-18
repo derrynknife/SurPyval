@@ -107,6 +107,11 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         )
         return np.asarray(model.model.Hf(scaled), dtype=float)
 
+    def _refit(self, model, data):
+        """Refit this model family on ``data`` with the same lifetime
+        distribution; used by the Cramer-von Mises bootstrap."""
+        return self.fit_from_recurrent_data(data, dist=model.model.dist)
+
     def create_negll_func(self, x, i, c, n, dist):
         def negll_func(params):
             ll = 0

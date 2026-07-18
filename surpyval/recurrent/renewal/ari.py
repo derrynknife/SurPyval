@@ -149,6 +149,13 @@ class ARI(RenewalFitMixin):
                 prev = t
         return np.asarray(increments, dtype=float)
 
+    def _refit(self, model, data):
+        """Refit this model family on ``data`` with the same baseline
+        intensity and memory; used by the Cramer-von Mises bootstrap."""
+        return self.fit_from_recurrent_data(
+            data, dist=model.model.dist, m=model.m
+        )
+
     def create_negll_func(self, data, dist, m):
         _, idx = np.unique(data.i, return_index=True)
         x_by_item = np.split(data.x, idx)[1:]
