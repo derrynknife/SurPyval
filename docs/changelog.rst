@@ -8,7 +8,8 @@ Recurrent events
 ~~~~~~~~~~~~~~~~
 
 - Added residual (``residuals``: ``cumulative_hazard`` / ``pit`` /
-  ``martingale``) and trend-test (``trend_test``) diagnostics to the renewal /
+  ``martingale``), trend-test (``trend_test``) and Cramer-von Mises
+  goodness-of-fit (``cramer_von_mises``) diagnostics to the renewal /
   virtual-age imperfect-repair models (``GeneralizedRenewal``,
   ``GeneralizedOneRenewal``, ``ARA``, ``ARI``), completing the diagnostic
   coverage of the recurrent module. These processes have no marginal
@@ -16,7 +17,10 @@ Recurrent events
   *conditional* intensity -- the cumulative hazard accumulated over each
   interarrival given the model's virtual age (Kijima / ARA), time scaling
   (G1R) or intensity reduction (ARI) -- and are iid Exp(1) under the fitted
-  model.
+  model. The Cramer-von Mises transforms use the compensator built from those
+  increments (there being no closed-form intensity), and its p-value comes
+  from a parametric bootstrap that resimulates each item and refits the full
+  imperfect-repair model per replicate.
 
 v0.13.0 (18 Jul 2026)
 ---------------------

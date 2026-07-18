@@ -21,6 +21,11 @@ from surpyval.recurrent import (
     GeneralizedOneRenewal,
     GeneralizedRenewal,
 )
+from surpyval.recurrent.diagnostics import (
+    GoodnessOfFitResult,
+    _renewal_conditional_uniforms,
+    cvm_statistic,
+)
 
 
 def _fit_each():
@@ -132,3 +137,64 @@ def test_intensity_reduction_residuals_are_exp1():
     assert abs(e.mean() - 1.0) < 0.06
     assert abs(e.var() - 1.0) < 0.15
     assert abs(model.rho - 0.5) < 0.12
+
+
+# --- Cramer-von Mises goodness of fit ---------------------------------------
+#
+# The bootstrap refits the (multi-start) imperfect-repair fit per replicate, so
+# these use small data and few replicates. Correctness of the underlying
+# transform is covered by the Exp(1) residual calibration above (a unit-Poisson
+# compensator is exactly what makes the conditional transforms uniform); one
+# model per construction (age reduction, intensity reduction) exercises the
+# renewal CvM plumbing.
+
+
+def _small_fit(truth, fitter, refit_kwargs, seed):
+    data = truth.count_terminated_simulation_data(6, items=35, seed=seed)
+    return fitter.fit_from_recurrent_data(data, **refit_kwargs)
+
+
+def test_cvm_age_reduction_runs_and_matches_statistic():
+    truth = GeneralizedRenewal.fit_from_parameters(
+        [30.0, 1.6], 0.4, kijima="i", dist=Weibull
+    )
+    model = _small_fit(
+        truth, GeneralizedRenewal, dict(dist=Weibull, kijima="i"), seed=0
+    )
+    result = model.cramer_von_mises(n_boot=10, seed=1)
+    assert isinstance(result, GoodnessOfFitResult)
+    assert 0.0 < result.p_value <= 1.0
+    assert result.n_systems == np.unique(model.data.i).size
+    # the observed statistic is the CvM statistic of the compensator transforms
+    inc = model._fitter._rescaled_increments(model, model.data)
+    u, _ = _renewal_conditional_uniforms(model.data, inc)
+    assert np.isclose(result.statistic, cvm_statistic(u))
+
+
+def test_cvm_intensity_reduction_runs():
+    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA)
+    model = _small_fit(truth, ARI, dict(dist=CrowAMSAA, m=1), seed=4)
+    result = model.cramer_von_mises(n_boot=10, seed=2)
+    assert isinstance(result, GoodnessOfFitResult)
+    assert 0.0 < result.p_value <= 1.0
+
+
+def test_cvm_is_reproducible_with_seed():
+    truth = GeneralizedRenewal.fit_from_parameters(
+        [30.0, 1.6], 0.4, kijima="i", dist=Weibull
+    )
+    model = _small_fit(
+        truth, GeneralizedRenewal, dict(dist=Weibull, kijima="i"), seed=3
+    )
+    a = model.cramer_von_mises(n_boot=8, seed=99)
+    b = model.cramer_von_mises(n_boot=8, seed=99)
+    assert a.statistic == b.statistic
+    assert a.p_value == b.p_value
+
+
+def test_cvm_no_data_guard():
+    model = GeneralizedRenewal.fit_from_parameters(
+        [10.0, 2.0], 0.3, kijima="i", dist=Weibull
+    )
+    with pytest.raises(ValueError, match="fitted from data"):
+        model.cramer_von_mises()

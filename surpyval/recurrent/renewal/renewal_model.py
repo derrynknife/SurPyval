@@ -168,6 +168,45 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
             self.data, test=test, alternative=alternative
         )
 
+    def cramer_von_mises(self, n_boot=200, seed=None):
+        """
+        Cramer-von Mises goodness-of-fit test of the fitted imperfect-repair
+        model.
+
+        These processes have no marginal cumulative intensity, so the
+        conditionally-uniform transforms use the compensator built from each
+        interval's rescaled increment (the conditional-intensity residual):
+        conditional on an item's number of events, ``Lambda(t_k) /
+        Lambda(close)`` are iid U(0, 1) when the fitted model is the true one,
+        and the statistic measures their departure from uniformity. Because the
+        restoration and lifetime / intensity parameters were estimated from the
+        same data, the p-value is a parametric bootstrap: each item is
+        resimulated from the fitted model with its observed number of events,
+        the full model is refitted, and the statistic recomputed. Each
+        replicate is a multi-start optimisation, so this is much slower than
+        the residual diagnostics.
+
+        Parameters
+        ----------
+
+        n_boot: int, optional
+            Number of bootstrap replicates for the p-value. Default is 200.
+        seed: int or numpy.random.Generator, optional
+            Seed for a reproducible p-value.
+
+        Returns
+        -------
+
+        GoodnessOfFitResult
+            The observed statistic and its bootstrap p-value.
+        """
+        self._check_has_data("cramer_von_mises")
+        from surpyval.recurrent import diagnostics
+
+        return diagnostics.cramer_von_mises_renewal(
+            self, n_boot=n_boot, seed=seed
+        )
+
     def __repr__(self):
         title = f"{self.kind} SurPyval Model"
         lines = [

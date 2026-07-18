@@ -260,16 +260,59 @@ def cvm_statistic(u):
     return float(1.0 / (12.0 * m) + np.sum((u - (2 * j - 1) / (2 * m)) ** 2))
 
 
-def _cvm_pvalue(data, item_cif, simulate_refit, n_boot, seed):
+def _renewal_conditional_uniforms(data, increments):
+    """
+    The conditionally-uniform transforms behind the Cramer-von Mises statistic
+    for a renewal / virtual-age process, which has no marginal cumulative
+    intensity: the compensator ``Lambda(t_k)`` is the running sum of the
+    per-interval rescaled increments (``increments`` aligned with ``data``
+    rows), and conditional on the number of events the normalised transforms
+    ``Lambda(t_k) / Lambda(close)`` are iid U(0, 1). A failure-truncated item's
+    last event is its (random) window close, so it is excluded and the rest are
+    normalised by the transform there (Crow's ``M = N - 1`` convention); a
+    right-censored item uses all its events, normalised by the compensator at
+    the censoring time.
+    """
+    increments = np.asarray(increments, dtype=float)
+    c = np.asarray(data.c)
+    u = []
+    n_systems = 0
+    for item in np.unique(data.i):
+        mask = data.i == item
+        cumulative = np.cumsum(increments[mask])
+        c_item = c[mask]
+        n_systems += 1
+        close = float(cumulative[-1])
+        if np.any(c_item == 1):
+            used = cumulative[c_item == 0]
+        else:
+            used = cumulative[:-1]
+        if used.size == 0 or close <= 0:
+            continue
+        u.append(used / close)
+    if not u:
+        raise ValueError(
+            "No usable event times for the Cramer-von Mises statistic."
+        )
+    return np.concatenate(u), n_systems
+
+
+def _cvm_pvalue(
+    data, payload, simulate_refit, n_boot, seed, uniforms=_conditional_uniforms
+):
     """
     Shared Cramer-von Mises core: the observed statistic comes from the
-    conditionally-uniform transforms of ``data`` under ``item_cif``; the
-    p-value is a parametric bootstrap driven by ``simulate_refit(rng)``,
-    which simulates one dataset from the fitted model, refits it, and returns
-    ``(sim_data, refit_item_cif)`` (or raises to signal a failed replicate).
+    conditionally-uniform transforms of ``data`` under ``payload`` (computed
+    by ``uniforms(data, payload)``); the p-value is a parametric bootstrap
+    driven by ``simulate_refit(rng)``, which simulates one dataset from the
+    fitted model, refits it, and returns ``(sim_data, refit_payload)`` (or
+    raises to signal a failed replicate). ``uniforms`` is
+    :func:`_conditional_uniforms` for the intensity models (``payload`` is a
+    per-item CIF) and :func:`_renewal_conditional_uniforms` for the renewal
+    models (``payload`` is the per-interval rescaled increments).
     """
     _validate_diagnostic_data(data, "The Cramer-von Mises test")
-    u, n_systems = _conditional_uniforms(data, item_cif)
+    u, n_systems = uniforms(data, payload)
     observed = cvm_statistic(u)
 
     rng = np.random.default_rng(seed)
@@ -282,8 +325,8 @@ def _cvm_pvalue(data, item_cif, simulate_refit, n_boot, seed):
             # over hundreds of refits they would swamp the console.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
-                sim_data, refit_item_cif = simulate_refit(rng)
-                u_b, _ = _conditional_uniforms(sim_data, refit_item_cif)
+                sim_data, refit_payload = simulate_refit(rng)
+                u_b, _ = uniforms(sim_data, refit_payload)
         except (ValueError, RuntimeError, np.linalg.LinAlgError):
             failures += 1
             continue
@@ -442,3 +485,64 @@ def cramer_von_mises_regression(model, n_boot=200, seed=None):
         return sim_data, refit_cif
 
     return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, seed)
+
+
+def cramer_von_mises_renewal(model, n_boot=200, seed=None):
+    """
+    Cramer-von Mises goodness-of-fit test of a fitted renewal / virtual-age
+    imperfect-repair model; see :meth:`RenewalModel.cramer_von_mises` for the
+    user-facing documentation.
+
+    These processes have no marginal cumulative intensity, so the transforms
+    use the compensator built from each interval's rescaled increment (the
+    conditional-intensity residual). The bootstrap simulates, for every item,
+    a fresh sequence with the item's observed number of events from the fitted
+    model, refits the full imperfect-repair model, and recomputes the
+    statistic -- so the p-value accounts for the restoration and lifetime /
+    intensity parameters having been estimated. It is therefore markedly
+    slower than the residual diagnostics (each replicate is a multi-start
+    optimisation).
+    """
+    from surpyval.utils.recurrent_utils import handle_xicn
+
+    data = model.data
+    fitter = model._fitter
+    increments = fitter._rescaled_increments(model, data)
+    # The observed per-item event counts drive the (count-terminated)
+    # bootstrap: each item is resimulated with the same number of events.
+    counts = [
+        int((data.c[data.i == item] == 0).sum()) for item in np.unique(data.i)
+    ]
+
+    def simulate_refit(rng):
+        x_b, i_b = [], []
+        new_id = 0
+        for count in counts:
+            if count < 1:
+                continue
+            new_id += 1
+            child = int(rng.integers(0, 2**31 - 1))
+            sim = model.count_terminated_simulation_data(
+                count - 1, items=1, seed=child
+            )
+            x_b.extend(np.asarray(sim.x, dtype=float).tolist())
+            i_b.extend([new_id] * sim.x.size)
+        if len(x_b) < 2:
+            raise ValueError("too few simulated events to refit")
+        sim_data = handle_xicn(
+            np.asarray(x_b, dtype=float),
+            np.asarray(i_b),
+            as_recurrent_data=True,
+        )
+        refit = fitter._refit(model, sim_data)
+        refit_increments = refit._fitter._rescaled_increments(refit, sim_data)
+        return sim_data, refit_increments
+
+    return _cvm_pvalue(
+        data,
+        increments,
+        simulate_refit,
+        n_boot,
+        seed,
+        uniforms=_renewal_conditional_uniforms,
+    )
