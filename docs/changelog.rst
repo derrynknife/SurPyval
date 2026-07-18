@@ -34,6 +34,20 @@ Recurrent events
   renewal models (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``,
   ``ARI``) reject gapped data, since the virtual age at the start of a later
   window depends on the unobserved events during the gap.
+- Recurrent event marks (competing-risks recurrent events) are now first
+  class. ``handle_xicn`` takes an event-type mark ``e`` per row (with
+  ``None``/``NaN`` marks normalised to a single "no cause" sentinel), so marked
+  data gets the same validation, sorting and truncation handling as every
+  other recurrent fit. ``CauseSpecificMCF`` now routes through that handler and
+  gains a ``fit_from_df``. New ``CauseSpecificNHPP`` fits a **parametric
+  cause-specific intensity model** -- one NHPP (``CrowAMSAA`` by default, or any
+  counting-process fitter) per event type. Because a marked Poisson process
+  decomposes into independent thinned Poisson processes, each cause is fitted
+  to its own events over the full observation window of every item (other-cause
+  events are ignored, exactly as a censored period would be), so each
+  per-cause model is an ordinary fitted recurrence model with its full
+  ``cif``/``iif``, inference and diagnostics; ``total_cif`` sums them for the
+  overall event intensity.
 
 v0.13.0 (18 Jul 2026)
 ---------------------

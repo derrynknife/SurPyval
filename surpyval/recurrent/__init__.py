@@ -1,3 +1,4 @@
+from .competing_risks import CauseSpecificMCF, CauseSpecificNHPP
 from .diagnostics import GoodnessOfFitResult
 from .nonparametric import NonParametricCounting
 from .parametric import HPP, CountingProcess, CoxLewis, CrowAMSAA, Duane

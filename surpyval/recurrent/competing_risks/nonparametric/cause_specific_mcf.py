@@ -16,8 +16,10 @@ from autograd import numpy as np
 from matplotlib import pyplot as plt
 
 from surpyval.recurrent.nonparametric.mcf import NonParametricCounting
-from surpyval.utils.recurrent_event_data import RecurrentEventData
-from surpyval.utils.recurrent_utils import reject_unsupported_nonparametric
+from surpyval.utils.recurrent_utils import (
+    handle_xicn,
+    reject_unsupported_nonparametric,
+)
 
 
 def _counting_model_from_xrd(x, r, d):
@@ -115,22 +117,66 @@ class CauseSpecificMCF:
         """
         if e is None:
             raise ValueError(
-                "`e` (event types) is required for a " "cause-specific MCF."
+                "`e` (event types) is required for a cause-specific MCF."
             )
-        x = np.asarray(x)
-        if i is None:
-            i = np.ones_like(x, dtype=int)
-        if c is None:
-            c = np.zeros_like(x, dtype=int)
-        if n is None:
-            n = np.ones_like(x, dtype=int)
-        # RecurrentEventData expects per-row truncation bounds, so broadcast
-        # a scalar tl/tr to the full length here (handle_xicn does this via
-        # format_truncation, but the mark column means we build the data
-        # object directly).
-        if tl is not None:
-            tl = np.broadcast_to(np.asarray(tl, dtype=float), x.shape).copy()
-        if tr is not None:
-            tr = np.broadcast_to(np.asarray(tr, dtype=float), x.shape).copy()
-        data = RecurrentEventData(x, i, c, n, e, tl=tl, tr=tr)
+        # Route through the shared recurrent handler so the marked data gets
+        # the same validation, sorting and (scalar or per-row) truncation
+        # handling as every other recurrent fit.
+        data = handle_xicn(
+            x, i, c, n, tl=tl, tr=tr, e=e, as_recurrent_data=True
+        )
         return cls.fit_from_recurrent_data(data)
+
+    @classmethod
+    def fit_from_df(
+        cls,
+        df,
+        x_col,
+        e_col,
+        i_col=None,
+        c_col=None,
+        n_col=None,
+        tl_col=None,
+        tr_col=None,
+    ):
+        """
+        Fit a cause-specific MCF from a :class:`pandas.DataFrame`, naming the
+        columns to read.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The data.
+        x_col : str
+            Column of event (and censoring) times.
+        e_col : str
+            Column of event-type marks. Use ``None`` (or ``NaN``) marks for
+            censored rows.
+        i_col : str, optional
+            Column of item / subject ids. Defaults to a single item.
+        c_col : str, optional
+            Column of censoring flags (0 observed, 1 right censored).
+        n_col : str, optional
+            Column of event counts per row.
+        tl_col, tr_col : str, optional
+            Columns of per-row left / right truncation bounds.
+
+        Returns
+        -------
+        CauseSpecificMCF
+        """
+
+        def col(name):
+            return None if name is None else df[name].to_numpy()
+
+        model = cls.fit(
+            x=df[x_col].to_numpy(),
+            i=col(i_col),
+            c=col(c_col),
+            n=col(n_col),
+            e=col(e_col),
+            tl=col(tl_col),
+            tr=col(tr_col),
+        )
+        model.df = df
+        return model
