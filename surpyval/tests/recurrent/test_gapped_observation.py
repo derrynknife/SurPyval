@@ -139,26 +139,22 @@ def test_mcf_at_risk_set_excludes_item_during_its_gap():
 
 
 @pytest.mark.parametrize(
-    "fit_call",
+    "fitter, kwargs",
     [
-        lambda d: GeneralizedRenewal.fit_from_recurrent_data(
-            d, dist=Weibull, kijima="i"
-        ),
-        lambda d: GeneralizedOneRenewal.fit_from_recurrent_data(
-            d, dist=Weibull
-        ),
-        lambda d: ARA.fit_from_recurrent_data(d, dist=Weibull, m=1),
-        lambda d: ARI.fit_from_recurrent_data(d, dist=CrowAMSAA, m=1),
+        (GeneralizedRenewal, dict(dist=Weibull, kijima="i")),
+        (GeneralizedOneRenewal, dict(dist=Weibull)),
+        (ARA, dict(dist=Weibull, m=1)),
+        (ARI, dict(dist=CrowAMSAA, m=1)),
     ],
 )
-def test_renewal_models_reject_gapped_data(fit_call):
+def test_renewal_models_reject_gapped_data(fitter, kwargs):
     # A single window starting at 0 still carries a window_map, so the guard
     # fires regardless of the left-truncation check.
     data = handle_xicn(
         np.array([3.0, 7.0, 10.0]), np.array([1, 1, 1]), windows={1: [(0, 15)]}
     )
     with pytest.raises(ValueError, match="gapped"):
-        fit_call(data)
+        fitter.fit_from_recurrent_data(data, **kwargs)
 
 
 # --- malformed window specifications are rejected ---------------------------
