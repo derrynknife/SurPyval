@@ -86,16 +86,18 @@ class RenewalFitMixin:
             )
         return res
 
-    @staticmethod
-    def _attach_inference(model, neg_ll, mle, n_obs, res, data):
+    def _attach_inference(self, model, neg_ll, mle, n_obs, res, data):
         """
         Store the fit artefacts and the attributes
         :class:`LikelihoodInferenceMixin` needs: ``_neg_ll`` (the negative
         log-likelihood in natural parameter space), ``_mle`` (the fitted
-        parameters in that space) and ``_n_obs``.
+        parameters in that space) and ``_n_obs``. Also keeps a reference to
+        the fitter (``_fitter``) so the fitted model can reuse its
+        family-specific rescaled-increment (time-rescaling residual) logic.
         """
         model.res = res
         model.data = data
+        model._fitter = self
         model._neg_ll = neg_ll
         model._mle = np.asarray(mle, dtype=float)
         model._n_obs = int(n_obs)

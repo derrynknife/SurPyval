@@ -1,3 +1,5 @@
+import numpy as np
+
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 
@@ -76,6 +78,95 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
 
     def _parameter_bounds(self):
         return [self._restoration_bounds, *self.model.dist.bounds]
+
+    def _check_has_data(self, what):
+        if not hasattr(self, "data"):
+            raise ValueError(
+                "{} requires a model fitted from data; fit_from_parameters "
+                "models carry no data.".format(what)
+            )
+
+    def residuals(self, kind="cumulative_hazard"):
+        """
+        Residual diagnostics for the fitted imperfect-repair model, from the
+        time-rescaling theorem applied to the process's *conditional*
+        intensity (each interarrival is rescaled by the cumulative hazard
+        accumulated over it given the model's virtual age / intensity
+        reduction), so they extend the counting-process residuals to the
+        renewal / virtual-age families.
+
+        Parameters
+        ----------
+
+        kind: {'cumulative_hazard', 'pit', 'martingale'}, optional
+            ``'cumulative_hazard'`` returns the rescaled interarrival
+            increments of every observed event (pooled across items), which
+            are iid Exp(1) under the fitted model. ``'pit'`` applies the
+            probability integral transform ``1 - exp(-e)`` to those residuals,
+            giving iid U(0, 1) values. ``'martingale'`` returns one residual
+            per item: its observed event count minus the compensator (the sum
+            of the rescaled increments) accumulated over its observation.
+
+        Returns
+        -------
+
+        numpy array
+            The residuals.
+        """
+        self._check_has_data("residuals")
+        from surpyval.recurrent import diagnostics
+
+        diagnostics._validate_diagnostic_data(self.data, "Residuals")
+        increments = np.asarray(
+            self._fitter._rescaled_increments(self, self.data), dtype=float
+        )
+        c = np.asarray(self.data.c)
+
+        if kind in ("cumulative_hazard", "pit"):
+            e = increments[c == 0]
+            if kind == "pit":
+                return 1.0 - np.exp(-e)
+            return e
+        elif kind == "martingale":
+            residuals = []
+            for item in np.unique(self.data.i):
+                mask = self.data.i == item
+                observed = int((c[mask] == 0).sum())
+                residuals.append(observed - float(increments[mask].sum()))
+            return np.array(residuals)
+        raise ValueError(
+            "`kind` must be 'cumulative_hazard', 'pit' or 'martingale'; "
+            "got {!r}".format(kind)
+        )
+
+    def trend_test(self, test="laplace", alternative="two-sided"):
+        """
+        Run a trend test on the data this model was fitted to. The null
+        hypothesis is a *homogeneous* Poisson process (no trend); the statistic
+        uses only the event times and windows, not the fitted model, so it
+        checks whether an imperfect-repair model was warranted at all.
+
+        Parameters
+        ----------
+
+        test: {'laplace', 'mil_hdbk_189c'}, optional
+            The trend test to run. Default is 'laplace'.
+        alternative: {'two-sided', 'increasing', 'decreasing'}, optional
+            The alternative hypothesis. Default is 'two-sided'.
+
+        Returns
+        -------
+
+        TrendTestResult
+            The test result, carrying the statistic, p-value and suggested
+            trend direction.
+        """
+        self._check_has_data("trend_test")
+        from surpyval.recurrent import diagnostics
+
+        return diagnostics.trend_test(
+            self.data, test=test, alternative=alternative
+        )
 
     def __repr__(self):
         title = f"{self.kind} SurPyval Model"

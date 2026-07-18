@@ -88,6 +88,25 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             restoration_bounds=(-1, None),
         )
 
+    def _rescaled_increments(self, model, data):
+        """
+        Per-interval cumulative-hazard increments (time-rescaling residuals)
+        for a fitted G1 renewal model. The ``j``-th interarrival of an item is
+        the base lifetime scaled by ``(1 + q)^j``, so on the base time axis its
+        residual is ``H(x_j / (1 + q)^j)``. Aligned with ``data`` rows; iid
+        Exp(1) over the observed intervals under the fitted model.
+        """
+        q = model.q
+        _, idx = np.unique(data.i, return_index=True)
+        interarrival_by_item = np.split(data.get_interarrival_times(), idx)[1:]
+        scaled = np.concatenate(
+            [
+                np.asarray(arr, dtype=float) / (1.0 + q) ** np.arange(len(arr))
+                for arr in interarrival_by_item
+            ]
+        )
+        return np.asarray(model.model.Hf(scaled), dtype=float)
+
     def create_negll_func(self, x, i, c, n, dist):
         def negll_func(params):
             ll = 0

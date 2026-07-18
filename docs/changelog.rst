@@ -1,8 +1,25 @@
 Changelog
 =========
 
-v0.13.0 (unreleased)
+v0.14.0 (unreleased)
 --------------------
+
+Recurrent events
+~~~~~~~~~~~~~~~~
+
+- Added residual (``residuals``: ``cumulative_hazard`` / ``pit`` /
+  ``martingale``) and trend-test (``trend_test``) diagnostics to the renewal /
+  virtual-age imperfect-repair models (``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA``, ``ARI``), completing the diagnostic
+  coverage of the recurrent module. These processes have no marginal
+  cumulative intensity, so the time-rescaling residuals come from each one's
+  *conditional* intensity -- the cumulative hazard accumulated over each
+  interarrival given the model's virtual age (Kijima / ARA), time scaling
+  (G1R) or intensity reduction (ARI) -- and are iid Exp(1) under the fitted
+  model.
+
+v0.13.0 (18 Jul 2026)
+---------------------
 
 Distributions
 ~~~~~~~~~~~~~~

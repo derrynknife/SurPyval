@@ -116,6 +116,41 @@ class GeneralizedRenewal(RenewalFitMixin):
         )
         return out
 
+    def _rescaled_increments(self, model, data):
+        """
+        Per-interval cumulative-hazard increments ``H(v_k + x_k) - H(v_k)``
+        (the time-rescaling residuals) for a fitted Kijima renewal model, where
+        ``v_k`` is the virtual age at the start of interval ``k`` and ``x_k``
+        its interarrival time. Aligned with ``data`` rows. iid Exp(1) over the
+        observed intervals under the fitted model.
+        """
+        q = model.q
+        _, idx = np.unique(data.i, return_index=True)
+        interarrival = data.get_interarrival_times()
+        if model.kijima_type == "i":
+            arrival_times = np.split(data.x, idx)[1:]
+            cumulative_previous = np.concatenate(
+                [np.concatenate([[0], arr[:-1]]) for arr in arrival_times]
+            )
+            virtual_ages = q * cumulative_previous
+        else:
+            prev_x_interarrival = np.concatenate(
+                [
+                    np.concatenate([[0], np.atleast_1d(arr)])[:-1]
+                    for arr in np.split(interarrival, idx)[1:]
+                ]
+            )
+            virtual_ages = np.concatenate(
+                [
+                    kijima_ii_from_prev_interarrival(arr, q)
+                    for arr in np.split(prev_x_interarrival, idx)[1:]
+                ]
+            )
+        x_new = interarrival + virtual_ages
+        return np.asarray(
+            model.model.Hf(x_new) - model.model.Hf(virtual_ages), dtype=float
+        )
+
     def create_negll_func(self, data, dist, kijima="i"):
         _, idx = np.unique(data.i, return_index=True)
         c = data.c
