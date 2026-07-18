@@ -28,6 +28,17 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     Gumbel) are rejected, as scaled interarrival times would not be guaranteed
     positive.
 
+    This *is* Lam's geometric process, reparameterised. Lam's geometric
+    process takes the ``k``-th interarrival time (``k = 1, 2, ...``) as a base
+    lifetime scaled so that ``a ** (k - 1) * X_k`` are i.i.d., with ratio
+    ``a > 1`` a deteriorating (interarrivals shrinking) system, ``a < 1`` an
+    improving one and ``a = 1`` an ordinary renewal process. Writing ``j = k -
+    1``, the G1 scaling ``(1 + q) ** j`` matches ``a ** -j``, so the geometric-
+    process ratio is ``a = 1 / (1 + q)`` (equivalently ``q = (1 - a) / a``).
+    A negative ``q`` therefore corresponds to ``a > 1`` -- deterioration -- and
+    a positive ``q`` to reliability growth; fit this model when you want the
+    geometric process with a parametric lifetime distribution.
+
     Since the Generalised One Renewal Process does not have closed form
     solutions for the instantaneous intensity function and the cumulative
     intensity function these values cannot be calculated directly with this
