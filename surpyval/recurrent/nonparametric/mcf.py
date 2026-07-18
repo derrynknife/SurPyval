@@ -139,7 +139,7 @@ class NonParametricCounting:
 
         return out
 
-    def fit(self, x, i=None, c=None, n=None, tl=None, tr=None):
+    def fit(self, x, i=None, c=None, n=None, tl=None, tr=None, windows=None):
         """
         Fit a nonparametric (Nelson-Aalen) MCF.
 
@@ -159,10 +159,19 @@ class NonParametricCounting:
             earlier event times are estimated over a smaller risk set.
         tr : array like or scalar, optional
             Right-truncation time per item.
+        windows : dict, optional
+            Gapped (multi-window) observation: a mapping ``{item: [(start,
+            end), ...]}`` giving each item's disjoint observation windows.
+            When given, every row in ``x`` must be an observed event (``c=0``).
+            Each window becomes its own at-risk period, so an item is correctly
+            absent from the risk set during a gap. Mutually exclusive with
+            ``tl``/``tr``.
 
         Returns
         -------
         NonParametricCounting
         """
-        data = handle_xicn(x, i, c, n, tl=tl, tr=tr, as_recurrent_data=True)
+        data = handle_xicn(
+            x, i, c, n, tl=tl, tr=tr, as_recurrent_data=True, windows=windows
+        )
         return self.fit_from_recurrent_data(data)

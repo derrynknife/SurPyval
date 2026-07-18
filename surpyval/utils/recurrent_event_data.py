@@ -7,6 +7,13 @@ from surpyval.utils.surpyval_data import SurpyvalData
 class RecurrentEventData:
     # Optional covariate matrix, attached by ``handle_xicn`` for regression.
     Z: npt.NDArray | None = None
+    # Gapped (multi-window) observation metadata, attached by ``handle_xicn``
+    # when ``windows`` is supplied: ``window_map`` maps each synthetic
+    # single-window sub-item id to its ``(real_item, (start, end))`` and
+    # ``observation_windows`` keeps the user's original per-item windows. Both
+    # stay ``None`` for ordinary single-window data.
+    window_map: dict | None = None
+    observation_windows: dict | None = None
 
     """
     A class to handle and manipulate recurrent event data. Recurrent events are
