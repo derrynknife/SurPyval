@@ -21,6 +21,19 @@ Recurrent events
   increments (there being no closed-form intensity), and its p-value comes
   from a parametric bootstrap that resimulates each item and refits the full
   imperfect-repair model per replicate.
+- Added support for gapped (multi-window) observation: an item can be observed
+  over several disjoint time windows with unobserved gaps in between (events
+  may occur during a gap but are not recorded). Pass ``windows={item:
+  [(start, end), ...]}`` to the intensity fitters (``HPP``, ``CrowAMSAA``,
+  ``Duane``, ``CoxLewis``) and the nonparametric ``NonParametricCounting`` MCF;
+  every row of ``x`` is then an observed event and the windows supply the
+  end-of-window censoring. Because event counts over disjoint windows are
+  independent for an NHPP, each window is fitted as its own observation period,
+  so the intensity likelihood and the MCF at-risk set (an item is absent from
+  the risk set during its gaps) both handle the gaps exactly. The virtual-age /
+  renewal models (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``,
+  ``ARI``) reject gapped data, since the virtual age at the start of a later
+  window depends on the unobserved events during the gap.
 
 v0.13.0 (18 Jul 2026)
 ---------------------

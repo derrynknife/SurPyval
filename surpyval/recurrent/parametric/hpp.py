@@ -288,7 +288,16 @@ class HPP(CountingProcess):
         return out
 
     def fit(
-        self, x, i=None, c=None, n=None, t=None, tl=None, tr=None, init=None
+        self,
+        x,
+        i=None,
+        c=None,
+        n=None,
+        t=None,
+        tl=None,
+        tr=None,
+        init=None,
+        windows=None,
     ):
         """
         Fits the HPP model to the provided data and returns the fitted model.
@@ -311,6 +320,12 @@ class HPP(CountingProcess):
             Right truncation time per item.
         init : array_like, optional
             Initial parameter estimates for the optimization.
+        windows : dict, optional
+            Gapped (multi-window) observation: a mapping ``{item: [(start,
+            end), ...]}`` giving each item's disjoint observation windows.
+            When given, every row in ``x`` must be an observed event (``c=0``);
+            the windows supply the end-of-window censoring rows. Mutually
+            exclusive with ``t``/``tl``/``tr``.
 
         Returns
         -------
@@ -318,6 +333,14 @@ class HPP(CountingProcess):
             An object containing the fitted model and related information.
         """
         data = handle_xicn(
-            x, i, c, n, t=t, tl=tl, tr=tr, as_recurrent_data=True
+            x,
+            i,
+            c,
+            n,
+            t=t,
+            tl=tl,
+            tr=tr,
+            as_recurrent_data=True,
+            windows=windows,
         )
         return self.fit_from_recurrent_data(data, init=init)

@@ -182,6 +182,7 @@ class NHPPFitter(IntensityModel):
         tr=None,
         how="MLE",
         init=None,
+        windows=None,
     ):
         """
         Fit the NHPP model from the provided data. This function prepares the
@@ -211,6 +212,15 @@ class NHPPFitter(IntensityModel):
             Default is 'MLE'.
         init: array_like, optional
             Initial parameters for optimization.
+        windows: dict, optional
+            Gapped (multi-window) observation: a mapping ``{item: [(start,
+            end), ...]}`` giving each item's disjoint observation windows,
+            with unobserved gaps between them. When given, every row in ``x``
+            must be an observed event (``c=0``); the windows supply the
+            end-of-window censoring rows. Because event counts over disjoint
+            windows are independent for an NHPP, each window is fitted as its
+            own observation period. Mutually exclusive with ``t``/``tl``/
+            ``tr``.
 
         Returns
         -------
@@ -220,7 +230,15 @@ class NHPPFitter(IntensityModel):
             method.
         """
         data = handle_xicn(
-            x, i, c, n, t=t, tl=tl, tr=tr, as_recurrent_data=True
+            x,
+            i,
+            c,
+            n,
+            t=t,
+            tl=tl,
+            tr=tr,
+            as_recurrent_data=True,
+            windows=windows,
         )
         return self.fit_from_recurrent_data(data, how, init)
 

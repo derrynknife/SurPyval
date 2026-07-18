@@ -7,6 +7,7 @@ from surpyval.recurrent.renewal.renewal_model import RenewalModel
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
+    reject_gapped_observation,
     reject_left_truncation,
     validate_memory,
     validate_renewal_censoring,
@@ -201,6 +202,7 @@ class ARA(RenewalFitMixin):
         validate_memory(m)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
+        reject_gapped_observation(data, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, m)
         transform, inv_trans = self._bounds_transform(
