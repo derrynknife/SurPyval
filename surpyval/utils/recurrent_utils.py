@@ -259,6 +259,7 @@ def handle_xicn(
     Z: npt.ArrayLike | dict | None = None,
     as_recurrent_data: bool = True,
     windows: dict | None = None,
+    e: npt.ArrayLike | None = None,
 ) -> (
     RecurrentEventData
     | tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]
@@ -283,6 +284,24 @@ def handle_xicn(
     else:
         c = np.array(c)
 
+    # Optional event-type marks (competing-risks recurrent process). Marks are
+    # per-row and aligned with ``x``; ``None``/NaN marks (typically the
+    # end-of-observation censoring row) are permitted. Kept as an object array
+    # so string, integer or ``None`` marks all round-trip unchanged.
+    e_arr: npt.NDArray | None = None
+    if e is not None:
+        from surpyval.utils import is_missing_event
+
+        e_arr = np.array(e, dtype=object)
+        if e_arr.shape[0] != x.shape[0]:
+            raise ValueError("x and e must have the same length")
+        # Normalise every "no attributed cause" marker (None, NaN, pandas NA)
+        # to Python ``None`` so downstream cause bookkeeping (``event_types``,
+        # cause-specific counts) sees a single missing sentinel.
+        e_arr = np.array(
+            [None if is_missing_event(v) else v for v in e_arr], dtype=object
+        )
+
     # Gapped (multi-window) observation: each item is observed over several
     # disjoint windows with unobserved gaps between them. Expand each window
     # into a synthetic single-window sub-item so the rest of the handler --
@@ -300,6 +319,11 @@ def handle_xicn(
         if Z is not None:
             raise ValueError(
                 "windows (gapped observation) does not support covariates Z"
+            )
+        if e_arr is not None:
+            raise ValueError(
+                "windows (gapped observation) does not support event-type "
+                "marks e yet"
             )
         x, i, c, n, tl_gap, tr_gap, window_map = _expand_windows(
             x, i, c, n, windows
@@ -396,6 +420,9 @@ def handle_xicn(
     if Z_arr is not None:
         Z_arr = Z_arr[sort_order]
 
+    if e_arr is not None:
+        e_arr = e_arr[sort_order]
+
     unique_i, idx = np.unique(i, return_index=True)
     censoring_by_i = np.split(c, idx)[1:]
 
@@ -460,7 +487,7 @@ def handle_xicn(
             )
 
     if as_recurrent_data:
-        data = RecurrentEventData(x, i, c, n, tl=tl_arr, tr=tr_arr)
+        data = RecurrentEventData(x, i, c, n, e=e_arr, tl=tl_arr, tr=tr_arr)
         data.Z = Z_arr
         # ``window_map`` (synthetic-item id -> (real item, (start, end))) is
         # set only for gapped observation; it stays ``None`` otherwise and is
