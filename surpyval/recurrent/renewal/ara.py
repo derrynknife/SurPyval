@@ -120,6 +120,25 @@ class ARA(RenewalFitMixin):
         out.m = m
         return out
 
+    def _rescaled_increments(self, model, data):
+        """
+        Per-interval cumulative-hazard increments ``H(v_k + x_k) - H(v_k)``
+        (the time-rescaling residuals) for a fitted ARA model, with ``v_k`` the
+        arithmetic-reduction virtual age at the start of interval ``k``.
+        Aligned with ``data`` rows; iid Exp(1) over the observed intervals
+        under the fitted model.
+        """
+        _, idx = np.unique(data.i, return_index=True)
+        arrival_by_item = np.split(data.x, idx)[1:]
+        interarrival = data.get_interarrival_times()
+        virtual_ages = np.concatenate(
+            [ara_virtual_ages(a, model.rho, model.m) for a in arrival_by_item]
+        )
+        x_new = interarrival + virtual_ages
+        return np.asarray(
+            model.model.Hf(x_new) - model.model.Hf(virtual_ages), dtype=float
+        )
+
     def create_negll_func(self, data, dist, m):
         _, idx = np.unique(data.i, return_index=True)
         arrival_by_item = np.split(data.x, idx)[1:]

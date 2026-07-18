@@ -120,6 +120,35 @@ class ARI(RenewalFitMixin):
         out.m = m
         return out
 
+    def _rescaled_increments(self, model, data):
+        """
+        Per-interval compensator increments (time-rescaling residuals) for a
+        fitted ARI model: the integral of the reduced intensity over each
+        interval, ``[Lambda_0(t) - Lambda_0(prev)] - R * (t - prev)``, where
+        ``R`` is the intensity reduction in force after the previous event.
+        Aligned with ``data`` rows; iid Exp(1) over the observed intervals
+        under the fitted model.
+        """
+        rho, m = model.rho, model.m
+        dist = model.model
+        _, idx = np.unique(data.i, return_index=True)
+        x_by_item = np.split(data.x, idx)[1:]
+        c_by_item = np.split(data.c, idx)[1:]
+
+        increments = []
+        for x_item, c_item in zip(x_by_item, c_by_item):
+            prev = 0.0
+            reduction = 0.0
+            history_iif = []
+            for t, censor in zip(x_item, c_item):
+                delta_cif = float(dist.cif(t) - dist.cif(prev))
+                increments.append(delta_cif - reduction * (t - prev))
+                if censor == 0:
+                    history_iif.append(float(dist.iif(t)))
+                    reduction = ari_reduction(history_iif, rho, m)
+                prev = t
+        return np.asarray(increments, dtype=float)
+
     def create_negll_func(self, data, dist, m):
         _, idx = np.unique(data.i, return_index=True)
         x_by_item = np.split(data.x, idx)[1:]
