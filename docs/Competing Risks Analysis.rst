@@ -89,11 +89,6 @@ The overall density is:
 SurPyval provides the ``CompetingRisks`` class for this model. Parameters for
 each cause distribution are estimated jointly by MLE.
 
-.. warning::
-
-    The ``CompetingRisks`` model is implemented but has known issues.
-    See ``DEVELOPMENT.md`` §1 for details before using in production analyses.
-
 
 Regression: Fine-Gray and Cause-Specific PH
 --------------------------------------------
@@ -123,13 +118,7 @@ probability of a cause occurring in the presence of competing risks (e.g.
 clinical risk scores).
 
 SurPyval provides the ``FineGray`` and
-``CompetingRisksProportionalHazard`` classes.
-
-.. warning::
-
-    Both ``FineGray.fit()`` and the competing risks regression model are
-    currently broken (crash on first call). See ``DEVELOPMENT.md`` §2 for
-    status. This functionality is under active development.
+``CompetingRisksProportionalHazards`` classes.
 
 
 Further Reading

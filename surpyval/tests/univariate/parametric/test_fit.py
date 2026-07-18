@@ -349,7 +349,10 @@ OFFSET_CASES = [
 )
 def test_offset_fit_recovers_gamma(dist, dist_params, how):
     if how == "MPP" and dist is Gamma:
-        pytest.skip("MPP gamma estimation fails for Gamma (see DEVELOPMENT)")
+        pytest.skip(
+            "MPP shape estimation is unreliable for Gamma "
+            "(probability-plotting limitation; see issue #158)"
+        )
     gamma = 10.0
     x = dist.random(10_000, *dist_params) + gamma
     model = dist.fit(x, offset=True, how=how)

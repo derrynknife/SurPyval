@@ -9,8 +9,6 @@ that behaviour down with numbers so it does not surprise anyone, and so a
 future "fix" to the offset initialisers can be judged on the divergence
 that actually matters (KL / Wasserstein) rather than on the parameter
 error alone.
-
-See DEVELOPMENT.md section 2.
 """
 
 import numpy as np
