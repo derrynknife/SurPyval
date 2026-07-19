@@ -539,8 +539,9 @@ JSON file and rebuilt later. The intensity model is stateless, so only its name
 and the fitted parameters are stored (for the nonparametric MCF, the step
 arrays); the reloaded model reproduces every prediction exactly. This works for
 the parametric intensity fits (``CrowAMSAA`` / ``Duane`` / ``Cox-Lewis`` /
-``HPP``), the nonparametric MCF, the proportional-intensity regression, and the
-two cause-specific containers.
+``HPP``), the nonparametric MCF, the proportional-intensity regression, the two
+cause-specific containers, and the renewal / imperfect-repair models
+(``RenewalModel`` — generalized renewal, G1 renewal, ARA, ARI).
 
 .. jupyter-execute::
 

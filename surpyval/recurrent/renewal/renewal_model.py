@@ -1,3 +1,6 @@
+import json
+from typing import Any
+
 import numpy as np
 
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
@@ -45,6 +48,12 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         a transform that keeps its confidence bounds inside the support.
     """
 
+    #: Set by the fitter for the generalized-renewal family (``"i"``/``"ii"``);
+    #: absent otherwise.
+    kijima_type: Any
+    #: Set by the fitter for the ARA/ARI families (memory); absent otherwise.
+    m: Any
+
     def __init__(
         self,
         model,
@@ -67,6 +76,121 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
         # Expose the restoration parameter under its conventional name
         # (``q``/``rho``) so existing usage keeps working.
         setattr(self, restoration_name, restoration)
+
+    # -- serialisation -----------------------------------------------------
+
+    def _family(self) -> str:
+        """Identify the renewal family from the fitted attributes."""
+        if getattr(self, "kijima_type", None) is not None:
+            return "GeneralizedRenewal"
+        if getattr(self, "m", None) is not None:
+            if self._dist_label == "Baseline Intensity":
+                return "ARI"
+            return "ARA"
+        return "GeneralizedOneRenewal"
+
+    def to_dict(self) -> dict:
+        """
+        Serialise this fitted renewal / imperfect-repair model to a plain,
+        JSON-serialisable dict.
+
+        These processes have no closed-form intensity -- their simulation is
+        driven by a sampler closure built from the underlying distribution and
+        the restoration parameter -- so what is stored is the family, the
+        underlying distribution (by name) and its parameters, the restoration
+        parameter, and the family's discrete option (``kijima_type`` for the
+        generalized renewal, memory ``m`` for ARA/ARI). On load the family's
+        fitter rebuilds the sampler from those, so ``mcf`` and the simulation
+        methods reproduce exactly. The likelihood/data state is not stored.
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        out: dict = {
+            "model": "RenewalModel",
+            "family": self._family(),
+            "dist": self.model.dist.name,
+            "params": np.asarray(self.model.params, dtype=float).tolist(),
+            "restoration": float(self.restoration),
+        }
+        if getattr(self, "kijima_type", None) is not None:
+            out["kijima_type"] = self.kijima_type
+        if getattr(self, "m", None) is not None:
+            out["m"] = self.m
+        return out
+
+    def to_json(self, fp) -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "RenewalModel":
+        """
+        Rebuild a renewal model from a :meth:`to_dict` dictionary.
+
+        The family's fitter is used to reconstruct the model from parameters
+        (which regenerates the simulation sampler), so the result predicts
+        identically to the original.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        import surpyval.recurrent as recurrent
+        from surpyval.recurrent.serialisation import intensity_dist_by_name
+
+        if model_dict.get("model") != "RenewalModel":
+            raise ValueError(
+                "Must create a renewal model from a RenewalModel dict"
+            )
+        family = model_dict["family"]
+        fitters: "dict[str, Any]" = {
+            "GeneralizedRenewal": recurrent.GeneralizedRenewal,
+            "GeneralizedOneRenewal": recurrent.GeneralizedOneRenewal,
+            "ARA": recurrent.ARA,
+            "ARI": recurrent.ARI,
+        }
+        if family not in fitters:
+            raise ValueError("Unknown renewal family {!r}".format(family))
+        fitter = fitters[family]
+        params = model_dict["params"]
+        restoration = model_dict["restoration"]
+
+        if family == "ARI":
+            # the ARI baseline is a recurrence intensity model
+            dist = intensity_dist_by_name(model_dict["dist"])
+            return fitter.fit_from_parameters(
+                params, restoration, m=model_dict["m"], dist=dist
+            )
+
+        import surpyval
+
+        dist = getattr(surpyval, model_dict["dist"], None)
+        if dist is None:
+            raise ValueError(
+                "Unknown distribution {!r}".format(model_dict["dist"])
+            )
+        if family == "GeneralizedRenewal":
+            return fitter.fit_from_parameters(
+                params,
+                restoration,
+                kijima=model_dict["kijima_type"],
+                dist=dist,
+            )
+        if family == "ARA":
+            return fitter.fit_from_parameters(
+                params, restoration, m=model_dict["m"], dist=dist
+            )
+        # GeneralizedOneRenewal
+        return fitter.fit_from_parameters(params, restoration, dist=dist)
+
+    @classmethod
+    def from_json(cls, fp) -> "RenewalModel":
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def _new_sequence_sampler(self):
         return self._sampler_factory(self)
