@@ -18,20 +18,23 @@ class SurvivalTree:
     model: observed, left-, right- and interval-censored observations
     with optional left and/or right truncation.
 
-    The split criterion is controlled by ``split_rule``:
+    The tree's ``kind`` couples the split criterion with the matching
+    leaf model, so every split greedily improves the model the tree
+    predicts with:
 
-    - ``"auto"`` (default): the risk-set log-rank split when the data is
-      expressible in the xrd format (observed / right-censored,
-      optionally left-truncated), and the full-likelihood exponential
-      deviance split (Davis & Anderson, 1989) otherwise -- left or
-      interval censoring and right truncation carry their event
+    - ``"weibull"`` (default): full-likelihood Weibull deviance split
+      (a 2-d.f. likelihood-ratio gain, with power against scale *and*
+      shape differences) with Weibull MLE leaves. Supports the full
+      data model.
+    - ``"exponential"``: exponential deviance split (Davis & Anderson,
+      1989; 1-d.f., splits on rate) with Exponential MLE leaves.
+      Supports the full data model.
+    - ``"non-parametric"``: risk-set log-rank split with Nelson-Aalen
+      leaves. Only defined for observed / right-censored data
+      (optionally left-truncated); raises ``ValueError`` otherwise --
+      left/interval censoring and right truncation carry their event
       information as interval probabilities, for which no risk-set
       statistic exists.
-    - ``"log-rank"``: force the risk-set log-rank split. Raises
-      ``ValueError`` if the data contains left/interval censoring or
-      right truncation.
-    - ``"deviance"``: force the full-likelihood deviance split (valid
-      for every data type).
     """
 
     def __init__(
@@ -42,8 +45,7 @@ class SurvivalTree:
         min_leaf_samples: int = 5,
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
-        parametric: bool | str = "non-parametric",
-        split_rule: str = "auto",
+        kind: str = "weibull",
     ):
         self.data = data
         self.Z = Z
@@ -54,13 +56,7 @@ class SurvivalTree:
 
         self.n_features_split = n_features
 
-        is_parametric: bool = (
-            parametric
-            if isinstance(parametric, bool)
-            else parse_leaf_type(parametric)
-        )
-
-        self.split_rule = parse_split_rule(split_rule, data)
+        self.kind = parse_kind(kind, data)
 
         self._root = build_tree(
             data=self.data,
@@ -70,8 +66,7 @@ class SurvivalTree:
             min_leaf_samples=min_leaf_samples,
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features,
-            parametric=is_parametric,
-            split_rule=self.split_rule,
+            kind=self.kind,
         )
 
     @classmethod
@@ -90,8 +85,7 @@ class SurvivalTree:
         min_leaf_samples: int = 5,
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
-        leaf_type: str = "parametric",
-        split_rule: str = "auto",
+        kind: str = "weibull",
     ):
         """
         Fit a survival tree from data in the full xcnt(+truncation) data
@@ -101,7 +95,8 @@ class SurvivalTree:
         (``c`` in ``{-1, 0, 1, 2}``; interval-censored entries of ``x``
         are ``[left, right]`` pairs). Interval bounds can alternatively
         be given as ``xl``/``xr``, and truncation as ``tl``/``tr``
-        instead of the two-column ``t``.
+        instead of the two-column ``t``. ``kind`` selects the tree type
+        (see the class docstring).
         """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
@@ -119,8 +114,7 @@ class SurvivalTree:
             min_leaf_samples,
             min_leaf_failures,
             n_features_split,
-            parse_leaf_type(leaf_type),
-            split_rule,
+            kind,
         )
 
     def apply_model_function(
@@ -179,42 +173,30 @@ def parse_n_features_split(
                          `Tree` docstring for valid values.")
 
 
-def parse_leaf_type(leaf_type: str):
-    if leaf_type.lower() == "non-parametric":
-        return False
-    elif leaf_type.lower() == "parametric":
-        return True
-    else:
-        raise ValueError(f"leaf_type={leaf_type} is invalid. Must\
-            'parametric' or 'non-parametric'")
-
-
-def parse_split_rule(split_rule: str, data: SurpyvalData) -> str:
+def parse_kind(kind: str, data: SurpyvalData) -> str:
     """
-    Resolve the requested split rule against the data.
+    Resolve and validate the tree ``kind`` against the data.
 
-    ``"auto"`` picks the risk-set log-rank when the data can be expressed
-    in the xrd format and the full-likelihood deviance split otherwise.
-    An explicit ``"log-rank"`` is validated against the data, since the
-    risk-set statistic is undefined for left/interval censoring and
-    right truncation.
+    The parametric kinds (``"weibull"``, ``"exponential"``) support the
+    full data model. The non-parametric kind's split (the risk-set
+    log-rank) is undefined for left/interval censoring and right
+    truncation, so it is rejected for such data.
     """
-    rule = split_rule.lower().replace("-", "_")
-    if rule == "auto":
-        if needs_full_likelihood_split(data):
-            return "deviance"
-        return "log_rank"
-    if rule in ("log_rank", "logrank"):
+    resolved = kind.lower().replace("_", "-")
+    if resolved in ("weibull", "exponential"):
+        return resolved
+    if resolved == "non-parametric":
         if needs_full_likelihood_split(data):
             raise ValueError(
-                "The risk-set log-rank split is undefined for data with "
-                "left censoring, interval censoring, or right truncation; "
-                "use split_rule='deviance' (or 'auto') for this data."
+                "kind='non-parametric' is undefined for data with left "
+                "censoring, interval censoring, or right truncation: its "
+                "risk-set log-rank split has no risk-set formulation for "
+                "interval-probability observations. Use kind='weibull' or "
+                "kind='exponential' for this data (a Turnbull-score split "
+                "is planned; see issue #188)."
             )
-        return "log_rank"
-    if rule in ("deviance", "exponential"):
-        return "deviance"
+        return "non-parametric"
     raise ValueError(
-        f"split_rule={split_rule!r} is invalid. Must be 'auto', "
-        "'log-rank' or 'deviance'."
+        f"kind={kind!r} is invalid. Must be 'weibull', 'exponential' or "
+        "'non-parametric'."
     )

@@ -27,8 +27,7 @@ class RandomSurvivalForest:
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
-        parametric: bool = True,
-        split_rule: str = "auto",
+        kind: str = "weibull",
     ):
         self.data: SurpyvalData = data
         Z = np.asarray(Z)
@@ -38,8 +37,7 @@ class RandomSurvivalForest:
         self.Z: NDArray = Z
         self.n_trees = n_trees
         self.bootstrap = bootstrap
-        self.parametric = parametric
-        self.split_rule = split_rule
+        self.kind = kind
 
         # Create Trees
         if self.bootstrap:
@@ -62,8 +60,7 @@ class RandomSurvivalForest:
                 min_leaf_samples=min_leaf_samples,
                 min_leaf_failures=min_leaf_failures,
                 n_features_split=n_features_split,
-                parametric=parametric,
-                split_rule=split_rule,
+                kind=kind,
             )
             for i in range(self.n_trees)
         )
@@ -86,11 +83,8 @@ class RandomSurvivalForest:
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
-        leaf_type: str = "parametric",
-        split_rule: str = "auto",
+        kind: str = "weibull",
     ):
-        parametric = parse_leaf_type(leaf_type)
-
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
         data = SurpyvalData(
@@ -105,8 +99,7 @@ class RandomSurvivalForest:
             min_leaf_failures,
             n_features_split,
             bootstrap,
-            parametric,
-            split_rule,
+            kind,
         )
 
     def sf(
@@ -198,13 +191,3 @@ class RandomSurvivalForest:
         scores: ArrayLike = self.mortality(x, Z)
         tol: float = 1e-8
         return score(x, c, scores, tol)
-
-
-def parse_leaf_type(leaf_type: str):
-    if leaf_type.lower() == "non-parametric":
-        return False
-    elif leaf_type.lower() == "parametric":
-        return True
-    else:
-        raise ValueError(f"leaf_type={leaf_type} is invalid. Must\
-            'parametric' or 'non-parametric'")

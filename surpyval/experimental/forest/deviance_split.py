@@ -37,7 +37,7 @@ from collections.abc import Iterable
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.optimize import minimize_scalar
+from scipy.optimize import minimize, minimize_scalar
 
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -203,6 +203,134 @@ def _exp_max_ll(
     return -best
 
 
+# Fixed search window for the Weibull shape on the log scale:
+# beta in [exp(-3), exp(3)] ~ [0.05, 20] covers every physically
+# plausible failure mechanism.
+_LOG_BETA_BOUNDS = (-3.0, 3.0)
+
+
+def _wei_neg_ll(theta: NDArray, parts) -> float:
+    """
+    Negative log-likelihood of a Weibull distribution with scale
+    ``alpha = exp(theta[0])`` and shape ``beta = exp(theta[1])`` under
+    the full data model (all censoring types plus truncation), with
+    ``z(x) = (x / alpha) ** beta`` the cumulative hazard. Returns a
+    large finite value where the likelihood is degenerate so bounded
+    optimisation stays stable.
+    """
+    (
+        x_o,
+        n_o,
+        x_r,
+        n_r,
+        x_l,
+        n_l,
+        x_il,
+        x_ir,
+        n_i,
+        t_a,
+        t_r,
+        n_t,
+    ) = parts
+    log_alpha, log_beta = float(theta[0]), float(theta[1])
+    beta = np.exp(log_beta)
+
+    def z(x):
+        # (x / alpha) ** beta on the log scale; z(0) = 0
+        with np.errstate(all="ignore"):
+            return np.where(x > 0, np.exp(beta * (np.log(x) - log_alpha)), 0.0)
+
+    ll = 0.0
+    with np.errstate(all="ignore"):
+        if x_o.size:
+            # log f = log(beta) - log(alpha)
+            #         + (beta - 1)(log x - log alpha) - z
+            ll += np.sum(
+                n_o
+                * (
+                    log_beta
+                    - log_alpha
+                    + (beta - 1.0) * (np.log(x_o) - log_alpha)
+                    - z(x_o)
+                )
+            )
+        if x_r.size:
+            ll += -np.sum(n_r * z(x_r))
+        if x_l.size:
+            # F(x) = 1 - exp(-z)
+            ll += np.sum(n_l * np.log(-np.expm1(-z(x_l))))
+        if x_il.size:
+            # S(xl) - S(xr) = exp(-z_l)(1 - exp(-(z_r - z_l)))
+            z_l = z(x_il)
+            z_r = z(x_ir)
+            ll += np.sum(n_i * (-z_l + np.log(-np.expm1(-(z_r - z_l)))))
+        if t_a.size:
+            # subtract log(S(tl) - S(tr)) per truncated observation
+            z_a = z(t_a)
+            finite_tr = np.isfinite(t_r)
+            log_denom = -z_a
+            if finite_tr.any():
+                z_tr = z(np.where(finite_tr, t_r, 1.0))
+                width = np.where(finite_tr, z_tr - z_a, np.inf)
+                log_denom = log_denom + np.where(
+                    finite_tr, np.log(-np.expm1(-width)), 0.0
+                )
+            ll -= np.sum(n_t * log_denom)
+    if not np.isfinite(ll):
+        return _HUGE
+    return -float(ll)
+
+
+def _wei_max_ll(
+    data: SurpyvalData,
+    box: "tuple[tuple[float, float], tuple[float, float]]",
+    start: NDArray,
+) -> "tuple[float, NDArray]":
+    """
+    Maximised Weibull log-likelihood of ``data`` over the bounded
+    ``(log alpha, log beta)`` ``box``, warm-started from ``start``.
+
+    Returns ``(max log-likelihood, argmax theta)``. The value at
+    ``start`` is always a lower bound on the result, so warm-starting
+    each child from the parent's optimum guarantees a non-negative
+    split gain by likelihood additivity (the #185 monotonicity
+    property, in 2-D).
+    """
+    parts = _exp_neg_ll_parts(data)
+    lower = np.array([box[0][0], box[1][0]])
+    upper = np.array([box[0][1], box[1][1]])
+    start_arr = np.clip(np.asarray(start, dtype=float), lower, upper)
+    at_start = _wei_neg_ll(start_arr, parts)
+
+    # Nelder-Mead's default initial simplex steps are *relative* to the
+    # coordinate values, so a start near zero (log beta ~ 0, i.e. beta
+    # ~ 1) gets a microscopic simplex and the search stalls. Supply an
+    # absolute-step simplex instead.
+    simplex = np.array(
+        [
+            start_arr,
+            np.clip(start_arr + np.array([0.5, 0.0]), lower, upper),
+            np.clip(start_arr + np.array([0.0, 0.5]), lower, upper),
+        ]
+    )
+    res = minimize(
+        _wei_neg_ll,
+        start_arr,
+        args=(parts,),
+        method="Nelder-Mead",
+        bounds=box,
+        options={
+            "xatol": 1e-5,
+            "fatol": 1e-8,
+            "maxfev": 400,
+            "initial_simplex": simplex,
+        },
+    )
+    if float(res.fun) < at_start:
+        return -float(res.fun), np.asarray(res.x, dtype=float)
+    return -at_start, start_arr
+
+
 def _candidate_values(Z_u: NDArray) -> NDArray:
     """Unique candidate split values, quantile-thinned for large nodes."""
     values = np.unique(Z_u)
@@ -218,10 +346,13 @@ def deviance_split(
     min_leaf_samples: int,
     min_leaf_failures: int,
     feature_indices_in: Iterable[int],
+    model: str = "exponential",
 ) -> tuple[int, float]:
     """
-    Best ``(feature index, value)`` split by the exponential deviance
-    criterion under the full likelihood.
+    Best ``(feature index, value)`` split by the deviance criterion
+    under the full likelihood, with ``model`` selecting the working
+    model: ``"exponential"`` (1 parameter; splits on rate) or
+    ``"weibull"`` (2 parameters; splits on scale *and* shape).
 
     Mirrors ``log_rank_split``'s contract: candidates leaving either
     child with fewer than ``min_leaf_samples`` observations or fewer
@@ -245,6 +376,9 @@ def deviance_split(
         (``c != 1``) each child must keep.
     feature_indices_in : Iterable[int]
         Indices of the features considered for the split.
+    model : {"exponential", "weibull"}, optional
+        The working model whose maximised log-likelihood scores each
+        candidate's children.
 
     Returns
     -------
@@ -259,13 +393,30 @@ def deviance_split(
     event_weight = data.n * (data.c != 1)
 
     # All candidates -- and both children of each -- are scored over the
-    # parent's search window, so their maximised log-likelihoods are
-    # directly comparable (see _exp_max_ll).
+    # parent's search window (and, for the Weibull model, warm-started
+    # from the parent's optimum), so their maximised log-likelihoods are
+    # directly comparable and the split gain is non-negative by
+    # likelihood additivity.
     theta0 = _exp_theta0(data)
     if theta0 is None:
         return best_u, best_v
-    bounds = (theta0 - 15.0, theta0 + 15.0)
-    parent_ll = _exp_max_ll(data, bounds)
+
+    if model == "weibull":
+        log_alpha0 = -theta0  # exponential mean as the scale's centre
+        box = ((log_alpha0 - 15.0, log_alpha0 + 15.0), _LOG_BETA_BOUNDS)
+        parent_ll, parent_theta = _wei_max_ll(
+            data, box, np.array([log_alpha0, 0.0])
+        )
+
+        def child_ll(child_data):
+            return _wei_max_ll(child_data, box, parent_theta)[0]
+
+    else:
+        bounds = (theta0 - 15.0, theta0 + 15.0)
+        parent_ll = _exp_max_ll(data, bounds)
+
+        def child_ll(child_data):
+            return _exp_max_ll(child_data, bounds)
 
     for u in feature_indices_in:
         Z_u = Z[:, u]
@@ -281,9 +432,7 @@ def deviance_split(
             if event_weight[~mask].sum() < min_leaf_failures:
                 continue
 
-            score = _exp_max_ll(data[mask], bounds) + _exp_max_ll(
-                data[~mask], bounds
-            )
+            score = child_ll(data[mask]) + child_ll(data[~mask])
             if score > best_score:
                 best_score = score
                 best_u = int(u)
