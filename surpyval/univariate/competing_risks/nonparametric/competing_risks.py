@@ -7,6 +7,7 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
+import json
 import textwrap
 
 import numpy as np
@@ -24,6 +25,84 @@ from surpyval.utils import (
 
 
 class CompetingRisks:
+    # Attributes populated by ``fit`` / ``from_dict``; declared for the type
+    # checker.
+    event_idx_map: dict
+    n_event_types: int
+    x: np.ndarray
+    d: np.ndarray
+    r: np.ndarray
+    h0: np.ndarray
+    H0: np.ndarray
+    S: np.ndarray
+    d_e: np.ndarray
+    h0_e: np.ndarray
+    H0_e: np.ndarray
+    IIF: np.ndarray
+    CIF: np.ndarray
+
+    # -- serialisation -----------------------------------------------------
+
+    _SERIALISED_ARRAYS = (
+        "x",
+        "d",
+        "r",
+        "h0",
+        "H0",
+        "S",
+        "d_e",
+        "h0_e",
+        "H0_e",
+        "IIF",
+        "CIF",
+    )
+
+    def to_dict(self) -> dict:
+        """
+        Serialise this fitted nonparametric competing-risks model to a plain,
+        JSON-serialisable dict: the event index map and the fitted step arrays
+        (the shared baseline plus the per-event incidence and cumulative-
+        incidence functions). The reloaded model reproduces every prediction
+        exactly.
+        """
+        out: dict = {
+            "model": "CompetingRisks",
+            # list of [event, index] pairs to preserve the event key types
+            "event_idx_map": [
+                [k, int(v)] for k, v in self.event_idx_map.items()
+            ],
+            "n_event_types": int(self.n_event_types),
+        }
+        for name in self._SERIALISED_ARRAYS:
+            out[name] = np.asarray(getattr(self, name), dtype=float).tolist()
+        return out
+
+    def to_json(self, fp) -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "CompetingRisks":
+        """Rebuild a nonparametric competing-risks model from a dict."""
+        if model_dict.get("model") != "CompetingRisks":
+            raise ValueError(
+                "Must create a competing-risks model from a CompetingRisks "
+                "dict"
+            )
+        out = cls()
+        out.event_idx_map = {k: int(v) for k, v in model_dict["event_idx_map"]}
+        out.n_event_types = int(model_dict["n_event_types"])
+        for name in cls._SERIALISED_ARRAYS:
+            setattr(out, name, np.array(model_dict[name], dtype=float))
+        return out
+
+    @classmethod
+    def from_json(cls, fp) -> "CompetingRisks":
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
+
     def __repr__(self):
         out = """\
         Competing Risk model with events:

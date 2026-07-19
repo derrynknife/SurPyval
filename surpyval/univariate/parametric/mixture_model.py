@@ -1,3 +1,4 @@
+import json
 import warnings
 
 from matplotlib import pyplot as plt
@@ -44,6 +45,58 @@ class MixtureModel(Distribution):
         self.w = None
         self.p = None
         self.loglike = None
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """
+        Serialise this fitted mixture model to a plain, JSON-serialisable dict.
+
+        Stores the base distribution's name, the number of components ``m``,
+        the per-component parameters and the mixing weights, so the reloaded
+        model reproduces ``sf``/``ff``/``df``/``mean``/``random`` exactly. The
+        fitted data and EM responsibilities are not stored.
+        """
+        return {
+            "model": "MixtureModel",
+            "dist": self.dist.name,
+            "m": int(self.m),
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "w": np.asarray(self.w, dtype=float).tolist(),
+        }
+
+    def to_json(self, fp) -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "MixtureModel":
+        """Rebuild a mixture model from a :meth:`to_dict` dictionary."""
+        import surpyval
+        from surpyval.univariate.parametric.parametric_fitter import (
+            ParametricFitter,
+        )
+
+        if model_dict.get("model") != "MixtureModel":
+            raise ValueError(
+                "Must create a mixture model from a MixtureModel dict"
+            )
+        dist = getattr(surpyval, model_dict["dist"], None)
+        if not isinstance(dist, ParametricFitter):
+            raise ValueError(
+                "Unknown distribution {!r}".format(model_dict["dist"])
+            )
+        out = cls(dist=dist, m=int(model_dict["m"]))
+        out.params = np.array(model_dict["params"], dtype=float)
+        out.w = np.array(model_dict["w"], dtype=float)
+        return out
+
+    @classmethod
+    def from_json(cls, fp) -> "MixtureModel":
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def __repr__(self):
         if self.params is not None:
