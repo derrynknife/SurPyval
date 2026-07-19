@@ -28,6 +28,7 @@ class RandomSurvivalForest:
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
         parametric: bool = True,
+        split_rule: str = "auto",
     ):
         self.data: SurpyvalData = data
         Z = np.asarray(Z)
@@ -38,6 +39,7 @@ class RandomSurvivalForest:
         self.n_trees = n_trees
         self.bootstrap = bootstrap
         self.parametric = parametric
+        self.split_rule = split_rule
 
         # Create Trees
         if self.bootstrap:
@@ -61,6 +63,7 @@ class RandomSurvivalForest:
                 min_leaf_failures=min_leaf_failures,
                 n_features_split=n_features_split,
                 parametric=parametric,
+                split_rule=split_rule,
             )
             for i in range(self.n_trees)
         )
@@ -68,11 +71,15 @@ class RandomSurvivalForest:
     @classmethod
     def fit(
         cls,
-        x: ArrayLike,
-        Z: ArrayLike | NDArray,
-        c: ArrayLike,
+        x: ArrayLike | None = None,
+        Z: ArrayLike | NDArray | None = None,
+        c: ArrayLike | None = None,
         n: ArrayLike | None = None,
         t: ArrayLike | None = None,
+        xl: ArrayLike | None = None,
+        xr: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
         n_trees: int = 100,
         max_depth: int | float = float("inf"),
         min_leaf_samples: int = 5,
@@ -80,10 +87,15 @@ class RandomSurvivalForest:
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
         leaf_type: str = "parametric",
+        split_rule: str = "auto",
     ):
         parametric = parse_leaf_type(leaf_type)
 
-        data = SurpyvalData(x, c, n, t, group_and_sort=False)
+        if Z is None:
+            raise ValueError("The covariate matrix Z is required")
+        data = SurpyvalData(
+            x, c, n, t, xl=xl, xr=xr, tl=tl, tr=tr, group_and_sort=False
+        )
         return cls(
             data,
             Z,
@@ -94,6 +106,7 @@ class RandomSurvivalForest:
             n_features_split,
             bootstrap,
             parametric,
+            split_rule,
         )
 
     def sf(

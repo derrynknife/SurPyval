@@ -5,7 +5,11 @@ from functools import cached_property
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval import Exponential, NelsonAalen, Weibull
+from surpyval import Exponential, NelsonAalen, Turnbull, Weibull
+from surpyval.experimental.forest.deviance_split import (
+    deviance_split,
+    needs_full_likelihood_split,
+)
 from surpyval.experimental.forest.log_rank_split import log_rank_split
 from surpyval.univariate.parametric import NeverOccurs
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -37,6 +41,7 @@ class IntermediateNode(Node):
         split_feature_value: float,
         feature_indices_in: NDArray,
         parametric: bool = True,
+        split_rule: str = "log_rank",
     ):
         # Set split attributes
         self.split_feature_index = split_feature_index
@@ -59,6 +64,7 @@ class IntermediateNode(Node):
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
             parametric=parametric,
+            split_rule=split_rule,
         )
         self.right_child = build_tree(
             data[right_indices],
@@ -69,6 +75,7 @@ class IntermediateNode(Node):
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
             parametric=parametric,
+            split_rule=split_rule,
         )
 
     def apply_model_function(
@@ -88,10 +95,26 @@ class TerminalNode(Node):
         self.data = deepcopy(data)
         self.paramettric = parametric
 
+    def _nonparametric_model(self):
+        # Nelson-Aalen is a risk-set estimator, so it is only defined for
+        # observed / right-censored (optionally left-truncated) data; for
+        # anything richer -- left or interval censoring, right truncation
+        # -- the Turnbull NPMLE is the nonparametric estimator that
+        # handles the full data model.
+        if needs_full_likelihood_split(self.data):
+            return Turnbull.fit(
+                self.data.x, self.data.c, self.data.n, self.data.t
+            )
+        return NelsonAalen.fit(
+            self.data.x, self.data.c, self.data.n, self.data.t
+        )
+
     @cached_property
     def model(self):
         if self.paramettric:
-            n_failures = self.data.to_xrd()[2].sum()
+            # n-weighted count of event-informative observations (any
+            # observation that is not purely right censored).
+            n_failures = self.data.n[self.data.c != 1].sum()
             if n_failures == 0:
                 return NeverOccurs
             elif n_failures <= 1:
@@ -106,13 +129,9 @@ class TerminalNode(Node):
                 try:
                     return Exponential.fit_from_surpyval_data(self.data)
                 except Exception:
-                    return NelsonAalen.fit(
-                        self.data.x, self.data.c, self.data.n, self.data.t
-                    )
+                    return self._nonparametric_model()
         else:
-            return NelsonAalen.fit(
-                self.data.x, self.data.c, self.data.n, self.data.t
-            )
+            return self._nonparametric_model()
 
     def apply_model_function(
         self,
@@ -132,10 +151,16 @@ def build_tree(
     min_leaf_failures: int,
     n_features_split: int,
     parametric: bool = True,
+    split_rule: str = "log_rank",
 ) -> Node:
     """
     Node factory. Decides to return IntermediateNode object, or its
     sibling TerminalNode.
+
+    ``split_rule`` selects the criterion: ``"log_rank"`` (the risk-set
+    log-rank statistic; observed / right-censored data, optionally left
+    truncated) or ``"deviance"`` (the full-likelihood exponential
+    deviance split, defined for every censoring type plus truncation).
     """
     # If max_depth has been reached, return a TerminalNode
     if curr_depth == max_depth:
@@ -148,11 +173,16 @@ def build_tree(
     )
 
     # Figure out best feature-value split
-    split_feature_index, split_feature_value = log_rank_split(
-        data, Z, min_leaf_samples, min_leaf_failures, feature_indices_in
-    )
+    if split_rule == "deviance":
+        split_feature_index, split_feature_value = deviance_split(
+            data, Z, min_leaf_samples, min_leaf_failures, feature_indices_in
+        )
+    else:
+        split_feature_index, split_feature_value = log_rank_split(
+            data, Z, min_leaf_samples, min_leaf_failures, feature_indices_in
+        )
 
-    # If log_rank_split() can't suggest a feature-value split, return a
+    # If the split rule can't suggest a feature-value split, return a
     # TerminalNode
     if split_feature_index == -1 and split_feature_value == float("-Inf"):
         return TerminalNode(data, parametric)
@@ -170,4 +200,5 @@ def build_tree(
         split_feature_value=split_feature_value,
         feature_indices_in=feature_indices_in,
         parametric=parametric,
+        split_rule=split_rule,
     )
