@@ -109,9 +109,60 @@ under different conditions easy and interpretable.
 These equations outline the framework for modelling the reliability growth of a
 system, incorporating the effects of covariates on the failure intensity.
 
+More generally, any of SurPyval's counting-process baselines can play the role
+of :math:`\lambda_0(t)`. The proportional-intensity model multiplies that
+baseline by the covariate factor :math:`e^{Z\beta}`:
+
+.. math::
+
+    \lambda(t \mid Z) = \lambda_0(t)\, e^{Z\beta},
+    \qquad
+    \Lambda(t \mid Z) = \Lambda_0(t)\, e^{Z\beta}.
+
+With a constant baseline this is the proportional-intensity HPP; with a
+power-law (Duane / Crow-AMSAA) or log-linear (Cox-Lewis) baseline it is the
+proportional-intensity NHPP. Because the covariate factor scales the whole
+cumulative intensity, the ratio of expected event counts between two covariate
+settings is the constant :math:`e^{(Z_2 - Z_1)\beta}` at every time — the
+recurrent-event analogue of a hazard ratio [Cook2007r]_, and the reason the
+coefficients :math:`\beta` read directly as multiplicative effects on the event
+rate.
+
+The parameters are estimated jointly by maximum likelihood [Lawless1987]_,
+maximising the NHPP log-likelihood with the covariate-scaled intensity
+substituted in. The static, per-item covariates enter through
+:math:`e^{Z\beta}`, so an item in a harsher environment simply accumulates
+events faster. This proportional-intensity framing is standard in the
+reliability-growth literature [Rigdon2000r]_.
+
+Model checking
+--------------
+
+The fitted regression model carries the same diagnostics as the unconditional
+intensity models, applied *per item* with each item's intensity scaled by its
+own covariate factor. The time-rescaling residuals pool the rescaled
+inter-arrival increments across items (i.i.d. Exp(1) under a well-specified
+model), the trend test checks whether a time-varying baseline was warranted at
+all, and the Cramér–von Mises test provides a bootstrapped goodness-of-fit
+p-value. Confidence bounds on the fitted cumulative intensity at a covariate
+setting come from the delta method via ``cif_cb``.
+
 These methods form a comprehensive toolkit for researchers and practitioners
 working with recurrent event data, enabling detailed analysis and prediction of
 event occurrences.
+
+References
+----------
+
+.. [Cook2007r] Cook, R.J. and Lawless, J.F., 2007. *The Statistical Analysis of
+   Recurrent Events*. Springer.
+
+.. [Lawless1987] Lawless, J.F., 1987. Regression methods for Poisson process
+   data. *Journal of the American Statistical Association*, 82(399),
+   pp.808-815.
+
+.. [Rigdon2000r] Rigdon, S.E. and Basu, A.P., 2000. *Statistical Methods for the
+   Reliability of Repairable Systems*. John Wiley & Sons.
 
 
 
