@@ -4,6 +4,20 @@ Changelog
 v0.15.0 (unreleased)
 --------------------
 
+Competing risks & mixtures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Added serialisation to the competing-risks and mixture models:
+  ``MixtureModel`` (EM mixture of a base family), ``FineGrayModel``
+  (subdistribution-hazard regression), ``ParametricCompetingRisks`` (one
+  distribution per cause) and the nonparametric ``CompetingRisks`` now have
+  ``to_dict``/``from_dict`` and ``to_json``/``from_json``. The mixture stores
+  its base-family name, component parameters and weights; Fine-Gray stores its
+  coefficients, covariance and subdistribution-baseline step arrays; and the
+  competing-risks models store their per-cause sub-models (via each cause's own
+  ``to_dict``) or per-event step arrays. Every reloaded model reproduces its
+  predictions exactly.
+
 Degradation
 ~~~~~~~~~~~
 

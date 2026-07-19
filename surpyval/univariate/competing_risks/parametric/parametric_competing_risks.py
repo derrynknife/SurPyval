@@ -24,10 +24,13 @@ H_j(u))`. The cause CIFs sum to the all-cause failure probability
 :math:`1 - S(t)`.
 """
 
+import json
+
 import numpy as np
 from scipy.integrate import cumulative_trapezoid
 
 from surpyval.univariate.parametric import Weibull
+from surpyval.univariate.parametric.parametric import Parametric
 from surpyval.utils import (
     check_e_and_x,
     resolve_cr_censoring,
@@ -71,6 +74,48 @@ class ParametricCompetingRisks:
 
     causes: list
     models: dict
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """
+        Serialise this fitted parametric competing-risks model to a plain,
+        JSON-serialisable dict: the list of causes and each cause's fitted
+        distribution (via its own ``to_dict``). The reloaded model reproduces
+        every cumulative-incidence / hazard function exactly.
+        """
+        return {
+            "model": "ParametricCompetingRisks",
+            "causes": list(self.causes),
+            "models": [self.models[cause].to_dict() for cause in self.causes],
+        }
+
+    def to_json(self, fp) -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "ParametricCompetingRisks":
+        """Rebuild a parametric competing-risks model from a dict."""
+        if model_dict.get("model") != "ParametricCompetingRisks":
+            raise ValueError(
+                "Must create a parametric competing-risks model from a "
+                "ParametricCompetingRisks dict"
+            )
+        out = cls()
+        out.causes = list(model_dict["causes"])
+        out.models = {
+            cause: Parametric.from_dict(sub)
+            for cause, sub in zip(out.causes, model_dict["models"])
+        }
+        return out
+
+    @classmethod
+    def from_json(cls, fp) -> "ParametricCompetingRisks":
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def __repr__(self):
         dists = ", ".join(

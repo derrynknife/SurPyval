@@ -30,6 +30,8 @@ already had the event of interest, leave the risk set. The partial likelihood
 is the Breslow form of this weighted risk set.
 """
 
+import json
+
 import numpy as np
 from autograd import grad, hessian
 from autograd import numpy as anp
@@ -177,6 +179,66 @@ class FineGrayModel:
         self._cumhaz = fit["baseline_cumhaz"]
         self._neg_ll = fit["neg_ll"]
         self.res = fit["res"]
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self):
+        """
+        Serialise this fitted Fine-Gray model to a plain, JSON-serialisable
+        dict.
+
+        Stores the coefficients and their covariance, plus the fitted
+        subdistribution baseline cumulative-hazard step arrays, so the reloaded
+        model reproduces ``cif``/``sf`` exactly and can still report the
+        coefficient summary. The optimiser objects are not stored.
+        """
+        return {
+            "model": "FineGrayModel",
+            "cause": self.cause,
+            "beta": np.asarray(self.beta, dtype=float).tolist(),
+            "se": np.asarray(self.se, dtype=float).tolist(),
+            "p_values": np.asarray(self.p_values, dtype=float).tolist(),
+            "cov": np.asarray(self.cov, dtype=float).tolist(),
+            "baseline_times": np.asarray(self._times, dtype=float).tolist(),
+            "baseline_cumhaz": np.asarray(self._cumhaz, dtype=float).tolist(),
+            "neg_ll": float(self._neg_ll),
+        }
+
+    def to_json(self, fp):
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict):
+        """Rebuild a Fine-Gray model from a :meth:`to_dict` dictionary."""
+        if model_dict.get("model") != "FineGrayModel":
+            raise ValueError(
+                "Must create a Fine-Gray model from a FineGrayModel dict"
+            )
+        return cls(
+            {
+                "cause": model_dict["cause"],
+                "beta": np.array(model_dict["beta"], dtype=float),
+                "se": np.array(model_dict["se"], dtype=float),
+                "p_values": np.array(model_dict["p_values"], dtype=float),
+                "cov": np.array(model_dict["cov"], dtype=float),
+                "baseline_times": np.array(
+                    model_dict["baseline_times"], dtype=float
+                ),
+                "baseline_cumhaz": np.array(
+                    model_dict["baseline_cumhaz"], dtype=float
+                ),
+                "neg_ll": model_dict["neg_ll"],
+                "res": None,
+            }
+        )
+
+    @classmethod
+    def from_json(cls, fp):
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def phi(self, Z):
         return np.exp(np.asarray(Z, dtype=float) @ self.beta)
