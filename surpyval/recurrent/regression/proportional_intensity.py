@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 from matplotlib import pyplot as plt
 
@@ -7,6 +9,7 @@ from surpyval.recurrent.inference import (
     delta_method_std_errors,
     log_transformed_cb,
 )
+from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 
 
@@ -60,6 +63,76 @@ class ProportionalIntensityModel(
         for i, p in enumerate(self.coeffs):
             out += "   beta_{i}  :  {p}\n".format(i=i, p=p)
         return out
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self):
+        """
+        Serialise this fitted proportional-intensity model to a plain,
+        JSON-serialisable dict.
+
+        Stores the base-rate intensity model's name, the base-rate ``params``
+        and the covariate ``coeffs``; the reloaded model reproduces
+        ``cif``/``iif`` (``Lambda_0(t; params) * exp(Z . coeffs)``) exactly.
+        The likelihood-inference state (data, ``neg_ll`` closure) is not
+        stored.
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        return {
+            "model": "ProportionalIntensityModel",
+            "kind": self.kind,
+            "parameterization": self.parameterization,
+            "dist": self.dist.name,
+            "param_names": list(self.param_names),
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
+        }
+
+    def to_json(self, fp):
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict):
+        """
+        Rebuild a proportional-intensity model from a :meth:`to_dict`
+        dictionary.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        if model_dict.get("model") != "ProportionalIntensityModel":
+            raise ValueError(
+                "Must create a proportional-intensity model from a "
+                "ProportionalIntensityModel dict"
+            )
+        out = cls()
+        out.kind = model_dict["kind"]
+        out.parameterization = model_dict["parameterization"]
+        if out.kind == "HPP":
+            # the constant-rate baseline is the PI-HPP fitter itself
+            import surpyval.recurrent as recurrent
+
+            out.dist = recurrent.ProportionalIntensityHPP
+            out.bounds = ((0, None),)
+            out.support = (0.0, np.inf)
+        else:
+            out.dist = intensity_dist_by_name(model_dict["dist"])
+        out.param_names = list(model_dict["param_names"])
+        out.params = np.array(model_dict["params"], dtype=float)
+        out.coeffs = np.array(model_dict["coeffs"], dtype=float)
+        return out
+
+    @classmethod
+    def from_json(cls, fp):
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def cif(self, x, Z):
         """

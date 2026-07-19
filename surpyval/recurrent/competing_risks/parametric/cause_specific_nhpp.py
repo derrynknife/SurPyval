@@ -19,9 +19,15 @@ reuses the whole intensity-fitting, inference and diagnostic machinery
 unchanged.
 """
 
+import json
+
 from matplotlib import pyplot as plt
 
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
+from surpyval.recurrent.parametric.parametric_recurrence import (
+    ParametricRecurrenceModel,
+)
+from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -42,6 +48,62 @@ class CauseSpecificNHPP:
         return "Cause-specific {} with causes: {}".format(
             self.dist.name, self.event_types
         )
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self):
+        """
+        Serialise this fitted cause-specific NHPP to a plain,
+        JSON-serialisable dict: the shared intensity model's name, the list of
+        event types, and each cause's fitted intensity model.
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        return {
+            "model": "CauseSpecificNHPP",
+            "dist": self.dist.name,
+            "event_types": list(self.event_types),
+            "models": [
+                self.models[cause].to_dict() for cause in self.event_types
+            ],
+        }
+
+    def to_json(self, fp):
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict):
+        """
+        Rebuild a cause-specific NHPP from a :meth:`to_dict` dictionary.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        if model_dict.get("model") != "CauseSpecificNHPP":
+            raise ValueError(
+                "Must create a cause-specific NHPP from a CauseSpecificNHPP "
+                "dict"
+            )
+        out = cls()
+        out.dist = intensity_dist_by_name(model_dict["dist"])
+        out.event_types = list(model_dict["event_types"])
+        out.models = {
+            cause: ParametricRecurrenceModel.from_dict(sub)
+            for cause, sub in zip(out.event_types, model_dict["models"])
+        }
+        return out
+
+    @classmethod
+    def from_json(cls, fp):
+        """Load a cause-specific NHPP from a JSON file written by
+        :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     # --- per-item observation windows ------------------------------------
 

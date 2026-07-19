@@ -1,3 +1,5 @@
+import json
+
 from autograd import numpy as np
 from matplotlib import pyplot as plt
 from scipy.stats import norm
@@ -11,6 +13,59 @@ from surpyval.utils.recurrent_utils import (
 
 @singleton_fitter
 class NonParametricCounting:
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self):
+        """
+        Serialise this fitted MCF (mean cumulative function) estimate to a
+        plain, JSON-serialisable dict.
+
+        Stores the step arrays that ``mcf``/``mcf_cb`` read: the event times
+        ``x``, the estimate ``mcf_hat`` and its Greenwood variance ``var``.
+        The raw ``data`` is not stored (it is only needed to re-fit or to plot
+        raw counts).
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        return {
+            "model": "NonParametricCounting",
+            "x": np.asarray(self.x, dtype=float).tolist(),
+            "mcf_hat": np.asarray(self.mcf_hat, dtype=float).tolist(),
+            "var": np.asarray(self.var, dtype=float).tolist(),
+        }
+
+    def to_json(self, fp):
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict):
+        """
+        Rebuild an MCF estimate from a :meth:`to_dict` dictionary.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        if model_dict.get("model") != "NonParametricCounting":
+            raise ValueError(
+                "Must create an MCF estimate from a NonParametricCounting dict"
+            )
+        out = cls()
+        out.x = np.array(model_dict["x"], dtype=float)
+        out.mcf_hat = np.array(model_dict["mcf_hat"], dtype=float)
+        out.var = np.array(model_dict["var"], dtype=float)
+        return out
+
+    @classmethod
+    def from_json(cls, fp):
+        """Load an MCF estimate from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
+
     def mcf(self, x, interp="step"):
         x = np.atleast_1d(x)
         # Let's not assume we can predict above the highest measurement

@@ -4,6 +4,22 @@ Changelog
 v0.15.0 (unreleased)
 --------------------
 
+Recurrent events
+~~~~~~~~~~~~~~~~~
+
+- Added serialisation to the fitted recurrent-event models:
+  ``ParametricRecurrenceModel`` (NHPP/HPP intensity fits),
+  ``NonParametricCounting`` (the MCF estimate), ``ProportionalIntensityModel``
+  (proportional-intensity regression), and the competing-risks containers
+  ``CauseSpecificMCF`` and ``CauseSpecificNHPP`` now have
+  ``to_dict``/``from_dict`` and ``to_json``/``from_json``. The intensity model
+  is stateless, so each stores its name plus the fitted parameters (or, for the
+  MCF, the ``x``/``mcf_hat``/``var`` step arrays), and the reloaded model
+  reproduces ``cif``/``iif``/``mcf`` exactly. Intensity models are resolved by
+  name from a restricted set. The likelihood/data state is not stored, so a
+  reloaded model behaves like a ``from_params`` one for confidence bounds and
+  diagnostics.
+
 Regression
 ~~~~~~~~~~
 
