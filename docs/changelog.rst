@@ -91,7 +91,24 @@ Regression
 Experimental
 ~~~~~~~~~~~~
 
-- The experimental ``SurvivalTree`` (and therefore ``RandomSurvivalForest``)
+- **Breaking (experimental API):** the survival tree/forest now take a single
+  ``kind`` parameter that couples the split criterion with its matching leaf
+  model, replacing the independent ``split_rule`` / ``leaf_type`` /
+  ``parametric`` knobs (whose free combination invited mismatched trees and
+  whose defaults disagreed between entry points). ``kind="weibull"`` (the new
+  default) adds the **Weibull deviance split** -- a 2-d.f. likelihood-ratio
+  gain computed with the full likelihood, with power against *scale and
+  shape* differences (e.g. crossing-hazards populations that the exponential
+  rule and the log-rank statistic largely miss) -- paired with Weibull MLE
+  leaves. ``kind="exponential"`` is the Davis-Anderson rule with Exponential
+  leaves, and ``kind="non-parametric"`` is the risk-set log-rank with
+  Nelson-Aalen leaves (observed/right-censored data, optionally
+  left-truncated; raises otherwise). Parametric kinds now stay parametric all
+  the way down: the degenerate-leaf rescue ladder is Weibull -> Exponential ->
+  crude rate, never a nonparametric leaf. Split-search child fits warm-start
+  from the parent's optimum, which also guarantees a non-negative split gain
+  in the 2-parameter case. The internal Weibull MLE is cross-validated
+  against ``Weibull.fit`` on every data configuration.
   now supports the **full SurPyval data model**: observed, left-, right- and
   interval-censored observations with optional left and/or right truncation.
   The risk-set log-rank split only exists for observed / right-censored

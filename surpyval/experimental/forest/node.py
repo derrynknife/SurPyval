@@ -7,6 +7,7 @@ from numpy.typing import ArrayLike, NDArray
 
 from surpyval import Exponential, NelsonAalen, Turnbull, Weibull
 from surpyval.experimental.forest.deviance_split import (
+    _exp_theta0,
     deviance_split,
     needs_full_likelihood_split,
 )
@@ -40,8 +41,7 @@ class IntermediateNode(Node):
         split_feature_index: int,
         split_feature_value: float,
         feature_indices_in: NDArray,
-        parametric: bool = True,
-        split_rule: str = "log_rank",
+        kind: str = "weibull",
     ):
         # Set split attributes
         self.split_feature_index = split_feature_index
@@ -63,8 +63,7 @@ class IntermediateNode(Node):
             min_leaf_samples=min_leaf_samples,
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
-            parametric=parametric,
-            split_rule=split_rule,
+            kind=kind,
         )
         self.right_child = build_tree(
             data[right_indices],
@@ -74,8 +73,7 @@ class IntermediateNode(Node):
             min_leaf_samples=min_leaf_samples,
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
-            parametric=parametric,
-            split_rule=split_rule,
+            kind=kind,
         )
 
     def apply_model_function(
@@ -91,16 +89,16 @@ class IntermediateNode(Node):
 
 
 class TerminalNode(Node):
-    def __init__(self, data: SurpyvalData, parametric: bool = True):
+    def __init__(self, data: SurpyvalData, kind: str = "weibull"):
         self.data = deepcopy(data)
-        self.paramettric = parametric
+        self.kind = kind
 
     def _nonparametric_model(self):
         # Nelson-Aalen is a risk-set estimator, so it is only defined for
-        # observed / right-censored (optionally left-truncated) data; for
-        # anything richer -- left or interval censoring, right truncation
-        # -- the Turnbull NPMLE is the nonparametric estimator that
-        # handles the full data model.
+        # observed / right-censored (optionally left-truncated) data; the
+        # Turnbull NPMLE covers the full data model. The tree entry point
+        # already raises for a non-parametric kind on such data, so the
+        # Turnbull branch is defence in depth for direct build_tree use.
         if needs_full_likelihood_split(self.data):
             return Turnbull.fit(
                 self.data.x, self.data.c, self.data.n, self.data.t
@@ -109,29 +107,43 @@ class TerminalNode(Node):
             self.data.x, self.data.c, self.data.n, self.data.t
         )
 
+    def _crude_exponential(self):
+        # Last-resort parametric leaf: the crude event-weight / exposure
+        # rate. Always computable when the leaf carries any event
+        # information, so a parametric tree stays parametric all the way
+        # down (a leaf must never crash the forest, but it must not
+        # silently become nonparametric either).
+        theta0 = _exp_theta0(self.data)
+        if theta0 is None:
+            return NeverOccurs
+        return Exponential.from_params([float(np.exp(theta0))])
+
     @cached_property
     def model(self):
-        if self.paramettric:
-            # n-weighted count of event-informative observations (any
-            # observation that is not purely right censored).
-            n_failures = self.data.n[self.data.c != 1].sum()
-            if n_failures == 0:
-                return NeverOccurs
-            elif n_failures <= 1:
-                return Exponential.fit_from_surpyval_data(self.data)
-            # A degenerate bootstrap sample (e.g. heavily tied event times)
-            # can make the Weibull covariance/Hessian step fail. A single
-            # terminal node must not crash the whole forest, so fall back to
-            # progressively simpler fits that are more numerically robust.
+        if self.kind == "non-parametric":
+            return self._nonparametric_model()
+
+        # n-weighted count of event-informative observations (any
+        # observation that is not purely right censored).
+        n_failures = self.data.n[self.data.c != 1].sum()
+        if n_failures == 0:
+            return NeverOccurs
+
+        # A degenerate bootstrap sample (e.g. heavily tied event times)
+        # can make an MLE's covariance/Hessian step fail. A single
+        # terminal node must not crash the whole forest, so fall back to
+        # progressively simpler fits -- staying within the parametric
+        # family: Weibull -> Exponential (a Weibull with shape fixed at
+        # 1) -> the crude rate.
+        if self.kind == "weibull" and n_failures > 1:
             try:
                 return Weibull.fit_from_surpyval_data(self.data)
             except Exception:
-                try:
-                    return Exponential.fit_from_surpyval_data(self.data)
-                except Exception:
-                    return self._nonparametric_model()
-        else:
-            return self._nonparametric_model()
+                pass
+        try:
+            return Exponential.fit_from_surpyval_data(self.data)
+        except Exception:
+            return self._crude_exponential()
 
     def apply_model_function(
         self,
@@ -150,21 +162,21 @@ def build_tree(
     min_leaf_samples: int,
     min_leaf_failures: int,
     n_features_split: int,
-    parametric: bool = True,
-    split_rule: str = "log_rank",
+    kind: str = "weibull",
 ) -> Node:
     """
     Node factory. Decides to return IntermediateNode object, or its
     sibling TerminalNode.
 
-    ``split_rule`` selects the criterion: ``"log_rank"`` (the risk-set
-    log-rank statistic; observed / right-censored data, optionally left
-    truncated) or ``"deviance"`` (the full-likelihood exponential
-    deviance split, defined for every censoring type plus truncation).
+    ``kind`` couples the split criterion with the matching leaf model:
+    ``"weibull"`` (Weibull deviance split, Weibull leaves),
+    ``"exponential"`` (exponential deviance split, Exponential leaves)
+    or ``"non-parametric"`` (risk-set log-rank split, Nelson-Aalen
+    leaves; observed / right-censored data, optionally left truncated).
     """
     # If max_depth has been reached, return a TerminalNode
     if curr_depth == max_depth:
-        return TerminalNode(data, parametric)
+        return TerminalNode(data, kind)
 
     # Choose the random n_features_split subset of features, without
     # replacement
@@ -173,19 +185,24 @@ def build_tree(
     )
 
     # Figure out best feature-value split
-    if split_rule == "deviance":
-        split_feature_index, split_feature_value = deviance_split(
+    if kind == "non-parametric":
+        split_feature_index, split_feature_value = log_rank_split(
             data, Z, min_leaf_samples, min_leaf_failures, feature_indices_in
         )
     else:
-        split_feature_index, split_feature_value = log_rank_split(
-            data, Z, min_leaf_samples, min_leaf_failures, feature_indices_in
+        split_feature_index, split_feature_value = deviance_split(
+            data,
+            Z,
+            min_leaf_samples,
+            min_leaf_failures,
+            feature_indices_in,
+            model=kind,
         )
 
     # If the split rule can't suggest a feature-value split, return a
     # TerminalNode
     if split_feature_index == -1 and split_feature_value == float("-Inf"):
-        return TerminalNode(data, parametric)
+        return TerminalNode(data, kind)
 
     # Else, return an IntermediateNode, with the best feature-value split
     return IntermediateNode(
@@ -199,6 +216,5 @@ def build_tree(
         split_feature_index=split_feature_index,
         split_feature_value=split_feature_value,
         feature_indices_in=feature_indices_in,
-        parametric=parametric,
-        split_rule=split_rule,
+        kind=kind,
     )

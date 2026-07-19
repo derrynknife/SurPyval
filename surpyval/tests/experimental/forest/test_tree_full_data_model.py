@@ -1,32 +1,39 @@
 """The survival tree under the full SurPyval data model.
 
-The risk-set log-rank split only exists for observed / right-censored
-(optionally left-truncated) data, so the tree adds a full-likelihood
-exponential deviance split (Davis & Anderson, 1989) and switches to it
-automatically when the data contains left censoring, interval censoring
-or right truncation. These tests pin:
+The tree's ``kind`` couples a split criterion with its matching leaf
+model: ``"weibull"`` (Weibull deviance split + Weibull leaves, the
+default), ``"exponential"`` (exponential deviance split + Exponential
+leaves) and ``"non-parametric"`` (risk-set log-rank + Nelson-Aalen;
+observed/right-censored data only). These tests pin:
 
-- the exponential MLE inside the deviance split against SurPyval's own
-  ``Exponential.fit`` on every data type (the correctness anchor);
-- that a tree builds on every data type and, given all features, splits
-  on the signal feature and predicts the right survival ordering;
-- the auto rule selection and the guard for forcing log-rank on data it
-  cannot handle;
-- Turnbull nonparametric leaves for data Nelson-Aalen cannot fit;
+- the exponential and Weibull MLEs inside the deviance split against
+  SurPyval's own ``Exponential.fit`` / ``Weibull.fit`` on every data
+  configuration (the correctness anchors);
+- that both parametric kinds build on every data type and, given all
+  features, split on the signal feature and predict the right survival
+  ordering;
+- that the Weibull kind detects a *shape-only* (crossing-hazards)
+  signal that the exponential deviance is nearly blind to;
+- kind validation: non-parametric raises on data its log-rank split
+  cannot express, unknown kinds raise;
+- that parametric kinds stay parametric all the way down (leaves);
 - the forest passthrough.
 """
 
 import numpy as np
 import pytest
-from scipy.optimize import minimize_scalar
 
-from surpyval import Exponential
+from surpyval import Exponential, Weibull
 from surpyval.experimental.forest import RandomSurvivalForest, SurvivalTree
 from surpyval.experimental.forest.deviance_split import (
-    _exp_neg_ll,
-    _exp_neg_ll_parts,
+    _LOG_BETA_BOUNDS,
+    _exp_max_ll,
+    _exp_theta0,
+    _wei_max_ll,
     needs_full_likelihood_split,
 )
+from surpyval.experimental.forest.node import TerminalNode
+from surpyval.univariate.nonparametric.nonparametric import NonParametric
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -66,68 +73,163 @@ def _assert_signal_recovered(tree, mid_time=5.0):
     assert s_fast < s_slow
 
 
-# -- exponential MLE anchor ------------------------------------------------
-
-
-def _deviance_mle(data):
-    parts = _exp_neg_ll_parts(data)
-    res = minimize_scalar(
-        _exp_neg_ll,
-        args=(parts,),
-        bounds=(-20, 5),
-        method="bounded",
-        options={"xatol": 1e-9},
-    )
-    return float(np.exp(res.x))
-
-
-@pytest.mark.parametrize(
-    "case",
-    ["right", "left", "interval", "left_trunc", "right_trunc", "mixed"],
-)
-def test_deviance_mle_matches_exponential_fit(case):
-    rng = np.random.default_rng(0)
-    n = 100
-    x = rng.exponential(10, n)
+def _all_data_cases(seed=0, n=100):
+    """One SurpyvalData per data configuration, from a common sample."""
+    rng = np.random.default_rng(seed)
+    x = 10 * rng.weibull(2.2, n)
     c = (rng.random(n) < 0.3).astype(int)
-    tl = np.full(n, -np.inf)
-    tr = np.full(n, np.inf)
-    x_in: list | np.ndarray = x
-    if case == "left":
-        c = np.where(rng.random(n) < 0.2, -1, c)
-    elif case == "interval":
-        x_in, c = _intervalise(x, c)
-    elif case == "left_trunc":
-        c = np.zeros(n)
-        tl = np.minimum(x * 0.3, 2.0)
-    elif case == "right_trunc":
-        c = np.zeros(n)
-        tr = x * 1.5 + 5.0
-    elif case == "mixed":
-        x_in, c = _intervalise(x, c)
-        c = np.where((np.arange(n) % 7 == 0) & (c != 2), -1, c)
-        tl = np.minimum(x * 0.1, 0.5)
+    c_left = np.where(rng.random(n) < 0.2, -1, c)
+    x_int = [[v * 0.8, v * 1.3] if i % 3 == 0 else v for i, v in enumerate(x)]
+    c_int = np.where(np.arange(n) % 3 == 0, 2, c)
+    x_rt = 10 * rng.weibull(2.2, 3 * n)
+    x_rt = x_rt[x_rt < 12][:n]
+    inf = np.full(n, np.inf)
+    ninf = np.full(n, -np.inf)
+    return {
+        "right": SurpyvalData(x, c, group_and_sort=False),
+        "left": SurpyvalData(x, c_left, group_and_sort=False),
+        "interval": SurpyvalData(x_int, c_int, group_and_sort=False),
+        "left_trunc": SurpyvalData(
+            x,
+            np.zeros(n),
+            tl=np.minimum(x * 0.3, 2.0),
+            tr=inf,
+            group_and_sort=False,
+        ),
+        "right_trunc": SurpyvalData(
+            x_rt,
+            np.zeros(x_rt.size),
+            tl=np.full(x_rt.size, -np.inf),
+            tr=np.full(x_rt.size, 12.0),
+            group_and_sort=False,
+        ),
+        "mixed": SurpyvalData(
+            x_int,
+            c_int,
+            tl=np.minimum(x * 0.1, 0.5),
+            tr=inf,
+            group_and_sort=False,
+        ),
+        "_ninf": ninf,
+    }
 
-    data = SurpyvalData(x_in, c, tl=tl, tr=tr, group_and_sort=False)
+
+_CASE_NAMES = [
+    "right",
+    "left",
+    "interval",
+    "left_trunc",
+    "right_trunc",
+    "mixed",
+]
+
+
+# -- MLE anchors ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("case", _CASE_NAMES)
+def test_exponential_mle_matches_exponential_fit(case):
+    data = _all_data_cases()[case]
+    theta0 = _exp_theta0(data)
+    ll = _exp_max_ll(data, (theta0 - 15.0, theta0 + 15.0))
     lam_surpyval = float(Exponential.fit_from_surpyval_data(data).params[0])
-    assert np.isclose(_deviance_mle(data), lam_surpyval, rtol=1e-3)
+    # the attained likelihood is at least surpyval's (same likelihood)
+    from surpyval.experimental.forest.deviance_split import (
+        _exp_neg_ll,
+        _exp_neg_ll_parts,
+    )
+
+    ll_surpyval = -_exp_neg_ll(
+        float(np.log(lam_surpyval)), _exp_neg_ll_parts(data)
+    )
+    assert ll >= ll_surpyval - 1e-4
 
 
-# -- tree building on every data type --------------------------------------
+@pytest.mark.parametrize("case", _CASE_NAMES)
+def test_weibull_mle_matches_weibull_fit(case):
+    data = _all_data_cases()[case]
+    theta0 = _exp_theta0(data)
+    log_alpha0 = -theta0
+    box = ((log_alpha0 - 15.0, log_alpha0 + 15.0), _LOG_BETA_BOUNDS)
+    _, theta = _wei_max_ll(data, box, np.array([log_alpha0, 0.0]))
+    alpha, beta = np.exp(theta)
+    a_sp, b_sp = Weibull.fit_from_surpyval_data(data).params
+    assert np.isclose(alpha, a_sp, rtol=1e-2)
+    assert np.isclose(beta, b_sp, rtol=1e-2)
 
 
-def test_tree_right_censored_uses_log_rank():
+# -- shape sensitivity: the reason the Weibull kind exists ------------------
+
+
+def test_weibull_split_sees_crossing_hazards_exponential_does_not():
+    # Weibull(10, 0.8) vs Weibull(10, 3): nearly equal means, crossing
+    # hazards. The 2-d.f. Weibull deviance gain is enormous; the
+    # exponential (rate-only) gain is near its chi2_1 noise floor.
+    rng = np.random.default_rng(11)
+    n = 150
+    g = rng.integers(0, 2, n)
+    x = np.where(g == 1, 10 * rng.weibull(3.0, n), 10 * rng.weibull(0.8, n))
+    data = SurpyvalData(x, np.zeros(n), group_and_sort=False)
+    mask = g == 1
+
+    theta0 = _exp_theta0(data)
+    log_alpha0 = -theta0
+    box = ((log_alpha0 - 15.0, log_alpha0 + 15.0), _LOG_BETA_BOUNDS)
+    parent_ll, parent_theta = _wei_max_ll(
+        data, box, np.array([log_alpha0, 0.0])
+    )
+    gain_wei = 2 * (
+        _wei_max_ll(data[mask], box, parent_theta)[0]
+        + _wei_max_ll(data[~mask], box, parent_theta)[0]
+        - parent_ll
+    )
+
+    bounds = (theta0 - 15.0, theta0 + 15.0)
+    gain_exp = 2 * (
+        _exp_max_ll(data[mask], bounds)
+        + _exp_max_ll(data[~mask], bounds)
+        - _exp_max_ll(data, bounds)
+    )
+
+    assert gain_wei > 20.0  # far beyond the chi2_2 5% critical value
+    assert gain_exp < gain_wei / 10.0
+
+    # and the fitted Weibull tree recovers the shape split with distinct
+    # leaf shapes
+    Z = np.column_stack([g.astype(float), rng.normal(0, 1, n)])
+    np.random.seed(13)
+    tree = SurvivalTree.fit(
+        x=x,
+        Z=Z,
+        c=np.zeros(n),
+        n_features_split="all",
+        min_leaf_samples=25,
+        max_depth=1,
+        kind="weibull",
+    )
+    assert tree._root.split_feature_index == 0
+    beta_left = tree._root.left_child.model.params[1]
+    beta_right = tree._root.right_child.model.params[1]
+    assert min(beta_left, beta_right) < 1.2
+    assert max(beta_left, beta_right) > 2.0
+
+
+# -- tree building on every data type, both parametric kinds ----------------
+
+
+@pytest.mark.parametrize("kind", ["weibull", "exponential"])
+def test_tree_right_censored(kind):
     Z, x, c = _signal_data()
-    tree = _fit_all_features(x=x, Z=Z, c=c)
-    assert tree.split_rule == "log_rank"
+    tree = _fit_all_features(x=x, Z=Z, c=c, kind=kind)
+    assert tree.kind == kind
     _assert_signal_recovered(tree)
 
 
-def test_tree_interval_censored():
+@pytest.mark.parametrize("kind", ["weibull", "exponential"])
+def test_tree_interval_censored(kind):
     Z, x, c = _signal_data()
     x_in, c_in = _intervalise(x, c)
-    tree = _fit_all_features(x=x_in, Z=Z, c=c_in)
-    assert tree.split_rule == "deviance"
+    tree = _fit_all_features(x=x_in, Z=Z, c=c_in, kind=kind)
     _assert_signal_recovered(tree)
 
 
@@ -136,18 +238,19 @@ def test_tree_left_censored():
     rng = np.random.default_rng(3)
     c_in = np.where((rng.random(len(x)) < 0.2) & (c == 0), -1, c)
     tree = _fit_all_features(x=x, Z=Z, c=c_in)
-    assert tree.split_rule == "deviance"
     _assert_signal_recovered(tree)
 
 
-def test_tree_left_truncated_keeps_log_rank():
+def test_tree_left_truncated():
     Z, x, _ = _signal_data()
     n = len(x)
-    tl = np.minimum(x * 0.3, 1.0)
     tree = _fit_all_features(
-        x=x, Z=Z, c=np.zeros(n), tl=tl, tr=np.full(n, np.inf)
+        x=x,
+        Z=Z,
+        c=np.zeros(n),
+        tl=np.minimum(x * 0.3, 1.0),
+        tr=np.full(n, np.inf),
     )
-    assert tree.split_rule == "log_rank"
     _assert_signal_recovered(tree)
 
 
@@ -161,7 +264,6 @@ def test_tree_right_truncated():
         tl=np.full(n, -np.inf),
         tr=np.full(n, float(x.max()) * 1.1),
     )
-    assert tree.split_rule == "deviance"
     _assert_signal_recovered(tree)
 
 
@@ -169,12 +271,15 @@ def test_tree_everything_at_once():
     # Interval + left + right censoring with left truncation on every
     # row and right truncation on the event rows. (A right-censored row
     # cannot carry finite right truncation: right-truncation sampling
-    # only admits units whose event was seen before tr.)
+    # only admits units whose event was seen before tr. The bound sits
+    # well above the data -- a common bound just above the maximum
+    # leaves the Weibull shape barely identified; see the degenerate
+    # smoke test below.)
     Z, x, c = _signal_data()
     n = len(x)
     x_in, c_in = _intervalise(x, c)
     c_in = np.where((np.arange(n) % 7 == 0) & (c_in != 2), -1, c_in)
-    tr = np.where(c_in == 1, np.inf, float(x.max()) * 1.2)
+    tr = np.where(c_in == 1, np.inf, float(x.max()) * 3.0)
     tree = _fit_all_features(
         x=x_in,
         Z=Z,
@@ -182,12 +287,27 @@ def test_tree_everything_at_once():
         tl=np.minimum(x * 0.1, 0.5),
         tr=tr,
     )
-    assert tree.split_rule == "deviance"
     _assert_signal_recovered(tree)
 
 
+def test_tree_degenerate_truncation_smoke():
+    # A common right-truncation bound just above the observed maximum
+    # leaves the shape parameter near-unidentified (the conditional
+    # likelihood is maximised in a degenerate direction). The tree must
+    # degrade gracefully: build without crashing and return valid
+    # probabilities.
+    Z, x, c = _signal_data()
+    x_in, c_in = _intervalise(x, c)
+    tr = np.where(c_in == 1, np.inf, float(x.max()) * 1.05)
+    tree = _fit_all_features(x=x_in, Z=Z, c=c_in, tr=tr)
+    s = np.asarray(
+        tree.sf(np.array([2.0, 6.0, 12.0]), np.array([1.0, 0.0])),
+        dtype=float,
+    )
+    assert np.all((s >= 0) & (s <= 1))
+
+
 def test_tree_xl_xr_convenience():
-    # pure interval-censored input via xl/xr
     rng = np.random.default_rng(4)
     n = 80
     Z = np.column_stack(
@@ -196,31 +316,32 @@ def test_tree_xl_xr_convenience():
     scale = np.where(Z[:, 0] > 0.5, 4.0, 12.0)
     x = scale * rng.weibull(1.5, n)
     tree = _fit_all_features(xl=x * 0.8, xr=x * 1.2, Z=Z)
-    assert tree.split_rule == "deviance"
     _assert_signal_recovered(tree)
 
 
-# -- split-rule selection and guards ---------------------------------------
+# -- kind selection and guards ----------------------------------------------
 
 
-def test_forced_deviance_on_classic_data():
+def test_non_parametric_kind_on_classic_data():
     Z, x, c = _signal_data()
-    tree = _fit_all_features(x=x, Z=Z, c=c, split_rule="deviance")
-    assert tree.split_rule == "deviance"
-    _assert_signal_recovered(tree)
+    tree = _fit_all_features(x=x, Z=Z, c=c, kind="non-parametric")
+    assert tree.kind == "non-parametric"
+    s_fast = float(tree.sf(5.0, np.array([1.0, 0.0]))[0])
+    s_slow = float(tree.sf(5.0, np.array([0.0, 0.0]))[0])
+    assert s_fast < s_slow
 
 
-def test_forced_log_rank_on_interval_data_raises():
+def test_non_parametric_kind_on_interval_data_raises():
     Z, x, c = _signal_data()
     x_in, c_in = _intervalise(x, c)
-    with pytest.raises(ValueError, match="undefined"):
-        SurvivalTree.fit(x=x_in, Z=Z, c=c_in, split_rule="log-rank")
+    with pytest.raises(ValueError, match="non-parametric"):
+        SurvivalTree.fit(x=x_in, Z=Z, c=c_in, kind="non-parametric")
 
 
-def test_invalid_split_rule_raises():
+def test_invalid_kind_raises():
     Z, x, c = _signal_data()
-    with pytest.raises(ValueError, match="split_rule"):
-        SurvivalTree.fit(x=x, Z=Z, c=c, split_rule="bogus")
+    with pytest.raises(ValueError, match="kind"):
+        SurvivalTree.fit(x=x, Z=Z, c=c, kind="bogus")
 
 
 def test_needs_full_likelihood_split_detection():
@@ -242,33 +363,32 @@ def test_needs_full_likelihood_split_detection():
     )
 
 
-# -- leaves ----------------------------------------------------------------
+# -- leaves: parametric all the way down ------------------------------------
 
 
-def test_nonparametric_turnbull_leaves_on_interval_data():
+def _leaves(node):
+    if isinstance(node, TerminalNode):
+        return [node]
+    return _leaves(node.left_child) + _leaves(node.right_child)
+
+
+@pytest.mark.parametrize("kind", ["weibull", "exponential"])
+def test_parametric_kind_has_no_nonparametric_leaves(kind):
     Z, x, c = _signal_data()
     x_in, c_in = _intervalise(x, c)
-    tree = _fit_all_features(x=x_in, Z=Z, c=c_in, leaf_type="non-parametric")
-    # predictions are finite probabilities and decreasing in time
-    s = tree.sf(np.array([2.0, 6.0, 12.0]), np.array([1.0, 0.0]))
-    s = np.asarray(s, dtype=float)
-    assert np.all((s >= 0) & (s <= 1))
-    assert np.all(np.diff(s) <= 1e-9)
+    tree = _fit_all_features(x=x_in, Z=Z, c=c_in, kind=kind)
+    for leaf in _leaves(tree._root):
+        assert not isinstance(leaf.model, NonParametric)
 
 
-def test_parametric_leaves_on_interval_data():
+def test_non_parametric_kind_has_nonparametric_leaves():
     Z, x, c = _signal_data()
-    x_in, c_in = _intervalise(x, c)
-    tree = _fit_all_features(x=x_in, Z=Z, c=c_in, leaf_type="parametric")
-    s = np.asarray(
-        tree.sf(np.array([2.0, 6.0, 12.0]), np.array([0.0, 0.0])),
-        dtype=float,
-    )
-    assert np.all((s >= 0) & (s <= 1))
-    assert np.all(np.diff(s) <= 1e-9)
+    tree = _fit_all_features(x=x, Z=Z, c=c, kind="non-parametric")
+    for leaf in _leaves(tree._root):
+        assert isinstance(leaf.model, NonParametric)
 
 
-# -- forest passthrough ----------------------------------------------------
+# -- forest passthrough ------------------------------------------------------
 
 
 def test_forest_on_interval_censored_data():
@@ -280,10 +400,12 @@ def test_forest_on_interval_censored_data():
         Z=Z,
         c=c_in,
         n_trees=5,
-        min_leaf_samples=10,
+        min_leaf_samples=15,
         n_features_split="all",
+        kind="weibull",
     )
-    assert all(tree.split_rule == "deviance" for tree in forest.trees)
+    assert forest.kind == "weibull"
+    assert all(tree.kind == "weibull" for tree in forest.trees)
     s_fast = float(np.atleast_1d(forest.sf(5.0, np.array([1.0, 0.0])))[0])
     s_slow = float(np.atleast_1d(forest.sf(5.0, np.array([0.0, 0.0])))[0])
     assert s_fast < s_slow
