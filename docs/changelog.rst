@@ -7,6 +7,18 @@ v0.15.0 (unreleased)
 Regression
 ~~~~~~~~~~
 
+- Added serialisation to the **semi-parametric** regression models, each on its
+  own result class: Cox proportional hazards
+  (``SemiParametricRegressionModel``), the Lin-Ying additive-hazards model
+  (``AdditiveHazardsModel``), and the Buckley-James AFT (``BuckleyJamesModel``)
+  now have ``to_dict``/``from_dict`` and ``to_json``/``from_json``. Because the
+  baseline is nonparametric, the coefficients plus the fitted baseline step
+  arrays (or, for Buckley-James, the residual survival) are stored, so the
+  reloaded model predicts identically -- including Cox's ``predict_tvc`` for a
+  time-varying-covariate fit, the additive model's covariance / standard
+  errors, and Buckley-James's ``bootstrap_ci`` (its fit data is kept).
+  ``SemiParametricRegressionModel`` is now exported from
+  ``surpyval.univariate.regression``.
 - Added serialisation to the parametric regression models:
   ``ParametricRegressionModel`` now has ``to_dict``/``from_dict`` and
   ``to_json``/``from_json``, so a fitted Accelerated Failure Time,

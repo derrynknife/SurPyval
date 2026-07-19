@@ -40,8 +40,10 @@ Lin, D. Y. and Ying, Z. (1994), "Semiparametric analysis of the additive
 risk model", Biometrika 81, 61-71.
 """
 
+import json
 from copy import copy
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -123,6 +125,83 @@ class AdditiveHazardsModel:
         for i, p in enumerate(self.beta):
             out += "   beta_{i}  :  {p}\n".format(i=i, p=p)
         return out
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """
+        Serialise this fitted Lin-Ying additive-hazards model to a plain,
+        JSON-serialisable dict.
+
+        The baseline is nonparametric, so what is stored is the coefficients
+        ``beta`` and the fitted baseline step arrays (event times ``x`` and the
+        baseline hazard ``h0`` / cumulative hazard ``H0``), along with the
+        parameter covariance so the restored model can still report standard
+        errors. Everything needed for ``hf``/``Hf``/``sf``/``ff``/``df`` (and
+        ``se``/``cov``) round-trips exactly. The internal estimating-equation
+        matrices (``_A``, ``_b``) are not stored.
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        out: dict[str, Any] = {
+            "model": "AdditiveHazardsModel",
+            "beta": np.asarray(self.beta, dtype=float).tolist(),
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "x": np.asarray(self.x, dtype=float).tolist(),
+            "h0": np.asarray(self.h0, dtype=float).tolist(),
+            "H0": np.asarray(self.H0, dtype=float).tolist(),
+            "cov": np.asarray(self.cov, dtype=float).tolist(),
+            "se": np.asarray(self.se, dtype=float).tolist(),
+        }
+        if getattr(self, "p_values", None) is not None:
+            out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
+        if self.feature_names is not None:
+            out["feature_names"] = list(self.feature_names)
+        if self.formula is not None:
+            out["formula"] = self.formula
+        return out
+
+    def to_json(self, fp: "str | Path") -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "AdditiveHazardsModel":
+        """
+        Rebuild a Lin-Ying additive-hazards model from a :meth:`to_dict`
+        dictionary.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        if model_dict.get("model") != "AdditiveHazardsModel":
+            raise ValueError(
+                "Must create an additive-hazards model from an "
+                "AdditiveHazardsModel dict"
+            )
+        out = cls()
+        out.beta = np.array(model_dict["beta"], dtype=float)
+        out.params = np.array(model_dict["params"], dtype=float)
+        out.x = np.array(model_dict["x"], dtype=float)
+        out.h0 = np.array(model_dict["h0"], dtype=float)
+        out.H0 = np.array(model_dict["H0"], dtype=float)
+        out.cov = np.array(model_dict["cov"], dtype=float)
+        out.se = np.array(model_dict["se"], dtype=float)
+        if "p_values" in model_dict:
+            out.p_values = np.array(model_dict["p_values"], dtype=float)
+        out.feature_names = model_dict.get("feature_names")
+        out.formula = model_dict.get("formula")
+        return out
+
+    @classmethod
+    def from_json(cls, fp: "str | Path") -> "AdditiveHazardsModel":
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def _h0_at(self, x: npt.NDArray) -> npt.NDArray:
         # Right-continuous step lookup of the baseline (cumulative) hazard at
