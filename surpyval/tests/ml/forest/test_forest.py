@@ -3,7 +3,7 @@ import pytest
 from numpy.testing import assert_array_equal
 from numpy.typing import NDArray
 
-from surpyval.experimental import RandomSurvivalForest
+from surpyval.ml import RandomSurvivalForest
 
 
 @pytest.fixture
