@@ -28,6 +28,7 @@ from scipy.integrate import quad
 from scipy.optimize import brentq, minimize_scalar
 from scipy.special import gammaincc, gammaln
 from scipy.stats import norm
+from surpyval.serialisation import stamp_schema
 
 __all__ = [
     "WienerProcess",
@@ -149,12 +150,14 @@ class WienerProcessModel:
 
     def to_dict(self) -> dict:
         """Serialise this fitted Wiener-process model to a plain dict."""
-        return {
-            "model": "WienerProcessModel",
-            "mu": self.mu,
-            "sigma": self.sigma,
-            "threshold": self.threshold,
-        }
+        return stamp_schema(
+            {
+                "model": "WienerProcessModel",
+                "mu": self.mu,
+                "sigma": self.sigma,
+                "threshold": self.threshold,
+            }
+        )
 
     def to_json(self, fp) -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""
@@ -376,12 +379,14 @@ class GammaProcessModel:
 
     def to_dict(self) -> dict:
         """Serialise this fitted gamma-process model to a plain dict."""
-        return {
-            "model": "GammaProcessModel",
-            "alpha": self.alpha,
-            "beta": self.beta,
-            "threshold": self.threshold,
-        }
+        return stamp_schema(
+            {
+                "model": "GammaProcessModel",
+                "alpha": self.alpha,
+                "beta": self.beta,
+                "threshold": self.threshold,
+            }
+        )
 
     def to_json(self, fp) -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""

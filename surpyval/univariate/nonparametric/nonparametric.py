@@ -10,6 +10,7 @@ from scipy.interpolate import PchipInterpolator, interp1d
 from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
+from surpyval.serialisation import stamp_schema
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -1306,7 +1307,7 @@ class NonParametric(NonParametricDistribution):
                 )
             out["data"] = data_dict
 
-        return out
+        return stamp_schema(out)
 
     def to_json(self, fp: str | Path) -> None:
         with open(fp, "w+") as f:

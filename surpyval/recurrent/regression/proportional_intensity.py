@@ -11,6 +11,7 @@ from surpyval.recurrent.inference import (
 )
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
+from surpyval.serialisation import stamp_schema
 
 
 class ProportionalIntensityModel(
@@ -81,15 +82,17 @@ class ProportionalIntensityModel(
         --------
         from_dict, to_json, from_json
         """
-        return {
-            "model": "ProportionalIntensityModel",
-            "kind": self.kind,
-            "parameterization": self.parameterization,
-            "dist": self.dist.name,
-            "param_names": list(self.param_names),
-            "params": np.asarray(self.params, dtype=float).tolist(),
-            "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
-        }
+        return stamp_schema(
+            {
+                "model": "ProportionalIntensityModel",
+                "kind": self.kind,
+                "parameterization": self.parameterization,
+                "dist": self.dist.name,
+                "param_names": list(self.param_names),
+                "params": np.asarray(self.params, dtype=float).tolist(),
+                "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
+            }
+        )
 
     def to_json(self, fp):
         """Write :meth:`to_dict` to ``fp`` as JSON."""

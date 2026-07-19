@@ -36,7 +36,7 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
-from surpyval.serialisation import to_native
+from surpyval.serialisation import stamp_schema, to_native
 
 
 def _validate(x, c, n, e):
@@ -85,11 +85,15 @@ class ParametricCompetingRisks:
         distribution (via its own ``to_dict``). The reloaded model reproduces
         every cumulative-incidence / hazard function exactly.
         """
-        return {
-            "model": "ParametricCompetingRisks",
-            "causes": to_native(list(self.causes)),
-            "models": [self.models[cause].to_dict() for cause in self.causes],
-        }
+        return stamp_schema(
+            {
+                "model": "ParametricCompetingRisks",
+                "causes": to_native(list(self.causes)),
+                "models": [
+                    self.models[cause].to_dict() for cause in self.causes
+                ],
+            }
+        )
 
     def to_json(self, fp) -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""

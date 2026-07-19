@@ -8,6 +8,7 @@ import numpy.typing as npt
 from surpyval.utils import _get_idx
 
 from .regression_data import prepare_Z
+from surpyval.serialisation import stamp_schema
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -112,7 +113,7 @@ class SemiParametricRegressionModel:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
             out["formula"] = self.formula
-        return out
+        return stamp_schema(out)
 
     def to_json(self, fp: "str | Path") -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""

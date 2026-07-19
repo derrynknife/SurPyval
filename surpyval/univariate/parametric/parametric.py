@@ -25,6 +25,7 @@ from .probability_plotting import (
     draw_probability_plot,
     probability_plot_data,
 )
+from surpyval.serialisation import stamp_schema
 
 # Shared inputs for the confidence-bound computations: the fitted parameter
 # vector ``phi_hat`` (core params plus any LFP/ZI parameters), its covariance
@@ -222,7 +223,7 @@ class Parametric(ParametricDistribution):
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = self._neg_ll
 
-        return out
+        return stamp_schema(out)
 
     def to_json(self, fp: str | Path) -> None:
         with open(fp, "w+") as f:

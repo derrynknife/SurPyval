@@ -22,7 +22,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
-from surpyval.serialisation import to_native
+from surpyval.serialisation import stamp_schema, to_native
 
 
 def _counting_model_from_xrd(x, r, d):
@@ -65,13 +65,15 @@ class CauseSpecificMCF:
         --------
         from_dict, to_json, from_json
         """
-        return {
-            "model": "CauseSpecificMCF",
-            "event_types": to_native(list(self.event_types)),
-            "models": [
-                self.models[cause].to_dict() for cause in self.event_types
-            ],
-        }
+        return stamp_schema(
+            {
+                "model": "CauseSpecificMCF",
+                "event_types": to_native(list(self.event_types)),
+                "models": [
+                    self.models[cause].to_dict() for cause in self.event_types
+                ],
+            }
+        )
 
     def to_json(self, fp):
         """Write :meth:`to_dict` to ``fp`` as JSON."""

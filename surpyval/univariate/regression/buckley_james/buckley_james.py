@@ -43,6 +43,7 @@ from surpyval.utils import (
     wrangle_Z,
     xcnt_handler,
 )
+from surpyval.serialisation import stamp_schema
 
 
 def _residual_km(e, delta, w):
@@ -220,7 +221,7 @@ class BuckleyJamesModel:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
             out["formula"] = self.formula
-        return out
+        return stamp_schema(out)
 
     def to_json(self, fp):
         """Write :meth:`to_dict` to ``fp`` as JSON."""

@@ -22,7 +22,7 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.serialisation import to_native
+from surpyval.serialisation import stamp_schema, to_native
 
 
 class CompetingRisks:
@@ -76,7 +76,7 @@ class CompetingRisks:
         }
         for name in self._SERIALISED_ARRAYS:
             out[name] = np.asarray(getattr(self, name), dtype=float).tolist()
-        return out
+        return stamp_schema(out)
 
     def to_json(self, fp) -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""

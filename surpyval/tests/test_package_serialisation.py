@@ -212,6 +212,29 @@ def test_from_json_file_tagged(tmp_path):
 # -- errors -------------------------------------------------------------------
 
 
+def test_schema_version_is_stamped():
+    from surpyval.serialisation import SCHEMA_VERSION
+
+    d = Weibull.fit([3.0, 4.0, 5.0, 6.0, 7.0]).to_dict()
+    assert d["schema"] == SCHEMA_VERSION
+
+
+def test_unversioned_documents_still_load():
+    # documents written before schema versioning have no "schema" key
+    model = Weibull.fit([3.0, 4.0, 5.0, 6.0, 7.0])
+    d = {k: v for k, v in model.to_dict().items() if k != "schema"}
+    restored = surpyval.from_dict(d)
+    t = np.array([2.0, 5.0])
+    assert np.allclose(model.sf(t), restored.sf(t))
+
+
+def test_newer_schema_is_refused():
+    d = Weibull.fit([3.0, 4.0, 5.0, 6.0, 7.0]).to_dict()
+    d["schema"] = 99
+    with pytest.raises(ValueError, match="schema version 99"):
+        surpyval.from_dict(d)
+
+
 def test_from_dict_rejects_non_dict():
     with pytest.raises(ValueError, match="dict"):
         surpyval.from_dict("not a dict")

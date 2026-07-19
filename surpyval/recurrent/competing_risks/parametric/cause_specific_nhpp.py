@@ -29,7 +29,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
 )
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.utils.recurrent_utils import handle_xicn
-from surpyval.serialisation import to_native
+from surpyval.serialisation import stamp_schema, to_native
 
 
 class CauseSpecificNHPP:
@@ -62,14 +62,16 @@ class CauseSpecificNHPP:
         --------
         from_dict, to_json, from_json
         """
-        return {
-            "model": "CauseSpecificNHPP",
-            "dist": self.dist.name,
-            "event_types": to_native(list(self.event_types)),
-            "models": [
-                self.models[cause].to_dict() for cause in self.event_types
-            ],
-        }
+        return stamp_schema(
+            {
+                "model": "CauseSpecificNHPP",
+                "dist": self.dist.name,
+                "event_types": to_native(list(self.event_types)),
+                "models": [
+                    self.models[cause].to_dict() for cause in self.event_types
+                ],
+            }
+        )
 
     def to_json(self, fp):
         """Write :meth:`to_dict` to ``fp`` as JSON."""
