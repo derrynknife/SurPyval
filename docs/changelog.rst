@@ -4,6 +4,16 @@ Changelog
 v0.15.0 (unreleased)
 --------------------
 
+Experimental
+~~~~~~~~~~~~
+
+- Fixed a crash in the experimental ``RandomSurvivalForest``: a degenerate
+  bootstrap sample (e.g. heavily tied event times) could make a terminal
+  node's Weibull covariance step raise, taking down the whole forest fit. A
+  terminal node now falls back to progressively simpler, more robust fits
+  (Exponential, then Nelson-Aalen). The experimental modules are also excluded
+  from the CI test run, since they are not part of the release contract.
+
 Degradation
 ~~~~~~~~~~~
 
