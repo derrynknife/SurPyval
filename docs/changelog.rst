@@ -91,6 +91,27 @@ Regression
 Experimental
 ~~~~~~~~~~~~
 
+- The experimental ``SurvivalTree`` (and therefore ``RandomSurvivalForest``)
+  now supports the **full SurPyval data model**: observed, left-, right- and
+  interval-censored observations with optional left and/or right truncation.
+  The risk-set log-rank split only exists for observed / right-censored
+  (optionally left-truncated) data, so the tree gains a second split
+  criterion -- the full-likelihood exponential deviance split of Davis &
+  Anderson (1989) -- in which every candidate split is scored by the joint
+  maximised exponential log-likelihood of its children, with each observation
+  type contributing its exact likelihood term (including the
+  ``S(t_l) - S(t_r)`` truncation correction). A new ``split_rule`` parameter
+  (``"auto"`` default) keeps the log-rank split for data it is defined on --
+  existing behaviour is unchanged -- and switches to the deviance split
+  otherwise; forcing ``"log-rank"`` on incompatible data raises a clear
+  error. All candidate children within a node are scored over a common
+  parameter window so the criterion is monotone (a split can never score
+  below its parent), and splits with no likelihood gain stop the branch.
+  Nonparametric leaves now use the Turnbull NPMLE when the data has left or
+  interval censoring or right truncation (Nelson-Aalen otherwise, as
+  before); parametric (Weibull) leaves already supported the full data
+  model. ``fit`` also accepts the ``xl``/``xr`` and ``tl``/``tr``
+  conveniences.
 - Fixed a crash in the experimental ``RandomSurvivalForest``: a degenerate
   bootstrap sample (e.g. heavily tied event times) could make a terminal
   node's Weibull covariance step raise, taking down the whole forest fit. A
