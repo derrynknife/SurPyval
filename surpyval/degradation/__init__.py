@@ -30,6 +30,7 @@ from .path_models import (
 from .degradation_analysis import (  # isort: skip
     DegradationAnalysis,
     DegradationModel,
+    InducedFailureDistribution,
     RULPrediction,
 )
 
