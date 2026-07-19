@@ -477,8 +477,27 @@ degradation ⇒ shorter life). The prediction methods now take the stress vector
     plt.ylabel('Reliability at stress')
 
 ``qf`` and ``mean`` invert / integrate the regression survival function, and
-``random`` draws from it. First-stage regression confidence bounds are available
-through ``model.life_model.cb(x, Z, ...)``.
+``random`` draws from it.
+
+Two-stage confidence bounds at a stress are available by bootstrap: units
+are resampled (each carrying its stress), the whole accelerated pipeline is
+rerun, and the reliability at ``Z`` is read off each refit, so the first-stage
+path/extrapolation uncertainty is folded in — just as for the plain model, but
+evaluated at a chosen stress:
+
+.. jupyter-execute::
+
+    t = np.array([50.0, 100.0, 150.0])
+    band = model.cb(t, on='sf', method='bootstrap', Z=[0.0],
+                    n_boot=100, seed=0)
+    band                                        # (n, 2): [lower, upper] at Z=0
+
+The analytic (generated-regressor) delta-method correction used for the plain
+model is not derived for the regression life fit, so ``method='bootstrap'`` is
+required for a covariate model (and ``model.cb`` needs the stress ``Z``). The
+first-stage-only regression bounds — which ignore the extrapolation
+uncertainty — remain available directly through ``model.life_model.cb(x, Z,
+...)``.
 
 Stochastic-process degradation models
 =====================================

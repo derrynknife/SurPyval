@@ -817,16 +817,94 @@ def test_plain_model_rejects_Z():
         model.sf(300.0, Z=[1.0])
 
 
-def test_adt_two_stage_bounds_not_implemented():
+def test_adt_analytic_bounds_not_implemented():
     x, y, i, Z = adt_data()
     model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    # the analytic (generated-regressor) correction is not derived for the
+    # covariate life fit
     with pytest.raises(NotImplementedError):
-        model.cb(50.0)
+        model.cb(50.0, Z=[1.0])
     with pytest.raises(NotImplementedError):
         model.life_parameter_covariance()
     # the first-stage regression bounds are still available on the life model
     band = model.life_model.cb(50.0, [1.0], on="sf")
     assert band.shape[-1] == 2
+
+
+def test_adt_bootstrap_bounds():
+    x, y, i, Z = adt_data(seed=1)
+    model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    xs = np.array([30.0, 50.0, 70.0])
+    Zev = [0.5]
+    sf_hat = np.asarray(model.sf(xs, Z=Zev), dtype=float).ravel()
+
+    band = model.cb(xs, on="sf", method="bootstrap", n_boot=150, seed=3, Z=Zev)
+    assert band.shape == (3, 2)
+    # the two-sided band brackets the point estimate and stays in [0, 1]
+    assert np.all(band[:, 0] <= sf_hat + 1e-9)
+    assert np.all(sf_hat - 1e-9 <= band[:, 1])
+    assert np.all(band[:, 0] <= band[:, 1])
+    assert np.all((band >= 0) & (band <= 1))
+    # a genuine (non-degenerate) interval
+    assert np.any(band[:, 1] - band[:, 0] > 0)
+    # reproducible with a fixed seed
+    again = model.cb(
+        xs, on="sf", method="bootstrap", n_boot=150, seed=3, Z=Zev
+    )
+    assert np.array_equal(band, again)
+
+
+def test_adt_bootstrap_bounds_one_sided_and_targets():
+    x, y, i, Z = adt_data(seed=2)
+    model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    xs = np.array([40.0, 60.0])
+    Zev = [1.0]
+    sf_hat = np.asarray(model.sf(xs, Z=Zev), dtype=float).ravel()
+    lower = model.cb(
+        xs,
+        on="sf",
+        method="bootstrap",
+        bound="lower",
+        n_boot=120,
+        seed=4,
+        Z=Zev,
+    )
+    upper = model.cb(
+        xs,
+        on="sf",
+        method="bootstrap",
+        bound="upper",
+        n_boot=120,
+        seed=4,
+        Z=Zev,
+    )
+    assert np.all(lower <= sf_hat) and np.all(sf_hat <= upper)
+    # ff and Hf bounds are shaped and ordered correctly
+    ff_band = model.cb(
+        xs, on="ff", method="bootstrap", n_boot=120, seed=5, Z=Zev
+    )
+    hf_band = model.cb(
+        xs, on="Hf", method="bootstrap", n_boot=120, seed=5, Z=Zev
+    )
+    assert ff_band.shape == (2, 2) and hf_band.shape == (2, 2)
+    assert np.all(ff_band[:, 0] <= ff_band[:, 1])
+    assert np.all(hf_band[:, 0] <= hf_band[:, 1])
+
+
+def test_adt_bootstrap_bounds_require_Z():
+    x, y, i, Z = adt_data()
+    model = DegradationAnalysis.fit(x, y, i, threshold=100.0, Z=Z)
+    # a covariate model needs the stress vector to evaluate life
+    with pytest.raises(ValueError):
+        model.cb(50.0, method="bootstrap")
+
+
+def test_plain_model_cb_rejects_Z():
+    slopes = np.array([0.31, 0.28, 0.44, 0.37, 0.5, 0.26])
+    x, y, i = linear_data(slopes)
+    model = DegradationAnalysis.fit(x, y, i, threshold=150)
+    with pytest.raises(ValueError):
+        model.cb(100.0, Z=[1.0])
 
 
 def test_adt_fit_from_df_with_Z_cols():
