@@ -36,6 +36,16 @@ Degradation
 Recurrent events
 ~~~~~~~~~~~~~~~~~
 
+- Added serialisation to the renewal / imperfect-repair models
+  (``RenewalModel``): the generalized-renewal (Kijima-I/II), G1 renewal, ARA
+  and ARI families now have ``to_dict``/``from_dict`` and
+  ``to_json``/``from_json``. These processes have no closed-form intensity
+  (their MCF comes from a sampler closure that cannot be pickled), so the dict
+  stores the family, the underlying distribution (by name) and its parameters,
+  the restoration parameter and the family option (``kijima_type`` or memory
+  ``m``); on load the family's fitter rebuilds the sampler from those, so the
+  simulated MCF reproduces exactly. This completes serialisation coverage of
+  every non-experimental fitted model in the package.
 - Added serialisation to the fitted recurrent-event models:
   ``ParametricRecurrenceModel`` (NHPP/HPP intensity fits),
   ``NonParametricCounting`` (the MCF estimate), ``ProportionalIntensityModel``
