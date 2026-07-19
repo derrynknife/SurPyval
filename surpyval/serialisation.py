@@ -26,6 +26,8 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 # ``"model"`` tag -> defining module. The tag every class writes into
 # its dict is its own class name, so the registry only needs to find
 # the defining module, lazily (importing everything eagerly here would
@@ -95,6 +97,24 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 
 def _resolve(module_name: str, class_name: str) -> Any:
     return getattr(import_module(module_name), class_name)
+
+
+def to_native(value: Any) -> Any:
+    """
+    Convert numpy scalars and arrays (recursively, through lists and
+    tuples) to native Python types.
+
+    ``to_dict`` implementations use this so their dictionaries contain
+    only native types: BSON encoders (e.g. MongoDB's) reject numpy
+    scalars such as ``np.int64`` outright, unlike ``json.dumps``.
+    """
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, (list, tuple)):
+        return [to_native(v) for v in value]
+    return value
 
 
 def from_dict(model_dict: dict) -> Any:

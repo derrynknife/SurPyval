@@ -865,6 +865,22 @@ model:
 
     print(surpyval.from_json(path))
 
+Storing models in MongoDB
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``to_dict`` emits documents of native Python types only — string keys, lists,
+floats, ints — so its output is BSON-safe and every serialisable model can be
+stored in MongoDB directly. On the way back, ``surpyval.from_dict`` ignores
+the ``_id`` field MongoDB adds and restores the right class from the document
+itself:
+
+.. code:: python
+
+    collection.insert_one(model.to_dict())
+
+    doc = collection.find_one({"distribution": "Weibull"})
+    model = surpyval.from_dict(doc)
+
 If the fitted model carried a computable parameter covariance, it is stored in
 the dictionary, so the reloaded model can also produce confidence bounds
 (``cb``, ``param_cb``, ``standard_errors``) without the original data. Only the

@@ -29,6 +29,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
 )
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.serialisation import to_native
 
 
 class CauseSpecificNHPP:
@@ -64,7 +65,7 @@ class CauseSpecificNHPP:
         return {
             "model": "CauseSpecificNHPP",
             "dist": self.dist.name,
-            "event_types": list(self.event_types),
+            "event_types": to_native(list(self.event_types)),
             "models": [
                 self.models[cause].to_dict() for cause in self.event_types
             ],

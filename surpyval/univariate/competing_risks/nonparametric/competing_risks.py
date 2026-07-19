@@ -22,6 +22,7 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
+from surpyval.serialisation import to_native
 
 
 class CompetingRisks:
@@ -69,7 +70,7 @@ class CompetingRisks:
             "model": "CompetingRisks",
             # list of [event, index] pairs to preserve the event key types
             "event_idx_map": [
-                [k, int(v)] for k, v in self.event_idx_map.items()
+                [to_native(k), int(v)] for k, v in self.event_idx_map.items()
             ],
             "n_event_types": int(self.n_event_types),
         }
