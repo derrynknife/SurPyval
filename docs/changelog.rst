@@ -7,6 +7,17 @@ v0.15.0 (unreleased)
 Serialisation
 ~~~~~~~~~~~~~
 
+- MongoDB compatibility, verified for every serialisable model: BSON is
+  stricter than JSON (numpy integer scalars and arrays are rejected, and
+  dictionary keys must be strings), so every model's ``to_dict`` output is now
+  tested through the full MongoDB path -- ``bson.encode`` (what
+  ``insert_one`` does), decode, add the ``_id`` field ``find_one`` returns,
+  and restore via ``surpyval.from_dict`` with predictions reproduced. The
+  cause-label fields of the competing-risks containers are now normalised to
+  native Python types with a new ``surpyval.serialisation.to_native`` helper
+  (numpy labels passed by the caller no longer leak into the document), and
+  ``pymongo`` was added to the test dependencies for the BSON round-trip
+  tests.
 - Added package-level readers for serialised models:
   ``surpyval.from_dict(model_dict)`` and ``surpyval.from_json(fp)`` restore a
   model of the right class from any model's ``to_dict`` dictionary /

@@ -22,6 +22,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
+from surpyval.serialisation import to_native
 
 
 def _counting_model_from_xrd(x, r, d):
@@ -66,7 +67,7 @@ class CauseSpecificMCF:
         """
         return {
             "model": "CauseSpecificMCF",
-            "event_types": list(self.event_types),
+            "event_types": to_native(list(self.event_types)),
             "models": [
                 self.models[cause].to_dict() for cause in self.event_types
             ],

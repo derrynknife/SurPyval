@@ -35,6 +35,9 @@ dependencies = [
 tests = [
     "pytest>=9",
     "scikit-survival",
+    # BSON round-trip tests for the serialised-model dictionaries
+    # (MongoDB compatibility); pymongo provides the bson package.
+    "pymongo>=4",
 ]
 
 [project.urls]

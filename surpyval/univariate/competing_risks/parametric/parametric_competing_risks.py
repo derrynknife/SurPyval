@@ -36,6 +36,7 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
+from surpyval.serialisation import to_native
 
 
 def _validate(x, c, n, e):
@@ -86,7 +87,7 @@ class ParametricCompetingRisks:
         """
         return {
             "model": "ParametricCompetingRisks",
-            "causes": list(self.causes),
+            "causes": to_native(list(self.causes)),
             "models": [self.models[cause].to_dict() for cause in self.causes],
         }
 
