@@ -101,8 +101,26 @@ Let's look at how we can use right censoring.
     model = NonParametricCounting.fit(x, i=i, c=c)
     model.plot()
 
-At present the ``NonParametricCounting`` model does not support fitting with
-truncated data.
+The ``NonParametricCounting`` model also supports **left truncation** (delayed
+entry): an item that was already in service before observation began only joins
+the at-risk set once its entry time is reached, so events before that entry are
+estimated over a smaller risk set. Pass a per-item (or scalar) entry time with
+``tl``:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import NonParametricCounting
+
+    x = [2, 3, 5, 3, 4, 6]
+    i = [1, 1, 1, 2, 2, 2]
+    c = [0, 0, 1, 0, 0, 1]
+
+    model = NonParametricCounting.fit(x, i=i, c=c, tl=1.0)
+    model.mcf(4)
+
+Right truncation (a finite ``tr``) is not yet supported by the non-parametric
+risk-set construction; for right-truncated recurrent data use a parametric
+intensity model.
 
 Let's say this data was for the time, in years,
 between repairs on home air conditioners of a specific model. We can then use

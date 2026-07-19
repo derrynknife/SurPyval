@@ -16,6 +16,13 @@ Documentation
   demonstrations of ARA/ARI, renewal-model checking, gapped observation, the
   cause-specific MCF and intensity models, and a full build-out of the
   proportional-intensity regression examples.
+- Fixed and completed the recurrent-event API reference. Every model's
+  autodoc page (HPP, Duane, Cox-Lewis, Crow-AMSAA, the renewal and
+  proportional-intensity models) previously rendered as an empty "alias of
+  object" because the fitters are exposed as singletons; the pages now
+  document each model's methods. Added missing API pages for ``ARA``, ``ARI``,
+  ``NonParametricCounting``, ``CauseSpecificMCF``, ``CauseSpecificNHPP`` and the
+  fitted ``RenewalModel`` object.
 
 Recurrent events
 ~~~~~~~~~~~~~~~~
