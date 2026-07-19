@@ -2,7 +2,7 @@ import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval.ml.forest.tree import SurvivalTree
+from surpyval.beta.ml.forest.tree import SurvivalTree
 from surpyval.utils.score import score
 from surpyval.utils.surpyval_data import SurpyvalData
 

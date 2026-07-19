@@ -24,15 +24,15 @@ import numpy as np
 import pytest
 
 from surpyval import Exponential, Weibull
-from surpyval.ml.forest import RandomSurvivalForest, SurvivalTree
-from surpyval.ml.forest.deviance_split import (
+from surpyval.beta.ml.forest import RandomSurvivalForest, SurvivalTree
+from surpyval.beta.ml.forest.deviance_split import (
     _LOG_BETA_BOUNDS,
     _exp_max_ll,
     _exp_theta0,
     _wei_max_ll,
     needs_full_likelihood_split,
 )
-from surpyval.ml.forest.node import TerminalNode
+from surpyval.beta.ml.forest.node import TerminalNode
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -134,7 +134,7 @@ def test_exponential_mle_matches_exponential_fit(case):
     ll = _exp_max_ll(data, (theta0 - 15.0, theta0 + 15.0))
     lam_surpyval = float(Exponential.fit_from_surpyval_data(data).params[0])
     # the attained likelihood is at least surpyval's (same likelihood)
-    from surpyval.ml.forest.deviance_split import (
+    from surpyval.beta.ml.forest.deviance_split import (
         _exp_neg_ll,
         _exp_neg_ll_parts,
     )

@@ -22,8 +22,8 @@ import numpy as np
 import pytest
 
 from surpyval import Weibull
-from surpyval.ml.forest import RandomSurvivalForest, SurvivalTree
-from surpyval.ml.forest.node import IntermediateNode, TerminalNode
+from surpyval.beta.ml.forest import RandomSurvivalForest, SurvivalTree
+from surpyval.beta.ml.forest.node import IntermediateNode, TerminalNode
 from surpyval.univariate.parametric import NeverOccurs
 
 X_GRID = np.linspace(0.25, 25.0, 12)

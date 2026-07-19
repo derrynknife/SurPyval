@@ -6,12 +6,12 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval import Exponential, NelsonAalen, Turnbull, Weibull
-from surpyval.ml.forest.deviance_split import (
+from surpyval.beta.ml.forest.deviance_split import (
     _exp_theta0,
     deviance_split,
     needs_full_likelihood_split,
 )
-from surpyval.ml.forest.log_rank_split import log_rank_split
+from surpyval.beta.ml.forest.log_rank_split import log_rank_split
 from surpyval.univariate.parametric import NeverOccurs
 from surpyval.utils.surpyval_data import SurpyvalData
 

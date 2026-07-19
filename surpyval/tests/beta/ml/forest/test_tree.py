@@ -5,8 +5,8 @@ import pytest
 from sksurv.tree.tree import SurvivalTree as sksurv_SurvivalTree
 
 from surpyval import Weibull
-from surpyval.ml.forest.node import TerminalNode
-from surpyval.ml.forest.tree import SurvivalTree
+from surpyval.beta.ml.forest.node import TerminalNode
+from surpyval.beta.ml.forest.tree import SurvivalTree
 
 
 def test_tree_no_split():
