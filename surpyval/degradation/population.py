@@ -19,6 +19,27 @@ factor (log-diagonal) so it stays positive definite by construction.
 
 The two-stage moments estimate (computed in
 ``DegradationAnalysis.fit``) is used as the starting point.
+
+Nonlinear path models
+---------------------
+For a path model that is *nonlinear* in its parameters -- exponential,
+power, Gompertz, ... -- the measurement mean ``f(x_i, theta_i)`` is no
+longer ``X_i theta_i`` and the marginal likelihood is intractable.
+``reml_estimate_nonlinear`` handles this with the Lindstrom-Bates (1990)
+alternating algorithm (the FOCE linearisation used by ``nlme``):
+
+1. hold ``(mu, Sigma, sigma^2)`` fixed and find each unit's conditional
+   mode ``theta_hat_i`` (its penalised-least-squares / MAP estimate);
+2. linearise the path about that mode,
+   ``f(x_i, theta) ~ f(x_i, theta_hat_i) + J_i (theta - theta_hat_i)``
+   with ``J_i`` the path Jacobian at ``theta_hat_i``, forming the
+   pseudo-response ``w_i = y_i - f(x_i, theta_hat_i) + J_i theta_hat_i``;
+3. run the *linear* REML step above on ``(w_i, J_i)`` to update
+   ``(mu, Sigma, sigma^2)``,
+
+iterating 1-3 to convergence. For a linear-in-parameters path this
+reduces exactly to the linear REML in one pass (``w_i = y_i`` and the
+modes drop out), so the two routines agree.
 """
 
 import numpy as np
@@ -144,3 +165,157 @@ def reml_estimate(
     )
     _, mu, covariance, sigma2 = _reml_pieces(result.x, y_list, x_mat_list, p)
     return mu, covariance, sigma2, bool(result.success)
+
+
+def _prior_precision(cov: npt.NDArray, sigma2: float) -> npt.NDArray:
+    """Inverse of ``Sigma`` with its eigenvalues floored positive.
+
+    A rank-deficient or tiny ``Sigma`` gives a very tight (but proper)
+    prior in the deficient directions rather than a singular precision.
+    """
+    cov = (cov + cov.T) / 2.0
+    eigvals, eigvecs = np.linalg.eigh(cov)
+    floor = max(eigvals.max() * 1e-8, sigma2 * 1e-12, np.finfo(float).tiny)
+    inv_eigvals = 1.0 / np.clip(eigvals, floor, None)
+    return eigvecs @ np.diag(inv_eigvals) @ eigvecs.T
+
+
+def _conditional_mode(
+    path_model,
+    x: npt.NDArray,
+    y: npt.NDArray,
+    mu: npt.NDArray,
+    prior_precision: npt.NDArray,
+    sigma2: float,
+    theta0: npt.NDArray,
+    max_iter: int = 50,
+) -> npt.NDArray:
+    """
+    Penalised-least-squares (MAP) mode of one unit's path parameters.
+
+    Minimises ``||y - f(x, theta)||^2 / sigma^2 +
+    (theta - mu)' Sigma^-1 (theta - mu)`` by damped Gauss-Newton with a
+    backtracking line search, started from the unit's unpenalised
+    least-squares fit ``theta0``.
+    """
+    theta = np.array(theta0, dtype=float)
+
+    def penalised(t):
+        resid = y - path_model.path(x, *t)
+        delta = t - mu
+        return (resid @ resid) / sigma2 + delta @ prior_precision @ delta
+
+    obj = penalised(theta)
+    if not np.isfinite(obj):
+        return theta
+    for _ in range(max_iter):
+        jac = np.asarray(path_model.jacobian(x, *theta), dtype=float)
+        resid = y - path_model.path(x, *theta)
+        # gradient and Gauss-Newton Hessian of the penalised objective
+        # (the common factor of 2 cancels in the Newton step)
+        grad = -(jac.T @ resid) / sigma2 + prior_precision @ (theta - mu)
+        hess = (jac.T @ jac) / sigma2 + prior_precision
+        try:
+            step = np.linalg.solve(hess, grad)
+        except np.linalg.LinAlgError:
+            break
+        alpha, improved = 1.0, False
+        for _ in range(40):
+            candidate = theta - alpha * step
+            if np.isfinite(candidate).all():
+                new_obj = penalised(candidate)
+                if np.isfinite(new_obj) and new_obj < obj - 1e-14 * abs(obj):
+                    theta, obj, improved = candidate, new_obj, True
+                    break
+            alpha *= 0.5
+        if not improved:
+            break
+        scale = 1.0 + np.max(np.abs(theta))
+        if np.max(np.abs(alpha * step)) <= 1e-10 * scale:
+            break
+    return theta
+
+
+def reml_estimate_nonlinear(
+    y_list: "list[npt.NDArray]",
+    x_list: "list[npt.NDArray]",
+    path_model,
+    mean_init: npt.NDArray,
+    cov_init: npt.NDArray,
+    sigma2_init: float,
+    theta_init: npt.NDArray,
+    max_outer: int = 50,
+    tol: float = 1e-5,
+) -> tuple[npt.NDArray, npt.NDArray, float, bool]:
+    """
+    REML fit of a nonlinear random-effects degradation path by the
+    Lindstrom-Bates (1990) FOCE linearisation.
+
+    Parameters
+    ----------
+    y_list : list of ndarray
+        Each unit's measurement vector.
+    x_list : list of ndarray
+        Each unit's measurement times (used to re-evaluate the path and
+        its Jacobian at the conditional modes).
+    path_model : PathModel
+        The (nonlinear) degradation path model.
+    mean_init, cov_init, sigma2_init : ndarray, ndarray, float
+        Starting values for ``mu``, ``Sigma`` and ``sigma^2`` (typically
+        the two-stage moment estimates).
+    theta_init : ndarray
+        Per-unit unpenalised least-squares path fits, one row per unit;
+        the starting points for the conditional-mode search.
+    max_outer : int, optional
+        Maximum outer (linearise / LME) iterations. Default 50.
+    tol : float, optional
+        Relative convergence tolerance on ``(mu, Sigma, sigma^2)``.
+
+    Returns
+    -------
+    (mu, Sigma, sigma2, converged)
+    """
+    mu = np.array(mean_init, dtype=float)
+    covariance = np.array(cov_init, dtype=float)
+    sigma2 = float(sigma2_init)
+    theta_hat = np.array(theta_init, dtype=float)
+
+    converged = False
+    for _ in range(max_outer):
+        prior_precision = _prior_precision(covariance, sigma2)
+        # Step 1: conditional modes given the current population.
+        w_list, jac_list = [], []
+        for k, (y_i, x_i) in enumerate(zip(y_list, x_list)):
+            theta_i = _conditional_mode(
+                path_model,
+                x_i,
+                y_i,
+                mu,
+                prior_precision,
+                sigma2,
+                theta_hat[k],
+            )
+            theta_hat[k] = theta_i
+            # Step 2: linearise the path about the mode.
+            jac = np.asarray(path_model.jacobian(x_i, *theta_i), dtype=float)
+            fitted = np.asarray(path_model.path(x_i, *theta_i), dtype=float)
+            w_list.append(y_i - fitted + jac @ theta_i)
+            jac_list.append(jac)
+
+        # Step 3: linear REML step on the pseudo-data, warm-started from
+        # the current variance components.
+        mu_new, cov_new, sigma2_new, inner_ok = reml_estimate(
+            w_list, jac_list, covariance, sigma2
+        )
+
+        prev = np.concatenate([mu, covariance.ravel(), [sigma2]])
+        curr = np.concatenate([mu_new, cov_new.ravel(), [sigma2_new]])
+        scale = np.maximum(np.abs(prev), np.abs(curr)) + 1e-12
+        rel_change = float(np.max(np.abs(curr - prev) / scale))
+
+        mu, covariance, sigma2 = mu_new, cov_new, sigma2_new
+        if rel_change < tol:
+            converged = bool(inner_ok)
+            break
+
+    return mu, covariance, sigma2, converged

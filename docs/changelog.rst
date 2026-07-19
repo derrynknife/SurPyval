@@ -17,6 +17,17 @@ Experimental
 Degradation
 ~~~~~~~~~~~
 
+- Extended ``population_method="reml"`` to **nonlinear** path models
+  (exponential, power, Gompertz, ...). Previously REML population estimation
+  was restricted to paths linear in their parameters; nonlinear paths are now
+  fitted with the Lindstrom-Bates (1990) FOCE alternating algorithm -- each
+  unit's parameters are estimated at their conditional (penalised-least-
+  squares) mode, the path is linearised about that mode into a working linear
+  mixed model, and the linear REML step is iterated to convergence. This gives
+  a positive-definite ``path_param_cov`` by construction (no PSD clipping) for
+  nonlinear paths too, which is the more robust population estimate when the
+  unit count is small. On a linear-in-parameters path the routine reduces
+  exactly to the previous linear REML fit in a single pass.
 - Added the Lu-Meeker induced failure-time distribution:
   ``DegradationModel.induced_life`` derives the population failure-time
   distribution directly from the fitted path-parameter distribution -- drawing
