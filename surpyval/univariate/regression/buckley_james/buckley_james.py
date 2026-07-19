@@ -33,6 +33,7 @@ two-point cycle rather than a fixed point -- a known feature of the estimator
 -- which is detected and resolved by averaging the cycle.
 """
 
+import json
 import warnings
 
 import numpy as np
@@ -181,6 +182,91 @@ class BuckleyJamesModel:
             self._resid_surv[np.clip(idx, 0, len(self._resid_surv) - 1)],
         )
         return out
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self):
+        """
+        Serialise this fitted Buckley-James model to a plain, JSON-serialisable
+        dict.
+
+        Predictions use the residual Kaplan-Meier ``sf(t | Z) =
+        S_eps(log t + beta'Z)``, so what is stored is the coefficients ``beta``
+        and the residual survival step arrays (``_resid`` and ``_resid_surv``).
+        The fit data ``(Y, delta, Z, w)`` is stored too, so the restored model
+        can still run :meth:`bootstrap_ci`.
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        out = {
+            "model": "BuckleyJamesModel",
+            "beta": np.asarray(self.beta, dtype=float).tolist(),
+            "resid": np.asarray(self._resid, dtype=float).tolist(),
+            "resid_surv": np.asarray(self._resid_surv, dtype=float).tolist(),
+            "n_iter": int(self.n_iter),
+            "converged": bool(self.converged),
+        }
+        if self._data is not None:
+            Y, delta, Z, w = self._data
+            out["data"] = {
+                "Y": np.asarray(Y, dtype=float).tolist(),
+                "delta": np.asarray(delta, dtype=float).tolist(),
+                "Z": np.asarray(Z, dtype=float).tolist(),
+                "w": np.asarray(w, dtype=float).tolist(),
+            }
+        if self.feature_names is not None:
+            out["feature_names"] = list(self.feature_names)
+        if self.formula is not None:
+            out["formula"] = self.formula
+        return out
+
+    def to_json(self, fp):
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict):
+        """
+        Rebuild a Buckley-James model from a :meth:`to_dict` dictionary.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        if model_dict.get("model") != "BuckleyJamesModel":
+            raise ValueError(
+                "Must create a Buckley-James model from a "
+                "BuckleyJamesModel dict"
+            )
+        data = None
+        if "data" in model_dict:
+            d = model_dict["data"]
+            data = (
+                np.array(d["Y"], dtype=float),
+                np.array(d["delta"], dtype=float),
+                np.array(d["Z"], dtype=float),
+                np.array(d["w"], dtype=float),
+            )
+        out = cls(
+            np.array(model_dict["beta"], dtype=float),
+            np.array(model_dict["resid"], dtype=float),
+            np.array(model_dict["resid_surv"], dtype=float),
+            int(model_dict["n_iter"]),
+            bool(model_dict["converged"]),
+            data,
+        )
+        out.feature_names = model_dict.get("feature_names")
+        out.formula = model_dict.get("formula")
+        return out
+
+    @classmethod
+    def from_json(cls, fp):
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def sf(self, x, Z):
         """Survival ``P(T > x | Z) = S_eps(log x - beta'Z)`` for a single

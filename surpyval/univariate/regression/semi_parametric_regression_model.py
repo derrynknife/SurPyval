@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
@@ -64,6 +66,105 @@ class SemiParametricRegressionModel:
         for i, p in enumerate(self.params):
             out += "   beta_{i}  :  {p}\n".format(i=i, p=p)
         return out
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """
+        Serialise this fitted Cox model to a plain, JSON-serialisable dict.
+
+        The Cox model is a proportional-hazards fit with a *nonparametric*
+        baseline, so what is stored is the covariate coefficients ``beta`` and
+        the fitted baseline step arrays (event times ``x`` and the baseline
+        hazard ``h0`` / cumulative hazard ``H0``); the hazard multiplier
+        ``phi(Z) = exp(beta'Z)`` is rebuilt from ``beta`` on load. Everything
+        needed for ``hf``/``Hf``/``sf``/``ff``/``df`` (and, for a
+        time-varying-covariate fit, ``predict_tvc``) round-trips exactly. The
+        optimiser objects (the ``neg_ll`` closure, ``jac``, ``hess``, ``res``)
+        are not stored.
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        out: dict[str, Any] = {
+            "model": "SemiParametricRegressionModel",
+            "kind": self.kind,
+            "parameterization": self.parameterization,
+            "beta": np.asarray(self.beta, dtype=float).tolist(),
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "x": np.asarray(self.x, dtype=float).tolist(),
+            "r": np.asarray(self.r, dtype=float).tolist(),
+            "d": np.asarray(self.d, dtype=float).tolist(),
+            "h0": np.asarray(self.h0, dtype=float).tolist(),
+            "H0": np.asarray(self.H0, dtype=float).tolist(),
+            "tie_method": self.tie_method,
+            "baseline_method": self.baseline_method,
+            "is_tvc": bool(self.is_tvc),
+        }
+        if getattr(self, "tl", None) is not None:
+            out["tl"] = np.asarray(self.tl, dtype=float).tolist()
+        if getattr(self, "p_values", None) is not None:
+            out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
+        if getattr(self, "_neg_log_like", None) is not None:
+            out["_neg_log_like"] = float(self._neg_log_like)
+        if self.feature_names is not None:
+            out["feature_names"] = list(self.feature_names)
+        if self.formula is not None:
+            out["formula"] = self.formula
+        return out
+
+    def to_json(self, fp: "str | Path") -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "SemiParametricRegressionModel":
+        """
+        Rebuild a Cox model from a :meth:`to_dict` dictionary.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        if model_dict.get("model") != "SemiParametricRegressionModel":
+            raise ValueError(
+                "Must create a Cox model from a "
+                "SemiParametricRegressionModel dict"
+            )
+        out = cls(model_dict["kind"], model_dict["parameterization"])
+        beta = np.array(model_dict["beta"], dtype=float)
+        out.beta = beta
+        out.params = np.array(model_dict["params"], dtype=float)
+        out.x = np.array(model_dict["x"], dtype=float)
+        out.r = np.array(model_dict["r"], dtype=float)
+        out.d = np.array(model_dict["d"], dtype=float)
+        out.h0 = np.array(model_dict["h0"], dtype=float)
+        out.H0 = np.array(model_dict["H0"], dtype=float)
+        # phi is fully determined by beta
+        out.phi = lambda Z: np.exp(np.asarray(Z, dtype=float) @ out.beta)
+        out.tie_method = model_dict["tie_method"]
+        out.baseline_method = model_dict["baseline_method"]
+        out.is_tvc = bool(model_dict.get("is_tvc", False))
+        out.tl = (
+            np.array(model_dict["tl"], dtype=float)
+            if "tl" in model_dict
+            else None
+        )
+        if "p_values" in model_dict:
+            out.p_values = np.array(model_dict["p_values"], dtype=float)
+        if "_neg_log_like" in model_dict:
+            out._neg_log_like = float(model_dict["_neg_log_like"])
+        out.feature_names = model_dict.get("feature_names")
+        out.formula = model_dict.get("formula")
+        return out
+
+    @classmethod
+    def from_json(cls, fp: "str | Path") -> "SemiParametricRegressionModel":
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"

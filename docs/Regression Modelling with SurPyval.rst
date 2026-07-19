@@ -862,3 +862,24 @@ needs the fitted data, so re-fit if you need that. Models with a bespoke
 covariate link (an Accelerated Life parameter-substitution model, whose link is
 an arbitrary life-model) cannot be rebuilt from a name and raise
 ``NotImplementedError`` when serialised.
+
+The **semi-parametric** regression models save and load the same way, each on
+its own result class: Cox proportional hazards
+(``SemiParametricRegressionModel``), the Lin-Ying additive-hazards model
+(``AdditiveHazardsModel``), and the Buckley-James AFT (``BuckleyJamesModel``).
+Because their baseline is nonparametric, what is stored is the fitted
+coefficients plus the baseline step arrays (or, for Buckley-James, the residual
+survival), so the reloaded model predicts identically:
+
+.. jupyter-execute::
+
+    from surpyval import CoxPH
+    from surpyval.univariate.regression import SemiParametricRegressionModel
+
+    cox = CoxPH.fit(x=x, Z=Z, c=c)
+    cox_reloaded = SemiParametricRegressionModel.from_dict(cox.to_dict())
+    print("match:", np.allclose(cox.sf(t, Z_use), cox_reloaded.sf(t, Z_use)))
+
+Cox's time-varying-covariate prediction (``predict_tvc``), the additive model's
+covariance, and Buckley-James's ``bootstrap_ci`` (which keeps a copy of the fit
+data) all survive the round-trip.
