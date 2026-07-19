@@ -115,6 +115,94 @@ class RULPrediction:
     samples: npt.NDArray = field(repr=False)
 
 
+class InducedFailureDistribution:
+    """
+    The population failure-time distribution *induced by the degradation path
+    model* -- the Lu-Meeker approach.
+
+    Where the fitted ``life_model`` fits a lifetime distribution to each unit's
+    (noisy) extrapolated pseudo failure time, this instead derives the
+    population life directly from the fitted path-parameter distribution: path
+    parameters are drawn ``theta ~ N(path_param_mean, path_param_cov)`` and
+    each draw is pushed through the path model's ``inv_path(threshold)`` to a
+    failure time by Monte Carlo. It is produced by
+    :meth:`DegradationModel.induced_life`.
+
+    Draws whose path never crosses the threshold at a positive time are
+    recorded as ``inf`` -- a defective ("never fails") mass exposed as
+    ``prob_never_fails`` -- so the quantiles and the mean are ``inf`` once they
+    reach into that mass.
+
+    Use it as a diagnostic: overlay ``induced.ff(t)`` on the model's own
+    ``ff(t)`` (the pseudo-failure fit); close agreement is evidence that the
+    path model and its population summary are consistent with the
+    pseudo-failure lifetime fit.
+
+    Parameters
+    ----------
+    samples : numpy array
+        The Monte-Carlo failure-time draws (``inf`` where the path never
+        reaches the threshold at a positive time).
+    threshold : float
+        The degradation failure threshold used.
+    path_name : str
+        Name of the degradation path model.
+    """
+
+    def __init__(self, samples, threshold, path_name):
+        self.samples = np.asarray(samples, dtype=float)
+        self.threshold = float(threshold)
+        self.path_name = path_name
+        self.prob_never_fails = float(np.mean(~np.isfinite(self.samples)))
+
+    def ff(self, x: npt.ArrayLike) -> "float | npt.NDArray":
+        """Failure probability ``P(T <= x)`` from the Monte-Carlo draws."""
+        scalar = np.isscalar(x)
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        out = (self.samples[None, :] <= x[:, None]).mean(axis=1)
+        return float(out[0]) if scalar else out
+
+    def sf(self, x: npt.ArrayLike) -> "float | npt.NDArray":
+        """Survival function ``P(T > x)``."""
+        scalar = np.isscalar(x)
+        res = 1.0 - np.atleast_1d(self.ff(np.atleast_1d(x)))
+        return float(res[0]) if scalar else res
+
+    def qf(self, p: npt.ArrayLike) -> "float | npt.NDArray":
+        """Quantile of the induced distribution (``inf`` in the never-fails
+        mass)."""
+        scalar = np.isscalar(p)
+        p = np.atleast_1d(np.asarray(p, dtype=float))
+        if np.any((p < 0) | (p > 1)):
+            raise ValueError("qf probabilities must lie in [0, 1]")
+        out = np.quantile(self.samples, p, method="lower")
+        return float(out[0]) if scalar else out
+
+    def mean(self) -> float:
+        """Mean failure time (``inf`` if any draw never fails)."""
+        return float(self.samples.mean())
+
+    def median(self) -> float:
+        """Median failure time."""
+        return float(self.qf(0.5))
+
+    def random(self, size: int, random_state=None) -> npt.NDArray:
+        """Draw failure times by resampling the Monte-Carlo population."""
+        rng = np.random.default_rng(random_state)
+        return rng.choice(self.samples, size=size)
+
+    def __repr__(self):
+        return (
+            "InducedFailureDistribution({} path, threshold={:.6g}, "
+            "median={:.6g}, prob_never_fails={:.4g})".format(
+                self.path_name,
+                self.threshold,
+                self.median(),
+                self.prob_never_fails,
+            )
+        )
+
+
 class DegradationModel:
     """
     A fitted degradation analysis model.
@@ -606,6 +694,65 @@ class DegradationModel:
             u = rng.uniform(size=size)
             return self._reg_qf(u, Z)
         return self.life_model.random(size)
+
+    def induced_life(
+        self, n_samples: int = 10_000, random_state=None
+    ) -> InducedFailureDistribution:
+        """
+        The population failure-time distribution induced by the path model
+        (the Lu-Meeker approach), as a Monte-Carlo diagnostic complement to the
+        pseudo-failure-time ``life_model``.
+
+        Path parameters are drawn from the fitted population distribution
+        ``theta ~ N(path_param_mean, path_param_cov)`` and each draw is pushed
+        through the path model's ``inv_path(threshold)`` to a failure time.
+        This derives the population life directly from the path model, rather
+        than via each unit's noisy extrapolated failure time. Overlaying the
+        returned distribution's ``ff`` on this model's own ``ff`` is a check
+        that the two agree.
+
+        Parameters
+        ----------
+        n_samples : int, optional
+            Number of Monte-Carlo path-parameter draws. Default 10000.
+        random_state : int or numpy.random.Generator, optional
+            Seed for a reproducible result.
+
+        Returns
+        -------
+        InducedFailureDistribution
+            The Monte-Carlo induced failure-time distribution.
+        """
+        if self.is_accelerated:
+            raise ValueError(
+                "induced_life uses the (non-accelerated) population "
+                "path-parameter distribution; an accelerated (covariate) "
+                "model's path parameters are not yet stress-conditional, so "
+                "there is no single population to induce a life from."
+            )
+        rng = np.random.default_rng(random_state)
+        mean = np.asarray(self.path_param_mean, dtype=float)
+        cov = np.asarray(self.path_param_cov, dtype=float)
+        # Robust MVN sampling: symmetrise and clip the (possibly PSD-clipped)
+        # covariance's eigenvalues to be non-negative before taking its root.
+        cov = (cov + cov.T) / 2.0
+        eigvals, eigvecs = np.linalg.eigh(cov)
+        root = eigvecs @ np.diag(np.sqrt(np.clip(eigvals, 0.0, None)))
+        z = rng.standard_normal((n_samples, mean.size))
+        theta = mean + z @ root.T
+
+        columns = [theta[:, k] for k in range(theta.shape[1])]
+        with np.errstate(all="ignore"):
+            t = np.asarray(
+                self.path_model.inv_path(self.threshold, *columns),
+                dtype=float,
+            )
+        # A draw only defines a failure time if its path crosses the threshold
+        # at a positive time; otherwise the unit never fails (inf).
+        t = np.where(np.isfinite(t) & (t > 0), t, np.inf)
+        return InducedFailureDistribution(
+            t, self.threshold, self.path_model.name
+        )
 
     def _reg_qf(self, p: npt.ArrayLike, Z) -> npt.NDArray:
         """

@@ -17,6 +17,16 @@ Experimental
 Degradation
 ~~~~~~~~~~~
 
+- Added the Lu-Meeker induced failure-time distribution:
+  ``DegradationModel.induced_life`` derives the population failure-time
+  distribution directly from the fitted path-parameter distribution -- drawing
+  path parameters ``theta ~ N(path_param_mean, path_param_cov)`` and pushing
+  each through the path model's ``inv_path(threshold)`` by Monte Carlo --
+  rather than via each unit's noisy pseudo failure time. It returns an
+  ``InducedFailureDistribution`` exposing ``sf``/``ff``/``qf``/``mean``/
+  ``median``/``random`` (with an ``inf`` "never fails" mass reported as
+  ``prob_never_fails``), a diagnostic complement to the pseudo-failure-time
+  life fit that the two can be overlaid to check.
 - Added stochastic-process degradation models that model the degradation
   increments directly, deriving the failure-time distribution from the
   process's first passage to the threshold (rather than via pseudo failure
