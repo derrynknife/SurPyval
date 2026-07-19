@@ -91,12 +91,24 @@ class TerminalNode(Node):
     @cached_property
     def model(self):
         if self.paramettric:
-            if self.data.to_xrd()[2].sum() == 0:
+            n_failures = self.data.to_xrd()[2].sum()
+            if n_failures == 0:
                 return NeverOccurs
-            elif self.data.to_xrd()[2].sum() <= 1:
+            elif n_failures <= 1:
                 return Exponential.fit_from_surpyval_data(self.data)
-            else:
+            # A degenerate bootstrap sample (e.g. heavily tied event times)
+            # can make the Weibull covariance/Hessian step fail. A single
+            # terminal node must not crash the whole forest, so fall back to
+            # progressively simpler fits that are more numerically robust.
+            try:
                 return Weibull.fit_from_surpyval_data(self.data)
+            except Exception:
+                try:
+                    return Exponential.fit_from_surpyval_data(self.data)
+                except Exception:
+                    return NelsonAalen.fit(
+                        self.data.x, self.data.c, self.data.n, self.data.t
+                    )
         else:
             return NelsonAalen.fit(
                 self.data.x, self.data.c, self.data.n, self.data.t

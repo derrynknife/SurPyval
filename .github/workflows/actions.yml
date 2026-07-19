@@ -52,8 +52,10 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: pytest
+        # The experimental modules (e.g. the survival forest) are not part of
+        # the release contract and are excluded from the deployment test run.
         run:
-          coverage run -m pytest
+          coverage run -m pytest --ignore=surpyval/tests/experimental
 
       - name: coverage
         run: |
