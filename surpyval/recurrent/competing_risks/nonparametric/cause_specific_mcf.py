@@ -12,6 +12,8 @@ See ``surpyval.univariate.competing_risks`` for the univariate
 (time-to-first-event) competing-risks models.
 """
 
+import json
+
 from autograd import numpy as np
 from matplotlib import pyplot as plt
 
@@ -50,6 +52,58 @@ class CauseSpecificMCF:
 
     def __repr__(self):
         return "Cause-specific MCF with causes: {}".format(self.event_types)
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self):
+        """
+        Serialise this fitted cause-specific MCF to a plain, JSON-serialisable
+        dict: the list of event types and each cause's per-cause MCF estimate.
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        return {
+            "model": "CauseSpecificMCF",
+            "event_types": list(self.event_types),
+            "models": [
+                self.models[cause].to_dict() for cause in self.event_types
+            ],
+        }
+
+    def to_json(self, fp):
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict):
+        """
+        Rebuild a cause-specific MCF from a :meth:`to_dict` dictionary.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        if model_dict.get("model") != "CauseSpecificMCF":
+            raise ValueError(
+                "Must create a cause-specific MCF from a CauseSpecificMCF dict"
+            )
+        out = cls()
+        out.event_types = list(model_dict["event_types"])
+        out.models = {
+            cause: NonParametricCounting.from_dict(sub)
+            for cause, sub in zip(out.event_types, model_dict["models"])
+        }
+        return out
+
+    @classmethod
+    def from_json(cls, fp):
+        """Load a cause-specific MCF from a JSON file written by
+        :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def mcf(self, x, cause, interp="step"):
         """Cause-specific MCF evaluated at ``x`` for the given ``cause``."""

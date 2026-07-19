@@ -531,6 +531,38 @@ Each ``model.models[cause]`` is an ordinary fitted recurrence model, so it
 carries the full ``cif`` / ``iif``, inference and diagnostic behaviour shown
 above; ``total_cif`` sums the causes for the overall event intensity.
 
+Saving and loading a fitted model
+---------------------------------
+
+Every fitted recurrence model can be serialised to a plain dictionary or a
+JSON file and rebuilt later. The intensity model is stateless, so only its name
+and the fitted parameters are stored (for the nonparametric MCF, the step
+arrays); the reloaded model reproduces every prediction exactly. This works for
+the parametric intensity fits (``CrowAMSAA`` / ``Duane`` / ``Cox-Lewis`` /
+``HPP``), the nonparametric MCF, the proportional-intensity regression, and the
+two cause-specific containers.
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval.recurrent import CrowAMSAA
+    from surpyval.recurrent.parametric.parametric_recurrence import (
+        ParametricRecurrenceModel,
+    )
+
+    events = np.sort(np.random.default_rng(0).uniform(0, 1000, 40))
+    fitted = CrowAMSAA.fit(events)
+
+    blob = fitted.to_dict()                                   # -> dict
+    restored = ParametricRecurrenceModel.from_dict(blob)      # <- dict
+    t = np.array([100.0, 500.0, 900.0])
+    print("match:", np.allclose(fitted.cif(t), restored.cif(t)))
+
+Use ``to_json`` / ``from_json`` for a file directly. The likelihood-inference
+state (the fitted data and the log-likelihood) is not serialised, so a reloaded
+model behaves like a ``from_params`` one for confidence bounds and diagnostics
+— re-fit if you need those.
+
 References
 ----------
 

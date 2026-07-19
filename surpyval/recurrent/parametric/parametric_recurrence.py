@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 from matplotlib import pyplot as plt
 
@@ -7,6 +9,7 @@ from surpyval.recurrent.inference import (
     delta_method_std_errors,
     log_transformed_cb,
 )
+from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 
 
@@ -34,6 +37,61 @@ class ParametricRecurrenceModel(
     >>> x = Exponential.random(10, 1e-3).cumsum()
     >>> model = HPP.fit(x)
     """
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self):
+        """
+        Serialise this fitted recurrence model to a plain, JSON-serialisable
+        dict.
+
+        The intensity model is stateless, so only its name and the fitted
+        ``params`` are stored; the reloaded model reproduces ``cif``/``iif``/
+        ``mcf``/``inv_cif`` exactly. Likelihood-inference state (the data and
+        the ``neg_ll`` closure) is not stored, so a reloaded model behaves like
+        a ``from_params`` one for confidence bounds and diagnostics.
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        return {
+            "model": "ParametricRecurrenceModel",
+            "dist": self.dist.name,
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "how": getattr(self, "how", "from_params"),
+        }
+
+    def to_json(self, fp):
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict):
+        """
+        Rebuild a recurrence model from a :meth:`to_dict` dictionary.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        if model_dict.get("model") != "ParametricRecurrenceModel":
+            raise ValueError(
+                "Must create a recurrence model from a "
+                "ParametricRecurrenceModel dict"
+            )
+        out = cls()
+        out.dist = intensity_dist_by_name(model_dict["dist"])
+        out.params = np.array(model_dict["params"], dtype=float)
+        out.how = model_dict.get("how", "from_params")
+        return out
+
+    @classmethod
+    def from_json(cls, fp):
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def _parameter_names(self):
         return list(self.dist.param_names)
