@@ -3,10 +3,10 @@ from math import log2, sqrt
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval.experimental.forest.deviance_split import (
+from surpyval.ml.forest.deviance_split import (
     needs_full_likelihood_split,
 )
-from surpyval.experimental.forest.node import build_tree
+from surpyval.ml.forest.node import build_tree
 from surpyval.utils.surpyval_data import SurpyvalData
 
 

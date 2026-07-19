@@ -2,7 +2,7 @@ import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval.experimental.forest.tree import SurvivalTree
+from surpyval.ml.forest.tree import SurvivalTree
 from surpyval.utils.score import score
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -186,8 +186,8 @@ class RandomSurvivalForest:
         x: ArrayLike,
         Z: ArrayLike | NDArray,
         c: ArrayLike,
-        tie_tol: float = 1e-15,
+        tie_tol: float = 1e-8,
     ) -> float:
+        """Harrell's concordance index of the forest's mortality scores."""
         scores: ArrayLike = self.mortality(x, Z)
-        tol: float = 1e-8
-        return score(x, c, scores, tol)
+        return score(x, c, scores, tie_tol)

@@ -12,19 +12,24 @@ def score(
     scores: ArrayLike,
     tie_tol: float = 1e-8,
 ) -> float:
+    # Harrell's concordance index for risk scores: ``scores`` are
+    # mortality-like (a higher score predicts an earlier event).
+    #
     # Steps:
-    # 1. Form all pairs of samples
-    # 2. Omit pairs where earlier time sample is censored
+    # 1. Form all pairs of samples; order each pair by time (earliest
+    #    first), breaking exact time ties so the observed event comes
+    #    before the censored observation
+    # 2. Omit pairs where the earlier time sample is censored
     # 3. Omit pairs whose times are both equal and censored
     #    (the number of permissible pairs, n_permissible_pairs, is the
     #    number of pairs after the above omissions)
-    # 4. If x_1 < x_2 and x_hat_1 < x_hat_2 => concordance += 1
+    # 4. If x_1 < x_2 and x_hat_1 > x_hat_2 => concordance += 1
     # 5. If x_1 < x_2 and x_hat_1 == x_hat_2 => concordance += 0.5
     # 6. If x_1 == x_2 and both are deaths,
     #    if x_hat_1 == x_hat_2 => concordance += 1
     #    else concordance += 0.5
-    # 7. If x_1 == x_2 and only one of them are deaths (let's say x_1),
-    #    if x_hat_1 < x_hat_2 => concordance += 1
+    # 7. If x_1 == x_2 and only one of them is a death (say x_1),
+    #    if x_hat_1 > x_hat_2 => concordance += 1
     #    otherwise => concordance += 0.5
     # c-index = concordance / n_permissible_pairs
 
@@ -44,8 +49,9 @@ def score(
     n_permissible_pairs = 0
 
     for tup_1, tup_2 in pairs:
-        # Get right ordering
-        if tup_1[1] > tup_2[1]:
+        # Order the pair by time, earliest first; on an exact time tie
+        # the observed event (c == 0) comes first
+        if (tup_1[0], tup_1[1]) > (tup_2[0], tup_2[1]):
             tup_1, tup_2 = tup_2, tup_1
 
         # Unpack tuple

@@ -1,6 +1,6 @@
 import numpy as np
 
-from surpyval.experimental.forest.log_rank_split import log_rank_split
+from surpyval.ml.forest.log_rank_split import log_rank_split
 from surpyval.utils.surpyval_data import SurpyvalData
 
 

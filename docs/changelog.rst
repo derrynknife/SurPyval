@@ -4,6 +4,29 @@ Changelog
 v0.15.0 (unreleased)
 --------------------
 
+Machine learning
+~~~~~~~~~~~~~~~~
+
+- The survival tree and random survival forest graduated from
+  ``surpyval.experimental`` to a new ``surpyval.ml`` package:
+  ``from surpyval.ml import SurvivalTree, RandomSurvivalForest``. The old
+  ``surpyval.experimental`` imports still work as re-exports. Their test
+  suite now runs in CI, expanded with behavioural and structural tests:
+  prediction coherence (``ff = 1 - sf``, ``Hf = -log(sf)``, monotone
+  bounded ``sf``), ``max_depth``/``min_leaf_samples``/``min_leaf_failures``
+  guarantees, seeded determinism, degenerate inputs (all-censored,
+  constant covariates, tiny samples, tied times, count weights), forest
+  ensemble maths (the forest ``sf`` is exactly the tree average; the
+  ``"Hf"`` method averages cumulative hazards), prediction shapes,
+  mortality ordering and a concordance sanity check.
+- Fixed the concordance index (``surpyval.utils.score.score``, used by
+  ``RandomSurvivalForest.score``): pairs were ordered by censoring flag
+  instead of by time before comparison, which pushed the c-index of even a
+  strongly informative forest towards 0.5. Pairs are now ordered by time
+  (event first on exact ties), so ``score`` returns Harrell's c-index for
+  mortality-like scores (1 = perfectly concordant). ``forest.score`` also
+  now respects its ``tie_tol`` argument.
+
 Competing risks & mixtures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
