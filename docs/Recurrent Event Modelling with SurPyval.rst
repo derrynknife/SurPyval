@@ -233,6 +233,7 @@ estimated. A large p-value means the fitted intensity is consistent with the
 data:
 
 .. jupyter-execute::
+    :stderr:
 
     gof = model.cramer_von_mises(n_boot=100, seed=1)
     print("statistic", round(gof.statistic, 3), " p-value", round(gof.p_value, 3))
@@ -379,6 +380,138 @@ The image above shows that the blue line (the model from the simulation) is in
 very good agreement to the data. This is a good indication that the underlying
 distribution is Weibull and that the repair effectiveness has been correctly
 estimated.
+
+Arithmetic Reduction Models (ARA / ARI) with SurPyval
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``ARA`` (Arithmetic Reduction of Age) and ``ARI`` (Arithmetic Reduction of
+Intensity) models make the *memory* of a repair explicit through an integer
+``m``: how many prior failures an intervention acts on. ``ARA`` reduces a
+virtual age; ``ARI`` reduces the intensity directly. Both are fitted with the
+same API as the other renewal models, plus the ``m`` argument.
+
+.. jupyter-execute::
+
+    from surpyval import Weibull
+    from surpyval.recurrent import ARA
+    import numpy as np
+
+    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2.2, 5, 7.5, 9, 12])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3])
+
+    model = ARA.fit(x, i, dist=Weibull, m=1)
+    model
+
+The ``Repair Efficiency`` :math:`\rho` reported here plays the role of
+:math:`1 - q`: a value near 1 is close to as-good-as-new, a value near 0 is
+as-bad-as-old. ``ARI`` fits the same way but with an intensity (counting
+process) baseline such as ``CrowAMSAA``:
+
+.. jupyter-execute::
+    :stderr:
+
+    from surpyval.recurrent import ARI, CrowAMSAA
+
+    model = ARI.fit(x, i, dist=CrowAMSAA, m=1)
+    model
+
+Checking a renewal model
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The renewal and virtual-age models carry the same diagnostics as the intensity
+models. Because they have no marginal cumulative intensity, the residuals come
+from the *conditional* intensity — the cumulative hazard accumulated over each
+interval given the model's virtual age — but under a well-specified model they
+are still an i.i.d. Exp(1) sample:
+
+.. jupyter-execute::
+    :stderr:
+
+    from surpyval import Weibull
+    from surpyval.recurrent import GeneralizedRenewal
+    import numpy as np
+
+    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2.2, 5, 7.5, 9, 12])
+    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3])
+
+    model = GeneralizedRenewal.fit(x, i, dist=Weibull, kijima="i")
+    print("residual mean :", round(model.residuals().mean(), 3))
+    print("trend         :", model.trend_test().trend)
+
+    gof = model.cramer_von_mises(n_boot=50, seed=1)
+    print("CvM p-value   :", round(gof.p_value, 3))
+
+The Cramér–von Mises bootstrap refits the (multi-start) imperfect-repair model
+once per replicate, so it is noticeably slower than the residual checks; keep
+``n_boot`` modest while exploring.
+
+Gapped (multi-window) observation
+---------------------------------
+
+Sometimes an item is only observed over a few disjoint windows, with gaps in
+between during which failures may occur but are not recorded — a vehicle seen
+only while it is in the depot, for instance. Passing a ``windows`` mapping to an
+intensity model tells SurPyval each item's observation windows; every event you
+pass is then an observed failure (``c=0``), and the windows supply the
+end-of-window censoring automatically.
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import CrowAMSAA
+    import numpy as np
+
+    # one item, observed on [0, 12] and [20, 40] with an unobserved gap
+    x = np.array([3, 7, 10, 25, 33, 38])
+    i = np.array([1, 1, 1, 1, 1, 1])
+
+    model = CrowAMSAA.fit(x, i, windows={1: [(0, 12), (20, 40)]})
+    model.params
+
+Because Poisson event counts over disjoint windows are independent, each window
+is fitted as its own observation period; the intensity likelihood and the
+non-parametric MCF at-risk set both account for the gaps with no extra work. The
+virtual-age / renewal models reject gapped data, since the virtual age at the
+start of a later window depends on the unobserved failures during the gap.
+
+Competing risks: marked recurrent events
+-----------------------------------------
+
+When events come in several mutually exclusive types, attach a **mark** ``e`` to
+each event (use ``None`` for censoring rows). The non-parametric
+``CauseSpecificMCF`` gives one mean cumulative function per cause, sharing the
+at-risk set across causes:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import CauseSpecificMCF
+
+    x = [3, 1, 5, 2, 4, 6]
+    i = [1, 1, 1, 2, 2, 2]
+    c = [0, 0, 1, 0, 0, 1]
+    e = ["A", "B", None, "A", "A", None]   # None marks the censoring rows
+
+    model = CauseSpecificMCF.fit(x, i, c, e=e)
+    ax = model.plot()
+
+For a parametric picture, ``CauseSpecificNHPP`` fits one intensity model per
+cause (``CrowAMSAA`` by default). A marked Poisson process decomposes into
+independent thinned Poisson processes, so each cause is fitted to its own events
+over the full observation window — other-cause events are ignored, exactly like
+a censored period:
+
+.. jupyter-execute::
+    :stderr:
+
+    from surpyval.recurrent import CauseSpecificNHPP
+
+    model = CauseSpecificNHPP.fit(x, i, c, e=e)
+    print("causes         :", model.event_types)
+    print("cause A params :", model.models["A"].params.round(3))
+    print("total cif at 6 :", round(float(model.total_cif(6.0)), 3))
+
+Each ``model.models[cause]`` is an ordinary fitted recurrence model, so it
+carries the full ``cif`` / ``iif``, inference and diagnostic behaviour shown
+above; ``total_cif`` sums the causes for the overall event intensity.
 
 References
 ----------

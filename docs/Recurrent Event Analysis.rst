@@ -9,6 +9,8 @@ subject of single-event survival analysis. In single-event (univariate) analysis
 one is interested in only the time to the first, and only, event. In recurrent
 event analysis one is interested in the time to the first, second, third, etc.
 event. We therefore need a way to describe how many events have occurred by time t.
+For a comprehensive, book-length treatment of recurrent-event analysis, see
+[Cook2007]_.
 
 Recurrent events are modelled using counting processes and point processes.
 The underlying mathematical framework — martingale theory and stochastic
@@ -234,6 +236,54 @@ The ability of the G1 Renewal Process to capture the behaviour of when the
 intervention can improve the life of the subject is the reason why it is
 a useful model to have available.
 
+Arithmetic Reduction of Age and Intensity (ARA/ARI)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Kijima virtual-age models above are the special cases of a more general
+family due to Doyen and Gaudoin [Doyen2004]_. Rather than fold every past
+repair into a single running age, these models make the *memory* of the repair
+explicit: how many previous failures does an intervention act on?
+
+The **Arithmetic Reduction of Age** (ARA) model reduces the virtual age by a
+fixed fraction :math:`\rho` of the age accumulated over the last :math:`m`
+inter-arrival times. With infinite memory (:math:`m = \infty`) and one prior
+failure this recovers Kijima-I; with :math:`m = 1` it acts only on the most
+recent interval. The repair efficiency :math:`\rho \in (0, 1)` plays the role
+of :math:`1 - q`: :math:`\rho = 1` is as-good-as-new (perfect repair) and
+:math:`\rho = 0` is as-bad-as-old (minimal repair).
+
+The **Arithmetic Reduction of Intensity** (ARI) model instead reduces the
+*intensity* directly. After each repair the failure intensity is lowered by a
+fraction :math:`\rho` of the intensity built up over the last :math:`m`
+intervals, so the process acts on the rate of events rather than on an
+effective age. ARA and ARI coincide for a constant (homogeneous) baseline but
+differ whenever the baseline intensity varies with time.
+
+Both models take an integer memory :math:`m` (with :math:`m = \infty` the
+infinite-memory limit), which lets you dial the model from "the last repair
+undid only the most recent wear" (:math:`m = 1`) up to "every repair reaches
+back over the whole history" (:math:`m = \infty`).
+
+The Geometric Process
+~~~~~~~~~~~~~~~~~~~~~~~
+
+A closely related idea is Lam's **geometric process** [Lam1988]_. Here the
+successive inter-arrival times :math:`X_1, X_2, \ldots` are scaled so that
+:math:`a^{\,k-1} X_k` are independent and identically distributed for a single
+ratio :math:`a > 0`. When :math:`a > 1` the inter-arrivals shrink
+geometrically (a deteriorating system), when :math:`a < 1` they grow
+(reliability growth), and :math:`a = 1` is an ordinary renewal process. The
+mean inter-arrival time is then the geometric sequence
+:math:`\mathbb{E}[X_k] = \mu / a^{\,k-1}`.
+
+This is exactly the G1 Renewal Process in a different parameterisation:
+matching the G1 scaling :math:`(1 + q)^{j}` to :math:`a^{-j}` gives
+:math:`a = 1 / (1 + q)`. A deteriorating system (:math:`a > 1`) therefore
+corresponds to a negative restoration factor, and reliability growth
+(:math:`a < 1`) to a positive one. Fitting a
+:class:`~surpyval.recurrent.GeneralizedOneRenewal` gives the geometric process
+with a parametric lifetime distribution.
+
 
 Parameter Estimation
 --------------------
@@ -265,4 +315,133 @@ integral reduces to :math:`\lambda T`.
 .. note::
 
     Full derivations for each parametric model (Crow-AMSAA, Duane, Cox-Lewis)
-    are in the API docstrings. 
+    are in the API docstrings.
+
+Truncation and Delayed Entry
+----------------------------
+
+Observation of a recurrent process rarely starts at the origin. A machine may
+already have been in service before monitoring began, or a study may only
+record events after a subject enrols. This is **left truncation** (delayed
+entry): the item is only under observation from an entry time :math:`t_L`, and
+its first observed interval is integrated from :math:`t_L` rather than from
+zero. **Right truncation** closes the observation window at a time :math:`t_R`,
+extending the compensator integral out to :math:`t_R` even if no event or
+censoring row sits exactly there.
+
+The intensity (Poisson) models handle delayed entry directly, because the
+likelihood over any interval depends only on the intensity over that interval.
+The virtual-age and history-dependent models (Kijima, G1, ARA, ARI) cannot:
+the virtual age at entry depends on the unobserved failures before entry, so
+those models require the process to be observed from the start.
+
+Model Checking: Residuals, Trend Tests, and Goodness of Fit
+-----------------------------------------------------------
+
+Having a fitted model is not the same as having a *good* model, and recurrent
+processes admit the same kind of residual analysis as ordinary regression.
+
+The key tool is the **time-rescaling theorem** [Ogata1988]_ [DaleyVereJones2003]_.
+If events follow a process with cumulative intensity :math:`\Lambda`, then
+transforming each event time by its own compensator turns the observed events
+into a *unit-rate* Poisson process. Concretely, the rescaled inter-arrival
+increments
+
+.. math::
+
+    e_k = \Lambda(x_k) - \Lambda(x_{k-1})
+
+are independent Exp(1) random variables when the fitted model is correct. So a
+simple check is whether the residuals :math:`e_k` look like an i.i.d. Exp(1)
+sample (mean one); the probability-integral transform :math:`1 - e^{-e_k}`
+turns them into U(0, 1) values for a QQ-style check, and a per-item
+**martingale residual** — observed event count minus the compensator over the
+item's window — flags items the model over- or under-predicts. For the
+virtual-age and renewal models the same construction is applied to the
+*conditional* intensity (the cumulative hazard accumulated over each interval
+given the model's virtual age or intensity reduction), so residuals extend to
+those families too.
+
+A **trend test** asks a more basic question: was a time-varying intensity
+warranted at all? The null hypothesis is a homogeneous Poisson process (no
+trend). The Laplace test and the Military-Handbook (MIL-HDBK-189C) test
+[Rigdon2000]_ both use only the event times and observation windows, not the
+fitted parameters, so they are a useful sanity check before committing to a
+particular parametric form.
+
+Finally, a **Cramér–von Mises** goodness-of-fit test [DaleyVereJones2003]_
+measures how far the conditionally-uniform transforms fall from uniformity.
+Conditional on the number of events an item shows, the normalised compensators
+:math:`\Lambda(x_k) / \Lambda(\text{close})` are i.i.d. U(0, 1) under the true
+model; the statistic aggregates their departure from uniformity. Because the
+parameters were estimated from the same data, the p-value is obtained by a
+parametric bootstrap — resimulating from the fitted model, refitting, and
+recomputing the statistic — so it accounts for the estimation. For the
+power-law (Crow-AMSAA) process this is the construction behind Crow's
+classical goodness-of-fit test.
+
+Competing Risks: Marked Recurrent Events
+----------------------------------------
+
+An item can experience events of several *mutually exclusive types* — a pump
+that suffers seal failures, bearing failures and impeller failures, say. Each
+event carries a **mark** identifying its type, and we usually want a separate
+picture per type.
+
+Non-parametrically, the **cause-specific mean cumulative function** is the MCF
+restricted to one cause. The at-risk set is shared across causes (an item is at
+risk for every cause until it leaves observation); only the event counts are
+split by type. This is the recurrent-process analogue of the cause-specific
+cumulative incidence in single-event competing risks.
+
+Parametrically, a marked Poisson process has an elegant structure: the
+cause-specific processes are **independent thinned Poisson processes**. An
+event of one cause neither advances nor interrupts another cause's intensity,
+so the joint likelihood factorises over causes. Each cause's intensity is
+therefore just the ordinary NHPP fit to that cause's events over the full
+observation window of every item, treating other-cause events exactly as a
+censored (unobserved) period. The total intensity is the sum of the
+cause-specific intensities.
+
+Gapped (Multi-Window) Observation
+---------------------------------
+
+Sometimes an item is observed over several *disjoint* windows with unobserved
+gaps in between — a fleet vehicle tracked only while it is in the depot, or a
+system monitored during business hours. Events may occur during a gap but are
+never recorded, so the analysis must not assume the item was under observation
+throughout.
+
+For a Poisson (intensity) process this has a clean solution. Because event
+counts over disjoint windows are independent, a gapped item's likelihood
+factorises over its windows, and each window can be treated as its own
+observation period with its own entry and exit. The intensity likelihood and
+the non-parametric MCF at-risk set then handle the gaps with no special
+machinery: an item is simply absent from the risk set while it is unobserved.
+The virtual-age and renewal models cannot accommodate gaps, because the virtual
+age at the start of a later window depends on the unobserved failures during
+the gap.
+
+References
+----------
+
+.. [Doyen2004] Doyen, L. and Gaudoin, O., 2004. Classes of imperfect repair
+   models based on reduction of failure intensity or virtual age. *Reliability
+   Engineering & System Safety*, 84(1), pp.45-56.
+
+.. [Lam1988] Lam, Y., 1988. Geometric processes and replacement problem. *Acta
+   Mathematicae Applicatae Sinica*, 4(4), pp.366-377.
+
+.. [Ogata1988] Ogata, Y., 1988. Statistical models for earthquake occurrences
+   and residual analysis for point processes. *Journal of the American
+   Statistical Association*, 83(401), pp.9-27.
+
+.. [DaleyVereJones2003] Daley, D.J. and Vere-Jones, D., 2003. *An Introduction
+   to the Theory of Point Processes, Volume I: Elementary Theory and Methods*,
+   2nd ed. Springer.
+
+.. [Rigdon2000] Rigdon, S.E. and Basu, A.P., 2000. *Statistical Methods for the
+   Reliability of Repairable Systems*. John Wiley & Sons.
+
+.. [Cook2007] Cook, R.J. and Lawless, J.F., 2007. *The Statistical Analysis of
+   Recurrent Events*. Springer.

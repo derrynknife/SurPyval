@@ -4,6 +4,19 @@ Changelog
 v0.14.0 (unreleased)
 --------------------
 
+Documentation
+~~~~~~~~~~~~~
+
+- Substantially expanded the recurrent-event documentation for the release.
+  The theory pages now cover the arithmetic-reduction (ARA/ARI) models, the
+  geometric-process view of the G1 renewal process, the time-rescaling
+  residual / trend-test / Cramer-von Mises diagnostics, marked (competing-risks)
+  recurrent events, gapped multi-window observation, and truncation, each with a
+  short References section. The worked-example pages gained runnable
+  demonstrations of ARA/ARI, renewal-model checking, gapped observation, the
+  cause-specific MCF and intensity models, and a full build-out of the
+  proportional-intensity regression examples.
+
 Recurrent events
 ~~~~~~~~~~~~~~~~
 
