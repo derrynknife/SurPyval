@@ -16,6 +16,9 @@ Degradation Model
 .. autoclass:: surpyval.degradation.degradation_analysis.RULPrediction
    :members:
 
+.. autoclass:: surpyval.degradation.degradation_analysis.InducedFailureDistribution
+   :members:
+
 Path Models
 -----------
 

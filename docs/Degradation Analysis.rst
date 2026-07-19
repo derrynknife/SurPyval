@@ -276,6 +276,90 @@ their parameters (linear, quadratic, logarithmic, Lloyd-Lipow) and
 requires a
 positive measurement variance.
 
+Induced failure-time distribution (Lu-Meeker)
+---------------------------------------------
+
+Everything so far follows the **pseudo-failure-time** route: extrapolate each
+unit's fitted path to the threshold, get one (noisy) failure time per unit, and
+fit a lifetime distribution to those times. That is simple and robust, but it
+throws away structure — it treats each extrapolated time as a plain observation
+and never uses the fact that we have *estimated the whole population of paths*.
+
+The **Lu-Meeker** approach uses that population directly. Once the model has
+fitted the population path-parameter distribution
+:math:`\theta \sim N(\mu, \Sigma)` (the ``path_param_mean`` and
+``path_param_cov`` above), the failure-time distribution of the population
+follows *deterministically*: a unit with path parameters :math:`\theta` fails
+at the time its path crosses the threshold, i.e. at
+:math:`T(\theta) = \text{inv\_path}(D; \theta)`. So the population failure-time
+distribution is simply the distribution of :math:`T(\theta)` as
+:math:`\theta` ranges over its population. There is rarely a closed form, so
+``induced_life`` evaluates it by **Monte Carlo**: draw many
+:math:`\theta \sim N(\mu, \Sigma)`, push each through ``inv_path``, and collect
+the resulting failure times.
+
+.. jupyter-execute::
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from surpyval.degradation import DegradationAnalysis
+
+    rng = np.random.default_rng(0)
+    threshold = 30.0
+
+    xs, ys, ids = [], [], []
+    for unit in range(50):
+        a = rng.normal(0.0, 0.2)      # per-unit intercept
+        b = rng.normal(1.0, 0.25)     # per-unit slope (degradation rate)
+        t = np.arange(0, 20, 2.0)
+        y = a + b * t + rng.normal(0, 0.4, t.size)
+        xs.append(t)
+        ys.append(y)
+        ids.append(np.full(t.size, unit))
+    x, y, i = (np.concatenate(z) for z in (xs, ys, ids))
+
+    model = DegradationAnalysis.fit(x, y, i, threshold=threshold, path="linear")
+    induced = model.induced_life(n_samples=20000, random_state=1)
+    induced
+
+The returned ``InducedFailureDistribution`` behaves
+like any other life object — ``sf``, ``ff``, ``qf``, ``mean``, ``median`` and
+``random`` are all there — so you can read life quantiles straight off it:
+
+.. jupyter-execute::
+
+    print("pseudo-failure median :", round(float(model.qf(0.5)), 2))
+    print("induced median        :", round(induced.median(), 2))
+    print("induced B10 life      :", round(induced.qf(0.10), 2))
+
+The real purpose is as a **diagnostic**. The pseudo-failure fit and the induced
+distribution come at the population life two different ways; when the path model
+and its population summary are trustworthy, they should agree. Overlaying the
+two CDFs is the check:
+
+.. jupyter-execute::
+
+    t = np.linspace(0, 60, 200)
+    plt.plot(t, model.ff(t), label="pseudo-failure fit")
+    plt.plot(t, induced.ff(t), "--", label="induced (Lu-Meeker)")
+    plt.xlabel("Time")
+    plt.ylabel("Probability of failure  F(t)")
+    plt.legend()
+
+Close agreement (as here) is reassuring; a large gap is a warning that the
+path model, the Gaussian population assumption, or the covariance estimate is
+off.
+
+A subtlety the induced distribution surfaces honestly: some draws of
+:math:`\theta` describe paths that **never reach the threshold** (a
+non-increasing slope, say). Those contribute an ``inf`` failure time — a
+defective *"never fails"* mass reported as ``prob_never_fails`` — and once the
+quantiles reach into that mass they, and the ``mean``, become ``inf``. This is
+the correct behaviour: if a fraction of the population genuinely never fails,
+the population has no finite mean life. Finally, ``induced_life`` is defined for
+the plain (non-accelerated) population; an accelerated (covariate) model's path
+parameters are not yet stress-conditional, so it is refused there.
+
 Confidence bounds
 -----------------
 
