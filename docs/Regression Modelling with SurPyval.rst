@@ -815,3 +815,50 @@ assumption is violated (e.g. survival curves cross), a lower-AIC PH model can
 still give misleading predictions. Goodness-of-fit diagnostics like
 Schoenfeld residuals (for PH) or log-log survival plots should accompany any
 model comparison.
+
+Saving and loading a fitted model
+---------------------------------
+
+A fitted parametric regression model can be serialised to a plain dictionary
+or a JSON file and rebuilt later — so you can fit once and reuse the model
+without the training data on hand. This works for the fixed-form parametric
+families: Accelerated Failure Time, Proportional Hazards, Proportional Odds
+and (parametric) Additive Hazards.
+
+.. jupyter-execute::
+
+    import tempfile, os
+    from surpyval import WeibullAFT
+    from surpyval.univariate.regression import ParametricRegressionModel
+
+    model = WeibullAFT.fit(x=x, Z=Z, c=c)
+
+    # to a dictionary (JSON-serialisable) ...
+    blob = model.to_dict()
+
+    # ... and back
+    restored = ParametricRegressionModel.from_dict(blob)
+
+    # the restored model predicts identically
+    import numpy as np
+    t = np.array([1.0, 5.0, 20.0])
+    Z_use = Z[0]
+    print("match:", np.allclose(model.sf(t, Z_use), restored.sf(t, Z_use)))
+
+Use ``to_json`` / ``from_json`` for a file directly:
+
+.. jupyter-execute::
+
+    path = os.path.join(tempfile.mkdtemp(), "aft.json")
+    model.to_json(path)
+    reloaded = ParametricRegressionModel.from_json(path)
+    print(reloaded)
+
+If the fitted model carried a computable parameter covariance, it is stored in
+the dictionary, so the reloaded model can also produce confidence bounds
+(``cb``, ``param_cb``, ``standard_errors``) without the original data. Only the
+prediction/inference state is serialised — the empirical overlay in ``plot``
+needs the fitted data, so re-fit if you need that. Models with a bespoke
+covariate link (an Accelerated Life parameter-substitution model, whose link is
+an arbitrary life-model) cannot be rebuilt from a name and raise
+``NotImplementedError`` when serialised.

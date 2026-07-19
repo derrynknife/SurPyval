@@ -4,6 +4,23 @@ Changelog
 v0.15.0 (unreleased)
 --------------------
 
+Regression
+~~~~~~~~~~
+
+- Added serialisation to the parametric regression models:
+  ``ParametricRegressionModel`` now has ``to_dict``/``from_dict`` and
+  ``to_json``/``from_json``, so a fitted Accelerated Failure Time,
+  Proportional Hazards, Proportional Odds or (parametric) Additive Hazards
+  model can be saved and rebuilt without the training data. The restored model
+  predicts identically (``sf``/``ff``/``df``/``hf``/``Hf``/``phi``/``random``);
+  if the fit's parameter covariance was computable it is stored too, so the
+  reloaded model also produces confidence bounds (``cb``/``param_cb``/
+  ``standard_errors``). Distribution and family are resolved by name from a
+  restricted set, so an untrusted dict cannot load arbitrary objects. Models
+  with a bespoke covariate link (an Accelerated Life parameter-substitution
+  model) are refused with a clear error. ``ParametricRegressionModel`` is now
+  exported from ``surpyval.univariate.regression``.
+
 Experimental
 ~~~~~~~~~~~~
 

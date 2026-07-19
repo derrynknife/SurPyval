@@ -1,3 +1,6 @@
+import json
+import types
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
@@ -21,6 +24,29 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 
+# Regression families whose fitted model round-trips through ``to_dict`` /
+# ``from_dict``: each has a fixed-form covariate link (a log-linear multiplier
+# ``exp(beta'Z)`` or an additive ``beta'Z`` term) that is fully determined by
+# the ``kind`` plus the distribution and coefficients, so the fitter -- and
+# therefore every prediction -- can be rebuilt from the distribution's name.
+# Maps kind -> (public fitter factory name, covariate-link form).
+_SERIALISABLE_KINDS: "dict[str, tuple[str, str]]" = {
+    "Accelerated Failure Time": ("AFT", "exp"),
+    "Proportional Hazard": ("PH", "exp"),
+    "Proportional Odds": ("PO", "exp"),
+    "Additive Hazard": ("AH", "additive"),
+}
+
+# The covariate-link (``reg_model``) names those families produce. A model
+# carrying any other link is a bespoke/custom link that cannot be rebuilt from
+# a name alone, so serialisation refuses it rather than round-trip it wrongly.
+_SERIALISABLE_REG_NAMES = {
+    "Log Linear [exp(beta'Z)]",  # AFT, PO
+    "Log Linear [e^(beta'Z)]",  # PH
+    "Additive [beta'Z]",  # AH
+}
+
+
 class ParametricRegressionModel:
     """
     Result of ``.fit()`` or ``.from_params()`` method for parametric
@@ -38,6 +64,10 @@ class ParametricRegressionModel:
     feature_names: list[str] | None = None
     formula: str | None = None
     _model_spec: Any = None
+    #: Set only on models rebuilt by :meth:`from_dict` that carried a stored
+    #: parameter covariance; lets them produce confidence bounds without the
+    #: original data. ``None`` on freshly fitted models.
+    _restored_covariance: "npt.NDArray | None" = None
 
     # Attributes populated after construction (by ``fit`` / ``from_params``).
     # Declared here so static type checkers know their types.
@@ -64,6 +94,185 @@ class ParametricRegressionModel:
     _bic: float
     _aic: float
     _aic_c: float
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """
+        Serialise this fitted regression model to a plain ``dict``.
+
+        The returned dictionary is JSON-serialisable and captures everything
+        needed to rebuild the model for prediction (``sf``/``ff``/``df``/
+        ``hf``/``Hf``/``phi``/``random``): the ``kind``, the distribution's
+        name, the covariate-link identity, the fitted parameters, and the
+        covariate-coefficient names. If the model was fit from data and its
+        parameter covariance can be computed, that is stored too, so the
+        restored model can also produce confidence bounds
+        (``cb``/``param_cb``/``standard_errors``).
+
+        Only the fixed-form parametric families round-trip -- Accelerated
+        Failure Time, Proportional Hazards, Proportional Odds and (parametric)
+        Additive Hazards -- whose covariate link is fully determined by the
+        ``kind`` and coefficients. A model with a bespoke covariate link (for
+        example an Accelerated Life parameter-substitution model, whose link
+        is an arbitrary life-model) cannot be rebuilt from a name and raises
+        ``NotImplementedError``.
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        if self.kind not in _SERIALISABLE_KINDS:
+            raise NotImplementedError(
+                "Serialisation is implemented for the fixed-form regression "
+                "families (Accelerated Failure Time, Proportional Hazard, "
+                "Proportional Odds, Additive Hazard); the {!r} model's "
+                "covariate link cannot be rebuilt from a name.".format(
+                    self.kind
+                )
+            )
+        reg_name = getattr(self.reg_model, "name", None)
+        if reg_name not in _SERIALISABLE_REG_NAMES:
+            raise NotImplementedError(
+                "This {} model carries a non-standard covariate link ({!r}) "
+                "that cannot be serialised; only the built-in log-linear / "
+                "additive links round-trip.".format(self.kind, reg_name)
+            )
+        phi_param_map = getattr(self.reg_model, "phi_param_map", None)
+        if not isinstance(phi_param_map, dict):
+            raise NotImplementedError(
+                "This model's covariate coefficients are not a fixed name map "
+                "and cannot be serialised."
+            )
+
+        out: dict[str, Any] = {
+            "parameterization": "parametric-regression",
+            "kind": self.kind,
+            "distribution": self.distribution.name,
+            "reg_model_name": reg_name,
+            "phi_param_map": {
+                str(k): int(v) for k, v in phi_param_map.items()
+            },
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "k": int(self.k),
+            "k_dist": int(self.k_dist),
+            "fixed": {str(k): float(v) for k, v in self.fixed.items()},
+            "gamma": float(getattr(self, "gamma", 0.0)),
+            "p": float(getattr(self, "p", 1.0)),
+            "f0": float(getattr(self, "f0", 0.0)),
+        }
+        if self.feature_names is not None:
+            out["feature_names"] = list(self.feature_names)
+        if self.formula is not None:
+            out["formula"] = self.formula
+
+        # Store the parameter covariance so the restored model can produce
+        # confidence bounds without the original data. Only for data-fit
+        # models whose covariance is finite (a boundary optimum gives nan).
+        if hasattr(self, "data") and getattr(self, "res", None) is not None:
+            try:
+                cov = self.covariance()
+            except Exception:
+                cov = None
+            if cov is not None and np.all(np.isfinite(cov)):
+                out["covariance"] = np.asarray(cov, dtype=float).tolist()
+            if hasattr(self, "_neg_ll"):
+                out["_neg_ll"] = float(self._neg_ll)
+        return out
+
+    def to_json(self, fp: "str | Path") -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "ParametricRegressionModel":
+        """
+        Rebuild a regression model from a :meth:`to_dict` dictionary.
+
+        The distribution and fitter factory are resolved from the public
+        ``surpyval`` namespace by name (restricted to the known distributions
+        and regression families, so an untrusted dict cannot resolve arbitrary
+        attributes), then the fitted parameters are restored. The result
+        predicts identically to the original model; if a covariance was stored
+        it also produces confidence bounds.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        import surpyval
+        from surpyval.univariate.parametric.parametric_fitter import (
+            ParametricFitter,
+        )
+
+        if model_dict.get("parameterization") != "parametric-regression":
+            raise ValueError(
+                "Must create a regression model from a parametric-regression "
+                "model dict"
+            )
+        kind = model_dict["kind"]
+        if kind not in _SERIALISABLE_KINDS:
+            raise ValueError(
+                "Cannot deserialise regression kind {!r}".format(kind)
+            )
+        factory_name, phi_kind = _SERIALISABLE_KINDS[kind]
+
+        dist = getattr(surpyval, model_dict["distribution"], None)
+        if not isinstance(dist, ParametricFitter):
+            raise ValueError(
+                "Unknown distribution {!r}".format(model_dict["distribution"])
+            )
+        factory = getattr(surpyval, factory_name)
+        fitter = factory(dist)
+
+        params = np.array(model_dict["params"], dtype=float)
+        k_dist = int(model_dict["k_dist"])
+        phi_param_map = {
+            k: int(v) for k, v in model_dict["phi_param_map"].items()
+        }
+
+        reg_model = types.SimpleNamespace(
+            name=model_dict["reg_model_name"],
+            phi_param_map=phi_param_map,
+        )
+        if phi_kind == "exp":
+            # the log-linear multiplier exp(beta'Z), matching the fitters
+            reg_model.phi = lambda Z, *p: np.exp(np.dot(Z, np.array(p)))
+
+        out = cls()
+        out.model = fitter
+        out.distribution = dist
+        out.dist = dist
+        out.reg_model = reg_model
+        out.kind = kind
+        out.params = params
+        out.dist_params = params[:k_dist]
+        out.phi_params = params[k_dist:]
+        out.k = int(model_dict["k"])
+        out.k_dist = k_dist
+        out.fixed = {
+            k: float(v) for k, v in model_dict.get("fixed", {}).items()
+        }
+        out.gamma = float(model_dict.get("gamma", 0.0))
+        out.p = float(model_dict.get("p", 1.0))
+        out.f0 = float(model_dict.get("f0", 0.0))
+        out.feature_names = model_dict.get("feature_names")
+        out.formula = model_dict.get("formula")
+
+        if "covariance" in model_dict:
+            out._restored_covariance = np.array(
+                model_dict["covariance"], dtype=float
+            )
+        if "_neg_ll" in model_dict:
+            out._neg_ll = float(model_dict["_neg_ll"])
+        return out
+
+    @classmethod
+    def from_json(cls, fp: "str | Path") -> "ParametricRegressionModel":
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """
@@ -560,6 +769,10 @@ class ParametricRegressionModel:
     # -- confidence bounds -------------------------------------------------
 
     def _check_inference(self) -> None:
+        # A model deserialised with a stored covariance can produce bounds
+        # without the original data.
+        if getattr(self, "_restored_covariance", None) is not None:
+            return
         if not hasattr(self, "data") or getattr(self, "res", None) is None:
             raise ValueError(
                 "Confidence bounds are only available for models fit from "
@@ -588,6 +801,9 @@ class ParametricRegressionModel:
         A parameter driven to a boundary breaks the Wald approximation; the
         covariance is then returned filled with ``nan`` (with a warning).
         """
+        restored = getattr(self, "_restored_covariance", None)
+        if restored is not None:
+            return restored
         self._check_inference()
         names = self.parameter_names()
         p_hat = np.asarray(self.params, dtype=float)
