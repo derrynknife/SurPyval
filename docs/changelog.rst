@@ -19,7 +19,10 @@ Degradation
   comes from the incomplete gamma function). Both fit by maximum likelihood
   from ``(x, y, i)`` measurement data and expose the induced failure-time
   distribution (``sf``/``ff``/``df``/``hf``/``Hf``/``qf``/``mean``/``random``)
-  plus a ``predict_rul`` remaining-useful-life summary.
+  plus a ``predict_rul`` remaining-useful-life summary. The degradation
+  documentation gained an expansive section explaining both processes, what
+  each parameter means, the first-passage failure-time derivation, worked
+  runnable examples, and guidance on choosing between them.
 
 v0.14.0 (19 Jul 2026)
 ---------------------

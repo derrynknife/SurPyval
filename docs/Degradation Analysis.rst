@@ -380,3 +380,329 @@ degradation ⇒ shorter life). The prediction methods now take the stress vector
 ``qf`` and ``mean`` invert / integrate the regression survival function, and
 ``random`` draws from it. First-stage regression confidence bounds are available
 through ``model.life_model.cb(x, Z, ...)``.
+
+Stochastic-process degradation models
+=====================================
+
+Everything above is the **general-path** approach: fit a deterministic curve to
+each unit, extrapolate it to the threshold to get a *pseudo failure time*, then
+fit a lifetime distribution to those times. It works well when each unit really
+does follow a smooth trend plus measurement noise.
+
+But sometimes the degradation itself is *random over time*, not a smooth curve
+observed with error. A crack does not grow along a tidy exponential; it jumps
+ahead in fits and starts. A wear signal wanders up and down from measurement to
+measurement. In those cases it is more honest to model the **increments** of
+the degradation as a stochastic process, and read the failure-time distribution
+off the process directly — as the distribution of the **first time the process
+crosses the threshold** (the "first-passage time"). This is a standard part of
+the reliability toolkit; see [Meeker1998]_ for a textbook treatment and
+[LuMeeker1993]_ for the idea of deriving a failure-time distribution from
+degradation measurements.
+
+SurPyval provides two such processes. They are not competitors; they describe
+different physics, and the right one is dictated by whether your degradation can
+*decrease*:
+
+* :class:`~surpyval.degradation.WienerProcess` — for signals that **fluctuate**
+  up and down (noisy sensors, measurements that wobble).
+* :class:`~surpyval.degradation.GammaProcess` — for damage that only ever
+  **accumulates** (wear, corrosion, crack growth).
+
+Both are fitted from the same three arrays you have used throughout this
+section: ``x`` (measurement times), ``y`` (degradation measurements) and ``i``
+(the unit each measurement belongs to). Internally each model looks only at the
+*increments* between consecutive measurements of a unit, so units can be
+measured at different, irregular times without any special handling — a two-week
+gap simply contributes a larger ``dt``.
+
+The Wiener process
+------------------
+
+A **Wiener process with drift** (Brownian motion with drift) models the
+degradation as
+
+.. math::
+
+    W(t) = \mu\, t + \sigma\, B(t),
+
+where :math:`B(t)` is standard Brownian motion. There are just two parameters,
+and it is worth being clear about what each one *means*:
+
+* :math:`\mu` — the **drift**. This is the average rate at which degradation
+  accumulates: on average the signal climbs by :math:`\mu` per unit time. A
+  larger drift means faster wear-out and a shorter life.
+* :math:`\sigma` — the **diffusion** (or volatility). This is the size of the
+  random wobble around that average trend. With :math:`\sigma = 0` the process
+  would be a perfectly straight line :math:`\mu t`; the bigger :math:`\sigma`,
+  the more the path jitters up and down and the more spread-out the failure
+  times become. (Wiener degradation models, including extensions with
+  unit-to-unit random effects, are surveyed in [Wang2010]_.)
+
+Over any interval of length :math:`\Delta t`, the change in degradation is
+**Gaussian**:
+
+.. math::
+
+    \Delta W \sim \mathrm{Normal}\!\left(\mu\, \Delta t,\; \sigma^2\, \Delta t\right).
+
+Two things follow from this. First, because a Normal can be negative, the path
+can go *down* as well as up — which is exactly why the Wiener process is the
+right model for noisy, non-monotone signals. Second, the increments are
+independent, so fitting is easy: the drift is just the total degradation divided
+by the total time, and the diffusion is estimated from how much the increments
+scatter around that trend. SurPyval does this by maximum likelihood.
+
+**Failure = first passage.** A unit fails the first time :math:`W(t)` reaches
+the threshold :math:`D`. For a Wiener process this first-passage time has a
+famous closed form — the **Inverse Gaussian** distribution — with
+
+.. math::
+
+    \text{mean} = \frac{D}{\mu}, \qquad \text{shape} = \frac{D^2}{\sigma^2}.
+
+The mean life :math:`D/\mu` is beautifully intuitive: distance to failure
+divided by the average speed. The shape controls how tightly the failure times
+cluster around that mean (more diffusion → more scatter). Because the increments
+are independent, the model also needs the drift to be **positive** — a
+non-positive drift would mean the process is not reliably heading toward the
+threshold at all, so SurPyval raises an error rather than return a "life" that
+may never end.
+
+Let's fit one. We simulate 30 units, each measured every half–time-unit, with a
+true drift of ``0.5`` and diffusion ``0.4``, failing at a degradation of ``10``:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from surpyval.degradation import WienerProcess
+
+    rng = np.random.default_rng(0)
+    mu_true, sigma_true, threshold = 0.5, 0.4, 10.0
+
+    xs, ys, ids = [], [], []
+    for unit in range(30):
+        t = np.arange(0, 15.5, 0.5)
+        increments = rng.normal(
+            mu_true * 0.5, sigma_true * np.sqrt(0.5), size=t.size - 1
+        )
+        y = np.concatenate([[0.0], np.cumsum(increments)])
+        xs.append(t)
+        ys.append(y)
+        ids.append(np.full(t.size, unit))
+    x, y, i = (np.concatenate(a) for a in (xs, ys, ids))
+
+    model = WienerProcess.fit(x, y, i, threshold=threshold)
+    model
+
+Read the summary line by line: the fitted **drift** and **diffusion** are close
+to the ``0.5`` and ``0.4`` we simulated, and the **mean time to failure** is
+``threshold / drift`` — roughly ``10 / 0.5 = 20`` time units. Notice the paths
+below are jagged and occasionally dip downward; that non-monotone wobble is the
+Wiener process's defining feature.
+
+.. jupyter-execute::
+
+    for unit in range(8):
+        m = i == unit
+        plt.plot(x[m], y[m], alpha=0.6)
+    plt.axhline(threshold, color="k", linestyle="--", label="threshold")
+    plt.xlabel("Time")
+    plt.ylabel("Degradation")
+    plt.legend()
+
+Now the payoff: a full **failure-time distribution**, derived from the process,
+that you can query like any other SurPyval model. ``mean()`` is the average
+life, ``ff(t)`` is the probability of having failed by time ``t`` (the CDF),
+``sf(t)`` is the reliability, and ``qf(p)`` is the quantile (e.g. the median
+life, or the time by which 10 % have failed):
+
+.. jupyter-execute::
+
+    print("mean life           :", round(model.mean(), 2))
+    print("P(fail by t = 25)   :", round(model.ff(25.0), 3))
+    print("median life         :", round(model.qf(0.5), 2))
+    print("B10 life (10% fail) :", round(model.qf(0.10), 2))
+
+    t = np.linspace(0, 40, 200)
+    plt.plot(t, model.ff(t))
+    plt.xlabel("Time to failure")
+    plt.ylabel("Probability of failure  F(t)")
+
+**Remaining useful life.** The real power of a degradation model is that it can
+update its forecast for a unit you have been *watching*. If a unit is currently
+at degradation level ``7`` (out of a threshold of ``10``), only the remaining
+distance of ``3`` matters, and — because Wiener increments are independent of
+the past — the remaining life is itself an Inverse Gaussian over that shorter
+distance. ``predict_rul`` returns its median and an interval:
+
+.. jupyter-execute::
+
+    rul = model.predict_rul(current_degradation=7.0)
+    print("median remaining life :", round(rul.rul, 2))
+    print("90% interval          :", tuple(round(v, 2) for v in rul.rul_interval))
+
+The interval widths tell you how much uncertainty remains: a unit close to the
+threshold has a short, tight remaining-life estimate; a fresh unit has a long,
+uncertain one. If the current degradation is already at or beyond the threshold,
+``prob_already_failed`` is ``1`` and the remaining life is ``0``.
+
+The Gamma process
+-----------------
+
+The Wiener process allows the signal to decrease, which is wrong for damage that
+is physically **irreversible** — a crack never heals, corrosion never reverses,
+wear never un-wears. For those, use a **Gamma process** (whose use in
+maintenance and reliability is surveyed in [vanNoortwijk2009]_), whose
+increments are
+strictly non-negative, so the path is **monotone increasing**.
+
+Over an interval of length :math:`\Delta t`, the Gamma-process increment is
+Gamma-distributed:
+
+.. math::
+
+    \Delta W \sim \mathrm{Gamma}\!\left(\text{shape} = \alpha\, \Delta t,\;
+    \text{rate} = \beta\right).
+
+Again, two parameters, and again it is worth knowing what they mean:
+
+* :math:`\alpha` — the **shape rate**. It controls how *quickly and how
+  steadily* damage accrues. The amount of shape accumulated by time :math:`t` is
+  :math:`\alpha t`; a large :math:`\alpha` gives many small, regular increments
+  (a smooth-looking climb), a small :math:`\alpha` gives fewer, larger, jumpier
+  increments.
+* :math:`\beta` — the **rate** parameter of those increments. It sets their
+  scale: the mean degradation accumulated per unit time is
+  :math:`\alpha / \beta`, and the variance per unit time is
+  :math:`\alpha / \beta^2`.
+
+So :math:`\alpha/\beta` is the Gamma process's analogue of the Wiener drift —
+the average degradation speed — while :math:`\alpha` alone governs how *regular*
+versus *jumpy* the accumulation is.
+
+**Failure = first passage, again**, but now the monotonicity makes it especially
+clean: the process has crossed the threshold :math:`D` by time :math:`t` exactly
+when its level :math:`W(t)` is at or above :math:`D`. So the probability of
+having failed by :math:`t` is
+
+.. math::
+
+    F(t) = \Pr\!\left(W(t) \ge D\right),
+
+which SurPyval evaluates with the (regularised) incomplete gamma function. There
+is no simpler closed form than that, but every method you need — ``sf``, ``ff``,
+``df``, ``qf``, ``mean``, ``random`` — is computed from it.
+
+Here we simulate 40 units of monotone wear with shape rate ``3`` and rate
+``1.5`` (so mean degradation speed :math:`\alpha/\beta = 2` per unit time),
+failing at ``30``:
+
+.. jupyter-execute::
+
+    from surpyval.degradation import GammaProcess
+
+    rng = np.random.default_rng(1)
+    alpha_true, beta_true, threshold = 3.0, 1.5, 30.0
+
+    xs, ys, ids = [], [], []
+    for unit in range(40):
+        t = np.arange(0, 12.5, 0.5)
+        increments = rng.gamma(alpha_true * 0.5, 1.0 / beta_true, size=t.size - 1)
+        y = np.concatenate([[0.0], np.cumsum(increments)])
+        xs.append(t)
+        ys.append(y)
+        ids.append(np.full(t.size, unit))
+    x, y, i = (np.concatenate(a) for a in (xs, ys, ids))
+
+    model = GammaProcess.fit(x, y, i, threshold=threshold)
+    model
+
+The fitted ``alpha`` and ``beta`` recover the ``3`` and ``1.5`` we used, and the
+mean time to failure is about ``threshold / (alpha/beta) = 30 / 2 = 15``. The
+paths this time only ever climb — no downward wobble is possible:
+
+.. jupyter-execute::
+
+    for unit in range(8):
+        m = i == unit
+        plt.plot(x[m], y[m], alpha=0.6)
+    plt.axhline(threshold, color="k", linestyle="--", label="threshold")
+    plt.xlabel("Time")
+    plt.ylabel("Degradation")
+    plt.legend()
+
+The failure-time distribution and remaining-life prediction work exactly as they
+did for the Wiener model — same method names, same meaning:
+
+.. jupyter-execute::
+
+    print("mean life      :", round(model.mean(), 2))
+    print("median life    :", round(model.qf(0.5), 2))
+
+    rul = model.predict_rul(current_degradation=20.0)
+    print("RUL at y = 20  :", round(rul.rul, 2),
+          "  interval", tuple(round(v, 2) for v in rul.rul_interval))
+
+Because a Gamma process cannot go down, passing it degradation that *decreases*
+over an interval is a modelling error, and SurPyval says so rather than fitting
+something meaningless — the message points you at the Wiener process instead:
+
+.. jupyter-execute::
+    :raises: ValueError
+
+    # this data dips from 5 back to 3 -- not allowed for a monotone process
+    GammaProcess.fit([0, 1, 2], [0.0, 5.0, 3.0], [1, 1, 1], threshold=10.0)
+
+Choosing between Wiener and Gamma
+---------------------------------
+
+The decision is almost always settled by one question: **can your degradation
+physically decrease?**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 20 40
+
+   * - Your degradation paths…
+     - Use
+     - Because
+   * - fluctuate up and down (noisy sensor, wandering signal)
+     - ``WienerProcess``
+     - Gaussian increments allow decreases and absorb measurement noise; failure
+       time is a closed-form Inverse Gaussian.
+   * - only ever increase (wear, corrosion, crack growth, fatigue)
+     - ``GammaProcess``
+     - non-negative increments enforce monotone, irreversible damage; forcing a
+       Wiener fit would misread real jumps as noise.
+
+A quick practical test: **plot your paths.** If they visibly dip, the Wiener
+process models that directly. If they are monotone, the Gamma process is the
+physically honest choice — and if you try to give monotone-only data that
+happens to dip (usually a measurement glitch) to the Gamma process, the error it
+raises is a useful signal in itself.
+
+Compared with the general-path approach at the top of this page, both process
+models share two advantages: they handle **irregular measurement spacing**
+without any special treatment (each increment simply carries its own ``dt``),
+and they give the failure-time distribution **directly from the fitted process**
+rather than through noisy per-unit pseudo failure times. The general-path models
+remain the better choice when each unit truly follows a smooth deterministic
+trend observed with error, or when you need a specific parametric path shape.
+
+References
+----------
+
+.. [Meeker1998] Meeker, W.Q. and Escobar, L.A., 1998. *Statistical Methods for
+   Reliability Data*. John Wiley & Sons.
+
+.. [LuMeeker1993] Lu, C.J. and Meeker, W.Q., 1993. Using degradation measures to
+   estimate a time-to-failure distribution. *Technometrics*, 35(2), pp.161-174.
+
+.. [Wang2010] Wang, X., 2010. Wiener processes with random effects for
+   degradation data. *Journal of Multivariate Analysis*, 101(2), pp.340-351.
+
+.. [vanNoortwijk2009] van Noortwijk, J.M., 2009. A survey of the application of
+   gamma processes in maintenance. *Reliability Engineering & System Safety*,
+   94(1), pp.2-21.
