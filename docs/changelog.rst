@@ -1,6 +1,26 @@
 Changelog
 =========
 
+v0.15.0 (unreleased)
+--------------------
+
+Degradation
+~~~~~~~~~~~
+
+- Added stochastic-process degradation models that model the degradation
+  increments directly, deriving the failure-time distribution from the
+  process's first passage to the threshold (rather than via pseudo failure
+  times), and handling irregular measurement spacing naturally. Two
+  complementary processes are provided in ``surpyval.degradation``:
+  ``WienerProcess`` (Brownian motion with drift, for non-monotone / noisy
+  signals; its first passage is a closed-form Inverse-Gaussian law) and
+  ``GammaProcess`` (monotone increasing increments, for irreversible damage
+  such as wear, corrosion or crack growth; its first-passage distribution
+  comes from the incomplete gamma function). Both fit by maximum likelihood
+  from ``(x, y, i)`` measurement data and expose the induced failure-time
+  distribution (``sf``/``ff``/``df``/``hf``/``Hf``/``qf``/``mean``/``random``)
+  plus a ``predict_rul`` remaining-useful-life summary.
+
 v0.14.0 (19 Jul 2026)
 ---------------------
 
