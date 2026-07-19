@@ -50,6 +50,7 @@ from .proportional_hazards import (
     ProportionalHazardsFitter,
     WeibullPH,
 )
+from .parametric_regression_model import ParametricRegressionModel
 from .proportional_odds import (
     PO,
     ExponentialPO,
@@ -63,6 +64,8 @@ from .proportional_odds import (
 )
 
 __all__ = [
+    # Base result class (holds to_dict / from_dict / to_json / from_json)
+    "ParametricRegressionModel",
     # Buckley-James semi-parametric AFT
     "BuckleyJames",
     "BuckleyJamesModel",
