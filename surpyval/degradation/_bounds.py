@@ -316,5 +316,70 @@ def bootstrap_cb(model, x, on, alpha_ci, bound, n_boot, seed):
     return np.quantile(curves, q, axis=0)
 
 
+def bootstrap_cb_accelerated(model, x, Z, on, alpha_ci, bound, n_boot, seed):
+    """
+    Two-stage bootstrap confidence bounds for an *accelerated* (covariate)
+    degradation model, evaluated at the stress ``Z``.
+
+    Units are resampled with replacement -- each carrying its stress row --
+    and the whole accelerated pipeline (per-unit path fit -> pseudo failure
+    time -> covariate life fit) is rerun on each resample, so the first-stage
+    path/extrapolation uncertainty is folded into the reliability at ``Z``
+    just as it is for the plain model. The selected path model is held fixed
+    across resamples (matching ``path="best"``'s chosen model), so the bound
+    reflects life-fit and extrapolation variability, not path re-selection.
+    """
+    import warnings
+
+    from .degradation_analysis import DegradationAnalysis
+
+    x = np.atleast_1d(np.asarray(x, dtype=float))
+    rng = np.random.default_rng(seed)
+    method_name = _on_method(on)
+    n_units = len(model.units)
+    curves = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(n_boot):
+            picks = rng.choice(n_units, size=n_units)
+            xs, ys, ids, Zs = [], [], [], []
+            for new_id, idx in enumerate(picks):
+                mask = model.i == model.units[idx]
+                n_meas = int(mask.sum())
+                xs.append(model.x[mask])
+                ys.append(model.y[mask])
+                ids.append(np.full(n_meas, new_id))
+                Zs.append(np.tile(model.Z[idx], (n_meas, 1)))
+            try:
+                m = DegradationAnalysis.fit(
+                    np.concatenate(xs),
+                    np.concatenate(ys),
+                    np.concatenate(ids),
+                    threshold=model.threshold,
+                    path=model.path_model,
+                    distribution=model._distribution,
+                    how=model._how,
+                    Z=np.concatenate(Zs),
+                )
+                curve = np.asarray(getattr(m, method_name)(x, Z), dtype=float)
+                if np.isfinite(curve).all():
+                    curves.append(curve)
+            except Exception:
+                continue
+    if len(curves) < 2:
+        raise RuntimeError(
+            "The accelerated degradation bootstrap produced too few "
+            "successful refits to form a confidence bound (a resample may not "
+            "span enough stress levels to identify the covariate fit)."
+        )
+    curves = np.asarray(curves)
+    if bound == "two-sided":
+        lo = np.quantile(curves, alpha_ci / 2.0, axis=0)
+        hi = np.quantile(curves, 1.0 - alpha_ci / 2.0, axis=0)
+        return np.stack([lo, hi], axis=-1)
+    q = alpha_ci if bound == "lower" else 1.0 - alpha_ci
+    return np.quantile(curves, q, axis=0)
+
+
 def _on_method(on):
     return {"sf": "sf", "R": "sf", "ff": "ff", "F": "ff", "Hf": "Hf"}[on]

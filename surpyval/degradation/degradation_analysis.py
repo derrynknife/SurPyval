@@ -28,7 +28,12 @@ from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
 
-from ._bounds import analytic_cb, bootstrap_cb, life_parameter_covariance
+from ._bounds import (
+    analytic_cb,
+    bootstrap_cb,
+    bootstrap_cb_accelerated,
+    life_parameter_covariance,
+)
 from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate, reml_estimate_nonlinear
 
@@ -847,6 +852,7 @@ class DegradationModel:
         method: str = "analytic",
         n_boot: int = 200,
         seed=None,
+        Z=None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the reliability of the fitted life model that
@@ -856,6 +862,13 @@ class DegradationModel:
         observed failures, so ``life_model.cb`` -- which treats them as
         exact -- gives intervals that are too narrow. These bounds fold the
         first-stage (measurement + extrapolation) uncertainty back in.
+
+        For an **accelerated-degradation (covariate) model** the bound is
+        evaluated at a stress vector ``Z`` and only ``method='bootstrap'``
+        is available: the generated-regressor delta-method correction is not
+        derived for the regression life fit, so the first-stage uncertainty is
+        folded in by resampling units (each carrying its stress) and rerunning
+        the whole accelerated pipeline.
 
         Parameters
         ----------
@@ -870,29 +883,42 @@ class DegradationModel:
         method : {'analytic', 'bootstrap'}, optional
             ``'analytic'`` (default) is a fast delta-method correction;
             ``'bootstrap'`` resamples units and reruns the whole pipeline (a
-            slower, assumption-light cross-check).
+            slower, assumption-light cross-check). Accelerated (covariate)
+            models support ``'bootstrap'`` only.
         n_boot : int, optional
             Bootstrap resamples (``method='bootstrap'`` only). Default 200.
         seed : optional
             Seed for the bootstrap resampling.
+        Z : array like, optional
+            Stress vector at which to evaluate the bound; required for an
+            accelerated model, rejected for a plain one.
 
         Returns
         -------
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
-        if self.is_accelerated:
-            raise NotImplementedError(
-                "Two-stage confidence bounds are not implemented for "
-                "accelerated-degradation (covariate) models; call "
-                "life_model.cb(x, Z, on=...) for the (first-stage-only) "
-                "regression confidence bounds at a given stress Z."
-            )
         valid = ("sf", "R", "ff", "F", "Hf")
         if on not in valid:
             raise ValueError("`on` must be one of {}".format(valid))
         if bound not in ("two-sided", "lower", "upper"):
             raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        Z = self._predict_Z(Z)
+        if self.is_accelerated:
+            if method == "analytic":
+                raise NotImplementedError(
+                    "The two-stage analytic (generated-regressor) correction "
+                    "is not derived for accelerated-degradation (covariate) "
+                    "life fits; use method='bootstrap' (which folds the "
+                    "first-stage uncertainty in by resampling), or "
+                    "life_model.cb(x, Z, on=...) for the first-stage-only "
+                    "regression bounds."
+                )
+            if method == "bootstrap":
+                return bootstrap_cb_accelerated(
+                    self, x, Z, on, alpha_ci, bound, n_boot, seed
+                )
+            raise ValueError("`method` must be 'analytic' or 'bootstrap'")
         if method == "analytic":
             return analytic_cb(self, x, on, alpha_ci, bound)
         elif method == "bootstrap":

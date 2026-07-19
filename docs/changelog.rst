@@ -17,6 +17,17 @@ Experimental
 Degradation
 ~~~~~~~~~~~
 
+- Added two-stage confidence bounds for the **accelerated-degradation
+  (covariate) life fit**: ``DegradationModel.cb`` now accepts a stress vector
+  ``Z`` and, with ``method="bootstrap"``, resamples units (each carrying its
+  stress) and reruns the whole ADT pipeline to fold the first-stage
+  path/extrapolation uncertainty into the reliability at ``Z``. Previously
+  ``cb`` raised ``NotImplementedError`` for covariate models; the analytic
+  (generated-regressor) correction remains underived for the regression fit, so
+  bootstrap is required there. The bootstrap holds the selected path model
+  fixed, so it composes cleanly with ``path="best"`` (no per-resample path
+  re-selection). ``cb`` also now validates ``Z`` (required for covariate
+  models, rejected for plain ones).
 - Extended ``population_method="reml"`` to **nonlinear** path models
   (exponential, power, Gompertz, ...). Previously REML population estimation
   was restricted to paths linear in their parameters; nonlinear paths are now
