@@ -854,6 +854,17 @@ Use ``to_json`` / ``from_json`` for a file directly:
     reloaded = ParametricRegressionModel.from_json(path)
     print(reloaded)
 
+If you don't know (or don't want to hard-code) which class wrote a file, the
+package-level readers ``surpyval.from_json`` / ``surpyval.from_dict`` dispatch
+on the serialised content itself and work for every serialisable SurPyval
+model:
+
+.. jupyter-execute::
+
+    import surpyval
+
+    print(surpyval.from_json(path))
+
 If the fitted model carried a computable parameter covariance, it is stored in
 the dictionary, so the reloaded model can also produce confidence bounds
 (``cb``, ``param_cb``, ``standard_errors``) without the original data. Only the
