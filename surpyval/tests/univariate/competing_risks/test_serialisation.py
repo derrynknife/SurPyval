@@ -42,9 +42,7 @@ def _cr_data(seed=0, n=150):
 
 
 def test_mixture_model_round_trip():
-    x = np.concatenate(
-        [Weibull.random(80, 10, 3), Weibull.random(80, 50, 4)]
-    )
+    x = np.concatenate([Weibull.random(80, 10, 3), Weibull.random(80, 50, 4)])
     model = MixtureModel(dist=Weibull, m=2)
     model.fit(x=x)
     restored = MixtureModel.from_dict(_rt(model.to_dict()))
@@ -58,9 +56,7 @@ def test_mixture_model_round_trip():
 
 
 def test_mixture_model_json_file(tmp_path):
-    x = np.concatenate(
-        [Weibull.random(60, 8, 3), Weibull.random(60, 40, 5)]
-    )
+    x = np.concatenate([Weibull.random(60, 8, 3), Weibull.random(60, 40, 5)])
     model = MixtureModel(dist=Weibull, m=2)
     model.fit(x=x)
     fp = tmp_path / "mix.json"
@@ -75,8 +71,13 @@ def test_mixture_model_guards():
         MixtureModel.from_dict({"model": "Other"})
     with pytest.raises(ValueError, match="Unknown distribution"):
         MixtureModel.from_dict(
-            {"model": "MixtureModel", "dist": "os", "m": 2,
-             "params": [[1.0, 1.0]], "w": [1.0]}
+            {
+                "model": "MixtureModel",
+                "dist": "os",
+                "m": 2,
+                "params": [[1.0, 1.0]],
+                "w": [1.0],
+            }
         )
 
 
