@@ -27,13 +27,25 @@ Serialisation
   (``"parametric"``, ``"non-parametric"``, ``"parametric-regression"``) of the
   core univariate families. The class-level readers are unchanged.
 
+Package structure
+~~~~~~~~~~~~~~~~~
+
+- Pre-stable models are now tiered by maturity: ``surpyval.alpha``
+  (exploratory; the interfaces may change or disappear -- currently the
+  ``ParallelModel``/``SeriesModel`` system models, previously in
+  ``surpyval.experimental``) and ``surpyval.beta`` (functionally complete
+  and tested, interface not yet part of the release contract -- the
+  survival tree and random survival forest in ``surpyval.beta.ml``).
+  ``surpyval.experimental`` remains as a deprecated re-export of both and
+  warns on import.
+
 Machine learning
 ~~~~~~~~~~~~~~~~
 
 - The survival tree and random survival forest graduated from
-  ``surpyval.experimental`` to a new ``surpyval.ml`` package:
-  ``from surpyval.ml import SurvivalTree, RandomSurvivalForest``. The old
-  ``surpyval.experimental`` imports still work as re-exports. Their test
+  ``surpyval.experimental`` to the beta tier:
+  ``from surpyval.beta.ml import SurvivalTree, RandomSurvivalForest``. The
+  old ``surpyval.experimental`` imports still work as re-exports. Their test
   suite now runs in CI, expanded with behavioural and structural tests:
   prediction coherence (``ff = 1 - sf``, ``Hf = -log(sf)``, monotone
   bounded ``sf``), ``max_depth``/``min_leaf_samples``/``min_leaf_failures``

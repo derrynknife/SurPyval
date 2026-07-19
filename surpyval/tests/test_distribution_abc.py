@@ -13,8 +13,8 @@ from surpyval import (
     NonParametricDistribution,
     ParametricDistribution,
 )
-from surpyval.experimental.parallel import ParallelModel
-from surpyval.experimental.series import SeriesModel
+from surpyval.alpha.parallel import ParallelModel
+from surpyval.alpha.series import SeriesModel
 
 
 def _parametric_model():

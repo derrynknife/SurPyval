@@ -1,7 +1,7 @@
 from autograd import elementwise_grad
 
 from surpyval import Distribution, np
-from surpyval.experimental.series import SeriesModel
+from surpyval.alpha.series import SeriesModel
 
 
 class ParallelModel(Distribution):

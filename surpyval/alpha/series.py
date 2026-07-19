@@ -5,7 +5,7 @@ from surpyval import Distribution, np
 
 class SeriesModel(Distribution):
     def __or__(self, other):
-        from surpyval.experimental.parallel import ParallelModel
+        from surpyval.alpha.parallel import ParallelModel
 
         # Composite operands contribute their components; any other
         # Distribution (Parametric, NonParametric, MixtureModel, ...) is
@@ -15,7 +15,7 @@ class SeriesModel(Distribution):
         return SeriesModel([*self.models, other])
 
     def __and__(self, other):
-        from surpyval.experimental.parallel import ParallelModel
+        from surpyval.alpha.parallel import ParallelModel
 
         if isinstance(other, (SeriesModel, ParallelModel)):
             return ParallelModel([*self.models, *other.models])
