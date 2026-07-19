@@ -4,6 +4,18 @@ Changelog
 v0.15.0 (unreleased)
 --------------------
 
+Serialisation
+~~~~~~~~~~~~~
+
+- Added package-level readers for serialised models:
+  ``surpyval.from_dict(model_dict)`` and ``surpyval.from_json(fp)`` restore a
+  model of the right class from any model's ``to_dict`` dictionary /
+  ``to_json`` file, so the caller no longer needs to know which class wrote
+  it. Dispatch reads the serialised dictionary itself: the ``"model"`` class
+  tag written by most models, or the ``"parameterization"`` marker
+  (``"parametric"``, ``"non-parametric"``, ``"parametric-regression"``) of the
+  core univariate families. The class-level readers are unchanged.
+
 Machine learning
 ~~~~~~~~~~~~~~~~
 

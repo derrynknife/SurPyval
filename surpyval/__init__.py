@@ -86,6 +86,11 @@ from surpyval.univariate.regression import *  # isort: skip # noqa: F401,F403,E5
 from surpyval.utils.surpyval_data import SurpyvalData  # isort: skip
 from surpyval.utils.recurrent_utils import handle_xicn  # isort: skip
 
+# Package-level readers for serialised models: `surpyval.from_json` /
+# `surpyval.from_dict` restore a model of the right class from any
+# model's `to_json` file / `to_dict` dictionary.
+from surpyval.serialisation import from_dict, from_json  # isort: skip
+
 NUM = np.float64
 TINIEST = np.finfo(np.float64).tiny
 EPS = np.sqrt(np.finfo(NUM).eps)
