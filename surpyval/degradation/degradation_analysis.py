@@ -30,7 +30,7 @@ from surpyval.univariate.regression.parametric_regression_model import (
 
 from ._bounds import analytic_cb, bootstrap_cb, life_parameter_covariance
 from .path_models import PATH_MODELS, PathModel, get_path_model
-from .population import reml_estimate
+from .population import reml_estimate, reml_estimate_nonlinear
 
 
 def _is_regression_fitter(fitter) -> bool:
@@ -1070,12 +1070,13 @@ class DegradationAnalysis_:
             ``measurement_var``) is estimated. ``"moments"`` (default)
             uses the two-stage noise-corrected sample moments;
             ``"reml"`` maximises the restricted marginal likelihood of
-            the linear mixed model, which cannot go rank-deficient and
-            is preferable with few units. REML is available for path
-            models that are linear in their parameters (linear,
-            quadratic, logarithmic, lloyd-lipow) and requires
-            measurement noise (some unit with more measurements than
-            path parameters).
+            the mixed model, which cannot go rank-deficient and is
+            preferable with few units. Linear-in-parameter paths (linear,
+            quadratic, logarithmic, lloyd-lipow) are fitted as an exact
+            linear mixed model; nonlinear paths (exponential, power,
+            gompertz, ...) are fitted by the Lindstrom-Bates FOCE
+            linearisation. Either way REML requires measurement noise
+            (some unit with more measurements than path parameters).
         Z : array like, optional
             Stress covariates for accelerated degradation testing (ADT).
             When given, the life model is fitted as a *regression* on the
@@ -1124,14 +1125,6 @@ class DegradationAnalysis_:
         else:
             path_model = get_path_model(path)
 
-        if population_method == "reml" and not path_model.linear_in_parameters:
-            raise ValueError(
-                "population_method='reml' requires a path model that is "
-                "linear in its parameters (linear, quadratic, logarithmic, "
-                "lloyd-lipow); the {} path model is not. Use "
-                "population_method='moments'".format(path_model.name)
-            )
-
         n_params = len(path_model.param_names)
         path_params = np.empty((len(units), n_params))
         pseudo = np.empty(len(units))
@@ -1140,6 +1133,7 @@ class DegradationAnalysis_:
         dof_total = 0
         estimation_cov_sum = np.zeros((n_params, n_params))
         y_by_unit = []
+        x_by_unit = []
         design_by_unit = []
 
         for idx, unit in enumerate(units):
@@ -1167,6 +1161,7 @@ class DegradationAnalysis_:
             except np.linalg.LinAlgError:
                 estimation_cov_sum += np.linalg.pinv(jtj)
             y_by_unit.append(y_unit)
+            x_by_unit.append(x_unit)
             design_by_unit.append(jacobian)
 
         # Two-stage (Lu-Meeker) noise correction: the scatter of the
@@ -1201,13 +1196,28 @@ class DegradationAnalysis_:
                     "path fitted its measurements exactly, or no unit has "
                     "more measurements than path parameters)"
                 )
-            # the moment estimates are the starting values
-            reml_mean, reml_cov, reml_var, converged = reml_estimate(
-                y_by_unit,
-                design_by_unit,
-                path_param_cov,
-                measurement_var,
-            )
+            # the moment estimates are the starting values; a
+            # linear-in-parameters path is an exact linear mixed model,
+            # a nonlinear one is fitted by FOCE linearisation
+            if path_model.linear_in_parameters:
+                reml_mean, reml_cov, reml_var, converged = reml_estimate(
+                    y_by_unit,
+                    design_by_unit,
+                    path_param_cov,
+                    measurement_var,
+                )
+            else:
+                reml_mean, reml_cov, reml_var, converged = (
+                    reml_estimate_nonlinear(
+                        y_by_unit,
+                        x_by_unit,
+                        path_model,
+                        path_param_mean,
+                        path_param_cov,
+                        measurement_var,
+                        path_params,
+                    )
+                )
             if not converged:
                 warnings.warn(
                     "The REML optimisation did not report convergence; the "

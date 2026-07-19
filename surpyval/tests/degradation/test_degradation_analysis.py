@@ -416,18 +416,104 @@ def test_reml_on_unbalanced_data():
     assert np.isfinite(pred.failure_time)
 
 
-def test_reml_rejects_nonlinear_path():
-    x, y, i = _noisy_population_data()
-    # rejected before any per-unit fitting happens
-    with pytest.raises(ValueError, match="linear in its parameters"):
-        DegradationAnalysis.fit(
-            x,
-            y,
-            i,
-            threshold=100,
-            path="exponential",
-            population_method="reml",
-        )
+def _exponential_population_data(n_units=80, seed=0):
+    """Balanced noisy exponential degradation data: y = a exp(b t),
+    a ~ N(2, 0.15^2), b ~ N(0.05, 0.006^2), measurement noise sd 0.05."""
+    rng = np.random.default_rng(seed)
+    x_times = np.arange(1.0, 13.0, 1.0)
+    a = rng.normal(2.0, 0.15, n_units)
+    b = rng.normal(0.05, 0.006, n_units)
+    x = np.tile(x_times, n_units)
+    i = np.repeat(np.arange(n_units), len(x_times))
+    y = np.repeat(a, len(x_times)) * np.exp(
+        np.repeat(b, len(x_times)) * x
+    ) + rng.normal(0, 0.05, len(x))
+    return x, y, i
+
+
+def test_reml_nonlinear_exponential_recovers_population():
+    # REML on a nonlinear path (FOCE linearisation) recovers the
+    # generating exponential population and stays positive definite.
+    x, y, i = _exponential_population_data()
+    reml = DegradationAnalysis.fit(
+        x, y, i, threshold=6.0, path="exponential", population_method="reml"
+    )
+    assert reml.population_method == "reml"
+    assert np.allclose(reml.path_param_mean, [2.0, 0.05], atol=[0.1, 0.005])
+    assert np.isclose(reml.measurement_var, 0.0025, rtol=0.4)
+    # between-unit variances near the truth (var a = 0.0225, var b ~ 3.6e-5)
+    assert np.isclose(reml.path_param_cov[0, 0], 0.0225, rtol=0.6)
+    assert np.isclose(reml.path_param_cov[1, 1], 3.6e-5, rtol=0.6)
+    assert (np.linalg.eigvalsh(reml.path_param_cov) > 0).all()
+    # the fitted model supports Bayesian prediction
+    pred = reml.predict_rul([2.0, 4.0], [2.1, 2.4], random_state=1)
+    assert np.isfinite(pred.failure_time)
+
+
+def test_reml_nonlinear_matches_moments_on_clean_data():
+    # with plenty of units and little noise both routes should agree
+    # closely on the population mean
+    x, y, i = _exponential_population_data(n_units=120, seed=2)
+    reml = DegradationAnalysis.fit(
+        x, y, i, threshold=6.0, path="exponential", population_method="reml"
+    )
+    moments = DegradationAnalysis.fit(
+        x, y, i, threshold=6.0, path="exponential"
+    )
+    assert np.allclose(
+        reml.path_param_mean, moments.path_param_mean, rtol=0.05
+    )
+
+
+def test_reml_nonlinear_reduces_to_linear_reml():
+    # the FOCE routine applied to a linear-in-parameters path must
+    # reproduce the exact linear-mixed-model REML fit
+    from surpyval.degradation.path_models import LinearPath
+    from surpyval.degradation.population import (
+        reml_estimate,
+        reml_estimate_nonlinear,
+    )
+
+    rng = np.random.default_rng(3)
+    x_list, y_list, design_list, theta_list = [], [], [], []
+    for _ in range(40):
+        n_k = int(rng.integers(3, 9))
+        x_k = np.sort(rng.uniform(5, 60, n_k))
+        a_k, b_k = rng.normal(10.0, 1.0), rng.normal(0.4, 0.05)
+        y_k = a_k + b_k * x_k + rng.normal(0, 1.0, n_k)
+        design = np.column_stack([np.ones_like(x_k), x_k])
+        x_list.append(x_k)
+        y_list.append(y_k)
+        design_list.append(design)
+        theta_list.append(np.linalg.lstsq(design, y_k, rcond=None)[0])
+    theta_arr = np.array(theta_list)
+    cov0 = np.cov(theta_arr, rowvar=False)
+
+    lin = reml_estimate(y_list, design_list, cov0, 1.0)
+    nonlin = reml_estimate_nonlinear(
+        y_list, x_list, LinearPath, theta_arr.mean(0), cov0, 1.0, theta_arr
+    )
+    assert np.allclose(lin[0], nonlin[0], atol=1e-4)
+    assert np.allclose(lin[1], nonlin[1], rtol=1e-2, atol=1e-4)
+    assert np.isclose(lin[2], nonlin[2], rtol=1e-2)
+
+
+def test_reml_nonlinear_power_path_positive_definite():
+    # a second nonlinear family (power) also fits and stays PD
+    rng = np.random.default_rng(4)
+    n_units, x_times = 60, np.arange(1.0, 13.0, 1.0)
+    a = rng.normal(1.5, 0.1, n_units)
+    b = rng.normal(0.7, 0.05, n_units)
+    x = np.tile(x_times, n_units)
+    i = np.repeat(np.arange(n_units), len(x_times))
+    y = np.repeat(a, len(x_times)) * np.power(
+        x, np.repeat(b, len(x_times))
+    ) + rng.normal(0, 0.05, len(x))
+    reml = DegradationAnalysis.fit(
+        x, y, i, threshold=8.0, path="power", population_method="reml"
+    )
+    assert np.allclose(reml.path_param_mean, [1.5, 0.7], atol=[0.15, 0.05])
+    assert (np.linalg.eigvalsh(reml.path_param_cov) > 0).all()
 
 
 def test_reml_requires_noise():

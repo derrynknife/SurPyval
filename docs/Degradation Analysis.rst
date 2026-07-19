@@ -271,10 +271,25 @@ Cholesky factor, so it is positive definite by construction — no
 clipping. On balanced designs (every unit measured at the same times)
 REML coincides with the corrected moments estimate; they differ on
 unbalanced data and when the unit count is small, where REML is
-preferable. REML is available for path models that are linear in
-their parameters (linear, quadratic, logarithmic, Lloyd-Lipow) and
-requires a
-positive measurement variance.
+preferable. REML requires a positive measurement variance.
+
+For path models that are **linear in their parameters** (linear,
+quadratic, logarithmic, Lloyd-Lipow) the design matrix :math:`X_i` is
+fixed and the marginal model above is exact. For a **nonlinear** path
+(exponential, power, Gompertz, …) the mean :math:`f(x_i, \theta_i)` is
+no longer :math:`X_i \theta_i`, so REML uses the Lindstrom–Bates FOCE
+linearisation [LindstromBates1990]_: each unit's parameters are
+estimated at their conditional (penalised-least-squares) mode, the path
+is linearised about that mode to give a working linear mixed model, and
+the linear REML step is iterated to convergence. On a linear path this
+reduces to the exact fit in a single pass. Select it the same way:
+
+.. code:: python
+
+    model = DegradationAnalysis.fit(
+        x, y, i, threshold=20, path="exponential",
+        population_method="reml",
+    )
 
 Induced failure-time distribution (Lu-Meeker)
 ---------------------------------------------
@@ -790,3 +805,7 @@ References
 .. [vanNoortwijk2009] van Noortwijk, J.M., 2009. A survey of the application of
    gamma processes in maintenance. *Reliability Engineering & System Safety*,
    94(1), pp.2-21.
+
+.. [LindstromBates1990] Lindstrom, M.J. and Bates, D.M., 1990. Nonlinear
+   mixed effects models for repeated measures data. *Biometrics*, 46(3),
+   pp.673-687.
