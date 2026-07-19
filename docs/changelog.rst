@@ -4,6 +4,21 @@ Changelog
 v0.15.0 (unreleased)
 --------------------
 
+Degradation
+~~~~~~~~~~~
+
+- Added serialisation to the fitted degradation models:
+  ``DegradationModel``, the stochastic-process models ``WienerProcessModel``
+  and ``GammaProcessModel``, and the Monte-Carlo ``InducedFailureDistribution``
+  now have ``to_dict``/``from_dict`` and ``to_json``/``from_json``. The process
+  models store their few parameters; the induced distribution stores its
+  samples (the ``inf`` never-fails draws are written as ``null`` so the result
+  is valid JSON); and ``DegradationModel`` stores its raw data, the path model
+  (by name) and per-unit fits, the population summaries, and the fitted life
+  model (via its own ``to_dict`` -- plain or accelerated), so the reloaded
+  model reproduces its predictions and per-unit paths and (because the data is
+  kept) its bootstrap confidence bounds too.
+
 Recurrent events
 ~~~~~~~~~~~~~~~~~
 

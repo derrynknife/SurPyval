@@ -809,6 +809,34 @@ rather than through noisy per-unit pseudo failure times. The general-path models
 remain the better choice when each unit truly follows a smooth deterministic
 trend observed with error, or when you need a specific parametric path shape.
 
+Saving and loading a fitted model
+---------------------------------
+
+Every fitted degradation model can be serialised to a dictionary or JSON file
+and rebuilt later — the general-path ``DegradationModel``, the stochastic-
+process ``WienerProcessModel`` / ``GammaProcessModel``, and the
+``InducedFailureDistribution``:
+
+.. jupyter-execute::
+
+    from surpyval.degradation import DegradationAnalysis, DegradationModel
+
+    saveable = DegradationAnalysis.fit(
+        np.tile(np.arange(100, 1100, 100), 4),
+        10 + np.repeat([0.31, 0.28, 0.44, 0.37], 10)
+        * np.tile(np.arange(100, 1100, 100), 4),
+        np.repeat([1, 2, 3, 4], 10),
+        threshold=150,
+    )
+    reloaded = DegradationModel.from_dict(saveable.to_dict())
+    grid = np.array([300.0, 450.0, 600.0])
+    print("match:", np.allclose(saveable.sf(grid), reloaded.sf(grid)))
+
+Use ``to_json`` / ``from_json`` for a file directly. ``DegradationModel`` stores
+its raw data, so the reloaded model can also produce bootstrap confidence
+bounds; its fitted life model (plain or accelerated) round-trips through its own
+serialisation.
+
 References
 ----------
 

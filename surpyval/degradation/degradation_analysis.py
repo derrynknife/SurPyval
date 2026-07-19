@@ -11,6 +11,7 @@ observed time.
 """
 
 import inspect
+import json
 import warnings
 from dataclasses import dataclass, field
 from numbers import Number
@@ -159,6 +160,49 @@ class InducedFailureDistribution:
         self.threshold = float(threshold)
         self.path_name = path_name
         self.prob_never_fails = float(np.mean(~np.isfinite(self.samples)))
+
+    def to_dict(self) -> dict:
+        """
+        Serialise this induced failure-time distribution to a plain dict.
+
+        Stores the Monte-Carlo samples (the ``inf`` never-fails draws are
+        written as ``null`` so the result is valid JSON), the threshold and the
+        path model's name.
+        """
+        samples = [
+            None if not np.isfinite(s) else float(s) for s in self.samples
+        ]
+        return {
+            "model": "InducedFailureDistribution",
+            "samples": samples,
+            "threshold": self.threshold,
+            "path_name": self.path_name,
+        }
+
+    def to_json(self, fp) -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "InducedFailureDistribution":
+        """Rebuild an induced failure-time distribution from a dict."""
+        if model_dict.get("model") != "InducedFailureDistribution":
+            raise ValueError(
+                "Must create an induced failure-time distribution from an "
+                "InducedFailureDistribution dict"
+            )
+        samples = np.array(
+            [np.inf if s is None else s for s in model_dict["samples"]],
+            dtype=float,
+        )
+        return cls(samples, model_dict["threshold"], model_dict["path_name"])
+
+    @classmethod
+    def from_json(cls, fp) -> "InducedFailureDistribution":
+        """Load from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     def ff(self, x: npt.ArrayLike) -> "float | npt.NDArray":
         """Failure probability ``P(T <= x)`` from the Monte-Carlo draws."""
@@ -336,6 +380,132 @@ class DegradationModel:
         self.path_selection = path_selection
         self.Z = Z
         self._unit_index = {unit: idx for idx, unit in enumerate(units)}
+
+    # -- serialisation -----------------------------------------------------
+
+    @staticmethod
+    def _life_model_to_dict(life_model) -> dict:
+        out = life_model.to_dict()
+        out["_life_class"] = (
+            "ParametricRegressionModel"
+            if isinstance(life_model, ParametricRegressionModel)
+            else "Parametric"
+        )
+        return out
+
+    @staticmethod
+    def _life_model_from_dict(life_dict: dict):
+        life_dict = dict(life_dict)
+        life_class = life_dict.pop("_life_class")
+        if life_class == "ParametricRegressionModel":
+            return ParametricRegressionModel.from_dict(life_dict)
+        return Parametric.from_dict(life_dict)
+
+    def to_dict(self) -> dict:
+        """
+        Serialise this fitted degradation model to a plain, JSON-serialisable
+        dict.
+
+        Everything needed to rebuild the model is stored: the raw measurement
+        data, the path model (by name) and its per-unit fitted parameters, the
+        pseudo failure times and censor flags, the fitted life model (its own
+        ``to_dict``), and the population summaries. The restored model
+        reproduces the life predictions and per-unit paths, and (because the
+        raw data is kept) its bootstrap confidence bounds too.
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        return {
+            "model": "DegradationModel",
+            "x": np.asarray(self.x, dtype=float).tolist(),
+            "y": np.asarray(self.y, dtype=float).tolist(),
+            "i": np.asarray(self.i).tolist(),
+            "units": np.asarray(self.units).tolist(),
+            "threshold": float(self.threshold),
+            "path_model": self.path_model.name,
+            "path_params": np.asarray(self.path_params, dtype=float).tolist(),
+            "pseudo_failure_times": np.asarray(
+                self.pseudo_failure_times, dtype=float
+            ).tolist(),
+            "c": np.asarray(self.c).tolist(),
+            "life_model": self._life_model_to_dict(self.life_model),
+            "measurement_var": float(self.measurement_var),
+            "path_param_mean": np.asarray(
+                self.path_param_mean, dtype=float
+            ).tolist(),
+            "path_param_cov": np.asarray(
+                self.path_param_cov, dtype=float
+            ).tolist(),
+            "path_param_sample_cov": np.asarray(
+                self.path_param_sample_cov, dtype=float
+            ).tolist(),
+            "population_method": self.population_method,
+            "path_selection": self.path_selection,
+            "Z": None if self.Z is None else np.asarray(self.Z).tolist(),
+            "how": self._how,
+        }
+
+    def to_json(self, fp) -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "DegradationModel":
+        """
+        Rebuild a degradation model from a :meth:`to_dict` dictionary.
+
+        The path model is resolved by name and the life model by its own
+        ``from_dict``; both are restricted to the known types.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        if model_dict.get("model") != "DegradationModel":
+            raise ValueError(
+                "Must create a degradation model from a DegradationModel dict"
+            )
+        Z = model_dict.get("Z")
+        out = cls(
+            x=np.array(model_dict["x"], dtype=float),
+            y=np.array(model_dict["y"], dtype=float),
+            i=np.array(model_dict["i"]),
+            units=np.array(model_dict["units"]),
+            threshold=float(model_dict["threshold"]),
+            path_model=get_path_model(model_dict["path_model"]),
+            path_params=np.array(model_dict["path_params"], dtype=float),
+            pseudo_failure_times=np.array(
+                model_dict["pseudo_failure_times"], dtype=float
+            ),
+            c=np.array(model_dict["c"]),
+            life_model=cls._life_model_from_dict(model_dict["life_model"]),
+            measurement_var=float(model_dict["measurement_var"]),
+            path_param_mean=np.array(
+                model_dict["path_param_mean"], dtype=float
+            ),
+            path_param_cov=np.array(model_dict["path_param_cov"], dtype=float),
+            path_param_sample_cov=np.array(
+                model_dict["path_param_sample_cov"], dtype=float
+            ),
+            population_method=model_dict["population_method"],
+            path_selection=model_dict.get("path_selection"),
+            Z=None if Z is None else np.array(Z, dtype=float),
+        )
+        # Recorded so bootstrap bounds can rerun the pipeline; the original
+        # distribution object is not serialised, so bounds default to the
+        # analytic method after a reload.
+        out._distribution = None
+        out._how = model_dict.get("how", "MLE")
+        return out
+
+    @classmethod
+    def from_json(cls, fp) -> "DegradationModel":
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
     @property
     def is_accelerated(self) -> bool:
