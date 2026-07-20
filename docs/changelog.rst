@@ -32,6 +32,15 @@ Diagnostics & validation
   independent data it agrees with the model-based errors; on exactly
   replicated clusters it inflates by the theoretically exact
   ``sqrt(cluster size)``.
+- **Gray's test** (#216). The package-level ``surpyval.gray_test`` compares
+  cumulative incidence functions across groups for a specified cause in the
+  presence of competing risks -- the subdistribution analogue of the log-rank
+  test. Unlike a cause-specific log-rank, it keeps competing-cause failures in
+  the risk set with an inverse-probability-of-censoring weight, so it tests the
+  CIFs directly. Returns a chi-squared statistic, degrees of freedom and
+  p-value. Validated for calibration under the null (including under heavy
+  censoring, which exercises the IPCW weighting) and for power against genuine
+  CIF differences.
 
 v0.15.2 (20 Jul 2026)
 ---------------------

@@ -68,6 +68,7 @@ from surpyval.utils import (
 )
 
 from .fit_best import fit_best
+from surpyval.univariate.competing_risks import gray_test  # noqa: E402,F401
 
 from surpyval.utils.recurrent_event_data import (  # isort: skip
     RecurrentEventData,
