@@ -55,6 +55,21 @@ Diagnostics & validation
   biased / over-reject, reduce exactly to their unstratified counterparts with
   a single stratum, and the stratified Cox partial likelihood factorises into
   the per-stratum contributions.
+- **Prediction-validation metrics** (#212). A new ``surpyval.metrics`` module
+  scores a *predicted survival function* against right-censored outcomes with
+  inverse-probability-of-censoring weighting: ``brier_score`` /
+  ``integrated_brier_score`` (the time-dependent Brier score of Graf et al.
+  1999 and its integral -- calibration and discrimination together, lower is
+  better) and ``auc_td`` (Uno's 2007 cumulative/dynamic time-dependent AUC --
+  discrimination as a function of the horizon). All are model-agnostic; the
+  ``survival_probability`` helper builds the required survival matrix from any
+  fitted model exposing ``sf(x, Z)`` (the parametric regression families,
+  ``CoxPH`` and the ``beta.ml`` forest), giving the ML-flavoured workflow its
+  first proper validation-and-comparison story. Validated against known
+  answers: without censoring the Brier score is exactly the mean squared error;
+  a well-specified model beats the marginal Kaplan-Meier reference (and a
+  constant predictor is worse); and the AUC is ~1 for a near-perfect ordering
+  and ~0.5 for a random one.
 
 v0.15.2 (20 Jul 2026)
 ---------------------
