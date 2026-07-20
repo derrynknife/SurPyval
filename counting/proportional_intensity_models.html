@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Proportional Intensity Regression Model &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+        <script src="../_static/clipboard.min.js"></script>
+        <script src="../_static/copybutton.js"></script>
+        <script src="../_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="HPP Regression" href="hpp_pi.html" />
+    <link rel="prev" title="Cause-Specific NHPP" href="cause_specific_nhpp.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="../index.html">
+            <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Proportional Intensity Regression Model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hpp_pi.html">HPP Regression</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nhpp_pi.html">NHPP Regression</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">Proportional Intensity Regression Model</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/proportional_intensity_models.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="proportional-intensity-regression-model">
+<h1>Proportional Intensity Regression Model<a class="headerlink" href="#proportional-intensity-regression-model" title="Permalink to this heading">¶</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.regression.proportional_intensity.</span></span><span class="sig-name descname"><span class="pre">ProportionalIntensityModel</span></span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">RecurrenceSimulationMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">LikelihoodInferenceMixin</span></code></p>
+<p>Model to provide methods and attributes when using a fitted proportional
+intensity model.</p>
+<p>Simulation reuses the shared <code class="xref py py-class docutils literal notranslate"><span class="pre">RecurrenceSimulationMixin</span></code> (seeding,
+<code class="docutils literal notranslate"><span class="pre">max_events</span></code> backstop and the count/time-terminated drivers); the only
+addition here is the per-item covariate vector <code class="docutils literal notranslate"><span class="pre">Z</span></code>, which the simulation
+entry points take and thread through to the sampler. When the model was
+fitted by maximum likelihood it also carries the likelihood-inference
+behaviour (<code class="docutils literal notranslate"><span class="pre">log_likelihood</span></code>, <code class="docutils literal notranslate"><span class="pre">aic</span></code>, <code class="docutils literal notranslate"><span class="pre">bic</span></code>, <code class="docutils literal notranslate"><span class="pre">standard_errors</span></code>) from
+<code class="xref py py-class docutils literal notranslate"><span class="pre">LikelihoodInferenceMixin</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_rossi_static</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">CrowAMSAA</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProportionalIntensityNHPP</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">load_rossi_static</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;week&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;arrest&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Z</span> <span class="o">=</span> <span class="n">data</span><span class="p">[[</span><span class="s2">&quot;fin&quot;</span><span class="p">,</span> <span class="s2">&quot;age&quot;</span><span class="p">,</span> <span class="s2">&quot;race&quot;</span><span class="p">,</span> <span class="s2">&quot;wexp&quot;</span><span class="p">,</span> <span class="s2">&quot;mar&quot;</span><span class="p">,</span> <span class="s2">&quot;paro&quot;</span><span class="p">,</span> <span class="s2">&quot;prio&quot;</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">ProportionalIntensityNHPP</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="n">CrowAMSAA</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">type</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="go">surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">cif</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">Z</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+<span class="go">array([0.00625402, 0.04304137, 0.13302238])</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.cif">
+<span class="sig-name descname"><span class="pre">cif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.cif" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the cumulative incidence function of the model with the
+parameters found by the fit method.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – The times to compute the CIF at.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em>) – The covariates for the item.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.cif_cb">
+<span class="sig-name descname"><span class="pre">cif_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'two-sided'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.cif_cb" title="Permalink to this definition">¶</a></dt>
+<dd><p>Confidence bounds on the fitted CIF at <code class="docutils literal notranslate"><span class="pre">x</span></code> for covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code>,
+from the delta method.</p>
+<p>The variance of the fitted CIF is propagated from the joint
+covariance of the base-rate parameters and covariate coefficients
+(the inverse observed information) through the CIF’s gradient, and
+the bounds are computed on the log scale so they cannot go negative.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – Values at which to compute the confidence bounds.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em>) – The covariates for the item.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The total tail probability of the bound(s). Default is 0.05.</p></li>
+<li><p><strong>bound</strong> (<em>{'two-sided'</em><em>, </em><em>'lower'</em><em>, </em><em>'upper'}</em><em>, </em><em>optional</em>) – Two-sided bounds are returned as an <code class="docutils literal notranslate"><span class="pre">(len(x),</span> <span class="pre">2)</span></code> array with
+columns <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>; one-sided bounds have the shape of
+<code class="docutils literal notranslate"><span class="pre">x</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The confidence bounds on the CIF.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.count_terminated_simulation">
+<span class="sig-name descname"><span class="pre">count_terminated_simulation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">events</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">items</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.count_terminated_simulation" title="Permalink to this definition">¶</a></dt>
+<dd><p>Simulate count-terminated recurrence data based on the fitted model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>events</strong> (<em>int</em>) – Number of events to simulate per sequence.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em>) – Covariate vector applied to every simulated sequence.</p></li>
+<li><p><strong>items</strong> (<em>int</em><em>, </em><em>optional</em>) – Number of items (or sequences) to simulate. Default is 1.</p></li>
+<li><p><strong>seed</strong> (<em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – Seed for a reproducible simulation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>An NonParametricCounting model built from the simulated data.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="nonparametric_mcf.html#NonParametricCounting" title="NonParametricCounting">NonParametricCounting</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.count_terminated_simulation_data">
+<span class="sig-name descname"><span class="pre">count_terminated_simulation_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">events</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">items</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.count_terminated_simulation_data" title="Permalink to this definition">¶</a></dt>
+<dd><p>Simulate count-terminated recurrence data and return the raw events.
+Like <a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.count_terminated_simulation" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.count_terminated_simulation"><code class="xref py py-meth docutils literal notranslate"><span class="pre">count_terminated_simulation()</span></code></a> but yields the simulated
+<code class="docutils literal notranslate"><span class="pre">RecurrentEventData</span></code> rather than the fitted MCF.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.covariance">
+<span class="sig-name descname"><span class="pre">covariance</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.covariance" title="Permalink to this definition">¶</a></dt>
+<dd><p>Approximate parameter covariance matrix, ordered to match
+<code class="xref py py-attr docutils literal notranslate"><span class="pre">parameter_names</span></code>. Computed as the inverse of the numerical
+Hessian of the negative log-likelihood at the MLE.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.cramer_von_mises">
+<span class="sig-name descname"><span class="pre">cramer_von_mises</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_boot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.cramer_von_mises" title="Permalink to this definition">¶</a></dt>
+<dd><p>Cramer-von Mises goodness-of-fit test of the fitted proportional-
+intensity model.</p>
+<p>Conditional on the number of events an item shows in its window, the
+transforms <code class="docutils literal notranslate"><span class="pre">[cif(t)</span> <span class="pre">-</span> <span class="pre">cif(entry)]</span> <span class="pre">/</span> <span class="pre">[cif(close)</span> <span class="pre">-</span> <span class="pre">cif(entry)]</span></code> under
+the item’s own covariate-scaled intensity <code class="docutils literal notranslate"><span class="pre">Lambda_0(t)</span> <span class="pre">exp(Z'beta)</span></code>
+are iid U(0, 1) when the fitted model is the true one; the statistic
+measures their departure from uniformity. Because the parameters
+(base-rate and coefficients) were estimated from the same data, the
+p-value is a parametric bootstrap: data is simulated from the fitted
+model over the same per-item windows and covariates, the full
+regression model is refitted, and the statistic recomputed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n_boot</strong> (<em>int</em><em>, </em><em>optional</em>) – Number of bootstrap replicates for the p-value. Default is 200.</p></li>
+<li><p><strong>seed</strong> (<em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – Seed for a reproducible p-value.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The observed statistic and its bootstrap p-value.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>GoodnessOfFitResult</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.from_dict">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.from_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>Rebuild a proportional-intensity model from a <a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_dict" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a>
+dictionary.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_dict" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_dict</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_json" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_json</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.from_json" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.from_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_json</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.from_json">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.from_json" title="Permalink to this definition">¶</a></dt>
+<dd><p>Load a model from a JSON file written by <a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_json" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_json"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_json()</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.iif">
+<span class="sig-name descname"><span class="pre">iif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.iif" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the instantaneous incidence function of the model with the
+parameters found by the fit method.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – The times to at which  to compute the iif.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em>) – The covariates for the item.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.mcf">
+<span class="sig-name descname"><span class="pre">mcf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">items</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.mcf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate the mean cumulative function at <code class="docutils literal notranslate"><span class="pre">x</span></code> for covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code> by
+simulating <code class="docutils literal notranslate"><span class="pre">items</span></code> time-terminated sequences out to <code class="docutils literal notranslate"><span class="pre">max(x)</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.param_cb">
+<span class="sig-name descname"><span class="pre">param_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'two-sided'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.param_cb" title="Permalink to this definition">¶</a></dt>
+<dd><p>Confidence bound(s) on a fitted parameter, mirroring the univariate
+<code class="docutils literal notranslate"><span class="pre">Parametric.param_cb</span></code> API.</p>
+<p>Wald bounds from the observed information, computed on a transformed
+scale chosen from the parameter’s bounds so the result respects its
+support: log scale for one-sided-bounded parameters (e.g. a positive
+rate), logit scale for interval-bounded parameters (e.g. a repair
+efficiency in <code class="docutils literal notranslate"><span class="pre">(0,</span> <span class="pre">1)</span></code>), and the natural scale for unbounded ones.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The parameter to bound; one of <code class="xref py py-attr docutils literal notranslate"><span class="pre">parameter_names</span></code>.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The total tail probability of the bound(s). Default is 0.05.</p></li>
+<li><p><strong>bound</strong> (<em>{'two-sided'</em><em>, </em><em>'lower'</em><em>, </em><em>'upper'}</em><em>, </em><em>optional</em>) – Two-sided bounds are returned as <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The confidence bound(s) on the parameter.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_bounds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">confidence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.95</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>PLots the CIF of the model against the data used to fit it.</p>
+<p>To do this, the plot method takes the average of the covariates, and
+uses them to calculate the CIF of the model. This is then plotted
+against the non-parametric MCF of the raw data. That is, the raw
+MCF is created without considering the covariates. A delta-method
+confidence band is drawn around the fitted CIF.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ax</strong> (<em>matplotlib.axes.Axes</em><em>, </em><em>optional</em>) – The axes to plot the data on. If None, the current axes will be
+used.</p></li>
+<li><p><strong>plot_bounds</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to draw the confidence band around the fitted CIF.
+Default is True.</p></li>
+<li><p><strong>confidence</strong> (<em>float</em><em>, </em><em>optional</em>) – The confidence level of the band. Default is 0.95.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>ax</strong> – The axes the data was plotted on.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>matplotlib.axes.Axes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.residuals">
+<span class="sig-name descname"><span class="pre">residuals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cumulative_hazard'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.residuals" title="Permalink to this definition">¶</a></dt>
+<dd><p>Residual diagnostics for the fitted model, from the time-rescaling
+theorem applied per item (each item’s intensity is the baseline
+scaled by its covariate factor <code class="docutils literal notranslate"><span class="pre">exp(Z'beta)</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>kind</strong> (<em>{'cumulative_hazard'</em><em>, </em><em>'pit'</em><em>, </em><em>'martingale'}</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">'cumulative_hazard'</span></code> returns the rescaled interarrival times
+<code class="docutils literal notranslate"><span class="pre">cif(t_k)</span> <span class="pre">-</span> <span class="pre">cif(t_{k-1})</span></code> of every observed event (pooled across
+items), which are iid Exp(1) under the fitted model. <code class="docutils literal notranslate"><span class="pre">'pit'</span></code>
+applies the probability integral transform <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">exp(-e)</span></code> to
+those residuals, giving iid U(0, 1) values. <code class="docutils literal notranslate"><span class="pre">'martingale'</span></code>
+returns one residual per item: its observed event count minus the
+count the model expects over its observation window.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The residuals.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.standard_errors">
+<span class="sig-name descname"><span class="pre">standard_errors</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.standard_errors" title="Permalink to this definition">¶</a></dt>
+<dd><p>Standard errors of the fitted parameters (the square roots of the
+diagonal of <a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.covariance" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.covariance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">covariance()</span></code></a>), ordered to match
+<code class="xref py py-attr docutils literal notranslate"><span class="pre">parameter_names</span></code>. Entries are NaN where the variance is
+non-positive, which typically indicates a boundary optimum.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.time_terminated_simulation">
+<span class="sig-name descname"><span class="pre">time_terminated_simulation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">T</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">items</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-08</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_events</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.time_terminated_simulation" title="Permalink to this definition">¶</a></dt>
+<dd><p>Simulate time-terminated recurrence data based on the fitted model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>T</strong> (<em>float</em>) – Time termination value.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em>) – Covariate vector applied to every simulated sequence.</p></li>
+<li><p><strong>items</strong> (<em>int</em><em>, </em><em>optional</em>) – Number of items (or sequences) to simulate. Default is 1.</p></li>
+<li><p><strong>tol</strong> (<em>float</em><em>, </em><em>optional</em>) – Interarrival times below this value end a sequence early (a
+possible asymptote). Default is 1e-8.</p></li>
+<li><p><strong>max_events</strong> (<em>int</em><em>, </em><em>optional</em>) – Hard per-sequence event cap that guarantees termination.
+Default is 10000.</p></li>
+<li><p><strong>seed</strong> (<em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – Seed for a reproducible simulation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>An NonParametricCounting model built from the simulated data.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="nonparametric_mcf.html#NonParametricCounting" title="NonParametricCounting">NonParametricCounting</a></p>
+</dd>
+</dl>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>A sequence is terminated early and right-censored at its last event if
+an interarrival time falls below <code class="docutils literal notranslate"><span class="pre">tol</span></code> or it reaches <code class="docutils literal notranslate"><span class="pre">max_events</span></code>
+before T. A warning is raised in either case.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.time_terminated_simulation_data">
+<span class="sig-name descname"><span class="pre">time_terminated_simulation_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">T</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">items</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-08</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_events</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.time_terminated_simulation_data" title="Permalink to this definition">¶</a></dt>
+<dd><p>Simulate time-terminated recurrence data and return the raw events.
+Like <a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.time_terminated_simulation" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.time_terminated_simulation"><code class="xref py py-meth docutils literal notranslate"><span class="pre">time_terminated_simulation()</span></code></a> but yields the simulated
+<code class="docutils literal notranslate"><span class="pre">RecurrentEventData</span></code> rather than the fitted MCF.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>Serialise this fitted proportional-intensity model to a plain,
+JSON-serialisable dict.</p>
+<p>Stores the base-rate intensity model’s name, the base-rate <code class="docutils literal notranslate"><span class="pre">params</span></code>
+and the covariate <code class="docutils literal notranslate"><span class="pre">coeffs</span></code>; the reloaded model reproduces
+<code class="docutils literal notranslate"><span class="pre">cif</span></code>/<code class="docutils literal notranslate"><span class="pre">iif</span></code> (<code class="docutils literal notranslate"><span class="pre">Lambda_0(t;</span> <span class="pre">params)</span> <span class="pre">*</span> <span class="pre">exp(Z</span> <span class="pre">.</span> <span class="pre">coeffs)</span></code>) exactly.
+The likelihood-inference state (data, <code class="docutils literal notranslate"><span class="pre">neg_ll</span></code> closure) is not
+stored.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.from_dict" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.from_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_dict</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_json" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_json</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.from_json" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.from_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_json</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_json" title="Permalink to this definition">¶</a></dt>
+<dd><p>Write <a class="reference internal" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_dict" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> to <code class="docutils literal notranslate"><span class="pre">fp</span></code> as JSON.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.trend_test">
+<span class="sig-name descname"><span class="pre">trend_test</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'laplace'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alternative</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'two-sided'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.trend_test" title="Permalink to this definition">¶</a></dt>
+<dd><p>Run a trend test on the data this model was fitted to. The null
+hypothesis is a <em>homogeneous</em> Poisson process (no trend); the
+statistic uses only the event times and windows, not the covariates,
+so it checks whether a time-varying intensity was warranted at all.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<em>{'laplace'</em><em>, </em><em>'mil_hdbk_189c'}</em><em>, </em><em>optional</em>) – The trend test to run. Default is ‘laplace’.</p></li>
+<li><p><strong>alternative</strong> (<em>{'two-sided'</em><em>, </em><em>'increasing'</em><em>, </em><em>'decreasing'}</em><em>, </em><em>optional</em>) – The alternative hypothesis. Default is ‘two-sided’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The test result, carrying the statistic, p-value and suggested
+trend direction.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>TrendTestResult</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="cause_specific_nhpp.html" class="btn btn-neutral float-left" title="Cause-Specific NHPP" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="hpp_pi.html" class="btn btn-neutral float-right" title="HPP Regression" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

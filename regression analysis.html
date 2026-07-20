@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Regression Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Competing Risks Analysis" href="Competing%20Risks%20Analysis.html" />
+    <link rel="prev" title="Parametric Estimation" href="Parametric%20Estimation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Regression Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#proportional-hazards-model">Proportional Hazards Model</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#semi-parametric">Semi-Parametric</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#accelerated-time">Accelerated Time</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#accelerated-life">Accelerated Life</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Regression Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/regression analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="regression-analysis">
+<h1>Regression Analysis<a class="headerlink" href="#regression-analysis" title="Permalink to this heading">¶</a></h1>
+<p>The time until some event happens will, almost certainly, be impacted by factors. For example, when considering how long a machine will last before failure an engineer will want to account for the operational conditions. It may operate in a humid environment, or it may operate at a higher rate. The question is then, how do we account for these variations, or ‘covariates’, on the time until failure?</p>
+<p>Regression analysis is the process of capturing the effect that covariates have on the item. That is, we use data on other factors to ‘regress’ onto the survival distribution. The purpose of this type of regression is so that you can ask, and answer, questions like “what effect will increasing X have on the survival time?”</p>
+<p>Surpyval covers three types of regression models, these are:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Proportional Hazards,</p></li>
+<li><p>Accelerated Time, and</p></li>
+<li><p>Accelerated Life.</p></li>
+</ul>
+</div></blockquote>
+<p>There are special cases when these are the same, however, it is important to understand the difference between them in general. I detail the differences in the following sections.</p>
+<section id="proportional-hazards-model">
+<h2>Proportional Hazards Model<a class="headerlink" href="#proportional-hazards-model" title="Permalink to this heading">¶</a></h2>
+<p>A proportional hazards model is one in which we change the hazard rate of the distribution by some proportional amount. You may recall that every distribution can be defined by a hazard rate or a cumulative hazard rate, see the “Handy References” section which shows that the density, CDF, and survival function can all be defined in terms of the hazard rate, h(t).</p>
+<p>So what we can do then is assume that the covariates will affect the survival time of the thing by having some effect on the hazard rate. The general definition for a proportional hazard model is:</p>
+<div class="math notranslate nohighlight">
+\[h(t|X) = \phi(X) h_{0}(t)\]</div>
+<p>This is to say that the hazard rate at time t is the function (of a vector) of covariates on a ‘baseline’ hazard rate. Let’s use a simple example, a proportional hazard model with covariates that affect a constant hazard rate. Let’s say that some factory produces one widget an hour. But this is only wih one machine in operation, if we add a second machine, we can produce widgets at two per hours, if we had a third, it will be three per hour. In this case the base rate is 1 and the function linking X to the base rate is to simply multiply X by the baserate.</p>
+<p>This is to say that for this example:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\phi(X) = X \\
+h_{0}(t) = 1\end{split}\]</div>
+<p>Therefore:</p>
+<div class="math notranslate nohighlight">
+\[h(t|X) = X\]</div>
+<p>This is an overly simple model, but it shows how we can construct a PH model.</p>
+<p>In this case we have a simple proportional hazard model, also, it is limited to only an increasing hazard rate, but sometimes we need to caputre a negative impact. Further, we may need a way to capture more coviariates. For these reasons a very common selection for the function of covariates is an exponential function.</p>
+<div class="math notranslate nohighlight">
+\[\phi(X) = e^{X\cdot \beta }\]</div>
+<p>Where</p>
+<div class="math notranslate nohighlight">
+\[X\cdot \beta = X_{0}\beta_{0} + X_{1} \beta_{1} + ... + X_{n-1}\beta_{n-1} + X_{n}\beta_{n}\]</div>
+<p>In this case the proportional term is the e raised to the power of the cross product of X and beta. Using this as the covairate function is a very common choice. This is because it will not ever become negative. It can capture situations where a covariate will increase the hazard rate if it’s coefficient, beta, is positive, and it will decrease the hazard rate it it’s coefficient is negative. Also, the dot product can capture a varying number of covariates with ease. For these reasons the Cox model is a widely used. Although you can choose any function for your covariates there is already likely literature about your problem which might indicate which function to use.</p>
+<p>Surpyval uses MLE to estimate the parameters for proportional hazards models. This is a simple conversion from regulare MLE since we know the relationship between a baseline distribution and the proportional hazards version. These relationships are:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}f(t|X) = \phi(X) h_{0}(t) e^{-\phi(X) H(t)} \\
+\\
+F(t|X) = 1 - e^{-\phi(X) H(t)} \\
+\\
+S(t|X) = e^{-\phi(X) H(t)}\end{split}\]</div>
+<p>It is therefore relatively simple to adjust the MLE methods to accommodate propotional hazard models.</p>
+<p>The details on fitting proportional hazards model is detailed more in the SurPyval Modelling section.</p>
+<section id="semi-parametric">
+<h3>Semi-Parametric<a class="headerlink" href="#semi-parametric" title="Permalink to this heading">¶</a></h3>
+<p>The previous sections covered ‘parametric’ and ‘non-parametric’ survival models, so what is ‘semi-parametric’? A semi-parametric model is a survival model with a non-parametric baseline and parametric function that affects that baseline. Recall that a proportional hazard model can be defined as:</p>
+<div class="math notranslate nohighlight">
+\[h(t|X) = \phi(X) h_{0}(t)\]</div>
+<p>It is interesting to note that the phi term must be parametric, however, the baseline hazard rate need not be parametric, it can be non-parametric! Therefore, what we have is a parametric relationship of the covariates to the baseline hazard rate, but a non-parametric baseline hazard rate, therefore, a ‘semi-parametric’ model.</p>
+<p>By far the most common of any regression model of any kind (parametric, non-parametric, and semi-parametric of all the accelerated life, proportinal hazard, and accelerated time) is the Cox Proportional Hazard model, it is a semi-parametric model.</p>
+<p>The Cox model is used in a wide variety of fields. It has been used in criminology to study the recidivism of parolees, in engineering to understand the factors affecting tire reliability, and in medical science to understand factors affecting cancer and other diseases, among many many other applications. The wide use of the model shows the utility the model has and the broad applicability to solve problems.</p>
+</section>
+</section>
+<section id="accelerated-time">
+<h2>Accelerated Time<a class="headerlink" href="#accelerated-time" title="Permalink to this heading">¶</a></h2>
+<p>An accelerated time model is very similar to a proportional hazards model. The difference is where the function is applied; instead of multiplying the hazard function, and accelerated time model multiplies the time by the function of covariates. The general definition is:</p>
+<div class="math notranslate nohighlight">
+\[f(t|X) = f(\phi(X)t)\]</div>
+<p>It is called an accelerated time since the time term is transformed by the covariates, i.e. time is ‘accelerated’ by the covariates.</p>
+<div class="math notranslate nohighlight">
+\[t_{a} = \phi(X)t\]</div>
+<p>Just like proportinal hazards, there are simple transofmations that apply</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}f(t|X) = f(\phi(X)t) \\
+\\
+F(t|X) = F(\phi(X)t) \\
+\\
+S(t|X) = S(\phi(X)t)\end{split}\]</div>
+<p>Given the simple transofmation of the time term the MLE is feasible with an additional transformation step. This is how surpyval estimates the parameters.</p>
+</section>
+<section id="accelerated-life">
+<h2>Accelerated Life<a class="headerlink" href="#accelerated-life" title="Permalink to this heading">¶</a></h2>
+<p>An accelerated life model is, in many cases, simply the inverse of an accelerated time model. However, there are some cases where they are different. Consider an accelerated life model with a normal distribution:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}F(t|X) = \Phi\left(\frac{\phi(X)t - \mu}{\sigma}\right) \\\end{split}\]</div>
+<p>Where <span class="math notranslate nohighlight">\(\Phi\)</span> is the CDF of the standard normal distribution. In this case <span class="math notranslate nohighlight">\(\mu\)</span> is the expected life of the model, however, we may isntead be interested in determining what effect covariates have on the expected life of an item. In this case we can simply substitute the expected life:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}F(t|X) = \Phi\left(\frac{t - \phi(X)}{\sigma}\right) \\\end{split}\]</div>
+<p>An accelerated life model is, therefore, simply a model where the life parameter of a distribution is substituted with a function of the covariates, that is, it ‘accelerates’ the expected life, as opposed to accelerating time as per an accelerated time model. For each of the distributions in Surpyval their life parameter that varies is as per the following table:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 53%" />
+<col style="width: 47%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><strong>Distribution</strong></p></td>
+<td><p><strong>Life Param</strong></p></td>
+</tr>
+<tr class="row-even"><td><p>Weibull</p></td>
+<td><p>alpha</p></td>
+</tr>
+<tr class="row-odd"><td><p>Exponential</p></td>
+<td><p>1./lambda</p></td>
+</tr>
+<tr class="row-even"><td><p>Normal</p></td>
+<td><p>mu</p></td>
+</tr>
+<tr class="row-odd"><td><p>LogNormal</p></td>
+<td><p>mu</p></td>
+</tr>
+<tr class="row-even"><td><p>Gamma</p></td>
+<td><p>alpha</p></td>
+</tr>
+<tr class="row-odd"><td><p>Gumbel</p></td>
+<td><p>mu</p></td>
+</tr>
+<tr class="row-even"><td><p>Logistic</p></td>
+<td><p>mu</p></td>
+</tr>
+<tr class="row-odd"><td><p>LogLogistic</p></td>
+<td><p>alpha</p></td>
+</tr>
+<tr class="row-even"><td><p>ExpoWeibull</p></td>
+<td><p>Not Avail</p></td>
+</tr>
+<tr class="row-odd"><td><p>Uniform</p></td>
+<td><p>Not Avail</p></td>
+</tr>
+<tr class="row-even"><td><p>Beta</p></td>
+<td><p>Not Avail</p></td>
+</tr>
+</tbody>
+</table>
+<p>Given the simple substitution into the life parameter, surpyval uses MLE to calculate the parameters.</p>
+<p>For examples on how to do regression analysis, see the entry in the SurPyval Modelling section of the docs.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Parametric%20Estimation.html" class="btn btn-neutral float-left" title="Parametric Estimation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Competing%20Risks%20Analysis.html" class="btn btn-neutral float-right" title="Competing Risks Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

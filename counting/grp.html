@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generalized Renewal Process &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+        <script src="../_static/clipboard.min.js"></script>
+        <script src="../_static/copybutton.js"></script>
+        <script src="../_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Generalized One Renewal Process" href="g1_rp.html" />
+    <link rel="prev" title="Renewal Model" href="renewal_model.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="../index.html">
+            <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="renewal_model.html">Renewal Model</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Generalized Renewal Process</a></li>
+<li class="toctree-l4"><a class="reference internal" href="g1_rp.html">Generalized One Renewal Process</a></li>
+<li class="toctree-l4"><a class="reference internal" href="ara.html">Arithmetic Reduction of Age (ARA)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="ari.html">Arithmetic Reduction of Intensity (ARI)</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">Generalized Renewal Process</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/grp.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="generalized-renewal-process">
+<h1>Generalized Renewal Process<a class="headerlink" href="#generalized-renewal-process" title="Permalink to this heading">¶</a></h1>
+<p>The generalized renewal (Kijima virtual-age) process; <code class="docutils literal notranslate"><span class="pre">kijima=&quot;i&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;ii&quot;</span></code> selects the age update. Returns a <a class="reference internal" href="renewal_model.html"><span class="doc">Renewal Model</span></a>.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="GeneralizedRenewal">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">GeneralizedRenewal</span></span><a class="headerlink" href="#GeneralizedRenewal" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.GeneralizedRenewal_.fit">
+<span class="sig-prename descclassname"><span class="pre">GeneralizedRenewal_.</span></span><span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist=&lt;surpyval.univariate.parametric.distributions.weibull.Weibull_</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kijima='i'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.GeneralizedRenewal_.fit" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit the generalized renewal model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – An array of event times.</p></li>
+<li><p><strong>i</strong> (<em>array_like</em><em>, </em><em>optional</em>) – An array of item indices.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – An array of censoring indicators.</p></li>
+<li><p><strong>n</strong> (<em>array_like</em><em>, </em><em>optional</em>) – An array of counts.</p></li>
+<li><p><strong>dist</strong> (<em>object</em><em>, </em><em>optional</em>) – A surpyval distribution object. Default is Weibull.</p></li>
+<li><p><strong>kijima</strong> (<em>str</em><em>, </em><em>optional</em>) – Type of Kijima model to use, either “i” or “ii”. Default is “i”.</p></li>
+<li><p><strong>init</strong> (<em>list</em><em>, </em><em>optional</em>) – Initial parameters for the optimization algorithm.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A fitted renewal model.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="renewal_model.html#surpyval.recurrent.renewal.renewal_model.RenewalModel" title="surpyval.recurrent.renewal.renewal_model.RenewalModel">RenewalModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeneralizedRenewal</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mf">1.4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mf">6.7</span><span class="p">,</span> <span class="mf">8.9</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span> <span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">GeneralizedRenewal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span>
+<span class="go">Generalized Renewal SurPyval Model</span>
+<span class="go">==================================</span>
+<span class="go">Distribution        : Weibull</span>
+<span class="go">Fitted by           : MLE</span>
+<span class="go">Kijima Type         : i</span>
+<span class="go">Restoration Factor  : 1.594694243423234e-11</span>
+<span class="go">Parameters          :</span>
+<span class="go">    alpha: 2.399029078569064</span>
+<span class="go">    beta: 2.753920439616154</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.GeneralizedRenewal_.fit_from_recurrent_data">
+<span class="sig-prename descclassname"><span class="pre">GeneralizedRenewal_.</span></span><span class="sig-name descname"><span class="pre">fit_from_recurrent_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist=&lt;surpyval.univariate.parametric.distributions.weibull.Weibull_</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kijima='i'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.GeneralizedRenewal_.fit_from_recurrent_data" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit the generalized renewal model from recurrent data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>RecurrentData</em>) – Data containing the recurrence details.</p></li>
+<li><p><strong>dist</strong> (<em>Distribution</em><em>, </em><em>optional</em>) – A surpyval distribution object. Default is Weibull.</p></li>
+<li><p><strong>kijima</strong> (<em>str</em><em>, </em><em>optional</em>) – Type of Kijima model to use, either “i” or “ii”. Default is “i”.</p></li>
+<li><p><strong>init</strong> (<em>list</em><em>, </em><em>optional</em>) – Initial parameters for the optimization algorithm.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A fitted renewal model.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="renewal_model.html#surpyval.recurrent.renewal.renewal_model.RenewalModel" title="surpyval.recurrent.renewal.renewal_model.RenewalModel">RenewalModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span><span class="p">,</span> <span class="n">handle_xicn</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeneralizedRenewal</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mf">1.4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mf">6.7</span><span class="p">,</span> <span class="mf">8.9</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span> <span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">recurrent_data</span> <span class="o">=</span> <span class="n">handle_xicn</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">GeneralizedRenewal</span><span class="o">.</span><span class="n">fit_from_recurrent_data</span><span class="p">(</span><span class="n">recurrent_data</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span>
+<span class="go">Generalized Renewal SurPyval Model</span>
+<span class="go">==================================</span>
+<span class="go">Distribution        : Weibull</span>
+<span class="go">Fitted by           : MLE</span>
+<span class="go">Kijima Type         : i</span>
+<span class="go">Restoration Factor  : 1.594694243423234e-11</span>
+<span class="go">Parameters          :</span>
+<span class="go">    alpha: 2.399029078569064</span>
+<span class="go">    beta: 2.753920439616154</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.GeneralizedRenewal_.fit_from_parameters">
+<span class="sig-prename descclassname"><span class="pre">GeneralizedRenewal_.</span></span><span class="sig-name descname"><span class="pre">fit_from_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">q</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kijima='i'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist=&lt;surpyval.univariate.parametric.distributions.weibull.Weibull_</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.GeneralizedRenewal_.fit_from_parameters" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit the generalized renewal model from given parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>params</strong> (<em>list</em>) – A list of parameters for the survival analysis distribution.</p></li>
+<li><p><strong>q</strong> (<em>float</em>) – Restoration factor used in the Kijima models.</p></li>
+<li><p><strong>kijima</strong> (<em>str</em><em>, </em><em>optional</em>) – Type of Kijima model to use, either “i” or “ii”. Default is “i”.</p></li>
+<li><p><strong>dist</strong> (<em>object</em><em>, </em><em>optional</em>) – A surpyval distribution object. Default is Weibull.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A fitted renewal model.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="renewal_model.html#surpyval.recurrent.renewal.renewal_model.RenewalModel" title="surpyval.recurrent.renewal.renewal_model.RenewalModel">RenewalModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Normal</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeneralizedRenewal</span>
+<span class="gp">&gt;&gt;&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">GeneralizedRenewal</span><span class="o">.</span><span class="n">fit_from_parameters</span><span class="p">(</span>
+<span class="go">    [10, 2],</span>
+<span class="go">    0.2,</span>
+<span class="go">    dist=Normal</span>
+<span class="go">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span>
+<span class="go">Generalized Renewal SurPyval Model</span>
+<span class="go">==================================</span>
+<span class="go">Distribution        : Normal</span>
+<span class="go">Fitted by           : MLE</span>
+<span class="go">Kijima Type         : i</span>
+<span class="go">Restoration Factor  : 0.2</span>
+<span class="go">Parameters          :</span>
+<span class="go">        mu: 10</span>
+<span class="go">    sigma: 2</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.GeneralizedRenewal_.kijima_i">
+<span class="sig-prename descclassname"><span class="pre">GeneralizedRenewal_.</span></span><span class="sig-name descname"><span class="pre">kijima_i</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">v</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">q</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.GeneralizedRenewal_.kijima_i" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.GeneralizedRenewal_.kijima_ii">
+<span class="sig-prename descclassname"><span class="pre">GeneralizedRenewal_.</span></span><span class="sig-name descname"><span class="pre">kijima_ii</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">v</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">q</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.GeneralizedRenewal_.kijima_ii" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="renewal_model.html" class="btn btn-neutral float-left" title="Renewal Model" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="g1_rp.html" class="btn btn-neutral float-right" title="Generalized One Renewal Process" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

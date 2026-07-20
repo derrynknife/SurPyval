@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>&lt;no title&gt; &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+        <script src="../_static/clipboard.min.js"></script>
+        <script src="../_static/copybutton.js"></script>
+        <script src="../_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="&lt;no title&gt;" href="kaplan_meier.html" />
+    <link rel="prev" title="Non-Parametric" href="../surpyval.nonparametric.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="../index.html">
+            <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.nonparametric.html#non-parametric-class">Non-Parametric Class</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">NonParametric</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#non-parametric-estimators">Non-Parametric Estimators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#other-non-parametric-functions">Other Non-Parametric Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+      <li class="breadcrumb-item active">&lt;no title&gt;</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/univariate/non_parametric_class.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <dl class="py class">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.univariate.nonparametric.nonparametric.</span></span><span class="sig-name descname"><span class="pre">NonParametric</span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NonParametricDistribution</span></code></p>
+<p>Result of <code class="docutils literal notranslate"><span class="pre">.fit()</span></code> method for every non-parametric
+surpyval distribution. This means that each of the
+methods in this class can be called with a model created
+from the <code class="docutils literal notranslate"><span class="pre">NelsonAalen</span></code>, <code class="docutils literal notranslate"><span class="pre">KaplanMeier</span></code>,
+<code class="docutils literal notranslate"><span class="pre">FlemingHarrington</span></code>, or <code class="docutils literal notranslate"><span class="pre">Turnbull</span></code> estimators.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.Hf">
+<span class="sig-name descname"><span class="pre">Hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'step'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.Hf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Cumulative hazard rate with the non-parametric estimates
+from the data. This is calculated using the relationship
+between the hazard function and the density:</p>
+<div class="math notranslate nohighlight">
+\[H(x) = -\ln (R(x))\]</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>x</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The values of the random variables at which the
+function will be calculated.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>Hf</strong> – The value(s) of the density function at x</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">NelsonAalen</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">NelsonAalen</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([0.45])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">Hf</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">])</span>
+<span class="go">array([0.2 , 0.2 , 0.45, 0.45])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.band">
+<span class="sig-name descname"><span class="pre">band</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'hall-wellner'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'exp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_sims</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.band" title="Permalink to this definition">¶</a></dt>
+<dd><p>Simultaneous confidence band of the survival function.</p>
+<p>The pointwise bounds from <code class="docutils literal notranslate"><span class="pre">cb()</span></code> cover the true value of the
+survival function at each single time with probability
+1 - alpha_ci, but the probability that the <em>whole</em> true curve
+lies between them is lower, since the curve has many
+opportunities to escape. A confidence band is widened so that,
+with probability 1 - alpha_ci, the entire survival function
+lies within the band over the observed range. Use the band, not
+the pointwise bounds, to assess whether a hypothesised curve
+(e.g. a fitted parametric distribution) is consistent with the
+data as a whole.</p>
+<p>Two classical bands are available:</p>
+<ul class="simple">
+<li><p>“hall-wellner”: width proportional to
+<span class="math notranslate nohighlight">\((1 + n\sigma^2(t))/\sqrt{n}\)</span>; tends to be relatively
+wider in the middle of the curve.</p></li>
+<li><p>“nair” (equal precision): width proportional to the pointwise
+standard error, i.e. the band is the pointwise interval
+scaled by a larger critical value, so its width follows the
+pointwise bounds everywhere.</p></li>
+</ul>
+<p>Critical values are computed by Monte Carlo simulation of the
+limiting Brownian bridge process, with a fixed default seed so
+results are reproducible.</p>
+<p>The band is only defined between the first and last observed
+events (where the variance estimate is positive and finite);
+NaN is returned outside that range. The asymptotic theory for
+these bands is for right censored data; for Turnbull models
+with interval censoring prefer <code class="docutils literal notranslate"><span class="pre">bootstrap_cb()</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – The values at which the band will be evaluated. Defaults to
+the observed values.</p></li>
+<li><p><strong>method</strong> (<em>(</em><em>'hall-wellner'</em><em>, </em><em>'nair'</em><em>)</em><em>, </em><em>str</em><em>, </em><em>optional</em>) – The type of band. Defaults to ‘hall-wellner’.</p></li>
+<li><p><strong>bound_type</strong> (<em>(</em><em>'exp'</em><em>, </em><em>'normal'</em><em>)</em><em>, </em><em>str</em><em>, </em><em>optional</em>) – As for <code class="docutils literal notranslate"><span class="pre">cb()</span></code>: ‘exp’ applies the band on the log(-log)
+scale, keeping it within [0, 1]. Defaults to ‘exp’.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>scalar</em><em>, </em><em>optional</em>) – The level of significance of the band. Defaults to 0.05.</p></li>
+<li><p><strong>n_sims</strong> (<em>int</em><em>, </em><em>optional</em>) – Number of simulated paths for the critical value.</p></li>
+<li><p><strong>random_state</strong> (<em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – Seed for the critical value simulation. Defaults to a fixed
+seed for reproducibility.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>band</strong> – Array of shape (len(x), 2) with the <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code> band
+values for the survival function at each x.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+<p class="rubric">References</p>
+<p>Hall, W. J. and Wellner, J. A. (1980), “Confidence bands for a
+survival curve from censored data”, Biometrika 67, 133-143.</p>
+<p>Nair, V. N. (1984), “Confidence bands for survival functions
+with censored data: a comparative study”, Technometrics 26,
+265-275.</p>
+<p>Klein, J. P. and Moeschberger, M. L. (2003), “Survival
+Analysis”, 2nd ed., Section 4.4.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.bootstrap_cb">
+<span class="sig-name descname"><span class="pre">bootstrap_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">B</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.bootstrap_cb" title="Permalink to this definition">¶</a></dt>
+<dd><p>Confidence bounds of the survival function computed with a
+non-parametric bootstrap: the data are resampled with
+replacement, the model is refitted with the same estimator, and
+the percentile interval across the refits is taken at each x.</p>
+<p>This is the recommended way to compute bounds for the Turnbull
+estimator. The Greenwood-style bounds from <code class="docutils literal notranslate"><span class="pre">cb()</span></code> treat the
+expected (fractional) at risk and death counts from the
+Turnbull EM as if they were observed counts, which ignores the
+uncertainty in the EM allocation itself; the bootstrap does
+not.</p>
+<p>Note that the Turnbull NPMLE only identifies the probability
+mass within each Turnbull interval, not how it is distributed
+inside one. Point estimates and bounds evaluated strictly
+inside an interval therefore reflect the step convention rather
+than an estimate of the underlying continuous survival
+function, and are best evaluated at the interval bounds.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The values at which the confidence bounds will be
+calculated.</p></li>
+<li><p><strong>bound</strong> (<em>(</em><em>'two-sided'</em><em>, </em><em>'upper'</em><em>, </em><em>'lower'</em><em>)</em><em>, </em><em>str</em><em>, </em><em>optional</em>) – Compute either the two-sided, upper or lower confidence
+bound(s). Defaults to two-sided.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>scalar</em><em>, </em><em>optional</em>) – The level of significance at which the bound will be
+computed. Defaults to 0.05.</p></li>
+<li><p><strong>B</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of bootstrap resamples. Defaults to 200. Larger
+values give smoother bounds at a linear cost in runtime;
+note that refitting the Turnbull estimator is relatively
+expensive.</p></li>
+<li><p><strong>random_state</strong> (<em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – Seed or generator for reproducible resampling.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>cb</strong> – For two-sided bounds an array of shape (len(x), 2) with
+<code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code> columns; otherwise an array of the
+requested bound at each x.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.cb">
+<span class="sig-name descname"><span class="pre">cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'sf'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'step'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'exp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'z'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.cb" title="Permalink to this definition">¶</a></dt>
+<dd><p>Confidence bounds of the <code class="docutils literal notranslate"><span class="pre">on</span></code> function at the
+<code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code> level of significance. Can be the upper,
+lower, or two-sided confidence by changing value of <code class="docutils literal notranslate"><span class="pre">bound</span></code>.
+Can change the bound type to be regular (normal) or exponential
+using either the ‘t’ or ‘z’ statistic.</p>
+<p>The variance used is the one appropriate to the estimator with
+which the model was fitted: Greenwood’s formula for Kaplan-Meier,
+Aalen’s (Poisson) variance for Nelson-Aalen, and the tie-corrected
+variance for Fleming-Harrington.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The values of the random variables at which the confidence bounds
+will be calculated</p></li>
+<li><p><strong>on</strong> (<em>(</em><em>'sf'</em><em>, </em><em>'ff'</em><em>, </em><em>'Hf'</em><em>)</em><em>, </em><em>optional</em>) – The function on which the confidence bound will be calculated.</p></li>
+<li><p><strong>bound</strong> (<em>(</em><em>'two-sided'</em><em>, </em><em>'upper'</em><em>, </em><em>'lower'</em><em>)</em><em>, </em><em>str</em><em>, </em><em>optional</em>) – Compute either the two-sided, upper or lower confidence bound(s).
+Defaults to two-sided.</p></li>
+<li><p><strong>interp</strong> (<em>(</em><em>'step'</em><em>, </em><em>'linear'</em><em>, </em><em>'cubic'</em><em>)</em><em>, </em><em>optional</em>) – How to interpolate the values between observations. Survival
+statistics traditionally uses step functions, but can use
+interpolated values if desired. Defaults to step.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>scalar</em><em>, </em><em>optional</em>) – The level of significance at which the bound will be computed.</p></li>
+<li><p><strong>bound_type</strong> (<em>(</em><em>'exp'</em><em>, </em><em>'normal'</em><em>)</em><em>, </em><em>str</em><em>, </em><em>optional</em>) – The method with which the bounds will be calculated. Using
+‘normal’ (i.e. the plain Greenwood-style interval) will allow
+for the bounds to exceed 1 or be less than 0 and tends to
+undercover in small samples. Defaults to ‘exp’ (the
+log(-log) transformed interval) as this ensures the bounds
+are within 0 and 1 and has better coverage.</p></li>
+<li><p><strong>dist</strong> (<em>(</em><em>'z'</em><em>,</em><em>)</em><em>, </em><em>str</em><em>, </em><em>optional</em>) – The statistic used for the bounds. Only the normal (‘z’) is
+supported, which is what the asymptotic theory of the estimator
+justifies. For small-sample or Turnbull bounds use
+<code class="docutils literal notranslate"><span class="pre">bootstrap_cb</span></code>; for a simultaneous band use <code class="docutils literal notranslate"><span class="pre">band</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>cb</strong> – The value(s) of the upper, lower, or both confidence bound(s) of
+the selected function at x. For two-sided bounds the result has
+one row per value of x with the columns being the
+<code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code> bounds of the <code class="docutils literal notranslate"><span class="pre">on</span></code> function.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>If the last observation is an event (i.e. there is no right
+censoring) the Kaplan-Meier variance is undefined at, and after,
+that point. The bounds there are filled with the last finite
+upper bound and 0 for the lower bound, rather than NaN, so that
+bounds can be drawn up to the last observation.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">NelsonAalen</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">NelsonAalen</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">],</span> <span class="n">bound</span><span class="o">=</span><span class="s1">&#39;lower&#39;</span><span class="p">)</span>
+<span class="go">array([0.35485348, 0.35485348, 0.2345113 , 0.2345113 ])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">])</span>
+<span class="go">array([[0.24175891, 0.97222045],</span>
+<span class="go">       [0.24175891, 0.97222045],</span>
+<span class="go">       [0.16288538, 0.89441253],</span>
+<span class="go">       [0.16288538, 0.89441253]])</span>
+</pre></div>
+</div>
+<p class="rubric">References</p>
+<p><a class="reference external" href="http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis">http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis</a></p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.df">
+<span class="sig-name descname"><span class="pre">df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'step'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.df" title="Permalink to this definition">¶</a></dt>
+<dd><p>Density function with the non-parametric estimates
+from the data. This is calculated using the relationship
+between the hazard function and the density:</p>
+<div class="math notranslate nohighlight">
+\[f(x) = h(x)e^{-H(x)}\]</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>x</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The values of the random variables at which the
+survival function will be calculated</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>df</strong> – The value(s) of the density function at x</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">NelsonAalen</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">NelsonAalen</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">df</span><span class="p">([</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">3.5</span><span class="p">])</span>
+<span class="go">array([0.20468269, 0.15940704, 0.15229351])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.ff">
+<span class="sig-name descname"><span class="pre">ff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'step'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.ff" title="Permalink to this definition">¶</a></dt>
+<dd><p>CDF (failure or unreliability) function with the
+non-parametric estimates from the data</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>x</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The values of the random variables at which
+the survival function will be calculated.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>ff</strong> – The value(s) of the failure function at each x</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">NelsonAalen</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">NelsonAalen</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([0.36237185])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">])</span>
+<span class="go">array([0.18126925, 0.18126925, 0.36237185, 0.36237185])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.from_dict">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric" title="surpyval.univariate.nonparametric.nonparametric.NonParametric"><span class="pre">NonParametric</span></a></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.from_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reconstruct a fitted non-parametric model from a dictionary
+produced by <a class="reference internal" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.to_dict" title="surpyval.univariate.nonparametric.nonparametric.NonParametric.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.hf">
+<span class="sig-name descname"><span class="pre">hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'step'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.hf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Instantaneous hazard function with the non-parametric
+estimates from the data. This is calculated using simply
+the difference between consecutive H(x).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>x</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The values of the random variables at which
+the survival function will be calculated</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>hf</strong> – The value(s) of the failure function at each x</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">NelsonAalen</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">NelsonAalen</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">hf</span><span class="p">([</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">3.5</span><span class="p">])</span>
+<span class="go">array([0.25      , 0.25      , 0.33333333])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.mean">
+<span class="sig-name descname"><span class="pre">mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tau</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.mean" title="Permalink to this definition">¶</a></dt>
+<dd><p>The (restricted) mean survival time: the area under the
+estimated survival function from 0 to tau.</p>
+<p>If the survival function reaches zero this is the mean of the
+estimated distribution. With right censoring the survival
+function does not reach zero and the unrestricted mean is
+undefined; the restricted mean up to tau (defaulting to the
+largest observed value) is reported instead, which is the
+standard restricted mean survival time (RMST).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>tau</strong> (<em>scalar</em><em>, </em><em>optional</em>) – The horizon up to which the survival function is
+integrated. Defaults to the largest observed value. If tau
+is beyond the last observation the survival function is
+extended at its final value.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>mean</strong> – The restricted mean survival time.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">KaplanMeier</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+<span class="go">3.0</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.mean_cb">
+<span class="sig-name descname"><span class="pre">mean_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tau</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.mean_cb" title="Permalink to this definition">¶</a></dt>
+<dd><p>Two-sided confidence interval of the (restricted) mean survival
+time, using the normal approximation with the standard variance
+estimate:</p>
+<div class="math notranslate nohighlight">
+\[\widehat{Var}(\hat{\mu}) = \sum_{i: x_i \leq \tau}
+    A_i^2 v_i\]</div>
+<p>where <span class="math notranslate nohighlight">\(A_i\)</span> is the area under the survival function from
+<span class="math notranslate nohighlight">\(x_i\)</span> to <span class="math notranslate nohighlight">\(\tau\)</span> and <span class="math notranslate nohighlight">\(v_i\)</span> is the variance
+increment of the cumulative hazard at <span class="math notranslate nohighlight">\(x_i\)</span> (e.g. the
+Greenwood increment for the Kaplan-Meier estimator).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tau</strong> (<em>scalar</em><em>, </em><em>optional</em>) – The horizon up to which the survival function is
+integrated. Defaults to the largest observed value.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>scalar</em><em>, </em><em>optional</em>) – The level of significance at which the interval will be
+computed. Defaults to 0.05.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>cb</strong> – The <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code> interval of the (restricted) mean.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.median">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">median</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.median" title="Permalink to this definition">¶</a></dt>
+<dd><p>The median survival time; the smallest observed value at which
+the estimated CDF reaches, or exceeds, 0.5. NaN if the estimate
+never reaches 0.5 (e.g. due to right censoring).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ax</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Axes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a plot of the survival function.</p>
+<p>Two-sided confidence bounds are drawn as a shaded band in the
+same colour as the survival curve, and right censored
+observations are marked with ticks on the curve. Any keyword
+arguments not listed below (e.g. <code class="docutils literal notranslate"><span class="pre">color</span></code> or <code class="docutils literal notranslate"><span class="pre">label</span></code>) are
+passed to the matplotlib plotting call for the survival curve.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ax</strong> (<em>matplotlib axis</em><em>, </em><em>optional</em>) – The axis on which the plot will be drawn. Defaults to the
+current axis.</p></li>
+<li><p><strong>plot_bounds</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to draw the confidence bounds. Defaults to True.</p></li>
+<li><p><strong>show_censors</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to mark right censored observations on the curve.
+Defaults to True.</p></li>
+<li><p><strong>interp</strong> (<em>(</em><em>'step'</em><em>, </em><em>'linear'</em><em>, </em><em>'cubic'</em><em>)</em><em>, </em><em>optional</em>) – How to draw the curve between observations.</p></li>
+<li><p><strong>bound</strong> (<em>optional</em>) – Passed to the confidence bound calculation; see <code class="docutils literal notranslate"><span class="pre">cb()</span></code>.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>optional</em>) – Passed to the confidence bound calculation; see <code class="docutils literal notranslate"><span class="pre">cb()</span></code>.</p></li>
+<li><p><strong>bound_type</strong> (<em>optional</em>) – Passed to the confidence bound calculation; see <code class="docutils literal notranslate"><span class="pre">cb()</span></code>.</p></li>
+<li><p><strong>dist</strong> (<em>optional</em>) – Passed to the confidence bound calculation; see <code class="docutils literal notranslate"><span class="pre">cb()</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>ax</strong></p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>matplotlib axis</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.qf">
+<span class="sig-name descname"><span class="pre">qf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.qf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Quantile function of the non-parametric estimate. Returns the
+smallest observed value at which the estimated CDF reaches, or
+exceeds, the probability p.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>p</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The probabilities at which the quantile will be computed.
+Values must be in (0, 1].</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>q</strong> – The value(s) of the quantile at each p. NaN where the
+estimated CDF never reaches p (e.g. due to right censoring).</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">KaplanMeier</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+<span class="go">array([3.])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">([</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">])</span>
+<span class="go">array([1., 3., 5.])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.quantile_cb">
+<span class="sig-name descname"><span class="pre">quantile_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'exp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'z'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.quantile_cb" title="Permalink to this definition">¶</a></dt>
+<dd><p>Two-sided confidence interval of the quantile at each
+probability p using the Brookmeyer-Crowley method: the interval
+is the set of times at which the pointwise confidence interval
+of the survival function contains 1 - p.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>p</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The probabilities at which the quantile interval will be
+computed. Values must be in (0, 1].</p></li>
+<li><p><strong>alpha_ci</strong> (<em>scalar</em><em>, </em><em>optional</em>) – The level of significance at which the interval will be
+computed. Defaults to 0.05.</p></li>
+<li><p><strong>bound_type</strong> (<em>(</em><em>'exp'</em><em>, </em><em>'normal'</em><em>)</em><em>, </em><em>str</em><em>, </em><em>optional</em>) – The method for the underlying survival function bounds.</p></li>
+<li><p><strong>dist</strong> (<em>(</em><em>'z'</em><em>,</em><em>)</em><em>, </em><em>str</em><em>, </em><em>optional</em>) – The statistic used in the underlying survival function
+bounds. Only the normal (‘z’) is supported.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>cb</strong> – Array of shape (len(p), 2) with the <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>
+interval of the quantile for each p. The upper limit is NaN
+where the relevant bound of the survival function never
+crosses 1 - p (i.e. the interval is open to the right).</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.random">
+<span class="sig-name descname"><span class="pre">random</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.random" title="Permalink to this definition">¶</a></dt>
+<dd><p>Draws random samples from the fitted distribution. Each observed
+value x is drawn with the probability mass the estimated survival
+function assigns to it. If the estimate does not reach zero (e.g.
+due to right censoring) the remaining mass is distributed over the
+observed values, i.e. sampling is conditional on an event occurring
+at one of the observed values.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>size</strong> (<em>int</em>) – The number of random samples to draw.</p></li>
+<li><p><strong>random_state</strong> (<em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – Seed or generator for reproducible sampling. Matches the
+<code class="docutils literal notranslate"><span class="pre">random_state</span></code> argument of <code class="docutils literal notranslate"><span class="pre">bootstrap_cb</span></code> and <code class="docutils literal notranslate"><span class="pre">band</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>random</strong> – The random samples drawn from the observed values.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.sf">
+<span class="sig-name descname"><span class="pre">sf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'step'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.sf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Surival (or Reliability) function with the
+non-parametric estimates from the data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>x</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The values of the random variables at which t
+he survival function will be calculated.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>sf</strong> – The value(s) of the survival function at each x</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">NelsonAalen</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">NelsonAalen</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([0.63762815])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">])</span>
+<span class="go">array([0.81873075, 0.81873075, 0.63762815, 0.63762815])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.smoothed_hf">
+<span class="sig-name descname"><span class="pre">smoothed_hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bandwidth</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.smoothed_hf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Kernel smoothed estimate of the hazard rate, using an
+Epanechnikov kernel over the increments of the cumulative
+hazard estimate:</p>
+<div class="math notranslate nohighlight">
+\[\hat{h}(t) = \frac{1}{b} \sum_{i} K\left (
+    \frac{t - x_i}{b} \right ) \Delta \hat{H}(x_i)\]</div>
+<p>Contributions are renormalised near the boundaries of the
+observed range so the estimate is not biased downward where the
+kernel window extends past the data.</p>
+<p>This is a better estimate of the hazard rate than <code class="docutils literal notranslate"><span class="pre">hf()</span></code>,
+which simply differences the cumulative hazard between the
+requested points.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The values at which the hazard rate will be estimated.</p></li>
+<li><p><strong>bandwidth</strong> (<em>scalar</em><em>, </em><em>optional</em>) – The kernel bandwidth in the units of x. Defaults to a rough
+rule of thumb (one eighth of the observed range); for
+serious use choose by inspection or cross-validation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>hf</strong> – The estimated hazard rate at each x. NaN outside the
+observed range.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+<p class="rubric">References</p>
+<p>Klein, J. P. and Moeschberger, M. L. (2003), “Survival
+Analysis”, 2nd ed., Section 6.2.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.nonparametric.NonParametric.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">with_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.to_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>Serialize the fitted non-parametric model to a plain dictionary,
+mirroring the parametric <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>. The estimator ladder
+(<code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">r</span></code>, <code class="docutils literal notranslate"><span class="pre">d</span></code>), the derived curves (<code class="docutils literal notranslate"><span class="pre">R</span></code>, <code class="docutils literal notranslate"><span class="pre">F</span></code>, <code class="docutils literal notranslate"><span class="pre">H</span></code>),
+the variance estimate (<code class="docutils literal notranslate"><span class="pre">greenwood</span></code>) and the estimator name are
+stored, which is everything the model’s methods need to be
+reconstructed with <a class="reference internal" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.from_dict" title="surpyval.univariate.nonparametric.nonparametric.NonParametric.from_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_dict()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>with_data</strong> (<em>bool</em><em>, </em><em>optional</em>) – Also store the raw <code class="docutils literal notranslate"><span class="pre">x</span></code>/<code class="docutils literal notranslate"><span class="pre">c</span></code>/<code class="docutils literal notranslate"><span class="pre">n</span></code>/<code class="docutils literal notranslate"><span class="pre">t</span></code> data the model was
+fitted with (needed to reconstruct a model that can call
+<a class="reference internal" href="#surpyval.univariate.nonparametric.nonparametric.NonParametric.bootstrap_cb" title="surpyval.univariate.nonparametric.nonparametric.NonParametric.bootstrap_cb"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bootstrap_cb()</span></code></a>). Defaults to False.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>model_dict</strong> – The serialized model.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../surpyval.nonparametric.html" class="btn btn-neutral float-left" title="Non-Parametric" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="kaplan_meier.html" class="btn btn-neutral float-right" title="&lt;no title&gt;" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

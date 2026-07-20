@@ -1,0 +1,1796 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parametric SurPyval Modelling &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Regression Modelling with SurPyval" href="Regression%20Modelling%20with%20SurPyval.html" />
+    <link rel="prev" title="Non-Parametric SurPyval Modelling" href="Non-Parametric%20SurPyval%20Modelling.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Parametric SurPyval Modelling</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#complete-data">Complete Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#using-censored-data">Using censored data</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#right-censored">Right Censored</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#left-censored">Left Censored</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#intervally-censored">Intervally Censored</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#mixed-censoring">Mixed Censoring</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#using-truncated-data">Using truncated data</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#left-truncated">Left truncated</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#right-truncated">Right truncated</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#intervally-and-arbitrarily-truncated">Intervally and Arbitrarily truncated</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#offsets">Offsets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-caution-offset-parameters-can-be-unidentifiable">A caution: offset parameters can be unidentifiable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fixing-parameters">Fixing parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#modelling-with-arbitrary-input">Modelling with arbitrary input</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#using-alternate-estimation-methods">Using alternate estimation methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mixture-models">Mixture Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#limited-failure-population">Limited Failure Population</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#zero-inflated-modelling">Zero-Inflated Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#discrete-distributions">Discrete Distributions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#confidence-intervals">Confidence Intervals</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#creating-a-custom-distribution">Creating a custom Distribution</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Parametric SurPyval Modelling</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Parametric SurPyval Modelling.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="parametric-surpyval-modelling">
+<h1>Parametric SurPyval Modelling<a class="headerlink" href="#parametric-surpyval-modelling" title="Permalink to this heading">¶</a></h1>
+<p>The parametric API is essentially the exact same as the non-parametric API. All models are fit by a
+call to the <code class="docutils literal notranslate"><span class="pre">fit()</span></code> method. However, the parametric models have more options that are only applicable to parametric modelling. The inputs of <code class="docutils literal notranslate"><span class="pre">x</span></code> for the random variable, <code class="docutils literal notranslate"><span class="pre">c</span></code> for the censoring flag, <code class="docutils literal notranslate"><span class="pre">n</span></code>
+for count of each <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">xl</span></code> and <code class="docutils literal notranslate"><span class="pre">xr</span></code> for intervally censored data (can’t be used with <code class="docutils literal notranslate"><span class="pre">x</span></code>) <code class="docutils literal notranslate"><span class="pre">t</span></code>
+for the truncation matrix, <code class="docutils literal notranslate"><span class="pre">tl</span></code> for the left truncation scalar or array, and <code class="docutils literal notranslate"><span class="pre">tr</span></code> for the right truncation scalar or array all remain.</p>
+<p>These ingredients compose freely — any mix of censoring, counts and truncation
+in a single <code class="docutils literal notranslate"><span class="pre">fit</span></code> call — and the same convention is used by every model in
+the package (non-parametric, regression, recurrent, competing-risks and
+copula). See <a class="reference internal" href="Data%20Wrangler%20Examples.html"><span class="doc">Data Wrangling Examples</span></a> for worked examples that combine
+them and convert between input formats.</p>
+<section id="complete-data">
+<h2>Complete Data<a class="headerlink" href="#complete-data" title="Permalink to this heading">¶</a></h2>
+<p>The easiest and simplest case is that when you have a dataset of exactly observed data. that is,
+you have one array of data with the values at which they failed. Fitting a parametric distribution
+to the data can be done with a simple call to the <code class="docutils literal notranslate"><span class="pre">fit()</span></code> method:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mf">30.</span><span class="p">,</span> <span class="mf">9.</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 29.805137406547992
+      beta: 10.296037991042905
+</pre></div>
+</div>
+</div>
+</div>
+<p>To visualise the outcome of this fit we can inspect the results on a probability plot:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_1_1.png" src="_images/Parametric%20SurPyval%20Modelling_1_1.png" />
+</div>
+</div>
+<p>The <code class="code docutils literal notranslate"><span class="pre">model</span></code> object from the above example can be used to calculate the density of the distribution with the parameters found with the best fit from above. This is very easy to do:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">1000</span><span class="p">)</span>
+<span class="n">f</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">df</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>[&lt;matplotlib.lines.Line2D at 0x7ff38c032a10&gt;]
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_2_1.png" src="_images/Parametric%20SurPyval%20Modelling_2_1.png" />
+</div>
+</div>
+<p>The CDF <code class="code docutils literal notranslate"><span class="pre">ff()</span></code>, Survival (or Reliability) <code class="code docutils literal notranslate"><span class="pre">sf()</span></code>, hazard
+rate <code class="code docutils literal notranslate"><span class="pre">hf()</span></code>, or cumulative hazard rate <code class="code docutils literal notranslate"><span class="pre">Hf()</span></code> can be computed as
+well. This functionality makes it very easy to work with surpyval models to
+determine risks or to pass the function to other libraries to find optimal
+trade-offs.</p>
+</section>
+<section id="using-censored-data">
+<h2>Using censored data<a class="headerlink" href="#using-censored-data" title="Permalink to this heading">¶</a></h2>
+<section id="right-censored">
+<h3>Right Censored<a class="headerlink" href="#right-censored" title="Permalink to this heading">¶</a></h3>
+<p>A common complication in survival analysis is that all the data is not
+observed up to the point of failure (or death). In this case the data is
+right censored, see the types of data section for a more detailed discussion,
+surpyval offers a very clean and easy way to model this. First, let’s create
+a simulated data set:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mf">2.</span><span class="p">)</span>
+<span class="n">observation_limit</span> <span class="o">=</span> <span class="mi">40</span>
+<span class="c1"># Censoring flag</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">&gt;=</span> <span class="n">observation_limit</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="n">x</span><span class="p">[</span><span class="n">x</span> <span class="o">&gt;=</span> <span class="n">observation_limit</span><span class="p">]</span> <span class="o">=</span> <span class="n">observation_limit</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>In this example, we created 50 random Weibull distributed values with
+alpha = 30 and beta = 2. For this example the observation window has been
+set to 40. This value is where we stopped observing the events. For all the
+randomly generated values that are above this limit we create the censoring
+flag array c. This array has zeros where the event time was observed, and a 1
+where the value is above the recorded value. For all the values in the data
+that are above 40 we set them to 40. This is a common occurence in survival
+analysis and surpyval is designed to accept this input with a simple call:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 29.249243175049127
+      beta: 2.229148587742637
+</pre></div>
+</div>
+</div>
+</div>
+<p>The plot for this can be seen to be:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_5_1.png" src="_images/Parametric%20SurPyval%20Modelling_5_1.png" />
+</div>
+</div>
+<p>The results from this model are very close to the data we input, and with only 50 samples.</p>
+</section>
+<section id="left-censored">
+<h3>Left Censored<a class="headerlink" href="#left-censored" title="Permalink to this heading">¶</a></h3>
+<p>The above example can be extended to another kind of censoring; left censored data. This is the case where the values are known to fall below a particular value. We can change our example data set to have a start observation time for which we will left censor all the data below that:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">observation_start</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="c1"># Censoring flag</span>
+<span class="n">c</span><span class="p">[</span><span class="n">x</span> <span class="o">&lt;=</span> <span class="n">observation_start</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+<span class="n">x</span><span class="p">[</span><span class="n">x</span> <span class="o">&lt;=</span> <span class="n">observation_start</span><span class="p">]</span> <span class="o">=</span> <span class="n">observation_start</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>That is, we set the start of the observations at 10 and flag that all the values at or below this are left censored. We can then use the updated values of x and c:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 29.347097662381135
+      beta: 2.3049027909574855
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">heuristic</span><span class="o">=</span><span class="s2">&quot;Turnbull&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_8_1.png" src="_images/Parametric%20SurPyval%20Modelling_8_1.png" />
+</div>
+</div>
+<p>The values did not substantially change, although the plot does look different as there are no values below 10.</p>
+</section>
+<section id="intervally-censored">
+<h3>Intervally Censored<a class="headerlink" href="#intervally-censored" title="Permalink to this heading">¶</a></h3>
+<p>The next type of censoring that is naturally handled by surpyval is interval censoring. Creating another example data set:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">30</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mf">10.</span><span class="p">)</span>
+<span class="n">n</span><span class="p">,</span> <span class="n">xx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">histogram</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">bins</span><span class="o">=</span><span class="p">[</span><span class="mi">20</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">26</span><span class="p">,</span> <span class="mi">29</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">35</span><span class="p">,</span> <span class="mi">38</span><span class="p">])</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">xx</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">xx</span><span class="p">[</span><span class="mi">1</span><span class="p">:]])</span><span class="o">.</span><span class="n">T</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>In this example we have created the varable x with a matrix of the intervals within which each of the obervations have failed. That is each exact observation has been binned into a window and the x array has an entry [left, right] within which the event failed. We also have the n array that has the count of the failures within the window. With these two values we can make the simple surpyval call:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 30.074154903683013
+      beta: 9.637405285671939
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/parametric/parametric.py:1289: UserWarning: Interval censored data, heuristic changed to Turnbull
+  heuristic = adjust_heuristic(self.data[&quot;c&quot;], self.data[&quot;t&quot;], heuristic)
+/home/user/SurPyval/surpyval/univariate/nonparametric/turnbull.py:167: UserWarning: The Turnbull EM did not converge to within `tol` (1e-10) in `max_iter` (1000) iterations; the estimate may be inaccurate.
+  warnings.warn(
+</pre>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_11_2.png" src="_images/Parametric%20SurPyval%20Modelling_11_2.png" />
+</div>
+</div>
+<p>Again, we have a result that is very close to the original parameters.
+SurPyval can take as input an arbitrary combination of censored data. This is
+plot also looks to be a great fit! The data at the tails are a little bit
+off, but this is only 50 samples and the core of the model matches the data
+quite well.</p>
+</section>
+<section id="mixed-censoring">
+<h3>Mixed Censoring<a class="headerlink" href="#mixed-censoring" title="Permalink to this heading">¶</a></h3>
+<p>Mixed censoring, or arbitrary censoring is easily handled by SurPyval. So no matter the combination
+of the data that you have, SurPyval will be able to fit a distribution to it.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">x</span>  <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">15</span><span class="p">]</span>
+<span class="n">c</span>  <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">Gumbel</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Gumbel
+Fitted by           : MLE
+Parameters          :
+        mu: 9.912232006269225
+     sigma: 4.959523920452606
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section id="using-truncated-data">
+<h2>Using truncated data<a class="headerlink" href="#using-truncated-data" title="Permalink to this heading">¶</a></h2>
+<section id="left-truncated">
+<h3>Left truncated<a class="headerlink" href="#left-truncated" title="Permalink to this heading">¶</a></h3>
+<p>Surpyval has the capacity to handle arbitrary truncated data. A common occurence of this is in the insurance industry data. When customers make a claim on their policies they have to pay an ‘excess’ which is a charge to submit a claim for processing. If say, the excess on a set of policies in an area is $250, then it would not be logical for a customer to submit a claim for a loss of less than that number. Therefore there will be no claims under $250. This can also happen in engineering where a part may be tested up to some limit prior to be sold, therefore, as a customer you need to make sure you take into account the fact that some parts would have been rejected at the end of the line which you may not have seen. So a washing machine may run through 25 cycles prior to shipping. This is similar to, but distinct from censoring. When something is left censored, we know there was a failure or event below the threshold.  Whereas with truncation, we do not see any variables below the threshold. A simulated example may explain this better:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">)</span>
+<span class="c1"># Keep only those values greater than 250</span>
+<span class="n">threshold</span> <span class="o">=</span> <span class="mi">25</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">x</span> <span class="o">&gt;</span> <span class="n">threshold</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>We have therefore simulated a scenario where we have taken 100 random samples from a fat tailed Weibull distribution. We then filter to keep only those records that are above the threshold. In this case we assume we haven’t seen the data for the washing machines with less than 25 cycles. To understand what could go wrong if we ignore this, what do we get if we assume all the data are failures and there is no truncation?</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[198.49516752   1.01696676]
+</pre></div>
+</div>
+</div>
+</div>
+<p>With a plot that looks like:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_15_1.png" src="_images/Parametric%20SurPyval%20Modelling_15_1.png" />
+</div>
+</div>
+<p>Looking at the parameters of the distribution, you can see that the beta value is greater than 1. Although only slightly, this implies that this distribution has an increasing hazard rate. If you were the operator of the washing machines (e.g. a hotel or a laundromat) and any downtime had a cost, you would conclude from this that replacing the machines after a fixed time would be a good policy.</p>
+<p>But if you take the truncation into account:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">threshold</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[94.89845673  0.64100025]
+</pre></div>
+</div>
+</div>
+</div>
+<p>With the plot:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/parametric/parametric.py:1289: UserWarning: Truncated censored data, heuristic changed to Turnbull
+  heuristic = adjust_heuristic(self.data[&quot;c&quot;], self.data[&quot;t&quot;], heuristic)
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/nonparametric/turnbull.py:167: UserWarning: The Turnbull EM did not converge to within `tol` (1e-10) in `max_iter` (1000) iterations; the estimate may be inaccurate.
+  warnings.warn(
+</pre>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_17_3.png" src="_images/Parametric%20SurPyval%20Modelling_17_3.png" />
+</div>
+</div>
+<p>You can see now that the model fits the data much better, but also that the beta parameter is actually below 1. This shows that ignoring the left-truncated data in parametric estimation can lead to errors in prediction.</p>
+</section>
+<section id="right-truncated">
+<h3>Right truncated<a class="headerlink" href="#right-truncated" title="Permalink to this heading">¶</a></h3>
+<p>The example from above can be continued for right-truncated data as well.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+<span class="n">tl</span> <span class="o">=</span> <span class="mi">85</span>
+<span class="n">tr</span> <span class="o">=</span> <span class="mi">115</span>
+<span class="c1"># Truncate the data</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[(</span><span class="n">x</span> <span class="o">&gt;</span> <span class="n">tl</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">x</span> <span class="o">&lt;</span> <span class="n">tr</span><span class="p">)]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">,</span> <span class="n">tr</span><span class="o">=</span><span class="n">tr</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[102.27078401  12.47906136]
+</pre></div>
+</div>
+</div>
+</div>
+<p>When plotted we get:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/parametric/parametric.py:1289: UserWarning: Truncated censored data, heuristic changed to Turnbull
+  heuristic = adjust_heuristic(self.data[&quot;c&quot;], self.data[&quot;t&quot;], heuristic)
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/nonparametric/turnbull.py:167: UserWarning: The Turnbull EM did not converge to within `tol` (1e-10) in `max_iter` (1000) iterations; the estimate may be inaccurate.
+  warnings.warn(
+</pre>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_19_3.png" src="_images/Parametric%20SurPyval%20Modelling_19_3.png" />
+</div>
+</div>
+<p>From the output above, the number of data points we have has been reduced from the simulated 100, downt to 87. Then with the 87 samples we now have we estimated the parameters to be quite close to the parameters used in the simulation. Further, the plot looks as though the parametric distribution fits the non-parametric distribution quite well.</p>
+<p>In the cases above we used a scalar value for the truncation values. But some data has individual values for left truncation. This is seen in trials where someone may join the trial as a late entry. Therefore each data point as an entry time. For example:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">x</span>  <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
+<span class="n">tl</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[7.05854897 2.70096833]
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="intervally-and-arbitrarily-truncated">
+<h3>Intervally and Arbitrarily truncated<a class="headerlink" href="#intervally-and-arbitrarily-truncated" title="Permalink to this heading">¶</a></h3>
+<p>Surpyval can even work with arbitrary left and right truncation:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">x</span>  <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
+<span class="n">tl</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="n">tr</span> <span class="o">=</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">15</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">,</span> <span class="n">tr</span><span class="o">=</span><span class="n">tr</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[8.12377603 2.56917036]
+</pre></div>
+</div>
+</div>
+</div>
+<p>In the above example we used both the tl and tr. However, surpyval has a flexible API where it can take the truncation data as a two dimensional array:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">x</span>  <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
+<span class="n">t</span> <span class="o">=</span>  <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">9</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">15</span><span class="p">],</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">15</span><span class="p">]]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">t</span><span class="o">=</span><span class="n">t</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[8.12377603 2.56917036]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Which, obviously, gives the same result. This shows the flexibility of the surpyval API, you can use scalar, array, or matrix values for the truncations using the t, tl, and tr keywords with the fit method and surpyval does the rest.</p>
+</section>
+</section>
+<section id="offsets">
+<h2>Offsets<a class="headerlink" href="#offsets" title="Permalink to this heading">¶</a></h2>
+<p>Another common feature in survival analysis is a requirement to fit a distribution with an offset. These distributions are sometimes referred to as the two-parameter (e.g. two parameter exponential) three parameter, (e.g., the three three parameter Weibull), or four parameter (e.g four parameter Exponentiated Weibull distribution). SurPyval however just uses an <code class="docutils literal notranslate"><span class="pre">offset</span></code> to increase the numbers of parameters and allow the distribution to be shifted.</p>
+<p>Using data from Weibull’s original paper for the strenght of Bofor’s steel shows when this might be necessary.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_bofors_steel</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">load_bofors_steel</span><span class="p">()</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">]</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;n&#39;</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[47.36735846 17.5713195 ]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_24_1.png" src="_images/Parametric%20SurPyval%20Modelling_24_1.png" />
+</div>
+</div>
+<p>The above plot does not look to be a good fit. However, if we use an offset we can use the three parameter Weibull distribution to attempt to get a better fit. Using offset values with surpyval is very easy:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_bofors_steel</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">load_bofors_steel</span><span class="p">()</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">]</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;n&#39;</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Offset (gamma)      : 39.76562962867482
+Parameters          :
+     alpha: 7.141925216146467
+      beta: 2.6204524040137605
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_26_1.png" src="_images/Parametric%20SurPyval%20Modelling_26_1.png" />
+</div>
+</div>
+<p>This is evidently a much better fit! The offset value for an offset distribution is saved as <code class="code docutils literal notranslate"><span class="pre">gamma</span></code> in the model object. Offsets can be used for any distribution supported on the half real line. Currently, this is the Weibull, Gamma, LogNormal, LogLogistic, and Exponential. For example:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">LogLogistic</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span> <span class="o">+</span> <span class="mi">10</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">LogLogistic</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;MLE&#39;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : LogLogistic
+Fitted by           : MLE
+Offset (gamma)      : 9.562707940419958
+Parameters          :
+     alpha: 10.189469674759128
+      beta: 3.4073259756886363
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;LogLogistic Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_28_1.png" src="_images/Parametric%20SurPyval%20Modelling_28_1.png" />
+</div>
+</div>
+<p>A four parameter exponentiated Weibull can also be found:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">ExpoWeibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span> <span class="o">+</span> <span class="mi">10</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">ExpoWeibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : ExpoWeibull
+Fitted by           : MLE
+Offset (gamma)      : 10.701279165843463
+Parameters          :
+     alpha: 11.47511083513309
+      beta: 1.3969784549064381
+        mu: 2.8453079778333272
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;ExpoWeibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_30_1.png" src="_images/Parametric%20SurPyval%20Modelling_30_1.png" />
+</div>
+</div>
+<p>Offsets only make sense for distributions supported on the half real line <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">inf)</span></code> - the offset <code class="docutils literal notranslate"><span class="pre">gamma</span></code> simply slides the lower bound of the support. A distribution with a finite upper bound, such as the Beta distribution on <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>, therefore cannot be offset, and <code class="docutils literal notranslate"><span class="pre">surv.Beta.fit(x,</span> <span class="pre">offset=True)</span></code> will raise a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>. Sliding the lower bound while pinning the upper bound at 1 does not produce another member of the Beta family. If your data are bounded on both sides and you need to estimate where those bounds are, use the four parameter Beta distribution (<code class="docutils literal notranslate"><span class="pre">Beta4</span></code>) instead, which estimates the lower bound <code class="docutils literal notranslate"><span class="pre">a</span></code> and upper bound <code class="docutils literal notranslate"><span class="pre">b</span></code> along with the two shape parameters:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Beta4</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">10000</span><span class="p">,</span> <span class="mf">3.</span><span class="p">,</span> <span class="mf">4.</span><span class="p">,</span> <span class="mf">10.</span><span class="p">,</span> <span class="mf">20.</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Beta4</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Beta4
+Fitted by           : MLE
+Parameters          :
+     alpha: 2.8883505898355644
+      beta: 4.018232614126317
+         a: 10.03630143021579
+         b: 20.069230032325915
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="a-caution-offset-parameters-can-be-unidentifiable">
+<h2>A caution: offset parameters can be unidentifiable<a class="headerlink" href="#a-caution-offset-parameters-can-be-unidentifiable" title="Permalink to this heading">¶</a></h2>
+<p>The offset <code class="docutils literal notranslate"><span class="pre">gamma</span></code> is a <em>threshold</em> parameter, and threshold parameters are statistically awkward. <code class="docutils literal notranslate"><span class="pre">gamma</span></code> trades off against the shape and scale parameters, so two very different parameter tuples can describe almost the same distribution. This means a fit can report parameters that are badly wrong while the distribution it implies is still an excellent fit to your data. It is important to understand this so you are not alarmed by - or misled by - the printed parameters.</p>
+<p>The clearest way to see this is to fit the same offset data with different estimation methods. Below we generate Gamma data shifted by <code class="docutils literal notranslate"><span class="pre">gamma</span> <span class="pre">=</span> <span class="pre">10</span></code> and fit it both with maximum product of spacings (<code class="docutils literal notranslate"><span class="pre">MPP</span></code>) and maximum likelihood (<code class="docutils literal notranslate"><span class="pre">MLE</span></code>):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Gamma</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">10_000</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span> <span class="o">+</span> <span class="mf">10.0</span>
+
+<span class="n">mpp</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Gamma</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;MPP&#39;</span><span class="p">)</span>
+<span class="n">mle</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Gamma</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;MLE&#39;</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Truth : gamma=10.000, alpha=3.000, beta=2.000&#39;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s1">&#39;MPP   : gamma=</span><span class="si">{:.3f}</span><span class="s1">, alpha=</span><span class="si">{:.3f}</span><span class="s1">, beta=</span><span class="si">{:.3f}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">mpp</span><span class="o">.</span><span class="n">gamma</span><span class="p">,</span> <span class="o">*</span><span class="n">mpp</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s1">&#39;MLE   : gamma=</span><span class="si">{:.3f}</span><span class="s1">, alpha=</span><span class="si">{:.3f}</span><span class="s1">, beta=</span><span class="si">{:.3f}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">mle</span><span class="o">.</span><span class="n">gamma</span><span class="p">,</span> <span class="o">*</span><span class="n">mle</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Truth : gamma=10.000, alpha=3.000, beta=2.000
+MPP   : gamma=-0.627, alpha=184.553, beta=15.231
+MLE   : gamma=9.990, alpha=2.996, beta=1.997
+</pre></div>
+</div>
+</div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">MPP</span></code> parameters look like nonsense: a negative <code class="docutils literal notranslate"><span class="pre">gamma</span></code> and a shape parameter inflated by two orders of magnitude. But a high-shape Gamma sitting near the origin is, by the central limit theorem, almost the same bell-shaped curve as a moderate Gamma shifted out to 10. If we compare what the models actually <em>predict</em>, the two fits are nearly indistinguishable - and both are close to the truth:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">truth</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Gamma</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="n">gamma</span><span class="o">=</span><span class="mf">10.0</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">m</span> <span class="ow">in</span> <span class="p">[(</span><span class="s1">&#39;Truth&#39;</span><span class="p">,</span> <span class="n">truth</span><span class="p">),</span> <span class="p">(</span><span class="s1">&#39;MPP&#39;</span><span class="p">,</span> <span class="n">mpp</span><span class="p">),</span> <span class="p">(</span><span class="s1">&#39;MLE&#39;</span><span class="p">,</span> <span class="n">mle</span><span class="p">)]:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{:5s}</span><span class="s1"> mean=</span><span class="si">{:.3f}</span><span class="s1">  median=</span><span class="si">{:.3f}</span><span class="s1">  90th percentile=</span><span class="si">{:.3f}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+        <span class="n">name</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">mean</span><span class="p">()),</span> <span class="nb">float</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)),</span> <span class="nb">float</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.9</span><span class="p">))))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Truth mean=11.500  median=11.337  90th percentile=12.661
+MPP   mean=11.490  median=11.468  90th percentile=12.646
+MLE   mean=11.490  median=11.327  90th percentile=12.652
+</pre></div>
+</div>
+</div>
+</div>
+<p>Despite the <code class="docutils literal notranslate"><span class="pre">MPP</span></code> parameters being off by thousands of percent, its mean, median and upper percentile all agree with the truth to better than 2%. The lesson is that when you use an offset, <strong>judge the fit by what it predicts, not by the printed parameters</strong>. Plot it against the non-parametric estimate, or compare the survival function, quantiles, mean and variance, rather than reading meaning into <code class="docutils literal notranslate"><span class="pre">gamma</span></code> and the shape parameters individually.</p>
+<p>This unidentifiability is also why the estimation method matters more than usual for offset fits. <code class="docutils literal notranslate"><span class="pre">MLE</span></code> is the most reliable for recovering the parameters themselves; the method-of-moments (<code class="docutils literal notranslate"><span class="pre">MOM</span></code>) and probability-plotting (<code class="docutils literal notranslate"><span class="pre">MPP</span></code>) initialisers can be badly biased on the parameters even when the resulting distribution is acceptable. If you need the threshold <code class="docutils literal notranslate"><span class="pre">gamma</span></code> to be meaningful - for example you are interpreting it as a guaranteed minimum life - prefer <code class="docutils literal notranslate"><span class="pre">MLE</span></code> and treat any single parameter estimate with care. The library’s test suite pins this behaviour down with measured KL and Wasserstein distances in <code class="docutils literal notranslate"><span class="pre">test_offset_divergence.py</span></code>.</p>
+</section>
+<section id="fixing-parameters">
+<h2>Fixing parameters<a class="headerlink" href="#fixing-parameters" title="Permalink to this heading">¶</a></h2>
+<p>Another useful feature of surpyval is the ability to easily fix parameters. For example:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">30</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mf">10.</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">fixed</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;mu&#39;</span> <span class="p">:</span> <span class="mi">10</span><span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Normal
+Fitted by           : MLE
+Parameters          :
+        mu: 10.0
+     sigma: 1.9353643871136499
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Normal Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_35_1.png" src="_images/Parametric%20SurPyval%20Modelling_35_1.png" />
+</div>
+</div>
+<p>You can see that the mu parameter has been fixed at 10. This can work for distribuitons with many more parameters, including the offset.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">30</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">ExpoWeibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mf">10.</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span> <span class="o">+</span> <span class="mi">10</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">ExpoWeibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">fixed</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;mu&#39;</span> <span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s1">&#39;gamma&#39;</span> <span class="p">:</span> <span class="mi">10</span><span class="p">,</span> <span class="s1">&#39;alpha&#39;</span> <span class="p">:</span> <span class="mi">10</span><span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : ExpoWeibull
+Fitted by           : MLE
+Offset (gamma)      : 10.0
+Parameters          :
+     alpha: 10.0
+      beta: 2.044204899315807
+        mu: 4.0
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;ExpoWeibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_37_1.png" src="_images/Parametric%20SurPyval%20Modelling_37_1.png" />
+</div>
+</div>
+<p>We have fit three of the four parameters for an offset exponentiated-Weibull distribution!</p>
+</section>
+<section id="modelling-with-arbitrary-input">
+<h2>Modelling with arbitrary input<a class="headerlink" href="#modelling-with-arbitrary-input" title="Permalink to this heading">¶</a></h2>
+<p>The surpyval API is extremely flexible. All the unique examples provided above can all be used at once. That is, data can be censored, truncated, and directly observed with offsets and fixing parameters. The API is completely flexible. This makes surpyval an extremely useful tool for analysts where the data is gathered in a manner where it’s cleanliness is not guaranteed.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span>  <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">15</span><span class="p">]</span>
+<span class="n">c</span>  <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">tl</span> <span class="o">=</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">tr</span> <span class="o">=</span> <span class="mi">25</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">,</span> <span class="n">tr</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span> <span class="n">fixed</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;mu&#39;</span> <span class="p">:</span> <span class="mf">1.</span><span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Normal
+Fitted by           : MLE
+Parameters          :
+        mu: 1.0
+     sigma: 9.131202231954079
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="using-alternate-estimation-methods">
+<h2>Using alternate estimation methods<a class="headerlink" href="#using-alternate-estimation-methods" title="Permalink to this heading">¶</a></h2>
+<p>Surpyval’s API is very flexible because you can change which method is used to estimate parameters. This is useful when a more appropriate method is needed or the method you are using fails.</p>
+<p>The default parametric method for surpyval is the maximum likelihood estimation (MLE), this is because it can take any arbitrary input. However, the MLE is not always the best estimator. Consider an example with the uniform distribution:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Uniform</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">20</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">x</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+
+<span class="n">mle_model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Uniform</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="o">*</span><span class="n">mle_model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>5.403706343824374 9.593054539689607
+5.403706343824374 9.593054539689607
+</pre></div>
+</div>
+</div>
+</div>
+<p>You can see that the results are the same. This is because the maximum likelihood estimate of the parameters of a uniform distriubtion are just the smallest and largest values in the sample. If however we use the ‘Maximum Product Spacing’ method we get:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">mps_model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Uniform</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;MPS&#39;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="o">*</span><span class="n">mps_model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>5.183214354183081 9.813546529330903
+</pre></div>
+</div>
+</div>
+</div>
+<p>You can see that using the MPS method we have parameters that are closer to the real values. This is because the MPS method can ‘look outside’ the existing values to estimate where the real value lies. See the details of this method in the ‘Parametric Estimation’ section. But the MPS method is useful when you need to estimate the point at which a distribution’s support starts or for any disttribution that has unknown support. Concretely, this includes any offset distribution or a distribution with a finite upper and lower support (Uniform, Generalised Beta, Triangle)</p>
+<p>The other important use case is when, for some reason, an alternate estimation method just does not work. For example:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">30</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">LogLogistic</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mf">4.</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="mi">10</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">LogLogistic</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;MLE&#39;</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/parametric/fitters/mle.py:132: UserWarning: Precision was lost, try:
+- Using alternate fitting method
+- visually checking model fit
+- change data to be closer to 1.
+  warnings.warn(
+</pre>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;LogLogistic Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_41_2.png" src="_images/Parametric%20SurPyval%20Modelling_41_2.png" />
+</div>
+</div>
+<p>This shows, that the Maximum Likelihood Estimation may have failed for this data. However, because we have access to other methods, we can use an alternate estimation method:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">30</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">LogLogistic</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mf">4.</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="mi">10</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">LogLogistic</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;MPS&#39;</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : LogLogistic
+Fitted by           : MPS
+Offset (gamma)      : 11.524905941948965
+Parameters          :
+     alpha: 2.631869646224118
+      beta: 0.9657661748605647
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;LogLogistic Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_43_1.png" src="_images/Parametric%20SurPyval%20Modelling_43_1.png" />
+</div>
+</div>
+<p>Our estimation has worked! Even though we used the MPS estimate for the parameters, we can still call all the same functions with the created variable to find the density <code class="code docutils literal notranslate"><span class="pre">df()</span></code>, hazard <code class="code docutils literal notranslate"><span class="pre">hf()</span></code>, CDF <code class="code docutils literal notranslate"><span class="pre">ff()</span></code>, SF <code class="code docutils literal notranslate"><span class="pre">sf()</span></code> etc. So regardless of the estimation method, we can still use the model.</p>
+<p>This shows the power of the flexible API that surpyval offers, because if your modelling fails using one estimation method, you can use another. In this case, the MPS method is quite good at handling offset distributions. It is therefore a good approach to use when using offset distributions.</p>
+<p>As stated in the Non-Parametric section, there is a risk that using the Turnbull estimator when all
+values are trunctated by the same values. We will now show what happens. First, some example data:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+<span class="n">tl</span> <span class="o">=</span> <span class="mi">90</span>
+<span class="n">tr</span> <span class="o">=</span> <span class="mi">110</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">x</span> <span class="o">&gt;</span> <span class="n">tl</span><span class="p">]</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">x</span> <span class="o">&lt;</span> <span class="n">tr</span><span class="p">]</span>
+
+<span class="n">mpp_model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">,</span> <span class="n">tr</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span> <span class="n">heuristic</span><span class="o">=</span><span class="s2">&quot;Turnbull&quot;</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;MPP&#39;</span><span class="p">)</span>
+<span class="n">mpp_model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Normal
+Fitted by           : MPP
+Parameters          :
+        mu: 100.06587413749352
+     sigma: 5.450710084767471
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">mpp_model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/parametric/parametric.py:1289: UserWarning: Truncated censored data, heuristic changed to Turnbull
+  heuristic = adjust_heuristic(self.data[&quot;c&quot;], self.data[&quot;t&quot;], heuristic)
+</pre>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Normal Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_45_2.png" src="_images/Parametric%20SurPyval%20Modelling_45_2.png" />
+</div>
+</div>
+<p>You can see that there is a strange match between the Turnbull estimate of the CDF and the parametric
+model. Also, you can see that the CDF at 90 is near 0% and the CDF at 110 is near 100%. This shows
+that it has not taken into account the truncation. Instead, if we use MLE we get:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">,</span> <span class="n">tr</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;MLE&#39;</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Normal
+Fitted by           : MLE
+Parameters          :
+        mu: 100.13045380721772
+     sigma: 9.177849890068703
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/parametric/parametric.py:1289: UserWarning: Truncated censored data, heuristic changed to Turnbull
+  heuristic = adjust_heuristic(self.data[&quot;c&quot;], self.data[&quot;t&quot;], heuristic)
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/nonparametric/turnbull.py:167: UserWarning: The Turnbull EM did not converge to within `tol` (1e-10) in `max_iter` (1000) iterations; the estimate may be inaccurate.
+  warnings.warn(
+</pre>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Normal Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_47_3.png" src="_images/Parametric%20SurPyval%20Modelling_47_3.png" />
+</div>
+</div>
+<p>We can see that the MLE method is a much better fit to this data, further, the MLE estimate of the
+<span class="math notranslate nohighlight">\(\sigma\)</span> parameter is much closer. The plotting points for the MLE plot
+have been adjusted in accordance with the truncation that the MLE model has estimated at the first entry.
+This is because it is known to be truncated and needs to be adjusted. This is not possible with the MPP
+method because the Turnbull estimator cannot adjust the truncation at the first and last value as it
+can make no assumptions about the truncation at those points.</p>
+<p>This is just a word of warning for when using Truncation and the MPP method, make sure not all values
+are truncated by the same value, otherwise it will give a poor fit.</p>
+</section>
+<section id="mixture-models">
+<h2>Mixture Models<a class="headerlink" href="#mixture-models" title="Permalink to this heading">¶</a></h2>
+<p>On occasion, it can appear as though there are one, or two different distributions in the data you are using. On these occasions it can be useful to use a different type of distribuiton; or really, distributions. A mixture model is a distribution made from the partial combination of several distributions. Intuitively, it can be understood as a distribution where there is a proportion that fail for each kind of distribution. So 60% may come from a Weibull(3, 4) distribution but then another 40% come from a Weibull(19, 2) distribution.</p>
+<p>SurPyval uses Expectation-Maximisation to</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">17</span> <span class="p">,</span><span class="mi">17</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">19</span><span class="p">]</span>
+<span class="n">x_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">wmm</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">MixtureModel</span><span class="p">(</span><span class="n">dist</span><span class="o">=</span><span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">wmm</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">plot_bounds</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_</span><span class="p">,</span> <span class="n">wmm</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">x_</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>[&lt;matplotlib.lines.Line2D at 0x7ff3898b7090&gt;]
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_48_1.png" src="_images/Parametric%20SurPyval%20Modelling_48_1.png" />
+</div>
+</div>
+<p>You can see that the mixture model, in blue, tracks the data more closely than does the single model. SurPyval has incredible flexibility. The number of distributions can be changed by simply changing the value of <code class="docutils literal notranslate"><span class="pre">m</span></code>, and, the distribution passed to <code class="docutils literal notranslate"><span class="pre">dist</span></code> in the mixture can also be changed. Consider:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">x1</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">20</span><span class="p">,</span> <span class="o">-</span><span class="mi">10</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<span class="n">x2</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">30</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+<span class="n">x3</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">40</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">15</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">x1</span><span class="p">,</span> <span class="n">x2</span><span class="p">,</span> <span class="n">x3</span><span class="p">])</span>
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">x_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+
+<span class="n">normal</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">gmm</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">MixtureModel</span><span class="p">(</span><span class="n">dist</span><span class="o">=</span><span class="n">surv</span><span class="o">.</span><span class="n">Normal</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">gmm</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+<span class="n">normal</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">plot_bounds</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_</span><span class="p">,</span> <span class="n">gmm</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">x_</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>[&lt;matplotlib.lines.Line2D at 0x7ff3896f8190&gt;]
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_49_1.png" src="_images/Parametric%20SurPyval%20Modelling_49_1.png" />
+</div>
+</div>
+<p>It was that simple to create a gaussian mixture model using <code class="docutils literal notranslate"><span class="pre">m=3</span></code> and the <code class="docutils literal notranslate"><span class="pre">dist=surv.Normal</span></code> parameters. SurPuyval does default to 2 Weibull distributions if neither parameters are provided, but it can take any distribution in SurPyval as an input distribution.</p>
+<p>Finally, mixture models can take counts and censoring flags as input (but not, yet, truncation). This makes SurPyval a truly powerful package for your survival analysis.</p>
+</section>
+<section id="limited-failure-population">
+<h2>Limited Failure Population<a class="headerlink" href="#limited-failure-population" title="Permalink to this heading">¶</a></h2>
+<p>Another kind of model that is useful in survival analysis is when a population has a limited number of items in the population that are susceptible to the failure. This is also known as a ‘Defective Subpopulation’ model. As such, no matter how long a test continues, it will not be possible for all items to fail (with the particular death/failure).</p>
+<p>As an example, we can created a Defective Subpopulation Weibull, also known as a Limited Failure Population Model using a Weibull distribution:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+
+<span class="n">lfp_weibull</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">p</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="c1"># LFP Model outputs x, c, and n from `random()`</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">lfp_weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+
+<span class="c1"># Fit regular Weibull</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+
+<span class="c1"># Set LFP to be `True`</span>
+<span class="n">lfp_model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">lfp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">lfp_model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Max Proportion (p)  : 0.5553951706301609
+Parameters          :
+     alpha: 10.180334250703325
+      beta: 2.1358575855314985
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">plot_bounds</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">xx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">*</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">xx</span><span class="p">,</span> <span class="n">lfp_model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">xx</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>[&lt;matplotlib.lines.Line2D at 0x7ff388e5b950&gt;]
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_51_1.png" src="_images/Parametric%20SurPyval%20Modelling_51_1.png" />
+</div>
+</div>
+<p>This API works with any distribution so simply changing <code class="docutils literal notranslate"><span class="pre">Weibull</span></code> to <code class="docutils literal notranslate"><span class="pre">Exponential</span></code> would create a Defective Subpopulation Exponential / Limited Failure Population Exponential model. Further, if it was changed to <code class="docutils literal notranslate"><span class="pre">Gamma</span></code> it would create a Defective Subpopulation Gamma model / Limited Failure Population Gamma.</p>
+<p>LFP models can only (as yet) work with <code class="docutils literal notranslate"><span class="pre">MLE</span></code>. It cannot (yet) work with the other estimation methods. The <code class="docutils literal notranslate"><span class="pre">MSE</span></code> is a good candidate for implementation.</p>
+</section>
+<section id="zero-inflated-modelling">
+<h2>Zero-Inflated Modelling<a class="headerlink" href="#zero-inflated-modelling" title="Permalink to this heading">¶</a></h2>
+<p>In survival analysis you might have the scenario where many failure times are 0, known as being dead on arrival. In this case we need a model that can account for the fact that many will be failed at 0, this is a situation that cannot be handled by regular distribuitons, since most have a 0% chance of failing at 0. Therefore what we need is something that is symmetrical to the LFP/DS case, where a proportion of the failures occur at 0 instead of there being a proportion that will never fail.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">autograd</span><span class="w"> </span><span class="kn">import</span> <span class="n">numpy</span> <span class="k">as</span> <span class="n">np</span>
+
+<span class="n">dist</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">ExpoWeibull</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">dist</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">10.2</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">1.3</span><span class="p">],</span> <span class="n">f0</span><span class="o">=</span><span class="mf">0.15</span><span class="p">)</span>
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : ExpoWeibull
+Fitted by           : given parameters
+Zero-Inflation (f0) : 0.15
+Parameters          :
+     alpha: 10.2
+      beta: 2.0
+        mu: 1.3
+</pre></div>
+</div>
+</div>
+</div>
+<p>Using this random data, we can make a fitted model (with the added convenience not offered in the real world of knowing exactly what parameters we are aiming toward).</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fitted_model</span> <span class="o">=</span> <span class="n">dist</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">zi</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fitted_model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : ExpoWeibull
+Fitted by           : MLE
+Zero-Inflation (f0) : 0.18000000000000188
+Parameters          :
+     alpha: 11.723919345656764
+      beta: 2.76977937062122
+        mu: 0.8437881139774646
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fitted_model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;ExpoWeibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_54_1.png" src="_images/Parametric%20SurPyval%20Modelling_54_1.png" />
+</div>
+</div>
+<p>We can see that we have made a good fit!</p>
+<p>To showcase the SurPyval API again, and to demonstrate the flexibility, it is trivial to have Defective Subpopulation Zero Inflated (DSZI) model / Limited Failure Population and Zero Inflated model.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">dist</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">LogNormal</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">dist</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">2.2</span><span class="p">,</span> <span class="mf">.2</span><span class="p">],</span> <span class="n">f0</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="c1"># Random values from LFP models come in xcn format!!!!!</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+
+<span class="n">fitted_model</span> <span class="o">=</span> <span class="n">dist</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">zi</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">lfp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fitted_model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : LogNormal
+Fitted by           : MLE
+Max Proportion (p)  : 0.62187556689359
+Zero-Inflation (f0) : 0.040000000000002756
+Parameters          :
+        mu: 2.2060270922777656
+     sigma: 0.19060910224636227
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fitted_model</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">plot_bounds</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;LogNormal Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_56_1.png" src="_images/Parametric%20SurPyval%20Modelling_56_1.png" />
+</div>
+</div>
+<p>Using a <code class="docutils literal notranslate"><span class="pre">LogNormal</span></code> distribution we were able to easily capture the DS/LFP and ZI behaviour of the data.</p>
+</section>
+<section id="discrete-distributions">
+<h2>Discrete Distributions<a class="headerlink" href="#discrete-distributions" title="Permalink to this heading">¶</a></h2>
+<p>Every distribution used so far is <em>continuous</em> – a failure time can be any positive real number. But many reliability problems are naturally <em>discrete</em>: an item does not fail after “3.7 cycles”, it fails <strong>on</strong> the 4th cycle. A switch is toggled until it breaks, a component absorbs shocks until it fractures, a system is inspected once per period until a defect appears. When the lifetime is a count – a positive integer – a discrete distribution is the honest model, and reaching for a continuous one can bias the answer.</p>
+<p><em>SurPyval</em> provides three discrete lifetime distributions, all supported on the positive integers <span class="math notranslate nohighlight">\(\{1, 2, 3, \dots\}\)</span>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Distribution</p></th>
+<th class="head"><p>Continuous analogue</p></th>
+<th class="head"><p>Discrete hazard</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Geometric</span></code></p></td>
+<td><p>Exponential</p></td>
+<td><p>constant (memoryless)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DiscreteWeibull</span></code></p></td>
+<td><p>Weibull</p></td>
+<td><p>increasing, constant, or decreasing</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NegativeBinomial</span></code></p></td>
+<td><p>Gamma</p></td>
+<td><p>cycles until the <code class="docutils literal notranslate"><span class="pre">r</span></code>-th shock</p></td>
+</tr>
+</tbody>
+</table>
+<p>They are used exactly like the continuous distributions – the same <code class="docutils literal notranslate"><span class="pre">fit()</span></code> call, the same <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code> and <code class="docutils literal notranslate"><span class="pre">df</span></code> methods, and the same support for censoring, truncation, and counts.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">Geometric</span></code> distribution is the discrete analogue of the <code class="docutils literal notranslate"><span class="pre">Exponential</span></code>: each cycle fails independently with a constant probability <code class="docutils literal notranslate"><span class="pre">p</span></code>, so it is <em>memoryless</em>. It models the number of cycles until the first failure.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="c1"># 200 items; each cycle fails with probability 0.15</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Geometric</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="mf">0.15</span><span class="p">)</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">Geometric</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Geometric
+Fitted by           : MLE
+Parameters          :
+         p: 0.15243902439024426
+</pre></div>
+</div>
+</div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">DiscreteWeibull</span></code> distribution (the Nakagawa-Osaki Type I) is the discrete analogue of the <code class="docutils literal notranslate"><span class="pre">Weibull</span></code>, and like it has a flexible hazard: <code class="docutils literal notranslate"><span class="pre">beta</span></code> controls the shape, with <code class="docutils literal notranslate"><span class="pre">beta</span> <span class="pre">&lt;</span> <span class="pre">1</span></code> a decreasing (infant-mortality) hazard, <code class="docutils literal notranslate"><span class="pre">beta</span> <span class="pre">=</span> <span class="pre">1</span></code> the constant-hazard Geometric, and <code class="docutils literal notranslate"><span class="pre">beta</span> <span class="pre">&gt;</span> <span class="pre">1</span></code> an increasing (wear-out) hazard.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="c1"># beta = 2 -&gt; a wearing-out item</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">DiscreteWeibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">DiscreteWeibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : DiscreteWeibull
+Fitted by           : MLE
+Parameters          :
+         q: 0.9444677869684359
+      beta: 2.017298027150408
+</pre></div>
+</div>
+</div>
+</div>
+<p>Because <code class="docutils literal notranslate"><span class="pre">beta</span> <span class="pre">&gt;</span> <span class="pre">1</span></code> here, the discrete hazard rises with each cycle – the chance of failing on the next cycle grows as the item wears:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">hf</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([0.05553221, 0.41277137, 0.67967502, 0.82628434])
+</pre></div>
+</div>
+</div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">NegativeBinomial</span></code> distribution models the number of cycles until an item accumulates enough shocks to fail: with <code class="docutils literal notranslate"><span class="pre">T</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">+</span> <span class="pre">Y</span></code> where <code class="docutils literal notranslate"><span class="pre">Y</span></code> is the number of failures before the <code class="docutils literal notranslate"><span class="pre">r</span></code>-th success. It is overdispersed relative to a Poisson count and reduces to the <code class="docutils literal notranslate"><span class="pre">Geometric</span></code> when <code class="docutils literal notranslate"><span class="pre">r</span> <span class="pre">=</span> <span class="pre">1</span></code>.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">NegativeBinomial</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">1000</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">)</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">NegativeBinomial</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : NegativeBinomial
+Fitted by           : MLE
+Parameters          :
+         r: 3.5383678445332434
+         p: 0.4483846038160898
+</pre></div>
+</div>
+</div>
+</div>
+<p>Since <code class="docutils literal notranslate"><span class="pre">r</span></code> and <code class="docutils literal notranslate"><span class="pre">p</span></code> trade off against each other, the negative binomial usually needs more data than the single-parameter Geometric to pin both down.</p>
+<p>The full <code class="docutils literal notranslate"><span class="pre">fit()</span></code> API carries over. Censored and truncated discrete data are handled exactly as for the continuous distributions – here every item still running after 10 cycles is right censored:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">DiscreteWeibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span>
+<span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">c</span><span class="p">[</span><span class="n">x</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">x</span><span class="p">[</span><span class="n">x</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">]</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">DiscreteWeibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : DiscreteWeibull
+Fitted by           : MLE
+Parameters          :
+         q: 0.9590228118276634
+      beta: 2.074958667498085
+</pre></div>
+</div>
+</div>
+</div>
+<p>Because the support is <span class="math notranslate nohighlight">\(\{1, 2, 3, \dots\}\)</span>, the value <code class="docutils literal notranslate"><span class="pre">0</span></code> is left free to carry a <strong>zero-inflation</strong> mass – the “dead on arrival” units from the previous section. Fitting with <code class="docutils literal notranslate"><span class="pre">zi=True</span></code> recovers both the lifetime parameters and the structural-zero fraction:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Geometric</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">x</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">40</span><span class="p">)])</span>  <span class="c1"># 40 dead-on-arrival units</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">Geometric</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">zi</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Geometric
+Fitted by           : MLE
+Zero-Inflation (f0) : 0.16666666666739866
+Parameters          :
+         p: 0.19157088122605415
+</pre></div>
+</div>
+</div>
+</div>
+<p>A note on estimation: probability plotting (MPP) is not defined for these discrete lifetimes, so they are fit by maximum likelihood (the default) and calling <code class="docutils literal notranslate"><span class="pre">plot()</span></code> on a discrete model raises. All the other model methods – <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">moment</span></code>, <code class="docutils literal notranslate"><span class="pre">random</span></code> and the confidence bounds <code class="docutils literal notranslate"><span class="pre">cb</span></code> – work as usual.</p>
+</section>
+<section id="confidence-intervals">
+<h2>Confidence Intervals<a class="headerlink" href="#confidence-intervals" title="Permalink to this heading">¶</a></h2>
+<p><em>SurPyval</em> can be used to compute the confidence interval for any of the functions of a distribution. That is, <em>SurPyval</em> can
+compute the confidence interval for <code class="docutils literal notranslate"><span class="pre">ff()</span></code>, <code class="docutils literal notranslate"><span class="pre">sf()</span></code>, <code class="docutils literal notranslate"><span class="pre">hf()</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf()</span></code>, and <code class="docutils literal notranslate"><span class="pre">df()</span></code>.</p>
+<p>Once you have a model, this can easily be computed with the <code class="docutils literal notranslate"><span class="pre">cb()</span></code> method.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+<span class="n">x_plot</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_plot</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="n">x_plot</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_plot</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="n">x_plot</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s1">&#39;Hf&#39;</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s1">&#39;--&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>[&lt;matplotlib.lines.Line2D at 0x7ff388b8f2d0&gt;,
+ &lt;matplotlib.lines.Line2D at 0x7ff388b8d090&gt;]
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_63_1.png" src="_images/Parametric%20SurPyval%20Modelling_63_1.png" />
+</div>
+</div>
+<p>This shows that we can change the confidence level with <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code> and that we can change the function for which
+we want the confidence interval. That is, the <code class="docutils literal notranslate"><span class="pre">on</span></code> keyword can be any of <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, or <code class="docutils literal notranslate"><span class="pre">Hf</span></code>.
+This will work with models that you create as well, so even a user defined Distribution will be able to have the
+confidence intervals computed. Creating these models is discussed in the section below.</p>
+</section>
+<section id="creating-a-custom-distribution">
+<h2>Creating a custom Distribution<a class="headerlink" href="#creating-a-custom-distribution" title="Permalink to this heading">¶</a></h2>
+<p>Given the implementation in SurPyval, it is possible to create a new distribution and use all the
+previously listed techniques. For example, the Gompertz distribution is not implemented in the
+surpyval API, this however can be quickly overcome. First, we set up a random number generator.
+Because SurPyval works based on the autograd numpy implementation, it is essential that you
+use the autograd numpy import to make this work.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="c1"># IMPORTANT - Will not work with regular numpy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">autograd</span><span class="w"> </span><span class="kn">import</span> <span class="n">numpy</span> <span class="k">as</span> <span class="n">np</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">qf</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">mu</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(((</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p</span><span class="p">)</span><span class="o">/</span><span class="n">mu</span><span class="p">)))</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="n">b</span>
+
+<span class="c1"># Generate random values from Gompertz distribution</span>
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">qf</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="mf">1.2</span><span class="p">,</span> <span class="mf">2.</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Now that we have our random data set, we can fit a Gompertz distribution to it. To do so, we need
+to create a Gompertz distribution class, and to do this we need the cumulative hazard function,
+the names of the parameters, the bounds of the parameters, and the distribution support.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;Gompertz&#39;</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">Hf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+<span class="n">param_names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;nu&#39;</span><span class="p">,</span> <span class="s1">&#39;b&#39;</span><span class="p">]</span>
+<span class="n">bounds</span> <span class="o">=</span> <span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+<span class="n">support</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+<span class="n">Gompertz</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">CustomDistribution</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">Hf</span><span class="p">,</span> <span class="n">param_names</span><span class="p">,</span> <span class="n">bounds</span><span class="p">,</span> <span class="n">support</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>With this now created, all the calls to the regular surpyval API can be used.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">Gompertz</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Gompertz
+Fitted by           : MLE
+Parameters          :
+        nu: 1.1506001291986079
+         b: 1.8973107084934426
+</pre></div>
+</div>
+</div>
+</div>
+<p>If we transform the data slightly, we can show that this can be used with censored and truncated data
+as well.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="c1"># Right censor all values above 2</span>
+<span class="n">c</span><span class="p">[</span><span class="n">x</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">x</span><span class="p">[</span><span class="n">x</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="c1"># Left truncate all values below 0</span>
+<span class="n">tl</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">c</span> <span class="o">=</span> <span class="n">c</span><span class="p">[</span><span class="n">x</span> <span class="o">&gt;</span> <span class="n">tl</span><span class="p">]</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">x</span> <span class="o">&gt;</span> <span class="n">tl</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">Gompertz</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Gompertz
+Fitted by           : MLE
+Parameters          :
+        nu: 1.4228614052201651
+         b: 1.6881528785578999
+</pre></div>
+</div>
+</div>
+</div>
+<p>This is extraordinary! We have created a new distribution using only the cumulative hazard function, but
+are able to handle arbitrary censoring and truncation. It shows the power of the SurPyval API and
+functionality.</p>
+<p>Credit for this idea must be given to the creators of the <em>lifelines</em> package. <em>lifelines</em> is capable
+of receiving a cumulative hazard function that can then be used as a distribution to fit parameters.
+However, at the time of writing it could not handle arbitrarily censored or truncated data.</p>
+<p>Even with a user defined <code class="docutils literal notranslate"><span class="pre">Hf()</span></code> we can still use the confidence bounds as well. The results of this
+can be seen by simply calling the plot function:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/parametric/parametric.py:1289: UserWarning: Truncated censored data, heuristic changed to Turnbull
+  heuristic = adjust_heuristic(self.data[&quot;c&quot;], self.data[&quot;t&quot;], heuristic)
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/univariate/nonparametric/turnbull.py:167: UserWarning: The Turnbull EM did not converge to within `tol` (1e-10) in `max_iter` (1000) iterations; the estimate may be inaccurate.
+  warnings.warn(
+</pre>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Gompertz Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20SurPyval%20Modelling_68_3.png" src="_images/Parametric%20SurPyval%20Modelling_68_3.png" />
+</div>
+</div>
+<p>You can see that the distribution is not linearised. This is because the Hf is not readily convertible
+into the transformation function needed to do the linearisation of the CDF. The defaults are a simple
+linear scale for both the x and y axis and it shows that the confidence bounds have worked nicely.</p>
+<p>You can also see that the confidence bound expands quite widely above approximately 1.2. This is due to the heavy truncation and censoring, if using complete data the confidence boudns do not diverge. This shows the importance of inference when working with truncated and censored data, the uncertainty can be quite wide!</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Due to the implementation of confidence bounds in surpyval it can result
+in numeric overflows which results in incredulous bounds. Please take caution when
+using the cb with non surpyval implemented distributions.</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Non-Parametric%20SurPyval%20Modelling.html" class="btn btn-neutral float-left" title="Non-Parametric SurPyval Modelling" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Regression%20Modelling%20with%20SurPyval.html" class="btn btn-neutral float-right" title="Regression Modelling with SurPyval" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

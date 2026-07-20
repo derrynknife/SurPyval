@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Non-Parametric SurPyval Modelling &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Parametric SurPyval Modelling" href="Parametric%20SurPyval%20Modelling.html" />
+    <link rel="prev" title="Degradation Analysis" href="Degradation%20Analysis.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Non-Parametric SurPyval Modelling</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#complete-data">Complete Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#right-censored-data">Right Censored Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#left-truncated-data">Left Truncated Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#arbitrarily-truncated-and-censored-data">Arbitrarily Truncated and Censored Data</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#some-issues-with-the-turnbull-estimate">Some Issues with the Turnbull Estimate</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Non-Parametric SurPyval Modelling</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Non-Parametric SurPyval Modelling.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="non-parametric-surpyval-modelling">
+<h1>Non-Parametric SurPyval Modelling<a class="headerlink" href="#non-parametric-surpyval-modelling" title="Permalink to this heading">¶</a></h1>
+<p>To get started, let’s import some useful packages, as such, for the rest of this page we will assume the following imports have occurred:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Survival modelling with <em>surpyval</em> is very easy. This page will take you through a series of scenarios that can show you how to use the features of <em>surpyval</em> to get you the answers you need. The first example is if you simply have a list of event times and need to find the distribution of best fit.</p>
+<p>In each of the examples below, each of the <code class="docutils literal notranslate"><span class="pre">KaplanMeier</span></code>, <code class="docutils literal notranslate"><span class="pre">NelsonAalen</span></code>, or <code class="docutils literal notranslate"><span class="pre">FlemingHarrington</span></code> can be substituted with any of the others. It is the choice of the analyst which should be used. The
+<code class="docutils literal notranslate"><span class="pre">Turnbull</span></code> estimator has additional capabilities that can be used when you have right truncated, left censored, or interval censored data.</p>
+<section id="complete-data">
+<h2>Complete Data<a class="headerlink" href="#complete-data" title="Permalink to this heading">¶</a></h2>
+<p>Using data of the stress of Bofors steel from Weibull’s original paper we can esimtate the reliability, that is, the probability that a sample of steel will survive up to a given applied stress. So what does that mean?</p>
+<p>We can find when the steel will break. This is particularly useful when we know the application.</p>
+<p>For this example, lets say that the maximum tensile stress our design will see during use is 34 units. Lets try and estimate the proportion that will fail during operation.</p>
+<p>For this we can use the Nelson-Aalen estimator of the hazard rate, then convert it to the reliability. This is all done with one easy call.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">32</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">34</span><span class="p">,</span> <span class="mi">35</span><span class="p">,</span> <span class="mi">36</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">38</span><span class="p">,</span> <span class="mi">39</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">42</span><span class="p">])</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">81</span><span class="p">,</span> <span class="mi">161</span><span class="p">,</span> <span class="mi">224</span><span class="p">,</span> <span class="mi">289</span><span class="p">,</span> <span class="mi">336</span><span class="p">,</span> <span class="mi">369</span><span class="p">,</span> <span class="mi">383</span><span class="p">,</span> <span class="mi">389</span><span class="p">])</span>
+
+<span class="c1"># Weibull&#39;s measurements are cumulative so we need to tranasform them</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([[</span><span class="n">n</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">n</span><span class="p">)])</span>
+
+<span class="n">bofors_steel_na</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">NelsonAalen</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">7</span><span class="p">));</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;Survival Probability&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Stress [1.275kg/mm2]&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylim</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">([</span><span class="mi">31</span><span class="p">,</span> <span class="mi">42</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">bofors_steel_na</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">bofors_steel_na</span><span class="o">.</span><span class="n">R</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;Survival Prob vs Stress of Bofors Steel&#39;</span><span class="p">);</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Non-Parametric%20SurPyval%20Modelling_1_0.png" src="_images/Non-Parametric%20SurPyval%20Modelling_1_0.png" />
+</div>
+</div>
+<p>So what purpose is this?</p>
+<p>With our non-parametric model of the Bofors steel. We can use this model to estimate the reliability in our application. Let’s say that our application uses Bofors steel up to 34. What is our estimate of the number of failures?</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">bofors_steel_na</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">34</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">*</span> <span class="mi">100</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;%&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>80.15%
+</pre></div>
+</div>
+</div>
+</div>
+<p>The above shows that approximately 80% will survive up to a stress of 34. Therefore we will have an approximately 20% chance of our component failing in the design.</p>
+<p>It is up to the designer to determine whether this is acceptable.</p>
+<p>What if we want to take into account our uncertainty about the reliability. The non-parametric class automatically computes the variance of the estimate using the formula appropriate to the estimator (Greenwood’s formula for Kaplan-Meier, Aalen’s variance for Nelson-Aalen, and the tie-corrected variance for Fleming-Harrington) and uses that to compute the upper and lower confidence intervals. Let’s plot the intervals to see.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">7</span><span class="p">))</span>
+<span class="n">bofors_steel_na</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">interp</span><span class="o">=</span><span class="s1">&#39;linear&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Stress [1.275kg/mm2]&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;Survival Probability&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylim</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">([</span><span class="mi">32</span><span class="p">,</span> <span class="mi">42</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;Surv Prob vs Stress of Bofors Steel&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Text(0.5, 1.0, &#39;Surv Prob vs Stress of Bofors Steel&#39;)
+</pre></div>
+</div>
+<img alt="_images/Non-Parametric%20SurPyval%20Modelling_3_1.png" src="_images/Non-Parametric%20SurPyval%20Modelling_3_1.png" />
+</div>
+</div>
+<p>The confidence bounds can also be used to estimate the probability of survival up to some point with some degree of confidence. For example:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">bofors_steel_na</span><span class="o">.</span><span class="n">R_cb</span><span class="p">(</span><span class="mi">34</span><span class="p">,</span> <span class="n">bound</span><span class="o">=</span><span class="s1">&#39;lower&#39;</span><span class="p">,</span> <span class="n">interp</span><span class="o">=</span><span class="s1">&#39;linear&#39;</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">*</span> <span class="mi">100</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;%&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>76.67%
+</pre></div>
+</div>
+</div>
+</div>
+<p>Therefore we can be 95% confident that the reliability at 34 is above 76%. For a Kaplan-Meier
+model with no right censoring the variance at the final value is undefined with Greenwood’s
+formula, so the bounds at the last observation are filled with the last finite upper bound and
+zero for the lower bound. The Nelson-Aalen and Fleming-Harrington variances remain finite at
+the final value so their bounds are defined all the way to the last observation.</p>
+</section>
+<section id="right-censored-data">
+<h2>Right Censored Data<a class="headerlink" href="#right-censored-data" title="Permalink to this heading">¶</a></h2>
+<p>Non-Parametric estimation can handle right censored, this is possible because at the point of censoring the item is removed from the at risk group without couting a death/failure.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">KaplanMeier</span> <span class="k">as</span> <span class="n">KM</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span>
+<span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">KM</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">R</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([0.88888889, 0.77777778, 0.66666667, 0.55555556, 0.55555556])
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Model Survival Plot&#39;}, ylabel=&#39;R&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Non-Parametric%20SurPyval%20Modelling_6_1.png" src="_images/Non-Parametric%20SurPyval%20Modelling_6_1.png" />
+</div>
+</div>
+<p>In this example, we have included right censored data. This example can be done for the Nelson-Aalen,
+Fleming-Harrington, and Turnbull estimators as well.</p>
+</section>
+<section id="left-truncated-data">
+<h2>Left Truncated Data<a class="headerlink" href="#left-truncated-data" title="Permalink to this heading">¶</a></h2>
+<p>In some instances you will need to account for left truncated data. These data can be passed
+stright to the same KM, NA, and FH fitters. A common source of left truncation is delayed
+entry into a study: each subject’s clock starts before they enrol, so anyone who failed
+before they could enrol is never observed, biasing the sample towards longer survivors.
+We can simulate such a cohort:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">KaplanMeier</span> <span class="k">as</span> <span class="n">KM</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">lifetimes</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">1_000</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">)</span>
+<span class="n">entry</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">1_000</span><span class="p">)</span>
+
+<span class="c1"># Only subjects still alive at their entry time are ever enrolled</span>
+<span class="n">enrolled</span> <span class="o">=</span> <span class="n">lifetimes</span> <span class="o">&gt;</span> <span class="n">entry</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">lifetimes</span><span class="p">[</span><span class="n">enrolled</span><span class="p">]</span>
+<span class="n">tl</span> <span class="o">=</span> <span class="n">entry</span><span class="p">[</span><span class="n">enrolled</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">KM</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">)</span>
+<span class="n">model_no_trunc</span> <span class="o">=</span> <span class="n">KM</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">)</span>
+
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">plot_bounds</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">model_no_trunc</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">plot_bounds</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">([</span><span class="s1">&#39;Truncation&#39;</span><span class="p">,</span> <span class="s1">&#39;No Truncation&#39;</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;matplotlib.legend.Legend at 0x7fb9083dfc90&gt;
+</pre></div>
+</div>
+<img alt="_images/Non-Parametric%20SurPyval%20Modelling_7_1.png" src="_images/Non-Parametric%20SurPyval%20Modelling_7_1.png" />
+</div>
+</div>
+<p>The image above shows that if you fail to take into account the left truncation (using the <code class="docutils literal notranslate"><span class="pre">tl</span></code> keyword)
+you will overstate the survival probability. This can be used with any of the other non-parametric fitters.</p>
+</section>
+<section id="arbitrarily-truncated-and-censored-data">
+<h2>Arbitrarily Truncated and Censored Data<a class="headerlink" href="#arbitrarily-truncated-and-censored-data" title="Permalink to this heading">¶</a></h2>
+<p>In the event you have data that has interval, left, or right censoring with no, left, or right truncation, the previous estimators will not work. Enter the <code class="docutils literal notranslate"><span class="pre">Turnbull</span></code> estimator. First an interval
+estimation example:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Turnbull</span> <span class="k">as</span> <span class="n">TB</span>
+
+<span class="n">low</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span>
+                <span class="mi">17</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">22</span><span class="p">,</span> <span class="mi">24</span><span class="p">,</span> <span class="mi">24</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">26</span><span class="p">,</span> <span class="mi">27</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span>
+                <span class="mi">34</span><span class="p">,</span> <span class="mi">36</span><span class="p">,</span> <span class="mi">36</span><span class="p">,</span> <span class="mi">36</span><span class="p">,</span> <span class="mi">36</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">38</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span>
+                <span class="mi">46</span><span class="p">,</span> <span class="mi">46</span><span class="p">,</span> <span class="mi">46</span><span class="p">,</span> <span class="mi">46</span><span class="p">,</span> <span class="mi">46</span><span class="p">,</span> <span class="mi">46</span><span class="p">,</span> <span class="mi">46</span><span class="p">,</span> <span class="mi">46</span><span class="p">])</span>
+<span class="n">upp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">14</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mi">35</span><span class="p">,</span> <span class="mi">26</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">34</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mi">44</span><span class="p">,</span>
+                <span class="mi">48</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mi">44</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">])</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">TB</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Model Survival Plot&#39;}, ylabel=&#39;R&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Non-Parametric%20SurPyval%20Modelling_8_2.png" src="_images/Non-Parametric%20SurPyval%20Modelling_8_2.png" />
+</div>
+</div>
+<p>And finally, an example with completely arbitrary censoring:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Turnbull</span> <span class="k">as</span> <span class="n">TB</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">9</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">12</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">n</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">TB</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Model Survival Plot&#39;}, ylabel=&#39;R&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Non-Parametric%20SurPyval%20Modelling_9_1.png" src="_images/Non-Parametric%20SurPyval%20Modelling_9_1.png" />
+</div>
+</div>
+<p>With a completely arbitrary set of data we have created a non-parametric estimate of the survival
+curve that can be used to estimate probabilities.</p>
+<p>The Turnbull fitter also accepts truncation (<code class="docutils literal notranslate"><span class="pre">tl</span></code>/<code class="docutils literal notranslate"><span class="pre">tr</span></code>), and on
+well-sized samples the truncated estimate is well behaved. Be aware,
+though, that the truncated NPMLE is a delicate object: on small or
+heavily truncated samples it can be non-identifiable (classically, mass
+can escape below every observation’s entry time), in which case the EM
+does not converge to a useful estimate. SurPyval warns when the EM
+stops without converging – treat the estimate with suspicion when it
+does.</p>
+<p>What is interesting about the Turbull estimate is that it first finds the data in the ‘xrd’ format.
+This is done even though we might not have a complete failure occur in an interval. This can be seen by looking at the number of deaths/failures occur at each value.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">d</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([0.00000000e+00, 0.00000000e+00, 6.57266222e-15, 2.31160615e-08,
+       1.63255195e+00, 0.00000000e+00, 4.88511702e+00, 0.00000000e+00,
+       5.02838656e+00, 0.00000000e+00, 4.16390252e+00, 3.76190615e-16,
+       0.00000000e+00, 0.00000000e+00, 1.24282156e+00, 2.44298875e-02])
+</pre></div>
+</div>
+</div>
+</div>
+<p>You can see that some values are 0 (or essentially 0) or that there is an interval where there were
+4.1639025 failures. But because the Turbull estimate finds the x, r, d format we can actually elect to use the Nelson-Aalen or Kaplan-Meier estimate with the Turnbull estimates of x, r, and d.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">TB</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">turnbull_estimator</span><span class="o">=</span><span class="s1">&#39;Nelson-Aalen&#39;</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Model Survival Plot&#39;}, ylabel=&#39;R&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/Non-Parametric%20SurPyval%20Modelling_11_1.png" src="_images/Non-Parametric%20SurPyval%20Modelling_11_1.png" />
+</div>
+</div>
+<p>The Greenwood confidence intervals do give us a strange set of bounds. But you can see that
+using the Nelson-Aalen estimator instead of the Kaplan-Meier gives us a better approximation
+for the tail end of the distribution.</p>
+<section id="some-issues-with-the-turnbull-estimate">
+<h3>Some Issues with the Turnbull Estimate<a class="headerlink" href="#some-issues-with-the-turnbull-estimate" title="Permalink to this heading">¶</a></h3>
+<p>Caution must be given when using the Turnbull estimate when all values are truncated by some left and/or
+right value. This will be shown below in the methods for estimating parameters with truncated values. But
+essentially the Turnbull method cannot make any assumptions about the probability by which the smallest
+value if left truncated should be adjusted. This is because there is no information available with the
+non-parametric method below this smallest value. The same is true for the largest value if it is also
+right truncated, there is no information available about the probability of its observation. Therefore
+the Turnbull method makes an implicit assumption that the first value, if left truncated has 100% chance
+of observation, and the highest value, if right truncated also has 100% chance of being observed.</p>
+<p>The implications of this are detailed in the Parametric section, because the only way to gain an understanding of these situations is by assuming a shape of the distribution. That is, by doing parametric analysis. This is possible since if the distribution within the truncated ends has a shape that matches to a particular distribution you can then extrapolate beyond the observed values. Parametric analysis is therefore incredibly powerful for prediction / extrapolation.</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Degradation%20Analysis.html" class="btn btn-neutral float-left" title="Degradation Analysis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Parametric%20SurPyval%20Modelling.html" class="btn btn-neutral float-right" title="Parametric SurPyval Modelling" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

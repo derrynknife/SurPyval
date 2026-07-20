@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Example Applications &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Competing Risks SurPyval Modelling" href="Competing%20Risks%20SurPyval%20Modelling.html" />
+    <link rel="prev" title="Regression Modelling with SurPyval" href="Regression%20Modelling%20with%20SurPyval.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Example Applications</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#boston-house-prices">Boston House Prices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#applided-reliability-engineering">Applided Reliability Engineering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#demographics-actuarial">Demographics / Actuarial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#applied-reliability-engineering-2">Applied Reliability Engineering - 2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#social-science-criminology">Social Science / Criminology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#economics">Economics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Example Applications</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/applications.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="example-applications">
+<h1>Example Applications<a class="headerlink" href="#example-applications" title="Permalink to this heading">¶</a></h1>
+<p>This section documents some of the applications that SurPyval as a survival analysis toolkit can be useful to you, no matter what discipline you need it for.</p>
+<section id="boston-house-prices">
+<h2>Boston House Prices<a class="headerlink" href="#boston-house-prices" title="Permalink to this heading">¶</a></h2>
+<p>No statistical analysis package can avoid doing the ‘hello world’ task of analysing the ‘Boston House Pricing’ dataset. What might surprise some readers is that this would even be considered… The myriad blogs and Kaggle posts looking into this problem can not surely be improved upon. I agree, however, it is a good example of why one needs to be aware of censoring and how flexible the SurPyval API is when dealing with it. Looking at the boston house pricing dataset you can see that there is a suspicous number of houses at the top end that all have the same price:</p>
+<img alt="_images/applications-boston-1.png" class="align-center" src="_images/applications-boston-1.png" />
+<p>On consideration, one can see that there are no houses above $50,000 and that the density at that point is much higher than we would expect because we would expect some form of a ‘fat-tail.’ That is, we should expect a decreasing number of houses at the highest costs. It is therefore safe to conclude that all values above $50,000 have been set to $50,000; which is to say that the sale price is right censored! And because it is a censored observation we will need to use an analysis tool that can handle censored observations, lest we may be wrong in our estimates of the distribution of housing prices. So lets load the data and see what results we can get, starting with the raw data.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_boston_housing</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">load_boston_housing</span><span class="p">()[</span><span class="s1">&#39;medv&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">xcnt_handler</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 25.386952832396922
+      beta: 2.565190320994731
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/applications_0_2.png" src="_images/applications_0_2.png" />
+</div>
+</div>
+<p>From the above plot you can see that near 50, the parametric model diverges substantially from the actual data. So we can see that having not censored the highest values means that our model could be improved by doing so. Let’s see:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_boston_housing</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">load_boston_housing</span><span class="p">()[</span><span class="s1">&#39;medv&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">xcnt_handler</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="c1"># Right censor the highest value</span>
+<span class="n">c</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 25.53669598695052
+      beta: 2.469159431652434
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/applications_1_2.png" src="_images/applications_1_2.png" />
+</div>
+</div>
+<p>We can see that the model has changed slightly, however, there appears to be a ‘disconnect’ near 24 that makes the model a poor fit above and below the value. Let’s see if a different distribution will improve the fit:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_boston_housing</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">load_boston_housing</span><span class="p">()[</span><span class="s1">&#39;medv&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">xcnt_handler</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="c1"># Right censor the highest value</span>
+<span class="n">c</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">LogLogistic</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">lfp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : LogLogistic
+Fitted by           : MLE
+Max Proportion (p)  : 0.9861133871679661
+Parameters          :
+     alpha: 20.80440554722848
+      beta: 4.561905092686265
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;LogLogistic Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/applications_2_2.png" src="_images/applications_2_2.png" />
+</div>
+</div>
+<p>This appears to be a much better fit, however, there is still quite a bit of difference between the data and the model in the middle of the distribution. Lets create a custom spline to see if we can perfect the fit.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_boston_housing</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">autograd</span><span class="w"> </span><span class="kn">import</span> <span class="n">numpy</span> <span class="k">as</span> <span class="n">np</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">load_boston_housing</span><span class="p">()[</span><span class="s1">&#39;medv&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">xcnt_handler</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="c1"># Right censor the highest value</span>
+<span class="n">c</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">Hf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">):</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">Hf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">knot</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="n">dist1</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span>
+    <span class="n">dist2</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">LogLogistic</span>
+    <span class="n">Hf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">x</span> <span class="o">&lt;</span> <span class="n">knot</span><span class="p">,</span> <span class="n">dist1</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">]),</span> <span class="n">Hf</span><span class="p">)</span>
+    <span class="n">Hf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">x</span> <span class="o">&gt;=</span> <span class="n">knot</span><span class="p">,</span> <span class="p">(</span><span class="n">dist1</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="n">knot</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">])</span>
+                            <span class="o">+</span> <span class="n">dist2</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">[</span><span class="mi">2</span><span class="p">::])),</span> <span class="n">Hf</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">Hf</span>
+<span class="n">bounds</span> <span class="o">=</span> <span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">50</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),)</span>
+<span class="n">param_names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;knot&#39;</span><span class="p">,</span> <span class="s1">&#39;alpha_w&#39;</span><span class="p">,</span> <span class="s1">&#39;beta_w&#39;</span><span class="p">,</span> <span class="s1">&#39;alpha_ll&#39;</span><span class="p">,</span> <span class="s1">&#39;beta_ll&#39;</span><span class="p">]</span>
+<span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;WeibullLogLogisticSpline&#39;</span>
+<span class="n">support</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+
+<span class="n">WeibullLogLogisticSpline</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">CustomDistribution</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">Hf</span><span class="p">,</span> <span class="n">param_names</span><span class="p">,</span> <span class="n">bounds</span><span class="p">,</span> <span class="n">support</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">WeibullLogLogisticSpline</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">lfp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : WeibullLogLogisticSpline
+Fitted by           : MLE
+Max Proportion (p)  : 0.9710331348404443
+Parameters          :
+      knot: 25.300000000010126
+   alpha_w: 23.01177369199106
+    beta_w: 3.8753626468918694
+  alpha_ll: 32.5009351400436
+   beta_ll: 10.339766491186273
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;WeibullLogLogisticSpline Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/applications_3_2.png" src="_images/applications_3_2.png" />
+</div>
+</div>
+<p>Much better!</p>
+<p>It must be said that this is a bit ‘hacky’. There is no theory that we are using to guide the choice of the spline model, we are simply finding the best fit to the data. For example, this model would not able to be used for extrapolation too far beyond $50,0000, this is because the model is limited to 97.1% of houses. A separate spline would be needed to model those data. However, the example shows the importance of censoring and the power of the surpyval API!</p>
+</section>
+<section id="applided-reliability-engineering">
+<h2>Applided Reliability Engineering<a class="headerlink" href="#applided-reliability-engineering" title="Permalink to this heading">¶</a></h2>
+<p>In reliability engineering we might be interested in the proportion of a population that will experience a particular failure mode. We do not want to ship the items that will fail so that our customers do not have a poor experience. But, we will want to determine the minimum duration of a test that can establish whether a component will fail. This is because a test that is too long we will waste time and money in testing and if a test is too short we will ship too many items that will fail in the field. We need to optimise this interval the minimize the cost of testing but also the number of items at risk in the field.</p>
+<p>Using data from the paper that introduced the Limited Failure Population model (also known as the Defective Subpopulation) to the reliability engineering world <a class="reference internal" href="#meeker" id="id1"><span>[Meeker]</span></a> we can show how surpyval can be used in part to calculate an optimal ‘burn-in’ test duration.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="mf">.1</span><span class="p">,</span> <span class="mf">.1</span><span class="p">,</span> <span class="mf">.15</span><span class="p">,</span> <span class="mf">.6</span><span class="p">,</span> <span class="mf">.8</span><span class="p">,</span> <span class="mf">.8</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">3.</span><span class="p">,</span> <span class="mf">4.</span><span class="p">,</span> <span class="mf">4.</span><span class="p">,</span> <span class="mf">6.</span><span class="p">,</span> <span class="mf">10.</span><span class="p">,</span> <span class="mf">10.</span><span class="p">,</span>
+     <span class="mf">12.5</span><span class="p">,</span> <span class="mf">20.</span><span class="p">,</span> <span class="mf">20.</span><span class="p">,</span> <span class="mf">43.</span><span class="p">,</span> <span class="mf">43.</span><span class="p">,</span> <span class="mf">48.</span><span class="p">,</span> <span class="mf">48.</span><span class="p">,</span> <span class="mf">54.</span><span class="p">,</span> <span class="mf">74.</span><span class="p">,</span> <span class="mf">84.</span><span class="p">,</span> <span class="mf">94.</span><span class="p">,</span> <span class="mf">168.</span><span class="p">,</span> <span class="mf">263.</span><span class="p">,</span> <span class="mf">593.</span><span class="p">]</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1370.</span><span class="p">]</span> <span class="o">*</span> <span class="mi">4128</span>
+
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">fs_to_xcnt</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">lfp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Max Proportion (p)  : 0.0067444510392287715
+Parameters          :
+     alpha: 28.36721333530188
+      beta: 0.495976248532378
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/applications_4_2.png" src="_images/applications_4_2.png" />
+</div>
+</div>
+<p>We can see from these results that at maximum we will have approximately 0.67% fail. If the company accepts a 0.1% probability of their products failing in the field then we can calculate the interval at which the difference between the total population and the proportion failed in the test is 0.1%.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">scipy.optimize</span><span class="w"> </span><span class="kn">import</span> <span class="n">minimize</span>
+<span class="n">fun</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span> <span class="p">:</span> <span class="p">(</span><span class="mf">0.001</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">p</span> <span class="o">-</span> <span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">x</span><span class="p">)))</span><span class="o">**</span><span class="mi">2</span>
+
+<span class="n">res</span> <span class="o">=</span> <span class="n">minimize</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-50</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">x</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[104.4374776]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Therefore we should do a burn in test up to approximately 104.4 to make sure we minimize the number of items shipped that are defective while also minimizing the duration of the test. We can simply change the value of <code class="docutils literal notranslate"><span class="pre">0.001</span></code> in the above code to any value we may wish to use.</p>
+</section>
+<section id="demographics-actuarial">
+<h2>Demographics / Actuarial<a class="headerlink" href="#demographics-actuarial" title="Permalink to this heading">¶</a></h2>
+<p>In demographics and actuarial studies, the distribution of the life of a population is of interest. For the demographer, it is necessary to understand how a population might change, in particular, how the expected lifespan is changing over time. The same applies to an actuary, an actuary is interested in lifetimes to understand the risk of payouts among those who own a life insurance policy.</p>
+<p>The <a class="reference external" href="https://en.wikipedia.org/wiki/Gompertz–Makeham_law_of_mortality">Gompertz-Makeham</a> is a distribution used in demography and actuarial studies to estimate the lifetime of a population. This can be implemented in surpyval with relative ease.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">autograd</span><span class="w"> </span><span class="kn">import</span> <span class="n">numpy</span> <span class="k">as</span> <span class="n">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.special</span><span class="w"> </span><span class="kn">import</span> <span class="n">lambertw</span>
+
+<span class="n">bounds</span> <span class="o">=</span> <span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),)</span>
+<span class="n">support</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+<span class="n">param_names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;lambda&#39;</span><span class="p">,</span> <span class="s1">&#39;alpha&#39;</span><span class="p">,</span> <span class="s1">&#39;beta&#39;</span><span class="p">]</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">Hf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">):</span>
+    <span class="n">Hf</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span> <span class="o">+</span> <span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">/</span><span class="n">params</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span><span class="o">*</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">*</span><span class="n">x</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">Hf</span>
+
+<span class="n">GompertzMakeham</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">CustomDistribution</span><span class="p">(</span><span class="s1">&#39;GompertzMakeham&#39;</span><span class="p">,</span> <span class="n">Hf</span><span class="p">,</span> <span class="n">param_names</span><span class="p">,</span> <span class="n">bounds</span><span class="p">,</span> <span class="n">support</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>We now have a GM distribution object that can be used to fit data. But we need some data:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># GM qf()</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">qf</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+    <span class="n">lambda_</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">alpha</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">beta</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">alpha</span><span class="o">/</span><span class="p">(</span><span class="n">lambda_</span> <span class="o">*</span> <span class="n">beta</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="mf">1.</span><span class="o">/</span><span class="n">lambda_</span><span class="p">)</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">p</span><span class="p">)</span>
+            <span class="o">-</span> <span class="p">(</span><span class="mf">1.</span><span class="o">/</span><span class="n">beta</span><span class="p">)</span><span class="o">*</span><span class="n">lambertw</span><span class="p">((</span><span class="n">alpha</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">alpha</span><span class="o">/</span><span class="n">lambda_</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">p</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="n">beta</span><span class="o">/</span><span class="n">lambda_</span><span class="p">)))</span><span class="o">/</span><span class="p">(</span><span class="n">lambda_</span><span class="p">)))</span><span class="o">.</span><span class="n">real</span>
+
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">.68</span><span class="p">,</span> <span class="mf">28.7e-3</span><span class="p">,</span> <span class="mf">102.3</span><span class="p">])</span><span class="o">/</span><span class="mi">1000</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">qf</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">10_000</span><span class="p">),</span> <span class="n">params</span><span class="p">)</span>
+<span class="c1"># Filter out some numeric overflows.</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">x</span><span class="p">)]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/tmp/ipykernel_6903/341577025.py:7: RuntimeWarning: overflow encountered in power
+  - (1./beta)*lambertw((alpha*np.exp(alpha/lambda_)*(1 - p)**(-(beta/lambda_)))/(lambda_))).real
+/tmp/ipykernel_6903/341577025.py:7: RuntimeWarning: invalid value encountered in multiply
+  - (1./beta)*lambertw((alpha*np.exp(alpha/lambda_)*(1 - p)**(-(beta/lambda_)))/(lambda_))).real
+</pre>
+</div>
+</div>
+</div>
+<p>The parameters for the distribution come from <a class="reference internal" href="#gavrilov" id="id2"><span>[Gavrilov]</span></a>, specifically the parameters for the lifespans of the 1974-1978 data. So in this case we have (simulated) data on the lifespans of 10,000 people and we need to determine the GM parameters. This can be compared to the historic parameters to see if the age related mortality has changed or has remained roughly constant. To do so, all we need do with surpyval is to put the data to the <code class="docutils literal notranslate"><span class="pre">fit()</span></code> method.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">GompertzMakeham</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span> <span class="n">heuristic</span><span class="o">=</span><span class="s1">&#39;Nelson-Aalen&#39;</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : GompertzMakeham
+Fitted by           : MLE
+Parameters          :
+    lambda: 1.0805709794454957e-12
+     alpha: 5.590567530354162e-05
+      beta: 0.09452891507420386
+</pre></div>
+</div>
+<img alt="_images/applications_8_1.png" src="_images/applications_8_1.png" />
+</div>
+</div>
+<p>You can see that the model is a good fit to the data. Using the model we can determine the probability of death in a given term for a random individual from the population. This is useful to price the premium of a life insurance policy. For example, if a 60 year old was to take out a two year policy, what premium should we charge them for the policy. First, we need to determine the probability of death:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">p_death</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="mi">62</span><span class="p">)</span> <span class="o">-</span> <span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span>
+<span class="n">policy_payout</span> <span class="o">=</span> <span class="mi">100_000</span>
+<span class="n">expected_loss</span> <span class="o">=</span> <span class="n">policy_payout</span> <span class="o">*</span> <span class="n">p_death</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">p_death</span><span class="p">,</span> <span class="n">expected_loss</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>0.0295816995138313 2958.16995138313
+</pre></div>
+</div>
+</div>
+</div>
+<p>From the results above, you can see that the probability of death over the two year interval is approximately 2.5%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $2,548.32. Therefore, to make a profit, the policy will need to cost more than $2,548.32. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $2,803.15. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $116.80 for two years (in the case of death the amount owing can be subtracted from the payout).</p>
+<p>Although this is a basic example, as insurance companies would have much more sophisticated models, it shows the basics of how demographic and actuarial data can be used. This shows the application of surpyval to actuarial and demogrphic studies.</p>
+</section>
+<section id="applied-reliability-engineering-2">
+<h2>Applied Reliability Engineering - 2<a class="headerlink" href="#applied-reliability-engineering-2" title="Permalink to this heading">¶</a></h2>
+<p>In reliability engineering you can come across the case where a new product has been built that is similar in design to a previous, but has better materias, geometry, seals.. etc. You have data from the tests of the old product and new results for the same test on the new product. The only problem, the new product only had one failure in the test! What will you do?</p>
+<p>Given the similarities, it is common to use the same shape parameter, the <span class="math notranslate nohighlight">\(\beta\)</span> value, from a similar product as an initial estimate. In this case, we may need to know the reliability of the item in the field. We can create a model of this new product, but first the old product:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">x_old</span> <span class="o">=</span> <span class="p">[</span> <span class="mf">5.2</span><span class="p">,</span> <span class="mf">10.7</span><span class="p">,</span> <span class="mf">16.3</span><span class="p">,</span> <span class="mf">22.</span> <span class="p">,</span> <span class="mf">32.9</span><span class="p">,</span> <span class="mf">38.6</span><span class="p">,</span> <span class="mf">42.1</span><span class="p">,</span> <span class="mf">58.7</span><span class="p">,</span> <span class="mf">92.8</span><span class="p">,</span> <span class="mf">93.8</span><span class="p">]</span>
+<span class="n">old</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_old</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">old</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 45.27418430640352
+      beta: 1.3776233667367648
+</pre></div>
+</div>
+</div>
+</div>
+<p>We can use the above value of beta with the new data:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x_new</span> <span class="o">=</span> <span class="p">[</span><span class="mi">87</span><span class="p">,</span> <span class="mi">100</span><span class="p">]</span>
+<span class="n">c_new</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">n_new</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+
+<span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_new</span><span class="p">,</span> <span class="n">c_new</span><span class="p">,</span> <span class="n">n_new</span><span class="p">,</span> <span class="n">fixed</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;beta&#39;</span> <span class="p">:</span> <span class="mf">1.3776</span><span class="p">},</span> <span class="n">init</span><span class="o">=</span><span class="p">[</span><span class="mf">100.</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 525.2284054870862
+      beta: 1.3776
+</pre></div>
+</div>
+</div>
+</div>
+<p>The characteristic life of the new bearing is over 10 times higher! Quite an improved new design. This new model can be used as part of the sales of the new product (10x more life!) and to provide recommendations for maintenance.</p>
+</section>
+<section id="social-science-criminology">
+<h2>Social Science / Criminology<a class="headerlink" href="#social-science-criminology" title="Permalink to this heading">¶</a></h2>
+<p>Another application of surpyval is when encountering extreme values. The Weibull distribution is one of the limiting cases of the Generalized Extreme Value distribution. In other words, the Weibull distribution is the distribution that can model the strength of a chain because it can model the extreme value, in this case the minimum, of a collection of distributions. A chain is as only as strong as it’s weakest link. If there are many many links in a chain (which is a fair assumption) then links of which follow a known strength distribution, then the strength of the chain will will follow a Weibull distribution. It is for this reason that the Weibull distribution is so widely used.</p>
+<p>Another extreme value is the maximum. The maximum extreme value distribution is the Frechet distribution. But, if you simply inverse a minimum, you can get a maxmimum. Therefore, if we know our data is following a process of finding a maximum, then we can use the Weibull distribution to model the phenonmena.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This may be a distressing topic for some readers.</p>
+</div>
+<p>Social scientists and criminologists are interested in understanding the phenomena of mass shootings in an effort to eliminate the scourge from society. A mass shooting is an extreme event, and an extreme event can be modelled to understand the risks of future occurence, and with that understanding, the effect of interventions can also be understood.</p>
+<p>Using the gun violence data from <a class="reference external" href="https://www.kaggle.com/jameslko/gun-violence-data">Kaggle</a> we can model the process. That is, if we take the maximum number of deaths in a given month over several years, we have data that can be used to estimate the probability of something even worse occuring. This data covers the period from 2013 to 2018, see Kaggle for more details.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="c1"># Data not in surpyval, available at https://www.kaggle.com/jameslko/gun-violence-data</span>
+<span class="n">gun_violence_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s1">&#39;../gun-violence-data_01-2013_03-2018.csv&#39;</span><span class="p">,</span> <span class="n">parse_dates</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;date&#39;</span><span class="p">])</span>
+
+<span class="c1"># Find the maximum number of people killed each month</span>
+<span class="n">gun_violence_df</span> <span class="o">=</span> <span class="n">gun_violence_df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Grouper</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s1">&#39;date&#39;</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="s1">&#39;M&#39;</span><span class="p">))</span><span class="o">.</span><span class="n">agg</span><span class="p">({</span><span class="s1">&#39;n_killed&#39;</span> <span class="p">:</span> <span class="s1">&#39;max&#39;</span><span class="p">})</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;n_killed&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+
+<span class="c1"># Inverse the data to get the maximum</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mf">1.</span><span class="o">/</span><span class="n">x</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/applications-crime-1.png" class="align-center" src="_images/applications-crime-1.png" />
+<p>It is worth reminding that since we have taken the inverse, it is the lower values that represent more victims. And it is the extremes that we are trying to capture. You can see from the above plot that the model does not fit the data from 0.02 to 0.1 very well. We can try using a different approach</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Inverse the data to get the maximum</span>
+<span class="n">mpp_model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mf">1.</span><span class="o">/</span><span class="n">x</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;MPP&#39;</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">mpp_model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/applications-crime-2.png" class="align-center" src="_images/applications-crime-2.png" />
+<p>You can see that this model is a much better description of the data. However, the problem is that it cannot have a real interpretation. Because the offset is negative, that means there is a non-zero probability of 0, which because the data was inversed, means that there is a non-zero probability of having a shooting with infinite victims. This model is therefore not a good option for such extreme extrapolations. The model can however, be used to estimate the probabiltiy of having a shooting as bad or worse than the most extreme event up to 2040.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">p_happening</span> <span class="o">=</span> <span class="n">mpp_model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="mf">1.</span><span class="o">/</span><span class="mi">50</span><span class="p">)</span>
+<span class="n">p_not_happening</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">p_happening</span>
+<span class="c1"># Months from 2022 to 2040</span>
+<span class="n">months</span> <span class="o">=</span> <span class="mi">12</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2040</span> <span class="o">-</span> <span class="mi">2022</span><span class="p">)</span>
+<span class="n">p_not_happening_before_2040</span> <span class="o">=</span> <span class="p">(</span><span class="n">p_not_happening</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="n">months</span><span class="p">)</span>
+<span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">p_not_happening_before_2040</span><span class="p">)</span><span class="o">*</span><span class="mi">100</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>(1.6077640040390584, 96.98325003600236)
+</pre></div>
+</div>
+<p>The model estimates that there is an approximately 1.6% chance of an event killing 50 or more people in a given month, which may seem low, however, because there are 216 months between 2022 and 2040 the chances of not having as extreme an event over that time period becomes horrifyingly small. The model suggests that the probability of having a month in which an event with more than 50 people will be killed, has a 97.0% chance of happening from 2022 to 2040. Chilling.</p>
+<p>This is a bit higher than other reports of the same prediction, see <a class="reference internal" href="#duwe" id="id3"><span>[Duwe]</span></a> who report at 35% probability, which is some, but not even close to complete, relief.</p>
+</section>
+<section id="economics">
+<h2>Economics<a class="headerlink" href="#economics" title="Permalink to this heading">¶</a></h2>
+<p>Economists are interested in the times between recessions. This information helps them formulate policy proscriptions that may (or may not) reduce the duration of a recession, or the time between recessions. Using data from Tadeu Cristino et al. <a class="reference internal" href="#tc" id="id4"><span>[TC]</span></a> we can use real data to esimate the probability of a recession.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">start</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="s2">&quot;June 1857&quot;</span><span class="p">,</span> <span class="s2">&quot;October 1860&quot;</span><span class="p">,</span> <span class="s2">&quot;April 1865&quot;</span><span class="p">,</span> <span class="s2">&quot;June 1869&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;October 1873&quot;</span><span class="p">,</span> <span class="s2">&quot;March 1882&quot;</span><span class="p">,</span> <span class="s2">&quot;March 1887&quot;</span><span class="p">,</span> <span class="s2">&quot;July 1890&quot;</span><span class="p">,</span> <span class="s2">&quot;January 1893&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;December 1895&quot;</span><span class="p">,</span> <span class="s2">&quot;June 1899&quot;</span><span class="p">,</span> <span class="s2">&quot;September 1902&quot;</span><span class="p">,</span> <span class="s2">&quot;May 1907&quot;</span><span class="p">,</span> <span class="s2">&quot;January 1910&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;January 1913&quot;</span><span class="p">,</span> <span class="s2">&quot;August 1918&quot;</span><span class="p">,</span> <span class="s2">&quot;January 1920&quot;</span><span class="p">,</span> <span class="s2">&quot;May 1923&quot;</span><span class="p">,</span> <span class="s2">&quot;October 1926&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;August 1929&quot;</span><span class="p">,</span> <span class="s2">&quot;May 1937&quot;</span><span class="p">,</span> <span class="s2">&quot;February 1945&quot;</span><span class="p">,</span> <span class="s2">&quot;November 1948&quot;</span><span class="p">,</span> <span class="s2">&quot;July 1953&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;August 1957&quot;</span><span class="p">,</span> <span class="s2">&quot;April 1960&quot;</span><span class="p">,</span> <span class="s2">&quot;December 1969&quot;</span><span class="p">,</span> <span class="s2">&quot;November 1973&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;January 1980&quot;</span><span class="p">,</span> <span class="s2">&quot;July 1981&quot;</span><span class="p">,</span> <span class="s2">&quot;July 1990&quot;</span><span class="p">,</span> <span class="s2">&quot;March 2001&quot;</span><span class="p">,</span> <span class="s2">&quot;December 2007&quot;</span><span class="p">]</span>
+
+
+<span class="n">end</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;December 1854&quot;</span><span class="p">,</span> <span class="s2">&quot;December 1858&quot;</span><span class="p">,</span> <span class="s2">&quot;June 1861&quot;</span><span class="p">,</span> <span class="s2">&quot;December 1867&quot;</span><span class="p">,</span> <span class="s2">&quot;December 1870&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;March 1879&quot;</span><span class="p">,</span> <span class="s2">&quot;May 1885&quot;</span><span class="p">,</span> <span class="s2">&quot;April 1888&quot;</span><span class="p">,</span> <span class="s2">&quot;May 1891&quot;</span><span class="p">,</span> <span class="s2">&quot;June 1894&quot;</span><span class="p">,</span> <span class="s2">&quot;June 1897&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;December 1900&quot;</span><span class="p">,</span> <span class="s2">&quot;August 1904&quot;</span><span class="p">,</span> <span class="s2">&quot;June 1908&quot;</span><span class="p">,</span> <span class="s2">&quot;January 1912&quot;</span><span class="p">,</span> <span class="s2">&quot;December 1914&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;March 1919&quot;</span><span class="p">,</span> <span class="s2">&quot;July 1921&quot;</span><span class="p">,</span> <span class="s2">&quot;July 1924&quot;</span><span class="p">,</span> <span class="s2">&quot;November 1927&quot;</span><span class="p">,</span> <span class="s2">&quot;March 1933&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;June 1938&quot;</span><span class="p">,</span> <span class="s2">&quot;October 1945&quot;</span><span class="p">,</span> <span class="s2">&quot;October 1949&quot;</span><span class="p">,</span> <span class="s2">&quot;May 1954&quot;</span><span class="p">,</span> <span class="s2">&quot;April 1958&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;February 1961&quot;</span><span class="p">,</span> <span class="s2">&quot;November 1970&quot;</span><span class="p">,</span> <span class="s2">&quot;March 1975&quot;</span><span class="p">,</span> <span class="s2">&quot;July 1980&quot;</span><span class="p">,</span> <span class="s2">&quot;November 1982&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;March 1991&quot;</span><span class="p">,</span> <span class="s2">&quot;November 2001&quot;</span><span class="p">,</span> <span class="s2">&quot;June 2009&quot;</span>
+<span class="p">]</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s1">&#39;start&#39;</span> <span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">start</span><span class="p">),</span>
+                   <span class="s1">&#39;end&#39;</span> <span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">end</span><span class="p">)})</span>
+
+<span class="c1"># Compute time from end of last recession to peak of next.</span>
+<span class="n">x</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">start</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">end</span><span class="o">.</span><span class="n">shift</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span><span class="o">.</span><span class="n">dt</span><span class="o">.</span><span class="n">days</span><span class="o">.</span><span class="n">values</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/tmp/ipykernel_6903/566552608.py:23: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  df = pd.DataFrame({'start' : pd.to_datetime(start),
+/tmp/ipykernel_6903/566552608.py:24: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  'end' : pd.to_datetime(end)})
+</pre>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Offset (gamma)      : 304.065903523201
+Parameters          :
+     alpha: 895.3221142702624
+      beta: 1.0629492782405794
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={&#39;center&#39;: &#39;Weibull Probability Plot&#39;}, ylabel=&#39;CDF&#39;&gt;
+</pre></div>
+</div>
+<img alt="_images/applications_12_3.png" src="_images/applications_12_3.png" />
+</div>
+</div>
+<p>You can see from the above the data is a good fit to the model! Great. So now what?</p>
+<p>We can communicate what the expected time between recessions is:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>np.float64(1178.2499187066342)
+</pre></div>
+</div>
+</div>
+</div>
+<p>Therefore the average growth period is 1,178 days, or about 3.2 years between recessions.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Permalink to this heading">¶</a></h2>
+<dl class="citation">
+<dt class="label" id="tc"><span class="brackets"><a class="fn-backref" href="#id4">TC</a></span></dt>
+<dd><p>Tadeu Cristino, C., Żebrowski, P., &amp; Wildemeersch, M. (2020). Assessing the time intervals between economic recessions. PloS one, 15(5), e0232615.</p>
+</dd>
+<dt class="label" id="duwe"><span class="brackets"><a class="fn-backref" href="#id3">Duwe</a></span></dt>
+<dd><p>Duwe, G., Sanders, N. E., Rocque, M., &amp; Fox, J. A. (2021). Forecasting the Severity of Mass Public Shootings in the United States. Journal of Quantitative Criminology, 1-39.</p>
+</dd>
+<dt class="label" id="gavrilov"><span class="brackets"><a class="fn-backref" href="#id2">Gavrilov</a></span></dt>
+<dd><p>Gavrilov, L. A., Gavrilova, N. S., &amp; Nosov, V. N. (1983). Human life span stopped increasing: why?. Gerontology, 29(3), 176-180.</p>
+</dd>
+<dt class="label" id="meeker"><span class="brackets"><a class="fn-backref" href="#id1">Meeker</a></span></dt>
+<dd><p>William Q. Meeker (1987) Limited Failure Population Life Tests: Application to Integrated Circuit Reliability, Technometrics, 29(1), 51-65</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Regression%20Modelling%20with%20SurPyval.html" class="btn btn-neutral float-left" title="Regression Modelling with SurPyval" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Competing%20Risks%20SurPyval%20Modelling.html" class="btn btn-neutral float-right" title="Competing Risks SurPyval Modelling" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

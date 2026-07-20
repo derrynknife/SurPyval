@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Regression Modelling with SurPyval &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Example Applications" href="applications.html" />
+    <link rel="prev" title="Parametric SurPyval Modelling" href="Parametric%20SurPyval%20Modelling.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Regression Modelling with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#choosing-a-regression-model-family">Choosing a regression model family</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#semi-parametric-cox-proportional-hazards">Semi-Parametric — Cox Proportional Hazards</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#time-varying-covariates">Time-Varying Covariates</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#semi-parametric-buckley-james-aft">Semi-Parametric — Buckley-James (AFT)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#semi-parametric-additive-hazards">Semi-Parametric — Additive Hazards</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#parametric-proportional-hazards-ph">Parametric Proportional Hazards (PH)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#accelerated-failure-time-aft">Accelerated Failure Time (AFT)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#proportional-odds-po">Proportional Odds (PO)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#confidence-bounds">Confidence Bounds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#accelerated-life-al">Accelerated Life (AL)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#available-life-models">Available life models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#using-the-factory">Using the factory</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#creating-a-custom-life-model">Creating a custom life model</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#model-selection">Model Selection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#saving-and-loading-a-fitted-model">Saving and loading a fitted model</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#storing-models-in-mongodb">Storing models in MongoDB</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Regression Modelling with SurPyval</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Regression Modelling with SurPyval.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="regression-modelling-with-surpyval">
+<h1>Regression Modelling with SurPyval<a class="headerlink" href="#regression-modelling-with-surpyval" title="Permalink to this heading">¶</a></h1>
+<p>The time until an event — a failure, death, recovery — will almost always depend
+on external factors. A bearing may last longer in a cool, clean environment than
+in a hot, dirty one. A patient’s survival may depend on age, dosage, and
+comorbidities. The question regression modelling answers is: <em>how much</em> do these
+factors matter, and in what direction?</p>
+<p>Regression survival modelling is fundamentally about capturing the relationship
+between covariates <span class="math notranslate nohighlight">\(Z\)</span> and the survival distribution. Unlike ordinary
+regression, we must handle censored observations — items that had not yet failed
+when we stopped watching them — and we want our model to remain valid as a
+probability distribution (survival functions must start at 1 and decay to 0).</p>
+<p>For the rest of this page we assume the following imports:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<section id="choosing-a-regression-model-family">
+<h2>Choosing a regression model family<a class="headerlink" href="#choosing-a-regression-model-family" title="Permalink to this heading">¶</a></h2>
+<p>There are four fundamentally different ways a covariate can affect a survival
+distribution. Each gives rise to a distinct model family:</p>
+<p><strong>Proportional Hazards (PH)</strong> — the covariate multiplies the <em>rate of dying</em>:</p>
+<div class="math notranslate nohighlight">
+\[h(x \mid Z) = h_0(x) \cdot \phi(Z)\]</div>
+<p>If <span class="math notranslate nohighlight">\(\phi(Z) = 2\)</span>, an individual with that covariate value fails at twice
+the rate at every instant in time. The <em>shape</em> of the hazard curve is unchanged;
+only its level shifts. This is the most common choice in medical research.</p>
+<p><strong>Accelerated Failure Time (AFT)</strong> — the covariate stretches or compresses the
+<em>time axis</em>:</p>
+<div class="math notranslate nohighlight">
+\[H(x \mid Z) = H_0\!\left(\phi(Z) \cdot x\right)\]</div>
+<p>If <span class="math notranslate nohighlight">\(\phi(Z) = 2\)</span>, an individual “ages” at twice the normal rate — reaching
+at age 10 the same cumulative risk that a baseline individual has at age 20. The
+<em>entire</em> survival curve shifts left or right on the time axis. This is often a
+more natural framing in engineering and materials science.</p>
+<p><strong>Proportional Odds (PO)</strong> — the covariate scales the <em>odds of having failed</em>:</p>
+<div class="math notranslate nohighlight">
+\[\frac{F(x \mid Z)}{S(x \mid Z)} = \frac{F_0(x)}{S_0(x)} \cdot \phi(Z)\]</div>
+<p>The PO formulation is natural when you think about the problem in terms of <em>odds
+ratios</em> rather than hazard ratios. A key practical difference from PH: the
+covariate effect attenuates over time. Early in life, hazard ratios and odds
+ratios behave similarly; at long follow-up times the PO effect fades as everyone
+converges toward failure regardless of their covariates. When you believe the
+PH assumption (“constant hazard ratio for all time”) is too strong, PO is often
+a better default.</p>
+<p><strong>Additive Hazards (AH)</strong> — the covariate <em>adds</em> to the hazard instead of
+multiplying it:</p>
+<div class="math notranslate nohighlight">
+\[h(x \mid Z) = h_0(x) + \beta' Z\]</div>
+<p>Here <span class="math notranslate nohighlight">\(\beta_j\)</span> is a <em>risk difference</em> — the change in the absolute hazard
+per unit of covariate, constant over time — rather than a hazard <em>ratio</em>. This
+is the natural scale when you care about <em>how many extra failures per unit time</em>
+a factor causes: excess risk in epidemiology, or reliability settings where
+hazards from independent mechanisms genuinely add. Because the effect is
+additive rather than exponential it is not constrained to be positive, which is
+both its interpretive appeal and its main caveat (discussed below).</p>
+<p><strong>Accelerated Life (AL)</strong> — the covariate substitutes the distribution’s <em>life
+parameter</em>:</p>
+<div class="math notranslate nohighlight">
+\[\theta(Z) = \phi(Z), \quad F(x \mid Z) = F\!\left(x;\,\theta(Z),\,\text{other params}\right)\]</div>
+<p>This is the standard approach in <em>accelerated life testing</em> (ALT) — reliability
+testing under elevated stress (high temperature, voltage, humidity) to extract
+failure data quickly, then extrapolating back to use conditions. The stress
+relationship <span class="math notranslate nohighlight">\(\phi(Z)\)</span> is chosen from domain knowledge: Arrhenius for
+thermally-activated failure, Eyring for quantum-mechanical processes, Power Law
+for voltage or mechanical loading.</p>
+<p>For PH, AFT, and PO the covariate function is always the log-linear form,</p>
+<div class="math notranslate nohighlight">
+\[\phi(Z) = e^{\beta_1 z_1 + \beta_2 z_2 + \cdots}\]</div>
+<p>because the exponential guarantees <span class="math notranslate nohighlight">\(\phi &gt; 0\)</span> for any covariate value and
+any β — no parameter constraints needed. A positive β makes failure faster;
+negative makes it slower.</p>
+<p>SurPyval supports all of these families, each available as pre-built instances
+for every standard distribution and as factory functions for custom
+combinations (with additive hazards provided as a single semi-parametric
+model):</p>
+<table class="colwidths-given docutils align-default">
+<colgroup>
+<col style="width: 22%" />
+<col style="width: 42%" />
+<col style="width: 36%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Family</p></th>
+<th class="head"><p>Effect of covariates</p></th>
+<th class="head"><p>Ready-to-use examples</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Proportional Hazards (PH)</p></td>
+<td><p>Multiplies the hazard rate <span class="math notranslate nohighlight">\(h(x|Z) = h_0(x)\,\phi(Z)\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">WeibullPH</span></code>, <code class="docutils literal notranslate"><span class="pre">ExponentialPH</span></code>, …</p></td>
+</tr>
+<tr class="row-odd"><td><p>Accelerated Failure Time (AFT)</p></td>
+<td><p>Scales the time axis <span class="math notranslate nohighlight">\(H(x|Z) = H_0(\phi(Z)\,x)\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">WeibullAFT</span></code>, <code class="docutils literal notranslate"><span class="pre">LogNormalAFT</span></code>, …</p></td>
+</tr>
+<tr class="row-even"><td><p>Proportional Odds (PO)</p></td>
+<td><p>Scales the survival odds <span class="math notranslate nohighlight">\(O(x|Z) = O_0(x)\,\phi(Z)\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">WeibullPO</span></code>, <code class="docutils literal notranslate"><span class="pre">LogisticPO</span></code>, …</p></td>
+</tr>
+<tr class="row-odd"><td><p>Additive Hazards (AH)</p></td>
+<td><p>Adds to the hazard rate <span class="math notranslate nohighlight">\(h(x|Z) = h_0(x) + \beta'Z\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">AdditiveHazards</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Accelerated Life (AL)</p></td>
+<td><p>Substitutes the life parameter with a physics-motivated function</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">AcceleratedLife(Weibull,</span> <span class="pre">Power)</span></code>, <code class="docutils literal notranslate"><span class="pre">AcceleratedLife(Weibull,</span> <span class="pre">Eyring)</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="semi-parametric-cox-proportional-hazards">
+<h2>Semi-Parametric — Cox Proportional Hazards<a class="headerlink" href="#semi-parametric-cox-proportional-hazards" title="Permalink to this heading">¶</a></h2>
+<p>The Cox PH model is the most widely used survival regression model in any field.
+Its central insight is that <span class="math notranslate nohighlight">\(\beta\)</span> can be estimated <em>without</em> specifying
+the shape of the baseline hazard <span class="math notranslate nohighlight">\(h_0(x)\)</span>. The baseline cancels out of a
+<em>partial likelihood</em>, leaving only the relative ordering of event times. This
+means you can detect and quantify covariate effects even when you have no idea
+what the baseline distribution looks like.</p>
+<p>The price you pay is that the model is <em>semi-parametric</em>: once you have β, the
+baseline is estimated non-parametrically (a step function with jumps only at
+observed event times). This means predictions can only be made within the
+observed time range, and extrapolation is not possible. If you need to predict
+far beyond your observed data, a parametric PH model is more appropriate.</p>
+<p>In this example we use data from Krivtsov et al., testing tires to failure with
+seven measured characteristics. We want to know which characteristics
+significantly affect tire life.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_tires_data</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoxPH</span>
+
+<span class="n">tires</span> <span class="o">=</span> <span class="n">load_tires_data</span><span class="p">()</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">tires</span><span class="p">[</span><span class="s1">&#39;Survival&#39;</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="n">tires</span><span class="p">[</span><span class="s1">&#39;Censoring&#39;</span><span class="p">]</span>
+<span class="n">Z</span> <span class="o">=</span> <span class="n">tires</span><span class="p">[[</span><span class="s1">&#39;Tire age&#39;</span><span class="p">,</span> <span class="s1">&#39;Wedge gauge&#39;</span><span class="p">,</span> <span class="s1">&#39;Interbelt gauge&#39;</span><span class="p">,</span> <span class="s1">&#39;EB2B&#39;</span><span class="p">,</span> <span class="s1">&#39;Peel force&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;Carbon black (%)&#39;</span><span class="p">,</span> <span class="s1">&#39;Wedge gauge×peel force&#39;</span><span class="p">]]</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">CoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Semi-Parametric Regression SurPyval Model
+=========================================
+Type                : Proportional Hazards
+Kind                : Cox
+Parameterization    : Semi-Parametric
+Parameters          :
+   beta_0  :  2.1094965937449457
+   beta_1  :  -9.686078593632917
+   beta_2  :  -10.678095367471132
+   beta_3  :  -13.675948413338906
+   beta_4  :  -34.294485814734976
+   beta_5  :  -48.35286747450827
+   beta_6  :  20.840378629123165
+</pre></div>
+</div>
+</div>
+</div>
+<p>We can immediately check which coefficients are statistically significant:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">p_values</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.13000628 0.03677433 0.02074066 0.0918419  0.01200102 0.14831534
+ 0.01867559]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Several covariates are not significant. We can re-fit with only the significant
+ones, which also improves numerical stability:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">Z</span> <span class="o">=</span> <span class="n">tires</span><span class="p">[[</span><span class="s1">&#39;Wedge gauge&#39;</span><span class="p">,</span> <span class="s1">&#39;Interbelt gauge&#39;</span><span class="p">,</span> <span class="s1">&#39;Peel force&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;Wedge gauge×peel force&#39;</span><span class="p">]]</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">CoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">p_values</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.02207978 0.01368372 0.00956108 0.01030372]
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Semi-Parametric Regression SurPyval Model
+=========================================
+Type                : Proportional Hazards
+Kind                : Cox
+Parameterization    : Semi-Parametric
+Parameters          :
+   beta_0  :  -9.313960179920507
+   beta_1  :  -7.069295556681079
+   beta_2  :  -27.413473066028082
+   beta_3  :  18.105822313415636
+</pre></div>
+</div>
+</div>
+</div>
+<p>All four coefficients are negative, meaning higher gauge and peel force values
+<em>reduce</em> the hazard rate (improve life) — except the interaction term, which
+captures a counteracting combined effect.</p>
+<p>Survival curves can be evaluated at any covariate value. Here we compare the
+mean tire against 10% above and below average:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">Z_mean</span> <span class="o">=</span> <span class="n">Z</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">values</span>
+<span class="n">plot_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">x</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+<span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.9</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.1</span><span class="p">]:</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">plot_x</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">plot_x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z_mean</span> <span class="o">*</span> <span class="n">f</span><span class="p">),</span> <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">f</span><span class="si">:</span><span class="s1">.0%</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s1">&#39;Covariate scale&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Survival time&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;S(x)&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Text(0, 0.5, &#39;S(x)&#39;)
+</pre></div>
+</div>
+<img alt="_images/Regression%20Modelling%20with%20SurPyval_4_1.png" src="_images/Regression%20Modelling%20with%20SurPyval_4_1.png" />
+</div>
+</div>
+<p>The step-function shape is the signature of the non-parametric baseline —
+the model makes no smoothness assumptions about <span class="math notranslate nohighlight">\(h_0(x)\)</span>.</p>
+<section id="time-varying-covariates">
+<h3>Time-Varying Covariates<a class="headerlink" href="#time-varying-covariates" title="Permalink to this heading">¶</a></h3>
+<p>Sometimes a covariate changes <em>during</em> a subject’s follow-up — a dose is
+increased, a treatment begins, a machine is moved to a harsher environment.
+Cox handles this through the <strong>counting-process (start-stop) format</strong>: each
+subject contributes one row per interval <span class="math notranslate nohighlight">\((\text{start}, \text{stop}]\)</span>
+on which its covariates are constant, and <code class="docutils literal notranslate"><span class="pre">event</span></code> is 1 only on the interval
+that ends at the subject’s failure. Because each interval is exactly a
+delayed-entry (left-truncated) observation, the partial likelihood fits this
+format directly — splitting a subject into intervals with the same covariates
+leaves the fit unchanged.</p>
+<p>Use <code class="xref py py-meth docutils literal notranslate"><span class="pre">CoxPH.fit_tvc()</span></code> (arrays) or <code class="xref py py-meth docutils literal notranslate"><span class="pre">CoxPH.fit_tvc_from_df()</span></code> (a
+start-stop <code class="docutils literal notranslate"><span class="pre">DataFrame</span></code>). In the example below a covariate <code class="docutils literal notranslate"><span class="pre">stress</span></code> switches
+from 0 to 1 at a random time for each unit and genuinely raises the hazard once
+it turns on; units that fail before the switch contribute a single interval,
+those that survive it contribute two:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoxPH</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">n</span><span class="p">,</span> <span class="n">lam</span><span class="p">,</span> <span class="n">beta</span> <span class="o">=</span> <span class="mi">2000</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="n">switch</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.3</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+<span class="n">t_low</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">lam</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+<span class="n">t_high</span> <span class="o">=</span> <span class="n">switch</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">lam</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">beta</span><span class="p">)),</span> <span class="n">size</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+<span class="n">T</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">t_low</span> <span class="o">&gt;</span> <span class="n">switch</span><span class="p">,</span> <span class="n">t_high</span><span class="p">,</span> <span class="n">t_low</span><span class="p">)</span>
+
+<span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">T</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">switch</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>                    <span class="c1"># failed before the switch</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">i</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">T</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>                                    <span class="c1"># survived it: two intervals</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">i</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">switch</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">i</span><span class="p">,</span> <span class="n">switch</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">T</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="s1">&#39;start&#39;</span><span class="p">,</span> <span class="s1">&#39;stop&#39;</span><span class="p">,</span> <span class="s1">&#39;event&#39;</span><span class="p">,</span> <span class="s1">&#39;stress&#39;</span><span class="p">])</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">CoxPH</span><span class="o">.</span><span class="n">fit_tvc_from_df</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span> <span class="n">id_col</span><span class="o">=</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="n">start_col</span><span class="o">=</span><span class="s1">&#39;start&#39;</span><span class="p">,</span> <span class="n">stop_col</span><span class="o">=</span><span class="s1">&#39;stop&#39;</span><span class="p">,</span>
+    <span class="n">event_col</span><span class="o">=</span><span class="s1">&#39;event&#39;</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="s1">&#39;stress&#39;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Semi-Parametric Regression SurPyval Model
+=========================================
+Type                : Proportional Hazards
+Kind                : Cox
+Parameterization    : Semi-Parametric
+Parameters          :
+   beta_0  :  1.0519022814758896
+</pre></div>
+</div>
+</div>
+</div>
+<p>The fitted coefficient recovers the simulated log-hazard-ratio of the stress
+(<span class="math notranslate nohighlight">\(\beta \approx 1\)</span>) — a plain Cox fit that ignored the timing of the
+switch could not.</p>
+<p>Because survival now depends on the <em>whole</em> covariate path, evaluate it with
+<a class="reference internal" href="regression/cox_ph.html#surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.predict_tvc" title="surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.predict_tvc"><code class="xref py py-meth docutils literal notranslate"><span class="pre">predict_tvc()</span></code></a>,
+passing a subject’s intervals. It returns the times, survival and cumulative
+hazard along that path; with a single constant interval it reduces exactly to
+<code class="docutils literal notranslate"><span class="pre">sf</span></code>. Here a unit stressed from <code class="docutils literal notranslate"><span class="pre">t</span> <span class="pre">=</span> <span class="pre">1</span></code> onward has visibly lower survival
+than one never stressed:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">t_never</span><span class="p">,</span> <span class="n">s_never</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">predict_tvc</span><span class="p">(</span><span class="n">start</span><span class="o">=</span><span class="p">[</span><span class="mf">0.0</span><span class="p">],</span> <span class="n">stop</span><span class="o">=</span><span class="p">[</span><span class="mf">3.0</span><span class="p">],</span> <span class="n">Z</span><span class="o">=</span><span class="p">[[</span><span class="mf">0.0</span><span class="p">]])</span>
+<span class="n">t_late</span><span class="p">,</span> <span class="n">s_late</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">predict_tvc</span><span class="p">(</span>
+    <span class="n">start</span><span class="o">=</span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">],</span> <span class="n">stop</span><span class="o">=</span><span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">],</span> <span class="n">Z</span><span class="o">=</span><span class="p">[[</span><span class="mf">0.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]]</span>
+<span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">t_never</span><span class="p">,</span> <span class="n">s_never</span><span class="p">,</span> <span class="n">where</span><span class="o">=</span><span class="s1">&#39;post&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;never stressed&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">t_late</span><span class="p">,</span> <span class="n">s_late</span><span class="p">,</span> <span class="n">where</span><span class="o">=</span><span class="s1">&#39;post&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;stressed after t=1&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Time&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;S(t)&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Text(0, 0.5, &#39;S(t)&#39;)
+</pre></div>
+</div>
+<img alt="_images/Regression%20Modelling%20with%20SurPyval_6_1.png" src="_images/Regression%20Modelling%20with%20SurPyval_6_1.png" />
+</div>
+</div>
+<p>Only left-truncation / delayed entry is available for Cox (supply a 1-D <code class="docutils literal notranslate"><span class="pre">tl</span></code>
+to <code class="xref py py-meth docutils literal notranslate"><span class="pre">CoxPH.fit()</span></code>); right or interval truncation is rejected, because the
+forward partial likelihood cannot express it.</p>
+</section>
+</section>
+<section id="semi-parametric-buckley-james-aft">
+<h2>Semi-Parametric — Buckley-James (AFT)<a class="headerlink" href="#semi-parametric-buckley-james-aft" title="Permalink to this heading">¶</a></h2>
+<p>Cox leaves the baseline <em>hazard</em> unspecified; Buckley-James is its
+accelerated-time counterpart, leaving the error <em>distribution</em> unspecified:</p>
+<div class="math notranslate nohighlight">
+\[\log T = \beta' Z + \varepsilon,\]</div>
+<p>with <span class="math notranslate nohighlight">\(\varepsilon\)</span> drawn from an arbitrary distribution estimated from the
+data. It is fitted by the Buckley-James iteration — repeatedly imputing each
+censored log-time by its conditional expectation under the Kaplan-Meier of the
+current residuals, then re-fitting by least squares, until the coefficients stop
+moving. As with Cox, coefficients are in surpyval’s accelerated-failure sign: a
+<em>positive</em> coefficient shortens life.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">BuckleyJames</span>
+
+<span class="c1"># log T = 3 - 0.8 Z + noise, right-censored: higher Z shortens life, so</span>
+<span class="c1"># the accelerated-failure coefficient is +0.8.</span>
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">Z_bj</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">400</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+<span class="n">T_bj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">3.0</span> <span class="o">-</span> <span class="mf">0.8</span> <span class="o">*</span> <span class="n">Z_bj</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">400</span><span class="p">))</span>
+<span class="n">cens</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">3.6</span><span class="p">)</span>
+<span class="n">c_bj</span> <span class="o">=</span> <span class="p">(</span><span class="n">T_bj</span> <span class="o">&gt;</span> <span class="n">cens</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="n">x_bj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">T_bj</span><span class="p">,</span> <span class="n">cens</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">BuckleyJames</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x_bj</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z_bj</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c_bj</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Buckley-James AFT SurPyval Model
+================================
+Kind                : Semi-Parametric AFT
+Converged           : True (12 iters)
+Coefficients (positive =&gt; accelerates failure):
+       beta_0  :   0.757063
+</pre></div>
+</div>
+</div>
+</div>
+<p>Buckley-James has no simple closed-form standard error, so uncertainty comes
+from a percentile bootstrap — resampling, refitting, and taking coefficient
+percentiles:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">bootstrap_ci</span><span class="p">(</span><span class="n">n_boot</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([[0.70921631, 0.8128302 ]])
+</pre></div>
+</div>
+</div>
+</div>
+<p>Predictions use the fitted residual distribution directly,
+<span class="math notranslate nohighlight">\(S(t \mid Z) = S_\varepsilon(\log t + \beta' Z)\)</span>, so the survival curves
+shift with the covariate:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">z</span> <span class="ow">in</span> <span class="p">[</span><span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]:</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="p">[</span><span class="n">z</span><span class="p">]),</span> <span class="n">where</span><span class="o">=</span><span class="s1">&#39;post&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;Z = </span><span class="si">{</span><span class="n">z</span><span class="si">:</span><span class="s1">g</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Time&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;S(t)&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Text(0, 0.5, &#39;S(t)&#39;)
+</pre></div>
+</div>
+<img alt="_images/Regression%20Modelling%20with%20SurPyval_9_1.png" src="_images/Regression%20Modelling%20with%20SurPyval_9_1.png" />
+</div>
+</div>
+</section>
+<section id="semi-parametric-additive-hazards">
+<h2>Semi-Parametric — Additive Hazards<a class="headerlink" href="#semi-parametric-additive-hazards" title="Permalink to this heading">¶</a></h2>
+<p>The Lin &amp; Ying additive hazards model is the additive-scale companion to Cox.
+Like Cox it leaves the baseline hazard <span class="math notranslate nohighlight">\(h_0(x)\)</span> completely unspecified,
+but the covariate effect is a <em>risk difference</em> rather than a hazard <em>ratio</em>:</p>
+<div class="math notranslate nohighlight">
+\[h(x \mid Z) = h_0(x) + \beta' Z\]</div>
+<p>Its practical convenience is that, unlike Cox’s iterative partial likelihood,
+the coefficient estimator is <em>closed form</em> — a ratio of sums accumulated over
+the risk sets — so there is no optimisation and nothing to converge. Standard
+errors come from the Lin-Ying sandwich estimator. We can reuse the tire data
+and the significant covariates from the Cox fit above:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdditiveHazards</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">AdditiveHazards</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Semi-Parametric Regression SurPyval Model
+=========================================
+Type                : Additive Hazards
+Kind                : Lin-Ying
+Parameterization    : Semi-Parametric
+Parameters          :
+   beta_0  :  -2.206032234026525
+   beta_1  :  -1.0635504695453748
+   beta_2  :  -2.6523846942293714
+   beta_3  :  2.4439071709451117
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">p_values</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.03400316 0.03996378 0.01927683 0.01830796]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The coefficients read as risk differences: a one-unit change in a covariate
+shifts the absolute hazard by <span class="math notranslate nohighlight">\(\beta\)</span> at every time. As in the Cox fit,
+higher gauge and peel-force values reduce the hazard (improving life) while the
+interaction term counteracts — the same story, told on the additive scale.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>An additive hazard can go <strong>negative</strong> when <span class="math notranslate nohighlight">\(\beta' Z\)</span> is sufficiently
+negative — nothing constrains <span class="math notranslate nohighlight">\(h_0(x) + \beta' Z &gt; 0\)</span>. When that
+happens the fitted cumulative hazard is no longer monotone and the implied
+survival can rise above 1. SurPyval returns the raw estimate without
+clamping; a survival above 1 is a signal that the additive model is a poor
+description at that covariate value (or that you are outside the range where
+it is well behaved), and is best read as a caution rather than a prediction.
+This is an inherent property of additive-hazards models, not a defect of the
+fit. When covariate effects are strongly protective, a proportional-hazards
+model — whose exponential form keeps the hazard positive — is often the
+safer choice.</p>
+</div>
+<p>Just as Cox has parametric proportional-hazards counterparts (the next
+section), there is also a <em>parametric</em> additive-hazards model — a parametric
+baseline hazard with the same additive covariate term, <code class="docutils literal notranslate"><span class="pre">h(x|Z)</span> <span class="pre">=</span> <span class="pre">h_0(x;θ)</span> <span class="pre">+</span>
+<span class="pre">β'Z</span></code>, fit by maximum likelihood. It is available as the <code class="docutils literal notranslate"><span class="pre">AH(distribution)</span></code>
+factory and as pre-built <code class="docutils literal notranslate"><span class="pre">WeibullAH</span></code>, <code class="docutils literal notranslate"><span class="pre">ExponentialAH</span></code>, … instances, and
+gives a smooth, extrapolatable version of what <code class="docutils literal notranslate"><span class="pre">AdditiveHazards</span></code> estimates
+non-parametrically. The positivity caveat above applies more sharply here:
+because the likelihood needs <code class="docutils literal notranslate"><span class="pre">log(h)</span></code> at every event, a fit whose optimum
+requires a negative hazard raises rather than returning an invalid model.</p>
+</section>
+<section id="parametric-proportional-hazards-ph">
+<h2>Parametric Proportional Hazards (PH)<a class="headerlink" href="#parametric-proportional-hazards-ph" title="Permalink to this heading">¶</a></h2>
+<p>When you are confident about the shape of the baseline distribution — or when
+you need to extrapolate beyond the observed time range — a fully parametric PH
+model is preferable. It estimates the same β as the Cox model, but also
+estimates the baseline distribution parameters, giving a smooth, continuous
+survival function.</p>
+<p>SurPyval provides pre-built parametric PH instances for every standard
+distribution: <code class="docutils literal notranslate"><span class="pre">ExponentialPH</span></code>, <code class="docutils literal notranslate"><span class="pre">NormalPH</span></code>, <code class="docutils literal notranslate"><span class="pre">WeibullPH</span></code>, <code class="docutils literal notranslate"><span class="pre">GumbelPH</span></code>,
+<code class="docutils literal notranslate"><span class="pre">LogisticPH</span></code>, <code class="docutils literal notranslate"><span class="pre">LogNormalPH</span></code>, and <code class="docutils literal notranslate"><span class="pre">GammaPH</span></code>. The Weibull is the most
+common choice in reliability engineering — its shape parameter lets it capture
+increasing, constant, or decreasing hazard rates.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">WeibullPH</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Proportional Hazard
+Distribution        : Weibull
+Regression Model    : Log Linear [e^(beta&#39;Z)]
+Fitted by           : MLE
+Distribution        :
+     alpha: 0.24255096012613872
+      beta: 16.057777655753867
+Regression Model    :
+    beta_0: -9.165063277820833
+    beta_1: -7.998580838384458
+    beta_2: -27.503206966726605
+    beta_3: 18.385458166345042
+</pre></div>
+</div>
+</div>
+</div>
+<p>Notice the coefficients are very close to the Cox model — this is expected when
+the Weibull is a reasonable fit to the baseline.</p>
+<p>If none of the pre-built distributions suit your data, the <code class="docutils literal notranslate"><span class="pre">PH</span></code> factory creates
+a parametric PH model for any surpyval distribution:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">LogNormal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">PH</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">PH</span><span class="p">(</span><span class="n">LogNormal</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Proportional Hazard
+Distribution        : LogNormal
+Regression Model    : Log Linear [e^(beta&#39;Z)]
+Fitted by           : MLE
+Distribution        :
+        mu: 2.719628206183978e-10
+     sigma: 0.15994487429493212
+Regression Model    :
+    beta_0: -0.3377917571808399
+    beta_1: -0.3253482403049238
+    beta_2: 1.1385066955707068
+    beta_3: -2.281558537927733
+</pre></div>
+</div>
+</div>
+</div>
+<p>The log-normal is a natural choice when the log of the survival time is expected
+to be normally distributed — common in medical and biological data.</p>
+</section>
+<section id="accelerated-failure-time-aft">
+<h2>Accelerated Failure Time (AFT)<a class="headerlink" href="#accelerated-failure-time-aft" title="Permalink to this heading">¶</a></h2>
+<p>The AFT model has a different and often more interpretable structure than PH.
+Rather than saying “this covariate increases your hazard rate by X%”, it says
+“this covariate makes you age X% faster”. Formally, if the baseline survival
+time is <span class="math notranslate nohighlight">\(T_0\)</span>, then the survival time given covariates is:</p>
+<div class="math notranslate nohighlight">
+\[T \mid Z \;=\; \frac{T_0}{\phi(Z)} \;=\; T_0 \cdot e^{-\beta' Z}\]</div>
+<p>A positive <span class="math notranslate nohighlight">\(\beta_j\)</span> means covariate <span class="math notranslate nohighlight">\(z_j\)</span> compresses time
+(accelerates failure). A negative <span class="math notranslate nohighlight">\(\beta_j\)</span> stretches time (prolongs
+life). The median survival time simply scales by <span class="math notranslate nohighlight">\(e^{-\beta' Z}\)</span> —
+a direct and intuitive interpretation.</p>
+<p>The relationship to the cumulative hazard is:</p>
+<div class="math notranslate nohighlight">
+\[H(x \mid Z) = H_0\!\left(e^{\beta'Z} \cdot x\right)\]</div>
+<p>An important practical note: for scale-family distributions (Weibull,
+Log-Normal, Exponential), the Weibull-AFT and Weibull-PH are different
+parameterisations of the same model family — they will produce equivalent
+fits with re-parameterised coefficients. For other distributions they are
+genuinely distinct.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">WeibullAFT</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">WeibullAFT</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Accelerated Failure Time
+Distribution        : Weibull
+Regression Model    : Log Linear [exp(beta&#39;Z)]
+Fitted by           : MLE
+Distribution        :
+     alpha: 0.24255134508987503
+      beta: 16.057759226998158
+Regression Model    :
+    beta_0: -0.5707541516913845
+    beta_1: -0.49811221192514954
+    beta_2: -1.7127639304953297
+    beta_3: 1.1449550575505485
+</pre></div>
+</div>
+</div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">AFT</span></code> factory works with any distribution. Log-Normal AFT is a
+particularly common choice — it corresponds to ordinary linear regression on
+<span class="math notranslate nohighlight">\(\log T\)</span> with censored observations, and is closely related to the
+accelerated failure time model of Buckley &amp; James:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">LogNormalAFT</span>
+
+<span class="n">model_ln</span> <span class="o">=</span> <span class="n">LogNormalAFT</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model_ln</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Accelerated Failure Time
+Distribution        : LogNormal
+Regression Model    : Log Linear [exp(beta&#39;Z)]
+Fitted by           : MLE
+Distribution        :
+        mu: 2.5863228802673016e-15
+     sigma: 0.18551241590999382
+Regression Model    :
+    beta_0: -0.19028012518891815
+    beta_1: -0.01554625382535512
+    beta_2: 0.201238269844141
+    beta_3: -0.25564195718768046
+</pre></div>
+</div>
+</div>
+</div>
+<p>For distributions not in the pre-built list:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Gamma</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">AFT</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">AFT</span><span class="p">(</span><span class="n">Gamma</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Accelerated Failure Time
+Distribution        : Gamma
+Regression Model    : Log Linear [exp(beta&#39;Z)]
+Fitted by           : MLE
+Distribution        :
+     alpha: 88.79342995352488
+      beta: 485.19896186882966
+Regression Model    :
+    beta_0: -0.6121938352911613
+    beta_1: -0.6233888476738927
+    beta_2: -1.9503487611460653
+    beta_3: 1.2516914388183498
+</pre></div>
+</div>
+</div>
+</div>
+<p>We can visualise the “time shift” interpretation by plotting survival curves.
+The entire curve moves left (shorter life) or right (longer life) on the time
+axis as the covariates change — a hallmark of the AFT model:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">WeibullAFT</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">Z_mean</span> <span class="o">=</span> <span class="n">Z</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">values</span>
+<span class="n">plot_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">x</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+<span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.9</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.1</span><span class="p">]:</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">plot_x</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">plot_x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z_mean</span> <span class="o">*</span> <span class="n">f</span><span class="p">),</span> <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">f</span><span class="si">:</span><span class="s1">.0%</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s1">&#39;Covariate scale&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Survival time&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;S(x)&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Text(0, 0.5, &#39;S(x)&#39;)
+</pre></div>
+</div>
+<img alt="_images/Regression%20Modelling%20with%20SurPyval_17_1.png" src="_images/Regression%20Modelling%20with%20SurPyval_17_1.png" />
+</div>
+</div>
+<p>Compare this with the Cox PH survival curves above: the PH curves cross or
+converge at long times; the AFT curves remain parallel on the log-time scale.</p>
+</section>
+<section id="proportional-odds-po">
+<h2>Proportional Odds (PO)<a class="headerlink" href="#proportional-odds-po" title="Permalink to this heading">¶</a></h2>
+<p>The proportional odds model is less common than PH or AFT but has an important
+niche: it is the right model when you believe the <em>relative odds</em> of failure are
+constant across covariate values, rather than the relative hazard rates.</p>
+<p>The survival odds at time <span class="math notranslate nohighlight">\(x\)</span> are <span class="math notranslate nohighlight">\(O(x) = S(x) / F(x)\)</span>. A PO model
+assumes these are scaled by <span class="math notranslate nohighlight">\(\phi(Z)\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\frac{S(x \mid Z)}{F(x \mid Z)} = \frac{S_0(x)}{F_0(x)} \cdot e^{\beta' Z}\]</div>
+<p>Rearranging, the survival function is:</p>
+<div class="math notranslate nohighlight">
+\[S(x \mid Z) = \frac{e^{\beta' Z} \cdot S_0(x)}{F_0(x) + e^{\beta' Z} \cdot S_0(x)}\]</div>
+<p>The key difference from PH becomes clear at long follow-up: as <span class="math notranslate nohighlight">\(x \to
+\infty\)</span>, <span class="math notranslate nohighlight">\(S_0(x) \to 0\)</span>, and the ratio <span class="math notranslate nohighlight">\(F_0 + \phi S_0 \to 1\)</span>, so
+the covariate effect <em>fades away</em>. Everyone eventually fails, and the PO model
+respects that by letting the hazard ratio converge to 1 over time. Under PH,
+the hazard ratio is constant forever — a stronger and often unrealistic
+assumption for long studies.</p>
+<p>PO is the natural companion to the Logistic and Log-Logistic distributions
+because it corresponds to logistic regression at each time point.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">LogisticPO</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">LogisticPO</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Proportional Odds
+Distribution        : Logistic
+Regression Model    : Log Linear [exp(beta&#39;Z)]
+Fitted by           : MLE
+Distribution        :
+        mu: -0.5874892941193322
+     sigma: 0.06481122986327537
+Regression Model    :
+    beta_0: 9.754757619554326
+    beta_1: 8.864245575260396
+    beta_2: 28.02367840471468
+    beta_3: -18.71596702847755
+</pre></div>
+</div>
+</div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">PO</span></code> factory accepts any distribution:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">PO</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">PO</span><span class="p">(</span><span class="n">Weibull</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Proportional Odds
+Distribution        : Weibull
+Regression Model    : Log Linear [exp(beta&#39;Z)]
+Fitted by           : MLE
+Distribution        :
+     alpha: 0.38384753075794625
+      beta: 1.9324537884412651
+Regression Model    :
+    beta_0: 3.4795334135351106
+    beta_1: 2.2120443577272457
+    beta_2: 3.714029108714212
+    beta_3: 1.220172836385398
+</pre></div>
+</div>
+</div>
+</div>
+<p>A practical rule of thumb: if the Kaplan-Meier curves for different covariate
+groups converge at long times (rather than remaining parallel on the log-hazard
+scale), PO is likely a better fit than PH.</p>
+</section>
+<section id="confidence-bounds">
+<h2>Confidence Bounds<a class="headerlink" href="#confidence-bounds" title="Permalink to this heading">¶</a></h2>
+<p>A point estimate is only half the story. The parametric regression models (PH,
+AFT, PO, AL) carry the full parameter covariance, so every coefficient and every
+predicted curve comes with an interval. After a fit, the parameter covariance
+and standard errors are available directly:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">WeibullPH</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">Z_cb</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">300</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+<span class="n">x_cb</span> <span class="o">=</span> <span class="mf">10.0</span> <span class="o">*</span> <span class="p">(</span>
+    <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">300</span><span class="p">))</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">Z_cb</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.8</span><span class="p">)</span>
+<span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">)</span>
+<span class="n">m_cb</span> <span class="o">=</span> <span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x_cb</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z_cb</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">300</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">))</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">m_cb</span><span class="o">.</span><span class="n">parameter_names</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m_cb</span><span class="o">.</span><span class="n">standard_errors</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[&#39;alpha&#39;, &#39;beta&#39;, &#39;beta_0&#39;]
+[0.27985616 0.09444296 0.06935564]
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">param_cb</span></code> gives a Wald confidence bound on a single parameter, computed on a
+scale chosen from the parameter’s support (log for a positive scale, natural for
+an unbounded coefficient) so the interval always stays valid:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">m_cb</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s1">&#39;beta_0&#39;</span><span class="p">)</span>      <span class="c1"># 95% CI for the covariate coefficient</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([0.70158816, 0.97345726])
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">cb</span></code> propagates the parameter covariance through a predicted function by the
+delta method, returning a confidence <em>band</em>. Here is the survival at a covariate
+value with its 95% band:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+<span class="n">band</span> <span class="o">=</span> <span class="n">m_cb</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="n">x_grid</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="p">[</span><span class="mf">0.5</span><span class="p">],</span> <span class="n">on</span><span class="o">=</span><span class="s1">&#39;sf&#39;</span><span class="p">)</span>      <span class="c1"># (n, 2): [lower, upper]</span>
+<span class="n">sf</span> <span class="o">=</span> <span class="n">m_cb</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">x_grid</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="p">[</span><span class="mf">0.5</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_grid</span><span class="p">,</span> <span class="n">sf</span><span class="p">,</span> <span class="s1">&#39;b&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;S(x | Z=0.5)&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">fill_between</span><span class="p">(</span><span class="n">x_grid</span><span class="p">,</span> <span class="n">band</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">band</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+                 <span class="n">label</span><span class="o">=</span><span class="s1">&#39;95</span><span class="si">% c</span><span class="s1">onfidence band&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Time&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;S(x)&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Text(0, 0.5, &#39;S(x)&#39;)
+</pre></div>
+</div>
+<img alt="_images/Regression%20Modelling%20with%20SurPyval_22_1.png" src="_images/Regression%20Modelling%20with%20SurPyval_22_1.png" />
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">cb</span></code> accepts <code class="docutils literal notranslate"><span class="pre">on='ff'</span></code>, <code class="docutils literal notranslate"><span class="pre">'Hf'</span></code>, <code class="docutils literal notranslate"><span class="pre">'hf'</span></code> or <code class="docutils literal notranslate"><span class="pre">'df'</span></code>, one- or two-sided
+bounds via <code class="docutils literal notranslate"><span class="pre">bound=</span></code>, and any <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>. The convenience method
+<code class="docutils literal notranslate"><span class="pre">model.plot()</span></code> draws the fitted survival at the mean covariate against the
+Kaplan-Meier with this band already applied.</p>
+</section>
+<section id="accelerated-life-al">
+<span id="accelerated-life"></span><h2>Accelerated Life (AL)<a class="headerlink" href="#accelerated-life-al" title="Permalink to this heading">¶</a></h2>
+<p>Accelerated life testing (ALT) is a branch of reliability engineering where
+products are tested under <em>elevated stress conditions</em> — higher temperature,
+voltage, humidity, or load — to generate failure data faster than would be
+possible at normal operating conditions. The failures observed at high stress
+are then extrapolated back to normal conditions using a physical model for how
+the stress affects the life of the product.</p>
+<p>This is fundamentally different from the regression models above. In PH, AFT,
+and PO, the covariates are measured characteristics of each unit (e.g. tire
+gauge, patient age). In AL, the covariate is a controlled experimental condition
+(stress level), and there are typically only two or three distinct levels. The
+relationship between stress and life is not statistical but physical, and the
+choice of life model reflects domain knowledge about the failure mechanism.</p>
+<p>The AL model substitutes the life parameter <span class="math notranslate nohighlight">\(\theta\)</span> of a distribution
+with a stress function <span class="math notranslate nohighlight">\(\phi(Z)\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[F(x \mid Z) = F\!\left(x;\; \phi(Z),\; \text{other params}\right)\]</div>
+<p>For example, in a Weibull AL model the scale parameter <span class="math notranslate nohighlight">\(\alpha\)</span> becomes
+<span class="math notranslate nohighlight">\(\phi(Z)\)</span>, while the shape parameter <span class="math notranslate nohighlight">\(\beta\)</span> is estimated globally
+across all stress levels (the assumption being that the failure mechanism is the
+same at all stresses, just faster or slower).</p>
+<section id="available-life-models">
+<h3>Available life models<a class="headerlink" href="#available-life-models" title="Permalink to this heading">¶</a></h3>
+<p>The choice of life model depends on the physical failure mechanism:</p>
+<table class="colwidths-given docutils align-default">
+<colgroup>
+<col style="width: 26%" />
+<col style="width: 38%" />
+<col style="width: 36%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Life model</p></th>
+<th class="head"><p>Formula <span class="math notranslate nohighlight">\(\phi(Z)\)</span></p></th>
+<th class="head"><p>Typical use</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ExponentialLifeModel</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(b \cdot e^{a/Z}\)</span> (Arrhenius)</p></td>
+<td><p>Thermally-activated (chemical, diffusion, electromigration)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Eyring</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(Z^{-1} e^{-(c - a/Z)}\)</span></p></td>
+<td><p>Quantum-mechanical processes; more accurate than Arrhenius at
+extreme temperatures</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">InversePower</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(1 / (a \cdot Z^n)\)</span></p></td>
+<td><p>Voltage, electrical field, mechanical fatigue</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Power</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(a \cdot Z^n\)</span></p></td>
+<td><p>Same as InversePower but with life increasing with stress</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Linear</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(a + b \cdot Z\)</span></p></td>
+<td><p>Simple first-order approximation; valid over narrow stress ranges</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DualExponential</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(c \cdot e^{a/Z_1} e^{b/Z_2}\)</span></p></td>
+<td><p>Two thermal stresses</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DualPower</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(c \cdot Z_1^m Z_2^n\)</span></p></td>
+<td><p>Two non-thermal stresses</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PowerExponential</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(c \cdot e^{a/Z_1} Z_2^n\)</span></p></td>
+<td><p>One thermal + one non-thermal</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">InverseEyring</span></code></p></td>
+<td><p>Reciprocal of Eyring</p></td>
+<td><p>Inverse Eyring relationship</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">InverseExponential</span></code></p></td>
+<td><p>Reciprocal of Arrhenius</p></td>
+<td><p>Inverse Arrhenius relationship</p></td>
+</tr>
+</tbody>
+</table>
+<p>A note on units: the stress variable <span class="math notranslate nohighlight">\(Z\)</span> for Arrhenius and Eyring should
+be in Kelvin (absolute temperature), not Celsius.</p>
+</section>
+<section id="using-the-factory">
+<h3>Using the factory<a class="headerlink" href="#using-the-factory" title="Permalink to this heading">¶</a></h3>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">AcceleratedLife</span><span class="p">,</span> <span class="n">Power</span><span class="p">,</span> <span class="n">ExponentialLifeModel</span>
+
+<span class="c1"># Discrete stress levels — three temperatures in Kelvin</span>
+<span class="n">stress</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">358.</span><span class="p">]</span><span class="o">*</span><span class="mi">20</span> <span class="o">+</span> <span class="p">[</span><span class="mf">378.</span><span class="p">]</span><span class="o">*</span><span class="mi">20</span> <span class="o">+</span> <span class="p">[</span><span class="mf">398.</span><span class="p">]</span><span class="o">*</span><span class="mi">20</span><span class="p">)</span>  <span class="c1"># 85°C, 105°C, 125°C</span>
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+<span class="c1"># Simulate Arrhenius-like failure times (life halves every ~20°C)</span>
+<span class="n">Ea</span><span class="p">,</span> <span class="n">k</span> <span class="o">=</span> <span class="mf">0.7</span><span class="p">,</span> <span class="mf">8.617e-5</span>   <span class="c1"># activation energy eV, Boltzmann constant eV/K</span>
+<span class="n">scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">Ea</span> <span class="o">/</span> <span class="p">(</span><span class="n">k</span> <span class="o">*</span> <span class="n">stress</span><span class="p">))</span>
+<span class="n">x_al</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">2.5</span><span class="p">,</span> <span class="mi">60</span><span class="p">)</span> <span class="o">*</span> <span class="n">scale</span> <span class="o">/</span> <span class="n">scale</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">*</span> <span class="mi">5000</span>
+<span class="n">c_al</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">60</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+<span class="n">c_al</span><span class="p">[::</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>   <span class="c1"># every 4th observation right-censored</span>
+
+<span class="n">Z_al</span> <span class="o">=</span> <span class="n">stress</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+<span class="c1"># Weibull + Arrhenius (ExponentialLifeModel) — the most common ALT model</span>
+<span class="n">model_arr</span> <span class="o">=</span> <span class="n">AcceleratedLife</span><span class="p">(</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">ExponentialLifeModel</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_al</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z_al</span><span class="p">)</span>
+<span class="n">model_arr</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Accelerated Life
+Distribution        : Weibull
+Regression Model    : Exponential
+Fitted by           : MLE
+Distribution        :
+     alpha: 1.0
+      beta: 2.351753425839255
+Regression Model    :
+         a: 7928.647474650367
+         b: 1.129832315040187e-06
+</pre></div>
+</div>
+</div>
+</div>
+<p>Notice that the Weibull shape parameter <span class="math notranslate nohighlight">\(\beta\)</span> is estimated globally —
+it is the same for all stress levels — while the scale parameter <span class="math notranslate nohighlight">\(\alpha\)</span>
+varies with stress via the Arrhenius relationship. This is the key assumption of
+ALT: the failure mechanism does not change with stress, only the rate.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Power law — a common choice for voltage or load acceleration</span>
+<span class="n">model_power</span> <span class="o">=</span> <span class="n">AcceleratedLife</span><span class="p">(</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">Power</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_al</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z_al</span><span class="p">)</span>
+<span class="n">model_power</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Accelerated Life
+Distribution        : Weibull
+Regression Model    : Power
+Fitted by           : MLE
+Distribution        :
+     alpha: 1.0
+      beta: 2.3447384121622115
+Regression Model    :
+         a: 2.1212927811281043e+57
+         n: -21.010910249638336
+</pre></div>
+</div>
+</div>
+</div>
+<p>To use the fitted model for extrapolation, pass the operating stress to any
+of the survival functions:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Predict life at operating temperature 85°C = 358K</span>
+<span class="n">x_pred</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10000</span><span class="p">,</span> <span class="mi">500</span><span class="p">)</span>
+<span class="n">Z_use</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">358.</span><span class="p">]])</span>   <span class="c1"># operating condition</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_pred</span><span class="p">,</span> <span class="n">model_arr</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">x_pred</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z_use</span><span class="p">),</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;Predicted at 85°C (358K)&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Time (hours)&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;Reliability&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;Extrapolated life at operating conditions&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Text(0.5, 1.0, &#39;Extrapolated life at operating conditions&#39;)
+</pre></div>
+</div>
+<img alt="_images/Regression%20Modelling%20with%20SurPyval_25_1.png" src="_images/Regression%20Modelling%20with%20SurPyval_25_1.png" />
+</div>
+</div>
+</section>
+<section id="creating-a-custom-life-model">
+<h3>Creating a custom life model<a class="headerlink" href="#creating-a-custom-life-model" title="Permalink to this heading">¶</a></h3>
+<p>If none of the built-in life models matches your failure physics, you can define
+your own by subclassing <code class="docutils literal notranslate"><span class="pre">LifeModel</span></code>. The two methods you must implement are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">phi(Z,</span> <span class="pre">*params)</span></code> — the stress relationship. Use <code class="docutils literal notranslate"><span class="pre">autograd.numpy</span></code> so that
+gradients are available for the optimiser.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">phi_init(life,</span> <span class="pre">Z)</span></code> — a closed-form or least-squares initialiser for the
+model parameters. <code class="docutils literal notranslate"><span class="pre">life</span></code> is a vector of estimated life parameters at each
+unique stress level; <code class="docutils literal notranslate"><span class="pre">Z</span></code> is the corresponding stress values. Good
+initialisation is important for convergence.</p></li>
+</ul>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">LifeModel</span><span class="p">,</span> <span class="n">AcceleratedLife</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">autograd.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">anp</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">InverseSquareRoot</span><span class="p">(</span><span class="n">LifeModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Life proportional to 1/sqrt(Z) — a simple custom example.&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;InverseSquareRoot&quot;</span><span class="p">,</span>
+            <span class="n">phi_param_map</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;a&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">},</span>
+            <span class="n">phi_bounds</span><span class="o">=</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),),</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">phi</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">):</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">a</span> <span class="o">/</span> <span class="n">anp</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">Z</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">phi_init</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">life</span><span class="p">,</span> <span class="n">Z</span><span class="p">):</span>
+        <span class="c1"># life ~ a / sqrt(Z) =&gt; a ~ life * sqrt(Z)</span>
+        <span class="n">a_est</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">anp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">life</span> <span class="o">*</span> <span class="n">anp</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">Z</span><span class="o">.</span><span class="n">flatten</span><span class="p">())))</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">a_est</span><span class="p">]</span>
+
+<span class="n">model_custom</span> <span class="o">=</span> <span class="n">AcceleratedLife</span><span class="p">(</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">InverseSquareRoot</span><span class="p">())</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_al</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z_al</span><span class="p">)</span>
+<span class="n">model_custom</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Accelerated Life
+Distribution        : Weibull
+Regression Model    : InverseSquareRoot
+Fitted by           : MLE
+Distribution        :
+     alpha: 1.0
+      beta: 1.0541977179827802
+Regression Model    :
+         a: 38494.63585936719
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section id="model-selection">
+<h2>Model Selection<a class="headerlink" href="#model-selection" title="Permalink to this heading">¶</a></h2>
+<p>With several competing models it is useful to compare them on information
+criteria. AIC penalises log-likelihood by the number of parameters (favouring
+simpler models); BIC additionally penalises by sample size (favouring even
+simpler models with larger datasets). Lower is better for both.</p>
+<p>For the tires data, we can compare all three statistical regression families
+using the same Weibull baseline:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">WeibullAFT</span><span class="p">,</span> <span class="n">WeibullPH</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">PO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+
+<span class="n">models</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;WeibullPH&#39;</span><span class="p">:</span>  <span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">),</span>
+    <span class="s1">&#39;WeibullAFT&#39;</span><span class="p">:</span> <span class="n">WeibullAFT</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">),</span>
+    <span class="s1">&#39;WeibullPO&#39;</span><span class="p">:</span>  <span class="n">PO</span><span class="p">(</span><span class="n">Weibull</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">),</span>
+<span class="p">}</span>
+
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">models</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">name</span><span class="si">:</span><span class="s1">12s</span><span class="si">}</span><span class="s1">  AIC=</span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">aic</span><span class="p">()</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">  BIC=</span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">bic</span><span class="p">()</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>WeibullPH     AIC=-0.04  BIC=2.35
+WeibullAFT    AIC=-0.04  BIC=2.35
+WeibullPO     AIC=11.81  BIC=14.19
+</pre></div>
+</div>
+</div>
+</div>
+<p>A note of caution: AIC and BIC compare how well a model fits the <em>observed
+data</em>, not whether the model’s assumptions are correct. A PH model with a lower
+AIC than a PO model does not mean PH is the “true” model — it means PH uses its
+parameters more efficiently on this dataset. If the proportional hazards
+assumption is violated (e.g. survival curves cross), a lower-AIC PH model can
+still give misleading predictions. Goodness-of-fit diagnostics like
+Schoenfeld residuals (for PH) or log-log survival plots should accompany any
+model comparison.</p>
+</section>
+<section id="saving-and-loading-a-fitted-model">
+<h2>Saving and loading a fitted model<a class="headerlink" href="#saving-and-loading-a-fitted-model" title="Permalink to this heading">¶</a></h2>
+<p>A fitted parametric regression model can be serialised to a plain dictionary
+or a JSON file and rebuilt later — so you can fit once and reuse the model
+without the training data on hand. This works for the fixed-form parametric
+families: Accelerated Failure Time, Proportional Hazards, Proportional Odds
+and (parametric) Additive Hazards.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">WeibullAFT</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.univariate.regression</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParametricRegressionModel</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">WeibullAFT</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+
+<span class="c1"># to a dictionary (JSON-serialisable) ...</span>
+<span class="n">blob</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+
+<span class="c1"># ... and back</span>
+<span class="n">restored</span> <span class="o">=</span> <span class="n">ParametricRegressionModel</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">blob</span><span class="p">)</span>
+
+<span class="c1"># the restored model predicts identically</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">])</span>
+<span class="n">Z_use</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">Z</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;match:&quot;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Z_use</span><span class="p">),</span> <span class="n">restored</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Z_use</span><span class="p">)))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>match: True
+</pre></div>
+</div>
+</div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">to_json</span></code> / <code class="docutils literal notranslate"><span class="pre">from_json</span></code> for a file directly:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(),</span> <span class="s2">&quot;aft.json&quot;</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">to_json</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+<span class="n">reloaded</span> <span class="o">=</span> <span class="n">ParametricRegressionModel</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">reloaded</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Accelerated Failure Time
+Distribution        : Weibull
+Regression Model    : Log Linear [exp(beta&#39;Z)]
+Fitted by           : MLE
+Distribution        :
+     alpha: 0.24255134508987503
+      beta: 16.057759226998158
+Regression Model    :
+    beta_0: -0.5707541516913845
+    beta_1: -0.49811221192514954
+    beta_2: -1.7127639304953297
+    beta_3: 1.1449550575505485
+</pre></div>
+</div>
+</div>
+</div>
+<p>If you don’t know (or don’t want to hard-code) which class wrote a file, the
+package-level readers <code class="docutils literal notranslate"><span class="pre">surpyval.from_json</span></code> / <code class="docutils literal notranslate"><span class="pre">surpyval.from_dict</span></code> dispatch
+on the serialised content itself and work for every serialisable SurPyval
+model:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">surpyval</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="n">path</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Accelerated Failure Time
+Distribution        : Weibull
+Regression Model    : Log Linear [exp(beta&#39;Z)]
+Fitted by           : MLE
+Distribution        :
+     alpha: 0.24255134508987503
+      beta: 16.057759226998158
+Regression Model    :
+    beta_0: -0.5707541516913845
+    beta_1: -0.49811221192514954
+    beta_2: -1.7127639304953297
+    beta_3: 1.1449550575505485
+</pre></div>
+</div>
+</div>
+</div>
+<section id="storing-models-in-mongodb">
+<h3>Storing models in MongoDB<a class="headerlink" href="#storing-models-in-mongodb" title="Permalink to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">to_dict</span></code> emits documents of native Python types only — string keys, lists,
+floats, ints — so its output is BSON-safe and every serialisable model can be
+stored in MongoDB directly. On the way back, <code class="docutils literal notranslate"><span class="pre">surpyval.from_dict</span></code> ignores
+the <code class="docutils literal notranslate"><span class="pre">_id</span></code> field MongoDB adds and restores the right class from the document
+itself:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">collection</span><span class="o">.</span><span class="n">insert_one</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+
+<span class="n">doc</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">find_one</span><span class="p">({</span><span class="s2">&quot;distribution&quot;</span><span class="p">:</span> <span class="s2">&quot;Weibull&quot;</span><span class="p">})</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Every document also carries a <code class="docutils literal notranslate"><span class="pre">&quot;schema&quot;</span></code> version stamped by <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>.
+It changes only when a document’s shape changes incompatibly, so models
+stored today stay recognisable to future SurPyval versions; a document
+written by a <em>newer</em> schema than the installed SurPyval understands is
+refused with a clear error rather than misread.</p>
+<p>If the fitted model carried a computable parameter covariance, it is stored in
+the dictionary, so the reloaded model can also produce confidence bounds
+(<code class="docutils literal notranslate"><span class="pre">cb</span></code>, <code class="docutils literal notranslate"><span class="pre">param_cb</span></code>, <code class="docutils literal notranslate"><span class="pre">standard_errors</span></code>) without the original data. Only the
+prediction/inference state is serialised — the empirical overlay in <code class="docutils literal notranslate"><span class="pre">plot</span></code>
+needs the fitted data, so re-fit if you need that. Models with a bespoke
+covariate link (an Accelerated Life parameter-substitution model, whose link is
+an arbitrary life-model) cannot be rebuilt from a name and raise
+<code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code> when serialised.</p>
+<p>The <strong>semi-parametric</strong> regression models save and load the same way, each on
+its own result class: Cox proportional hazards
+(<code class="docutils literal notranslate"><span class="pre">SemiParametricRegressionModel</span></code>), the Lin-Ying additive-hazards model
+(<code class="docutils literal notranslate"><span class="pre">AdditiveHazardsModel</span></code>), and the Buckley-James AFT (<code class="docutils literal notranslate"><span class="pre">BuckleyJamesModel</span></code>).
+Because their baseline is nonparametric, what is stored is the fitted
+coefficients plus the baseline step arrays (or, for Buckley-James, the residual
+survival), so the reloaded model predicts identically:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoxPH</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.univariate.regression</span><span class="w"> </span><span class="kn">import</span> <span class="n">SemiParametricRegressionModel</span>
+
+<span class="n">cox</span> <span class="o">=</span> <span class="n">CoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">cox_reloaded</span> <span class="o">=</span> <span class="n">SemiParametricRegressionModel</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">cox</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;match:&quot;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">cox</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Z_use</span><span class="p">),</span> <span class="n">cox_reloaded</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Z_use</span><span class="p">)))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>match: True
+</pre></div>
+</div>
+</div>
+</div>
+<p>Cox’s time-varying-covariate prediction (<code class="docutils literal notranslate"><span class="pre">predict_tvc</span></code>), the additive model’s
+covariance, and Buckley-James’s <code class="docutils literal notranslate"><span class="pre">bootstrap_ci</span></code> (which keeps a copy of the fit
+data) all survive the round-trip.</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Parametric%20SurPyval%20Modelling.html" class="btn btn-neutral float-left" title="Parametric SurPyval Modelling" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="applications.html" class="btn btn-neutral float-right" title="Example Applications" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

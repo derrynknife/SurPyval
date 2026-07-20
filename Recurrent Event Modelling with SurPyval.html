@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recurrent Event Modelling with SurPyval &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Recurrent Event Regression Modelling with SurPyval" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html" />
+    <link rel="prev" title="Competing Risks SurPyval Modelling" href="Competing%20Risks%20SurPyval%20Modelling.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Recurrent Event Modelling with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#recurrent-event-surpyval-modelling">Recurrent Event SurPyval Modelling</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#non-parametric-counting-model-with-surpyval">Non-Parametric Counting Model with Surpyval</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#parametric-recurrent-event-models-with-surpyval">Parametric Recurrent Event Models with Surpyval</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#inference-and-model-checking">Inference and model checking</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#renewal-modelling-in-surpyval">Renewal Modelling in SurPyval</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#generalised-renewal-process-with-surpyval">Generalised Renewal Process with SurPyval</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#g1-renewal-process-with-surpyval">G1 Renewal Process with SurPyval</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arithmetic-reduction-models-ara-ari-with-surpyval">Arithmetic Reduction Models (ARA / ARI) with SurPyval</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#checking-a-renewal-model">Checking a renewal model</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#gapped-multi-window-observation">Gapped (multi-window) observation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#competing-risks-marked-recurrent-events">Competing risks: marked recurrent events</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#saving-and-loading-a-fitted-model">Saving and loading a fitted model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Recurrent Event Modelling with SurPyval</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Recurrent Event Modelling with SurPyval.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="recurrent-event-modelling-with-surpyval">
+<h1>Recurrent Event Modelling with SurPyval<a class="headerlink" href="#recurrent-event-modelling-with-surpyval" title="Permalink to this heading">¶</a></h1>
+<p>This section is aims to show how you can use SurPyval to model counting
+processes.</p>
+<section id="recurrent-event-surpyval-modelling">
+<h2>Recurrent Event SurPyval Modelling<a class="headerlink" href="#recurrent-event-surpyval-modelling" title="Permalink to this heading">¶</a></h2>
+<p>First, we will start with recurrent events, and a simple non-parametric model.</p>
+<section id="non-parametric-counting-model-with-surpyval">
+<h3>Non-Parametric Counting Model with Surpyval<a class="headerlink" href="#non-parametric-counting-model-with-surpyval" title="Permalink to this heading">¶</a></h3>
+<p>Creating a Non-Parametric MCF with surpyval is easy. Simply collect the data and
+pass it to the <code class="docutils literal notranslate"><span class="pre">fit</span></code> call of the <code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code> class.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: &gt;
+</pre></div>
+</div>
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_0_1.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_0_1.png" />
+</div>
+</div>
+<p>This shows the expected number of events at any time. The model is a step
+function since it is parametric and we have made no assumptions about the
+count between observed events.</p>
+<p>The result of this is a Non-Parametric Counting model that can be used just like
+all other models in surpyval. It is important to note that the <code class="docutils literal notranslate"><span class="pre">fit</span></code> function
+takes the values of x as the <em>cumulative</em> time to the event, not the inter-arrival
+time. If you do have inter-arrival data (which is sorted in the correct order)
+all you need do is take the cumulative sum of the obervations along the length
+of the array. For example:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">interarrival_times</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">interarrival_times</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>We can then use this model to estimate the number of failures at any time. For
+example, let’s say we wanted to know how many failures we would expect to see
+after 10 units of time. We can do this by using the <code class="docutils literal notranslate"><span class="pre">mcf</span></code> method of the model.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">interarrival_times</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">interarrival_times</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">mcf</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([4.])
+</pre></div>
+</div>
+</div>
+</div>
+<p>The above two examples use only one item, but we can get the expected number
+of events based on data from any number of items. Let’s say we had three items
+observed until the last event. Let’s do some modelling.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+<span class="n">i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: &gt;
+</pre></div>
+</div>
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_3_1.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_3_1.png" />
+</div>
+</div>
+<p>Here we have the expected number of events over time based on the observations
+of three different items.</p>
+<p>These functions work with censoring as well. We need to keep in mind that the
+only right censored points we can have for an item is the last. This is because
+it doesn’t make any sense to have a right censored point followed by another
+event. The same is true for left censored and truncated data. Therefore the
+“timeline” for a single item must be coherent for the model to work.</p>
+<p>Let’s look at how we can use right censoring.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+<span class="n">i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: &gt;
+</pre></div>
+</div>
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_4_1.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_4_1.png" />
+</div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code> model also supports <strong>left truncation</strong> (delayed
+entry): an item that was already in service before observation began only joins
+the at-risk set once its entry time is reached, so events before that entry are
+estimated over a smaller risk set. Pass a per-item (or scalar) entry time with
+<code class="docutils literal notranslate"><span class="pre">tl</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]</span>
+<span class="n">i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">mcf</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([2.])
+</pre></div>
+</div>
+</div>
+</div>
+<p>Right truncation (a finite <code class="docutils literal notranslate"><span class="pre">tr</span></code>) is not yet supported by the non-parametric
+risk-set construction; for right-truncated recurrent data use a parametric
+intensity model.</p>
+<p>Let’s say this data was for the time, in years,
+between repairs on home air conditioners of a specific model. We can then use
+this model to estimate the number of reparis we would need on a newly installed
+air conditioner. Let’s say we wanted to know how many repairs we would expect to see
+after 8 years. We can do this by using the <code class="docutils literal notranslate"><span class="pre">mcf</span></code> method of the model.</p>
+<p>If however, we wanted to know how many reparis were needed after 10 years, we
+could not do so since the data only goes up to 9 years. To address this we would
+instead need to use a parametric model.</p>
+</section>
+<section id="parametric-recurrent-event-models-with-surpyval">
+<h3>Parametric Recurrent Event Models with Surpyval<a class="headerlink" href="#parametric-recurrent-event-models-with-surpyval" title="Permalink to this heading">¶</a></h3>
+<p>Just as is the case with single event survival analysis, non-parametric models
+are not always the best choice. In the case of recurrent events, we can use
+parametric models to model the number of events at any time. This is done by
+assuming a hazard rate for the inter-arrival times. This also has the same
+limitations as per single event survival analysis. That is, given we use a
+parametric representation of the hazard rate we are making assumptions about the
+shape of the cumulative incidence function. This allows us to extrapolate
+above the highest observed values but may not be a good fit to the data.</p>
+<p>Let’s fit a parametric model.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">HPP</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+<span class="n">i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">HPP</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: &gt;
+</pre></div>
+</div>
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_6_1.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_6_1.png" />
+</div>
+</div>
+<p>This model is a good fit to the data, althouhg it is just a straight line. But
+we can extraplotate above the highest observed value. Let’s say we wanted to
+know how many events would happen up to “15”, we can do this with the <code class="docutils literal notranslate"><span class="pre">cif</span></code>
+method of the model.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="mi">15</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>np.float64(7.2)
+</pre></div>
+</div>
+</div>
+</div>
+<p>This means that we would expect to see 7.2 events up to “15” (in whatever units
+this model is in). Let’s see a different example:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">14</span><span class="p">]</span>
+<span class="n">HPP</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: &gt;
+</pre></div>
+</div>
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_8_1.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_8_1.png" />
+</div>
+</div>
+<p>This HPP model, in this case, is not a good fit to the data. This is because
+the model assumes that the accumulation of events will tend to be a straight
+line whereas the data appears to be increasing over time. In this case, we have
+made a poor assumption in using the HPP model. Let’s try another one.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">Duane</span>
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">14</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">Duane</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: &gt;
+</pre></div>
+</div>
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_9_1.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_9_1.png" />
+</div>
+</div>
+<p>This is clearly a much better fit. Have a look at the api documentation to see
+what other parametric models are available in SurPyval.</p>
+</section>
+<section id="inference-and-model-checking">
+<h3>Inference and model checking<a class="headerlink" href="#inference-and-model-checking" title="Permalink to this heading">¶</a></h3>
+<p>A fitted parametric recurrence model is more than a point estimate. Every
+model fit by maximum likelihood exposes the usual likelihood quantities for
+comparing models — the log-likelihood and the <code class="docutils literal notranslate"><span class="pre">aic</span></code> / <code class="docutils literal notranslate"><span class="pre">bic</span></code> information
+criteria (these are attributes, not methods):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;AIC:&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">aic</span><span class="p">,</span> <span class="s2">&quot; BIC:&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">bic</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>AIC: 27.26860079350977  BIC: 27.42748387686944
+</pre></div>
+</div>
+</div>
+</div>
+<p>It also carries the uncertainty of the fitted parameters. <code class="docutils literal notranslate"><span class="pre">standard_errors()</span></code>
+returns the standard error of each parameter (from the observed information),
+and <code class="docutils literal notranslate"><span class="pre">param_cb</span></code> gives a confidence interval on a named parameter — computed on
+a transformed scale so the interval respects the parameter’s support (a rate,
+for instance, cannot go negative):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;parameters :&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">parameter_names</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;std errors :&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">standard_errors</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;alpha 95% CI:&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>parameters : [&#39;alpha&#39;, &#39;b&#39;]
+std errors : [0.5811439  0.16452182]
+alpha 95% CI: [0.82196947 3.28676631]
+</pre></div>
+</div>
+</div>
+</div>
+<p>That parameter uncertainty propagates to the fitted curve. <code class="docutils literal notranslate"><span class="pre">plot()</span></code> draws a
+delta-method confidence band around the cumulative intensity function, and
+<code class="docutils literal notranslate"><span class="pre">cif_cb</span></code> returns the band directly:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: &gt;
+</pre></div>
+</div>
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_12_1.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_12_1.png" />
+</div>
+</div>
+<p>Having a model is not the same as having a <em>good</em> model. SurPyval provides three
+complementary checks. First, a <strong>trend test</strong> on the fitted data — the same
+Laplace / Military-Handbook tests used to decide whether a time-varying
+intensity was warranted in the first place:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">trend_test</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">trend</span><span class="p">,</span> <span class="s2">&quot;trend, p-value&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>increasing trend, p-value 0.224
+</pre></div>
+</div>
+</div>
+</div>
+<p>Second, <strong>residuals</strong>. Via the time-rescaling theorem, the fitted model turns
+the event times into what should be a unit-rate Poisson process, so the
+cumulative-hazard residuals are (under the model) an i.i.d. Exp(1) sample with
+mean 1:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">residuals</span><span class="p">()</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.105 1.368 1.716 1.413 1.608 0.873 0.    0.917]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Third, a <strong>goodness-of-fit test</strong>. <code class="docutils literal notranslate"><span class="pre">cramer_von_mises</span></code> measures how far the
+transformed event times fall from uniformity and calibrates the statistic with
+a parametric bootstrap, so its p-value accounts for the parameters having been
+estimated. A large p-value means the fitted intensity is consistent with the
+data:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">gof</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">cramer_von_mises</span><span class="p">(</span><span class="n">n_boot</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;statistic&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">gof</span><span class="o">.</span><span class="n">statistic</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s2">&quot; p-value&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">gof</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>statistic 0.053  p-value 0.762
+</pre></div>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/recurrent/diagnostics.py:340: UserWarning: 1 bootstrap replicate(s) failed and were resampled or dropped.
+  warnings.warn(
+</pre>
+</div>
+</div>
+</div>
+<p>The same inference and diagnostic methods are available on the
+proportional-intensity regression models and the renewal models below.</p>
+</section>
+</section>
+<section id="renewal-modelling-in-surpyval">
+<h2>Renewal Modelling in SurPyval<a class="headerlink" href="#renewal-modelling-in-surpyval" title="Permalink to this heading">¶</a></h2>
+<p>In contrast to the above, where the cumulative count of events are assumed to
+have an underlying rate of occurence, renewal models assume that there is an
+underlying distribution of the inter-arrival times where each subsequent
+inter-arrival time is affected by some restoration factor.</p>
+<section id="generalised-renewal-process-with-surpyval">
+<h3>Generalised Renewal Process with SurPyval<a class="headerlink" href="#generalised-renewal-process-with-surpyval" title="Permalink to this heading">¶</a></h3>
+<p>Generalized Renewal Process modelling is simple with SurPyval:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeneralizedRenewal</span><span class="p">,</span> <span class="n">NonParametricCounting</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mf">4.5</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mf">5.5</span><span class="p">,</span> <span class="mf">5.7</span><span class="p">,</span> <span class="mi">6</span><span class="p">])</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">GeneralizedRenewal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="n">Weibull</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Generalized Renewal SurPyval Model
+==================================
+Distribution        : Weibull
+Fitted by           : MLE
+Kijima Type         : i
+Restoration Factor  : 0.15732122999163628
+Parameters          :
+     alpha: 1.2613379398829805
+      beta: 8.939023292785379
+</pre></div>
+</div>
+</div>
+</div>
+<p>We cannot plot the cumulative incidence function of the model since it does
+not have a closed form solution. We can however plot the cumulative incidence
+function of a monte carlo simulation of the model. Let’s do that and compare
+it to a non-parametric description of the MCF:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">np_model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">count_terminated_simulation</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="mi">5000</span><span class="p">)</span>
+<span class="n">ax</span> <span class="o">=</span> <span class="n">np_model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+<span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: &gt;
+</pre></div>
+</div>
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_17_1.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_17_1.png" />
+</div>
+</div>
+<p>We have simulated the model we created up to the number of failures we saw in
+the data with the <code class="docutils literal notranslate"><span class="pre">count_terminated_simulation</span></code> method. This method takes
+two arguments, the first is the number of failures to simulate up to and the
+second is the number of simulations to run. The more simulations you run the
+more accurate the model will be. The method returns a <code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code>
+model that can be used to plot the results.</p>
+<p>You can see that the cumulative incidence function of the model is a very good
+fit to the data. You can also see that it is “wavy.” This is because the
+underlying distribution is Weibull with a reasonably high shape parameter. This
+means that the first inter-arrival time is going to be within a relatively
+narrow period. After the first failure, and the subsequent restoration, the
+next inter-arrival time is going to be in a larger range since it will be the
+sum of the first inter-arrival time and the second inter-arrival time. This
+process continues for each subsequent inter-arrival time. Eventually the waves
+will become smaller as the mixing of previous inter-arrival times makes the
+spread of the next inter-arrival time larger and larger. It looks essentially
+like a smooth line at the higher values.</p>
+<p>SurPyval uses the Kijima Type i as the default. Let’s change this to
+Kijima Type ii and see what happens.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeneralizedRenewal</span><span class="p">,</span> <span class="n">NonParametricCounting</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mf">4.5</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mf">5.5</span><span class="p">,</span> <span class="mf">5.7</span><span class="p">,</span> <span class="mi">6</span><span class="p">])</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">GeneralizedRenewal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">kijima</span><span class="o">=</span><span class="s2">&quot;ii&quot;</span><span class="p">)</span>
+
+<span class="n">np_model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">count_terminated_simulation</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="mi">5000</span><span class="p">)</span>
+<span class="n">ax</span> <span class="o">=</span> <span class="n">np_model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+<span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: &gt;
+</pre></div>
+</div>
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_18_1.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_18_1.png" />
+</div>
+</div>
+<p>We can see that this model is not as good a fit as the kijima type i model.
+This implies that the restoration that is done only repairs damage done since
+the last event. We could then use this model, via the non-parametric
+simulations of it, to estimate the number of events up to a given time.</p>
+</section>
+<section id="g1-renewal-process-with-surpyval">
+<h3>G1 Renewal Process with SurPyval<a class="headerlink" href="#g1-renewal-process-with-surpyval" title="Permalink to this heading">¶</a></h3>
+<p>G1 Modelling can easily be done with SurPyval:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Exponential</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeneralizedOneRenewal</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">22</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">31</span><span class="p">,</span> <span class="mi">45</span><span class="p">])</span><span class="o">.</span><span class="n">cumsum</span><span class="p">()</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">GeneralizedOneRenewal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="n">Exponential</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>G1 Renewal SurPyval Model
+=========================
+Distribution        : Exponential
+Fitted by           : MLE
+Restoration Factor  : 0.2318306601166155
+Parameters          :
+failure_rate: 0.20919291776758403
+</pre></div>
+</div>
+</div>
+</div>
+<p>This data is from <a class="footnote-reference brackets" href="#id3" id="id1">1</a> and shows the inter-arrival times, and not the total
+time to each event. We therefore need to take the cumulative sum of all the
+times before passing it to the <code class="docutils literal notranslate"><span class="pre">fit</span></code> method. These are the same results as
+achieved by Kaminskiy and Krivtsov in their paper <a class="footnote-reference brackets" href="#id4" id="id2">2</a> introducing the G1
+Renewal Process.</p>
+<p>Surpyval allows you to use any distribution in SurPyval as the underlying
+distribution. Let’s use the same data with a Weibull G1 Renewal Process.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeneralizedOneRenewal</span><span class="p">,</span> <span class="n">NonParametricCounting</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">22</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">31</span><span class="p">,</span> <span class="mi">45</span><span class="p">])</span><span class="o">.</span><span class="n">cumsum</span><span class="p">()</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">GeneralizedOneRenewal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="n">Weibull</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/usr/local/lib/python3.11/dist-packages/autograd/tracer.py:93: RuntimeWarning: divide by zero encountered in log
+  return f_raw(*args, **kwargs)
+</pre>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>G1 Renewal SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Restoration Factor  : 0.2163030528695554
+Parameters          :
+     alpha: 5.72220216175203
+      beta: 3.464227163931042
+</pre></div>
+</div>
+</div>
+</div>
+<p>We can see that the restoration factor is quite similar. What is interesting is
+that the underlying Weibull distribution has a shape parameter greater than 1.
+This indicates that the underlying distribution is not exponential. Since the
+G1 Renewal Process does not have a closed form solution for the cif we can
+create a non-parametric model from a monte carlo simulation. Let’s do this and
+compare it to the data MCF.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">np_model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">time_terminated_simulation</span><span class="p">(</span><span class="mi">250</span><span class="p">,</span> <span class="mi">1000</span><span class="p">)</span>
+<span class="n">np_model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+<span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: &gt;
+</pre></div>
+</div>
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_21_1.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_21_1.png" />
+</div>
+</div>
+<p>In this code we created a <code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code> model using the G1 Models
+<code class="docutils literal notranslate"><span class="pre">time_terminated_simulation</span></code> method. This method takes two arguments, the
+first is the time to run the simulation to while the second is the number of
+simulations to run. The more simulations you run the more accurate the model
+will be. The method returns a <code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code> model that can be
+used to plot the results. We then also add the raw data to the plot for
+comparison.</p>
+<p>The image above shows that the blue line (the model from the simulation) is in
+very good agreement to the data. This is a good indication that the underlying
+distribution is Weibull and that the repair effectiveness has been correctly
+estimated.</p>
+</section>
+<section id="arithmetic-reduction-models-ara-ari-with-surpyval">
+<h3>Arithmetic Reduction Models (ARA / ARI) with SurPyval<a class="headerlink" href="#arithmetic-reduction-models-ara-ari-with-surpyval" title="Permalink to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">ARA</span></code> (Arithmetic Reduction of Age) and <code class="docutils literal notranslate"><span class="pre">ARI</span></code> (Arithmetic Reduction of
+Intensity) models make the <em>memory</em> of a repair explicit through an integer
+<code class="docutils literal notranslate"><span class="pre">m</span></code>: how many prior failures an intervention acts on. <code class="docutils literal notranslate"><span class="pre">ARA</span></code> reduces a
+virtual age; <code class="docutils literal notranslate"><span class="pre">ARI</span></code> reduces the intensity directly. Both are fitted with the
+same API as the other renewal models, plus the <code class="docutils literal notranslate"><span class="pre">m</span></code> argument.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARA</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mf">1.4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mf">6.7</span><span class="p">,</span> <span class="mf">8.9</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">2.2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mf">7.5</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">12</span><span class="p">])</span>
+<span class="n">i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">ARA</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>ARA Renewal SurPyval Model
+==========================
+Distribution        : Weibull
+Fitted by           : MLE
+Memory (m)          : 1
+Repair Efficiency   : 0.9999999999999999
+Parameters          :
+     alpha: 2.3286115249257593
+      beta: 2.713884134290108
+</pre></div>
+</div>
+</div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">Repair</span> <span class="pre">Efficiency</span></code> <span class="math notranslate nohighlight">\(\rho\)</span> reported here plays the role of
+<span class="math notranslate nohighlight">\(1 - q\)</span>: a value near 1 is close to as-good-as-new, a value near 0 is
+as-bad-as-old. <code class="docutils literal notranslate"><span class="pre">ARI</span></code> fits the same way but with an intensity (counting
+process) baseline such as <code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARI</span><span class="p">,</span> <span class="n">CrowAMSAA</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">ARI</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="n">CrowAMSAA</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/recurrent/parametric/crow_amsaa.py:57: RuntimeWarning: divide by zero encountered in divide
+  return (x / alpha) ** beta
+/usr/local/lib/python3.11/dist-packages/scipy/optimize/_numdiff.py:686: RuntimeWarning: invalid value encountered in subtract
+  df = [f_eval - f0 for f_eval in f_evals]
+</pre>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>ARI Recurrence SurPyval Model
+=============================
+Baseline Intensity  : Crow-AMSAA
+Fitted by           : MLE
+Memory (m)          : 1
+Repair Efficiency   : 1.0
+Parameters          :
+     alpha: 1.4318370220744199
+      beta: 1.671071352834037
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="checking-a-renewal-model">
+<h3>Checking a renewal model<a class="headerlink" href="#checking-a-renewal-model" title="Permalink to this heading">¶</a></h3>
+<p>The renewal and virtual-age models carry the same diagnostics as the intensity
+models. Because they have no marginal cumulative intensity, the residuals come
+from the <em>conditional</em> intensity — the cumulative hazard accumulated over each
+interval given the model’s virtual age — but under a well-specified model they
+are still an i.i.d. Exp(1) sample:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeneralizedRenewal</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mf">1.4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mf">6.7</span><span class="p">,</span> <span class="mf">8.9</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">2.2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mf">7.5</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">12</span><span class="p">])</span>
+<span class="n">i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">GeneralizedRenewal</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">kijima</span><span class="o">=</span><span class="s2">&quot;i&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;residual mean :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">residuals</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span> <span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;trend         :&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">trend_test</span><span class="p">()</span><span class="o">.</span><span class="n">trend</span><span class="p">)</span>
+
+<span class="n">gof</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">cramer_von_mises</span><span class="p">(</span><span class="n">n_boot</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;CvM p-value   :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">gof</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>residual mean : 1.0
+trend         : decreasing
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>CvM p-value   : 0.078
+</pre></div>
+</div>
+</div>
+</div>
+<p>The Cramér–von Mises bootstrap refits the (multi-start) imperfect-repair model
+once per replicate, so it is noticeably slower than the residual checks; keep
+<code class="docutils literal notranslate"><span class="pre">n_boot</span></code> modest while exploring.</p>
+</section>
+</section>
+<section id="gapped-multi-window-observation">
+<h2>Gapped (multi-window) observation<a class="headerlink" href="#gapped-multi-window-observation" title="Permalink to this heading">¶</a></h2>
+<p>Sometimes an item is only observed over a few disjoint windows, with gaps in
+between during which failures may occur but are not recorded — a vehicle seen
+only while it is in the depot, for instance. Passing a <code class="docutils literal notranslate"><span class="pre">windows</span></code> mapping to an
+intensity model tells SurPyval each item’s observation windows; every event you
+pass is then an observed failure (<code class="docutils literal notranslate"><span class="pre">c=0</span></code>), and the windows supply the
+end-of-window censoring automatically.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">CrowAMSAA</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="c1"># one item, observed on [0, 12] and [20, 40] with an unobserved gap</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">38</span><span class="p">])</span>
+<span class="n">i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">CrowAMSAA</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">windows</span><span class="o">=</span><span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">12</span><span class="p">),</span> <span class="p">(</span><span class="mi">20</span><span class="p">,</span> <span class="mi">40</span><span class="p">)]})</span>
+<span class="n">model</span><span class="o">.</span><span class="n">params</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([4.89137205, 0.95837194])
+</pre></div>
+</div>
+</div>
+</div>
+<p>Because Poisson event counts over disjoint windows are independent, each window
+is fitted as its own observation period; the intensity likelihood and the
+non-parametric MCF at-risk set both account for the gaps with no extra work. The
+virtual-age / renewal models reject gapped data, since the virtual age at the
+start of a later window depends on the unobserved failures during the gap.</p>
+</section>
+<section id="competing-risks-marked-recurrent-events">
+<h2>Competing risks: marked recurrent events<a class="headerlink" href="#competing-risks-marked-recurrent-events" title="Permalink to this heading">¶</a></h2>
+<p>When events come in several mutually exclusive types, attach a <strong>mark</strong> <code class="docutils literal notranslate"><span class="pre">e</span></code> to
+each event (use <code class="docutils literal notranslate"><span class="pre">None</span></code> for censoring rows). The non-parametric
+<code class="docutils literal notranslate"><span class="pre">CauseSpecificMCF</span></code> gives one mean cumulative function per cause, sharing the
+at-risk set across causes:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">CauseSpecificMCF</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]</span>
+<span class="n">i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">e</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;B&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span>   <span class="c1"># None marks the censoring rows</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">CauseSpecificMCF</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">e</span><span class="o">=</span><span class="n">e</span><span class="p">)</span>
+<span class="n">ax</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_26_0.png" src="_images/Recurrent%20Event%20Modelling%20with%20SurPyval_26_0.png" />
+</div>
+</div>
+<p>For a parametric picture, <code class="docutils literal notranslate"><span class="pre">CauseSpecificNHPP</span></code> fits one intensity model per
+cause (<code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code> by default). A marked Poisson process decomposes into
+independent thinned Poisson processes, so each cause is fitted to its own events
+over the full observation window — other-cause events are ignored, exactly like
+a censored period:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">CauseSpecificNHPP</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">CauseSpecificNHPP</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">e</span><span class="o">=</span><span class="n">e</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;causes         :&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">event_types</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;cause A params :&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">models</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;total cif at 6 :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">total_cif</span><span class="p">(</span><span class="mf">6.0</span><span class="p">)),</span> <span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>causes         : [&#39;A&#39;, &#39;B&#39;]
+cause A params : [4.228 1.529]
+total cif at 6 : 2.15
+</pre></div>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">/home/user/SurPyval/surpyval/recurrent/parametric/crow_amsaa.py:57: RuntimeWarning: divide by zero encountered in divide
+  return (x / alpha) ** beta
+/usr/local/lib/python3.11/dist-packages/scipy/optimize/_numdiff.py:686: RuntimeWarning: invalid value encountered in subtract
+  df = [f_eval - f0 for f_eval in f_evals]
+/home/user/SurPyval/surpyval/recurrent/parametric/crow_amsaa.py:67: RuntimeWarning: invalid value encountered in log
+  return np.log(beta) - beta * np.log(alpha) + (beta - 1) * np.log(x)
+/home/user/SurPyval/surpyval/recurrent/parametric/crow_amsaa.py:57: RuntimeWarning: divide by zero encountered in power
+  return (x / alpha) ** beta
+</pre>
+</div>
+</div>
+</div>
+<p>Each <code class="docutils literal notranslate"><span class="pre">model.models[cause]</span></code> is an ordinary fitted recurrence model, so it
+carries the full <code class="docutils literal notranslate"><span class="pre">cif</span></code> / <code class="docutils literal notranslate"><span class="pre">iif</span></code>, inference and diagnostic behaviour shown
+above; <code class="docutils literal notranslate"><span class="pre">total_cif</span></code> sums the causes for the overall event intensity.</p>
+</section>
+<section id="saving-and-loading-a-fitted-model">
+<h2>Saving and loading a fitted model<a class="headerlink" href="#saving-and-loading-a-fitted-model" title="Permalink to this heading">¶</a></h2>
+<p>Every fitted recurrence model can be serialised to a plain dictionary or a
+JSON file and rebuilt later. The intensity model is stateless, so only its name
+and the fitted parameters are stored (for the nonparametric MCF, the step
+arrays); the reloaded model reproduces every prediction exactly. This works for
+the parametric intensity fits (<code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code> / <code class="docutils literal notranslate"><span class="pre">Duane</span></code> / <code class="docutils literal notranslate"><span class="pre">Cox-Lewis</span></code> /
+<code class="docutils literal notranslate"><span class="pre">HPP</span></code>), the nonparametric MCF, the proportional-intensity regression, the two
+cause-specific containers, and the renewal / imperfect-repair models
+(<code class="docutils literal notranslate"><span class="pre">RenewalModel</span></code> — generalized renewal, G1 renewal, ARA, ARI).</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">CrowAMSAA</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent.parametric.parametric_recurrence</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ParametricRecurrenceModel</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">events</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">40</span><span class="p">))</span>
+<span class="n">fitted</span> <span class="o">=</span> <span class="n">CrowAMSAA</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">events</span><span class="p">)</span>
+
+<span class="n">blob</span> <span class="o">=</span> <span class="n">fitted</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>                                   <span class="c1"># -&gt; dict</span>
+<span class="n">restored</span> <span class="o">=</span> <span class="n">ParametricRecurrenceModel</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">blob</span><span class="p">)</span>      <span class="c1"># &lt;- dict</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">500.0</span><span class="p">,</span> <span class="mf">900.0</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;match:&quot;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">fitted</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="n">t</span><span class="p">),</span> <span class="n">restored</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="n">t</span><span class="p">)))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>match: True
+</pre></div>
+</div>
+</div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">to_json</span></code> / <code class="docutils literal notranslate"><span class="pre">from_json</span></code> for a file directly. The likelihood-inference
+state (the fitted data and the log-likelihood) is not serialised, so a reloaded
+model behaves like a <code class="docutils literal notranslate"><span class="pre">from_params</span></code> one for confidence bounds and diagnostics
+— re-fit if you need those.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Permalink to this heading">¶</a></h2>
+<dl class="footnote brackets">
+<dt class="label" id="id3"><span class="brackets"><a class="fn-backref" href="#id1">1</a></span></dt>
+<dd><p>Basu, A.P. and Rigdon, S.E., 2000. Statistical methods for the reliability of repairable systems. John Wiley &amp; Sons.</p>
+</dd>
+<dt class="label" id="id4"><span class="brackets"><a class="fn-backref" href="#id2">2</a></span></dt>
+<dd><p>Kaminskiy, M.P. and Krivtsov, V.V., 2010. G1-renewal process as repairable system model. Reliability: Theory &amp; Applications, 5(3), pp.7-14.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Competing%20Risks%20SurPyval%20Modelling.html" class="btn btn-neutral float-left" title="Competing Risks SurPyval Modelling" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html" class="btn btn-neutral float-right" title="Recurrent Event Regression Modelling with SurPyval" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

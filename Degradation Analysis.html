@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Degradation Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Non-Parametric SurPyval Modelling" href="Non-Parametric%20SurPyval%20Modelling.html" />
+    <link rel="prev" title="Recurrent Event Regression Analysis" href="Recurrent%20Event%20Regression%20Analysis.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Degradation Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#degradation-path-models">Degradation path models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#example">Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#predicting-a-new-unit-s-failure-time">Predicting a new unit’s failure time</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#bayesian-remaining-life-prediction">Bayesian remaining-life prediction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-population-path-parameter-distribution">The population path-parameter distribution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reml-estimation-of-the-population">REML estimation of the population</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#induced-failure-time-distribution-lu-meeker">Induced failure-time distribution (Lu-Meeker)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#confidence-bounds">Confidence bounds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#accelerated-degradation-testing-covariates">Accelerated degradation testing (covariates)</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="#stochastic-process-degradation-models">Stochastic-process degradation models</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#the-wiener-process">The Wiener process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-gamma-process">The Gamma process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#choosing-between-wiener-and-gamma">Choosing between Wiener and Gamma</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#saving-and-loading-a-fitted-model">Saving and loading a fitted model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Degradation Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Degradation Analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="degradation-analysis">
+<h1>Degradation Analysis<a class="headerlink" href="#degradation-analysis" title="Permalink to this heading">¶</a></h1>
+<p>Sometimes failure data is scarce or takes too long to collect: items are
+highly reliable, test time is limited, and few (or no) units fail during
+the observation window. But failure is often the end point of a gradual,
+measurable process — a crack grows, a resistance drifts, a lumen output
+fades, a material wears. Degradation analysis exploits this: instead of
+waiting for units to fail, we track a <em>degradation measurement</em> over time
+on each unit, define failure as the measurement crossing a <em>threshold</em>,
+and extrapolate each unit’s degradation trend to that threshold to obtain
+a failure time — even for units that never actually failed on test.</p>
+<p>SurPyval implements the classic <em>pseudo-failure-time</em> approach:</p>
+<ol class="arabic simple">
+<li><p>A degradation <em>path model</em> (e.g. linear) is fitted, by least squares,
+to each unit’s measurements.</p></li>
+<li><p>Each unit’s fitted path is extrapolated to the failure threshold. The
+crossing time is that unit’s <em>pseudo failure time</em>.</p></li>
+<li><p>A lifetime distribution (Weibull by default) is fitted to the pseudo
+failure times, and can then be used like any other SurPyval parametric
+model.</p></li>
+</ol>
+<p>If a unit’s fitted path never reaches the threshold (for example, the
+unit is not degrading, or is trending away from the threshold), the unit
+is treated as right censored at its last observed time, and the censoring
+is passed through to the lifetime distribution fit.</p>
+<section id="degradation-path-models">
+<h2>Degradation path models<a class="headerlink" href="#degradation-path-models" title="Permalink to this heading">¶</a></h2>
+<p>The path models available, and the pseudo failure time each implies for a
+threshold <span class="math notranslate nohighlight">\(y_{t}\)</span>, are:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Name</p></th>
+<th class="head"><p>Path</p></th>
+<th class="head"><p>Threshold crossing time</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;linear&quot;</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a + b x\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\((y_{t} - a) / b\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;quadratic&quot;</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a + b x + c x^{2}\)</span></p></td>
+<td><p>first positive root of <span class="math notranslate nohighlight">\(c t^{2} + b t + (a - y_{t})\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;exponential&quot;</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a e^{b x}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\ln(y_{t} / a) / b\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;offset-exponential&quot;</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a + b e^{c x}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\ln((y_{t} - a) / b) / c\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;power&quot;</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a x^{b}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\((y_{t} / a)^{1/b}\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;logarithmic&quot;</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a + b \ln(x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(e^{(y_{t} - a) / b}\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;lloyd-lipow&quot;</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a - b / x\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(b / (a - y_{t})\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;gompertz&quot;</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a e^{-b e^{-c x}}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(-\ln(-\ln(y_{t}/a)/b) / c\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;michaelis-menten&quot;</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a x / (b + x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(b y_{t} / (a - y_{t})\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<p>Degradation can be increasing (crack length) or decreasing (luminous
+flux); the direction is captured by the sign of the fitted parameters and
+needs no configuration. Models that are linear in their parameters
+(linear, quadratic, logarithmic, Lloyd-Lipow) are fitted in closed form;
+the others are fitted by nonlinear least squares started from a
+linearised fit. The offset-exponential covers growth or decay toward an
+asymptote (<code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">=</span> <span class="pre">0</span></code> reduces it to the exponential); Gompertz is
+S-shaped; Michaelis-Menten saturates from zero toward <code class="docutils literal notranslate"><span class="pre">a</span></code>.</p>
+<p>Not sure which shape fits? Pass <code class="docutils literal notranslate"><span class="pre">path=&quot;best&quot;</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">DegradationAnalysis</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s2">&quot;best&quot;</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">path_model</span><span class="o">.</span><span class="n">name</span>   <span class="c1"># the selected model</span>
+<span class="n">model</span><span class="o">.</span><span class="n">path_selection</span>    <span class="c1"># AICc score per candidate</span>
+</pre></div>
+</div>
+<p>Every registered path model is fitted to every unit and the model with
+the smallest AICc (pooled over all units, penalising the per-unit
+parameter count) is selected; candidates that cannot be fitted to every
+unit — domain violations such as negative measurements for the
+exponential, too few distinct measurement times for their parameter
+count, or non-convergence — are excluded and score <code class="docutils literal notranslate"><span class="pre">nan</span></code>. The
+selection is by measurement fit only; as always, prefer a shape with
+physical justification when one is known, since the winner is
+extrapolated well beyond the data.</p>
+</section>
+<section id="example">
+<h2>Example<a class="headerlink" href="#example" title="Permalink to this heading">¶</a></h2>
+<p>Consider four units whose degradation is measured every 100 hours, with
+failure defined as the measurement reaching 150:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.degradation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DegradationAnalysis</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">1100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="mi">4</span><span class="p">)</span>
+<span class="n">i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="mi">10</span><span class="p">)</span>
+<span class="n">slopes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">([</span><span class="mf">0.31</span><span class="p">,</span> <span class="mf">0.28</span><span class="p">,</span> <span class="mf">0.44</span><span class="p">,</span> <span class="mf">0.37</span><span class="p">],</span> <span class="mi">10</span><span class="p">)</span>
+<span class="n">y</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">+</span> <span class="n">slopes</span> <span class="o">*</span> <span class="n">x</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">DegradationAnalysis</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Degradation Analysis SurPyval Model
+===================================
+Path Model          : Linear
+Threshold           : 150.0
+Number of Units     : 4
+Censored Units      : 0
+Life Distribution   : Weibull
+Parameters          :
+     alpha: 441.4780882117898
+      beta: 6.987078993008337
+</pre></div>
+</div>
+<p>The fitted model exposes the per-unit results and forwards the usual
+lifetime functions to the fitted life model:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">pseudo_failure_times</span>
+<span class="c1"># array([451.61290323, 500.        , 318.18181818, 378.37837838])</span>
+
+<span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">300</span><span class="p">,</span> <span class="mi">400</span><span class="p">,</span> <span class="mi">500</span><span class="p">])</span>
+<span class="c1"># array([0.93496716, 0.60538471, 0.09196813])</span>
+
+<span class="n">model</span><span class="o">.</span><span class="n">life_model</span>    <span class="c1"># the underlying Parametric Weibull model</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>        <span class="c1"># data, fitted paths, and the threshold</span>
+</pre></div>
+</div>
+<p>Data can also come straight from a DataFrame with
+<code class="docutils literal notranslate"><span class="pre">DegradationAnalysis.fit_from_df(df,</span> <span class="pre">x=&quot;time&quot;,</span> <span class="pre">y=&quot;measurement&quot;,</span>
+<span class="pre">i=&quot;unit&quot;,</span> <span class="pre">threshold=150)</span></code>, the life distribution and fitting method can
+be changed with the <code class="docutils literal notranslate"><span class="pre">distribution</span></code> and <code class="docutils literal notranslate"><span class="pre">how</span></code> arguments (e.g.
+<code class="docutils literal notranslate"><span class="pre">distribution=LogNormal,</span> <span class="pre">how=&quot;MPP&quot;</span></code>), and a custom path shape can be
+used by passing a <code class="docutils literal notranslate"><span class="pre">surpyval.degradation.PathModel</span></code> subclass instance as
+<code class="docutils literal notranslate"><span class="pre">path</span></code>.</p>
+</section>
+<section id="predicting-a-new-unit-s-failure-time">
+<h2>Predicting a new unit’s failure time<a class="headerlink" href="#predicting-a-new-unit-s-failure-time" title="Permalink to this heading">¶</a></h2>
+<p>A fitted model can estimate the failure time of a <em>new</em>, partially
+observed unit from its degradation trajectory. The model fits its path
+shape to the new measurements and extrapolates to the same threshold:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># a new unit observed for only 300 hours, degrading at ~0.35/hour</span>
+<span class="n">x_new</span> <span class="o">=</span> <span class="p">[</span><span class="mi">100</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">300</span><span class="p">]</span>
+<span class="n">y_new</span> <span class="o">=</span> <span class="p">[</span><span class="mi">45</span><span class="p">,</span> <span class="mi">80</span><span class="p">,</span> <span class="mi">115</span><span class="p">]</span>
+
+<span class="n">model</span><span class="o">.</span><span class="n">predict_failure_time</span><span class="p">(</span><span class="n">x_new</span><span class="p">,</span> <span class="n">y_new</span><span class="p">)</span>   <span class="c1"># ~400: when y reaches 150</span>
+<span class="n">model</span><span class="o">.</span><span class="n">predict_remaining_life</span><span class="p">(</span><span class="n">x_new</span><span class="p">,</span> <span class="n">y_new</span><span class="p">)</span> <span class="c1"># ~100: minus its age (300)</span>
+</pre></div>
+</div>
+<p>If the trajectory has already crossed the threshold, the predicted
+failure time is in the past and the remaining life is negative. If the
+new unit’s fitted path never reaches the threshold (it is not
+degrading), both return <code class="docutils literal notranslate"><span class="pre">nan</span></code> with a warning. For a population-level
+view instead of a per-unit extrapolation, the fitted life model can be
+used directly — e.g. the survival of a unit that has already survived
+to time <code class="docutils literal notranslate"><span class="pre">a</span></code>: <code class="docutils literal notranslate"><span class="pre">model.life_model.cs(t,</span> <span class="pre">a)</span></code>.</p>
+</section>
+<section id="bayesian-remaining-life-prediction">
+<h2>Bayesian remaining-life prediction<a class="headerlink" href="#bayesian-remaining-life-prediction" title="Permalink to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">predict_failure_time</span></code> trusts the new unit’s least-squares fit
+completely — dangerous when the trajectory is short or noisy.
+<code class="docutils literal notranslate"><span class="pre">predict_rul</span></code> instead blends the unit’s own trend with the
+population: the population path-parameter distribution (below) is the
+prior, the unit’s measurements are the likelihood, and the Gaussian
+posterior of the unit’s path parameters is pushed through the
+threshold crossing by Monte Carlo:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">pred</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">predict_rul</span><span class="p">(</span><span class="n">x_new</span><span class="p">,</span> <span class="n">y_new</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+
+<span class="n">pred</span><span class="o">.</span><span class="n">failure_time</span>           <span class="c1"># posterior median failure time</span>
+<span class="n">pred</span><span class="o">.</span><span class="n">failure_time_interval</span>  <span class="c1"># 95% credible interval</span>
+<span class="n">pred</span><span class="o">.</span><span class="n">rul</span>                    <span class="c1"># median remaining useful life</span>
+<span class="n">pred</span><span class="o">.</span><span class="n">rul_interval</span>           <span class="c1"># 95% credible interval</span>
+<span class="n">pred</span><span class="o">.</span><span class="n">prob_failed</span>            <span class="c1"># P(already crossed the threshold)</span>
+<span class="n">pred</span><span class="o">.</span><span class="n">prob_never_fails</span>       <span class="c1"># P(path never reaches the threshold)</span>
+<span class="n">pred</span><span class="o">.</span><span class="n">posterior_mean</span>         <span class="c1"># the unit&#39;s posterior path parameters</span>
+<span class="n">pred</span><span class="o">.</span><span class="n">posterior_cov</span>
+</pre></div>
+</div>
+<p>The posterior mean is a precision-weighted compromise: a short or
+noisy trajectory is shrunk toward the population’s typical path, and
+as measurements accumulate the prediction converges to the plain
+least-squares extrapolation. Unlike <code class="docutils literal notranslate"><span class="pre">predict_failure_time</span></code>, it works
+from a single measurement, and a not-yet-degrading trajectory yields a
+long-but-finite prediction with wide bounds rather than <code class="docutils literal notranslate"><span class="pre">nan</span></code>. The
+posterior is exact (conjugate) for path models that are linear in
+their parameters (linear, quadratic, logarithmic, Lloyd-Lipow) and an
+iterated-linearisation (Laplace) approximation for the others. It
+requires a positive <code class="docutils literal notranslate"><span class="pre">measurement_var</span></code> — with noiseless training
+paths there is nothing to blend.</p>
+</section>
+<section id="the-population-path-parameter-distribution">
+<h2>The population path-parameter distribution<a class="headerlink" href="#the-population-path-parameter-distribution" title="Permalink to this heading">¶</a></h2>
+<p>The fitted model also estimates the <em>population</em> distribution of the
+path parameters, which is what a random-effects treatment (and any
+Bayesian blending of a new unit’s trajectory with the population) needs
+as its prior:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">path_param_mean</span>        <span class="c1"># mean path parameters across units</span>
+<span class="n">model</span><span class="o">.</span><span class="n">path_param_cov</span>         <span class="c1"># between-unit covariance (corrected)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">path_param_sample_cov</span>  <span class="c1"># raw sample covariance (uncorrected)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">measurement_var</span>        <span class="c1"># pooled measurement-error variance</span>
+</pre></div>
+</div>
+<p>Because each unit’s fitted parameters are least-squares <em>estimates</em>,
+their scatter across units mixes two sources: real unit-to-unit
+variability and per-unit estimation noise
+(<span class="math notranslate nohighlight">\(\mathrm{Cov}(\hat{\theta}_i) = \Sigma + V_i\)</span>). The raw sample
+covariance therefore overstates the between-unit variability.
+<code class="docutils literal notranslate"><span class="pre">path_param_cov</span></code> applies the Lu-Meeker two-stage correction: the
+measurement variance is pooled from the per-unit residuals, each
+unit’s estimation covariance <span class="math notranslate nohighlight">\(V_i = \sigma^2 (J_i^T J_i)^{-1}\)</span>
+is computed from the path Jacobian, and the average is subtracted from
+the sample covariance. The result is projected onto the positive
+semi-definite cone; if material clipping was needed (estimation noise
+comparable to the between-unit scatter — few units or few measurements
+per unit), a warning is raised and the corrected covariance should be
+treated as unreliable. When every unit has only as many measurements
+as path parameters, the measurement variance cannot be estimated and
+no correction is applied.</p>
+</section>
+<section id="reml-estimation-of-the-population">
+<h2>REML estimation of the population<a class="headerlink" href="#reml-estimation-of-the-population" title="Permalink to this heading">¶</a></h2>
+<p>The moments correction can go rank-deficient when the estimation noise
+rivals the between-unit scatter. The robust alternative is to fit the
+random-effects (Lu-Meeker) formulation directly as a linear mixed
+model — each unit’s parameters are draws
+<span class="math notranslate nohighlight">\(\theta_i \sim MVN(\mu, \Sigma)\)</span>, so with the random effects
+integrated out each unit’s measurement vector is marginally</p>
+<div class="math notranslate nohighlight">
+\[y_i \sim N(X_i \mu, \; X_i \Sigma X_i^T + \sigma^2 I)\]</div>
+<p>and <span class="math notranslate nohighlight">\((\mu, \Sigma, \sigma^2)\)</span> are estimated by maximising the
+restricted (REML) marginal likelihood — REML rather than plain ML so
+the variance components do not inherit the small-sample downward bias
+from estimating <span class="math notranslate nohighlight">\(\mu\)</span>. Select it with:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">DegradationAnalysis</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span> <span class="n">population_method</span><span class="o">=</span><span class="s2">&quot;reml&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The estimates land in the same attributes (<code class="docutils literal notranslate"><span class="pre">path_param_mean</span></code>,
+<code class="docutils literal notranslate"><span class="pre">path_param_cov</span></code>, <code class="docutils literal notranslate"><span class="pre">measurement_var</span></code>), so <code class="docutils literal notranslate"><span class="pre">predict_rul</span></code> and
+everything else work unchanged. <span class="math notranslate nohighlight">\(\Sigma\)</span> is parameterised by its
+Cholesky factor, so it is positive definite by construction — no
+clipping. On balanced designs (every unit measured at the same times)
+REML coincides with the corrected moments estimate; they differ on
+unbalanced data and when the unit count is small, where REML is
+preferable. REML requires a positive measurement variance.</p>
+<p>For path models that are <strong>linear in their parameters</strong> (linear,
+quadratic, logarithmic, Lloyd-Lipow) the design matrix <span class="math notranslate nohighlight">\(X_i\)</span> is
+fixed and the marginal model above is exact. For a <strong>nonlinear</strong> path
+(exponential, power, Gompertz, …) the mean <span class="math notranslate nohighlight">\(f(x_i, \theta_i)\)</span> is
+no longer <span class="math notranslate nohighlight">\(X_i \theta_i\)</span>, so REML uses the Lindstrom–Bates FOCE
+linearisation <a class="reference internal" href="#lindstrombates1990" id="id1"><span>[LindstromBates1990]</span></a>: each unit’s parameters are
+estimated at their conditional (penalised-least-squares) mode, the path
+is linearised about that mode to give a working linear mixed model, and
+the linear REML step is iterated to convergence. On a linear path this
+reduces to the exact fit in a single pass. Select it the same way:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">DegradationAnalysis</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s2">&quot;exponential&quot;</span><span class="p">,</span>
+    <span class="n">population_method</span><span class="o">=</span><span class="s2">&quot;reml&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="induced-failure-time-distribution-lu-meeker">
+<h2>Induced failure-time distribution (Lu-Meeker)<a class="headerlink" href="#induced-failure-time-distribution-lu-meeker" title="Permalink to this heading">¶</a></h2>
+<p>Everything so far follows the <strong>pseudo-failure-time</strong> route: extrapolate each
+unit’s fitted path to the threshold, get one (noisy) failure time per unit, and
+fit a lifetime distribution to those times. That is simple and robust, but it
+throws away structure — it treats each extrapolated time as a plain observation
+and never uses the fact that we have <em>estimated the whole population of paths</em>.</p>
+<p>The <strong>Lu-Meeker</strong> approach uses that population directly. Once the model has
+fitted the population path-parameter distribution
+<span class="math notranslate nohighlight">\(\theta \sim N(\mu, \Sigma)\)</span> (the <code class="docutils literal notranslate"><span class="pre">path_param_mean</span></code> and
+<code class="docutils literal notranslate"><span class="pre">path_param_cov</span></code> above), the failure-time distribution of the population
+follows <em>deterministically</em>: a unit with path parameters <span class="math notranslate nohighlight">\(\theta\)</span> fails
+at the time its path crosses the threshold, i.e. at
+<span class="math notranslate nohighlight">\(T(\theta) = \text{inv\_path}(D; \theta)\)</span>. So the population failure-time
+distribution is simply the distribution of <span class="math notranslate nohighlight">\(T(\theta)\)</span> as
+<span class="math notranslate nohighlight">\(\theta\)</span> ranges over its population. There is rarely a closed form, so
+<code class="docutils literal notranslate"><span class="pre">induced_life</span></code> evaluates it by <strong>Monte Carlo</strong>: draw many
+<span class="math notranslate nohighlight">\(\theta \sim N(\mu, \Sigma)\)</span>, push each through <code class="docutils literal notranslate"><span class="pre">inv_path</span></code>, and collect
+the resulting failure times.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.degradation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DegradationAnalysis</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">threshold</span> <span class="o">=</span> <span class="mf">30.0</span>
+
+<span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">ids</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">unit</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">50</span><span class="p">):</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)</span>      <span class="c1"># per-unit intercept</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">)</span>     <span class="c1"># per-unit slope (degradation rate)</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span> <span class="o">*</span> <span class="n">t</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+    <span class="n">xs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+    <span class="n">ys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="n">ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">unit</span><span class="p">))</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">z</span><span class="p">)</span> <span class="k">for</span> <span class="n">z</span> <span class="ow">in</span> <span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">ids</span><span class="p">))</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">DegradationAnalysis</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="n">threshold</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s2">&quot;linear&quot;</span><span class="p">)</span>
+<span class="n">induced</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">induced_life</span><span class="p">(</span><span class="n">n_samples</span><span class="o">=</span><span class="mi">20000</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">induced</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>InducedFailureDistribution(Linear path, threshold=30, median=28.6674, prob_never_fails=0)
+</pre></div>
+</div>
+</div>
+</div>
+<p>The returned <code class="docutils literal notranslate"><span class="pre">InducedFailureDistribution</span></code> behaves
+like any other life object — <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">median</span></code> and
+<code class="docutils literal notranslate"><span class="pre">random</span></code> are all there — so you can read life quantiles straight off it:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;pseudo-failure median :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)),</span> <span class="mi">2</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;induced median        :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">induced</span><span class="o">.</span><span class="n">median</span><span class="p">(),</span> <span class="mi">2</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;induced B10 life      :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">induced</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.10</span><span class="p">),</span> <span class="mi">2</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>pseudo-failure median : 30.29
+induced median        : 28.67
+induced B10 life      : 22.56
+</pre></div>
+</div>
+</div>
+</div>
+<p>The real purpose is as a <strong>diagnostic</strong>. The pseudo-failure fit and the induced
+distribution come at the population life two different ways; when the path model
+and its population summary are trustworthy, they should agree. Overlaying the
+two CDFs is the check:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">t</span><span class="p">),</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;pseudo-failure fit&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">induced</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">t</span><span class="p">),</span> <span class="s2">&quot;--&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;induced (Lu-Meeker)&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Time&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">&quot;Probability of failure  F(t)&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;matplotlib.legend.Legend at 0x7fcad2722c10&gt;
+</pre></div>
+</div>
+<img alt="_images/Degradation%20Analysis_2_1.png" src="_images/Degradation%20Analysis_2_1.png" />
+</div>
+</div>
+<p>Close agreement (as here) is reassuring; a large gap is a warning that the
+path model, the Gaussian population assumption, or the covariance estimate is
+off.</p>
+<p>A subtlety the induced distribution surfaces honestly: some draws of
+<span class="math notranslate nohighlight">\(\theta\)</span> describe paths that <strong>never reach the threshold</strong> (a
+non-increasing slope, say). Those contribute an <code class="docutils literal notranslate"><span class="pre">inf</span></code> failure time — a
+defective <em>“never fails”</em> mass reported as <code class="docutils literal notranslate"><span class="pre">prob_never_fails</span></code> — and once the
+quantiles reach into that mass they, and the <code class="docutils literal notranslate"><span class="pre">mean</span></code>, become <code class="docutils literal notranslate"><span class="pre">inf</span></code>. This is
+the correct behaviour: if a fraction of the population genuinely never fails,
+the population has no finite mean life. Finally, <code class="docutils literal notranslate"><span class="pre">induced_life</span></code> is defined for
+the plain (non-accelerated) population; an accelerated (covariate) model’s path
+parameters are not yet stress-conditional, so it is refused there.</p>
+</section>
+<section id="confidence-bounds">
+<h2>Confidence bounds<a class="headerlink" href="#confidence-bounds" title="Permalink to this heading">¶</a></h2>
+<p>The pseudo-failure-time approach is a <em>two-stage</em> estimator: the life
+distribution is fitted to <em>extrapolated</em> failure times as if they had been
+observed exactly. The plain life-model bounds therefore treat the pseudo
+failure times as certain and are too narrow. <code class="docutils literal notranslate"><span class="pre">DegradationModel.cb</span></code> corrects
+this, folding the first-stage (path-fit and extrapolation) uncertainty back
+into the life-model covariance with an analytic delta-method /
+generated-regressor correction:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.degradation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DegradationAnalysis</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">9</span><span class="p">)</span> <span class="o">*</span> <span class="mf">100.0</span>
+<span class="n">n_units</span> <span class="o">=</span> <span class="mi">60</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">times</span><span class="p">,</span> <span class="n">n_units</span><span class="p">)</span>
+<span class="n">unit</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_units</span><span class="p">),</span> <span class="n">times</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+<span class="n">slopes</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">0.22</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">n_units</span><span class="p">)</span>     <span class="c1"># between-unit spread</span>
+<span class="n">y</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">slopes</span><span class="p">,</span> <span class="n">times</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="o">*</span> <span class="n">x</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">DegradationAnalysis</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">unit</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">400</span><span class="p">,</span> <span class="mi">800</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+<span class="n">band</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s1">&#39;sf&#39;</span><span class="p">)</span>                <span class="c1"># (n, 2): two-stage [lower, upper]</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">),</span> <span class="s1">&#39;b&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;S(t)&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">fill_between</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">band</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">band</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+                 <span class="n">label</span><span class="o">=</span><span class="s1">&#39;95% two-stage band&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Time&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;S(t)&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Text(0, 0.5, &#39;S(t)&#39;)
+</pre></div>
+</div>
+<img alt="_images/Degradation%20Analysis_3_1.png" src="_images/Degradation%20Analysis_3_1.png" />
+</div>
+</div>
+<p>The correction adds a positive term to the life-model information inverse, so
+the two-stage parameter covariance (<code class="docutils literal notranslate"><span class="pre">model.life_parameter_covariance()</span></code>) is
+the ordinary MLE covariance <em>plus</em> the propagated first-stage variance — the
+bounds widen to their correct coverage. A slower, assumption-light cross-check
+resamples whole units and reruns the whole pipeline:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">500.0</span><span class="p">,</span> <span class="mf">600.0</span><span class="p">]),</span> <span class="n">on</span><span class="o">=</span><span class="s1">&#39;sf&#39;</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;bootstrap&#39;</span><span class="p">,</span>
+         <span class="n">n_boot</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([[0.73919704, 0.88378127],
+       [0.54991716, 0.69589873]])
+</pre></div>
+</div>
+</div>
+</div>
+<p>Random-effects (Lu-Meeker, fitted by REML) and stochastic-process (Wiener,
+gamma-process) degradation models, which propagate this uncertainty through a
+single likelihood rather than a two-stage correction, are candidates for future
+work.</p>
+</section>
+<section id="accelerated-degradation-testing-covariates">
+<h2>Accelerated degradation testing (covariates)<a class="headerlink" href="#accelerated-degradation-testing-covariates" title="Permalink to this heading">¶</a></h2>
+<p>In accelerated degradation testing (ADT) units are run at <em>elevated stress</em>
+(temperature, voltage, load) so they degrade fast enough to measure, and life
+is then extrapolated back to use conditions. Passing a per-unit stress
+covariate <code class="docutils literal notranslate"><span class="pre">Z</span></code> to <code class="xref py py-meth docutils literal notranslate"><span class="pre">DegradationAnalysis.fit()</span></code> fits a <em>regression</em> life
+model on the pseudo failure times instead of a plain distribution, so life can
+be predicted at any stress. A plain distribution is wrapped automatically in an
+accelerated-failure-time model; an explicit regression fitter
+(<code class="docutils literal notranslate"><span class="pre">AFT(LogNormal)</span></code>, <code class="docutils literal notranslate"><span class="pre">WeibullPH</span></code>, …) is used as given.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">11</span><span class="p">)</span> <span class="o">*</span> <span class="mf">5.0</span>
+<span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">ids</span><span class="p">,</span> <span class="n">Zs</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+<span class="n">uid</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">for</span> <span class="n">stress</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">]:</span>        <span class="c1"># four stress levels</span>
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">12</span><span class="p">):</span>
+        <span class="n">rate</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.8</span> <span class="o">*</span> <span class="n">stress</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">))</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">rate</span> <span class="o">*</span> <span class="n">times</span>
+        <span class="n">xs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">times</span><span class="p">)</span>
+        <span class="n">ys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">times</span><span class="o">.</span><span class="n">size</span><span class="p">))</span>
+        <span class="n">ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">times</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">uid</span><span class="p">))</span>
+        <span class="n">Zs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">times</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">stress</span><span class="p">))</span>
+        <span class="n">uid</span> <span class="o">+=</span> <span class="mi">1</span>
+<span class="n">xd</span><span class="p">,</span> <span class="n">yd</span><span class="p">,</span> <span class="n">idd</span><span class="p">,</span> <span class="n">Zd</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">ids</span><span class="p">,</span> <span class="n">Zs</span><span class="p">))</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">DegradationAnalysis</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">xd</span><span class="p">,</span> <span class="n">yd</span><span class="p">,</span> <span class="n">idd</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">100.0</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Zd</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Degradation Analysis SurPyval Model
+===================================
+Path Model          : Linear
+Threshold           : 100.0
+Number of Units     : 48
+Censored Units      : 0
+Life Distribution   : Weibull (Log Linear [exp(beta&#39;Z)] covariates)
+Parameters          :
+     alpha: 191.3634062922578
+      beta: 10.9085554427898
+    beta_0: 0.8513343462295744
+</pre></div>
+</div>
+</div>
+</div>
+<p>The last fitted coefficient is the stress effect (higher stress ⇒ faster
+degradation ⇒ shorter life). The prediction methods now take the stress vector
+<code class="docutils literal notranslate"><span class="pre">Z</span></code> at which to evaluate life, so life at use conditions is one call:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">stress</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;stress </span><span class="si">{</span><span class="n">stress</span><span class="si">}</span><span class="s1">: mean life = </span><span class="si">{</span><span class="n">model</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">Z</span><span class="o">=</span><span class="p">[</span><span class="n">stress</span><span class="p">])</span><span class="si">:</span><span class="s1">.1f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">300</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">stress</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]:</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="p">[</span><span class="n">stress</span><span class="p">]),</span> <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;stress </span><span class="si">{</span><span class="n">stress</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Time&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;Reliability at stress&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>stress 0.0: mean life = 182.7
+stress 0.5: mean life = 119.4
+stress 1.0: mean life = 78.0
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Text(0, 0.5, &#39;Reliability at stress&#39;)
+</pre></div>
+</div>
+<img alt="_images/Degradation%20Analysis_6_2.png" src="_images/Degradation%20Analysis_6_2.png" />
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">qf</span></code> and <code class="docutils literal notranslate"><span class="pre">mean</span></code> invert / integrate the regression survival function, and
+<code class="docutils literal notranslate"><span class="pre">random</span></code> draws from it.</p>
+<p>Two-stage confidence bounds at a stress are available by bootstrap: units
+are resampled (each carrying its stress), the whole accelerated pipeline is
+rerun, and the reliability at <code class="docutils literal notranslate"><span class="pre">Z</span></code> is read off each refit, so the first-stage
+path/extrapolation uncertainty is folded in — just as for the plain model, but
+evaluated at a chosen stress:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">50.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">])</span>
+<span class="n">band</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s1">&#39;sf&#39;</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;bootstrap&#39;</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="p">[</span><span class="mf">0.0</span><span class="p">],</span>
+                <span class="n">n_boot</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">band</span>                                        <span class="c1"># (n, 2): [lower, upper] at Z=0</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([[0.99999697, 0.99999999],
+       [0.99754806, 0.9998559 ],
+       [0.86674997, 0.97136315]])
+</pre></div>
+</div>
+</div>
+</div>
+<p>The analytic (generated-regressor) delta-method correction used for the plain
+model is not derived for the regression life fit, so <code class="docutils literal notranslate"><span class="pre">method='bootstrap'</span></code> is
+required for a covariate model (and <code class="docutils literal notranslate"><span class="pre">model.cb</span></code> needs the stress <code class="docutils literal notranslate"><span class="pre">Z</span></code>). The
+first-stage-only regression bounds — which ignore the extrapolation
+uncertainty — remain available directly through <code class="docutils literal notranslate"><span class="pre">model.life_model.cb(x,</span> <span class="pre">Z,</span>
+<span class="pre">...)</span></code>.</p>
+</section>
+</section>
+<section id="stochastic-process-degradation-models">
+<h1>Stochastic-process degradation models<a class="headerlink" href="#stochastic-process-degradation-models" title="Permalink to this heading">¶</a></h1>
+<p>Everything above is the <strong>general-path</strong> approach: fit a deterministic curve to
+each unit, extrapolate it to the threshold to get a <em>pseudo failure time</em>, then
+fit a lifetime distribution to those times. It works well when each unit really
+does follow a smooth trend plus measurement noise.</p>
+<p>But sometimes the degradation itself is <em>random over time</em>, not a smooth curve
+observed with error. A crack does not grow along a tidy exponential; it jumps
+ahead in fits and starts. A wear signal wanders up and down from measurement to
+measurement. In those cases it is more honest to model the <strong>increments</strong> of
+the degradation as a stochastic process, and read the failure-time distribution
+off the process directly — as the distribution of the <strong>first time the process
+crosses the threshold</strong> (the “first-passage time”). This is a standard part of
+the reliability toolkit; see <a class="reference internal" href="#meeker1998" id="id2"><span>[Meeker1998]</span></a> for a textbook treatment and
+<a class="reference internal" href="#lumeeker1993" id="id3"><span>[LuMeeker1993]</span></a> for the idea of deriving a failure-time distribution from
+degradation measurements.</p>
+<p>SurPyval provides two such processes. They are not competitors; they describe
+different physics, and the right one is dictated by whether your degradation can
+<em>decrease</em>:</p>
+<ul class="simple">
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">WienerProcess</span></code> — for signals that <strong>fluctuate</strong>
+up and down (noisy sensors, measurements that wobble).</p></li>
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">GammaProcess</span></code> — for damage that only ever
+<strong>accumulates</strong> (wear, corrosion, crack growth).</p></li>
+</ul>
+<p>Both are fitted from the same three arrays you have used throughout this
+section: <code class="docutils literal notranslate"><span class="pre">x</span></code> (measurement times), <code class="docutils literal notranslate"><span class="pre">y</span></code> (degradation measurements) and <code class="docutils literal notranslate"><span class="pre">i</span></code>
+(the unit each measurement belongs to). Internally each model looks only at the
+<em>increments</em> between consecutive measurements of a unit, so units can be
+measured at different, irregular times without any special handling — a two-week
+gap simply contributes a larger <code class="docutils literal notranslate"><span class="pre">dt</span></code>.</p>
+<section id="the-wiener-process">
+<h2>The Wiener process<a class="headerlink" href="#the-wiener-process" title="Permalink to this heading">¶</a></h2>
+<p>A <strong>Wiener process with drift</strong> (Brownian motion with drift) models the
+degradation as</p>
+<div class="math notranslate nohighlight">
+\[W(t) = \mu\, t + \sigma\, B(t),\]</div>
+<p>where <span class="math notranslate nohighlight">\(B(t)\)</span> is standard Brownian motion. There are just two parameters,
+and it is worth being clear about what each one <em>means</em>:</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(\mu\)</span> — the <strong>drift</strong>. This is the average rate at which degradation
+accumulates: on average the signal climbs by <span class="math notranslate nohighlight">\(\mu\)</span> per unit time. A
+larger drift means faster wear-out and a shorter life.</p></li>
+<li><p><span class="math notranslate nohighlight">\(\sigma\)</span> — the <strong>diffusion</strong> (or volatility). This is the size of the
+random wobble around that average trend. With <span class="math notranslate nohighlight">\(\sigma = 0\)</span> the process
+would be a perfectly straight line <span class="math notranslate nohighlight">\(\mu t\)</span>; the bigger <span class="math notranslate nohighlight">\(\sigma\)</span>,
+the more the path jitters up and down and the more spread-out the failure
+times become. (Wiener degradation models, including extensions with
+unit-to-unit random effects, are surveyed in <a class="reference internal" href="#wang2010" id="id4"><span>[Wang2010]</span></a>.)</p></li>
+</ul>
+<p>Over any interval of length <span class="math notranslate nohighlight">\(\Delta t\)</span>, the change in degradation is
+<strong>Gaussian</strong>:</p>
+<div class="math notranslate nohighlight">
+\[\Delta W \sim \mathrm{Normal}\!\left(\mu\, \Delta t,\; \sigma^2\, \Delta t\right).\]</div>
+<p>Two things follow from this. First, because a Normal can be negative, the path
+can go <em>down</em> as well as up — which is exactly why the Wiener process is the
+right model for noisy, non-monotone signals. Second, the increments are
+independent, so fitting is easy: the drift is just the total degradation divided
+by the total time, and the diffusion is estimated from how much the increments
+scatter around that trend. SurPyval does this by maximum likelihood.</p>
+<p><strong>Failure = first passage.</strong> A unit fails the first time <span class="math notranslate nohighlight">\(W(t)\)</span> reaches
+the threshold <span class="math notranslate nohighlight">\(D\)</span>. For a Wiener process this first-passage time has a
+famous closed form — the <strong>Inverse Gaussian</strong> distribution — with</p>
+<div class="math notranslate nohighlight">
+\[\text{mean} = \frac{D}{\mu}, \qquad \text{shape} = \frac{D^2}{\sigma^2}.\]</div>
+<p>The mean life <span class="math notranslate nohighlight">\(D/\mu\)</span> is beautifully intuitive: distance to failure
+divided by the average speed. The shape controls how tightly the failure times
+cluster around that mean (more diffusion → more scatter). Because the increments
+are independent, the model also needs the drift to be <strong>positive</strong> — a
+non-positive drift would mean the process is not reliably heading toward the
+threshold at all, so SurPyval raises an error rather than return a “life” that
+may never end.</p>
+<p>Let’s fit one. We simulate 30 units, each measured every half–time-unit, with a
+true drift of <code class="docutils literal notranslate"><span class="pre">0.5</span></code> and diffusion <code class="docutils literal notranslate"><span class="pre">0.4</span></code>, failing at a degradation of <code class="docutils literal notranslate"><span class="pre">10</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.degradation</span><span class="w"> </span><span class="kn">import</span> <span class="n">WienerProcess</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">mu_true</span><span class="p">,</span> <span class="n">sigma_true</span><span class="p">,</span> <span class="n">threshold</span> <span class="o">=</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">,</span> <span class="mf">10.0</span>
+
+<span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">ids</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">unit</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">30</span><span class="p">):</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">15.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">increments</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span>
+        <span class="n">mu_true</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">sigma_true</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">0.5</span><span class="p">),</span> <span class="n">size</span><span class="o">=</span><span class="n">t</span><span class="o">.</span><span class="n">size</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([[</span><span class="mf">0.0</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">increments</span><span class="p">)])</span>
+    <span class="n">xs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+    <span class="n">ys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="n">ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">unit</span><span class="p">))</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">ids</span><span class="p">))</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">WienerProcess</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="n">threshold</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Wiener Process Degradation Model
+================================
+Drift (mu)          : 0.486346
+Diffusion (sigma)   : 0.389563
+Threshold           : 10
+Mean time to failure: 20.5615
+</pre></div>
+</div>
+</div>
+</div>
+<p>Read the summary line by line: the fitted <strong>drift</strong> and <strong>diffusion</strong> are close
+to the <code class="docutils literal notranslate"><span class="pre">0.5</span></code> and <code class="docutils literal notranslate"><span class="pre">0.4</span></code> we simulated, and the <strong>mean time to failure</strong> is
+<code class="docutils literal notranslate"><span class="pre">threshold</span> <span class="pre">/</span> <span class="pre">drift</span></code> — roughly <code class="docutils literal notranslate"><span class="pre">10</span> <span class="pre">/</span> <span class="pre">0.5</span> <span class="pre">=</span> <span class="pre">20</span></code> time units. Notice the paths
+below are jagged and occasionally dip downward; that non-monotone wobble is the
+Wiener process’s defining feature.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">unit</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">8</span><span class="p">):</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">i</span> <span class="o">==</span> <span class="n">unit</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">m</span><span class="p">],</span> <span class="n">y</span><span class="p">[</span><span class="n">m</span><span class="p">],</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">axhline</span><span class="p">(</span><span class="n">threshold</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;k&quot;</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s2">&quot;--&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;threshold&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Time&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">&quot;Degradation&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;matplotlib.legend.Legend at 0x7fcad0522c50&gt;
+</pre></div>
+</div>
+<img alt="_images/Degradation%20Analysis_9_1.png" src="_images/Degradation%20Analysis_9_1.png" />
+</div>
+</div>
+<p>Now the payoff: a full <strong>failure-time distribution</strong>, derived from the process,
+that you can query like any other SurPyval model. <code class="docutils literal notranslate"><span class="pre">mean()</span></code> is the average
+life, <code class="docutils literal notranslate"><span class="pre">ff(t)</span></code> is the probability of having failed by time <code class="docutils literal notranslate"><span class="pre">t</span></code> (the CDF),
+<code class="docutils literal notranslate"><span class="pre">sf(t)</span></code> is the reliability, and <code class="docutils literal notranslate"><span class="pre">qf(p)</span></code> is the quantile (e.g. the median
+life, or the time by which 10 % have failed):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;mean life           :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span> <span class="mi">2</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;P(fail by t = 25)   :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="mf">25.0</span><span class="p">),</span> <span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;median life         :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">),</span> <span class="mi">2</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;B10 life (10</span><span class="si">% f</span><span class="s2">ail) :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.10</span><span class="p">),</span> <span class="mi">2</span><span class="p">))</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Time to failure&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">&quot;Probability of failure  F(t)&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>mean life           : 20.56
+P(fail by t = 25)   : 0.885
+median life         : 20.25
+B10 life (10% fail) : 16.17
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Text(0, 0.5, &#39;Probability of failure  F(t)&#39;)
+</pre></div>
+</div>
+<img alt="_images/Degradation%20Analysis_10_2.png" src="_images/Degradation%20Analysis_10_2.png" />
+</div>
+</div>
+<p><strong>Remaining useful life.</strong> The real power of a degradation model is that it can
+update its forecast for a unit you have been <em>watching</em>. If a unit is currently
+at degradation level <code class="docutils literal notranslate"><span class="pre">7</span></code> (out of a threshold of <code class="docutils literal notranslate"><span class="pre">10</span></code>), only the remaining
+distance of <code class="docutils literal notranslate"><span class="pre">3</span></code> matters, and — because Wiener increments are independent of
+the past — the remaining life is itself an Inverse Gaussian over that shorter
+distance. <code class="docutils literal notranslate"><span class="pre">predict_rul</span></code> returns its median and an interval:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rul</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">predict_rul</span><span class="p">(</span><span class="n">current_degradation</span><span class="o">=</span><span class="mf">7.0</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;median remaining life :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">rul</span><span class="o">.</span><span class="n">rul</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;90</span><span class="si">% i</span><span class="s2">nterval          :&quot;</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">rul</span><span class="o">.</span><span class="n">rul_interval</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>median remaining life : 5.87
+90% interval          : (3.18, 10.88)
+</pre></div>
+</div>
+</div>
+</div>
+<p>The interval widths tell you how much uncertainty remains: a unit close to the
+threshold has a short, tight remaining-life estimate; a fresh unit has a long,
+uncertain one. If the current degradation is already at or beyond the threshold,
+<code class="docutils literal notranslate"><span class="pre">prob_already_failed</span></code> is <code class="docutils literal notranslate"><span class="pre">1</span></code> and the remaining life is <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p>
+</section>
+<section id="the-gamma-process">
+<h2>The Gamma process<a class="headerlink" href="#the-gamma-process" title="Permalink to this heading">¶</a></h2>
+<p>The Wiener process allows the signal to decrease, which is wrong for damage that
+is physically <strong>irreversible</strong> — a crack never heals, corrosion never reverses,
+wear never un-wears. For those, use a <strong>Gamma process</strong> (whose use in
+maintenance and reliability is surveyed in <a class="reference internal" href="#vannoortwijk2009" id="id5"><span>[vanNoortwijk2009]</span></a>), whose
+increments are
+strictly non-negative, so the path is <strong>monotone increasing</strong>.</p>
+<p>Over an interval of length <span class="math notranslate nohighlight">\(\Delta t\)</span>, the Gamma-process increment is
+Gamma-distributed:</p>
+<div class="math notranslate nohighlight">
+\[\Delta W \sim \mathrm{Gamma}\!\left(\text{shape} = \alpha\, \Delta t,\;
+\text{rate} = \beta\right).\]</div>
+<p>Again, two parameters, and again it is worth knowing what they mean:</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(\alpha\)</span> — the <strong>shape rate</strong>. It controls how <em>quickly and how
+steadily</em> damage accrues. The amount of shape accumulated by time <span class="math notranslate nohighlight">\(t\)</span> is
+<span class="math notranslate nohighlight">\(\alpha t\)</span>; a large <span class="math notranslate nohighlight">\(\alpha\)</span> gives many small, regular increments
+(a smooth-looking climb), a small <span class="math notranslate nohighlight">\(\alpha\)</span> gives fewer, larger, jumpier
+increments.</p></li>
+<li><p><span class="math notranslate nohighlight">\(\beta\)</span> — the <strong>rate</strong> parameter of those increments. It sets their
+scale: the mean degradation accumulated per unit time is
+<span class="math notranslate nohighlight">\(\alpha / \beta\)</span>, and the variance per unit time is
+<span class="math notranslate nohighlight">\(\alpha / \beta^2\)</span>.</p></li>
+</ul>
+<p>So <span class="math notranslate nohighlight">\(\alpha/\beta\)</span> is the Gamma process’s analogue of the Wiener drift —
+the average degradation speed — while <span class="math notranslate nohighlight">\(\alpha\)</span> alone governs how <em>regular</em>
+versus <em>jumpy</em> the accumulation is.</p>
+<p><strong>Failure = first passage, again</strong>, but now the monotonicity makes it especially
+clean: the process has crossed the threshold <span class="math notranslate nohighlight">\(D\)</span> by time <span class="math notranslate nohighlight">\(t\)</span> exactly
+when its level <span class="math notranslate nohighlight">\(W(t)\)</span> is at or above <span class="math notranslate nohighlight">\(D\)</span>. So the probability of
+having failed by <span class="math notranslate nohighlight">\(t\)</span> is</p>
+<div class="math notranslate nohighlight">
+\[F(t) = \Pr\!\left(W(t) \ge D\right),\]</div>
+<p>which SurPyval evaluates with the (regularised) incomplete gamma function. There
+is no simpler closed form than that, but every method you need — <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>,
+<code class="docutils literal notranslate"><span class="pre">df</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">random</span></code> — is computed from it.</p>
+<p>Here we simulate 40 units of monotone wear with shape rate <code class="docutils literal notranslate"><span class="pre">3</span></code> and rate
+<code class="docutils literal notranslate"><span class="pre">1.5</span></code> (so mean degradation speed <span class="math notranslate nohighlight">\(\alpha/\beta = 2\)</span> per unit time),
+failing at <code class="docutils literal notranslate"><span class="pre">30</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.degradation</span><span class="w"> </span><span class="kn">import</span> <span class="n">GammaProcess</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">alpha_true</span><span class="p">,</span> <span class="n">beta_true</span><span class="p">,</span> <span class="n">threshold</span> <span class="o">=</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mf">30.0</span>
+
+<span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">ids</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">unit</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">40</span><span class="p">):</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">12.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">increments</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">gamma</span><span class="p">(</span><span class="n">alpha_true</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">beta_true</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">t</span><span class="o">.</span><span class="n">size</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([[</span><span class="mf">0.0</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">increments</span><span class="p">)])</span>
+    <span class="n">xs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+    <span class="n">ys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="n">ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">unit</span><span class="p">))</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">ids</span><span class="p">))</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">GammaProcess</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="n">threshold</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Gamma Process Degradation Model
+===============================
+Shape rate (alpha)  : 2.97309
+Rate (beta)         : 1.50409
+Threshold           : 30
+Mean time to failure: 15.3452
+</pre></div>
+</div>
+</div>
+</div>
+<p>The fitted <code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code> recover the <code class="docutils literal notranslate"><span class="pre">3</span></code> and <code class="docutils literal notranslate"><span class="pre">1.5</span></code> we used, and the
+mean time to failure is about <code class="docutils literal notranslate"><span class="pre">threshold</span> <span class="pre">/</span> <span class="pre">(alpha/beta)</span> <span class="pre">=</span> <span class="pre">30</span> <span class="pre">/</span> <span class="pre">2</span> <span class="pre">=</span> <span class="pre">15</span></code>. The
+paths this time only ever climb — no downward wobble is possible:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">unit</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">8</span><span class="p">):</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">i</span> <span class="o">==</span> <span class="n">unit</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">m</span><span class="p">],</span> <span class="n">y</span><span class="p">[</span><span class="n">m</span><span class="p">],</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">axhline</span><span class="p">(</span><span class="n">threshold</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;k&quot;</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s2">&quot;--&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;threshold&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Time&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">&quot;Degradation&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;matplotlib.legend.Legend at 0x7fcaceb15750&gt;
+</pre></div>
+</div>
+<img alt="_images/Degradation%20Analysis_13_1.png" src="_images/Degradation%20Analysis_13_1.png" />
+</div>
+</div>
+<p>The failure-time distribution and remaining-life prediction work exactly as they
+did for the Wiener model — same method names, same meaning:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;mean life      :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span> <span class="mi">2</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;median life    :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">),</span> <span class="mi">2</span><span class="p">))</span>
+
+<span class="n">rul</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">predict_rul</span><span class="p">(</span><span class="n">current_degradation</span><span class="o">=</span><span class="mf">20.0</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;RUL at y = 20  :&quot;</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">rul</span><span class="o">.</span><span class="n">rul</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+      <span class="s2">&quot;  interval&quot;</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">rul</span><span class="o">.</span><span class="n">rul_interval</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>mean life      : 15.35
+median life    : 15.29
+RUL at y = 20  : 5.17   interval (2.85, 7.93)
+</pre></div>
+</div>
+</div>
+</div>
+<p>Because a Gamma process cannot go down, passing it degradation that <em>decreases</em>
+over an interval is a modelling error, and SurPyval says so rather than fitting
+something meaningless — the message points you at the Wiener process instead:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># this data dips from 5 back to 3 -- not allowed for a monotone process</span>
+<span class="n">GammaProcess</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">10.0</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output traceback highlight-ipythontb notranslate"><div class="highlight"><pre><span></span><span class="gt">---------------------------------------------------------------------------</span>
+<span class="ne">ValueError</span><span class="g g-Whitespace">                                </span>Traceback (most recent call last)
+<span class="n">Cell</span> <span class="n">In</span><span class="p">[</span><span class="mi">16</span><span class="p">],</span> <span class="n">line</span> <span class="mi">2</span>
+<span class="g g-Whitespace">      </span><span class="mi">1</span> <span class="c1"># this data dips from 5 back to 3 -- not allowed for a monotone process</span>
+<span class="ne">----&gt; </span><span class="mi">2</span> <span class="n">GammaProcess</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">10.0</span><span class="p">)</span>
+
+<span class="nn">File /home/user/SurPyval/surpyval/degradation/process_models.py:558,</span> in <span class="ni">GammaProcess.fit</span><span class="nt">(cls, x, y, i, threshold)</span>
+<span class="g g-Whitespace">    </span><span class="mi">556</span> <span class="n">dt</span><span class="p">,</span> <span class="n">dy</span> <span class="o">=</span> <span class="n">_increments</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+<span class="g g-Whitespace">    </span><span class="mi">557</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">dy</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">):</span>
+<span class="ne">--&gt; </span><span class="mi">558</span>     <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<span class="g g-Whitespace">    </span><span class="mi">559</span>         <span class="s2">&quot;the degradation decreases over at least one interval, but a &quot;</span>
+<span class="g g-Whitespace">    </span><span class="mi">560</span>         <span class="s2">&quot;Gamma process is monotone increasing. Use WienerProcess for &quot;</span>
+<span class="g g-Whitespace">    </span><span class="mi">561</span>         <span class="s2">&quot;non-monotone / noisy signals.&quot;</span>
+<span class="g g-Whitespace">    </span><span class="mi">562</span>     <span class="p">)</span>
+<span class="g g-Whitespace">    </span><span class="mi">563</span> <span class="c1"># Guard against exact-zero increments (log 0) by nudging.</span>
+<span class="g g-Whitespace">    </span><span class="mi">564</span> <span class="n">dy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">dy</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1e-12</span><span class="p">,</span> <span class="n">dy</span><span class="p">)</span>
+
+<span class="ne">ValueError</span>: the degradation decreases over at least one interval, but a Gamma process is monotone increasing. Use WienerProcess for non-monotone / noisy signals.
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="choosing-between-wiener-and-gamma">
+<h2>Choosing between Wiener and Gamma<a class="headerlink" href="#choosing-between-wiener-and-gamma" title="Permalink to this heading">¶</a></h2>
+<p>The decision is almost always settled by one question: <strong>can your degradation
+physically decrease?</strong></p>
+<table class="colwidths-given docutils align-default">
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 20%" />
+<col style="width: 40%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Your degradation paths…</p></th>
+<th class="head"><p>Use</p></th>
+<th class="head"><p>Because</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>fluctuate up and down (noisy sensor, wandering signal)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">WienerProcess</span></code></p></td>
+<td><p>Gaussian increments allow decreases and absorb measurement noise; failure
+time is a closed-form Inverse Gaussian.</p></td>
+</tr>
+<tr class="row-odd"><td><p>only ever increase (wear, corrosion, crack growth, fatigue)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">GammaProcess</span></code></p></td>
+<td><p>non-negative increments enforce monotone, irreversible damage; forcing a
+Wiener fit would misread real jumps as noise.</p></td>
+</tr>
+</tbody>
+</table>
+<p>A quick practical test: <strong>plot your paths.</strong> If they visibly dip, the Wiener
+process models that directly. If they are monotone, the Gamma process is the
+physically honest choice — and if you try to give monotone-only data that
+happens to dip (usually a measurement glitch) to the Gamma process, the error it
+raises is a useful signal in itself.</p>
+<p>Compared with the general-path approach at the top of this page, both process
+models share two advantages: they handle <strong>irregular measurement spacing</strong>
+without any special treatment (each increment simply carries its own <code class="docutils literal notranslate"><span class="pre">dt</span></code>),
+and they give the failure-time distribution <strong>directly from the fitted process</strong>
+rather than through noisy per-unit pseudo failure times. The general-path models
+remain the better choice when each unit truly follows a smooth deterministic
+trend observed with error, or when you need a specific parametric path shape.</p>
+</section>
+<section id="saving-and-loading-a-fitted-model">
+<h2>Saving and loading a fitted model<a class="headerlink" href="#saving-and-loading-a-fitted-model" title="Permalink to this heading">¶</a></h2>
+<p>Every fitted degradation model can be serialised to a dictionary or JSON file
+and rebuilt later — the general-path <code class="docutils literal notranslate"><span class="pre">DegradationModel</span></code>, the stochastic-
+process <code class="docutils literal notranslate"><span class="pre">WienerProcessModel</span></code> / <code class="docutils literal notranslate"><span class="pre">GammaProcessModel</span></code>, and the
+<code class="docutils literal notranslate"><span class="pre">InducedFailureDistribution</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.degradation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DegradationAnalysis</span><span class="p">,</span> <span class="n">DegradationModel</span>
+
+<span class="n">saveable</span> <span class="o">=</span> <span class="n">DegradationAnalysis</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">1100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="mi">4</span><span class="p">),</span>
+    <span class="mi">10</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">([</span><span class="mf">0.31</span><span class="p">,</span> <span class="mf">0.28</span><span class="p">,</span> <span class="mf">0.44</span><span class="p">,</span> <span class="mf">0.37</span><span class="p">],</span> <span class="mi">10</span><span class="p">)</span>
+    <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">1100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="mi">4</span><span class="p">),</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="mi">10</span><span class="p">),</span>
+    <span class="n">threshold</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">reloaded</span> <span class="o">=</span> <span class="n">DegradationModel</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">saveable</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+<span class="n">grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">300.0</span><span class="p">,</span> <span class="mf">450.0</span><span class="p">,</span> <span class="mf">600.0</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;match:&quot;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">saveable</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">grid</span><span class="p">),</span> <span class="n">reloaded</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">grid</span><span class="p">)))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>match: True
+</pre></div>
+</div>
+</div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">to_json</span></code> / <code class="docutils literal notranslate"><span class="pre">from_json</span></code> for a file directly. <code class="docutils literal notranslate"><span class="pre">DegradationModel</span></code> stores
+its raw data, so the reloaded model can also produce bootstrap confidence
+bounds; its fitted life model (plain or accelerated) round-trips through its own
+serialisation.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Permalink to this heading">¶</a></h2>
+<dl class="citation">
+<dt class="label" id="meeker1998"><span class="brackets"><a class="fn-backref" href="#id2">Meeker1998</a></span></dt>
+<dd><p>Meeker, W.Q. and Escobar, L.A., 1998. <em>Statistical Methods for
+Reliability Data</em>. John Wiley &amp; Sons.</p>
+</dd>
+<dt class="label" id="lumeeker1993"><span class="brackets"><a class="fn-backref" href="#id3">LuMeeker1993</a></span></dt>
+<dd><p>Lu, C.J. and Meeker, W.Q., 1993. Using degradation measures to
+estimate a time-to-failure distribution. <em>Technometrics</em>, 35(2), pp.161-174.</p>
+</dd>
+<dt class="label" id="wang2010"><span class="brackets"><a class="fn-backref" href="#id4">Wang2010</a></span></dt>
+<dd><p>Wang, X., 2010. Wiener processes with random effects for
+degradation data. <em>Journal of Multivariate Analysis</em>, 101(2), pp.340-351.</p>
+</dd>
+<dt class="label" id="vannoortwijk2009"><span class="brackets"><a class="fn-backref" href="#id5">vanNoortwijk2009</a></span></dt>
+<dd><p>van Noortwijk, J.M., 2009. A survey of the application of
+gamma processes in maintenance. <em>Reliability Engineering &amp; System Safety</em>,
+94(1), pp.2-21.</p>
+</dd>
+<dt class="label" id="lindstrombates1990"><span class="brackets"><a class="fn-backref" href="#id1">LindstromBates1990</a></span></dt>
+<dd><p>Lindstrom, M.J. and Bates, D.M., 1990. Nonlinear
+mixed effects models for repeated measures data. <em>Biometrics</em>, 46(3),
+pp.673-687.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Recurrent%20Event%20Regression%20Analysis.html" class="btn btn-neutral float-left" title="Recurrent Event Regression Analysis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Non-Parametric%20SurPyval%20Modelling.html" class="btn btn-neutral float-right" title="Non-Parametric SurPyval Modelling" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

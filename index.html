@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SurPyval - Survival Analysis in Python &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Quickstart" href="Quickstart.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="#">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">SurPyval - Survival Analysis in Python</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="surpyval-survival-analysis-in-python">
+<h1>SurPyval - Survival Analysis in Python<a class="headerlink" href="#surpyval-survival-analysis-in-python" title="Permalink to this heading">¶</a></h1>
+<p><em>surpyval</em> is an implementation of survival analysis in Python. The intent of this was to see if I could actually make it, and therefore learn a lot about survival analysis along the way, but also so that each time a model is created, it can be reused by other planned projects for monte carlo simulations (used in reliability engineering) and optimisations.</p>
+<p>One feature of surpyval that separates it from other survival analysis packages is the intuitive way with which you can pass data to the fit methods. There are many different formats that can be used for survival analysis; surpyval handles many of the conceivable ways you can have your data stored. This is discussed in the data format tab.</p>
+<p>Surpyval is also unique in the way in which it lets you estimate the parameters. With surpyval, you can use any of the following methods to estimate the parameters of you distribution of interest:</p>
+<table class="docutils align-default" id="id1">
+<caption><span class="caption-text">SurPyval Modelling Methods</span><a class="headerlink" href="#id1" title="Permalink to this table">¶</a></caption>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Method</p></th>
+<th class="head"><p>Para/Non-Para</p></th>
+<th class="head"><p>Observed</p></th>
+<th class="head"><p>Censored</p></th>
+<th class="head"><p>Truncated</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Maximum Likelihood (MLE)</p></td>
+<td><p>Parametric</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p>Probability Plotting (MPP)</p></td>
+<td><p>Parametric</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Limited</p></td>
+</tr>
+<tr class="row-even"><td><p>Mean Square Error (MSE)</p></td>
+<td><p>Parametric</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Limited</p></td>
+</tr>
+<tr class="row-odd"><td><p>Method of Moments (MOM)</p></td>
+<td><p>Parametric</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-even"><td><p>Maximum Product Spacing (MPS)</p></td>
+<td><p>Parametric</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>No (planned)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Kaplan-Meier</p></td>
+<td><p>Non-Parametric</p></td>
+<td><p>Yes</p></td>
+<td><p>Right only</p></td>
+<td><p>Left only</p></td>
+</tr>
+<tr class="row-even"><td><p>Nelson-Aalen</p></td>
+<td><p>Non-Parametric</p></td>
+<td><p>Yes</p></td>
+<td><p>Right only</p></td>
+<td><p>Left only</p></td>
+</tr>
+<tr class="row-odd"><td><p>Fleming-Harrington</p></td>
+<td><p>Non-Parametric</p></td>
+<td><p>Yes</p></td>
+<td><p>Right only</p></td>
+<td><p>Left only</p></td>
+</tr>
+<tr class="row-even"><td><p>Turnbull</p></td>
+<td><p>Non-Parametric</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+</tbody>
+</table>
+<p>Most other survival analysis packages focus on just using the MLE, or maybe the Probability Plotting. This package grew out of replicating the historically used probability plotting method from engineering, and as it progressed, it was discovered that there are many many ways parameters of distributions can be estimated. The product spacing estimator is particularly useful for offset distributions or finitely bounded distributions.</p>
+<p>SurPyval attempts to use the combination of these methods to make parameter estimation possible for any distribution with arbitrary combnations of observations, censoring, and truncation.</p>
+<p>Becoming a competent survival analyst depends strongly on having a very strong understanding of censoring, truncation, and observations in conjunction with a solid understanding of different types of distributions. Knowing and being able to identify situations as being censored or truncated in real applications will ensure you do not make an errors in your analysis. This can be very difficult to do. This documention can be used as a reference to understand the types of censoring and truncation so that you can identify these situations in your work. Further, having a deep understanding of the types of distributions used in survival analysis will allow you to identify the process that is generating your data. This will then allow you to select an appropriate distribution, if any, to solve your problem. Survival analysis is an extremely powerful, and thoroughly interesting tool, so don’t give up, or if you do give up, do the survival statistics on it.</p>
+</section>
+<section id="contents">
+<h1>Contents:<a class="headerlink" href="#contents" title="Permalink to this heading">¶</a></h1>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Types%20of%20Data.html#exactly-observed">Exactly Observed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Types%20of%20Data.html#censored-data">Censored Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Types%20of%20Data.html#truncated-data">Truncated Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Types%20of%20Data.html#concluding-points">Concluding Points</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Conventions.html#data-formats">Data Formats</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Conventions.html#variable-names">Variable Names</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Conventions.html#censoring-flag-conventions">Censoring Flag Conventions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Conventions.html#function-conventions">Function Conventions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html#relationship-between-functions-of-a-probability-distribution">Relationship between functions of a probability distribution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html#aft-al-or-ph">AFT, AL, or PH?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html#how-an-aft-and-ph-model-relate-to-a-regular-distribution">How an AFT and PH Model Relate to a regular distribution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Data%20Wrangler%20Examples.html#combining-every-input-type-in-one-fit">Combining every input type in one fit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Data%20Wrangler%20Examples.html#same-data-whichever-format-you-have-it-in">Same data, whichever format you have it in</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Data%20Wrangler%20Examples.html#truncation-four-ways">Truncation, four ways</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Data%20Wrangler%20Examples.html#format-converters">Format converters</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Non-Parametric%20Estimation.html#kaplan-meier-estimation">Kaplan-Meier Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Non-Parametric%20Estimation.html#nelson-aalen-estimation">Nelson-Aalen Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Non-Parametric%20Estimation.html#fleming-harrington-estimation">Fleming-Harrington Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Non-Parametric%20Estimation.html#turnbull-estimation">Turnbull Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Non-Parametric%20Estimation.html#on-surpyval-s-default">On Surpyval’s Default</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Non-Parametric%20Estimation.html#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20Estimation.html#method-of-moments-mom">Method of Moments (MOM)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20Estimation.html#method-of-probability-plotting-mpp">Method of Probability Plotting (MPP)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20Estimation.html#mean-square-error-mse">Mean Square Error (MSE)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20Estimation.html#maximum-likelihood-estimation-mle">Maximum Likelihood Estimation (MLE)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20Estimation.html#maximum-product-of-spacings-mps">Maximum Product of Spacings (MPS)</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="regression%20analysis.html#proportional-hazards-model">Proportional Hazards Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="regression%20analysis.html#accelerated-time">Accelerated Time</a></li>
+<li class="toctree-l2"><a class="reference internal" href="regression%20analysis.html#accelerated-life">Accelerated Life</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Competing%20Risks%20Analysis.html#relationship-to-univariate-analysis">Relationship to Univariate Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Competing%20Risks%20Analysis.html#non-parametric-cif-estimation">Non-Parametric CIF Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Competing%20Risks%20Analysis.html#parametric-competing-risks">Parametric Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Competing%20Risks%20Analysis.html#regression-fine-gray-and-cause-specific-ph">Regression: Fine-Gray and Cause-Specific PH</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Competing%20Risks%20Analysis.html#further-reading">Further Reading</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Analysis.html#recurrent-event-modelling">Recurrent Event Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Analysis.html#renewal-modelling">Renewal Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Analysis.html#parameter-estimation">Parameter Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Analysis.html#truncation-and-delayed-entry">Truncation and Delayed Entry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Analysis.html#model-checking-residuals-trend-tests-and-goodness-of-fit">Model Checking: Residuals, Trend Tests, and Goodness of Fit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Analysis.html#competing-risks-marked-recurrent-events">Competing Risks: Marked Recurrent Events</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Analysis.html#gapped-multi-window-observation">Gapped (Multi-Window) Observation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Analysis.html#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html#model-checking">Model checking</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#degradation-path-models">Degradation path models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#example">Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#predicting-a-new-unit-s-failure-time">Predicting a new unit’s failure time</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#bayesian-remaining-life-prediction">Bayesian remaining-life prediction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#the-population-path-parameter-distribution">The population path-parameter distribution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#reml-estimation-of-the-population">REML estimation of the population</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#induced-failure-time-distribution-lu-meeker">Induced failure-time distribution (Lu-Meeker)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#confidence-bounds">Confidence bounds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#accelerated-degradation-testing-covariates">Accelerated degradation testing (covariates)</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#the-wiener-process">The Wiener process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#the-gamma-process">The Gamma process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#choosing-between-wiener-and-gamma">Choosing between Wiener and Gamma</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#saving-and-loading-a-fitted-model">Saving and loading a fitted model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Degradation%20Analysis.html#references">References</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html#complete-data">Complete Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html#right-censored-data">Right Censored Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html#left-truncated-data">Left Truncated Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html#arbitrarily-truncated-and-censored-data">Arbitrarily Truncated and Censored Data</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#complete-data">Complete Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#using-censored-data">Using censored data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#using-truncated-data">Using truncated data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#offsets">Offsets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#a-caution-offset-parameters-can-be-unidentifiable">A caution: offset parameters can be unidentifiable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#fixing-parameters">Fixing parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#modelling-with-arbitrary-input">Modelling with arbitrary input</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#using-alternate-estimation-methods">Using alternate estimation methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#mixture-models">Mixture Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#limited-failure-population">Limited Failure Population</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#zero-inflated-modelling">Zero-Inflated Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#discrete-distributions">Discrete Distributions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#confidence-intervals">Confidence Intervals</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html#creating-a-custom-distribution">Creating a custom Distribution</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#choosing-a-regression-model-family">Choosing a regression model family</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#semi-parametric-cox-proportional-hazards">Semi-Parametric — Cox Proportional Hazards</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#semi-parametric-buckley-james-aft">Semi-Parametric — Buckley-James (AFT)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#semi-parametric-additive-hazards">Semi-Parametric — Additive Hazards</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#parametric-proportional-hazards-ph">Parametric Proportional Hazards (PH)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#accelerated-failure-time-aft">Accelerated Failure Time (AFT)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#proportional-odds-po">Proportional Odds (PO)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#confidence-bounds">Confidence Bounds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#accelerated-life-al">Accelerated Life (AL)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#model-selection">Model Selection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html#saving-and-loading-a-fitted-model">Saving and loading a fitted model</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="applications.html#boston-house-prices">Boston House Prices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="applications.html#applided-reliability-engineering">Applided Reliability Engineering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="applications.html#demographics-actuarial">Demographics / Actuarial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="applications.html#applied-reliability-engineering-2">Applied Reliability Engineering - 2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="applications.html#social-science-criminology">Social Science / Criminology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="applications.html#economics">Economics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="applications.html#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html#fitting-a-competing-risks-model">Fitting a Competing Risks Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html#fine-gray-sub-distribution-hazards">Fine-Gray Sub-distribution Hazards</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html#cause-specific-proportional-hazards">Cause-Specific Proportional Hazards</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html#recurrent-event-surpyval-modelling">Recurrent Event SurPyval Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html#renewal-modelling-in-surpyval">Renewal Modelling in SurPyval</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html#gapped-multi-window-observation">Gapped (multi-window) observation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html#competing-risks-marked-recurrent-events">Competing risks: marked recurrent events</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html#saving-and-loading-a-fitted-model">Saving and loading a fitted model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html#proportional-intensity-hpp">Proportional-Intensity HPP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html#proportional-intensity-nhpp">Proportional-Intensity NHPP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html#model-checking">Model checking</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html#available-copulas">Available copulas</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html#fitting-a-copula">Fitting a copula</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html#censoring-and-truncation">Censoring and truncation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html#working-with-a-fitted-model">Working with a fitted model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html#building-a-model-from-known-parameters">Building a model from known parameters</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-15-1-unreleased">v0.15.1 (unreleased)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Contributing.html#documentation">Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+</div>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Permalink to this heading">¶</a></h2>
+<p><em>surpyval</em> can be installed easily with the pip command:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>surpyval
+</pre></div>
+</div>
+</section>
+</section>
+<section id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this heading">¶</a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Quickstart.html" class="btn btn-neutral float-right" title="Quickstart" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

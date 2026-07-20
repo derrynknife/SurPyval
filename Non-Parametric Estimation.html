@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Non-Parametric Estimation &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Parametric Estimation" href="Parametric%20Estimation.html" />
+    <link rel="prev" title="Data Wrangling Examples" href="Data%20Wrangler%20Examples.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Non-Parametric Estimation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#kaplan-meier-estimation">Kaplan-Meier Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#nelson-aalen-estimation">Nelson-Aalen Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fleming-harrington-estimation">Fleming-Harrington Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#turnbull-estimation">Turnbull Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#on-surpyval-s-default">On Surpyval’s Default</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Non-Parametric Estimation</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Non-Parametric Estimation.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="non-parametric-estimation">
+<h1>Non-Parametric Estimation<a class="headerlink" href="#non-parametric-estimation" title="Permalink to this heading">¶</a></h1>
+<p>Non-parametric survival analysis is the attempt to capture the distribution of survival data without making any assumptions about the shape of the distribution. That is, non-parametric analysis, unlike parametric analysis, does not assume that the survival data was Weibull distributed or that it was Normally distributed etc. Concretely, non-parametric estimation does not attempt to estimate the parameters of a distribution, therefore “non-parametric.” Parametric analysis is covered in more detail in the section covering parametric estimation but it is important to contrast non-parametric estimation against what it is not. So what exactly is non-parametric analysis?</p>
+<p>Survival analysis is using statistics to answer the question ‘what is the probability that the thing survived to a particular time?’ Non-parametric analysis answers this by estimating the probability from the proportion failed upto a given time. This can be done by either estimating the probability of surviving a particular segment or estimating the hazard rate.</p>
+<p>Non-parametric estimation is well understood by appreciating the data format used to estimate the CDF. Specifically, the ‘xrd’ format and particularly understanding the r and d sets of that format.</p>
+<p>The number of components at risk, r, at a given time, x, is the number of things at risk just prior to time x. The number of deaths, d, is the number of the at risk items that died (or failed) at time x. So for completely observed data the number at risk counts down for every death. So r would count down, e.g. 6, 5, 4, 3… for each death, 1, 1, 1, 1, … So in this example there were 6 items at risk at one death at the first time. Then, because there was 1 death at the first time the number of items at risk has decreased to 5, therefore for the next death there are only 5 at risk. This continues further until there are no more items at risk because they have all died, i.e. there is 1 at risk and 1 death.</p>
+<p>This can be extended to more than one death. For example, the risk set could be 8, 6, 5, 3, 2, 1. with an accompanying death set of 2, 1, 2, 1, 1, 1. In this example there were times where there were 2 deaths and therefore the number at risk decreased by 2 after that number of deaths.</p>
+<p>So a complete example of this format is:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]</span>
+<span class="n">r</span> <span class="o">=</span> <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">d</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>This format for data is not how survival data is usually provided in text books or papers. Survival data is usually displayed with the simple list of failure times such as “1, 3, 6, 7, 10, 16”. The first step surpyval does for non-parametric analysis is to transform data into the xrd format. All the <code class="code docutils literal notranslate"><span class="pre">fit()</span></code> methods for surpyval take as input the xcnt format, see more at the data types docs. So if you provide surpyval with the data “1, 2, 3, 4, 5, 6” it will assume that each of them are one death, and then create the risk set from the death counts resulting in the xrd format from above.</p>
+<p>Given we now understand the format of the data we can estimate the probability of survival to some time with non-parametric methods. The first method we will visit is the Kaplan-Meier.</p>
+<section id="kaplan-meier-estimation">
+<h2>Kaplan-Meier Estimation<a class="headerlink" href="#kaplan-meier-estimation" title="Permalink to this heading">¶</a></h2>
+<p>Kaplan-Meier <a class="reference internal" href="#km" id="id1"><span>[KM]</span></a> is a very popular method for estimating survival curves for populations. The insight for this method is that for each time there is a death, we can estimate the probability of having survived since the previous deaths. Using the data from above as an example, at time 1, there are 7 items at risk and there are 2 deaths. We can therefore say that the probability of surviving this period was (7 - 2)/7, i.e. 5/7. Then the next time there is a death, the probability of having survived that extra time is (5 - 1)/5, i.e. 4/5.</p>
+<p>To be clear, this is the chance of survival between each death. Therefore the chance of surviving up to a given time is the chance of surviving each segment. Therefore the probability of surviving up to any given time is the probability of surviving through all the previous segments. The probability of surviving multiple outcomes is the multiplication of each of the survival probabilities. Surviving through three sections is equal to the probability that I survive the first, then multiply this by the probability of surviving the second, then multiplying this result with the probability of surviving the third. So continuing our example from above, the probability of surviving the first two segments is (5/7) x (4/5) = 4/7.</p>
+<p>Therefore using the at risk count, r, and the death count, d, can be used to estimate the segment survival probabilities and the survival probability to any point can be found by multiplying these probabilities. Formally, this has the following formula:</p>
+<div class="math notranslate nohighlight">
+\[R(x) = \prod_{i:x_{i} \leq x}^{} \left ( 1 - \frac{d_{i} }{r_{i}}  \right )\]</div>
+</section>
+<section id="nelson-aalen-estimation">
+<h2>Nelson-Aalen Estimation<a class="headerlink" href="#nelson-aalen-estimation" title="Permalink to this heading">¶</a></h2>
+<p>The Nelson-Aalen estimator <a class="reference internal" href="#na" id="id2"><span>[NA]</span></a> (also known as the Breslow estimator), instead of finding the probability, estimates the cumulative hazard function, and given that we know the relationship between the cumulative hazard function and the reliability function, the Nelson-Aalen cumulative hazard estimate can be converted to a survival curve.</p>
+<p>The first step in computing the NA estimate is to convert your data to the x, r, d format. Once in this format the instantaneous hazard rate is found by:</p>
+<div class="math notranslate nohighlight">
+\[h(x) = \frac{d_{x} }{r_{x}}\]</div>
+<p>This estimate of the instantaneous hazard rate is the proportion of deaths/failures at a value, x. Then to find the cumulative hazard rate for any x we simply take the sum of the instantaneous hazard rates for all the values below x. Mathematically:</p>
+<div class="math notranslate nohighlight">
+\[H(x) = \sum_{i:x_{i} \leq x}^{} \frac{d_{i} }{r_{i}}\]</div>
+<p>Then, since we know that the reliability, or survival function, is related to the cumulative hazard function, we can easily compute it.</p>
+<div class="math notranslate nohighlight">
+\[R(x) = e^{-H(x)}\]</div>
+<p>So we now have the survival/reliability function. One benefit of the Nelson-Aalen estimator is that it does not estimate a probability of 0 for the highest value (in a completely observed data set). This means that for a completely observed data set the whole estimation can be plotted on a transformed y-axis. For this reason SurPyval uses the Nelson-Aalen as the default plotting position.</p>
+</section>
+<section id="fleming-harrington-estimation">
+<h2>Fleming-Harrington Estimation<a class="headerlink" href="#fleming-harrington-estimation" title="Permalink to this heading">¶</a></h2>
+<p>The Fleming-Harrington estimator <a class="reference internal" href="#fh" id="id3"><span>[FH]</span></a>, uses the same principal as the Nelson-Aalen estimator. That is, it finds the cumulative hazard function and then converts that to the reliability/survival estimate. However, the NA estimate assumes, for any given step that the number of items at risk is equal for each death, the FH estimate changes this. Mathematically, the hazard rate is calculated with:</p>
+<div class="math notranslate nohighlight">
+\[h(x) = \frac{1}{r_{x}} + \frac{1}{r_{x} - 1} + \frac{1}{r_{x} - 2} + ... + \frac{1}{r_{x} - (d_{x} - 1)}\]</div>
+<p>Which can be summarised as:</p>
+<div class="math notranslate nohighlight">
+\[h(x) = \sum_{i=0}^{d_x-1} \frac{1}{r_x - i}\]</div>
+<p>The cumulative hazard rate therefore becomes:</p>
+<div class="math notranslate nohighlight">
+\[H(x) = \sum_{i:x_{i} \leq x} \sum_{i=0}^{d_x-1} \frac{1}{r_x - i}\]</div>
+<p>You can see that the cumulative hazard rate will be slightly higher than the NA estimate since:</p>
+<div class="math notranslate nohighlight">
+\[\frac{1}{r_{x}} + ... + \frac{1}{r_{x}} \leq \frac{1}{r_{x}} + ... + \frac{1}{r_{x} - (d_{x} - 1)}\]</div>
+<p>The above is less than or equal for the case where there is one death/failure. The Fleming-Harrington and Nelson-Aalen estimates are particularly useful for small samples, see <a class="reference internal" href="#fh" id="id4"><span>[FH]</span></a>.</p>
+</section>
+<section id="turnbull-estimation">
+<h2>Turnbull Estimation<a class="headerlink" href="#turnbull-estimation" title="Permalink to this heading">¶</a></h2>
+<p>The Turnbull estimator is a remarkable non-parametric estimation method for data that can handle arbitrary censoring and truncation <a class="reference internal" href="#tb" id="id5"><span>[TB]</span></a>. The Turnbull estimator can be found with a procedure of finding the most likely survival curve from the data, for that reason it is also known as the Non-Parametric Maximum Likelihood Estimator. The Kaplan-Meier is also known as the Maximum Likelihood estimator, so is there a contradiciton? No, the Turnbull estimator is the same as the Kaplan-Meier for fully observed data.</p>
+<p>The Turnbull estimate is really an estimate of the observed failures given censoring, and then the ‘ghost’ failures (as Turnbull describes it) due to truncation. Turnbull’s estimate converts all failures to interval failures regardless of the censoring. This is because a left censored point is equivalent to an intervally censored observation in the interval -Inf to x, and a right censored point is equivalent to an intervally censored observation in the interval x to Inf. Then for all the intervals between negative infinity we find how many failures happened in that interval. This value need not be a whole number since a single observation could have failed across several intervals. To estimate the failures, we use:</p>
+<div class="math notranslate nohighlight">
+\[\mu_{ij}(s) = \frac{\alpha_{ij}s_j}{\sum_{k=1}^{m}\alpha_{ik}s_k}\]</div>
+<p>Where <span class="math notranslate nohighlight">\(\mu_{ij}\)</span> is the probability of the i-th observation failing in the j-th interval, <span class="math notranslate nohighlight">\(\alpha_{ij}\)</span> is a flag to indicate if the i-th failure was at risk in interval j, (1 if at risk and 0 if not), and <span class="math notranslate nohighlight">\(s_j\)</span> is the probability of failure in an interval. That is, <span class="math notranslate nohighlight">\(s_j\)</span> is the survival function we are trying to estimate.</p>
+<p>If an observation is truncated, it was only a possible observation among others that would have been seen had the observation not been limited. To estimate the additional at risk items outside of the domain for which an observation is truncated we use:</p>
+<div class="math notranslate nohighlight">
+\[\nu_{ij}(s) = \frac{(1 - \beta_{ij})s_j}{\sum_{k=1}^{m}\alpha_{ik}s_k}\]</div>
+<p>Where <span class="math notranslate nohighlight">\(\nu_{ij}\)</span> is the probability of the i-th observation failing in the j-th interval and <span class="math notranslate nohighlight">\(\beta_{ij}\)</span> is a flag to indicate if the i-th failure was observable in interval j, (1 if at risk and 0 if not).</p>
+<p>This formula then finds the number of failures outside the truncated interval for a given observation.</p>
+<p>We can then estimate the probability of failure in a given interval using the total failures in each interval divided by the total number of failures:</p>
+<div class="math notranslate nohighlight">
+\[s_j = \frac{\sum_{i=1}^{N} \mu_{ij} + \nu_{ij}}{M(s)}\]</div>
+<p>where</p>
+<div class="math notranslate nohighlight">
+\[M(s) = \sum_{i=1}^{N} \sum_{j=1}^{m}  \mu_{ij} + \nu_{ij}\]</div>
+<p>Using this estimate of the survival function, it can be input to the start of this procedure and it done again. This can then be repeated over and over until the values do not change. At this point we have reached the NPMLE estimate of the survival function!</p>
+<p>The Turnbull estimation is the only non-parametric method that can be used with truncated and left censored data. Therefore it must be used when using the plotting methods in the parametric package when you have truncated or left censored data.</p>
+</section>
+<section id="on-surpyval-s-default">
+<h2>On Surpyval’s Default<a class="headerlink" href="#on-surpyval-s-default" title="Permalink to this heading">¶</a></h2>
+<p>Surpyval uses the Fleming-Harrington estimator as the default. The rationale for this is because it has optimal behaviour. That is, it performs well where the Kaplan-Meier and the Nelson-Aalen behave poorly.</p>
+<p>The Kaplan-Meier, since it tends to 1, results in cases where it overstates the probability of failure. It is because of this that the Kaplan-Meier should not be used in circumstances of competing risks. As an example, a comparison between a Nelson-Aalen and Kaplan-Meier estimate over time (I have plotted the Fleming-Harrington estimate for later discussion):</p>
+<img alt="_images/km_na_high_comparison.png" class="align-center" src="_images/km_na_high_comparison.png" />
+<p>On the contrary, the Nelson-Aalen estimate performs poorly with lots of ties. This results in the Nelson-Aalen estimator overstating the risk for lower failure times. This is in contrast to the Kaplan-Meier estimator which does well with lots of tied values. For example:</p>
+<img alt="_images/km_na_low_comparison.png" class="align-center" src="_images/km_na_low_comparison.png" />
+<p>The Fleming-Harrington, plotted in red in the above two charts, optimises between these two estimators. The Fleming-Harrington estimate approaches the Nelson-Aalen under the conditions of where the Nelson-Aalen estimate performs well and the Kaplan-Meier does poorly. Fleming-Harrington also does well where the Nelson-Aalen estimate does poorly but the Kaplan-Meier does well. Although the two examples provided are in the extreme, it is worth using the Fleming-Harrington by default since it is more flexible; it is therefore, for this reason, that surpyval does exactly that. This is not to say not to use KM or NA, but only when you are sure you are making the correct assumptions about what you are doing!</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Permalink to this heading">¶</a></h2>
+<dl class="citation">
+<dt class="label" id="km"><span class="brackets"><a class="fn-backref" href="#id1">KM</a></span></dt>
+<dd><p>Kaplan, E. L., &amp; Meier, P. (1958). Nonparametric estimation from incomplete observations. Journal of the American statistical association, 53(282), 457-481.</p>
+</dd>
+<dt class="label" id="na"><span class="brackets"><a class="fn-backref" href="#id2">NA</a></span></dt>
+<dd><p>Nelson, Wayne (1969). Hazard plotting for incomplete failure data. Journal of Quality Technology, 1(1), 27-52.</p>
+</dd>
+<dt class="label" id="fh"><span class="brackets">FH</span><span class="fn-backref">(<a href="#id3">1</a>,<a href="#id4">2</a>)</span></dt>
+<dd><p>Fleming, Thomas R and Harrington, David P (1984). Nonparametric estimation of the survival distribution in censored data. Communications in Statistics-Theory and Methods, 13(20), 2469-2486.</p>
+</dd>
+<dt class="label" id="tb"><span class="brackets"><a class="fn-backref" href="#id5">TB</a></span></dt>
+<dd><p>Turnbull, Bruce W (1976). The empirical distribution function with arbitrarily grouped, censored and truncated data. Journal of the Royal Statistical Society: Series B (Methodological), 38(3), 290-295.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Data%20Wrangler%20Examples.html" class="btn btn-neutral float-left" title="Data Wrangling Examples" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Parametric%20Estimation.html" class="btn btn-neutral float-right" title="Parametric Estimation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

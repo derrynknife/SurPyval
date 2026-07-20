@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Wrangling Examples &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Non-Parametric Estimation" href="Non-Parametric%20Estimation.html" />
+    <link rel="prev" title="Handy References - Aide-mémoire" href="Handy%20References%20-%20Aide-m%C3%A9moire.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Data Wrangling Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#combining-every-input-type-in-one-fit">Combining every input type in one fit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#same-data-whichever-format-you-have-it-in">Same data, whichever format you have it in</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#truncation-four-ways">Truncation, four ways</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#format-converters">Format converters</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Data Wrangling Examples</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Data Wrangler Examples.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="data-wrangling-examples">
+<h1>Data Wrangling Examples<a class="headerlink" href="#data-wrangling-examples" title="Permalink to this heading">¶</a></h1>
+<p>Lets just say we have a list of right censored data and a list of failures. How can we wrangle these into data for the <code class="code docutils literal notranslate"><span class="pre">fit()</span></code> method to accept?</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="c1"># Failure data</span>
+<span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+<span class="c1"># &#39;suspended&#39; or right censored data</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
+
+<span class="c1"># convert to xcnt format!</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">fs_to_xcnt</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[ 1.  2.  2.  3.  4.  5.  6.  7.  8.  9. 10.] [1 0 1 0 0 0 0 0 0 0 1] [1 1 1 1 1 1 1 1 2 1 1]
+Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 7.2007230911178315
+      beta: 2.474773879032484
+</pre></div>
+</div>
+</div>
+</div>
+<p>You can even bring in your left censored data as well:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Failure data</span>
+<span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+<span class="c1"># &#39;suspended&#39; or right censored data</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
+<span class="c1"># left censored data</span>
+<span class="n">l</span> <span class="o">=</span> <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+
+<span class="c1"># convert to xcnt format!</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">fsl_to_xcnt</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">l</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[ 1  2  2  3  4  5  6  7  7  8  8  9  9 10] [ 1  0  1  0  0  0  0 -1  0 -1  0 -1  0  1] [1 1 1 1 1 1 1 1 1 1 2 1 1 1]
+Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 6.814750943875047
+      beta: 2.4708983791966714
+</pre></div>
+</div>
+</div>
+</div>
+<p>Another common type of data that is provided is in a simple text list with “+” indicating that the observation was censored at that point. Using some simple python list comprehensions can help.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example provided data</span>
+<span class="n">data</span> <span class="o">=</span> <span class="s2">&quot;1, 2, 3+, 5, 6, 8, 10, 3+, 5+&quot;</span>
+
+<span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="s2">&quot;+&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">x</span><span class="p">]</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="s2">&quot;+&quot;</span> <span class="ow">in</span> <span class="n">x</span><span class="p">]</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">fs_to_xcnt</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">*</span><span class="n">data</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 6.737537380917238
+      beta: 1.924550642056485
+</pre></div>
+</div>
+</div>
+</div>
+<p>Again, this can be extended to left censored data as well:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="s2">&quot;1, 2, 3+, 5, 6, 8, 10, 3+, 5+, 15-, 16-, 17-&quot;</span>
+<span class="n">split_data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+
+<span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">split_data</span> <span class="k">if</span> <span class="p">(</span><span class="s2">&quot;+&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">x</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="s2">&quot;-&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">x</span><span class="p">)]</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">split_data</span> <span class="k">if</span> <span class="s2">&quot;+&quot;</span> <span class="ow">in</span> <span class="n">x</span><span class="p">]</span>
+<span class="n">l</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">split_data</span> <span class="k">if</span> <span class="s2">&quot;-&quot;</span> <span class="ow">in</span> <span class="n">x</span><span class="p">]</span>
+
+<span class="c1"># Create the x, c, n data</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">fsl_to_xcnt</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">l</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">*</span><span class="n">data</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Surpyval also offers the ability to use a pandas DataFrame as an input. All you need to do is tell it which columns to look at for x, c, n, and t. Columns for c, n, and t are optional. Further, if you have interval censored data you can use the ‘xl’ and ‘xr’ column names instead. If you have mixed interval and observed or censored data, just make sure the value in the ‘xl’ column is the value of the observation or left or right censoring.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">xr</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
+<span class="n">xl</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s1">&#39;xl&#39;</span> <span class="p">:</span> <span class="n">xl</span><span class="p">,</span> <span class="s1">&#39;xr&#39;</span> <span class="p">:</span> <span class="n">xr</span><span class="p">})</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">xl</span><span class="o">=</span><span class="s1">&#39;xl&#39;</span><span class="p">,</span> <span class="n">xr</span><span class="o">=</span><span class="s1">&#39;xr&#39;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 4.694329418712049
+      beta: 2.410693002292666
+</pre></div>
+</div>
+</div>
+</div>
+<section id="combining-every-input-type-in-one-fit">
+<h2>Combining every input type in one fit<a class="headerlink" href="#combining-every-input-type-in-one-fit" title="Permalink to this heading">¶</a></h2>
+<p>The real strength of the surpyval format is that these ingredients — exact,
+left-, right- and interval-censoring, repeat counts, and truncation — compose
+freely in a <strong>single</strong> <code class="docutils literal notranslate"><span class="pre">fit</span></code> call. Each row of <code class="docutils literal notranslate"><span class="pre">x</span></code> carries its own censoring
+flag <code class="docutils literal notranslate"><span class="pre">c</span></code> and count <code class="docutils literal notranslate"><span class="pre">n</span></code>; a row is interval-censored simply by giving it two
+values <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="p">[</span><span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span> <span class="mi">22</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">30</span><span class="p">]</span>   <span class="c1"># a [lo, hi] row is interval-censored</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span>  <span class="mi">1</span><span class="p">,</span>   <span class="mi">2</span><span class="p">,</span>       <span class="o">-</span><span class="mi">1</span><span class="p">,</span>  <span class="mi">0</span><span class="p">,</span>  <span class="mi">1</span><span class="p">]</span>    <span class="c1"># observed, right, interval, left, ...</span>
+<span class="n">n</span> <span class="o">=</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span>  <span class="mi">3</span><span class="p">,</span>   <span class="mi">2</span><span class="p">,</span>        <span class="mi">1</span><span class="p">,</span>  <span class="mi">4</span><span class="p">,</span>  <span class="mi">2</span><span class="p">]</span>    <span class="c1"># each row repeated n times</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>   <span class="c1"># all left-truncated at 5</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 21.698903355669454
+      beta: 2.0348208663833436
+</pre></div>
+</div>
+</div>
+</div>
+<p>Nothing above is special-cased: any mix of the flags is accepted, and the fitter
+condenses the data to its densest form internally.</p>
+</section>
+<section id="same-data-whichever-format-you-have-it-in">
+<h2>Same data, whichever format you have it in<a class="headerlink" href="#same-data-whichever-format-you-have-it-in" title="Permalink to this heading">¶</a></h2>
+<p>Because the formats all describe the same thing, the same dataset gives the same
+fit however you assemble it. Here failure / suspension / left / interval lists
+are converted with <code class="docutils literal notranslate"><span class="pre">fsli_to_xcnt</span></code> and compared to the hand-built <code class="docutils literal notranslate"><span class="pre">xcnt</span></code>
+form — the fitted parameters agree exactly:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="mi">12</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">25</span><span class="p">]</span>        <span class="c1"># exact failures</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">30</span><span class="p">,</span> <span class="mi">30</span><span class="p">]</span>                <span class="c1"># right-censored (suspended)</span>
+<span class="n">l</span> <span class="o">=</span> <span class="p">[</span><span class="mi">8</span><span class="p">]</span>                     <span class="c1"># left-censored</span>
+<span class="n">i</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span> <span class="p">[</span><span class="mi">22</span><span class="p">,</span> <span class="mi">26</span><span class="p">]]</span>    <span class="c1"># interval-censored</span>
+
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">fsli_to_xcnt</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">l</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+<span class="n">from_lists</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+
+<span class="n">hand</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">12</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="p">[</span><span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span> <span class="p">[</span><span class="mi">22</span><span class="p">,</span> <span class="mi">26</span><span class="p">]],</span>
+    <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+    <span class="n">n</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;from lists :&quot;</span><span class="p">,</span> <span class="n">from_lists</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;hand xcnt  :&quot;</span><span class="p">,</span> <span class="n">hand</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>from lists : [24.28999439  2.17918106]
+hand xcnt  : [24.28999439  2.17918106]
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="truncation-four-ways">
+<h2>Truncation, four ways<a class="headerlink" href="#truncation-four-ways" title="Permalink to this heading">¶</a></h2>
+<p>Truncation can be a single shared bound, a per-observation array, an upper
+(right) bound, or a two-sided observation window — pass <code class="docutils literal notranslate"><span class="pre">tl</span></code> and/or <code class="docutils literal notranslate"><span class="pre">tr</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">674</span><span class="p">,</span> <span class="mi">792</span><span class="p">,</span> <span class="mi">1153</span><span class="p">,</span> <span class="mi">1450</span><span class="p">,</span> <span class="mi">1555</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;shared tl   :&quot;</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;per-unit tl :&quot;</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="p">[</span><span class="mi">100</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">300</span><span class="p">,</span> <span class="mi">400</span><span class="p">,</span> <span class="mi">500</span><span class="p">])</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;right tr    :&quot;</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tr</span><span class="o">=</span><span class="mi">2000</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;window tl,tr:&quot;</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">tr</span><span class="o">=</span><span class="mi">2000</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>shared tl   : [1214.55238969    3.28097227]
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>per-unit tl : [1242.8850255    3.6146528]
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>right tr    : [1256.86625694    3.66811409]
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>window tl,tr: [1256.77737291    3.66548479]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The same columns can live in a DataFrame — <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code> and <code class="docutils literal notranslate"><span class="pre">tr</span></code> are
+all optional columns you point <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> at:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">&#39;x&#39;</span><span class="p">:</span>  <span class="p">[</span><span class="mi">674</span><span class="p">,</span> <span class="mi">792</span><span class="p">,</span> <span class="mi">1153</span><span class="p">,</span> <span class="mi">1450</span><span class="p">,</span> <span class="mi">1555</span><span class="p">,</span> <span class="mi">2000</span><span class="p">],</span>
+    <span class="s1">&#39;c&#39;</span><span class="p">:</span>  <span class="p">[</span><span class="mi">0</span><span class="p">,</span>   <span class="mi">0</span><span class="p">,</span>   <span class="mi">0</span><span class="p">,</span>    <span class="mi">1</span><span class="p">,</span>    <span class="mi">0</span><span class="p">,</span>    <span class="mi">1</span><span class="p">],</span>
+    <span class="s1">&#39;n&#39;</span><span class="p">:</span>  <span class="p">[</span><span class="mi">1</span><span class="p">,</span>   <span class="mi">2</span><span class="p">,</span>   <span class="mi">1</span><span class="p">,</span>    <span class="mi">3</span><span class="p">,</span>    <span class="mi">1</span><span class="p">,</span>    <span class="mi">2</span><span class="p">],</span>
+    <span class="s1">&#39;tl&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">500</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span>  <span class="mi">500</span><span class="p">,</span>  <span class="mi">500</span><span class="p">,</span>  <span class="mi">500</span><span class="p">],</span>
+<span class="p">})</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="s1">&#39;x&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;c&#39;</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="s1">&#39;n&#39;</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="s1">&#39;tl&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Parameters          :
+     alpha: 1456.769373430766
+      beta: 0.8083361636008853
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="format-converters">
+<h2>Format converters<a class="headerlink" href="#format-converters" title="Permalink to this heading">¶</a></h2>
+<p>surpyval ships helpers to reshape common external layouts into the <code class="docutils literal notranslate"><span class="pre">xcnt</span></code>
+format its fitters use, and into the “at risk / deaths” (<code class="docutils literal notranslate"><span class="pre">xrd</span></code>) format the
+non-parametric estimators think in:</p>
+<table class="colwidths-given docutils align-default">
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 66%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Helper</p></th>
+<th class="head"><p>Converts</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fs_to_xcnt(f,</span> <span class="pre">s)</span></code></p></td>
+<td><p>failures + suspensions (right-censored) → <code class="docutils literal notranslate"><span class="pre">xcnt</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fsl_to_xcnt(f,</span> <span class="pre">s,</span> <span class="pre">l)</span></code></p></td>
+<td><p>as above, plus left-censored</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fsli_to_xcnt(f,</span> <span class="pre">s,</span> <span class="pre">l,</span> <span class="pre">i)</span></code></p></td>
+<td><p>as above, plus interval-censored</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">xcnt_to_xrd(x,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">t)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">xcnt</span></code> → at-risk / deaths (<code class="docutils literal notranslate"><span class="pre">xrd</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">xrd_to_xcnt(x,</span> <span class="pre">r,</span> <span class="pre">d)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">xrd</span></code> → <code class="docutils literal notranslate"><span class="pre">xcnt</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">xcn_to_fs(x,</span> <span class="pre">c,</span> <span class="pre">n)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">xcnt</span></code> → failure / suspension lists</p></td>
+</tr>
+</tbody>
+</table>
+<p>For example, any <code class="docutils literal notranslate"><span class="pre">xcnt</span></code> data folds into the <code class="docutils literal notranslate"><span class="pre">xrd</span></code> form — the count at risk
+and the number of deaths at each distinct time:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">times</span><span class="p">,</span> <span class="n">at_risk</span><span class="p">,</span> <span class="n">deaths</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">xcnt_to_xrd</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;times  :&quot;</span><span class="p">,</span> <span class="n">times</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;at risk:&quot;</span><span class="p">,</span> <span class="n">at_risk</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;deaths :&quot;</span><span class="p">,</span> <span class="n">deaths</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>times  : [1. 2. 3. 4. 5.]
+at risk: [8 6 5 4 1]
+deaths : [2 1 0 3 0]
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Handy%20References%20-%20Aide-m%C3%A9moire.html" class="btn btn-neutral float-left" title="Handy References - Aide-mémoire" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Non-Parametric%20Estimation.html" class="btn btn-neutral float-right" title="Non-Parametric Estimation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

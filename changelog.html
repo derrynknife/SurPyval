@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Changelog &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Support" href="Support.html" />
+    <link rel="prev" title="Datasets" href="surpyval.datasets.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Changelog</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#v0-15-1-unreleased">v0.15.1 (unreleased)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#non-parametric">Non-parametric</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#serialisation">Serialisation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#package-structure">Package structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#machine-learning">Machine learning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#competing-risks-mixtures">Competing risks &amp; mixtures</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#degradation">Degradation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#recurrent-events">Recurrent events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#regression">Regression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#experimental">Experimental</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id1">Degradation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#documentation">Documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id2">Recurrent events</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#distributions">Distributions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#competing-risks">Competing risks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3">Recurrent events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#regression-cox-proportional-hazards">Regression — Cox proportional hazards</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#truncation">Truncation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4">Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id5">Regression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6">Competing risks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7">Recurrent events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8">Degradation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#multivariate">Multivariate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#distributions-and-core">Distributions and core</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Changelog</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/changelog.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="changelog">
+<h1>Changelog<a class="headerlink" href="#changelog" title="Permalink to this heading">¶</a></h1>
+<section id="v0-15-1-unreleased">
+<h2>v0.15.1 (unreleased)<a class="headerlink" href="#v0-15-1-unreleased" title="Permalink to this heading">¶</a></h2>
+<section id="non-parametric">
+<h3>Non-parametric<a class="headerlink" href="#non-parametric" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><strong>Fixed Turnbull fits with truncation hanging indefinitely</strong> (this also hung
+the documentation builds, which is why the hosted docs went stale). The
+Fleming-Harrington tie ladder (<code class="docutils literal notranslate"><span class="pre">fh_h</span></code>/<code class="docutils literal notranslate"><span class="pre">fh_var_h</span></code>) was a per-event Python
+loop; the Turnbull EM feeds it <em>fractional expected</em> event counts which,
+under heavy truncation, can grow without bound between iterations – the
+loop then effectively (or with an infinite count, literally) never
+returned. The ladder is now evaluated in closed form (digamma/trigamma
+harmonic sums) beyond a small exact loop, so its cost is O(1) in the event
+count: identical results for ordinary tie counts, and pathological counts
+now yield a diverging hazard (<code class="docutils literal notranslate"><span class="pre">inf</span></code>) instead of a hang. Note that the
+truncated NPMLE itself remains delicate on small or heavily truncated
+samples (it can be non-identifiable and the EM converges to a degenerate
+estimate); such fits now terminate and are flagged, and the docs note the
+caveat.</p></li>
+</ul>
+</section>
+</section>
+<section id="v0-15-0-20-jul-2026">
+<h2>v0.15.0 (20 Jul 2026)<a class="headerlink" href="#v0-15-0-20-jul-2026" title="Permalink to this heading">¶</a></h2>
+<section id="serialisation">
+<h3>Serialisation<a class="headerlink" href="#serialisation" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Every serialised model dictionary now carries a schema version
+(<code class="docutils literal notranslate"><span class="pre">&quot;schema&quot;:</span> <span class="pre">1</span></code>), stamped by every <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>. The version is bumped only
+when a dictionary’s shape changes incompatibly, so documents stored today
+(in files or MongoDB) stay recognisable to future SurPyval versions: the
+package-level <code class="docutils literal notranslate"><span class="pre">surpyval.from_dict</span></code> refuses documents written by a <em>newer</em>
+schema with a clear error, and treats documents with no <code class="docutils literal notranslate"><span class="pre">&quot;schema&quot;</span></code> key
+(written before versioning) as schema 0, which remains loadable.</p></li>
+<li><p>MongoDB compatibility, verified for every serialisable model: BSON is
+stricter than JSON (numpy integer scalars and arrays are rejected, and
+dictionary keys must be strings), so every model’s <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> output is now
+tested through the full MongoDB path – <code class="docutils literal notranslate"><span class="pre">bson.encode</span></code> (what
+<code class="docutils literal notranslate"><span class="pre">insert_one</span></code> does), decode, add the <code class="docutils literal notranslate"><span class="pre">_id</span></code> field <code class="docutils literal notranslate"><span class="pre">find_one</span></code> returns,
+and restore via <code class="docutils literal notranslate"><span class="pre">surpyval.from_dict</span></code> with predictions reproduced. The
+cause-label fields of the competing-risks containers are now normalised to
+native Python types with a new <code class="docutils literal notranslate"><span class="pre">surpyval.serialisation.to_native</span></code> helper
+(numpy labels passed by the caller no longer leak into the document), and
+<code class="docutils literal notranslate"><span class="pre">pymongo</span></code> was added to the test dependencies for the BSON round-trip
+tests.</p></li>
+<li><p>Added package-level readers for serialised models:
+<code class="docutils literal notranslate"><span class="pre">surpyval.from_dict(model_dict)</span></code> and <code class="docutils literal notranslate"><span class="pre">surpyval.from_json(fp)</span></code> restore a
+model of the right class from any model’s <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> dictionary /
+<code class="docutils literal notranslate"><span class="pre">to_json</span></code> file, so the caller no longer needs to know which class wrote
+it. Dispatch reads the serialised dictionary itself: the <code class="docutils literal notranslate"><span class="pre">&quot;model&quot;</span></code> class
+tag written by most models, or the <code class="docutils literal notranslate"><span class="pre">&quot;parameterization&quot;</span></code> marker
+(<code class="docutils literal notranslate"><span class="pre">&quot;parametric&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;non-parametric&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;parametric-regression&quot;</span></code>) of the
+core univariate families. The class-level readers are unchanged.</p></li>
+</ul>
+</section>
+<section id="package-structure">
+<h3>Package structure<a class="headerlink" href="#package-structure" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Pre-stable models are now tiered by maturity: <code class="docutils literal notranslate"><span class="pre">surpyval.alpha</span></code>
+(exploratory; the interfaces may change or disappear – currently the
+<code class="docutils literal notranslate"><span class="pre">ParallelModel</span></code>/<code class="docutils literal notranslate"><span class="pre">SeriesModel</span></code> system models, previously in
+<code class="docutils literal notranslate"><span class="pre">surpyval.experimental</span></code>) and <code class="docutils literal notranslate"><span class="pre">surpyval.beta</span></code> (functionally complete
+and tested, interface not yet part of the release contract – the
+survival tree and random survival forest in <code class="docutils literal notranslate"><span class="pre">surpyval.beta.ml</span></code>).
+<code class="docutils literal notranslate"><span class="pre">surpyval.experimental</span></code> remains as a deprecated re-export of both and
+warns on import.</p></li>
+</ul>
+</section>
+<section id="machine-learning">
+<h3>Machine learning<a class="headerlink" href="#machine-learning" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>The survival tree and random survival forest graduated from
+<code class="docutils literal notranslate"><span class="pre">surpyval.experimental</span></code> to the beta tier:
+<code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">surpyval.beta.ml</span> <span class="pre">import</span> <span class="pre">SurvivalTree,</span> <span class="pre">RandomSurvivalForest</span></code>. The
+old <code class="docutils literal notranslate"><span class="pre">surpyval.experimental</span></code> imports still work as re-exports. Their test
+suite now runs in CI, expanded with behavioural and structural tests:
+prediction coherence (<code class="docutils literal notranslate"><span class="pre">ff</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span> <span class="pre">=</span> <span class="pre">-log(sf)</span></code>, monotone
+bounded <code class="docutils literal notranslate"><span class="pre">sf</span></code>), <code class="docutils literal notranslate"><span class="pre">max_depth</span></code>/<code class="docutils literal notranslate"><span class="pre">min_leaf_samples</span></code>/<code class="docutils literal notranslate"><span class="pre">min_leaf_failures</span></code>
+guarantees, seeded determinism, degenerate inputs (all-censored,
+constant covariates, tiny samples, tied times, count weights), forest
+ensemble maths (the forest <code class="docutils literal notranslate"><span class="pre">sf</span></code> is exactly the tree average; the
+<code class="docutils literal notranslate"><span class="pre">&quot;Hf&quot;</span></code> method averages cumulative hazards), prediction shapes,
+mortality ordering and a concordance sanity check.</p></li>
+<li><p>Fixed the concordance index (<code class="docutils literal notranslate"><span class="pre">surpyval.utils.score.score</span></code>, used by
+<code class="docutils literal notranslate"><span class="pre">RandomSurvivalForest.score</span></code>): pairs were ordered by censoring flag
+instead of by time before comparison, which pushed the c-index of even a
+strongly informative forest towards 0.5. Pairs are now ordered by time
+(event first on exact ties), so <code class="docutils literal notranslate"><span class="pre">score</span></code> returns Harrell’s c-index for
+mortality-like scores (1 = perfectly concordant). <code class="docutils literal notranslate"><span class="pre">forest.score</span></code> also
+now respects its <code class="docutils literal notranslate"><span class="pre">tie_tol</span></code> argument.</p></li>
+</ul>
+</section>
+<section id="competing-risks-mixtures">
+<h3>Competing risks &amp; mixtures<a class="headerlink" href="#competing-risks-mixtures" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added serialisation to the competing-risks and mixture models:
+<code class="docutils literal notranslate"><span class="pre">MixtureModel</span></code> (EM mixture of a base family), <code class="docutils literal notranslate"><span class="pre">FineGrayModel</span></code>
+(subdistribution-hazard regression), <code class="docutils literal notranslate"><span class="pre">ParametricCompetingRisks</span></code> (one
+distribution per cause) and the nonparametric <code class="docutils literal notranslate"><span class="pre">CompetingRisks</span></code> now have
+<code class="docutils literal notranslate"><span class="pre">to_dict</span></code>/<code class="docutils literal notranslate"><span class="pre">from_dict</span></code> and <code class="docutils literal notranslate"><span class="pre">to_json</span></code>/<code class="docutils literal notranslate"><span class="pre">from_json</span></code>. The mixture stores
+its base-family name, component parameters and weights; Fine-Gray stores its
+coefficients, covariance and subdistribution-baseline step arrays; and the
+competing-risks models store their per-cause sub-models (via each cause’s own
+<code class="docutils literal notranslate"><span class="pre">to_dict</span></code>) or per-event step arrays. Every reloaded model reproduces its
+predictions exactly.</p></li>
+</ul>
+</section>
+<section id="degradation">
+<h3>Degradation<a class="headerlink" href="#degradation" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added serialisation to the fitted degradation models:
+<code class="docutils literal notranslate"><span class="pre">DegradationModel</span></code>, the stochastic-process models <code class="docutils literal notranslate"><span class="pre">WienerProcessModel</span></code>
+and <code class="docutils literal notranslate"><span class="pre">GammaProcessModel</span></code>, and the Monte-Carlo <code class="docutils literal notranslate"><span class="pre">InducedFailureDistribution</span></code>
+now have <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>/<code class="docutils literal notranslate"><span class="pre">from_dict</span></code> and <code class="docutils literal notranslate"><span class="pre">to_json</span></code>/<code class="docutils literal notranslate"><span class="pre">from_json</span></code>. The process
+models store their few parameters; the induced distribution stores its
+samples (the <code class="docutils literal notranslate"><span class="pre">inf</span></code> never-fails draws are written as <code class="docutils literal notranslate"><span class="pre">null</span></code> so the result
+is valid JSON); and <code class="docutils literal notranslate"><span class="pre">DegradationModel</span></code> stores its raw data, the path model
+(by name) and per-unit fits, the population summaries, and the fitted life
+model (via its own <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> – plain or accelerated), so the reloaded
+model reproduces its predictions and per-unit paths and (because the data is
+kept) its bootstrap confidence bounds too.</p></li>
+</ul>
+</section>
+<section id="recurrent-events">
+<h3>Recurrent events<a class="headerlink" href="#recurrent-events" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added serialisation to the renewal / imperfect-repair models
+(<code class="docutils literal notranslate"><span class="pre">RenewalModel</span></code>): the generalized-renewal (Kijima-I/II), G1 renewal, ARA
+and ARI families now have <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>/<code class="docutils literal notranslate"><span class="pre">from_dict</span></code> and
+<code class="docutils literal notranslate"><span class="pre">to_json</span></code>/<code class="docutils literal notranslate"><span class="pre">from_json</span></code>. These processes have no closed-form intensity
+(their MCF comes from a sampler closure that cannot be pickled), so the dict
+stores the family, the underlying distribution (by name) and its parameters,
+the restoration parameter and the family option (<code class="docutils literal notranslate"><span class="pre">kijima_type</span></code> or memory
+<code class="docutils literal notranslate"><span class="pre">m</span></code>); on load the family’s fitter rebuilds the sampler from those, so the
+simulated MCF reproduces exactly. This completes serialisation coverage of
+every non-experimental fitted model in the package.</p></li>
+<li><p>Added serialisation to the fitted recurrent-event models:
+<code class="docutils literal notranslate"><span class="pre">ParametricRecurrenceModel</span></code> (NHPP/HPP intensity fits),
+<code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code> (the MCF estimate), <code class="docutils literal notranslate"><span class="pre">ProportionalIntensityModel</span></code>
+(proportional-intensity regression), and the competing-risks containers
+<code class="docutils literal notranslate"><span class="pre">CauseSpecificMCF</span></code> and <code class="docutils literal notranslate"><span class="pre">CauseSpecificNHPP</span></code> now have
+<code class="docutils literal notranslate"><span class="pre">to_dict</span></code>/<code class="docutils literal notranslate"><span class="pre">from_dict</span></code> and <code class="docutils literal notranslate"><span class="pre">to_json</span></code>/<code class="docutils literal notranslate"><span class="pre">from_json</span></code>. The intensity model
+is stateless, so each stores its name plus the fitted parameters (or, for the
+MCF, the <code class="docutils literal notranslate"><span class="pre">x</span></code>/<code class="docutils literal notranslate"><span class="pre">mcf_hat</span></code>/<code class="docutils literal notranslate"><span class="pre">var</span></code> step arrays), and the reloaded model
+reproduces <code class="docutils literal notranslate"><span class="pre">cif</span></code>/<code class="docutils literal notranslate"><span class="pre">iif</span></code>/<code class="docutils literal notranslate"><span class="pre">mcf</span></code> exactly. Intensity models are resolved by
+name from a restricted set. The likelihood/data state is not stored, so a
+reloaded model behaves like a <code class="docutils literal notranslate"><span class="pre">from_params</span></code> one for confidence bounds and
+diagnostics.</p></li>
+</ul>
+</section>
+<section id="regression">
+<h3>Regression<a class="headerlink" href="#regression" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added serialisation to the <strong>semi-parametric</strong> regression models, each on its
+own result class: Cox proportional hazards
+(<code class="docutils literal notranslate"><span class="pre">SemiParametricRegressionModel</span></code>), the Lin-Ying additive-hazards model
+(<code class="docutils literal notranslate"><span class="pre">AdditiveHazardsModel</span></code>), and the Buckley-James AFT (<code class="docutils literal notranslate"><span class="pre">BuckleyJamesModel</span></code>)
+now have <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>/<code class="docutils literal notranslate"><span class="pre">from_dict</span></code> and <code class="docutils literal notranslate"><span class="pre">to_json</span></code>/<code class="docutils literal notranslate"><span class="pre">from_json</span></code>. Because the
+baseline is nonparametric, the coefficients plus the fitted baseline step
+arrays (or, for Buckley-James, the residual survival) are stored, so the
+reloaded model predicts identically – including Cox’s <code class="docutils literal notranslate"><span class="pre">predict_tvc</span></code> for a
+time-varying-covariate fit, the additive model’s covariance / standard
+errors, and Buckley-James’s <code class="docutils literal notranslate"><span class="pre">bootstrap_ci</span></code> (its fit data is kept).
+<code class="docutils literal notranslate"><span class="pre">SemiParametricRegressionModel</span></code> is now exported from
+<code class="docutils literal notranslate"><span class="pre">surpyval.univariate.regression</span></code>.</p></li>
+<li><p>Added serialisation to the parametric regression models:
+<code class="docutils literal notranslate"><span class="pre">ParametricRegressionModel</span></code> now has <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>/<code class="docutils literal notranslate"><span class="pre">from_dict</span></code> and
+<code class="docutils literal notranslate"><span class="pre">to_json</span></code>/<code class="docutils literal notranslate"><span class="pre">from_json</span></code>, so a fitted Accelerated Failure Time,
+Proportional Hazards, Proportional Odds or (parametric) Additive Hazards
+model can be saved and rebuilt without the training data. The restored model
+predicts identically (<code class="docutils literal notranslate"><span class="pre">sf</span></code>/<code class="docutils literal notranslate"><span class="pre">ff</span></code>/<code class="docutils literal notranslate"><span class="pre">df</span></code>/<code class="docutils literal notranslate"><span class="pre">hf</span></code>/<code class="docutils literal notranslate"><span class="pre">Hf</span></code>/<code class="docutils literal notranslate"><span class="pre">phi</span></code>/<code class="docutils literal notranslate"><span class="pre">random</span></code>);
+if the fit’s parameter covariance was computable it is stored too, so the
+reloaded model also produces confidence bounds (<code class="docutils literal notranslate"><span class="pre">cb</span></code>/<code class="docutils literal notranslate"><span class="pre">param_cb</span></code>/
+<code class="docutils literal notranslate"><span class="pre">standard_errors</span></code>). Distribution and family are resolved by name from a
+restricted set, so an untrusted dict cannot load arbitrary objects. Models
+with a bespoke covariate link (an Accelerated Life parameter-substitution
+model) are refused with a clear error. <code class="docutils literal notranslate"><span class="pre">ParametricRegressionModel</span></code> is now
+exported from <code class="docutils literal notranslate"><span class="pre">surpyval.univariate.regression</span></code>.</p></li>
+</ul>
+</section>
+<section id="experimental">
+<h3>Experimental<a class="headerlink" href="#experimental" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><strong>Breaking (experimental API):</strong> the survival tree/forest now take a single
+<code class="docutils literal notranslate"><span class="pre">kind</span></code> parameter that couples the split criterion with its matching leaf
+model, replacing the independent <code class="docutils literal notranslate"><span class="pre">split_rule</span></code> / <code class="docutils literal notranslate"><span class="pre">leaf_type</span></code> /
+<code class="docutils literal notranslate"><span class="pre">parametric</span></code> knobs (whose free combination invited mismatched trees and
+whose defaults disagreed between entry points). <code class="docutils literal notranslate"><span class="pre">kind=&quot;weibull&quot;</span></code> (the new
+default) adds the <strong>Weibull deviance split</strong> – a 2-d.f. likelihood-ratio
+gain computed with the full likelihood, with power against <em>scale and
+shape</em> differences (e.g. crossing-hazards populations that the exponential
+rule and the log-rank statistic largely miss) – paired with Weibull MLE
+leaves. <code class="docutils literal notranslate"><span class="pre">kind=&quot;exponential&quot;</span></code> is the Davis-Anderson rule with Exponential
+leaves, and <code class="docutils literal notranslate"><span class="pre">kind=&quot;non-parametric&quot;</span></code> is the risk-set log-rank with
+Nelson-Aalen leaves (observed/right-censored data, optionally
+left-truncated; raises otherwise). Parametric kinds now stay parametric all
+the way down: the degenerate-leaf rescue ladder is Weibull -&gt; Exponential -&gt;
+crude rate, never a nonparametric leaf. Split-search child fits warm-start
+from the parent’s optimum, which also guarantees a non-negative split gain
+in the 2-parameter case. The internal Weibull MLE is cross-validated
+against <code class="docutils literal notranslate"><span class="pre">Weibull.fit</span></code> on every data configuration.
+now supports the <strong>full SurPyval data model</strong>: observed, left-, right- and
+interval-censored observations with optional left and/or right truncation.
+The risk-set log-rank split only exists for observed / right-censored
+(optionally left-truncated) data, so the tree gains a second split
+criterion – the full-likelihood exponential deviance split of Davis &amp;
+Anderson (1989) – in which every candidate split is scored by the joint
+maximised exponential log-likelihood of its children, with each observation
+type contributing its exact likelihood term (including the
+<code class="docutils literal notranslate"><span class="pre">S(t_l)</span> <span class="pre">-</span> <span class="pre">S(t_r)</span></code> truncation correction). A new <code class="docutils literal notranslate"><span class="pre">split_rule</span></code> parameter
+(<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> default) keeps the log-rank split for data it is defined on –
+existing behaviour is unchanged – and switches to the deviance split
+otherwise; forcing <code class="docutils literal notranslate"><span class="pre">&quot;log-rank&quot;</span></code> on incompatible data raises a clear
+error. All candidate children within a node are scored over a common
+parameter window so the criterion is monotone (a split can never score
+below its parent), and splits with no likelihood gain stop the branch.
+Nonparametric leaves now use the Turnbull NPMLE when the data has left or
+interval censoring or right truncation (Nelson-Aalen otherwise, as
+before); parametric (Weibull) leaves already supported the full data
+model. <code class="docutils literal notranslate"><span class="pre">fit</span></code> also accepts the <code class="docutils literal notranslate"><span class="pre">xl</span></code>/<code class="docutils literal notranslate"><span class="pre">xr</span></code> and <code class="docutils literal notranslate"><span class="pre">tl</span></code>/<code class="docutils literal notranslate"><span class="pre">tr</span></code>
+conveniences.</p></li>
+<li><p>Fixed a crash in the experimental <code class="docutils literal notranslate"><span class="pre">RandomSurvivalForest</span></code>: a degenerate
+bootstrap sample (e.g. heavily tied event times) could make a terminal
+node’s Weibull covariance step raise, taking down the whole forest fit. A
+terminal node now falls back to progressively simpler, more robust fits
+(Exponential, then Nelson-Aalen). The experimental modules are also excluded
+from the CI test run, since they are not part of the release contract.</p></li>
+</ul>
+</section>
+<section id="id1">
+<h3>Degradation<a class="headerlink" href="#id1" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added two-stage confidence bounds for the <strong>accelerated-degradation
+(covariate) life fit</strong>: <code class="docutils literal notranslate"><span class="pre">DegradationModel.cb</span></code> now accepts a stress vector
+<code class="docutils literal notranslate"><span class="pre">Z</span></code> and, with <code class="docutils literal notranslate"><span class="pre">method=&quot;bootstrap&quot;</span></code>, resamples units (each carrying its
+stress) and reruns the whole ADT pipeline to fold the first-stage
+path/extrapolation uncertainty into the reliability at <code class="docutils literal notranslate"><span class="pre">Z</span></code>. Previously
+<code class="docutils literal notranslate"><span class="pre">cb</span></code> raised <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code> for covariate models; the analytic
+(generated-regressor) correction remains underived for the regression fit, so
+bootstrap is required there. The bootstrap holds the selected path model
+fixed, so it composes cleanly with <code class="docutils literal notranslate"><span class="pre">path=&quot;best&quot;</span></code> (no per-resample path
+re-selection). <code class="docutils literal notranslate"><span class="pre">cb</span></code> also now validates <code class="docutils literal notranslate"><span class="pre">Z</span></code> (required for covariate
+models, rejected for plain ones).</p></li>
+<li><p>Extended <code class="docutils literal notranslate"><span class="pre">population_method=&quot;reml&quot;</span></code> to <strong>nonlinear</strong> path models
+(exponential, power, Gompertz, …). Previously REML population estimation
+was restricted to paths linear in their parameters; nonlinear paths are now
+fitted with the Lindstrom-Bates (1990) FOCE alternating algorithm – each
+unit’s parameters are estimated at their conditional (penalised-least-
+squares) mode, the path is linearised about that mode into a working linear
+mixed model, and the linear REML step is iterated to convergence. This gives
+a positive-definite <code class="docutils literal notranslate"><span class="pre">path_param_cov</span></code> by construction (no PSD clipping) for
+nonlinear paths too, which is the more robust population estimate when the
+unit count is small. On a linear-in-parameters path the routine reduces
+exactly to the previous linear REML fit in a single pass.</p></li>
+<li><p>Added the Lu-Meeker induced failure-time distribution:
+<code class="docutils literal notranslate"><span class="pre">DegradationModel.induced_life</span></code> derives the population failure-time
+distribution directly from the fitted path-parameter distribution – drawing
+path parameters <code class="docutils literal notranslate"><span class="pre">theta</span> <span class="pre">~</span> <span class="pre">N(path_param_mean,</span> <span class="pre">path_param_cov)</span></code> and pushing
+each through the path model’s <code class="docutils literal notranslate"><span class="pre">inv_path(threshold)</span></code> by Monte Carlo –
+rather than via each unit’s noisy pseudo failure time. It returns an
+<code class="docutils literal notranslate"><span class="pre">InducedFailureDistribution</span></code> exposing <code class="docutils literal notranslate"><span class="pre">sf</span></code>/<code class="docutils literal notranslate"><span class="pre">ff</span></code>/<code class="docutils literal notranslate"><span class="pre">qf</span></code>/<code class="docutils literal notranslate"><span class="pre">mean</span></code>/
+<code class="docutils literal notranslate"><span class="pre">median</span></code>/<code class="docutils literal notranslate"><span class="pre">random</span></code> (with an <code class="docutils literal notranslate"><span class="pre">inf</span></code> “never fails” mass reported as
+<code class="docutils literal notranslate"><span class="pre">prob_never_fails</span></code>), a diagnostic complement to the pseudo-failure-time
+life fit that the two can be overlaid to check.</p></li>
+<li><p>Added stochastic-process degradation models that model the degradation
+increments directly, deriving the failure-time distribution from the
+process’s first passage to the threshold (rather than via pseudo failure
+times), and handling irregular measurement spacing naturally. Two
+complementary processes are provided in <code class="docutils literal notranslate"><span class="pre">surpyval.degradation</span></code>:
+<code class="docutils literal notranslate"><span class="pre">WienerProcess</span></code> (Brownian motion with drift, for non-monotone / noisy
+signals; its first passage is a closed-form Inverse-Gaussian law) and
+<code class="docutils literal notranslate"><span class="pre">GammaProcess</span></code> (monotone increasing increments, for irreversible damage
+such as wear, corrosion or crack growth; its first-passage distribution
+comes from the incomplete gamma function). Both fit by maximum likelihood
+from <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">y,</span> <span class="pre">i)</span></code> measurement data and expose the induced failure-time
+distribution (<code class="docutils literal notranslate"><span class="pre">sf</span></code>/<code class="docutils literal notranslate"><span class="pre">ff</span></code>/<code class="docutils literal notranslate"><span class="pre">df</span></code>/<code class="docutils literal notranslate"><span class="pre">hf</span></code>/<code class="docutils literal notranslate"><span class="pre">Hf</span></code>/<code class="docutils literal notranslate"><span class="pre">qf</span></code>/<code class="docutils literal notranslate"><span class="pre">mean</span></code>/<code class="docutils literal notranslate"><span class="pre">random</span></code>)
+plus a <code class="docutils literal notranslate"><span class="pre">predict_rul</span></code> remaining-useful-life summary. The degradation
+documentation gained an expansive section explaining both processes, what
+each parameter means, the first-passage failure-time derivation, worked
+runnable examples, and guidance on choosing between them.</p></li>
+</ul>
+</section>
+</section>
+<section id="v0-14-0-19-jul-2026">
+<h2>v0.14.0 (19 Jul 2026)<a class="headerlink" href="#v0-14-0-19-jul-2026" title="Permalink to this heading">¶</a></h2>
+<section id="documentation">
+<h3>Documentation<a class="headerlink" href="#documentation" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Substantially expanded the recurrent-event documentation for the release.
+The theory pages now cover the arithmetic-reduction (ARA/ARI) models, the
+geometric-process view of the G1 renewal process, the time-rescaling
+residual / trend-test / Cramer-von Mises diagnostics, marked (competing-risks)
+recurrent events, gapped multi-window observation, and truncation, each with a
+short References section. The worked-example pages gained runnable
+demonstrations of ARA/ARI, renewal-model checking, gapped observation, the
+cause-specific MCF and intensity models, and a full build-out of the
+proportional-intensity regression examples.</p></li>
+<li><p>Fixed and completed the recurrent-event API reference. Every model’s
+autodoc page (HPP, Duane, Cox-Lewis, Crow-AMSAA, the renewal and
+proportional-intensity models) previously rendered as an empty “alias of
+object” because the fitters are exposed as singletons; the pages now
+document each model’s methods. Added missing API pages for <code class="docutils literal notranslate"><span class="pre">ARA</span></code>, <code class="docutils literal notranslate"><span class="pre">ARI</span></code>,
+<code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code>, <code class="docutils literal notranslate"><span class="pre">CauseSpecificMCF</span></code>, <code class="docutils literal notranslate"><span class="pre">CauseSpecificNHPP</span></code> and the
+fitted <code class="docutils literal notranslate"><span class="pre">RenewalModel</span></code> object.</p></li>
+</ul>
+</section>
+<section id="id2">
+<h3>Recurrent events<a class="headerlink" href="#id2" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added residual (<code class="docutils literal notranslate"><span class="pre">residuals</span></code>: <code class="docutils literal notranslate"><span class="pre">cumulative_hazard</span></code> / <code class="docutils literal notranslate"><span class="pre">pit</span></code> /
+<code class="docutils literal notranslate"><span class="pre">martingale</span></code>), trend-test (<code class="docutils literal notranslate"><span class="pre">trend_test</span></code>) and Cramer-von Mises
+goodness-of-fit (<code class="docutils literal notranslate"><span class="pre">cramer_von_mises</span></code>) diagnostics to the renewal /
+virtual-age imperfect-repair models (<code class="docutils literal notranslate"><span class="pre">GeneralizedRenewal</span></code>,
+<code class="docutils literal notranslate"><span class="pre">GeneralizedOneRenewal</span></code>, <code class="docutils literal notranslate"><span class="pre">ARA</span></code>, <code class="docutils literal notranslate"><span class="pre">ARI</span></code>), completing the diagnostic
+coverage of the recurrent module. These processes have no marginal
+cumulative intensity, so the time-rescaling residuals come from each one’s
+<em>conditional</em> intensity – the cumulative hazard accumulated over each
+interarrival given the model’s virtual age (Kijima / ARA), time scaling
+(G1R) or intensity reduction (ARI) – and are iid Exp(1) under the fitted
+model. The Cramer-von Mises transforms use the compensator built from those
+increments (there being no closed-form intensity), and its p-value comes
+from a parametric bootstrap that resimulates each item and refits the full
+imperfect-repair model per replicate.</p></li>
+<li><p>Added support for gapped (multi-window) observation: an item can be observed
+over several disjoint time windows with unobserved gaps in between (events
+may occur during a gap but are not recorded). Pass <code class="docutils literal notranslate"><span class="pre">windows={item:</span>
+<span class="pre">[(start,</span> <span class="pre">end),</span> <span class="pre">...]}</span></code> to the intensity fitters (<code class="docutils literal notranslate"><span class="pre">HPP</span></code>, <code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Duane</span></code>, <code class="docutils literal notranslate"><span class="pre">CoxLewis</span></code>) and the nonparametric <code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code> MCF;
+every row of <code class="docutils literal notranslate"><span class="pre">x</span></code> is then an observed event and the windows supply the
+end-of-window censoring. Because event counts over disjoint windows are
+independent for an NHPP, each window is fitted as its own observation period,
+so the intensity likelihood and the MCF at-risk set (an item is absent from
+the risk set during its gaps) both handle the gaps exactly. The virtual-age /
+renewal models (<code class="docutils literal notranslate"><span class="pre">GeneralizedRenewal</span></code>, <code class="docutils literal notranslate"><span class="pre">GeneralizedOneRenewal</span></code>, <code class="docutils literal notranslate"><span class="pre">ARA</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ARI</span></code>) reject gapped data, since the virtual age at the start of a later
+window depends on the unobserved events during the gap.</p></li>
+<li><p>Recurrent event marks (competing-risks recurrent events) are now first
+class. <code class="docutils literal notranslate"><span class="pre">handle_xicn</span></code> takes an event-type mark <code class="docutils literal notranslate"><span class="pre">e</span></code> per row (with
+<code class="docutils literal notranslate"><span class="pre">None</span></code>/<code class="docutils literal notranslate"><span class="pre">NaN</span></code> marks normalised to a single “no cause” sentinel), so marked
+data gets the same validation, sorting and truncation handling as every
+other recurrent fit. <code class="docutils literal notranslate"><span class="pre">CauseSpecificMCF</span></code> now routes through that handler and
+gains a <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code>. New <code class="docutils literal notranslate"><span class="pre">CauseSpecificNHPP</span></code> fits a <strong>parametric
+cause-specific intensity model</strong> – one NHPP (<code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code> by default, or any
+counting-process fitter) per event type. Because a marked Poisson process
+decomposes into independent thinned Poisson processes, each cause is fitted
+to its own events over the full observation window of every item (other-cause
+events are ignored, exactly as a censored period would be), so each
+per-cause model is an ordinary fitted recurrence model with its full
+<code class="docutils literal notranslate"><span class="pre">cif</span></code>/<code class="docutils literal notranslate"><span class="pre">iif</span></code>, inference and diagnostics; <code class="docutils literal notranslate"><span class="pre">total_cif</span></code> sums them for the
+overall event intensity.</p></li>
+</ul>
+</section>
+</section>
+<section id="v0-13-0-18-jul-2026">
+<h2>v0.13.0 (18 Jul 2026)<a class="headerlink" href="#v0-13-0-18-jul-2026" title="Permalink to this heading">¶</a></h2>
+<section id="distributions">
+<h3>Distributions<a class="headerlink" href="#distributions" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added three Tier-2 discrete distributions: <code class="docutils literal notranslate"><span class="pre">Poisson</span></code> (the count
+distribution on <code class="docutils literal notranslate"><span class="pre">{0,</span> <span class="pre">1,</span> <span class="pre">2,</span> <span class="pre">...}</span></code>, distinct from the recurrent Poisson
+<em>processes</em>), <code class="docutils literal notranslate"><span class="pre">BetaGeometric</span></code> (a discrete-time frailty model — Geometric
+with a Beta-mixed failure probability, whose marginal hazard decreases with
+time), and <code class="docutils literal notranslate"><span class="pre">Discretize(distribution)</span></code>, a factory that turns any
+non-negative continuous distribution into its integer-binned counterpart
+(<code class="docutils literal notranslate"><span class="pre">K</span> <span class="pre">=</span> <span class="pre">ceil(T)</span></code>, so <code class="docutils literal notranslate"><span class="pre">P(K=k)</span> <span class="pre">=</span> <span class="pre">F(k)</span> <span class="pre">-</span> <span class="pre">F(k-1)</span></code> and the discrete survival
+equals the continuous survival), fit by MLE on the underlying parameters.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Beta.fit(how=&quot;MPP&quot;)</span></code> now raises a clear <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> (the Beta has no
+linearising probability plot) instead of a raw <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code>, and
+points to <code class="docutils literal notranslate"><span class="pre">MLE</span></code> / <code class="docutils literal notranslate"><span class="pre">MSE</span></code> / <code class="docutils literal notranslate"><span class="pre">MOM</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Parametric.moment</span></code> now works for limited-failure, zero-inflated and
+offset models (it previously raised <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code> under a cure
+fraction, and silently dropped the offset). It returns the defective moment
+of the failure-time density, consistent with <code class="docutils literal notranslate"><span class="pre">mean</span></code> (<code class="docutils literal notranslate"><span class="pre">moment(1)</span> <span class="pre">==</span>
+<span class="pre">mean()</span></code>): the offset shifts the failure times and the cured fraction
+contributes nothing. <code class="docutils literal notranslate"><span class="pre">Parametric.entropy</span></code> likewise handles the offset
+(differential entropy is translation-invariant) and now raises a clear
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code> for models with a probability atom (a limited-failure mass at
+infinity or a zero-inflation mass at the offset), where a single differential
+entropy does not exist – it previously returned a wrong value for
+zero-inflated models.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Parametric.qf</span></code> now works for limited-failure, zero-inflated and offset
+models (it previously raised <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code> whenever a cure fraction
+was present). It inverts the full mixture <code class="docutils literal notranslate"><span class="pre">F(x)</span> <span class="pre">=</span> <span class="pre">f0</span> <span class="pre">+</span> <span class="pre">(p</span> <span class="pre">-</span> <span class="pre">f0)</span> <span class="pre">F0(x</span> <span class="pre">-</span>
+<span class="pre">gamma)</span></code>: quantiles at or below the zero-inflation mass <code class="docutils literal notranslate"><span class="pre">f0</span></code> return the
+offset, and quantiles at or above the attainable proportion <code class="docutils literal notranslate"><span class="pre">p</span></code> are
+infinite (that cured fraction never fails, so e.g. the median of a
+majority-cured population is <code class="docutils literal notranslate"><span class="pre">inf</span></code>). This also <strong>fixes</strong> the quantile of a
+zero-inflated (<code class="docutils literal notranslate"><span class="pre">p</span> <span class="pre">==</span> <span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">f0</span> <span class="pre">&gt;</span> <span class="pre">0</span></code>) model, which previously ignored
+<code class="docutils literal notranslate"><span class="pre">f0</span></code> and returned the wrong value.</p></li>
+</ul>
+</section>
+<section id="competing-risks">
+<h3>Competing risks<a class="headerlink" href="#competing-risks" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added <code class="docutils literal notranslate"><span class="pre">ParametricCompetingRisks</span></code>, a fully parametric competing-risks model:
+a parametric distribution is fitted to each cause’s cause-specific hazard
+(the joint likelihood factorises, so each cause is fitted with the other
+causes’ events treated as right-censored) and smooth, extrapolatable
+cumulative-incidence functions are assembled from them. Provides <code class="docutils literal notranslate"><span class="pre">fit</span></code> /
+<code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> (with a per-cause distribution mapping), all-cause and
+cause-specific <code class="docutils literal notranslate"><span class="pre">hf</span></code> / <code class="docutils literal notranslate"><span class="pre">Hf</span></code> / <code class="docutils literal notranslate"><span class="pre">sf</span></code> / <code class="docutils literal notranslate"><span class="pre">ff</span></code>, the subdistribution density
+<code class="docutils literal notranslate"><span class="pre">iif</span></code>, the cumulative incidence <code class="docutils literal notranslate"><span class="pre">cif</span></code>, <code class="docutils literal notranslate"><span class="pre">probability_of_cause</span></code>, sampling
+via <code class="docutils literal notranslate"><span class="pre">random</span></code>, and <code class="docutils literal notranslate"><span class="pre">aic</span></code> / <code class="docutils literal notranslate"><span class="pre">bic</span></code> / <code class="docutils literal notranslate"><span class="pre">neg_ll</span></code>. Complements the existing
+nonparametric <code class="docutils literal notranslate"><span class="pre">CompetingRisks</span></code> estimator and the semi-parametric
+cause-specific Cox / Fine-Gray regression models.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ParametricCompetingRisks.from_fitted</span></code> assembles a competing-risks model
+from already-fitted per-cause models, each of any family and configuration
+(e.g. a limited-failure Weibull for one cause, a LogNormal for another): pass
+a <code class="docutils literal notranslate"><span class="pre">{cause:</span> <span class="pre">model}</span></code> mapping or a sequence of models. Sampling handles cure
+fractions – when every cause carries one, some units never fail and are
+returned with cause <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p>Every competing-risks model (parametric, nonparametric, and the Fine-Gray /
+cause-specific Cox regression) now treats a <em>missing</em> event value (<code class="docutils literal notranslate"><span class="pre">None</span></code>,
+<code class="docutils literal notranslate"><span class="pre">NaN</span></code> or pandas <code class="docutils literal notranslate"><span class="pre">NA</span></code>) as a censored observation with no attributed cause,
+and derives the censoring flag <code class="docutils literal notranslate"><span class="pre">c</span></code> from the events when it is not supplied
+– so competing-risks data can be given as <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">e)</span></code> alone, and a pandas
+cause column with <code class="docutils literal notranslate"><span class="pre">NaN</span></code> for censored rows works directly.</p></li>
+</ul>
+</section>
+<section id="id3">
+<h3>Recurrent events<a class="headerlink" href="#id3" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added residual (<code class="docutils literal notranslate"><span class="pre">residuals</span></code>: <code class="docutils literal notranslate"><span class="pre">cumulative_hazard</span></code> / <code class="docutils literal notranslate"><span class="pre">pit</span></code> /
+<code class="docutils literal notranslate"><span class="pre">martingale</span></code>), trend-test (<code class="docutils literal notranslate"><span class="pre">trend_test</span></code>) and Cramer-von Mises
+goodness-of-fit (<code class="docutils literal notranslate"><span class="pre">cramer_von_mises</span></code>) diagnostics to the
+proportional-intensity regression models (<code class="docutils literal notranslate"><span class="pre">ProportionalIntensityHPP</span></code> /
+<code class="docutils literal notranslate"><span class="pre">ProportionalIntensityNHPP</span></code>), matching those already on the parametric
+recurrence models. Each item’s time-rescaling residuals and conditionally-
+uniform transforms use its own covariate-scaled cumulative intensity
+<code class="docutils literal notranslate"><span class="pre">Lambda_0(t)</span> <span class="pre">exp(Z'beta)</span></code>, and the Cramer-von Mises p-value comes from a
+parametric bootstrap that refits the full regression model per replicate.</p></li>
+</ul>
+</section>
+<section id="regression-cox-proportional-hazards">
+<h3>Regression — Cox proportional hazards<a class="headerlink" href="#regression-cox-proportional-hazards" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added time-varying-covariate support in counting-process (start-stop)
+format: <code class="docutils literal notranslate"><span class="pre">CoxPH.fit_tvc</span></code> / <code class="docutils literal notranslate"><span class="pre">fit_tvc_from_df</span></code> take one row per interval
+<code class="docutils literal notranslate"><span class="pre">(ident,</span> <span class="pre">start,</span> <span class="pre">stop,</span> <span class="pre">event,</span> <span class="pre">Z)</span></code>, validated by <code class="docutils literal notranslate"><span class="pre">handle_tvc</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">SemiParametricRegressionModel.predict_tvc</span></code> gives a subject’s survival
+along a supplied covariate path.</p></li>
+<li><p><strong>Fixed</strong> the Breslow baseline hazard to respect left-truncation / delayed
+entry (<code class="docutils literal notranslate"><span class="pre">tl</span></code>) and case weights (<code class="docutils literal notranslate"><span class="pre">n</span></code>); <code class="docutils literal notranslate"><span class="pre">H0</span></code> was previously wrong for any
+delayed-entry fit even though the coefficients were correct.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CoxPH.fit</span></code> gained a minimisation fallback so staggered delayed-entry data
+(e.g. the start-stop representation) converges where the root-finder stalled.</p></li>
+<li><p>Right / interval truncation is now rejected with a clear, Cox-specific error
+(a 2-D <code class="docutils literal notranslate"><span class="pre">tl</span></code>), since the forward partial likelihood cannot express it.</p></li>
+</ul>
+</section>
+<section id="truncation">
+<h3>Truncation<a class="headerlink" href="#truncation" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Verified and tested that the parametric AFT / PO / PH truncation correction
+uses each row’s own covariates: a covariate-recovery test confirms the
+coefficient and scale are recovered from left-, right-, interval- and
+partially-truncated data.</p></li>
+</ul>
+</section>
+<section id="id4">
+<h3>Documentation<a class="headerlink" href="#id4" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added worked, executed examples for regression confidence bounds,
+Buckley-James AFT, competing-risks regression (Fine-Gray + cause-specific
+Cox), degradation ADT covariates and two-stage bounds, the copula module,
+and the combined data-input flexibility; wrote the Maximum Product of
+Spacings (MPS) estimation theory section.</p></li>
+</ul>
+</section>
+</section>
+<section id="v0-12-0-15-jul-2026">
+<h2>v0.12.0 (15 Jul 2026)<a class="headerlink" href="#v0-12-0-15-jul-2026" title="Permalink to this heading">¶</a></h2>
+<p>A large release consolidating the regression, recurrent-event, competing-risks,
+degradation, and multivariate work accumulated since <code class="docutils literal notranslate"><span class="pre">v0.10.1</span></code>. Requires
+Python 3.11+ and NumPy 2.</p>
+<section id="id5">
+<h3>Regression<a class="headerlink" href="#id5" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Standardised every univariate regression fitter (accelerated failure time,
+proportional hazards, proportional odds, additive hazards, accelerated life)
+on a common instance-based <code class="docutils literal notranslate"><span class="pre">fit()</span></code> / <code class="docutils literal notranslate"><span class="pre">fit_from_df()</span></code> API with pandas and
+<a class="reference external" href="https://matthewwardrop.github.io/formulaic/">formulaic</a> formula support.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CoxPH</span></code> gained the Efron tie handling in addition to Breslow, and its
+analytic (Efron) information matrix is now correct, so standard errors and
+p-values are produced for tied data.</p></li>
+<li><p>Added delta-method confidence bounds to the parametric regression models:
+<code class="docutils literal notranslate"><span class="pre">cb()</span></code> on a predicted function at a covariate vector, <code class="docutils literal notranslate"><span class="pre">param_cb()</span></code> on a
+single coefficient, and <code class="docutils literal notranslate"><span class="pre">covariance()</span></code> / <code class="docutils literal notranslate"><span class="pre">standard_errors()</span></code> /
+<code class="docutils literal notranslate"><span class="pre">parameter_names()</span></code> on the fitted parameters.</p></li>
+<li><p>Added <code class="docutils literal notranslate"><span class="pre">BuckleyJames</span></code>, a semi-parametric accelerated-failure-time model with
+an unspecified error distribution (the accelerated-time counterpart of Cox),
+fitted by the Buckley-James imputation iteration with percentile-bootstrap
+coefficient intervals.</p></li>
+<li><p>Added a parametric <code class="docutils literal notranslate"><span class="pre">AdditiveHazards</span></code> regression fitter.</p></li>
+</ul>
+</section>
+<section id="id6">
+<h3>Competing risks<a class="headerlink" href="#id6" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added a competing-risks regression module with a cause-specific Cox model and
+a Fine-Gray subdistribution-hazard model (<code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards</span></code>),
+each with <code class="docutils literal notranslate"><span class="pre">fit()</span></code> / <code class="docutils literal notranslate"><span class="pre">fit_from_df()</span></code> and cumulative-incidence prediction.</p></li>
+</ul>
+</section>
+<section id="id7">
+<h3>Recurrent events<a class="headerlink" href="#id7" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Standardised the recurrent-model API on the same instance-based fitters the
+univariate distributions use: <code class="docutils literal notranslate"><span class="pre">HPP</span></code>, <code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code>, <code class="docutils literal notranslate"><span class="pre">Duane</span></code>,
+<code class="docutils literal notranslate"><span class="pre">CoxLewis</span></code>, <code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code>, the renewal fitters
+(<code class="docutils literal notranslate"><span class="pre">GeneralizedRenewal</span></code>/<code class="docutils literal notranslate"><span class="pre">GeneralizedOneRenewal</span></code>/<code class="docutils literal notranslate"><span class="pre">ARA</span></code>/<code class="docutils literal notranslate"><span class="pre">ARI</span></code>) and the
+proportional-intensity fitters are now configured singleton instances with an
+instance-method <code class="docutils literal notranslate"><span class="pre">fit()</span></code>. Public <code class="docutils literal notranslate"><span class="pre">Model.fit(...)</span></code> calls are unchanged;
+internally provided by the <code class="docutils literal notranslate"><span class="pre">surpyval.utils.fitter.singleton_fitter</span></code>
+decorator. Removed the unused <code class="docutils literal notranslate"><span class="pre">ParametricRecurrenceRegressionModel</span></code> stub.</p></li>
+<li><p>Added parameter-uncertainty and diagnostic support to the recurrent models,
+and removed the <code class="docutils literal notranslate"><span class="pre">dist='t'</span></code> heuristic from the recurrent <code class="docutils literal notranslate"><span class="pre">mcf_cb</span></code>.</p></li>
+</ul>
+</section>
+<section id="id8">
+<h3>Degradation<a class="headerlink" href="#id8" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added the <code class="docutils literal notranslate"><span class="pre">surpyval.degradation</span></code> pseudo-failure-time analysis module:
+per-unit path fits over a library of path models, extrapolation to a failure
+threshold, and a fitted life distribution, with population path-parameter
+estimation (Lu-Meeker two-stage and REML) and Bayesian remaining-useful-life
+prediction (<code class="docutils literal notranslate"><span class="pre">predict_rul</span></code>).</p></li>
+<li><p>Added two-stage (delta-method and bootstrap) confidence bounds on the fitted
+life model that fold in the first-stage path/extrapolation uncertainty
+(<code class="docutils literal notranslate"><span class="pre">DegradationModel.cb</span></code> / <code class="docutils literal notranslate"><span class="pre">life_parameter_covariance</span></code>).</p></li>
+<li><p>Added Stage-1 accelerated degradation testing (ADT) covariates: passing
+<code class="docutils literal notranslate"><span class="pre">Z</span></code> to <code class="docutils literal notranslate"><span class="pre">DegradationAnalysis.fit</span></code> fits a regression life model on the
+pseudo failure times so life can be predicted at any stress condition.</p></li>
+</ul>
+</section>
+<section id="multivariate">
+<h3>Multivariate<a class="headerlink" href="#multivariate" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added a <code class="docutils literal notranslate"><span class="pre">surpyval.multivariate</span></code> module with copula models over the
+univariate distributions.</p></li>
+</ul>
+</section>
+<section id="distributions-and-core">
+<h3>Distributions and core<a class="headerlink" href="#distributions-and-core" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added discrete lifetime distributions.</p></li>
+<li><p>Hardened input validation in the <code class="docutils literal notranslate"><span class="pre">handle_xicn</span></code> / <code class="docutils literal notranslate"><span class="pre">xcnt_handler</span></code> data
+handlers, and fixed a reserved-attribute clash.</p></li>
+<li><p>Simulation and <code class="docutils literal notranslate"><span class="pre">dist='t'</span></code> cleanups.</p></li>
+</ul>
+</section>
+</section>
+<section id="v0-10-1-0-25-mar-2022">
+<h2>v0.10.1.0 (25 Mar 2022)<a class="headerlink" href="#v0-10-1-0-25-mar-2022" title="Permalink to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Changed plot methods to now take ‘Axis’ object. This allows a user to pass in an existing axis.</p></li>
+<li><p>plot functions now return an Axis object instead of the Lines2D object. Allows for easy user update after plotting.</p></li>
+<li><p>Added fs_to_xcn as it was dropped in 10.0.1.</p></li>
+<li><p>Changed all imports for numpy to be done from the surpyval module. This will allow for easy maintenance in future in the event of deprecated autograd.</p></li>
+</ul>
+</section>
+<section id="v0-10-0-1-22-nov-2021">
+<h2>v0.10.0.1 (22 Nov 2021)<a class="headerlink" href="#v0-10-0-1-22-nov-2021" title="Permalink to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Removed fsl_to_xcn function and replaced with fsli_to_xcn function that is able to take any combination of fsli.</p></li>
+</ul>
+</section>
+<section id="v0-10-0-9-aug-2021">
+<h2>v0.10.0 (9 Aug 2021)<a class="headerlink" href="#v0-10-0-9-aug-2021" title="Permalink to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Version snapshot for JOSS review</p></li>
+</ul>
+</section>
+<section id="v0-9-0-5-aug-2021">
+<h2>v0.9.0 (5 Aug 2021)<a class="headerlink" href="#v0-9-0-5-aug-2021" title="Permalink to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Better initial estimates in the <code class="docutils literal notranslate"><span class="pre">_parameter_initialiser</span></code> for the lfp data (use max F from nonp estimate…)</p></li>
+<li><p><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues/13">issue #13</a> - Better failures when insufficient data provided.</p></li>
+<li><p><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues/12">issue #12</a> - Created <code class="docutils literal notranslate"><span class="pre">fsli_to_xcn</span></code> helper function.</p></li>
+<li><p>Fixed bug in confidence bounds implementation for offset distributions. CBs were not using the offset and were therefore way out. Now fixed.</p></li>
+<li><p>Created a  <code class="docutils literal notranslate"><span class="pre">NonParametric.cb()</span></code> method to match <code class="docutils literal notranslate"><span class="pre">Parametric</span></code> API for confidence bounds.</p></li>
+<li><p>Cleaned up NonParametric code (removed some technical debt and duplicated code).</p></li>
+<li><p>Changed the <code class="docutils literal notranslate"><span class="pre">__repr__</span></code> function in <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code> to be aligned to <code class="docutils literal notranslate"><span class="pre">Parametric</span></code></p></li>
+<li><p>Updated the docstring for <code class="docutils literal notranslate"><span class="pre">fit()</span></code> for <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code></p></li>
+<li><p>Fixed bug in <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code> that required the <code class="docutils literal notranslate"><span class="pre">x</span></code> input to be in order for the functions (e.g. <code class="docutils literal notranslate"><span class="pre">df</span></code> etc.).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CoxPH</span></code> released.</p></li>
+<li><p>General AL fitter in beta</p></li>
+<li><p>General PH fitter in beta</p></li>
+<li><p>Created <code class="docutils literal notranslate"><span class="pre">Linear</span></code>, <code class="docutils literal notranslate"><span class="pre">Power</span></code>, <code class="docutils literal notranslate"><span class="pre">InversePower</span></code>, <code class="docutils literal notranslate"><span class="pre">Exponential</span></code>, <code class="docutils literal notranslate"><span class="pre">InverseExponential</span></code>, <code class="docutils literal notranslate"><span class="pre">Eyring</span></code>, <code class="docutils literal notranslate"><span class="pre">InverseEyring</span></code>, <code class="docutils literal notranslate"><span class="pre">DualPower</span></code>, <code class="docutils literal notranslate"><span class="pre">PowerExponential</span></code>, <code class="docutils literal notranslate"><span class="pre">DualExponential</span></code> life models.</p></li>
+<li><p>Created <code class="docutils literal notranslate"><span class="pre">GeneralLogLinear</span></code> life model for variable stress count input.</p></li>
+<li><p>For each combination of a SurPyval distribution and life model, there is an instance to use <code class="docutils literal notranslate"><span class="pre">fit()</span></code>. For example there are <code class="docutils literal notranslate"><span class="pre">WeibullDualExponential</span></code>, <code class="docutils literal notranslate"><span class="pre">LogNormalPower</span></code>, <code class="docutils literal notranslate"><span class="pre">ExponentialExponential</span></code> etc.</p></li>
+<li><dl class="simple">
+<dt>Docs Updates:</dt><dd><ul>
+<li><dl class="simple">
+<dt>Add application examples to docs:</dt><dd><ul>
+<li><p>Reliability Engineering</p></li>
+<li><p>Actuary / Demography</p></li>
+<li><p><a class="reference external" href="https://link.springer.com/article/10.1007/s10940-021-09499-5">Social Science/Criminology</a></p></li>
+<li><p>Boston Housing</p></li>
+<li><p>Medical science</p></li>
+<li><p><a class="reference external" href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0232615">Economics</a></p></li>
+<li><p>Biology - Ware, J.H., Demets, D.L.: Reanalysis of some baboon descent data. Biometrics 459–463 (1976).</p></li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</section>
+<section id="v0-8-0-27-july-2021">
+<h2>v0.8.0 (27 July 2021)<a class="headerlink" href="#v0-8-0-27-july-2021" title="Permalink to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Made backwards incompatible changes to <code class="docutils literal notranslate"><span class="pre">LFP</span></code> models, these are now created with the <code class="docutils literal notranslate"><span class="pre">lfp=True</span></code> keyword in the <code class="docutils literal notranslate"><span class="pre">fit()</span></code> method</p></li>
+<li><p>Created ability to fit zero-inflated models. Simply pass the <code class="docutils literal notranslate"><span class="pre">zi=True</span></code> option to the <code class="docutils literal notranslate"><span class="pre">fit()</span></code> method.</p></li>
+<li><p>Chanages to <code class="docutils literal notranslate"><span class="pre">utils.xcnt_handler</span></code> to ensure <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">xl</span></code>, and <code class="docutils literal notranslate"><span class="pre">xr</span></code> are handled consistently.</p></li>
+<li><p>changed the way <code class="docutils literal notranslate"><span class="pre">__repr__</span></code> displays a Parametric object.</p></li>
+<li><p>Changed the default for plotting to be <code class="docutils literal notranslate"><span class="pre">Fleming-Harrington</span></code>. This was a result of seeing how poorly the <code class="docutils literal notranslate"><span class="pre">Nelson-Aalen</span></code> method fits zero inflated models. FH therefore offers the best performance of a Non-Parametric estimate at the low values of the survival function (as KM reaches 0 for fully observed data) and at high values (KM is good but NA is poor).</p></li>
+<li><p>Added a Fleming-Harrington method to the Turnbull class.</p></li>
+<li><p>Improved stability with dedicated <code class="docutils literal notranslate"><span class="pre">log_sf</span></code>, <code class="docutils literal notranslate"><span class="pre">log_ff</span></code>, and <code class="docutils literal notranslate"><span class="pre">log_df</span></code> functions. Less chance of overflows and therefore better convergence.</p></li>
+<li><p>Changed interpolation method of <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code>. Allows for use of cubic interpolation</p></li>
+<li><p>Changed <code class="docutils literal notranslate"><span class="pre">from_params</span></code> to accept lfp and zi (or any combo)</p></li>
+<li><p>Changed <code class="docutils literal notranslate"><span class="pre">random()</span></code> in <code class="docutils literal notranslate"><span class="pre">Parametric</span></code> so that lfp or zi models can be simulated!</p></li>
+<li><p>Improved the way surpyval fails</p></li>
+<li><p>Substantial docs updates.</p></li>
+</ul>
+</section>
+<section id="v0-7-0-19-july-2021">
+<h2>v0.7.0 (19 July 2021)<a class="headerlink" href="#v0-7-0-19-july-2021" title="Permalink to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Major changes to the confidence bounds for <code class="docutils literal notranslate"><span class="pre">Parametric</span></code> models. Now use the <code class="docutils literal notranslate"><span class="pre">cb()</span></code> method for every bound.</p></li>
+<li><p>Removed the <code class="docutils literal notranslate"><span class="pre">OffsetParametric</span></code> class and made <code class="docutils literal notranslate"><span class="pre">Parametric</span></code> class now work with (or without) an offset.</p></li>
+<li><p>Minor doc updates.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="surpyval.datasets.html" class="btn btn-neutral float-left" title="Datasets" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Support.html" class="btn btn-neutral float-right" title="Support" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

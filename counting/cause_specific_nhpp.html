@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cause-Specific NHPP &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+        <script src="../_static/clipboard.min.js"></script>
+        <script src="../_static/copybutton.js"></script>
+        <script src="../_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Proportional Intensity Regression Model" href="proportional_intensity_models.html" />
+    <link rel="prev" title="Cause-Specific MCF" href="cause_specific_mcf.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="../index.html">
+            <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="cause_specific_mcf.html">Cause-Specific MCF</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Cause-Specific NHPP</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">Cause-Specific NHPP</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/cause_specific_nhpp.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="cause-specific-nhpp">
+<h1>Cause-Specific NHPP<a class="headerlink" href="#cause-specific-nhpp" title="Permalink to this heading">¶</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.</span></span><span class="sig-name descname"><span class="pre">CauseSpecificNHPP</span></span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Parametric cause-specific intensity model for a recurrent process with
+competing event types.</p>
+<p>One NHPP intensity model (<code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code> by default, or any counting-process
+fitter) is fitted per event type, sharing each item’s observation window
+across causes. Access the per-cause fitted models through
+<code class="docutils literal notranslate"><span class="pre">self.models[cause]</span></code> – each is an ordinary
+<code class="xref py py-class docutils literal notranslate"><span class="pre">ParametricRecurrenceModel</span></code> with its full <code class="docutils literal notranslate"><span class="pre">cif</span></code>/<code class="docutils literal notranslate"><span class="pre">iif</span></code>/inference/
+diagnostic behaviour – or use the convenience methods below.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.cif">
+<span class="sig-name descname"><span class="pre">cif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cause</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.cif" title="Permalink to this definition">¶</a></dt>
+<dd><p>Cause-specific cumulative intensity (expected <code class="docutils literal notranslate"><span class="pre">cause</span></code> count).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.fit">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">e=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist=&lt;surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">how='MLE'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.fit" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit a cause-specific intensity model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em>) – Event (and censoring) times.</p></li>
+<li><p><strong>i</strong> (<em>array like</em><em>, </em><em>optional</em>) – Item / subject id for each row. Defaults to a single item.</p></li>
+<li><p><strong>c</strong> (<em>array like</em><em>, </em><em>optional</em>) – Censoring flag for each row (0 observed, 1 right censored).</p></li>
+<li><p><strong>n</strong> (<em>array like</em><em>, </em><em>optional</em>) – Count of events at each row. Defaults to 1.</p></li>
+<li><p><strong>e</strong> (<em>array like</em>) – Event type (mark) for each row. <code class="docutils literal notranslate"><span class="pre">None</span></code>/<code class="docutils literal notranslate"><span class="pre">NaN</span></code> for censored rows.</p></li>
+<li><p><strong>tl</strong> (<em>array like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Left-truncation (delayed-entry) time per item.</p></li>
+<li><p><strong>tr</strong> (<em>array like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Right-truncation time per item.</p></li>
+<li><p><strong>dist</strong> (<em>counting-process fitter</em><em>, </em><em>optional</em>) – The intensity model fitted per cause (<code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code> by default).</p></li>
+<li><p><strong>how</strong> (<em>str</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;MSE&quot;</span></code>.</p></li>
+<li><p><strong>init</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Initial parameters for each per-cause optimisation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p><a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP">CauseSpecificNHPP</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.fit_from_df">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fit_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">e_col</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i_col=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl_col=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr_col=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist=&lt;surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">how='MLE'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.fit_from_df" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit a cause-specific intensity model from a <code class="xref py py-class docutils literal notranslate"><span class="pre">pandas.DataFrame</span></code>,
+naming the columns to read. See <a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.fit" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> for the meaning of each.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.fit_from_recurrent_data">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fit_from_recurrent_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist=&lt;surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">how='MLE'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.fit_from_recurrent_data" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit the cause-specific intensity model from prepared
+<code class="xref py py-class docutils literal notranslate"><span class="pre">RecurrentEventData</span></code> carrying event-type marks <code class="docutils literal notranslate"><span class="pre">e</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<a class="reference internal" href="../surpyval.utilities.html#surpyval.utils.recurrent_event_data.RecurrentEventData" title="surpyval.utils.recurrent_event_data.RecurrentEventData"><em>RecurrentEventData</em></a>) – Recurrent data with event-type marks (<code class="docutils literal notranslate"><span class="pre">data.e</span></code> not <code class="docutils literal notranslate"><span class="pre">None</span></code>).</p></li>
+<li><p><strong>dist</strong> (<em>counting-process fitter</em><em>, </em><em>optional</em>) – The intensity model fitted per cause (<code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code> by default;
+<code class="docutils literal notranslate"><span class="pre">HPP</span></code>, <code class="docutils literal notranslate"><span class="pre">Duane</span></code>, <code class="docutils literal notranslate"><span class="pre">CoxLewis</span></code> are also valid).</p></li>
+<li><p><strong>how</strong> (<em>str</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;MSE&quot;</span></code>; passed through to the per-cause fit.</p></li>
+<li><p><strong>init</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Initial parameters for each per-cause optimisation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p><a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP">CauseSpecificNHPP</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.from_dict">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.from_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>Rebuild a cause-specific NHPP from a <a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_dict" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> dictionary.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_dict" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_dict</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_json" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_json</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.from_json" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.from_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_json</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.from_json">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.from_json" title="Permalink to this definition">¶</a></dt>
+<dd><p>Load a cause-specific NHPP from a JSON file written by
+<a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_json" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_json"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_json()</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.iif">
+<span class="sig-name descname"><span class="pre">iif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cause</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.iif" title="Permalink to this definition">¶</a></dt>
+<dd><p>Cause-specific instantaneous intensity for <code class="docutils literal notranslate"><span class="pre">cause</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.mcf">
+<span class="sig-name descname"><span class="pre">mcf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cause</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.mcf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Cause-specific mean cumulative function (alias of <a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.cif" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.cif"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cif()</span></code></a>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Overlay the fitted cause-specific CIFs on a single axis.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>Serialise this fitted cause-specific NHPP to a plain,
+JSON-serialisable dict: the shared intensity model’s name, the list of
+event types, and each cause’s fitted intensity model.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.from_dict" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.from_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_dict</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_json" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_json</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.from_json" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.from_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_json</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_json" title="Permalink to this definition">¶</a></dt>
+<dd><p>Write <a class="reference internal" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_dict" title="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> to <code class="docutils literal notranslate"><span class="pre">fp</span></code> as JSON.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.total_cif">
+<span class="sig-name descname"><span class="pre">total_cif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.competing_risks.parametric.cause_specific_nhpp.CauseSpecificNHPP.total_cif" title="Permalink to this definition">¶</a></dt>
+<dd><p>Total cumulative intensity across all causes – the expected number of
+events of any type, which (the causes being independent thinnings of
+the overall process) is the sum of the cause-specific intensities.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="cause_specific_mcf.html" class="btn btn-neutral float-left" title="Cause-Specific MCF" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="proportional_intensity_models.html" class="btn btn-neutral float-right" title="Proportional Intensity Regression Model" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

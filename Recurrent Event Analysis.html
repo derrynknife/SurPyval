@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recurrent Event Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Recurrent Event Regression Analysis" href="Recurrent%20Event%20Regression%20Analysis.html" />
+    <link rel="prev" title="Competing Risks Analysis" href="Competing%20Risks%20Analysis.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Recurrent Event Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#recurrent-event-modelling">Recurrent Event Modelling</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#non-parametric-mean-cumulative-function">Non-Parametric - Mean Cumulative Function</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#parametric-recurrent-event-models">Parametric Recurrent Event Models</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#renewal-modelling">Renewal Modelling</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#generalised-renewal-process">Generalised Renewal Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#g1-renewal-process">G1 Renewal Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arithmetic-reduction-of-age-and-intensity-ara-ari">Arithmetic Reduction of Age and Intensity (ARA/ARI)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-geometric-process">The Geometric Process</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#parameter-estimation">Parameter Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#truncation-and-delayed-entry">Truncation and Delayed Entry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#model-checking-residuals-trend-tests-and-goodness-of-fit">Model Checking: Residuals, Trend Tests, and Goodness of Fit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#competing-risks-marked-recurrent-events">Competing Risks: Marked Recurrent Events</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#gapped-multi-window-observation">Gapped (Multi-Window) Observation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Recurrent Event Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Recurrent Event Analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="recurrent-event-analysis">
+<h1>Recurrent Event Analysis<a class="headerlink" href="#recurrent-event-analysis" title="Permalink to this heading">¶</a></h1>
+<p>This section is about those events that occur but do not “kill” the subject.
+For example, in engineering an item may fail and be repaired instead of replaced.
+In medicine, a patient may have multiple heart attacks which are not fatal.
+In these cases, the event of interest is the time between events, which is the
+subject of single-event survival analysis. In single-event (univariate) analysis
+one is interested in only the time to the first, and only, event. In recurrent
+event analysis one is interested in the time to the first, second, third, etc.
+event. We therefore need a way to describe how many events have occurred by time t.
+For a comprehensive, book-length treatment of recurrent-event analysis, see
+<a class="reference internal" href="#cook2007" id="id1"><span>[Cook2007]</span></a>.</p>
+<p>Recurrent events are modelled using counting processes and point processes.
+The underlying mathematical framework — martingale theory and stochastic
+integrals — is known as the counting-process formulation, but that is an
+implementation detail. Users navigate by their data type: “do my subjects
+experience repeated events?” If yes, this section applies.</p>
+<p>This section is split into two subsections:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>Recurrent Event Modelling</p></li>
+<li><p>Renewal Modelling</p></li>
+</ol>
+</div></blockquote>
+<p>These are both types of recurrent event models but they differ in their methods.
+In a recurrent event model the inter-arrival time is based on some underlying
+hazard rate, whereas in a renewal model there is an underlying distribution where,
+after each event, the apparent age of the subject is changed.</p>
+<section id="recurrent-event-modelling">
+<h2>Recurrent Event Modelling<a class="headerlink" href="#recurrent-event-modelling" title="Permalink to this heading">¶</a></h2>
+<p>Recurrent event models aim to find a rate at which events occur. This is done by
+estimating the hazard rate of the process. This can be done parametrically or
+non-parametrically.</p>
+<section id="non-parametric-mean-cumulative-function">
+<h3>Non-Parametric - Mean Cumulative Function<a class="headerlink" href="#non-parametric-mean-cumulative-function" title="Permalink to this heading">¶</a></h3>
+<p>The mean cumulative function is the average number of events that have occurred
+by time t. It is defined as:</p>
+<div class="math notranslate nohighlight">
+\[MCF(x) = \sum_{i:x_{i} \leq x}^{} \frac{d_{i} }{r_{i}}\]</div>
+<p>This equation looks the same as the cumulative hazard estimate of the Nelson-Aalen estimator.
+That’s because it is, the only difference is that when we do this for single events
+the number of items at risk decreases after each failure. Whereas with recurrent
+events the item continues to be observed until more events occur. Therefore the
+number of items in the risk set does not always decrease after each observed event.
+Whereas when doing recurrent event analysis an item will remain in the at risk
+set since it will be healed/repaired and returned to service/health to continue with life.</p>
+<p>The MCF function is the non-parametric estimator of the number of events that
+will occur up to x. So once we fit a model we can then estimate the expected
+number of events that will occur up to time x by using the MCF function.</p>
+<p>Non-Parametric estimation for recurrent events has the same limitations as does
+single event survival analysis. The main one being that it is not possible to
+extrapolate an estimate of the MCF function beyond the last observed event. This
+is because when doing non-parametric analysis we make no assumptions about the
+shape of the curve and cannot therefore extrapolate beyond the last observed event.</p>
+</section>
+<section id="parametric-recurrent-event-models">
+<h3>Parametric Recurrent Event Models<a class="headerlink" href="#parametric-recurrent-event-models" title="Permalink to this heading">¶</a></h3>
+<p>SurPyval has several parametric models for recurrent event analysis. These can
+be categorised as either:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Homogeneous Poisson Process, or</p></li>
+<li><p>Non-Homogeneous Poisson Process</p></li>
+</ul>
+</div></blockquote>
+<p>The Homogeneous Poisson Process is one where the rate of events is constant over time.
+This is the simplest model. A Non-Homogeneous Poisson Process is one where the
+rate of events is not constant over time.</p>
+<p>SurPyval has a series of available Non-Homogeneous Poisson Process models available
+for use. These are:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Duane</p></li>
+<li><p>Cox-Lewis</p></li>
+<li><p>AMSAA</p></li>
+<li><p>Crow-AMSAA</p></li>
+</ul>
+</div></blockquote>
+<p>See the API documentation to see the details of each of these models. The key
+point is that each of these are a parametric representation of the hazard rate
+of the process.</p>
+<p>Parametric recurrent event models can be estimated in similar ways to single event
+survival analysis. That is, we can use a simple mean square error estimation
+or, more powerfully, we can use maximum likelihood estimation. The latter is
+the default in SurPyval.</p>
+<p>MLE for recurrent event models is done by understanding that the likelihood
+between events is actually just the conditional likelihood of the next event
+given the previous event. That is the equivalent to a left truncated
+observation.</p>
+<p>The benefit of parametric models is that they can be extrapolated beyond the
+last observed event. This is because we have made assumptions about the shape
+of the curve and can therefore extrapolate beyond the last observed event.</p>
+</section>
+</section>
+<section id="renewal-modelling">
+<h2>Renewal Modelling<a class="headerlink" href="#renewal-modelling" title="Permalink to this heading">¶</a></h2>
+<p>A renewal model is one where recurrent events occur after some intervention has
+restored some of the life of the subject. This is different to a recurrent event
+model where the events occur at some underlying rate. In a renewal model the
+events occur at some underlying distribution. After each event the apparent age
+of the subject is changed.</p>
+<p>In engineering applications a renewal process is one where the item is repaired
+and not replaced. A renewal model captures the effectiveness of the repair
+process. In medicine, a renewal process is one where the patient is treated to
+lessen the impact of some disease, in this case a renewal model captures the
+effectiveness of the treatment.</p>
+<p>In surpyval there are two types of renewal models, these are:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Generalised Renewal Process</p></li>
+<li><p>G1 Renewal Process</p></li>
+</ul>
+</div></blockquote>
+<section id="generalised-renewal-process">
+<h3>Generalised Renewal Process<a class="headerlink" href="#generalised-renewal-process" title="Permalink to this heading">¶</a></h3>
+<p>A Generalised Renewal Process (GRP) is one where the intervention can cause the
+item to be:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>as-good-as-new</p></li>
+<li><p>as-bad-as-old</p></li>
+<li><p>better-than-old-but-worse-than-new</p></li>
+<li><p>worse-than-old</p></li>
+</ul>
+</div></blockquote>
+<p>This is possible since by using a notion of “virtual age.” The virtual age can
+be understood to be the apparent age of the subject after the nth intervention.
+An engineering example is the best to illustrate this point. Consider a pump
+that has been operating for 1000 hours and then has a failure. After a technician
+fixes the issue, the pump is returned to service.</p>
+<p>If the pump was repaired
+perfectly it could be considered as-good-as-new and the virtual age would be
+zero. That is, the apparent age of the pump would effectively be as if were straight
+out of the factory.</p>
+<p>If the pump repair was only
+minimal then the virtual age would be exactly 1000 since the pump can be treated
+as if it were exactly the same as it was prior to the repair, just without the
+fault that was fixed.</p>
+<p>If the pump was well repaired, but not perfectly, then the apparent age of the
+pump would be somewhere between 0 and 1000.</p>
+<p>And finally, if the intervention
+repaired the fault while doing some other damage, the age of the pump could be
+above 1000.</p>
+<p>A GRP has two ways that the virtual age can be calculated. These are known as
+the Kijima-I and Kijima-II models.</p>
+<p>The Kijima-I model assumes that the repair can only repair damage incurred
+since the last repair. Mathematically, this is defined as:</p>
+<div class="math notranslate nohighlight">
+\[V_{n} = V_{n-1} + qt_{n}\]</div>
+<p>Where <span class="math notranslate nohighlight">\(V_{n}\)</span> is the virtual age after the intervention, <span class="math notranslate nohighlight">\(V_{n-1}\)</span>
+is the virtual age just prior to the intervention, <span class="math notranslate nohighlight">\(t_{n}\)</span> is the time
+since the previous event, i.e. the inter-arrival time, and finally <span class="math notranslate nohighlight">\(q\)</span> is
+the effectiveness of the repair.</p>
+<p>The Kijima-II model assumes that the repair can repair all damage incurred
+since the item was new. Mathematically, this is defined as:</p>
+<div class="math notranslate nohighlight">
+\[V_{n} = q(V_{n-1} + t_{n})\]</div>
+<p>Each term here has the same meaning as the Kijima-I model.</p>
+<p>Note that if <span class="math notranslate nohighlight">\(q = 0\)</span> then the Kijima-I and Kijima-II models are
+equivalent. That is the virtual age is always zero. This means that the
+intervention is always perfect. If <span class="math notranslate nohighlight">\(q = 1\)</span> then the Kijima-I and Kijima-II
+models are also equivalent. That is the virtual age is always the same as the
+actual age. This means that the intervention is always as-bad-as-old.</p>
+<p>If <span class="math notranslate nohighlight">\(q\)</span> is anything other than 0 or 1 then the models are different.
+However, if <span class="math notranslate nohighlight">\(0 &lt; q &lt; 1\)</span> then the interventionm according to both models
+is better-than-old-but-worse-than-new. Finally if <span class="math notranslate nohighlight">\(q &gt; 1\)</span> then the
+intervention make the item worse-than-old, that is “older” than it was when
+it failed.</p>
+<p>Both these options are available in SurPyval. But both have a shortcoming which
+is that they cannot handle cases where the repair makes the item
+better-than-new. To do this you will need to use the G1 Renewal Process.</p>
+</section>
+<section id="g1-renewal-process">
+<h3>G1 Renewal Process<a class="headerlink" href="#g1-renewal-process" title="Permalink to this heading">¶</a></h3>
+<p>A G1 Renewal Process is one where the intervention can be better-than-new. The
+G1 renewal process is able to do this by changing the life parameter of the
+underlying distribution. This is in contrast to the GRP which alters the age
+whereas the G1 process alters the remaining life.</p>
+<p>The G1 Renewal process is able to do this by changing the life parameter of the
+underlying distribution. This is done by using a transformation of the life
+parameter after an event. The transformation is defined as:</p>
+<div class="math notranslate nohighlight">
+\[\alpha_{i} = \alpha(1 + q)^{i - 1}\]</div>
+<p>Where <span class="math notranslate nohighlight">\(\alpha\)</span> is the life parameter of a location-scale distribution and
+<span class="math notranslate nohighlight">\(q\)</span> is the effectiveness of the intervention. Unlike what is possible
+with the G-Renewal process, if q is greater than zero the model captures the
+behaviour of when the intervention can improves the life of the subject. If
+<span class="math notranslate nohighlight">\(q = 0\)</span> then the repair is as-good-as-new. If <span class="math notranslate nohighlight">\(q &lt; 0\)</span> then the
+intervention is restoring some life but not to make it as good as new. Note
+that <span class="math notranslate nohighlight">\(q\)</span> cannot be less than -1.</p>
+<p>As an example, if the life parameter of an items was 100 hours and the repair
+effectiveness was -0.2, then after the first repair the next time to an event
+would have a life parameter of 80 hours. After the second repair the life
+parameter would be 64 hours. After the third repair the life parameter would be
+51.2 hours. And so on.</p>
+<p>If the repair effectiveness was 0.2 then after the first repair the next time
+to an event would have a life parameter of 120 hours. After the second repair
+the life parameter would be 144 hours. After the third repair the life would be
+172.8 hours. And so on.</p>
+<p>The ability of the G1 Renewal Process to capture the behaviour of when the
+intervention can improve the life of the subject is the reason why it is
+a useful model to have available.</p>
+</section>
+<section id="arithmetic-reduction-of-age-and-intensity-ara-ari">
+<h3>Arithmetic Reduction of Age and Intensity (ARA/ARI)<a class="headerlink" href="#arithmetic-reduction-of-age-and-intensity-ara-ari" title="Permalink to this heading">¶</a></h3>
+<p>The Kijima virtual-age models above are the special cases of a more general
+family due to Doyen and Gaudoin <a class="reference internal" href="#doyen2004" id="id2"><span>[Doyen2004]</span></a>. Rather than fold every past
+repair into a single running age, these models make the <em>memory</em> of the repair
+explicit: how many previous failures does an intervention act on?</p>
+<p>The <strong>Arithmetic Reduction of Age</strong> (ARA) model reduces the virtual age by a
+fixed fraction <span class="math notranslate nohighlight">\(\rho\)</span> of the age accumulated over the last <span class="math notranslate nohighlight">\(m\)</span>
+inter-arrival times. With infinite memory (<span class="math notranslate nohighlight">\(m = \infty\)</span>) and one prior
+failure this recovers Kijima-I; with <span class="math notranslate nohighlight">\(m = 1\)</span> it acts only on the most
+recent interval. The repair efficiency <span class="math notranslate nohighlight">\(\rho \in (0, 1)\)</span> plays the role
+of <span class="math notranslate nohighlight">\(1 - q\)</span>: <span class="math notranslate nohighlight">\(\rho = 1\)</span> is as-good-as-new (perfect repair) and
+<span class="math notranslate nohighlight">\(\rho = 0\)</span> is as-bad-as-old (minimal repair).</p>
+<p>The <strong>Arithmetic Reduction of Intensity</strong> (ARI) model instead reduces the
+<em>intensity</em> directly. After each repair the failure intensity is lowered by a
+fraction <span class="math notranslate nohighlight">\(\rho\)</span> of the intensity built up over the last <span class="math notranslate nohighlight">\(m\)</span>
+intervals, so the process acts on the rate of events rather than on an
+effective age. ARA and ARI coincide for a constant (homogeneous) baseline but
+differ whenever the baseline intensity varies with time.</p>
+<p>Both models take an integer memory <span class="math notranslate nohighlight">\(m\)</span> (with <span class="math notranslate nohighlight">\(m = \infty\)</span> the
+infinite-memory limit), which lets you dial the model from “the last repair
+undid only the most recent wear” (<span class="math notranslate nohighlight">\(m = 1\)</span>) up to “every repair reaches
+back over the whole history” (<span class="math notranslate nohighlight">\(m = \infty\)</span>).</p>
+</section>
+<section id="the-geometric-process">
+<h3>The Geometric Process<a class="headerlink" href="#the-geometric-process" title="Permalink to this heading">¶</a></h3>
+<p>A closely related idea is Lam’s <strong>geometric process</strong> <a class="reference internal" href="#lam1988" id="id3"><span>[Lam1988]</span></a>. Here the
+successive inter-arrival times <span class="math notranslate nohighlight">\(X_1, X_2, \ldots\)</span> are scaled so that
+<span class="math notranslate nohighlight">\(a^{\,k-1} X_k\)</span> are independent and identically distributed for a single
+ratio <span class="math notranslate nohighlight">\(a &gt; 0\)</span>. When <span class="math notranslate nohighlight">\(a &gt; 1\)</span> the inter-arrivals shrink
+geometrically (a deteriorating system), when <span class="math notranslate nohighlight">\(a &lt; 1\)</span> they grow
+(reliability growth), and <span class="math notranslate nohighlight">\(a = 1\)</span> is an ordinary renewal process. The
+mean inter-arrival time is then the geometric sequence
+<span class="math notranslate nohighlight">\(\mathbb{E}[X_k] = \mu / a^{\,k-1}\)</span>.</p>
+<p>This is exactly the G1 Renewal Process in a different parameterisation:
+matching the G1 scaling <span class="math notranslate nohighlight">\((1 + q)^{j}\)</span> to <span class="math notranslate nohighlight">\(a^{-j}\)</span> gives
+<span class="math notranslate nohighlight">\(a = 1 / (1 + q)\)</span>. A deteriorating system (<span class="math notranslate nohighlight">\(a &gt; 1\)</span>) therefore
+corresponds to a negative restoration factor, and reliability growth
+(<span class="math notranslate nohighlight">\(a &lt; 1\)</span>) to a positive one. Fitting a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">GeneralizedOneRenewal</span></code> gives the geometric process
+with a parametric lifetime distribution.</p>
+</section>
+</section>
+<section id="parameter-estimation">
+<h2>Parameter Estimation<a class="headerlink" href="#parameter-estimation" title="Permalink to this heading">¶</a></h2>
+<p>As with regular survival analysis there are several ways one can estimate the
+parameters of the models. Mean Square Error (MSE) is quite straight forward
+for both renewal and recurrence models. The complication with recurrence models
+is that you have to do a monte carlo simulation for each set of parameters. This
+can get quite time consuming and expensive. But it does work.</p>
+<p>Maximum Likelihood Estimation also provides an excellent way to estimate
+parameters. It is a relatively straight forward logical step from single
+event survival analysis to multiple events. For the first event, the likelihood
+of that particular event is the same as for regular survival analysis. For
+recurrent events we tend to use the hazard rate, as this captures the full
+nature of the circumstances, to define the model. The log-likelihood for a
+non-homogeneous Poisson process observed over <span class="math notranslate nohighlight">\([0, T]\)</span> with events at
+times <span class="math notranslate nohighlight">\(x_1, x_2, \ldots, x_n\)</span> is:</p>
+<div class="math notranslate nohighlight">
+\[\ell(\theta) = \sum_{i=1}^{n} \ln h(x_i \mid \theta) - \int_0^T h(u \mid \theta)\, du\]</div>
+<p>where <span class="math notranslate nohighlight">\(h(t \mid \theta)\)</span> is the intensity (hazard) function of the
+process and the integral is the expected number of events over the observation
+window. For a homogeneous Poisson process <span class="math notranslate nohighlight">\(h\)</span> is constant and the
+integral reduces to <span class="math notranslate nohighlight">\(\lambda T\)</span>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Full derivations for each parametric model (Crow-AMSAA, Duane, Cox-Lewis)
+are in the API docstrings.</p>
+</div>
+</section>
+<section id="truncation-and-delayed-entry">
+<h2>Truncation and Delayed Entry<a class="headerlink" href="#truncation-and-delayed-entry" title="Permalink to this heading">¶</a></h2>
+<p>Observation of a recurrent process rarely starts at the origin. A machine may
+already have been in service before monitoring began, or a study may only
+record events after a subject enrols. This is <strong>left truncation</strong> (delayed
+entry): the item is only under observation from an entry time <span class="math notranslate nohighlight">\(t_L\)</span>, and
+its first observed interval is integrated from <span class="math notranslate nohighlight">\(t_L\)</span> rather than from
+zero. <strong>Right truncation</strong> closes the observation window at a time <span class="math notranslate nohighlight">\(t_R\)</span>,
+extending the compensator integral out to <span class="math notranslate nohighlight">\(t_R\)</span> even if no event or
+censoring row sits exactly there.</p>
+<p>The intensity (Poisson) models handle delayed entry directly, because the
+likelihood over any interval depends only on the intensity over that interval.
+The virtual-age and history-dependent models (Kijima, G1, ARA, ARI) cannot:
+the virtual age at entry depends on the unobserved failures before entry, so
+those models require the process to be observed from the start.</p>
+</section>
+<section id="model-checking-residuals-trend-tests-and-goodness-of-fit">
+<h2>Model Checking: Residuals, Trend Tests, and Goodness of Fit<a class="headerlink" href="#model-checking-residuals-trend-tests-and-goodness-of-fit" title="Permalink to this heading">¶</a></h2>
+<p>Having a fitted model is not the same as having a <em>good</em> model, and recurrent
+processes admit the same kind of residual analysis as ordinary regression.</p>
+<p>The key tool is the <strong>time-rescaling theorem</strong> <a class="reference internal" href="#ogata1988" id="id4"><span>[Ogata1988]</span></a> <a class="reference internal" href="#daleyverejones2003" id="id5"><span>[DaleyVereJones2003]</span></a>.
+If events follow a process with cumulative intensity <span class="math notranslate nohighlight">\(\Lambda\)</span>, then
+transforming each event time by its own compensator turns the observed events
+into a <em>unit-rate</em> Poisson process. Concretely, the rescaled inter-arrival
+increments</p>
+<div class="math notranslate nohighlight">
+\[e_k = \Lambda(x_k) - \Lambda(x_{k-1})\]</div>
+<p>are independent Exp(1) random variables when the fitted model is correct. So a
+simple check is whether the residuals <span class="math notranslate nohighlight">\(e_k\)</span> look like an i.i.d. Exp(1)
+sample (mean one); the probability-integral transform <span class="math notranslate nohighlight">\(1 - e^{-e_k}\)</span>
+turns them into U(0, 1) values for a QQ-style check, and a per-item
+<strong>martingale residual</strong> — observed event count minus the compensator over the
+item’s window — flags items the model over- or under-predicts. For the
+virtual-age and renewal models the same construction is applied to the
+<em>conditional</em> intensity (the cumulative hazard accumulated over each interval
+given the model’s virtual age or intensity reduction), so residuals extend to
+those families too.</p>
+<p>A <strong>trend test</strong> asks a more basic question: was a time-varying intensity
+warranted at all? The null hypothesis is a homogeneous Poisson process (no
+trend). The Laplace test and the Military-Handbook (MIL-HDBK-189C) test
+<a class="reference internal" href="#rigdon2000" id="id6"><span>[Rigdon2000]</span></a> both use only the event times and observation windows, not the
+fitted parameters, so they are a useful sanity check before committing to a
+particular parametric form.</p>
+<p>Finally, a <strong>Cramér–von Mises</strong> goodness-of-fit test <a class="reference internal" href="#daleyverejones2003" id="id7"><span>[DaleyVereJones2003]</span></a>
+measures how far the conditionally-uniform transforms fall from uniformity.
+Conditional on the number of events an item shows, the normalised compensators
+<span class="math notranslate nohighlight">\(\Lambda(x_k) / \Lambda(\text{close})\)</span> are i.i.d. U(0, 1) under the true
+model; the statistic aggregates their departure from uniformity. Because the
+parameters were estimated from the same data, the p-value is obtained by a
+parametric bootstrap — resimulating from the fitted model, refitting, and
+recomputing the statistic — so it accounts for the estimation. For the
+power-law (Crow-AMSAA) process this is the construction behind Crow’s
+classical goodness-of-fit test.</p>
+</section>
+<section id="competing-risks-marked-recurrent-events">
+<h2>Competing Risks: Marked Recurrent Events<a class="headerlink" href="#competing-risks-marked-recurrent-events" title="Permalink to this heading">¶</a></h2>
+<p>An item can experience events of several <em>mutually exclusive types</em> — a pump
+that suffers seal failures, bearing failures and impeller failures, say. Each
+event carries a <strong>mark</strong> identifying its type, and we usually want a separate
+picture per type.</p>
+<p>Non-parametrically, the <strong>cause-specific mean cumulative function</strong> is the MCF
+restricted to one cause. The at-risk set is shared across causes (an item is at
+risk for every cause until it leaves observation); only the event counts are
+split by type. This is the recurrent-process analogue of the cause-specific
+cumulative incidence in single-event competing risks.</p>
+<p>Parametrically, a marked Poisson process has an elegant structure: the
+cause-specific processes are <strong>independent thinned Poisson processes</strong>. An
+event of one cause neither advances nor interrupts another cause’s intensity,
+so the joint likelihood factorises over causes. Each cause’s intensity is
+therefore just the ordinary NHPP fit to that cause’s events over the full
+observation window of every item, treating other-cause events exactly as a
+censored (unobserved) period. The total intensity is the sum of the
+cause-specific intensities.</p>
+</section>
+<section id="gapped-multi-window-observation">
+<h2>Gapped (Multi-Window) Observation<a class="headerlink" href="#gapped-multi-window-observation" title="Permalink to this heading">¶</a></h2>
+<p>Sometimes an item is observed over several <em>disjoint</em> windows with unobserved
+gaps in between — a fleet vehicle tracked only while it is in the depot, or a
+system monitored during business hours. Events may occur during a gap but are
+never recorded, so the analysis must not assume the item was under observation
+throughout.</p>
+<p>For a Poisson (intensity) process this has a clean solution. Because event
+counts over disjoint windows are independent, a gapped item’s likelihood
+factorises over its windows, and each window can be treated as its own
+observation period with its own entry and exit. The intensity likelihood and
+the non-parametric MCF at-risk set then handle the gaps with no special
+machinery: an item is simply absent from the risk set while it is unobserved.
+The virtual-age and renewal models cannot accommodate gaps, because the virtual
+age at the start of a later window depends on the unobserved failures during
+the gap.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Permalink to this heading">¶</a></h2>
+<dl class="citation">
+<dt class="label" id="doyen2004"><span class="brackets"><a class="fn-backref" href="#id2">Doyen2004</a></span></dt>
+<dd><p>Doyen, L. and Gaudoin, O., 2004. Classes of imperfect repair
+models based on reduction of failure intensity or virtual age. <em>Reliability
+Engineering &amp; System Safety</em>, 84(1), pp.45-56.</p>
+</dd>
+<dt class="label" id="lam1988"><span class="brackets"><a class="fn-backref" href="#id3">Lam1988</a></span></dt>
+<dd><p>Lam, Y., 1988. Geometric processes and replacement problem. <em>Acta
+Mathematicae Applicatae Sinica</em>, 4(4), pp.366-377.</p>
+</dd>
+<dt class="label" id="ogata1988"><span class="brackets"><a class="fn-backref" href="#id4">Ogata1988</a></span></dt>
+<dd><p>Ogata, Y., 1988. Statistical models for earthquake occurrences
+and residual analysis for point processes. <em>Journal of the American
+Statistical Association</em>, 83(401), pp.9-27.</p>
+</dd>
+<dt class="label" id="daleyverejones2003"><span class="brackets">DaleyVereJones2003</span><span class="fn-backref">(<a href="#id5">1</a>,<a href="#id7">2</a>)</span></dt>
+<dd><p>Daley, D.J. and Vere-Jones, D., 2003. <em>An Introduction
+to the Theory of Point Processes, Volume I: Elementary Theory and Methods</em>,
+2nd ed. Springer.</p>
+</dd>
+<dt class="label" id="rigdon2000"><span class="brackets"><a class="fn-backref" href="#id6">Rigdon2000</a></span></dt>
+<dd><p>Rigdon, S.E. and Basu, A.P., 2000. <em>Statistical Methods for the
+Reliability of Repairable Systems</em>. John Wiley &amp; Sons.</p>
+</dd>
+<dt class="label" id="cook2007"><span class="brackets"><a class="fn-backref" href="#id1">Cook2007</a></span></dt>
+<dd><p>Cook, R.J. and Lawless, J.F., 2007. <em>The Statistical Analysis of
+Recurrent Events</em>. Springer.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Competing%20Risks%20Analysis.html" class="btn btn-neutral float-left" title="Competing Risks Analysis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Recurrent%20Event%20Regression%20Analysis.html" class="btn btn-neutral float-right" title="Recurrent Event Regression Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

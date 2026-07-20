@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Utilities &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Datasets" href="surpyval.datasets.html" />
+    <link rel="prev" title="Degradation Analysis" href="surpyval.degradation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#data-classes">Data Classes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.surpyval_data.SurpyvalData"><code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.recurrent_event_data.RecurrentEventData"><code class="docutils literal notranslate"><span class="pre">RecurrentEventData</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#module-surpyval.utils">Data Wrangling Utilities</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.coerce_xcnt_x"><code class="docutils literal notranslate"><span class="pre">coerce_xcnt_x()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.format_truncation"><code class="docutils literal notranslate"><span class="pre">format_truncation()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.fs_to_xrd"><code class="docutils literal notranslate"><span class="pre">fs_to_xrd()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.fsli_handler"><code class="docutils literal notranslate"><span class="pre">fsli_handler()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.fsli_to_xcnt"><code class="docutils literal notranslate"><span class="pre">fsli_to_xcnt()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.is_missing_event"><code class="docutils literal notranslate"><span class="pre">is_missing_event()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.resolve_cr_censoring"><code class="docutils literal notranslate"><span class="pre">resolve_cr_censoring()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.validate_float_array"><code class="docutils literal notranslate"><span class="pre">validate_float_array()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.xcn_to_fsl"><code class="docutils literal notranslate"><span class="pre">xcn_to_fsl()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.xcnt_handler"><code class="docutils literal notranslate"><span class="pre">xcnt_handler()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.xcnt_to_xrd"><code class="docutils literal notranslate"><span class="pre">xcnt_to_xrd()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.xrd_handler"><code class="docutils literal notranslate"><span class="pre">xrd_handler()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.utils.xrd_to_xcnt"><code class="docutils literal notranslate"><span class="pre">xrd_to_xcnt()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="surpyval.html">API</a></li>
+      <li class="breadcrumb-item active">Utilities</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/surpyval.utilities.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="utilities">
+<h1>Utilities<a class="headerlink" href="#utilities" title="Permalink to this heading">¶</a></h1>
+<section id="data-classes">
+<h2>Data Classes<a class="headerlink" href="#data-classes" title="Permalink to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.utils.surpyval_data.SurpyvalData">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.utils.surpyval_data.</span></span><span class="sig-name descname"><span class="pre">SurpyvalData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Number</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Number</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_and_sort</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">handle</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.surpyval_data.SurpyvalData" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Initialize a SurpyvalData instance for survival analysis.</p>
+<p>Validates, sorts, and stores survival data in the xcnt format. Supports
+uncensored, right/left/interval-censored, and truncated observations.
+Can convert to xrd format and select subsets by censoring type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The primary data array of failure/event times. When c is 2 the
+corresponding x entry is a 2-element array [left, right].</p></li>
+<li><p><strong>c</strong> (<em>array-like</em><em>, </em><em>optional</em>) – Censoring flags for each value in x:
+* 0 = uncensored
+* 1 = right censored
+* -1 = left censored
+* 2 = interval censored</p></li>
+<li><p><strong>n</strong> (<em>array-like</em><em>, </em><em>optional</em>) – Number of occurrences for each value in x.</p></li>
+<li><p><strong>t</strong> (<em>array-like</em><em>, </em><em>optional</em>) – 2D array of truncation bounds [left, right] for each value in x.</p></li>
+<li><p><strong>xl</strong> (<em>array-like</em><em>, </em><em>optional</em>) – Left interval bounds for interval censored data.
+Cannot be used with ‘x’. Must be paired with ‘xr’.</p></li>
+<li><p><strong>xr</strong> (<em>array-like</em><em>, </em><em>optional</em>) – Right interval bounds for interval censored data.
+Cannot be used with ‘x’. Must be paired with ‘xl’.</p></li>
+<li><p><strong>tl</strong> (<em>array-like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Left truncation bounds. Cannot be used with ‘t’.
+Must be paired with ‘tr’.</p></li>
+<li><p><strong>tr</strong> (<em>array-like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Right truncation bounds. Cannot be used with ‘t’.
+Must be paired with ‘tl’.</p></li>
+<li><p><strong>group_and_sort</strong> (<em>bool</em><em>, </em><em>default=True</em>) – Whether to group and sort the data. Set False when using covariates
+to maintain data order.</p></li>
+<li><p><strong>handle</strong> (<em>bool</em><em>, </em><em>default=True</em>) – Whether to validate and process the input data.
+Set False for pre-validated data.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Basic usage with uncensored data:
+&gt;&gt;&gt; x = np.array([1, 2, 3])
+&gt;&gt;&gt; data = SurpyvalData(x)</p>
+<p>Right censored data:
+&gt;&gt;&gt; x = np.array([1, 2, 3])
+&gt;&gt;&gt; c = np.array([0, 1, 1])  # 2 and 3 are censored
+&gt;&gt;&gt; data = SurpyvalData(x, c)</p>
+<p>Interval censored data:
+&gt;&gt;&gt; xl = np.array([1, 2, 3])
+&gt;&gt;&gt; xr = np.array([2, 3, 4])
+&gt;&gt;&gt; data = SurpyvalData(xl=xl, xr=xr)</p>
+<p>Interval Censored with nested 2 arrays:
+&gt;&gt;&gt; x = [1, 2, [2, 5], 3, 6]
+&gt;&gt;&gt; c = [0, 1, 2, 0, 0]
+&gt;&gt;&gt; data = SurpyvalData(x=x, c=c)</p>
+<p>With truncation:
+&gt;&gt;&gt; x = np.array([1, 2, 3])
+&gt;&gt;&gt; t = np.array([[0, 5], [0, 5], [0, 5]])
+&gt;&gt;&gt; data = SurpyvalData(x, t=t)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.surpyval_data.SurpyvalData.add_covariates">
+<span class="sig-name descname"><span class="pre">add_covariates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">_Buffer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">complex</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#surpyval.utils.surpyval_data.SurpyvalData.add_covariates" title="Permalink to this definition">¶</a></dt>
+<dd><p>Method to add covariates to the data. The covariates are stored in
+the Z attribute of the object. When doing regression survival analysis
+this method allows for the covariates to be added to the data in a
+consistent manner that also allows for the data to be converted to be
+passed to the fitters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>Z</strong> (<em>numpy.ndarray</em>) – The covariate array.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.surpyval_data.SurpyvalData.from_json">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData"><span class="pre">SurpyvalData</span></a></span></span><a class="headerlink" href="#surpyval.utils.surpyval_data.SurpyvalData.from_json" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create SurpyvalData instance from JSON string or file path.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>source</strong> (<em>str</em><em> | </em><em>Path</em>) – Pass a <code class="docutils literal notranslate"><span class="pre">Path</span></code> to load from a file; pass a <code class="docutils literal notranslate"><span class="pre">str</span></code> to parse as
+JSON text directly.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>New instance created from JSON data</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData">SurpyvalData</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.surpyval_data.SurpyvalData.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#surpyval.utils.surpyval_data.SurpyvalData.to_json" title="Permalink to this definition">¶</a></dt>
+<dd><p>Serialize SurpyvalData to JSON format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>filepath</strong> (<em>str</em><em> | </em><em>Path</em><em>, </em><em>optional</em>) – If provided, saves JSON to this file path</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>JSON string if no filepath provided, None if saved to file</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>str | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.surpyval_data.SurpyvalData.to_xrd">
+<span class="sig-name descname"><span class="pre">to_xrd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">estimator</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Nelson-Aalen'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span></span></span><a class="headerlink" href="#surpyval.utils.surpyval_data.SurpyvalData.to_xrd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts the data into the xrd format. If the data has right truncated
+observations or left or interval censored observations, the data is
+converted to the xrd format using the Turnbull estimator. The
+<code class="docutils literal notranslate"><span class="pre">estimator</span></code> parameter will be used in the with, and only with,
+the Turnbull estimator.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>estimator</strong> (<em>str</em><em>, </em><em>optional</em>) – The method for estimation if data requires the use of the
+Turnbull estimator to convert to xrd, defaults to
+“Nelson-Aalen”.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The xrd data.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.utils.recurrent_event_data.RecurrentEventData">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.utils.recurrent_event_data.</span></span><span class="sig-name descname"><span class="pre">RecurrentEventData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">e</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.recurrent_event_data.RecurrentEventData" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.utils.recurrent_event_data.RecurrentEventData.event_types">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">event_types</span></span><a class="headerlink" href="#surpyval.utils.recurrent_event_data.RecurrentEventData.event_types" title="Permalink to this definition">¶</a></dt>
+<dd><p>The distinct event types (marks) present in the data, excluding the
+<code class="docutils literal notranslate"><span class="pre">None</span></code> mark used for censored / end-of-observation rows. Returns an
+empty list when the data carries no marks.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.recurrent_event_data.RecurrentEventData.get_events_for_item">
+<span class="sig-name descname"><span class="pre">get_events_for_item</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">item</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.recurrent_event_data.RecurrentEventData.get_events_for_item" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get all events for a specific item or subject.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>item</strong> (<em>int</em><em> or </em><em>str</em>) – The id of the item or subject.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A tuple containing event times, censoring information and
+frequencies for the specified item.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.recurrent_event_data.RecurrentEventData.get_interarrival_times">
+<span class="sig-name descname"><span class="pre">get_interarrival_times</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.recurrent_event_data.RecurrentEventData.get_interarrival_times" title="Permalink to this definition">¶</a></dt>
+<dd><p>Finds the interarrival times between events for each item. The class
+assumes that the time of the event is cumulative, sometimes it is
+necessary to know the interarrival times of the events. This method
+returns the interarrival times for each item. It is aligned with the
+items attribute.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>An array of interarrival times.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.recurrent_event_data.RecurrentEventData.get_previous_x">
+<span class="sig-name descname"><span class="pre">get_previous_x</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.recurrent_event_data.RecurrentEventData.get_previous_x" title="Permalink to this definition">¶</a></dt>
+<dd><p>Finds the previous event time for each event. This is useful for
+calculating the time since the last event. This method returns the
+previous event time for each event. It is aligned with the items
+attribute.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>min_x</strong> (<em>float</em><em>, </em><em>optional</em>) – Fallback minimum for the first event of each item. The item’s left
+truncation bound is used instead when it is greater, so a
+delayed-entry item’s first interval begins at its entry time.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>An array of previous event times.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.recurrent_event_data.RecurrentEventData.get_right_truncation_close">
+<span class="sig-name descname"><span class="pre">get_right_truncation_close</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.recurrent_event_data.RecurrentEventData.get_right_truncation_close" title="Permalink to this definition">¶</a></dt>
+<dd><p>Per-item integration bounds for the NHPP likelihood’s right
+window-close.</p>
+<p>The NHPP integral runs from each item’s entry time (its left
+truncation <code class="docutils literal notranslate"><span class="pre">tl</span></code>, handled by <a class="reference internal" href="#surpyval.utils.recurrent_event_data.RecurrentEventData.get_previous_x" title="surpyval.utils.recurrent_event_data.RecurrentEventData.get_previous_x"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_previous_x()</span></code></a>) to the time its
+observation window closes. Historically that close was only known from
+an explicit right-censoring (<code class="docutils literal notranslate"><span class="pre">c=1</span></code>) row, so the integral stopped at
+the item’s last recorded time. When an item instead carries a finite
+right-truncation time <code class="docutils literal notranslate"><span class="pre">tr</span></code> the window closes there, and the integral
+must be extended from the last in-window time out to <code class="docutils literal notranslate"><span class="pre">tr</span></code>.</p>
+<p>Returns three aligned arrays <code class="docutils literal notranslate"><span class="pre">(x_last,</span> <span class="pre">x_close,</span> <span class="pre">rep_idx)</span></code> with one
+entry per item whose <code class="docutils literal notranslate"><span class="pre">tr</span></code> is finite: <code class="docutils literal notranslate"><span class="pre">x_last</span></code> is the item’s last
+in-window time (its last event or right-censoring row), <code class="docutils literal notranslate"><span class="pre">x_close</span></code> is
+its <code class="docutils literal notranslate"><span class="pre">tr</span></code>, and <code class="docutils literal notranslate"><span class="pre">rep_idx</span></code> is a representative row index for the item
+(so per-item covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code> can be gathered). Items with the default
+<code class="docutils literal notranslate"><span class="pre">tr</span> <span class="pre">=</span> <span class="pre">inf</span></code> are omitted, so untruncated data yields empty arrays and
+contributes nothing to the integral. Adding
+<code class="docutils literal notranslate"><span class="pre">cif(x_last)</span> <span class="pre">-</span> <span class="pre">cif(x_close)</span></code> to the log-likelihood therefore extends
+the telescoped integral to <code class="docutils literal notranslate"><span class="pre">tr</span></code> (and is exactly zero when a <code class="docutils literal notranslate"><span class="pre">c=1</span></code>
+row already sits at <code class="docutils literal notranslate"><span class="pre">tr</span></code>, so the two ways of closing the window never
+double-count).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">(x_last,</span> <span class="pre">x_close,</span> <span class="pre">rep_idx)</span></code> as described above.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>tuple of numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.recurrent_event_data.RecurrentEventData.get_times_to_first_events">
+<span class="sig-name descname"><span class="pre">get_times_to_first_events</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.recurrent_event_data.RecurrentEventData.get_times_to_first_events" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the times to the first events for each item or subject. In the
+estimation of recurrent or renewal events it can be helpful to know
+the distribution of the times to the first event per item. This method
+returns the times to the first events for each item. It is aligned with
+the items attribute.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>A transformed dataset containing times to the first events.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p><a class="reference internal" href="#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData">SurpyvalData</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.utils.recurrent_event_data.RecurrentEventData.observation_windows">
+<span class="sig-name descname"><span class="pre">observation_windows</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#surpyval.utils.recurrent_event_data.RecurrentEventData.observation_windows" title="Permalink to this definition">¶</a></dt>
+<dd><p>A class to handle and manipulate recurrent event data. Recurrent events are
+those that can occur more than once for each subject or item.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecurrentEventData</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">RecurrentEventData</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span><span class="o">.</span><span class="n">to_xrd</span><span class="p">()</span>
+<span class="go">(array([1, 2, 3, 4, 5]), array([2, 2, 2, 2, 2]), array([2, 2, 1, 1, 0]))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">]</span>
+<span class="go">RecurrentEventData(</span>
+<span class="go">    x=[1 2],</span>
+<span class="go">    i=[1 1],</span>
+<span class="go">    c=[0 0],</span>
+<span class="go">    n=[1 1]</span>
+<span class="go">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span><span class="o">.</span><span class="n">get_times_to_first_events</span><span class="p">()</span>
+<span class="go">SurpyvalData(</span>
+<span class="go">x=[1.],</span>
+<span class="go">c=[0],</span>
+<span class="go">n=[2],</span>
+<span class="go">t=[[-inf  inf]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span><span class="o">.</span><span class="n">get_interarrival_times</span><span class="p">()</span>
+<span class="go">array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.recurrent_event_data.RecurrentEventData.to_cause_specific_xrd">
+<span class="sig-name descname"><span class="pre">to_cause_specific_xrd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cause</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.recurrent_event_data.RecurrentEventData.to_cause_specific_xrd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert the recurrent event data to xrd format for a single event
+type (cause). The at-risk set <code class="docutils literal notranslate"><span class="pre">r</span></code> is shared across all causes (an
+item remains at risk for every cause until it leaves observation);
+only the event count <code class="docutils literal notranslate"><span class="pre">d</span></code> is restricted to the requested cause.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>cause</strong> (<em>object</em>) – The event type to compute the cause-specific counts for. Must be
+one of <code class="docutils literal notranslate"><span class="pre">self.event_types</span></code>.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(x_unique,</span> <span class="pre">r,</span> <span class="pre">d_cause)</span></code> where <code class="docutils literal notranslate"><span class="pre">d_cause</span></code> counts only
+events of the requested cause and <code class="docutils literal notranslate"><span class="pre">r</span></code> is the shared at-risk set.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.utils.recurrent_event_data.RecurrentEventData.to_xrd">
+<span class="sig-name descname"><span class="pre">to_xrd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">estimator</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Nelson-Aalen'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.recurrent_event_data.RecurrentEventData.to_xrd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert the recurrent event data to xrd format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>estimator</strong> (<em>str</em><em>, </em><em>optional</em>) – The estimator to use, defaults to “Nelson-Aalen”.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A tuple containing unique event times, risk set sizes, and the
+event counts.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-surpyval.utils">
+<span id="data-wrangling-utilities"></span><h2>Data Wrangling Utilities<a class="headerlink" href="#module-surpyval.utils" title="Permalink to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.coerce_xcnt_x">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">coerce_xcnt_x</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.utils.coerce_xcnt_x" title="Permalink to this definition">¶</a></dt>
+<dd><p>Coerce the <code class="docutils literal notranslate"><span class="pre">x</span></code> variable of xcnt-format data into a numpy array.</p>
+<p>Accepts a 1D array of event values, or a 2D array / list-of-pairs of
+<code class="docutils literal notranslate"><span class="pre">[left,</span> <span class="pre">right]</span></code> interval bounds. Validates dimensionality, the interval
+ordering (<code class="docutils literal notranslate"><span class="pre">left</span> <span class="pre">&lt;=</span> <span class="pre">right</span></code>) and the absence of NaNs. Shared by the
+univariate (<code class="docutils literal notranslate"><span class="pre">xcnt_handler</span></code>) and recurrent (<code class="docutils literal notranslate"><span class="pre">handle_xicn</span></code>) handlers.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.format_truncation">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">format_truncation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_rows</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.utils.format_truncation" title="Permalink to this definition">¶</a></dt>
+<dd><p>Build the <code class="docutils literal notranslate"><span class="pre">(n_rows,</span> <span class="pre">2)</span></code> truncation array from either a <code class="docutils literal notranslate"><span class="pre">t</span></code> matrix or
+separate <code class="docutils literal notranslate"><span class="pre">tl</span></code>/<code class="docutils literal notranslate"><span class="pre">tr</span></code> bounds (scalars broadcast to all rows). The default
+window is the whole real line <code class="docutils literal notranslate"><span class="pre">[-inf,</span> <span class="pre">inf]</span></code>. Shared by <code class="docutils literal notranslate"><span class="pre">xcnt_handler</span></code>
+and <code class="docutils literal notranslate"><span class="pre">handle_xicn</span></code>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.fs_to_xrd">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">fs_to_xrd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.fs_to_xrd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts the fs format to the xrd format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>f</strong> (<em>array</em>) – array of values for which the failure/death was observed</p></li>
+<li><p><strong>s</strong> (<em>array</em>) – array of right censored observation values</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – sorted array of values of variable for which observations were made.</p></li>
+<li><p><strong>r</strong> (<em>array</em>) – array of count of units/people at risk at time x (including if it had
+an event at ‘x’).</p></li>
+<li><p><strong>d</strong> (<em>array</em>) – array of the count of failures/deaths at each time x.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">fs_to_xrd</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">fs_to_xrd</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">d</span>
+<span class="go">(array([1, 2, 3, 4, 5]), array([5, 4, 3, 2, 1]), array([1, 0, 0, 1, 1]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.fsli_handler">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">fsli_handler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">l</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.fsli_handler" title="Permalink to this definition">¶</a></dt>
+<dd><p>Takes in the fsli format and ensures that the data is correctly defined.
+Takes an assorted combination of f, s, l, and i and returns them in the
+correct format as numpy arrays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>f</strong> (<em>array-like</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of values for which the failure/death was observed</p></li>
+<li><p><strong>s</strong> (<em>array-like</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of right censored observation values</p></li>
+<li><p><strong>l</strong> (<em>array-like</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of left censored observation values</p></li>
+<li><p><strong>i</strong> (<em>array-like</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of length 2 arrays interval censored data</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>f</strong> (<em>array</em>) – array of values for which the failure/death was observed that have
+been checked for correctness</p></li>
+<li><p><strong>s</strong> (<em>array</em>) – array of right censored observation values that have been checked
+for correctness</p></li>
+<li><p><strong>l</strong> (<em>array</em>) – array of left censored observation values that have been checked
+for correctness</p></li>
+<li><p><strong>i</strong> (<em>array</em>) – array of interval censored data that have been checked for correctness</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">fsli_handler</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">l</span> <span class="o">=</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">fsli_handler</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">l</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+<span class="go">(array([1., 2., 3., 4., 5., 6.]),</span>
+<span class="go">array([1., 2., 3.]),</span>
+<span class="go">array([4., 5., 6.]),</span>
+<span class="go">array([[1., 2.],</span>
+<span class="go">        [3., 4.]]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.fsli_to_xcnt">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">fsli_to_xcnt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">l</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.fsli_to_xcnt" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts the fsli format to the xcn format. This ensures is so that the
+data can be passed to one of the parametric or nonparametric fitters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>f</strong> (<em>array</em>) – array of values for which the failure/death was observed</p></li>
+<li><p><strong>s</strong> (<em>array</em>) – array of right censored observation values</p></li>
+<li><p><strong>l</strong> (<em>array</em>) – array of left censored observation values</p></li>
+<li><p><strong>i</strong> (<em>array</em>) – array of length 2 arrays interval censored data</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – sorted array of values of variable for which observations were made.</p></li>
+<li><p><strong>c</strong> (<em>array</em>) – array of censoring values (-1, 0, 1, 2) corrseponding to output array
+x.</p></li>
+<li><p><strong>n</strong> (<em>array</em>) – array of count of observations at to output array x and with censoring
+c.</p></li>
+<li><p><strong>t</strong> (<em>ndarray</em>) – ndarray of truncation values of observations at output array x and with
+censoring c.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">fsli_to_xcnt</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">l</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">fsli_to_xcnt</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">l</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span>
+<span class="go">array([1, 2, 3, 4, 5])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span>
+<span class="go">array([0, 1, 1, 0, 0])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">n</span>
+<span class="go">array([1, 1, 1, 1, 1])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span>
+<span class="go">array([[-inf,  inf],</span>
+<span class="go">       [-inf,  inf],</span>
+<span class="go">       [-inf,  inf],</span>
+<span class="go">       [-inf,  inf],</span>
+<span class="go">       [-inf,  inf]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.is_missing_event">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">is_missing_event</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.is_missing_event" title="Permalink to this definition">¶</a></dt>
+<dd><p>Whether a competing-risks event value marks <em>no</em> attributed cause – a
+censored observation. That is Python <code class="docutils literal notranslate"><span class="pre">None</span></code> or any missing value
+(<code class="docutils literal notranslate"><span class="pre">NaN</span></code>, pandas <code class="docutils literal notranslate"><span class="pre">NA</span></code>).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.resolve_cr_censoring">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">resolve_cr_censoring</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">e</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.resolve_cr_censoring" title="Permalink to this definition">¶</a></dt>
+<dd><p>Canonicalise a competing-risks event vector and its censoring flag.</p>
+<p>A <em>missing</em> event value (<code class="docutils literal notranslate"><span class="pre">None</span></code>, <code class="docutils literal notranslate"><span class="pre">NaN</span></code> or pandas <code class="docutils literal notranslate"><span class="pre">NA</span></code>) marks a
+right-censored observation with no attributed cause; such values are
+canonicalised to <code class="docutils literal notranslate"><span class="pre">None</span></code>. When <code class="docutils literal notranslate"><span class="pre">c</span></code> is not supplied it is derived from
+the events – a missing event is censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>), an event present is
+observed (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>) – so competing-risks data may be given as <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">e)</span></code>
+alone, without a separate censoring array.</p>
+<p>Returns the canonicalised event array (object dtype, <code class="docutils literal notranslate"><span class="pre">None</span></code> for censored)
+and the censoring flag (unchanged if supplied, otherwise derived).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.validate_float_array">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">validate_float_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.validate_float_array" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert input to float array with better error handling.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.xcn_to_fsl">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">xcn_to_fsl</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.xcn_to_fsl" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts the xcn format to the fsl format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – array of values of variable for which observations were made.</p></li>
+<li><p><strong>c</strong> (<em>array</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of censoring values (-1, 0, 1, 2) corrseponding to x. If None, an
+array of 0s is created corresponding to each x.</p></li>
+<li><p><strong>n</strong> (<em>array</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of count of observations at each x and with censoring c. If None,
+an array of ones is created.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>f</strong> (<em>array</em>) – array of values for which the failure/death was observed</p></li>
+<li><p><strong>s</strong> (<em>array</em>) – array of right censored observation values</p></li>
+<li><p><strong>l</strong> (<em>array</em>) – array of left censored observation values</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">f</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">l</span> <span class="o">=</span> <span class="n">xcn_to_fsl</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">f</span>
+<span class="go">array([1, 4, 5])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">s</span>
+<span class="go">array([2, 3])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">l</span>
+<span class="go">array([], dtype=float64)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.xcnt_handler">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">xcnt_handler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_and_sort</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">_ScalarT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.utils.xcnt_handler" title="Permalink to this definition">¶</a></dt>
+<dd><p>Main handler that ensures any input to a surpyval fitter meets the
+requirements to be used in one of the parametric or nonparametric fitters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – array of values of variable for which observations were made.</p></li>
+<li><p><strong>c</strong> (<em>array</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of censoring values (-1, 0, 1, 2) corrseponding to x</p></li>
+<li><p><strong>n</strong> (<em>array</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of count of observations at each x and with censoring c</p></li>
+<li><p><strong>t</strong> (<em>array</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of values with shape (?, 2) with the left and right value of
+truncation</p></li>
+<li><p><strong>xl</strong> (<em>array</em><em> or </em><em>scalar</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of the values of the left interval of interval censored data.
+Cannot be used with ‘x’ parameter, must be used with the ‘xr’
+parameter</p></li>
+<li><p><strong>xr</strong> (<em>array</em><em> or </em><em>scalar</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of the values of the right interval of interval censored data.
+Cannot be used with ‘x’ parameter, must be used with the ‘xl’
+parameter</p></li>
+<li><p><strong>tl</strong> (<em>array</em><em> or </em><em>scalar</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of values of the left value of truncation. If scalar, all values
+will be treated as left truncated by that value
+cannot be used with ‘t’ parameter but can be used with the ‘tr’
+parameter</p></li>
+<li><p><strong>tr</strong> (<em>array</em><em> or </em><em>scalar</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of values of the right value of truncation. If scalar, all
+values will be treated as right truncated by that value
+cannot be used with ‘t’ parameter but can be used with the ‘tl’
+parameter</p></li>
+<li><p><strong>group_and_sort</strong> (<em>bool</em><em>, </em><em>optional</em><em> (</em><em>default: True</em><em>)</em>) – whether to group and sort the data. If False, the data will be returned
+in the order it was entered. This is useful for when validating
+survival data for which you also have covariates.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – sorted array of values of variable for which observations were made.</p></li>
+<li><p><strong>c</strong> (<em>array</em>) – array of censoring values (-1, 0, 1, 2) corrseponding to output array
+x. If c was None, defaults to creating array of zeros the length of x.</p></li>
+<li><p><strong>n</strong> (<em>array</em>) – array of count of observations at output array x and with censoring c.
+If n was None, count array assumed to be all one observation.</p></li>
+<li><p><strong>t</strong> (<em>array</em>) – array of truncation values of observations at output array x and with
+censoring c.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">xcnt_handler</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">n</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">]]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">xcnt_handler</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<span class="go">(array([1., 2., 3., 4., 5.]),</span>
+<span class="go">array([0, 0, 1, 1, 1]),</span>
+<span class="go">array([1, 1, 1, 1, 1]),</span>
+<span class="go">array([[0., 5.],</span>
+<span class="go">        [0., 5.],</span>
+<span class="go">        [0., 5.],</span>
+<span class="go">        [0., 5.],</span>
+<span class="go">        [0., 5.]]))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">xcnt_handler</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">tr</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+<span class="go">(array([1., 2., 3., 4., 5.]),</span>
+<span class="go">array([0, 0, 1, 1, 1]),</span>
+<span class="go">array([1, 1, 1, 1, 1]),</span>
+<span class="go">array([[0., 5.],</span>
+<span class="go">        [0., 5.],</span>
+<span class="go">        [0., 5.],</span>
+<span class="go">        [0., 5.],</span>
+<span class="go">        [0., 5.]]))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">xl</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">xr</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">xcnt_handler</span><span class="p">(</span><span class="n">xl</span><span class="o">=</span><span class="n">xl</span><span class="p">,</span> <span class="n">xr</span><span class="o">=</span><span class="n">xr</span><span class="p">)</span>
+<span class="go">(array([[1., 2.],</span>
+<span class="go">        [2., 3.],</span>
+<span class="go">        [3., 4.],</span>
+<span class="go">        [4., 5.],</span>
+<span class="go">        [5., 6.]]),</span>
+<span class="go">array([2, 2, 2, 2, 2]),</span>
+<span class="go">array([1, 1, 1, 1, 1]),</span>
+<span class="go">array([[-inf,  inf],</span>
+<span class="go">        [-inf,  inf],</span>
+<span class="go">        [-inf,  inf],</span>
+<span class="go">        [-inf,  inf],</span>
+<span class="go">        [-inf,  inf]]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.xcnt_to_xrd">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">xcnt_to_xrd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.xcnt_to_xrd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts the xcn format to the xrd format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – array of values of variable for which observations were made.</p></li>
+<li><p><strong>c</strong> (<em>array</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of censoring values (-1, 0, 1, 2) corrseponding to x. If None, an
+array of 0s is created corresponding to each x.</p></li>
+<li><p><strong>n</strong> (<em>array</em><em>, </em><em>optional</em><em> (</em><em>default: None</em><em>)</em>) – array of count of observations at each x and with censoring c. If None,
+an array of ones is created.</p></li>
+<li><p><strong>kwargs</strong> (<em>keywords for truncation can be either 't'</em><em> or </em><em>a combo</em><em> of </em><em>'tl' and</em>) – </p></li>
+<li><p><strong>'tr'</strong> – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – sorted array of values of variable for which observations were made.</p></li>
+<li><p><strong>r</strong> (<em>array</em>) – array of count of units/people at risk at time x (including if it had
+an event at ‘x’).</p></li>
+<li><p><strong>d</strong> (<em>array</em>) – array of the count of failures/deaths at each time x.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">xcnt_to_xrd</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span>
+<span class="go">array([1, 2, 3, 4, 5])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">r</span>
+<span class="go">array([5, 4, 3, 2, 1])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span>
+<span class="go">array([1, 0, 0, 1, 1])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Using left truncated data</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tl</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">xcnt_to_xrd</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span>
+<span class="go">array([1., 2., 3., 4., 5.])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">r</span>
+<span class="go">array([2, 2, 2, 2, 1])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span>
+<span class="go">array([1, 1, 1, 1, 1])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.xrd_handler">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">xrd_handler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.xrd_handler" title="Permalink to this definition">¶</a></dt>
+<dd><p>Takes a combination of ‘x’, ‘r’, and ‘d’ arrays and ensures that the data
+is feasible.</p>
+<p>Does not check for the case where r is always decreasing as this is
+possible in some cases, i.e. when there is left truncation, a.k.a late
+entry.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – array of values of variable for which observations were made.</p></li>
+<li><p><strong>r</strong> (<em>array</em>) – array of at risk items at each value of x</p></li>
+<li><p><strong>d</strong> (<em>array</em>) – array of failures / deaths at each value of x</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – array of values of variable for which observations were made.</p></li>
+<li><p><strong>r</strong> (<em>array</em>) – array of at risk items at each value of x</p></li>
+<li><p><strong>d</strong> (<em>array</em>) – array of failures / deaths at each value of x</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">xrd_handler</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">r</span> <span class="o">=</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">xrd_handler</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span>
+<span class="go">array([1., 2., 3., 4., 5.])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">r</span>
+<span class="go">array([5, 4, 3, 2, 1])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span>
+<span class="go">array([1, 1, 1, 1, 1]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.utils.xrd_to_xcnt">
+<span class="sig-prename descclassname"><span class="pre">surpyval.utils.</span></span><span class="sig-name descname"><span class="pre">xrd_to_xcnt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.utils.xrd_to_xcnt" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts the xrd format to the xcn format. Assumes that there is no
+right truncation or left censoring.</p>
+<p>Note: left truncation cannot be recovered from the xrd format because
+the at-risk count <cite>r</cite> collapses per-subject truncation times into a
+single scalar. Use xcnt format directly when left truncation is present.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – array of values of variable for which observations were made.</p></li>
+<li><p><strong>r</strong> (<em>array</em>) – array of at risk items at each value of x</p></li>
+<li><p><strong>d</strong> (<em>array</em>) – array of failures / deaths at each value of x</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>x</strong> (<em>array</em>) – array of values of variable for which observations were made.</p></li>
+<li><p><strong>c</strong> (<em>array</em>) – array of censoring values (-1, 0, 1, 2) corrseponding to x</p></li>
+<li><p><strong>n</strong> (<em>array</em>) – array of count of observations at each x and with censoring c</p></li>
+<li><p><strong>t</strong> (<em>array</em>) – array of values with shape (?, 2) with the left and right value of
+truncation</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">xrd_to_xcnt</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">t</span>
+<span class="go">array([1, 2, 3, 4, 5])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span>
+<span class="go">array([0, 1, 1, 0, 0])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">n</span>
+<span class="go">array([1, 1, 1, 1, 1])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span>
+<span class="go">array([[-inf,  inf],</span>
+<span class="go">       [-inf,  inf],</span>
+<span class="go">       [-inf,  inf],</span>
+<span class="go">       [-inf,  inf],</span>
+<span class="go">       [-inf,  inf]]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="surpyval.degradation.html" class="btn btn-neutral float-left" title="Degradation Analysis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="surpyval.datasets.html" class="btn btn-neutral float-right" title="Datasets" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

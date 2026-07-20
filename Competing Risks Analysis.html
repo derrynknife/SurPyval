@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Competing Risks Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Recurrent Event Analysis" href="Recurrent%20Event%20Analysis.html" />
+    <link rel="prev" title="Regression Analysis" href="regression%20analysis.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Competing Risks Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#relationship-to-univariate-analysis">Relationship to Univariate Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#non-parametric-cif-estimation">Non-Parametric CIF Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#parametric-competing-risks">Parametric Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#regression-fine-gray-and-cause-specific-ph">Regression: Fine-Gray and Cause-Specific PH</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#further-reading">Further Reading</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Competing Risks Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Competing Risks Analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="competing-risks-analysis">
+<h1>Competing Risks Analysis<a class="headerlink" href="#competing-risks-analysis" title="Permalink to this heading">¶</a></h1>
+<p>Competing risks analysis addresses situations where a subject is at risk of
+experiencing more than one type of event, but only one event can occur first
+and doing so removes the subject from further observation. A subject “competes”
+among several possible failure causes.</p>
+<p>Classic examples:</p>
+<ul class="simple">
+<li><p>A patient may die from cancer, heart disease, or another cause; the first
+to occur ends their observation period.</p></li>
+<li><p>A mechanical component may fail by fatigue, corrosion, or overload; which
+failure mode occurs first determines both the failure time and its cause.</p></li>
+<li><p>A customer may churn, upgrade, or downgrade; the event that happens first
+changes the analysis for the remaining outcomes.</p></li>
+</ul>
+<p>Competing risks require special treatment because the causes are not
+independent; accounting for the wrong event type leads to biased estimates.
+This is sometimes called the “identifiability problem” in competing risks.</p>
+<section id="relationship-to-univariate-analysis">
+<h2>Relationship to Univariate Analysis<a class="headerlink" href="#relationship-to-univariate-analysis" title="Permalink to this heading">¶</a></h2>
+<p>Standard survival methods (Kaplan-Meier, parametric MLE) applied to a
+single cause — ignoring others — estimate the <em>cause-specific</em> survival
+function. Naïvely applying KM while censoring the competing events yields a
+quantity that cannot be interpreted as the probability of experiencing the
+event in the real world because the competing events are not truly independent
+censoring mechanisms.</p>
+<p>The correct marginal quantity of interest is the <strong>Cumulative Incidence
+Function (CIF)</strong>, also called the sub-distribution survival function. For
+cause <span class="math notranslate nohighlight">\(k\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[F_k(t) = P(T \leq t,\; K = k)\]</div>
+<p>where <span class="math notranslate nohighlight">\(T\)</span> is the event time and <span class="math notranslate nohighlight">\(K\)</span> is the event type. The CIFs
+sum to the overall failure probability:</p>
+<div class="math notranslate nohighlight">
+\[\sum_{k=1}^{K} F_k(t) = F(t) = 1 - S(t)\]</div>
+</section>
+<section id="non-parametric-cif-estimation">
+<h2>Non-Parametric CIF Estimation<a class="headerlink" href="#non-parametric-cif-estimation" title="Permalink to this heading">¶</a></h2>
+<p>The empirical CIF for cause <span class="math notranslate nohighlight">\(k\)</span> is estimated from the cause-specific
+hazard rates:</p>
+<div class="math notranslate nohighlight">
+\[\hat{F}_k(t) = \sum_{x_i \leq t} \hat{h}_k(x_i)\, \hat{S}(x_i^-)\]</div>
+<p>where <span class="math notranslate nohighlight">\(\hat{h}_k(x_i) = d_{k,i} / r_i\)</span> is the cause-specific hazard at
+event time <span class="math notranslate nohighlight">\(x_i\)</span>, <span class="math notranslate nohighlight">\(d_{k,i}\)</span> is the number of cause-<span class="math notranslate nohighlight">\(k\)</span>
+events at <span class="math notranslate nohighlight">\(x_i\)</span>, <span class="math notranslate nohighlight">\(r_i\)</span> is the total at-risk count, and
+<span class="math notranslate nohighlight">\(\hat{S}(x_i^-)\)</span> is the overall survival estimate just before
+<span class="math notranslate nohighlight">\(x_i\)</span>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Non-parametric CIF estimation is not yet implemented in SurPyval. Use
+the parametric <code class="docutils literal notranslate"><span class="pre">CompetingRisks</span></code> model or an external library such as
+<code class="docutils literal notranslate"><span class="pre">lifelines</span></code> for this calculation currently.</p>
+</div>
+</section>
+<section id="parametric-competing-risks">
+<h2>Parametric Competing Risks<a class="headerlink" href="#parametric-competing-risks" title="Permalink to this heading">¶</a></h2>
+<p>A parametric competing risks model specifies a separate parametric
+distribution for each cause. The overall survival function is the product of
+the cause-specific survival functions (assuming independent latent failure
+times):</p>
+<div class="math notranslate nohighlight">
+\[S(t) = \prod_{k=1}^{K} S_k(t)\]</div>
+<p>The overall density is:</p>
+<div class="math notranslate nohighlight">
+\[f(t) = \sum_{k=1}^{K} f_k(t) \prod_{j \neq k} S_j(t)\]</div>
+<p>SurPyval provides the <code class="docutils literal notranslate"><span class="pre">CompetingRisks</span></code> class for this model. Parameters for
+each cause distribution are estimated jointly by MLE.</p>
+</section>
+<section id="regression-fine-gray-and-cause-specific-ph">
+<h2>Regression: Fine-Gray and Cause-Specific PH<a class="headerlink" href="#regression-fine-gray-and-cause-specific-ph" title="Permalink to this heading">¶</a></h2>
+<p>Two main regression approaches are used in competing risks:</p>
+<p><strong>Cause-specific proportional hazards</strong> — fits a separate Cox or parametric
+PH model for each cause, with all other cause events treated as censored:</p>
+<div class="math notranslate nohighlight">
+\[h_k(t \mid Z) = h_{k,0}(t)\, e^{Z \beta_k}\]</div>
+<p>This estimates the effect of covariates on the hazard of each cause
+independently.</p>
+<p><strong>Fine-Gray sub-distribution hazards</strong> — models the effect of covariates
+directly on the CIF via a proportional hazards model on the sub-distribution
+hazard:</p>
+<div class="math notranslate nohighlight">
+\[h_k^*(t \mid Z) = h_{k,0}^*(t)\, e^{Z \gamma_k}\]</div>
+<p>This is the natural choice when the scientific question is about the
+probability of a cause occurring in the presence of competing risks (e.g.
+clinical risk scores).</p>
+<p>SurPyval provides the <code class="docutils literal notranslate"><span class="pre">FineGray</span></code> and
+<code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards</span></code> classes.</p>
+</section>
+<section id="further-reading">
+<h2>Further Reading<a class="headerlink" href="#further-reading" title="Permalink to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Prentice, R. L., Kalbfleisch, J. D., Peterson, A. V., Flournoy, N.,
+Farewell, V. T., &amp; Breslow, N. E. (1978). The analysis of failure times in
+the presence of competing risks. <em>Biometrics</em>, 34(4), 541–554.</p></li>
+<li><p>Fine, J. P., &amp; Gray, R. J. (1999). A proportional hazards model for the
+subdistribution of a competing risk. <em>JASA</em>, 94(446), 496–509.</p></li>
+<li><p>Pintilie, M. (2006). <em>Competing Risks: A Practical Perspective</em>. Wiley.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="regression%20analysis.html" class="btn btn-neutral float-left" title="Regression Analysis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Recurrent%20Event%20Analysis.html" class="btn btn-neutral float-right" title="Recurrent Event Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

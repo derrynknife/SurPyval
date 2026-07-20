@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arithmetic Reduction of Age (ARA) &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+        <script src="../_static/clipboard.min.js"></script>
+        <script src="../_static/copybutton.js"></script>
+        <script src="../_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Arithmetic Reduction of Intensity (ARI)" href="ari.html" />
+    <link rel="prev" title="Generalized One Renewal Process" href="g1_rp.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="../index.html">
+            <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="renewal_model.html">Renewal Model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="grp.html">Generalized Renewal Process</a></li>
+<li class="toctree-l4"><a class="reference internal" href="g1_rp.html">Generalized One Renewal Process</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Arithmetic Reduction of Age (ARA)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="ari.html">Arithmetic Reduction of Intensity (ARI)</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">Arithmetic Reduction of Age (ARA)</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/ara.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="arithmetic-reduction-of-age-ara">
+<h1>Arithmetic Reduction of Age (ARA)<a class="headerlink" href="#arithmetic-reduction-of-age-ara" title="Permalink to this heading">¶</a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">ARA</span></code> imperfect-repair model reduces a <em>virtual age</em> by a fraction
+<code class="docutils literal notranslate"><span class="pre">rho</span></code> of the age accumulated over the last <code class="docutils literal notranslate"><span class="pre">m</span></code> inter-arrival times (with
+<code class="docutils literal notranslate"><span class="pre">m</span> <span class="pre">=</span> <span class="pre">numpy.inf</span></code> the infinite-memory limit). <code class="docutils literal notranslate"><span class="pre">rho</span> <span class="pre">=</span> <span class="pre">1</span></code> is as-good-as-new and
+<code class="docutils literal notranslate"><span class="pre">rho</span> <span class="pre">=</span> <span class="pre">0</span></code> is as-bad-as-old. It returns a
+<a class="reference internal" href="renewal_model.html"><span class="doc">Renewal Model</span></a>.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ARA">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ARA</span></span><a class="headerlink" href="#ARA" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.renewal.ara.ARA.ARA_.fit">
+<span class="sig-prename descclassname"><span class="pre">ARA_.</span></span><span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist=&lt;surpyval.univariate.parametric.distributions.weibull.Weibull_</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">m=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.renewal.ara.ARA.ARA_.fit" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit the ARA model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – An array of event times.</p></li>
+<li><p><strong>i</strong> (<em>array_like</em><em>, </em><em>optional</em>) – An array of item indices.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – An array of censoring indicators.</p></li>
+<li><p><strong>n</strong> (<em>array_like</em><em>, </em><em>optional</em>) – An array of counts.</p></li>
+<li><p><strong>dist</strong> (<em>object</em><em>, </em><em>optional</em>) – A surpyval distribution object. Default is Weibull.</p></li>
+<li><p><strong>m</strong> (<em>int</em><em> or </em><em>float</em><em>, </em><em>optional</em>) – Memory of the ARA model; a positive integer or <code class="docutils literal notranslate"><span class="pre">numpy.inf</span></code>.
+Default is 1 (equivalent to Kijima-I).</p></li>
+<li><p><strong>init</strong> (<em>list</em><em>, </em><em>optional</em>) – Initial parameters <code class="docutils literal notranslate"><span class="pre">[rho,</span> <span class="pre">*dist_params]</span></code> for the optimizer.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A fitted renewal model.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="renewal_model.html#surpyval.recurrent.renewal.renewal_model.RenewalModel" title="surpyval.recurrent.renewal.renewal_model.RenewalModel">RenewalModel</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.renewal.ara.ARA.ARA_.fit_from_recurrent_data">
+<span class="sig-prename descclassname"><span class="pre">ARA_.</span></span><span class="sig-name descname"><span class="pre">fit_from_recurrent_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist=&lt;surpyval.univariate.parametric.distributions.weibull.Weibull_</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">m=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.renewal.ara.ARA.ARA_.fit_from_recurrent_data" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit the ARA model from recurrent data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>RecurrentData</em>) – Data containing the recurrence details.</p></li>
+<li><p><strong>dist</strong> (<em>Distribution</em><em>, </em><em>optional</em>) – A surpyval distribution object. Default is Weibull.</p></li>
+<li><p><strong>m</strong> (<em>int</em><em> or </em><em>float</em><em>, </em><em>optional</em>) – Memory of the ARA model; a positive integer or <code class="docutils literal notranslate"><span class="pre">numpy.inf</span></code>.
+Default is 1 (equivalent to Kijima-I).</p></li>
+<li><p><strong>init</strong> (<em>list</em><em>, </em><em>optional</em>) – Initial parameters <code class="docutils literal notranslate"><span class="pre">[rho,</span> <span class="pre">*dist_params]</span></code> for the optimizer.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>A fitted renewal model.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="renewal_model.html#surpyval.recurrent.renewal.renewal_model.RenewalModel" title="surpyval.recurrent.renewal.renewal_model.RenewalModel">RenewalModel</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.renewal.ara.ARA.ARA_.fit_from_parameters">
+<span class="sig-prename descclassname"><span class="pre">ARA_.</span></span><span class="sig-name descname"><span class="pre">fit_from_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rho</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">m=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist=&lt;surpyval.univariate.parametric.distributions.weibull.Weibull_</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.renewal.ara.ARA.ARA_.fit_from_parameters" title="Permalink to this definition">¶</a></dt>
+<dd><p>Build an ARA model from given parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>params</strong> (<em>list</em>) – Parameters for the underlying lifetime distribution.</p></li>
+<li><p><strong>rho</strong> (<em>float</em>) – Repair efficiency in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p></li>
+<li><p><strong>m</strong> (<em>int</em><em> or </em><em>float</em><em>, </em><em>optional</em>) – Memory of the ARA model; a positive integer or <code class="docutils literal notranslate"><span class="pre">numpy.inf</span></code>.
+Default is 1.</p></li>
+<li><p><strong>dist</strong> (<em>object</em><em>, </em><em>optional</em>) – A surpyval distribution object. Default is Weibull.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>An ARA object built from the supplied parameters.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#ARA" title="ARA">ARA</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="g1_rp.html" class="btn btn-neutral float-left" title="Generalized One Renewal Process" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="ari.html" class="btn btn-neutral float-right" title="Arithmetic Reduction of Intensity (ARI)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

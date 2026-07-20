@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Conventions &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="_static/copybutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/jupyter-sphinx.css" type="text/css" />
+      <link rel="stylesheet" href="_static/thebelab.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/clipboard.min.js"></script>
+        <script src="_static/copybutton.js"></script>
+        <script src="_static/thebelab-helper.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Handy References - Aide-mémoire" href="Handy%20References%20-%20Aide-m%C3%A9moire.html" />
+    <link rel="prev" title="Types of Data" href="Types%20of%20Data.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+            <a href="index.html">
+            <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Conventions</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#data-formats">Data Formats</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#variable-names">Variable Names</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#censoring-flag-conventions">Censoring Flag Conventions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#function-conventions">Function Conventions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a></li>
+      <li class="breadcrumb-item active">Conventions</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Conventions.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="conventions">
+<h1>Conventions<a class="headerlink" href="#conventions" title="Permalink to this heading">¶</a></h1>
+<section id="data-formats">
+<h2>Data Formats<a class="headerlink" href="#data-formats" title="Permalink to this heading">¶</a></h2>
+<p>The conventional formats use in surpyval are:</p>
+<ul class="simple">
+<li><p>xcnt = x variables, with c as the censoring scheme, n as the counts, and t as the truncation</p></li>
+<li><p>xrd  = x variables, with the risk set, r, at x and the deaths, d, also at x</p></li>
+<li><p>xicnt = x variables, with c as the censoring scheme, n as the counts, and t as the truncation, and i as the item number</p></li>
+</ul>
+<p>All functions in surpyval have default handling conditions for c and n. That is,
+if these variables aren’t passed, it is assumed that there was one observation
+and it was a failure for every x. For recurrent event models, if i is not passed
+it is assumed that it is all from the same item.</p>
+<p>The xcnt format can be converted to the xrd format but not vice versa.</p>
+<p>Surpyval fit() functions use the xcnt format. But the package has handlers for
+other formats to rearrange it to the needed format. Other formats are:</p>
+<p>Data sometimes comes in different formats. SurPyval has utilities available to convert
+from these formats into the xcnt, xrd, and xicnt formats. These other formats are:</p>
+<ul class="simple">
+<li><p>fs = failure time array, f, and right censored time array, s</p></li>
+<li><p>fsl = fs format plus an array for left censored times.</p></li>
+</ul>
+</section>
+<section id="variable-names">
+<h2>Variable Names<a class="headerlink" href="#variable-names" title="Permalink to this heading">¶</a></h2>
+<p>Before discussing the formats, the conventions for vairable names needs to be clarified.</p>
+<p>For single event survival models we use, the xcnt format. These mean:</p>
+<ul class="simple">
+<li><p>x  = The random variable (time, stress etc.) array</p></li>
+<li><p>xl = The random variable (time, stress etc.) array for the left interval of interval censored data.</p></li>
+<li><p>xr = The random variable (time, stress etc.) array for the right interval of interval censored data.</p></li>
+<li><p>c  = An array with the censor flag for each x</p></li>
+<li><p>n  = The count array associated with x</p></li>
+<li><p>t  = the truncation values for the left and right truncation at x (must be two dim, or use tl and tr instead)</p></li>
+<li><p>tl = one dimensional array or scalar value. If an array it is the value at which each value of x is left truncated. If a scalar all values of x are left truncated at the same value.</p></li>
+<li><p>tr = one dimensional array or scalar value. If an array it is the value at which each value of x is right truncated. If a scalar all values of x are right truncated at the same value.</p></li>
+<li><p>Z = the multi-dimensional array of covariates for each x.</p></li>
+</ul>
+<p>Non-parametric models are better defined in the “xrd” format. These are taken to mean:</p>
+<ul class="simple">
+<li><p>x = array of random variables</p></li>
+<li><p>r = array with the number of items at risk for each value in x</p></li>
+<li><p>d = array with the number of failures/deaths at each value in x</p></li>
+</ul>
+<p>For recurrent event data it is necessary to know which item has a subsequent event. For this we use all
+the same as described above with the addition of:</p>
+<ul class="simple">
+<li><p>i = array with the item number/identifier for each value in x</p></li>
+</ul>
+</section>
+<section id="censoring-flag-conventions">
+<h2>Censoring Flag Conventions<a class="headerlink" href="#censoring-flag-conventions" title="Permalink to this heading">¶</a></h2>
+<p>For the censoring values, surpyval uses the convention used in Meeker and Escobar, that is:</p>
+<ul class="simple">
+<li><p>-1 = left</p></li>
+<li><p>0 = failure / event</p></li>
+<li><p>1 = right</p></li>
+<li><p>2 = interval censoring. Must have left and right value in x</p></li>
+</ul>
+<p>This convention gives an intuitive feel for the placement of the data on a timeline.</p>
+</section>
+<section id="function-conventions">
+<h2>Function Conventions<a class="headerlink" href="#function-conventions" title="Permalink to this heading">¶</a></h2>
+<p>The conventions for single event SurPyval models are that each object returned from a <code class="code docutils literal notranslate"><span class="pre">fit()</span></code> call has the ability to compute the following:</p>
+<ul class="simple">
+<li><p><code class="code docutils literal notranslate"><span class="pre">df()</span></code> - The density function</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">ff()</span></code> - The CDF</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">sf()</span></code> - The survival function, or reliability function</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">hf()</span></code> - The (instantaneous) hazard function</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">Hf()</span></code> - The cumulative hazard function</p></li>
+</ul>
+<p>The conventions for recurrent event SurPyval models are that each object returned from a <code class="code docutils literal notranslate"><span class="pre">fit()</span></code> call has the ability to compute the following:</p>
+<ul class="simple">
+<li><p><code class="code docutils literal notranslate"><span class="pre">iif()</span></code> - instantaneous intensity function</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">cif()</span></code> - cumulative intensity function</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Types%20of%20Data.html" class="btn btn-neutral float-left" title="Types of Data" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Handy%20References%20-%20Aide-m%C3%A9moire.html" class="btn btn-neutral float-right" title="Handy References - Aide-mémoire" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
