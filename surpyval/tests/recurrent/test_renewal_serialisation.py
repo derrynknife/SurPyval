@@ -102,3 +102,16 @@ def test_renewal_rejects_unknown_family():
     d["family"] = "Nope"
     with pytest.raises(ValueError, match="Unknown renewal family"):
         RenewalModel.from_dict(d)
+
+
+def test_renewal_rejects_non_distribution_attribute():
+    # The stored distribution name must resolve to a genuine
+    # distribution fitter: an untrusted dict must not be able to pull
+    # arbitrary surpyval attributes through the lookup -- issue #206.
+    model = GeneralizedRenewal.fit_from_parameters(
+        [50.0, 2.0], 0.3, kijima="i", dist=Weibull
+    )
+    d = model.to_dict()
+    d["dist"] = "CoxPH"  # real surpyval attribute, not a ParametricFitter
+    with pytest.raises(ValueError, match="Unknown distribution"):
+        RenewalModel.from_dict(d)

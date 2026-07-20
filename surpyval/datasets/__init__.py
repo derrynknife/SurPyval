@@ -87,7 +87,7 @@ def load_bofors_steel():
     """
 
     data_path = importlib.resources.files(data_module) / "bofors_steel.csv"
-    return pd.read_csv(data_path, engine="python")
+    return pd.read_csv(data_path)
 
 
 def load_boston_housing():
@@ -107,7 +107,7 @@ def load_boston_housing():
 
     """
     data_path = importlib.resources.files(data_module) / "boston.csv"
-    return pd.read_csv(data_path, engine="python")
+    return pd.read_csv(data_path)
 
 
 def load_g1_kaminskiy_krivtsov():
@@ -139,7 +139,7 @@ def load_heart_transplants():
     """
 
     data_path = importlib.resources.files(data_module) / "heart.csv"
-    return pd.read_csv(data_path, engine="python")
+    return pd.read_csv(data_path)
 
 
 def load_lung():
@@ -158,7 +158,7 @@ def load_lung():
     """
 
     data_path = importlib.resources.files(data_module) / "lung.csv"
-    return pd.read_csv(data_path, engine="python")
+    return pd.read_csv(data_path)
 
 
 def load_mettas_and_zhao():
@@ -244,7 +244,7 @@ def load_rossi_static():
     """
 
     data_path = importlib.resources.files(data_module) / "rossi.csv"
-    return pd.read_csv(data_path, engine="python")
+    return pd.read_csv(data_path)
 
 
 def load_rossi_time_varying():
@@ -264,7 +264,7 @@ def load_rossi_time_varying():
     """
 
     data_path = importlib.resources.files(data_module) / "rossi_tv.csv"
-    return pd.read_csv(data_path, engine="python")
+    return pd.read_csv(data_path)
 
 
 def load_tires_data():
@@ -280,7 +280,7 @@ def load_tires_data():
     """
 
     data_path = importlib.resources.files(data_module) / "tires.csv"
-    return pd.read_csv(data_path, engine="python")
+    return pd.read_csv(data_path)
 
 
 def load_sae():

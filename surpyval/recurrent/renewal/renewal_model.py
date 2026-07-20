@@ -167,9 +167,15 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
             )
 
         import surpyval
+        from surpyval.univariate.parametric.parametric_fitter import (
+            ParametricFitter,
+        )
 
+        # Restrict the lookup to known distribution fitters so an
+        # untrusted model dict cannot resolve arbitrary surpyval
+        # attributes (matches the guard in Parametric.from_dict).
         dist = getattr(surpyval, model_dict["dist"], None)
-        if dist is None:
+        if not isinstance(dist, ParametricFitter):
             raise ValueError(
                 "Unknown distribution {!r}".format(model_dict["dist"])
             )
