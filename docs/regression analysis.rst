@@ -157,4 +157,37 @@ An accelerated life model is, therefore, simply a model where the life parameter
 
 Given the simple substitution into the life parameter, surpyval uses MLE to calculate the parameters.
 
-For examples on how to do regression analysis, see the entry in the SurPyval Modelling section of the docs.
+Checking a proportional hazards fit
+-----------------------------------
+
+Every proportional hazards model rests on one assumption: that a covariate multiplies the baseline hazard by a *constant* factor for all time. If that is false — a treatment that helps early but not late, a covariate whose effect drifts — the single coefficient the model reports is a time-average that can be misleading.
+
+The assumption is checked with the **Schoenfeld residuals**. At each event time the Schoenfeld residual for a covariate is the observed covariate value of the subject who failed minus the risk-weighted mean covariate value over everyone still at risk. If proportional hazards holds, these residuals have no trend in time; if the effect is drifting, they trend. The **Grambsch-Therneau test** formalises this by regressing the *scaled* Schoenfeld residuals on a transform of time and testing for a non-zero slope, both per covariate and jointly. A small :math:`p`-value is evidence *against* proportional hazards.
+
+SurPyval exposes several other residuals for a fitted Cox model, each answering a different question: **martingale** residuals (observed minus expected events) reveal non-linear covariate functional form; **deviance** residuals highlight poorly-predicted individuals; **score** and **dfbeta** residuals measure each observation's influence on the coefficients. The Schoenfeld, score and martingale residuals all sum to zero at the maximum of the partial likelihood.
+
+Cluster-robust standard errors
+------------------------------
+
+The model-based standard errors assume every observation is independent. When the data are *clustered* — repeated events on the same subject, several failures from one machine, grouped sampling — that assumption is wrong and the naive errors are too small. The **Lin-Wei sandwich** (or "robust") variance corrects for it. Writing :math:`H` for the information matrix and :math:`s_c` for the sum of a cluster's score (dfbeta) contributions, the robust covariance is
+
+.. math::
+
+    V_{\text{robust}} = H^{-1} \left( \sum_{c} s_c s_c^{\top} \right) H^{-1},
+
+which reduces to the usual variance when there is one observation per cluster and there is no within-cluster correlation.
+
+Stratification
+--------------
+
+When proportional hazards fails for a *nuisance* covariate — a study site, a batch, a device generation you would rather not model — the standard remedy is **stratification**: allow a separate baseline hazard :math:`h_{0,g}(t)` for each stratum :math:`g` while sharing the coefficients :math:`\beta`. Because the partial likelihood is summed *within* strata, risk sets never cross a stratum boundary and the nuisance factor is removed from the comparison without ever estimating its effect. The Cox partial likelihood factorises across strata, so this is a small change to the estimation with a large gain in robustness.
+
+Validating a survival predictor
+-------------------------------
+
+Information criteria (AIC, BIC) compare how well models fit the data they were trained on. To judge how well a model *predicts*, it must be scored on held-out data, and the metrics must account for censoring. Two right-censored-standard measures are used, both handling censoring by inverse-probability-of-censoring weighting (IPCW):
+
+- The **Brier score** :math:`BS(t)` is the weighted mean squared error between the predicted survival :math:`S(t \mid Z)` and the survival indicator :math:`\mathbb{1}(T > t)`; the **integrated Brier score** averages it over a time grid. Lower is better, and a useful model scores below the marginal Kaplan-Meier reference.
+- The **time-dependent AUC** (Uno's cumulative/dynamic estimator) measures discrimination as a function of the horizon — the probability that a subject who has failed by :math:`t` was assigned a higher risk than one still event-free. 0.5 is chance, 1.0 is perfect.
+
+For examples on how to do regression analysis — including checking the proportional hazards assumption, robust and stratified fits, and validating predictions — see the entry in the SurPyval Modelling section of the docs.

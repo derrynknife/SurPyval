@@ -111,6 +111,7 @@ Contents:
    Competing Risks SurPyval Modelling
    Recurrent Event Modelling with SurPyval
    Recurrent Event Regression Modelling with SurPyval
+   Degradation Modelling with SurPyval
    Multivariate Modelling with SurPyval
 
 .. toctree::
