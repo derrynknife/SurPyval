@@ -77,6 +77,100 @@ population / cure fraction), `fixed={"beta": 2}` (hold parameters), `init=[...]`
 Most fitters also offer `fit_from_df(df, ...)` mapping column names to the xcnt
 roles (regression fitters map a formula / covariate columns).
 
+## The xicn data model (recurrent events)
+
+Recurrent-event fitters (`surpyval.recurrent`) use a **different, longer-format**
+convention — one row per event, keyed by which item it belongs to. Do not use the
+single-event `x/c/n/t` shape here; use `x/i/c/n` (handled internally by
+`surpyval.utils.handle_xicn`):
+
+- **`x`** — the time of each event (or of a censoring).
+- **`i`** — the **item id**: which unit/system this row belongs to (the column that
+  ties repeated events on the same unit together). This is what makes it recurrent.
+- **`c`** — censoring, per row (`0` event, `1` right-censored end-of-observation).
+- **`n`** — count at each row (default 1).
+- **`e`** — optional **event mark / cause label** per event, for cause-specific
+  recurrent models (`CauseSpecificMCF`, `CauseSpecificNHPP`).
+- **`tl`/`tr`** — truncation; **`windows`** — gapped/intermittent observation windows
+  (periods when a unit was actually being watched).
+
+```python
+from surpyval.recurrent import NonParametricCounting, CrowAMSAA
+# three systems, each with several failures then a censored end-of-watch
+x = [11, 24, 40,  9, 33,  5, 18, 41]
+i = [ 1,  1,  1,  2,  2,  3,  3,  3]   # item ids
+c = [ 0,  0,  1,  0,  1,  0,  0,  1]
+mcf = NonParametricCounting.fit(x=x, i=i, c=c)   # mean cumulative function
+crow = CrowAMSAA.fit(x=x, i=i, c=c)              # NHPP intensity / reliability growth
+```
+
+(Sub-namespaces like `surpyval.recurrent`, `surpyval.degradation`,
+`surpyval.multivariate`, `surpyval.beta.ml` are **not** auto-imported by
+`import surpyval` — import them explicitly.)
+
+## Choosing a model — what to reach for and why
+
+**First fork: what kind of process generated the data?** Getting this wrong gives
+silently wrong numbers, not errors.
+
+- *One event per item* (a unit fails once) → a distribution, non-parametric
+  estimator, or regression. The default case.
+- *Several mutually-exclusive causes, and which one fired matters* → **competing
+  risks**. Fitting a single-event model to one cause while censoring the others
+  overstates that cause's incidence; `CompetingRisks`/`FineGray` keep the
+  cumulative incidences summing correctly.
+- *Items fail repeatedly and are repaired* → **recurrent events** (MCF / NHPP /
+  renewal). A single-event fit discards the repair history and mis-estimates the
+  rate of occurrence; renewal/imperfect-repair models also capture how good each
+  repair was.
+- *No failures yet, but a measurable signal drifting toward a threshold* →
+  **degradation / RUL**. Predicts life *before* anything fails.
+
+**Parametric vs non-parametric vs semi-parametric:**
+
+- **Non-parametric** (`KaplanMeier`, `NelsonAalen`, `Turnbull`) — assume nothing
+  about shape. Best for *describing* the data, comparing groups (`logrank`), and
+  sanity-checking a parametric fit. Cannot extrapolate past the last observation.
+  `Turnbull` is the one that handles interval censoring and truncation; KM/NA need
+  observed/right-censored (optionally left-truncated) data.
+- **Parametric** (`Weibull`, `LogNormal`, ...) — a smooth curve you can
+  *extrapolate* (B10 life, warranty tail, 1% quantile) and that summarises behaviour
+  in a few parameters. Costs a shape assumption — always check with `.plot()` or
+  `fit_best`.
+- **Semi-parametric** (`CoxPH`, `BuckleyJames`) — covariate effects without
+  committing to a baseline shape; the default when the question is "which factors
+  matter and by how much", not "what's the absolute curve".
+
+**Which distribution** (reason from the hazard shape):
+
+- **Weibull** — the workhorse; the shape `β` reads directly: `β<1` infant mortality
+  (decreasing hazard), `β=1` random/constant (= Exponential), `β>1` wear-out
+  (increasing). Try it first.
+- **Exponential** — memoryless, constant hazard; only when failures are genuinely
+  random (no ageing).
+- **LogNormal** — hazard rises then falls; fatigue, crack growth, repair-time data.
+- **Gamma / ExpoWeibull / LogLogistic** — more flexible hazards when Weibull/LogNormal
+  don't fit; `ExpoWeibull` can produce bathtub curves.
+- **Normal / Gumbel / Logistic** — location-scale families for data on the whole real
+  line (often after a log transform).
+- Unsure → `fit_best(...)` picks by AIC, then confirm with the probability plot.
+- Add `offset=True` for a failure-free threshold (3-parameter / minimum-life),
+  `lfp=True` for a cure fraction (a subpopulation that never fails), `zi=True` for
+  dead-on-arrival mass at zero.
+
+**Which regression form:**
+
+- **AFT** — covariates scale *time* ("this stress halves the life"); the natural,
+  interpretable choice for **accelerated life testing**.
+- **PH** — covariates scale the *hazard*; standard in biostatistics, read as hazard
+  ratios.
+- **Cox** — PH effects with an *unspecified* baseline; use when you care about the
+  coefficients, not the absolute survival shape (and for time-varying covariates via
+  `fit_tvc`).
+- **Additive hazards** (Lin–Ying) — covariates *add* to the hazard rather than
+  multiply; better on an absolute-risk scale.
+- **Proportional odds** — effects that fade over time (converging hazards).
+
 ## What lives where
 
 | Task | Import | Fitters |
@@ -138,15 +232,6 @@ clear error rather than misread.
 - `SurpyvalData` — the internal container fitters build from xcnt input; you rarely
   need it directly, but `Model.fit_from_surpyval_data(data)` exists on the fitters.
 
-## Conventions when working in this repo
-
-- **Distributions are singletons**: `sp.Weibull` is an *instance* of `Weibull_`; you
-  call `.fit()`/`.from_params()` on it, you don't instantiate it.
-- **Lint/type/format** before committing: `flake8 surpyval`, `black --check surpyval`,
-  `mypy surpyval` (config in `pyproject.toml`; flake8 ignores E203/W503/E704/E741).
-- **Tests**: `pytest surpyval/tests` (the `surpyval/tests/alpha` tier is excluded in CI).
-- **Docs** build with the pinned toolchain in `docs/requirements.txt`
-  (`python -m sphinx -b html docs docs/_build/html`); the jupyter-execute examples run
-  live, so keep them fast and identifiable.
-- Full theory + worked examples live in `docs/` (Regression, Recurrent, Degradation,
-  Non-Parametric Modelling) and the API in the module docstrings.
+**Note:** distributions are singletons — `sp.Weibull` is an *instance*, so you call
+`sp.Weibull.fit()` / `sp.Weibull.from_params([10, 3])` directly; you never
+instantiate it.
