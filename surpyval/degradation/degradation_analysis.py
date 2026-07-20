@@ -37,6 +37,7 @@ from ._bounds import (
 )
 from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate, reml_estimate_nonlinear
+from surpyval.serialisation import stamp_schema
 
 
 def _is_regression_fitter(fitter) -> bool:
@@ -172,12 +173,14 @@ class InducedFailureDistribution:
         samples = [
             None if not np.isfinite(s) else float(s) for s in self.samples
         ]
-        return {
-            "model": "InducedFailureDistribution",
-            "samples": samples,
-            "threshold": self.threshold,
-            "path_name": self.path_name,
-        }
+        return stamp_schema(
+            {
+                "model": "InducedFailureDistribution",
+                "samples": samples,
+                "threshold": self.threshold,
+                "path_name": self.path_name,
+            }
+        )
 
     def to_json(self, fp) -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""
@@ -417,35 +420,39 @@ class DegradationModel:
         --------
         from_dict, to_json, from_json
         """
-        return {
-            "model": "DegradationModel",
-            "x": np.asarray(self.x, dtype=float).tolist(),
-            "y": np.asarray(self.y, dtype=float).tolist(),
-            "i": np.asarray(self.i).tolist(),
-            "units": np.asarray(self.units).tolist(),
-            "threshold": float(self.threshold),
-            "path_model": self.path_model.name,
-            "path_params": np.asarray(self.path_params, dtype=float).tolist(),
-            "pseudo_failure_times": np.asarray(
-                self.pseudo_failure_times, dtype=float
-            ).tolist(),
-            "c": np.asarray(self.c).tolist(),
-            "life_model": self._life_model_to_dict(self.life_model),
-            "measurement_var": float(self.measurement_var),
-            "path_param_mean": np.asarray(
-                self.path_param_mean, dtype=float
-            ).tolist(),
-            "path_param_cov": np.asarray(
-                self.path_param_cov, dtype=float
-            ).tolist(),
-            "path_param_sample_cov": np.asarray(
-                self.path_param_sample_cov, dtype=float
-            ).tolist(),
-            "population_method": self.population_method,
-            "path_selection": self.path_selection,
-            "Z": None if self.Z is None else np.asarray(self.Z).tolist(),
-            "how": self._how,
-        }
+        return stamp_schema(
+            {
+                "model": "DegradationModel",
+                "x": np.asarray(self.x, dtype=float).tolist(),
+                "y": np.asarray(self.y, dtype=float).tolist(),
+                "i": np.asarray(self.i).tolist(),
+                "units": np.asarray(self.units).tolist(),
+                "threshold": float(self.threshold),
+                "path_model": self.path_model.name,
+                "path_params": np.asarray(
+                    self.path_params, dtype=float
+                ).tolist(),
+                "pseudo_failure_times": np.asarray(
+                    self.pseudo_failure_times, dtype=float
+                ).tolist(),
+                "c": np.asarray(self.c).tolist(),
+                "life_model": self._life_model_to_dict(self.life_model),
+                "measurement_var": float(self.measurement_var),
+                "path_param_mean": np.asarray(
+                    self.path_param_mean, dtype=float
+                ).tolist(),
+                "path_param_cov": np.asarray(
+                    self.path_param_cov, dtype=float
+                ).tolist(),
+                "path_param_sample_cov": np.asarray(
+                    self.path_param_sample_cov, dtype=float
+                ).tolist(),
+                "population_method": self.population_method,
+                "path_selection": self.path_selection,
+                "Z": None if self.Z is None else np.asarray(self.Z).tolist(),
+                "how": self._how,
+            }
+        )
 
     def to_json(self, fp) -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""

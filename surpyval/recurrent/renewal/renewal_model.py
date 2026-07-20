@@ -5,6 +5,7 @@ import numpy as np
 
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
+from surpyval.serialisation import stamp_schema
 
 
 class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
@@ -118,7 +119,7 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
             out["kijima_type"] = self.kijima_type
         if getattr(self, "m", None) is not None:
             out["m"] = self.m
-        return out
+        return stamp_schema(out)
 
     def to_json(self, fp) -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""

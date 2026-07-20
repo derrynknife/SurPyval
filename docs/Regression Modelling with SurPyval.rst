@@ -881,6 +881,12 @@ itself:
     doc = collection.find_one({"distribution": "Weibull"})
     model = surpyval.from_dict(doc)
 
+Every document also carries a ``"schema"`` version stamped by ``to_dict``.
+It changes only when a document's shape changes incompatibly, so models
+stored today stay recognisable to future SurPyval versions; a document
+written by a *newer* schema than the installed SurPyval understands is
+refused with a clear error rather than misread.
+
 If the fitted model carried a computable parameter covariance, it is stored in
 the dictionary, so the reloaded model can also produce confidence bounds
 (``cb``, ``param_cb``, ``standard_errors``) without the original data. Only the

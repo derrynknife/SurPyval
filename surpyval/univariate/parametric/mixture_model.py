@@ -12,6 +12,7 @@ from .probability_plotting import (
     draw_probability_plot,
     probability_plot_data,
 )
+from surpyval.serialisation import stamp_schema
 
 
 class MixtureModel(Distribution):
@@ -57,13 +58,15 @@ class MixtureModel(Distribution):
         model reproduces ``sf``/``ff``/``df``/``mean``/``random`` exactly. The
         fitted data and EM responsibilities are not stored.
         """
-        return {
-            "model": "MixtureModel",
-            "dist": self.dist.name,
-            "m": int(self.m),
-            "params": np.asarray(self.params, dtype=float).tolist(),
-            "w": np.asarray(self.w, dtype=float).tolist(),
-        }
+        return stamp_schema(
+            {
+                "model": "MixtureModel",
+                "dist": self.dist.name,
+                "m": int(self.m),
+                "params": np.asarray(self.params, dtype=float).tolist(),
+                "w": np.asarray(self.w, dtype=float).tolist(),
+            }
+        )
 
     def to_json(self, fp) -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""

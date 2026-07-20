@@ -95,6 +95,21 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 }
 
 
+# The version of the serialised-dictionary layout, stamped into every
+# ``to_dict`` output as ``"schema"``. Bump it only when a dictionary's
+# shape changes incompatibly; the readers use it to recognise (and
+# refuse, with a clear error) documents written by a newer SurPyval,
+# and to migrate older layouts where needed. Documents with no
+# ``"schema"`` key predate versioning and read as schema 0.
+SCHEMA_VERSION = 1
+
+
+def stamp_schema(model_dict: dict) -> dict:
+    """Stamp the serialisation schema version into a ``to_dict`` output."""
+    model_dict["schema"] = SCHEMA_VERSION
+    return model_dict
+
+
 def _resolve(module_name: str, class_name: str) -> Any:
     return getattr(import_module(module_name), class_name)
 
@@ -153,6 +168,14 @@ def from_dict(model_dict: dict) -> Any:
         raise ValueError(
             "Expected a serialised model dict, got "
             f"{type(model_dict).__name__}"
+        )
+
+    schema = model_dict.get("schema", 0)
+    if isinstance(schema, int) and schema > SCHEMA_VERSION:
+        raise ValueError(
+            f"This serialised model uses schema version {schema}, but "
+            f"this version of SurPyval reads schema versions up to "
+            f"{SCHEMA_VERSION}. Upgrade surpyval to load it."
         )
 
     tag = model_dict.get("model")

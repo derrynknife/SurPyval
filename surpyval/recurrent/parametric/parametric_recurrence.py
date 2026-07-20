@@ -11,6 +11,7 @@ from surpyval.recurrent.inference import (
 )
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
+from surpyval.serialisation import stamp_schema
 
 
 class ParametricRecurrenceModel(
@@ -55,12 +56,14 @@ class ParametricRecurrenceModel(
         --------
         from_dict, to_json, from_json
         """
-        return {
-            "model": "ParametricRecurrenceModel",
-            "dist": self.dist.name,
-            "params": np.asarray(self.params, dtype=float).tolist(),
-            "how": getattr(self, "how", "from_params"),
-        }
+        return stamp_schema(
+            {
+                "model": "ParametricRecurrenceModel",
+                "dist": self.dist.name,
+                "params": np.asarray(self.params, dtype=float).tolist(),
+                "how": getattr(self, "how", "from_params"),
+            }
+        )
 
     def to_json(self, fp):
         """Write :meth:`to_dict` to ``fp`` as JSON."""

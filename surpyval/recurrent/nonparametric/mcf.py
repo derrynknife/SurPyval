@@ -9,6 +9,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
+from surpyval.serialisation import stamp_schema
 
 
 @singleton_fitter
@@ -29,12 +30,14 @@ class NonParametricCounting:
         --------
         from_dict, to_json, from_json
         """
-        return {
-            "model": "NonParametricCounting",
-            "x": np.asarray(self.x, dtype=float).tolist(),
-            "mcf_hat": np.asarray(self.mcf_hat, dtype=float).tolist(),
-            "var": np.asarray(self.var, dtype=float).tolist(),
-        }
+        return stamp_schema(
+            {
+                "model": "NonParametricCounting",
+                "x": np.asarray(self.x, dtype=float).tolist(),
+                "mcf_hat": np.asarray(self.mcf_hat, dtype=float).tolist(),
+                "var": np.asarray(self.var, dtype=float).tolist(),
+            }
+        )
 
     def to_json(self, fp):
         """Write :meth:`to_dict` to ``fp`` as JSON."""

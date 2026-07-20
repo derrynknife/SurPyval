@@ -53,6 +53,7 @@ from scipy.stats import norm
 from surpyval.utils import check_Z_and_x, wrangle_Z, xcnt_handler
 
 from ..regression_data import design_matrix_from_df, prepare_Z
+from surpyval.serialisation import stamp_schema
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -161,7 +162,7 @@ class AdditiveHazardsModel:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
             out["formula"] = self.formula
-        return out
+        return stamp_schema(out)
 
     def to_json(self, fp: "str | Path") -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""

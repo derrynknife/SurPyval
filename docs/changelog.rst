@@ -7,6 +7,13 @@ v0.15.0 (unreleased)
 Serialisation
 ~~~~~~~~~~~~~
 
+- Every serialised model dictionary now carries a schema version
+  (``"schema": 1``), stamped by every ``to_dict``. The version is bumped only
+  when a dictionary's shape changes incompatibly, so documents stored today
+  (in files or MongoDB) stay recognisable to future SurPyval versions: the
+  package-level ``surpyval.from_dict`` refuses documents written by a *newer*
+  schema with a clear error, and treats documents with no ``"schema"`` key
+  (written before versioning) as schema 0, which remains loadable.
 - MongoDB compatibility, verified for every serialisable model: BSON is
   stricter than JSON (numpy integer scalars and arrays are rejected, and
   dictionary keys must be strings), so every model's ``to_dict`` output is now

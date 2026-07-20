@@ -39,6 +39,7 @@ from scipy.optimize import minimize
 from scipy.stats import norm
 
 from surpyval.utils import validate_fine_gray_inputs
+from surpyval.serialisation import stamp_schema
 
 
 def _censoring_survival(x, c, n):
@@ -192,17 +193,23 @@ class FineGrayModel:
         model reproduces ``cif``/``sf`` exactly and can still report the
         coefficient summary. The optimiser objects are not stored.
         """
-        return {
-            "model": "FineGrayModel",
-            "cause": self.cause,
-            "beta": np.asarray(self.beta, dtype=float).tolist(),
-            "se": np.asarray(self.se, dtype=float).tolist(),
-            "p_values": np.asarray(self.p_values, dtype=float).tolist(),
-            "cov": np.asarray(self.cov, dtype=float).tolist(),
-            "baseline_times": np.asarray(self._times, dtype=float).tolist(),
-            "baseline_cumhaz": np.asarray(self._cumhaz, dtype=float).tolist(),
-            "neg_ll": float(self._neg_ll),
-        }
+        return stamp_schema(
+            {
+                "model": "FineGrayModel",
+                "cause": self.cause,
+                "beta": np.asarray(self.beta, dtype=float).tolist(),
+                "se": np.asarray(self.se, dtype=float).tolist(),
+                "p_values": np.asarray(self.p_values, dtype=float).tolist(),
+                "cov": np.asarray(self.cov, dtype=float).tolist(),
+                "baseline_times": np.asarray(
+                    self._times, dtype=float
+                ).tolist(),
+                "baseline_cumhaz": np.asarray(
+                    self._cumhaz, dtype=float
+                ).tolist(),
+                "neg_ll": float(self._neg_ll),
+            }
+        )
 
     def to_json(self, fp):
         """Write :meth:`to_dict` to ``fp`` as JSON."""

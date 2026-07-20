@@ -18,6 +18,7 @@ from ._bounds import (
     numerical_hessian,
 )
 from .regression_data import prepare_Z
+from surpyval.serialisation import stamp_schema
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -178,7 +179,7 @@ class ParametricRegressionModel:
                 out["covariance"] = np.asarray(cov, dtype=float).tolist()
             if hasattr(self, "_neg_ll"):
                 out["_neg_ll"] = float(self._neg_ll)
-        return out
+        return stamp_schema(out)
 
     def to_json(self, fp: "str | Path") -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""
