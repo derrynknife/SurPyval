@@ -14,7 +14,7 @@ This can be extended to more than one death. For example, the risk set could be 
 
 So a complete example of this format is:
 
-.. jupyter-execute::
+.. code-block:: python
 
     x = [1, 2, 3, 4, 5, 6]
     r = [7, 5, 4, 3, 2, 1]
@@ -143,6 +143,26 @@ On the contrary, the Nelson-Aalen estimate performs poorly with lots of ties. Th
     :align: center
 
 The Fleming-Harrington, plotted in red in the above two charts, optimises between these two estimators. The Fleming-Harrington estimate approaches the Nelson-Aalen under the conditions of where the Nelson-Aalen estimate performs well and the Kaplan-Meier does poorly. Fleming-Harrington also does well where the Nelson-Aalen estimate does poorly but the Kaplan-Meier does well. Although the two examples provided are in the extreme, it is worth using the Fleming-Harrington by default since it is more flexible; it is therefore, for this reason, that surpyval does exactly that. This is not to say not to use KM or NA, but only when you are sure you are making the correct assumptions about what you are doing!
+
+Comparing two groups: the log-rank test
+---------------------------------------
+
+Having estimated a survival curve for each of several groups, the natural next question is whether the groups genuinely *differ*, or whether the separation between the curves is just sampling noise. The **log-rank test** answers this. At every distinct event time it compares the number of failures observed in each group with the number *expected* if all groups shared one common survival curve, where the expected count in a group is the total number of failures at that time apportioned by the group's share of the risk set. Summing the observed-minus-expected differences over all event times, and dividing by their variance, gives a statistic that is :math:`\chi^2` distributed with :math:`k - 1` degrees of freedom for :math:`k` groups. A small :math:`p`-value is evidence the groups differ.
+
+The plain log-rank weights every event time equally, which makes it most sensitive to *proportional* differences in hazard. Weighted variants change that emphasis: the **Gehan-Breslow** and **Tarone-Ware** weights, and the **Fleming-Harrington** family, up-weight early or late times so the test is more sensitive to differences concentrated there.
+
+When a *nuisance* factor (a site, a batch) also affects survival, comparing groups while ignoring it can be misleading if the groups are unevenly distributed across its levels. The **stratified log-rank** accumulates the observed-minus-expected numerators and their variances *within* each stratum before forming the statistic, so groups are only ever compared against others in the same stratum — the same logic as stratification in a Cox model, applied to the two-sample test.
+
+Restricted mean survival time
+-----------------------------
+
+A hazard ratio (from a log-rank test or a Cox model) only has a clean interpretation when the proportional-hazards assumption holds. When it does not — curves that cross, an effect that reverses over time — the **restricted mean survival time** (RMST) is an assumption-light summary. It is the area under the survival curve up to a horizon :math:`\tau`,
+
+.. math::
+
+    \text{RMST}(\tau) = \int_0^{\tau} S(t)\, dt,
+
+which is exactly the average event-free time over the first :math:`\tau` units and is always well defined. Comparing two groups by the **difference** in their RMST gives an effect measured in the natural units of time, with a variance obtained from Greenwood's formula, and needs no assumption about the shape of, or relationship between, the two hazards.
 
 References
 ----------
