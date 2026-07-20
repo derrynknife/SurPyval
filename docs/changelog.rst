@@ -17,6 +17,14 @@ Diagnostics & validation
   (Schoenfeld, score and martingale residuals sum to zero) and the PH test is
   validated for both power (it detects a genuine time-varying coefficient) and
   calibration (its p-values are ~Uniform under true proportional hazards).
+- **Restricted mean survival time** (#213). A fitted non-parametric model
+  (e.g. ``KaplanMeier``) gains ``rmst(tau)`` -- the area under the survival
+  curve to a horizon with its standard error and confidence interval -- and
+  the package-level ``surpyval.rmst_diff(model_a, model_b, tau)`` compares two
+  groups' RMST (difference, ratio, CI and a two-sided p-value). The
+  RMST-difference is the assumption-light alternative to the hazard ratio when
+  proportional hazards fails; the estimate matches its analytic value and the
+  two-group test is calibrated under the null.
 
 v0.15.2 (20 Jul 2026)
 ---------------------

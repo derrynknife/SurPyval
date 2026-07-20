@@ -16,6 +16,7 @@ from surpyval.univariate.nonparametric import (
     NonParametric,
     Turnbull,
     logrank,
+    rmst_diff,
     success_run,
 )
 from surpyval.univariate.parametric import (
