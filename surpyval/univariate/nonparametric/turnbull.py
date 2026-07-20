@@ -99,8 +99,23 @@ def turnbull(
         w_lo, w_hi = w_lo[truncated], w_hi[truncated]
         n_truncated = n[truncated]
 
+    # The identifiable support: a bound may carry probability mass only if it
+    # lies inside at least one observation's support ``[lo, hi]``. Mass placed
+    # elsewhere is non-identifiable, and under truncation the ghost step
+    # otherwise migrates it below every entry window into a degenerate,
+    # all-zero-survival fixed point (issue #203). Restricting the expected
+    # counts to this region each iteration keeps the EM in the identifiable
+    # part of the parameter space.
+    cover = np.zeros(M + 1)
+    np.add.at(cover, lo, 1.0)
+    np.add.at(cover, np.minimum(hi + 1, M), -1.0)
+    identifiable = np.cumsum(cover[:M]) > 0
+
     d = np.zeros(M)
-    p = np.ones(M) / M
+    if any_truncated and identifiable.any():
+        p = identifiable / identifiable.sum()
+    else:
+        p = np.ones(M) / M
 
     if estimator == "Kaplan-Meier":
         func = km
@@ -112,6 +127,9 @@ def turnbull(
     old_err_state = np.seterr(all="ignore")
 
     converged = False
+    degenerate = False
+    r = np.zeros(M)
+    R = np.ones(M)
     for iters in range(1, max_iter + 1):
         # Prefix sums of p turn every range sum into two lookups.
         cumulative = np.concatenate([[0.0], np.cumsum(p)])
@@ -147,23 +165,63 @@ def turnbull(
 
         # Deaths/Failures/Events
         d = d_ghosts + d_observed
+        if any_truncated:
+            # Confine the expected counts to the identifiable region.
+            d = np.where(identifiable, d, 0.0)
         # total observed and unobserved failures.
         total_events = d.sum()
         # Risk set, i.e the number of items at risk at immediately before x
         r = total_events - d.cumsum() + d
-        # Find the survival function values (R) using the deaths and risk set
-        # The 'official' way to do it, which is equivalent to using KM,
-        # is to do p = (nu + mu).sum(axis=0)/(nu + mu).sum()
-        R = func(r, d)
+        # Iterate with the Kaplan-Meier self-consistency update (``p`` ∝
+        # ``d``), the canonical Turnbull M-step. The requested hazard-form
+        # estimator (Fleming-Harrington / Nelson-Aalen) sets ``R = exp(-H)``,
+        # which does *not* satisfy ``p`` ∝ ``d`` -- iterating with it biases
+        # every step and leaves truncated fits reporting tol-level
+        # non-convergence (issue #203). It is applied only to the converged
+        # ladder below. Untruncated fits keep their historical behaviour.
+        update = km if any_truncated else func
+        R = update(r, d)
         # Calculate the probability mass in each interval
         p_new = np.abs(np.diff(np.hstack([[1], R])))
-        if np.nanmax(np.abs(p_new - p)) < tol:
+        # A non-finite update, or (under truncation) a total collapse of mass,
+        # is a degenerate fixed point -- not convergence. The old ``nanmax``
+        # check silently accepted these.
+        if not np.all(np.isfinite(p_new)) or (
+            any_truncated and p_new.sum() <= 0
+        ):
+            degenerate = True
+            break
+        if any_truncated:
+            p_new = p_new / p_new.sum()
+        if np.max(np.abs(p_new - p)) < tol:
             p = p_new
             converged = True
             break
         p = p_new
 
-    if not converged:
+    # Report the requested hazard-form estimator on the converged ladder.
+    R = func(r, d)
+
+    # A converged fit whose survival has entirely collapsed (all mass forced
+    # to the boundary, so S(x) ~ 0 across the whole observed range) is the
+    # non-identifiable degenerate state, not a real estimate.
+    if not degenerate and R.size > 2:
+        reported = R[:-2]
+        if not np.all(np.isfinite(reported)) or (
+            any_truncated and np.nanmax(reported) < 1e-8
+        ):
+            degenerate = True
+
+    if degenerate:
+        warnings.warn(
+            "The Turnbull EM reached a degenerate, non-identifiable fixed "
+            "point: all probability mass migrated outside the observable "
+            "region (typically below the earliest entry time under heavy "
+            "left truncation), so the survival estimate has collapsed. The "
+            "result is unreliable -- more data or a narrower truncation range "
+            "is needed."
+        )
+    elif not converged:
         warnings.warn(
             "The Turnbull EM did not converge to within `tol` ({}) in "
             "`max_iter` ({}) iterations; the estimate may be "
@@ -246,6 +304,7 @@ def turnbull(
     out["turnbull_estimator"] = estimator
     out["iters"] = iters
     out["converged"] = converged
+    out["degenerate"] = degenerate
 
     np.seterr(**old_err_state)
 

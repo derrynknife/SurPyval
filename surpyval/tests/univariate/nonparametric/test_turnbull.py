@@ -208,3 +208,90 @@ def test_turnbull_docstring_example_unchanged():
         0.09680497,
     ]
     assert np.allclose(model.R, expected, atol=1e-6)
+
+
+# -- #203: EM correctness under truncation ------------------------------------
+
+
+def _degenerate_case():
+    # The reproduction from issue #203: a small, heavily truncated, mixed-
+    # censoring sample on which the truncated EM used to migrate all mass
+    # below the observation windows and return an all-zero survival curve
+    # silently.
+    x = [1, 2, [3, 6], 7, 8, 9, [5, 9], [4, 10], [7, 10], 11, 12]
+    c = [1, 1, 2, 0, 0, 0, 2, 2, 2, -1, 0]
+    n = [1, 2, 1, 3, 2, 2, 1, 1, 2, 1, 1]
+    tl = [0, 0, 0, 0, 0, 2, 3, 3, 1, 1, 5]
+    return x, c, n, tl
+
+
+def test_turnbull_degenerate_state_is_flagged_and_warns():
+    x, c, n, tl = _degenerate_case()
+    with pytest.warns(UserWarning, match="degenerate"):
+        model = surpyval.Turnbull.fit(x=x, c=c, n=n, tl=tl)
+    # The degenerate direction is detected and surfaced, rather than a
+    # silent all-zero survival curve being returned as if converged.
+    assert model.degenerate is True
+
+
+def test_turnbull_healthy_truncated_fit_is_not_flagged():
+    # A well-sized left-truncated sample is a genuine, identifiable fit: it
+    # must not trip the degenerate detector.
+    x, tl = _left_truncated_sample(n=600, seed=7)
+    model = surpyval.Turnbull.fit(
+        x, tl=tl, turnbull_estimator="Kaplan-Meier", max_iter=5000
+    )
+    assert model.degenerate is False
+
+
+def test_turnbull_truncated_estimators_converge():
+    # With the Kaplan-Meier self-consistency M-step, the hazard-form
+    # estimators (which used to iterate on a biased update and never reach
+    # ``tol`` under truncation) now converge on a healthy truncated sample.
+    rng = np.random.default_rng(5)
+    x = rng.weibull(1.5, 250) * 10
+    tl = rng.uniform(0, 3, 250)
+    keep = x > tl
+    x, tl = x[keep], tl[keep]
+    for est in ("Kaplan-Meier", "Fleming-Harrington", "Nelson-Aalen"):
+        model = surpyval.Turnbull.fit(
+            x, tl=tl, turnbull_estimator=est, max_iter=5000
+        )
+        assert model.converged is True
+        assert model.degenerate is False
+
+
+def test_turnbull_left_truncation_recovers_survival():
+    # All three inner estimators recover S(median) of the true Weibull to
+    # well within 0.04 on a left-truncated sample.
+    rng = np.random.default_rng(11)
+    x = rng.weibull(1.5, 400) * 10
+    tl = rng.uniform(0, 3, 400)
+    keep = x > tl
+    x, tl = x[keep], tl[keep]
+    median = 10 * (np.log(2)) ** (1 / 1.5)
+    for est in ("Kaplan-Meier", "Fleming-Harrington", "Nelson-Aalen"):
+        model = surpyval.Turnbull.fit(
+            x, tl=tl, turnbull_estimator=est, max_iter=5000
+        )
+        s_med = float(np.atleast_1d(model.sf(median))[0])
+        assert abs(s_med - 0.5) < 0.04
+
+
+def test_turnbull_untruncated_default_is_unchanged():
+    # The #203 fix is scoped to truncated fits; the documented untruncated
+    # Fleming-Harrington example must be byte-for-byte unchanged.
+    x = np.array([[1, 5], [2, 3], [3, 6], [1, 8], [9, 10]])
+    model = surpyval.Turnbull.fit(x)
+    expected = [
+        1.0,
+        1.0,
+        0.63472351,
+        0.29479882,
+        0.2631432,
+        0.2631432,
+        0.2631432,
+        0.09680497,
+    ]
+    assert np.allclose(model.R, expected, atol=1e-6)
+    assert model.degenerate is False

@@ -71,6 +71,28 @@ Diagnostics & validation
   constant predictor is worse); and the AUC is ~1 for a near-perfect ordering
   and ~0.5 for a random one.
 
+Correctness
+~~~~~~~~~~~
+
+- **Turnbull EM under truncation** (#203). Three statistical defects in the
+  truncated Turnbull NPMLE are fixed. (1) The EM now iterates with the
+  Kaplan-Meier self-consistency update (``p`` proportional to the expected
+  counts ``d``), the canonical M-step; the ``Fleming-Harrington`` /
+  ``Nelson-Aalen`` inner estimators set ``R = exp(-H)``, which violates that
+  fixed point and left even healthy truncated fits reporting tol-level
+  non-convergence -- they now converge, and the requested hazard-form
+  estimator is applied to the *converged* ladder. (2) The expected counts are
+  confined to the identifiable support each iteration, stopping the ghost
+  step from migrating mass below every entry window. (3) The convergence
+  check is no longer NaN-blind: a non-finite update or a total mass collapse
+  is detected as a *degenerate, non-identifiable* fixed point and reported
+  with an explicit warning and a ``degenerate`` flag on the model, instead of
+  a silent all-zero survival curve. Untruncated fits are unchanged. Validated:
+  the issue's degenerate reproduction is now flagged and warned; a
+  left-truncated sample recovers ``S(median)`` to within 0.04 with all three
+  inner estimators; and the documented untruncated example is byte-for-byte
+  identical.
+
 v0.15.2 (20 Jul 2026)
 ---------------------
 
