@@ -38,6 +38,12 @@ _TRANSFORMS = ("km", "rank", "identity", "log")
 
 
 def _require_cox(model: "SemiParametricRegressionModel") -> dict:
+    if getattr(model, "is_stratified", False):
+        raise NotImplementedError(
+            "Residuals, the proportional-hazards test and robust standard "
+            "errors are not available for stratified Cox models (each stratum "
+            "has its own baseline hazard)."
+        )
     if getattr(model, "kind", None) != "Cox" or not hasattr(
         model, "_fit_data"
     ):

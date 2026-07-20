@@ -41,6 +41,20 @@ Diagnostics & validation
   p-value. Validated for calibration under the null (including under heavy
   censoring, which exercises the IPCW weighting) and for power against genuine
   CIF differences.
+- **Stratified Cox and stratified log-rank** (#214). ``CoxPH.fit`` /
+  ``fit_from_df`` accept ``strata`` (or ``strata_col``) to fit a *stratified*
+  proportional-hazards model: a separate baseline hazard per stratum with
+  shared coefficients, the partial likelihood summed within strata. Prediction
+  (``sf``/``Hf``/...) then takes a ``stratum`` argument to select that
+  stratum's baseline. ``surpyval.logrank`` gains a ``strata`` argument for the
+  stratified log-rank test (per-stratum observed-minus-expected and variance
+  summed before forming the statistic). Both are the standard remedy when
+  proportional hazards fails for a nuisance covariate. Validated by
+  simulation: the stratified estimators recover the truth (and stay
+  calibrated) in a confounded design where the pooled versions are badly
+  biased / over-reject, reduce exactly to their unstratified counterparts with
+  a single stratum, and the stratified Cox partial likelihood factorises into
+  the per-stratum contributions.
 
 v0.15.2 (20 Jul 2026)
 ---------------------

@@ -23,6 +23,13 @@ class SemiParametricRegressionModel:
     #: True when fitted from time-varying-covariate (start-stop) data via
     #: ``CoxPH.fit_tvc``; enables :meth:`predict_tvc`.
     is_tvc: bool = False
+    #: True when fitted with ``strata=...`` (a separate baseline hazard per
+    #: stratum, shared coefficients). Prediction then requires a ``stratum``.
+    is_stratified: bool = False
+    #: For a stratified fit, the list of stratum labels.
+    strata_labels: Any = None
+    #: For a stratified fit, ``{label: {"x", "r", "d", "h0", "H0"}}``.
+    strata_baselines: Any = None
 
     # Attributes populated by the fitter (``CoxPH.fit`` / ``fit_from_df``).
     params: npt.NDArray
@@ -91,6 +98,11 @@ class SemiParametricRegressionModel:
         --------
         from_dict, to_json, from_json
         """
+        if self.is_stratified:
+            raise NotImplementedError(
+                "Serialisation of stratified Cox models is not supported "
+                "(each stratum carries its own baseline hazard)."
+            )
         out: dict[str, Any] = {
             "model": "SemiParametricRegressionModel",
             "kind": self.kind,
@@ -170,34 +182,76 @@ class SemiParametricRegressionModel:
         with open(fp, "r") as f:
             return cls.from_dict(json.load(f))
 
+    def _baseline_arrays(
+        self, stratum: Any
+    ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray]":
+        """Baseline ``(x, h0, H0)`` arrays, selecting a stratum if needed."""
+        if self.is_stratified:
+            if stratum is None:
+                raise ValueError(
+                    "this is a stratified Cox model; pass stratum=... to "
+                    "select which stratum's baseline hazard to use "
+                    "(one of {})".format(self.strata_labels)
+                )
+            if stratum not in self.strata_baselines:
+                raise ValueError(
+                    "unknown stratum {!r}; known strata are {}".format(
+                        stratum, self.strata_labels
+                    )
+                )
+            b = self.strata_baselines[stratum]
+            return b["x"], b["h0"], b["H0"]
+        if stratum is not None:
+            raise ValueError(
+                "'stratum' was given but this model is not stratified"
+            )
+        return self.x, self.h0, self.H0
+
     def hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        stratum: Any = None,
     ) -> npt.NDArray:
         Z = self._prepare_Z(Z)
-        idx, rev = _get_idx(self.x, x)
-        return (self.h0[idx] * self.phi(Z))[rev]
+        bx, bh0, _ = self._baseline_arrays(stratum)
+        idx, rev = _get_idx(bx, x)
+        return (bh0[idx] * self.phi(Z))[rev]
 
     def Hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        stratum: Any = None,
     ) -> npt.NDArray:
         Z = self._prepare_Z(Z)
-        idx, rev = _get_idx(self.x, x)
-        return (self.H0[idx] * self.phi(Z))[rev]
+        bx, _, bH0 = self._baseline_arrays(stratum)
+        idx, rev = _get_idx(bx, x)
+        return (bH0[idx] * self.phi(Z))[rev]
 
     def sf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        stratum: Any = None,
     ) -> npt.NDArray:
-        return np.exp(-self.Hf(x, Z))
+        return np.exp(-self.Hf(x, Z, stratum))
 
     def ff(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        stratum: Any = None,
     ) -> npt.NDArray:
-        return -np.expm1(-self.Hf(x, Z))
+        return -np.expm1(-self.Hf(x, Z, stratum))
 
     def df(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        stratum: Any = None,
     ) -> npt.NDArray:
-        return self.hf(x, Z) * self.sf(x, Z)
+        return self.hf(x, Z, stratum) * self.sf(x, Z, stratum)
 
     def compute_residuals(self, kind: str = "martingale") -> npt.NDArray:
         """

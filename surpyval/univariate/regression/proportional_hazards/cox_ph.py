@@ -140,6 +140,39 @@ def at_risk_beta_Z(arr, n, gb_x):
     return R[::-1].cumsum(axis=0)[::-1]
 
 
+def _sub(a, mask):
+    """Index ``a`` by ``mask``, passing ``None`` through unchanged."""
+    if a is None:
+        return None
+    return np.asarray(a)[mask]
+
+
+def _combine_generators(gens):
+    """Sum per-stratum ``(log_like, jac_hess)`` generators into one.
+
+    The Cox partial likelihood factorises across strata: with a separate
+    baseline hazard per stratum and a *shared* coefficient vector, the total
+    log-likelihood (and hence its score and observed information) is the sum
+    of the per-stratum contributions. Risk sets never cross a stratum
+    boundary because each stratum's score/information is built only from its
+    own observations.
+    """
+
+    def neg_ll(beta):
+        return sum(g[0](beta) for g in gens)
+
+    def jac_hess(beta):
+        jac_total = None
+        hess_total = None
+        for g in gens:
+            j, h = g[1](beta)
+            jac_total = j if jac_total is None else jac_total + j
+            hess_total = h if hess_total is None else hess_total + h
+        return jac_total, hess_total
+
+    return neg_ll, jac_hess, True
+
+
 class CoxPH_:
     # Best reference I can find that covers all the
     # possibilities for estimating betas
@@ -422,6 +455,7 @@ class CoxPH_:
         tl: npt.ArrayLike | None = None,
         method: str = "breslow",
         tol: float = 1e-10,
+        strata: npt.ArrayLike | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fits Cox Proportional Hazards model to the provided data.
@@ -444,6 +478,15 @@ class CoxPH_:
             The method to use for tie handling. Either 'efron' or 'breslow'.
         tol: float, optional
             The tolerance for the root finding algorithm.
+        strata: array-like, optional
+            Stratum label for each observation. When supplied the model is
+            *stratified*: a separate baseline hazard is estimated per stratum
+            while the coefficients ``beta`` are shared. The partial likelihood
+            is summed within strata (risk sets never cross a stratum boundary),
+            which is the standard remedy when proportional hazards fails for a
+            nuisance covariate that you would rather not model. Prediction
+            (``hf``/``Hf``/``sf``/``ff``/``df``) then takes a ``stratum``
+            argument to select that stratum's baseline.
 
         Returns
         -------
@@ -451,11 +494,6 @@ class CoxPH_:
         model: SemiParametricProportionalHazardsModel
             The fitted model.
         """
-        x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, method)
-
-        # Good initial guess assumes no impact
-        beta_init = np.zeros(Z.shape[1])
-
         func_generator: Callable[..., Any]
         if method == "efron":
             func_generator = self.create_efron_ll_jac_hess
@@ -464,6 +502,16 @@ class CoxPH_:
         # TODO: Cox-Exact
         # TODO: K&P
         # See: https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
+
+        if strata is not None:
+            return self._fit_stratified(
+                x, Z, c, n, tl, method, tol, strata, func_generator
+            )
+
+        x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, method)
+
+        # Good initial guess assumes no impact
+        beta_init = np.zeros(Z.shape[1])
 
         neg_ll, jac, hess = func_generator(x, Z, c, n, tl)
 
@@ -539,6 +587,104 @@ class CoxPH_:
 
         return model
 
+    def _fit_stratified(
+        self, x, Z, c, n, tl, method, tol, strata, func_generator
+    ) -> SemiParametricRegressionModel:
+        """Fit a stratified Cox model (shared ``beta``, per-stratum baseline).
+
+        Each stratum is validated and turned into its own partial-likelihood
+        generator; the generators are summed (see :func:`_combine_generators`)
+        so the score equations are solved once for the shared coefficients.
+        A separate Breslow baseline hazard is then estimated within each
+        stratum.
+        """
+        strata = np.asarray(strata)
+        if len(strata) != len(np.atleast_1d(x)):
+            raise ValueError("'strata' must have a label for each observation")
+
+        labels = np.unique(strata)
+        per_stratum = []
+        n_params = None
+        for s in labels:
+            mask = strata == s
+            xs, cs, ns_, tls, Zs = validate_coxph(
+                _sub(x, mask),
+                _sub(c, mask),
+                _sub(n, mask),
+                _sub(Z, mask),
+                _sub(tl, mask),
+                method,
+            )
+            if n_params is None:
+                n_params = Zs.shape[1]
+            gen = func_generator(xs, Zs, cs, ns_, tls)
+            per_stratum.append((s, gen, (xs, cs, ns_, Zs, tls)))
+
+        if n_params is None:
+            raise ValueError("no observations to fit")
+        gens = [g for _, g, _ in per_stratum]
+        neg_ll, jac, hess = _combine_generators(gens)
+
+        beta_init = np.zeros(n_params)
+        res = root(jac, beta_init, jac=hess, tol=tol)
+        if not res.success:
+            fallback = minimize(
+                lambda b: float(neg_ll(b)), beta_init, method="BFGS"
+            )
+            if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
+                res = fallback
+
+        hessian_matrix = jac(res.x)[1]
+        var = np.diag(inv(hessian_matrix))
+        if np.any(var <= 0):
+            var = np.diag(pinv(hessian_matrix))
+        with np.errstate(invalid="ignore"):
+            z_score = res.x / np.sqrt(var)
+        p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
+
+        model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
+        model._neg_log_like = neg_ll(res.x)
+        model.p_values = p_values
+        model.neg_ll = neg_ll
+        model.jac = jac
+        model.hess = hess
+        model.tie_method = method
+        model.baseline_method = "breslow"
+        model.res = res
+        model.beta = copy(res.x)
+        model.phi = lambda Z: np.exp(Z @ model.beta)
+        model.params = res.x
+        model.is_stratified = True
+        model.strata_labels = list(labels)
+
+        # A separate Breslow baseline per stratum. Prediction selects the
+        # stratum's baseline via the ``stratum`` argument to ``hf``/``Hf``/...
+        baselines: dict[Any, dict[str, npt.NDArray]] = {}
+        for s, _, (xs, cs, ns_, Zs, tls) in per_stratum:
+            bx, br, bd = self.baseline(model.beta, xs, cs, ns_, Zs, tls)
+            bh0 = bd / br
+            baselines[s] = {
+                "x": bx,
+                "r": br,
+                "d": bd,
+                "h0": bh0,
+                "H0": bh0.cumsum(),
+            }
+        model.strata_baselines = baselines
+
+        # Expose the first stratum's baseline as the default so generic
+        # attribute access (e.g. ``model.x``) still works; correct prediction
+        # must pass an explicit ``stratum``.
+        first = baselines[labels[0]]
+        model.x = first["x"]
+        model.r = first["r"]
+        model.d = first["d"]
+        model.h0 = first["h0"]
+        model.H0 = first["H0"]
+        model.tl = None
+
+        return model
+
     def fit_from_df(
         self,
         df: "pd.DataFrame",
@@ -548,6 +694,7 @@ class CoxPH_:
         n_col: str | None = None,
         formula: str | None = None,
         method: str = "efron",
+        strata_col: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fits a Cox PH model using a pandas dataframe as the input.
@@ -570,6 +717,10 @@ class CoxPH_:
             will be used.
         method: str, optional
             The method to use for tie handling. Either 'efron' or 'breslow'.
+        strata_col: str, optional
+            The column name of the stratum label. When supplied the model is
+            fitted stratified (a separate baseline hazard per stratum, shared
+            coefficients); see :meth:`fit`.
 
         Returns
         -------
@@ -581,7 +732,8 @@ class CoxPH_:
             df, x_col, c_col, n_col, Z_cols, formula
         )
 
-        model = self.fit(x, Z, c, n, method=method)
+        strata = None if strata_col is None else df[strata_col].to_numpy()
+        model = self.fit(x, Z, c, n, method=method, strata=strata)
         model.formula = form
         model.feature_names = feature_names
         model._model_spec = model_spec
