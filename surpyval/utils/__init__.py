@@ -659,6 +659,23 @@ def xcnt_handler(
     n = n.astype(int)
     t = t.astype(float)
 
+    # A right-censored observation cannot carry finite right truncation:
+    # right-truncation sampling only admits units whose event occurred
+    # before ``tr``, while right censoring says the event is after the
+    # censoring time -- possibly beyond ``tr``. Such rows can make
+    # truncation-adjusted likelihoods unbounded (the fitted rate is
+    # driven towards zero), so flag them loudly.
+    if ((c == 1) & np.isfinite(t[:, 1])).any():
+        warnings.warn(
+            "Some right-censored observations have a finite right "
+            "truncation time. This is contradictory: right truncation "
+            "means the unit was only observable because its event "
+            "occurred before `tr`, while right censoring says the event "
+            "is after the censoring time. Such rows can make "
+            "truncation-adjusted likelihoods unbounded; check the data.",
+            stacklevel=2,
+        )
+
     if group_and_sort:
         x, c, n, t = group_xcnt(x, c, n, t)
         x, c, n, t = xcnt_sort(x, c, n, t)

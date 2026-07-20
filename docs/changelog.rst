@@ -1,6 +1,33 @@
 Changelog
 =========
 
+v0.15.2 (unreleased)
+--------------------
+
+Data handling
+~~~~~~~~~~~~~
+
+- ``xcnt_handler`` now warns when right-censored observations carry a finite
+  right-truncation time (#195). The combination is contradictory -- right
+  truncation means the unit was only observable because its event occurred
+  before ``tr``, while right censoring says the event is after the censoring
+  time -- and such rows can make truncation-adjusted likelihoods unbounded.
+
+Serialisation
+~~~~~~~~~~~~~
+
+- ``RenewalModel.from_dict`` now validates that the stored distribution name
+  resolves to a genuine distribution fitter (#206), matching the guard used
+  by every other reader, so an untrusted document cannot resolve arbitrary
+  package attributes.
+
+Misc
+~~~~
+
+- The bundled dataset loaders use pandas' default (C) CSV engine instead of
+  ``engine="python"`` (#207) -- identical parses, faster, and one less thing
+  for security scanners to worry about; the loaders are now covered by tests.
+
 v0.15.1 (20 Jul 2026)
 ---------------------
 

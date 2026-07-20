@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 
@@ -330,3 +332,23 @@ def test_xcnt_handler():
     # Test with t, tl and tr
     with pytest.raises(ValueError, match="Cannot use 't' with 'tl' or 'tr'"):
         xcnt_handler(x=[1, 2], t=[[0, 3], [1, 4]], tl=[0, 1])
+
+
+def test_xcnt_handler_warns_on_right_censored_with_finite_tr():
+    # A right-censored observation with a finite right-truncation time
+    # is contradictory (the event is after the censoring time, yet
+    # truncation says it was seen before tr) and can make
+    # truncation-adjusted likelihoods unbounded -- issue #195.
+    x = [1.0, 2.0, 3.0]
+    c = [0, 1, 0]
+    with pytest.warns(UserWarning, match="right-censored"):
+        xcnt_handler(x=x, c=c, tr=[10.0, 10.0, 10.0])
+
+    # No warning when the right-censored row's truncation is infinite
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        xcnt_handler(x=x, c=c, tr=[10.0, np.inf, 10.0])
+    # ... or when there is no right censoring at all
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        xcnt_handler(x=x, c=[0, 0, 0], tr=[10.0, 10.0, 10.0])
