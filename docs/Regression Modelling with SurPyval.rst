@@ -842,7 +842,7 @@ and (parametric) Additive Hazards.
     # the restored model predicts identically
     import numpy as np
     t = np.array([1.0, 5.0, 20.0])
-    Z_use = Z[0]
+    Z_use = np.asarray(Z)[0]
     print("match:", np.allclose(model.sf(t, Z_use), restored.sf(t, Z_use)))
 
 Use ``to_json`` / ``from_json`` for a file directly:
@@ -866,7 +866,7 @@ model:
     print(surpyval.from_json(path))
 
 Storing models in MongoDB
-^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``to_dict`` emits documents of native Python types only — string keys, lists,
 floats, ints — so its output is BSON-safe and every serialisable model can be
