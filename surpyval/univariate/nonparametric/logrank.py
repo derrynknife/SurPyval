@@ -22,24 +22,116 @@ class LogRankResult:
         The weighting used for the test.
     """
 
-    def __init__(self, statistic, dof, p_value, weighting):
+    def __init__(self, statistic, dof, p_value, weighting, strata=None):
         self.statistic = statistic
         self.dof = dof
         self.p_value = p_value
         self.weighting = weighting
+        self.strata = strata
 
     def __repr__(self):
-        return (
-            "Log-Rank Test"
-            + "\n============="
+        header = "Stratified Log-Rank Test" if self.strata else "Log-Rank Test"
+        out = (
+            header
+            + "\n"
+            + "=" * len(header)
             + "\nWeighting        : {w}".format(w=self.weighting)
-            + "\nStatistic        : {s:.6g}".format(s=self.statistic)
+        )
+        if self.strata is not None:
+            out += "\nStrata           : {s}".format(s=self.strata)
+        out += (
+            "\nStatistic        : {s:.6g}".format(s=self.statistic)
             + "\nDoF              : {d}".format(d=self.dof)
             + "\np-value          : {p:.6g}".format(p=self.p_value)
         )
+        return out
 
 
-def logrank(x, Z, c=None, n=None, weighting="log-rank", rho=0, gamma=0):
+def _logrank_z_v(x, Z, c, n, groups, weighting, rho, gamma):
+    """Per-stratum (or whole-sample) weighted log-rank ``(z, V)``.
+
+    Returns the length-``k`` vector of weighted observed-minus-expected
+    counts and its ``k x k`` covariance, using the fixed group order
+    ``groups`` so contributions from different strata are aligned and can be
+    summed. A group absent from this stratum simply contributes zeros.
+    """
+    k = groups.size
+    x_g, c_g, n_g = [], [], []
+    for g in groups:
+        mask = Z == g
+        x_i = np.atleast_1d(x)[mask]
+        c_i = None if c is None else np.atleast_1d(c)[mask]
+        n_i = None if n is None else np.atleast_1d(n)[mask]
+        if x_i.size == 0:
+            x_g.append(np.array([]))
+            c_g.append(np.array([]))
+            n_g.append(np.array([]))
+            continue
+        x_i, c_i, n_i, _ = xcnt_handler(x=x_i, c=c_i, n=n_i)
+        if ((c_i != 0) & (c_i != 1)).any():
+            raise ValueError(
+                "Log-rank test can only be used with observed and "
+                + "right censored data"
+            )
+        x_g.append(x_i)
+        c_g.append(c_i)
+        n_g.append(n_i)
+
+    event_pool = [x_i[c_i == 0] for x_i, c_i in zip(x_g, c_g) if x_i.size > 0]
+    event_times = (
+        np.unique(np.concatenate(event_pool)) if event_pool else np.array([])
+    )
+    m = event_times.size
+    if m == 0:
+        return np.zeros(k), np.zeros((k, k))
+
+    r_gt = np.zeros((k, m))
+    d_gt = np.zeros((k, m))
+    for j, (x_i, c_i, n_i) in enumerate(zip(x_g, c_g, n_g)):
+        if x_i.size == 0:
+            continue
+        r_gt[j] = (n_i[:, None] * (x_i[:, None] >= event_times)).sum(axis=0)
+        d_gt[j] = (
+            n_i[:, None]
+            * ((x_i[:, None] == event_times) & (c_i == 0)[:, None])
+        ).sum(axis=0)
+
+    r_t = r_gt.sum(axis=0)
+    d_t = d_gt.sum(axis=0)
+
+    if weighting == "log-rank":
+        w = np.ones(m)
+    elif weighting == "gehan":
+        w = r_t
+    elif weighting == "tarone-ware":
+        w = np.sqrt(r_t)
+    else:
+        # Pooled left-continuous Kaplan-Meier, i.e. the value of the
+        # estimate just prior to each event time. Weights are formed
+        # within the stratum (standard for a stratified weighted test).
+        S = kaplan_meier(r_t, d_t)
+        S_prev = np.hstack([[1.0], S[:-1]])
+        w = S_prev**rho * (1 - S_prev) ** gamma
+
+    with np.errstate(all="ignore"):
+        expected = np.where(r_t > 0, d_t * r_gt / r_t, 0.0)
+    z = (w * (d_gt - expected)).sum(axis=1)
+
+    with np.errstate(all="ignore"):
+        hyper = np.where(r_t > 1, d_t * (r_t - d_t) / (r_t - 1), 0.0)
+        prop = np.where(r_t > 0, r_gt / r_t, 0.0)
+    V = np.zeros((k, k))
+    for a in range(k):
+        for b in range(k):
+            delta = 1.0 if a == b else 0.0
+            V[a, b] = (w**2 * hyper * prop[a] * (delta - prop[b])).sum()
+
+    return z, V
+
+
+def logrank(
+    x, Z, c=None, n=None, weighting="log-rank", rho=0, gamma=0, strata=None
+):
     r"""
     The k-sample (weighted) log-rank test for the equality of survival
     distributions of right censored data.
@@ -84,6 +176,15 @@ def logrank(x, Z, c=None, n=None, weighting="log-rank", rho=0, gamma=0):
         The parameters of the Fleming-Harrington weighting. Only used
         when weighting is "fleming-harrington". Defaults to 0, 0 (which
         is identical to the log-rank weighting).
+    strata : array like, optional
+        Array of stratum labels, one per observation. When supplied the
+        test is *stratified*: the observed-minus-expected numerators and
+        their variances are accumulated *within* each stratum (risk sets
+        never cross a stratum boundary) and summed before forming the
+        statistic. This removes a nuisance factor -- one whose baseline
+        hazard differs across strata -- from the comparison, so groups are
+        only ever compared against others in the same stratum. The degrees
+        of freedom are unchanged (number of groups minus one).
 
     Returns
     -------
@@ -124,70 +225,36 @@ def logrank(x, Z, c=None, n=None, weighting="log-rank", rho=0, gamma=0):
     if groups.size < 2:
         raise ValueError("Test requires at least two groups")
 
-    x_g, c_g, n_g = [], [], []
-    for g in groups:
-        mask = Z == g
-        x_i = np.atleast_1d(x)[mask]
-        c_i = None if c is None else np.atleast_1d(c)[mask]
-        n_i = None if n is None else np.atleast_1d(n)[mask]
-        x_i, c_i, n_i, _ = xcnt_handler(x=x_i, c=c_i, n=n_i)
-        if ((c_i != 0) & (c_i != 1)).any():
-            raise ValueError(
-                "Log-rank test can only be used with observed and "
-                + "right censored data"
-            )
-        x_g.append(x_i)
-        c_g.append(c_i)
-        n_g.append(n_i)
-
-    # Pooled, distinct event times
-    event_times = np.unique(
-        np.concatenate([x_i[c_i == 0] for x_i, c_i in zip(x_g, c_g)])
-    )
+    x = np.atleast_1d(x)
+    c_arr = None if c is None else np.atleast_1d(c)
+    n_arr = None if n is None else np.atleast_1d(n)
 
     k = groups.size
-    m = event_times.size
-    # Risk and death counts per group at each pooled event time
-    r_gt = np.empty((k, m))
-    d_gt = np.empty((k, m))
-    for j, (x_i, c_i, n_i) in enumerate(zip(x_g, c_g, n_g)):
-        r_gt[j] = (n_i[:, None] * (x_i[:, None] >= event_times)).sum(axis=0)
-        d_gt[j] = (
-            n_i[:, None]
-            * ((x_i[:, None] == event_times) & (c_i == 0)[:, None])
-        ).sum(axis=0)
-
-    r_t = r_gt.sum(axis=0)
-    d_t = d_gt.sum(axis=0)
-
-    if weighting == "log-rank":
-        w = np.ones(m)
-    elif weighting == "gehan":
-        w = r_t
-    elif weighting == "tarone-ware":
-        w = np.sqrt(r_t)
+    n_strata = None
+    if strata is None:
+        z, V = _logrank_z_v(x, Z, c_arr, n_arr, groups, weighting, rho, gamma)
     else:
-        # Pooled left-continuous Kaplan-Meier, i.e. the value of the
-        # estimate just prior to each event time.
-        S = kaplan_meier(r_t, d_t)
-        S_prev = np.hstack([[1.0], S[:-1]])
-        w = S_prev**rho * (1 - S_prev) ** gamma
-
-    # Observed minus expected per group
-    with np.errstate(all="ignore"):
-        expected = d_t * r_gt / r_t
-    z = (w * (d_gt - expected)).sum(axis=1)
-
-    # Covariance of the (weighted) observed minus expected, using the
-    # hypergeometric variance of the deaths at each event time
-    with np.errstate(all="ignore"):
-        hyper = np.where(r_t > 1, d_t * (r_t - d_t) / (r_t - 1), 0.0)
-        prop = r_gt / r_t
-    V = np.zeros((k, k))
-    for a in range(k):
-        for b in range(k):
-            delta = 1.0 if a == b else 0.0
-            V[a, b] = (w**2 * hyper * prop[a] * (delta - prop[b])).sum()
+        strata = np.asarray(strata)
+        if len(strata) != len(x):
+            raise ValueError("'strata' must have a label for each observation")
+        z = np.zeros(k)
+        V = np.zeros((k, k))
+        unique_strata = np.unique(strata)
+        n_strata = int(unique_strata.size)
+        for s in unique_strata:
+            mask = strata == s
+            z_s, V_s = _logrank_z_v(
+                x[mask],
+                Z[mask],
+                None if c_arr is None else c_arr[mask],
+                None if n_arr is None else n_arr[mask],
+                groups,
+                weighting,
+                rho,
+                gamma,
+            )
+            z += z_s
+            V += V_s
 
     # The covariance matrix is singular (rows sum to zero); drop the
     # last group
@@ -204,4 +271,4 @@ def logrank(x, Z, c=None, n=None, weighting="log-rank", rho=0, gamma=0):
     if weighting == "fleming-harrington":
         weighting = "fleming-harrington(rho={}, gamma={})".format(rho, gamma)
 
-    return LogRankResult(statistic, dof, p_value, weighting)
+    return LogRankResult(statistic, dof, p_value, weighting, strata=n_strata)
