@@ -1,6 +1,23 @@
 Changelog
 =========
 
+v0.16.0 (unreleased)
+--------------------
+
+Diagnostics & validation
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **Cox model diagnostics** (#211). A fitted ``CoxPH`` model now exposes
+  ``compute_residuals(kind=...)`` -- Schoenfeld, scaled Schoenfeld,
+  martingale, deviance, score and dfbeta residuals -- and ``check_ph()``, the
+  Grambsch-Therneau proportional-hazards test (a per-covariate and a joint
+  global test against a transform of time; a small ``p``-value is evidence
+  *against* proportional hazards). All residuals respect delayed entry
+  (``tl``) and count weights. The residual identities are exact at the MLE
+  (Schoenfeld, score and martingale residuals sum to zero) and the PH test is
+  validated for both power (it detects a genuine time-varying coefficient) and
+  calibration (its p-values are ~Uniform under true proportional hazards).
+
 v0.15.2 (20 Jul 2026)
 ---------------------
 

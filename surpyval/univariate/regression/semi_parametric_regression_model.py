@@ -42,6 +42,9 @@ class SemiParametricRegressionModel:
     _neg_log_like: float
     tie_method: str
     baseline_method: str
+    #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
+    #: by ``CoxPH.fit`` for residuals and the proportional-hazards test.
+    _fit_data: dict
 
     def __init__(self, kind: str, parameterization: str) -> None:
         self.kind = kind
@@ -195,6 +198,32 @@ class SemiParametricRegressionModel:
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
         return self.hf(x, Z) * self.sf(x, Z)
+
+    def compute_residuals(self, kind: str = "martingale") -> npt.NDArray:
+        """
+        Residuals for a fitted Cox proportional-hazards model.
+
+        ``kind`` is one of ``"schoenfeld"``, ``"scaled_schoenfeld"``,
+        ``"martingale"``, ``"deviance"``, ``"score"`` or ``"dfbeta"``. See
+        :func:`~surpyval.univariate.regression.proportional_hazards.
+        diagnostics.compute_residuals` for the definitions and uses.
+        """
+        from .proportional_hazards.diagnostics import compute_residuals
+
+        return compute_residuals(self, kind)
+
+    def check_ph(self, transform: str = "km") -> dict:
+        """
+        Test the proportional-hazards assumption (Grambsch-Therneau).
+
+        Returns a dict with a joint ``global`` test and a ``per_covariate``
+        list; a small ``p_value`` is evidence against proportional hazards.
+        See :func:`~surpyval.univariate.regression.proportional_hazards.
+        diagnostics.check_ph`.
+        """
+        from .proportional_hazards.diagnostics import check_ph
+
+        return check_ph(self, transform)
 
     def predict_tvc(
         self,
