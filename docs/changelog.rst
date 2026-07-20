@@ -1,6 +1,27 @@
 Changelog
 =========
 
+v0.15.1 (unreleased)
+--------------------
+
+Non-parametric
+~~~~~~~~~~~~~~
+
+- **Fixed Turnbull fits with truncation hanging indefinitely** (this also hung
+  the documentation builds, which is why the hosted docs went stale). The
+  Fleming-Harrington tie ladder (``fh_h``/``fh_var_h``) was a per-event Python
+  loop; the Turnbull EM feeds it *fractional expected* event counts which,
+  under heavy truncation, can grow without bound between iterations -- the
+  loop then effectively (or with an infinite count, literally) never
+  returned. The ladder is now evaluated in closed form (digamma/trigamma
+  harmonic sums) beyond a small exact loop, so its cost is O(1) in the event
+  count: identical results for ordinary tie counts, and pathological counts
+  now yield a diverging hazard (``inf``) instead of a hang. Note that the
+  truncated NPMLE itself remains delicate on small or heavily truncated
+  samples (it can be non-identifiable and the EM converges to a degenerate
+  estimate); such fits now terminate and are flagged, and the docs note the
+  caveat.
+
 v0.15.0 (20 Jul 2026)
 ---------------------
 

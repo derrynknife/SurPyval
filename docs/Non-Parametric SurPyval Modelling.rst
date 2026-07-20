@@ -171,7 +171,7 @@ estimation example:
     model = TB.fit(x)
     model.plot()
 
-And finally, an example with arbitrary censoring and truncation:
+And finally, an example with completely arbitrary censoring:
 
 
 .. jupyter-execute::
@@ -181,14 +181,21 @@ And finally, an example with arbitrary censoring and truncation:
     x = [1, 2, [3, 6], 7, 8, 9, [5, 9], [4, 10], [7, 10], 11, 12]
     c = [1, 1, 2, 0, 0, 0, 2, 2, 2, -1, 0]
     n = [1, 2, 1, 3, 2, 2, 1, 1, 2, 1, 1]
-    tl = [0, 0, 0, 0, 0, 2, 3, 3, 1, 1, 5]
-    tr = [np.inf, np.inf, 10, 10, 10, 10, np.inf, np.inf, np.inf, 15, 15]
 
-    model = TB.fit(x=x, c=c, n=n, tl=tl, tr=tr)
+    model = TB.fit(x=x, c=c, n=n)
     model.plot()
 
 With a completely arbitrary set of data we have created a non-parametric estimate of the survival
 curve that can be used to estimate probabilities.
+
+The Turnbull fitter also accepts truncation (``tl``/``tr``), and on
+well-sized samples the truncated estimate is well behaved. Be aware,
+though, that the truncated NPMLE is a delicate object: on small or
+heavily truncated samples it can be non-identifiable (classically, mass
+can escape below every observation's entry time), in which case the EM
+does not converge to a useful estimate. SurPyval warns when the EM
+stops without converging -- treat the estimate with suspicion when it
+does.
 
 What is interesting about the Turbull estimate is that it first finds the data in the 'xrd' format.
 This is done even though we might not have a complete failure occur in an interval. This can be seen by looking at the number of deaths/failures occur at each value.
@@ -198,11 +205,11 @@ This is done even though we might not have a complete failure occur in an interv
     model.d
 
 You can see that some values are 0 (or essentially 0) or that there is an interval where there were
-4.1095188 failures. But because the Turbull estimate finds the x, r, d format we can actually elect to use the Nelson-Aalen or Kaplan-Meier estimate with the Turnbull estimates of x, r, and d.
+4.1639025 failures. But because the Turbull estimate finds the x, r, d format we can actually elect to use the Nelson-Aalen or Kaplan-Meier estimate with the Turnbull estimates of x, r, and d.
 
 .. jupyter-execute::
 
-    model = TB.fit(x=x, c=c, n=n, tl=tl, tr=tr, turnbull_estimator='Nelson-Aalen')
+    model = TB.fit(x=x, c=c, n=n, turnbull_estimator='Nelson-Aalen')
     model.plot()
 
 The Greenwood confidence intervals do give us a strange set of bounds. But you can see that 

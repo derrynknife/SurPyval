@@ -1,31 +1,65 @@
 import numpy as np
+from scipy.special import digamma, polygamma
 
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
 )
 
+# The tie-splitting ladder is evaluated with an exact term-by-term sum
+# for ordinary tie counts, and in closed form (digamma / trigamma
+# harmonic sums) beyond this, so the cost is O(1) in the event count.
+# The Turnbull EM feeds these functions *fractional expected* counts
+# which, under heavy truncation, can grow without bound between EM
+# iterations -- a per-event Python loop then never returns (this hung
+# ReadTheDocs builds), while the closed form stays instant.
+_MAX_TIE_LOOP = 64
+
+
+def _ladder_steps(r_i, d_i):
+    """Number of whole 1/r terms in the tie ladder, or -1 if the
+    ladder exhausts the risk set (the hazard diverges)."""
+    if np.isnan(d_i) or d_i <= 1:
+        return 0
+    if not np.isfinite(d_i):
+        return -1
+    full = int(np.ceil(d_i)) - 1
+    if full >= r_i:
+        return -1
+    return full
+
 
 def fh_h(r_i, d_i):
-    out = 0
-    while d_i > 1:
-        out += 1.0 / r_i
-        r_i -= 1
-        d_i -= 1
-    out += d_i / r_i
-    return out
+    # sum(1 / (r - i) for i in 0 ... ceil(d) - 2) + (d - full) / (r - full):
+    # each of the d tied events sees a risk set that shrinks by one,
+    # with the fractional remainder of d contributing pro rata.
+    full = _ladder_steps(r_i, d_i)
+    if full < 0:
+        return np.inf
+    if full <= _MAX_TIE_LOOP:
+        out = 0.0
+        for _ in range(full):
+            out += 1.0 / r_i
+            r_i -= 1.0
+        return out + (d_i - full) / r_i
+    out = float(digamma(r_i + 1.0) - digamma(r_i - full + 1.0))
+    return out + (d_i - full) / (r_i - full)
 
 
 def fh_var_h(r_i, d_i):
     # Variance increment with the same tie-splitting as fh_h, i.e.
     # each of the d tied events contributes 1/r**2 with a risk set
     # that shrinks by one for each event.
-    out = 0
-    while d_i > 1:
-        out += 1.0 / r_i**2
-        r_i -= 1
-        d_i -= 1
-    out += d_i / r_i**2
-    return out
+    full = _ladder_steps(r_i, d_i)
+    if full < 0:
+        return np.inf
+    if full <= _MAX_TIE_LOOP:
+        out = 0.0
+        for _ in range(full):
+            out += 1.0 / r_i**2
+            r_i -= 1.0
+        return out + (d_i - full) / r_i**2
+    out = float(polygamma(1, r_i - full + 1.0) - polygamma(1, r_i + 1.0))
+    return out + (d_i - full) / (r_i - full) ** 2
 
 
 def fleming_harrington_variance(r, d):
