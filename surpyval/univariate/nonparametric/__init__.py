@@ -9,7 +9,7 @@ from .fleming_harrington import (
 from .kaplan_meier import KaplanMeier, greenwood_variance, kaplan_meier
 from .logrank import LogRankResult, logrank
 from .nelson_aalen import NelsonAalen, nelson_aalen, nelson_aalen_variance
-from .nonparametric import NonParametric
+from .nonparametric import NonParametric, rmst_diff
 from .plotting_positions import plotting_positions
 from .rank_adjust import rank_adjust
 from .success_run import success_run

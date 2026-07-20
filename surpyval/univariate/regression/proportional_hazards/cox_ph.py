@@ -517,6 +517,18 @@ class CoxPH_:
         model.phi = lambda Z: np.exp(Z @ model.beta)
         model.params = res.x
 
+        # Retain the per-observation training data (before ``baseline``
+        # reassigns ``x`` to the unique event times) so the model can compute
+        # residuals (Schoenfeld, martingale, ...) and the proportional-
+        # hazards test.
+        model._fit_data = {
+            "x": np.asarray(x, dtype=float),
+            "c": np.asarray(c, dtype=int),
+            "n": np.asarray(n, dtype=float),
+            "Z": np.asarray(Z, dtype=float),
+            "tl": np.asarray(tl, dtype=float),
+        }
+
         x, r, d = self.baseline(model.beta, x, c, n, Z, tl)
         model.x = x
         model.r = r

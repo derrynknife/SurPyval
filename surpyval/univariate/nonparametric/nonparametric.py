@@ -715,6 +715,26 @@ class NonParametric(NonParametricDistribution):
         cb : numpy array
             The ``[lower, upper]`` interval of the (restricted) mean.
         """
+        if tau is None:
+            tau = np.max(self.x)
+
+        mu = self.mean(tau=tau)
+        var = self._rmst_variance(tau)
+
+        z = norm.ppf(1 - alpha_ci / 2)
+        se = np.sqrt(var)
+        return np.array([mu - z * se, mu + z * se])
+
+    def _rmst_variance(self, tau: float) -> float:
+        r"""Variance of the restricted mean survival time up to ``tau``:
+
+        .. math::
+            \widehat{Var}(\hat{\mu}) = \sum_{i: x_i \leq \tau} A_i^2 v_i
+
+        where :math:`A_i` is the area under the survival curve from
+        :math:`x_i` to :math:`\tau` and :math:`v_i` the variance increment
+        of the cumulative hazard (the Greenwood increment for Kaplan-Meier).
+        """
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
                 "Model has no variance estimate so confidence bounds "
@@ -722,11 +742,6 @@ class NonParametric(NonParametricDistribution):
                 + "with 'fit_from_ecdf' since the at risk and death "
                 + "counts are unknown."
             )
-        if tau is None:
-            tau = np.max(self.x)
-
-        mu = self.mean(tau=tau)
-
         # Area under the survival curve from each observation to tau
         xs = self.x.astype(float)
         upper_t = np.minimum(np.hstack([xs[1:], [np.inf]]), tau)
@@ -738,11 +753,43 @@ class NonParametric(NonParametricDistribution):
         v = np.diff(np.hstack([[0.0], self.greenwood]))
         with np.errstate(all="ignore"):
             terms = np.where(A > 0, A**2 * v, 0.0)
-        var = np.sum(terms)
+        return float(np.sum(terms))
 
+    def rmst(self, tau: float | None = None, alpha_ci: float = 0.05) -> dict:
+        """
+        Restricted mean survival time up to ``tau`` with inference.
+
+        Returns the RMST (area under the survival curve to ``tau``), its
+        standard error, and a two-sided confidence interval.
+
+        Parameters
+        ----------
+        tau : scalar, optional
+            Integration horizon; defaults to the largest observed value.
+        alpha_ci : scalar, optional
+            Significance level for the interval (default 0.05).
+
+        Returns
+        -------
+        dict
+            ``{"rmst", "se", "lower", "upper", "tau"}``.
+
+        See Also
+        --------
+        surpyval.rmst_diff : compare the RMST of two groups.
+        """
+        if tau is None:
+            tau = float(np.max(self.x))
+        mu = self.mean(tau=tau)
+        se = float(np.sqrt(self._rmst_variance(tau)))
         z = norm.ppf(1 - alpha_ci / 2)
-        se = np.sqrt(var)
-        return np.array([mu - z * se, mu + z * se])
+        return {
+            "rmst": mu,
+            "se": se,
+            "lower": mu - z * se,
+            "upper": mu + z * se,
+            "tau": float(tau),
+        }
 
     def bootstrap_cb(
         self,
@@ -1355,3 +1402,75 @@ class NonParametric(NonParametricDistribution):
     def from_json(cls, fp: str | Path) -> "NonParametric":
         with open(fp, "r") as f:
             return cls.from_dict(json.load(f))
+
+
+def rmst_diff(
+    model_a: "NonParametric",
+    model_b: "NonParametric",
+    tau: float | None = None,
+    alpha_ci: float = 0.05,
+) -> dict:
+    """
+    Compare the restricted mean survival time (RMST) of two groups.
+
+    The RMST-difference is the standard, assumption-light alternative to the
+    hazard ratio when proportional hazards fails: it needs no PH assumption
+    and reads directly as a difference in expected event-free time within the
+    horizon ``tau``.
+
+    Parameters
+    ----------
+    model_a, model_b : NonParametric
+        Two fitted non-parametric estimators (e.g. ``KaplanMeier.fit`` per
+        group). They must carry a variance estimate (Greenwood).
+    tau : scalar, optional
+        Common horizon. Defaults to the smaller of the two groups' largest
+        observed times, so both survival curves are defined up to ``tau``
+        (the standard choice; a ``tau`` beyond a group's support extrapolates
+        that curve at its final value and is flagged is left to the caller).
+    alpha_ci : scalar, optional
+        Significance level for the interval and test (default 0.05).
+
+    Returns
+    -------
+    dict
+        ``{"difference", "se", "lower", "upper", "p_value", "ratio",
+        "rmst_a", "rmst_b", "tau"}``. ``difference`` is ``RMST_a - RMST_b``;
+        ``p_value`` is the two-sided z-test of ``difference == 0``.
+
+    Examples
+    --------
+    >>> import surpyval as sp
+    >>> a = sp.KaplanMeier.fit([2, 3, 4, 5, 6, 7])
+    >>> b = sp.KaplanMeier.fit([1, 2, 2, 3, 4, 5])
+    >>> res = sp.rmst_diff(a, b)
+    >>> round(res["difference"], 3) > 0
+    True
+    """
+    if tau is None:
+        tau = float(min(np.max(model_a.x), np.max(model_b.x)))
+
+    mu_a = model_a.mean(tau=tau)
+    mu_b = model_b.mean(tau=tau)
+    var_a = model_a._rmst_variance(tau)
+    var_b = model_b._rmst_variance(tau)
+
+    diff = mu_a - mu_b
+    se = float(np.sqrt(var_a + var_b))  # groups are independent
+    z_crit = norm.ppf(1 - alpha_ci / 2)
+    if se > 0:
+        p_value = float(2.0 * (1.0 - norm.cdf(abs(diff) / se)))
+    else:
+        p_value = float("nan")
+
+    return {
+        "difference": float(diff),
+        "se": se,
+        "lower": float(diff - z_crit * se),
+        "upper": float(diff + z_crit * se),
+        "p_value": p_value,
+        "ratio": float(mu_a / mu_b) if mu_b != 0 else float("nan"),
+        "rmst_a": float(mu_a),
+        "rmst_b": float(mu_b),
+        "tau": float(tau),
+    }
