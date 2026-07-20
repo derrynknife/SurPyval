@@ -1,4 +1,4 @@
-__version__ = "0.15.0"
+__version__ = "0.15.1"
 
 from autograd import numpy as np
 
