@@ -62,6 +62,50 @@ Once fitted, you can query the CIF for each cause:
     plt.title('Competing Risks CIF by Cause')
 
 
+Comparing incidence across groups: Gray's test
+----------------------------------------------
+
+Having estimated a cumulative incidence function for each group, ``surpyval.
+gray_test`` tests whether the CIFs *differ* for a chosen cause. It is the
+competing-risks analogue of the log-rank test, but with an important
+distinction: where a cause-specific log-rank compares the instantaneous
+*hazards* of a cause, Gray's test compares the *incidence* — the CIFs directly.
+It does this by keeping competing-cause failures in the subdistribution risk
+set with an inverse-probability-of-censoring weight, rather than removing them.
+Reach for it when the clinical or engineering question is "how many fail of this
+cause", not "how fast".
+
+Pass the observed times ``x``, the per-observation cause label ``e``, the group
+label, and the ``cause`` of interest (use ``c`` for censored rows). Here two
+groups have genuinely different cause-1 incidence:
+
+.. jupyter-execute::
+
+    from surpyval import gray_test
+
+    rng = np.random.default_rng(7)
+
+    def simulate(n, p_cause1):
+        is1 = rng.random(n) < p_cause1
+        t = rng.exponential(6.0, n)
+        return t, np.where(is1, 1, 2)         # causes labelled 1 and 2
+
+    x_a, e_a = simulate(300, 0.35)
+    x_b, e_b = simulate(300, 0.60)            # higher cause-1 incidence
+    x = np.concatenate([x_a, x_b])
+    e = np.concatenate([e_a, e_b])
+    group = np.array([0] * 300 + [1] * 300)
+
+    result = gray_test(x, e, group, cause=1)
+    print('statistic = %.2f   df = %d   p = %.3g'
+          % (result.statistic, result.df, result.p_value))
+
+The tiny ``p``-value correctly flags the difference in cause-1 incidence. On
+data where the two groups share the same incidence the test is calibrated,
+returning ``p``-values spread over ``[0, 1]`` — including under heavy censoring,
+which is where the inverse-probability weighting earns its keep.
+
+
 Fine-Gray Sub-distribution Hazards
 ----------------------------------
 
