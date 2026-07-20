@@ -225,6 +225,29 @@ class SemiParametricRegressionModel:
 
         return check_ph(self, transform)
 
+    def robust_covariance(self, cluster=None) -> npt.NDArray:
+        """
+        Cluster-robust ("sandwich") covariance of the coefficients.
+
+        Pass ``cluster`` (one label per observation) for correlated /
+        clustered data; ``None`` gives the ordinary robust variance. See
+        :func:`~surpyval.univariate.regression.proportional_hazards.
+        diagnostics.robust_covariance`.
+        """
+        from .proportional_hazards.diagnostics import robust_covariance
+
+        return robust_covariance(self, cluster)
+
+    def robust_summary(self, cluster=None) -> dict:
+        """
+        Cluster-robust standard errors, z-scores and p-values for the
+        coefficients. See :func:`~surpyval.univariate.regression.
+        proportional_hazards.diagnostics.robust_summary`.
+        """
+        from .proportional_hazards.diagnostics import robust_summary
+
+        return robust_summary(self, cluster)
+
     def predict_tvc(
         self,
         start: npt.ArrayLike,
