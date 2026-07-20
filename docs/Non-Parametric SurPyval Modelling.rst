@@ -188,14 +188,37 @@ And finally, an example with completely arbitrary censoring:
 With a completely arbitrary set of data we have created a non-parametric estimate of the survival
 curve that can be used to estimate probabilities.
 
-The Turnbull fitter also accepts truncation (``tl``/``tr``), and on
-well-sized samples the truncated estimate is well behaved. Be aware,
-though, that the truncated NPMLE is a delicate object: on small or
-heavily truncated samples it can be non-identifiable (classically, mass
-can escape below every observation's entry time), in which case the EM
-does not converge to a useful estimate. SurPyval warns when the EM
-stops without converging -- treat the estimate with suspicion when it
-does.
+The Turnbull fitter also accepts truncation (``tl``/``tr``). Under
+truncation the EM iterates with the Kaplan-Meier self-consistency update
+(the canonical Turnbull M-step), and the requested hazard-form estimator
+(Fleming-Harrington / Nelson-Aalen) is applied to the converged step
+function -- so on well-sized samples the truncated estimate converges and
+is well behaved.
+
+Be aware, though, that the truncated NPMLE is a delicate object: on small
+or heavily truncated samples it can be *non-identifiable* -- classically,
+probability mass escapes below every observation's entry time and the
+survival estimate collapses. SurPyval detects this degenerate fixed point,
+raises a warning, and sets a ``degenerate`` flag on the model, rather than
+silently returning an all-zero curve. It also warns if the EM stops before
+converging. Treat the estimate with suspicion whenever either flag is
+raised:
+
+.. jupyter-execute::
+
+    import warnings
+    from surpyval import Turnbull as TB
+
+    # A small, heavily truncated, mixed-censoring sample.
+    x = [1, 2, [3, 6], 7, 8, 9, [5, 9], [4, 10], [7, 10], 11, 12]
+    c = [1, 1, 2, 0, 0, 0, 2, 2, 2, -1, 0]
+    n = [1, 2, 1, 3, 2, 2, 1, 1, 2, 1, 1]
+    tl = [0, 0, 0, 0, 0, 2, 3, 3, 1, 1, 5]
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        model = TB.fit(x=x, c=c, n=n, tl=tl)
+    print('degenerate:', model.degenerate)
 
 What is interesting about the Turbull estimate is that it first finds the data in the 'xrd' format.
 This is done even though we might not have a complete failure occur in an interval. This can be seen by looking at the number of deaths/failures occur at each value.
@@ -230,3 +253,100 @@ of observation, and the highest value, if right truncated also has 100% chance o
 
 The implications of this are detailed in the Parametric section, because the only way to gain an understanding of these situations is by assuming a shape of the distribution. That is, by doing parametric analysis. This is possible since if the distribution within the truncated ends has a shape that matches to a particular distribution you can then extrapolate beyond the observed values. Parametric analysis is therefore incredibly powerful for prediction / extrapolation.
 
+
+Comparing two groups: the log-rank test
+---------------------------------------
+
+Having estimated a survival curve for each of several groups, the natural next
+question is whether they *differ*. The **log-rank test** is the standard answer:
+at every event time it compares the observed number of failures in each group
+with the number expected if all groups shared one survival curve, and combines
+those differences into a chi-squared statistic with ``k - 1`` degrees of freedom
+(``k`` groups). A small ``p``-value is evidence the groups differ.
+
+.. jupyter-execute::
+
+    import numpy as np
+    import surpyval as surv
+    from surpyval import logrank
+
+    np.random.seed(1)
+    control = surv.Weibull.random(200, 10, 1.2)
+    treatment = surv.Weibull.random(200, 16, 1.2)   # longer-lived
+    x = np.concatenate([control, treatment])
+    group = np.array(['control'] * 200 + ['treatment'] * 200)
+
+    result = logrank(x, group)
+    print(result)
+
+The test accepts right-censored data through the ``c`` argument, and offers the
+Gehan, Tarone-Ware and Fleming-Harrington weightings (via ``weighting=``) when
+you want to emphasise early or late differences instead of the equal-weight
+log-rank.
+
+Stratified log-rank
+~~~~~~~~~~~~~~~~~~~~~
+
+When a *nuisance* factor influences survival — a study site, a batch — comparing
+groups while ignoring it can be badly misleading if the groups are unevenly
+distributed across its levels. The **stratified** log-rank accumulates the
+observed-minus-expected counts *within* each stratum before forming the
+statistic, so groups are only ever compared against others in the same stratum.
+Pass a ``strata`` label per observation.
+
+The example below is confounded on purpose: the baseline hazard differs sharply
+by site, and the group is unevenly allocated across sites, but there is no true
+group effect. The pooled test is fooled; the stratified test is not:
+
+.. jupyter-execute::
+
+    np.random.seed(2)
+    n = 600
+    site = np.random.randint(0, 2, n)
+    group = np.where(site == 0, np.random.random(n) < 0.8,
+                     np.random.random(n) < 0.2).astype(int)
+    baseline = np.where(site == 0, 4.0, 20.0)
+    x = np.random.exponential(baseline)              # no group effect
+
+    print('pooled     p = %.4g' % logrank(x, group).p_value)
+    print('stratified p = %.4g' % logrank(x, group, strata=site).p_value)
+
+Restricted mean survival time
+-----------------------------
+
+A hazard ratio (from Cox or the log-rank test) is only interpretable when the
+proportional-hazards assumption holds. When it does not — survival curves that
+cross, treatments that help early but not late — the **restricted mean survival
+time** (RMST) is an assumption-light alternative. It is simply the area under
+the survival curve up to a horizon :math:`\tau`, i.e. the average event-free
+time over the first :math:`\tau` units, and it is always well defined.
+
+Any fitted non-parametric model exposes ``rmst(tau)``, returning the point
+estimate with its standard error and confidence interval:
+
+.. jupyter-execute::
+
+    from surpyval import KaplanMeier
+
+    control_model = KaplanMeier.fit(control)
+    rmst = control_model.rmst(tau=20)
+    print('RMST(20) = %.2f  (95%% CI %.2f - %.2f)'
+          % (rmst['rmst'], rmst['lower'], rmst['upper']))
+
+To compare two groups, ``surpyval.rmst_diff`` gives the difference in RMST with
+a standard error, confidence interval and two-sided ``p``-value. The horizon
+defaults to the smaller of the two groups' largest observed times (their common
+support):
+
+.. jupyter-execute::
+
+    from surpyval import rmst_diff
+
+    treatment_model = KaplanMeier.fit(treatment)
+    diff = rmst_diff(treatment_model, control_model, tau=20)
+    print('RMST difference = %.2f  (p = %.4g)'
+          % (diff['difference'], diff['p_value']))
+
+The treatment group spends about four more time units event-free over the first
+twenty — a difference on the natural time scale, with no proportional-hazards
+assumption required.

@@ -278,6 +278,126 @@ to :meth:`CoxPH.fit`); right or interval truncation is rejected, because the
 forward partial likelihood cannot express it.
 
 
+Checking the proportional-hazards assumption
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Cox fit is only trustworthy if its central assumption holds: that each
+covariate multiplies the baseline hazard by a *constant* factor over time. When
+a coefficient is really drifting with time — a treatment that helps early but
+not late, say — the single number Cox reports is a time-average that can hide
+the effect entirely.
+
+The standard check is the **Grambsch-Therneau test**, built on the scaled
+Schoenfeld residuals. A fitted model exposes it through
+:meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.check_ph`.
+It returns a joint ``global`` test and a ``per_covariate`` breakdown; a *small*
+``p``-value is evidence *against* proportional hazards. We fit the tires model
+with :meth:`CoxPH.fit_from_df` so the report carries the covariate names:
+
+.. jupyter-execute::
+
+    cols = ['Wedge gauge', 'Interbelt gauge', 'Peel force',
+            'Wedge gauge×peel force']
+    model = CoxPH.fit_from_df(tires, x_col='Survival', Z_cols=cols,
+                              c_col='Censoring')
+
+    ph = model.check_ph()
+    print('global p-value:', round(ph['global']['p_value'], 3))
+    for row in ph['per_covariate']:
+        print(f"  {row['covariate']:24s} p = {row['p_value']:.3f}")
+
+Here every ``p``-value is large, so there is no evidence against proportional
+hazards — the Cox coefficients can be read as constant hazard ratios.
+
+The residuals underlying the test (and several others) are available directly
+through
+:meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.compute_residuals`,
+with ``kind`` one of ``"schoenfeld"``, ``"scaled_schoenfeld"``,
+``"martingale"``, ``"deviance"``, ``"score"`` or ``"dfbeta"``. Martingale
+residuals plotted against a covariate reveal non-linear functional form;
+deviance residuals highlight poorly-predicted individuals:
+
+.. jupyter-execute::
+
+    martingale = model.compute_residuals('martingale')
+    print('martingale residuals sum to zero:',
+          np.isclose(martingale.sum(), 0.0))
+
+Schoenfeld, score and martingale residuals all sum to zero at the maximum of
+the partial likelihood — a useful sanity check that the fit has converged.
+
+
+Cluster-robust standard errors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The model-based standard errors assume every observation is independent. When
+the data are *clustered* — several failures from the same machine, repeated
+events on the same subject, items drawn in grouped batches — that assumption is
+wrong and the naive errors are too small. The **Lin-Wei sandwich** (or
+"robust") variance corrects for it, using the dfbeta residuals grouped by
+cluster.
+
+Pass a ``cluster`` label per observation to
+:meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.robust_summary`;
+with no cluster argument each observation is its own cluster (the ordinary
+robust variance):
+
+.. jupyter-execute::
+
+    summary = model.robust_summary()
+    for name, se, p in zip(summary['covariate'], summary['se'],
+                           summary['p_value']):
+        print(f"  {name:24s} robust SE = {se:8.3f}   p = {p:.3f}")
+
+To see why clustering matters, imagine every tire had been measured *twice* and
+both rows entered the fit as if independent. Ignoring that would understate the
+standard errors by exactly :math:`\sqrt{2}`; passing the shared ``cluster``
+label recovers the correct value.
+
+
+Stratified Cox models
+~~~~~~~~~~~~~~~~~~~~~~~
+
+When proportional hazards fails for a *nuisance* covariate — a study site, a
+batch, a device generation you do not want to model explicitly — the standard
+remedy is **stratification**: fit a separate baseline hazard for each stratum
+while sharing the coefficients :math:`\beta`. Risk sets never cross a stratum
+boundary, so the comparison is always within-stratum.
+
+Pass ``strata`` (a label per observation) to :meth:`CoxPH.fit`, or
+``strata_col`` to :meth:`CoxPH.fit_from_df`. The example below is deliberately
+adversarial: the baseline hazard differs by an order of magnitude across three
+sites *and* the covariate is correlated with the site. An ordinary Cox fit is
+badly confounded; the stratified fit recovers the true coefficient:
+
+.. jupyter-execute::
+
+    st_rng = np.random.default_rng(0)
+    n_st = 600
+    site = st_rng.integers(0, 3, n_st)
+    Z_st = st_rng.normal(site.astype(float), 1.0).reshape(-1, 1)   # confounded
+    baseline = np.array([1.0, 6.0, 30.0])[site]
+    x_st = st_rng.exponential(baseline / np.exp(0.8 * Z_st[:, 0]))  # true 0.8
+    c_st = (st_rng.random(n_st) < 0.15).astype(int)
+
+    pooled = CoxPH.fit(x=x_st, Z=Z_st, c=c_st)
+    stratified = CoxPH.fit(x=x_st, Z=Z_st, c=c_st, strata=site)
+    print(f"true beta   = 0.80")
+    print(f"pooled      = {pooled.beta[0]:.3f}   (confounded by site)")
+    print(f"stratified  = {stratified.beta[0]:.3f}")
+
+Prediction on a stratified model needs a ``stratum`` argument to pick the right
+baseline; ``sf``, ``Hf``, ``hf``, ``ff`` and ``df`` all accept it:
+
+.. jupyter-execute::
+
+    stratified.sf(x=1.0, Z=[[0.0]], stratum=0)
+
+The residual diagnostics and robust errors above assume a single baseline, so
+they are not available on a stratified model; the coefficients and their
+model-based ``p``-values are.
+
+
 Semi-Parametric — Buckley-James (AFT)
 -------------------------------------
 
@@ -815,6 +935,72 @@ assumption is violated (e.g. survival curves cross), a lower-AIC PH model can
 still give misleading predictions. Goodness-of-fit diagnostics like
 Schoenfeld residuals (for PH) or log-log survival plots should accompany any
 model comparison.
+
+Validating a survival predictor
+-------------------------------
+
+Information criteria compare models on the data they were fit to. To judge how
+well a model *predicts*, score it on held-out data. Two right-censored-standard
+metrics live in :mod:`surpyval.metrics`, and both work for **any** model that
+exposes ``sf(x, Z)`` — the parametric families, ``CoxPH``, and the
+:mod:`surpyval.beta.ml` forest.
+
+Both handle censoring by inverse-probability-of-censoring weighting (IPCW), so
+a subject censored before the horizon does not silently bias the score.
+
+- The **Brier score** ``BS(t)`` is the weighted mean squared error between the
+  predicted survival ``S(t | Z)`` and the survival indicator; the **integrated
+  Brier score** (IBS) averages it over a time grid. Lower is better; a useful
+  model scores below the marginal Kaplan-Meier reference.
+- The **time-dependent AUC** (Uno's cumulative/dynamic estimator) measures
+  discrimination as a function of the horizon — the probability that a subject
+  who has failed by ``t`` was assigned a higher risk than one still event-free.
+  0.5 is chance, 1.0 is perfect.
+
+The helper :func:`~surpyval.metrics.survival_probability` builds the predicted
+survival matrix ``S(times | Z_i)`` from a fitted model. We fit a Cox model on a
+training set and score it on an independent test set:
+
+.. jupyter-execute::
+
+    from surpyval import CoxPH, KaplanMeier
+    from surpyval.metrics import (
+        survival_probability, brier_score, integrated_brier_score, auc_td,
+    )
+
+    def make(seed, n=600):
+        r = np.random.default_rng(seed)
+        Z = r.normal(0, 1, (n, 2))
+        t = r.exponential(1.0 / np.exp(1.2 * Z[:, 0] - 0.8 * Z[:, 1]))
+        cens = r.exponential(np.median(t) * 3)
+        return np.minimum(t, cens), (cens < t).astype(int), Z
+
+    x_tr, c_tr, Z_tr = make(1)
+    x_te, c_te, Z_te = make(2)
+    cox = CoxPH.fit(x=x_tr, Z=Z_tr, c=c_tr)
+
+    times = np.quantile(x_te[c_te == 0], [0.25, 0.5, 0.75])
+    S = survival_probability(cox, Z_te, times)
+
+    _, bs = brier_score(x_te, c_te, S, times, x_train=x_tr, c_train=c_tr)
+    ibs = integrated_brier_score(x_te, c_te, S, times, x_train=x_tr, c_train=c_tr)
+    _, auc = auc_td(x_te, c_te, 1 - S, times)
+    print('Brier score :', np.round(bs, 3))
+    print('IBS         :', round(ibs, 3))
+    print('AUC         :', np.round(auc, 3))
+
+The AUC around 0.8 shows the two covariates discriminate well. To see that the
+IBS is meaningful, compare it against the marginal Kaplan-Meier — a model that
+ignores the covariates entirely. The Cox model should score lower:
+
+.. jupyter-execute::
+
+    km = KaplanMeier.fit(x_tr, c_tr)
+    S_km = np.tile([km.sf([t])[0] for t in times], (len(x_te), 1))
+    ibs_km = integrated_brier_score(
+        x_te, c_te, S_km, times, x_train=x_tr, c_train=c_tr
+    )
+    print(f'IBS  Cox = {ibs:.3f}   marginal KM = {ibs_km:.3f}')
 
 Saving and loading a fitted model
 ---------------------------------
