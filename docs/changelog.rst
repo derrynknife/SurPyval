@@ -27,6 +27,13 @@ Misc
 - The bundled dataset loaders use pandas' default (C) CSV engine instead of
   ``engine="python"`` (#207) -- identical parses, faster, and one less thing
   for security scanners to worry about; the loaders are now covered by tests.
+- Modernised the documentation build toolchain (``docs/requirements.txt``):
+  the 2022-era pins (``sphinx 5.3``, ``jupyter-sphinx 0.4``) left ``ipykernel``
+  unpinned, and against current ipykernel 7 the notebook execution hangs or
+  crashes -- one of the reasons hosted docs builds kept failing. The new set
+  (sphinx 8.2, sphinx-rtd-theme 3.1, jupyter-sphinx 0.5.3, ipykernel capped
+  below 7) is fully pinned and validated by a complete docs build in a clean
+  virtualenv.
 
 v0.15.1 (20 Jul 2026)
 ---------------------
