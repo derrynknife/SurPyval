@@ -25,6 +25,13 @@ Diagnostics & validation
   RMST-difference is the assumption-light alternative to the hazard ratio when
   proportional hazards fails; the estimate matches its analytic value and the
   two-group test is calibrated under the null.
+- **Cluster-robust standard errors** (#215). ``CoxPH`` models gain
+  ``robust_covariance(cluster=...)`` and ``robust_summary(cluster=...)`` -- the
+  Lin-Wei sandwich variance for clustered / correlated data (repeated events
+  per subject, grouped sampling), built from the dfbeta residuals. On
+  independent data it agrees with the model-based errors; on exactly
+  replicated clusters it inflates by the theoretically exact
+  ``sqrt(cluster size)``.
 
 v0.15.2 (20 Jul 2026)
 ---------------------

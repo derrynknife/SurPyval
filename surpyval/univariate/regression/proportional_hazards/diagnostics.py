@@ -215,6 +215,84 @@ def _safe_inv(m: np.ndarray) -> np.ndarray:
         return pinv(m)
 
 
+def robust_covariance(
+    model: "SemiParametricRegressionModel", cluster=None
+) -> np.ndarray:
+    """
+    Cluster-robust ("sandwich") covariance of the Cox coefficients.
+
+    The model-based covariance assumes independent observations. For
+    clustered or correlated data (repeated events per subject, grouped
+    sampling) the Lin-Wei (1989) robust variance is
+
+    .. math::
+        V_{robust} = \\sum_c D_c D_c^{\\top},
+
+    where ``D_c`` is the sum over cluster ``c`` of the per-observation dfbeta
+    residuals (score residual times the model-based covariance). With no
+    clustering each observation is its own cluster and this is the ordinary
+    robust (Lin-Wei / HC) variance.
+
+    Parameters
+    ----------
+    cluster : array_like, optional
+        A cluster label per observation (same length and order as the fitting
+        data). ``None`` treats every observation as its own cluster.
+
+    Returns
+    -------
+    numpy.ndarray
+        The ``p x p`` robust covariance matrix. Its diagonal square-roots are
+        the robust standard errors (see :meth:`robust_standard_errors`).
+    """
+    _require_cox(model)
+    dfbeta = compute_residuals(model, "dfbeta")  # (n_obs, p)
+    n_obs = dfbeta.shape[0]
+
+    if cluster is None:
+        grouped = dfbeta
+    else:
+        cluster = np.asarray(cluster)
+        if cluster.shape[0] != n_obs:
+            raise ValueError(
+                "`cluster` must have one label per observation "
+                f"({n_obs}); got {cluster.shape[0]}."
+            )
+        labels, inv_idx = np.unique(cluster, return_inverse=True)
+        grouped = np.zeros((labels.size, dfbeta.shape[1]))
+        np.add.at(grouped, inv_idx, dfbeta)
+
+    return grouped.T @ grouped
+
+
+def robust_summary(
+    model: "SemiParametricRegressionModel", cluster=None
+) -> dict:
+    """
+    Cluster-robust standard errors, z-scores and p-values for the
+    coefficients (see :func:`robust_covariance`).
+
+    Returns
+    -------
+    dict
+        ``{"covariance", "se", "z", "p_value"}`` plus ``"covariate"`` names
+        when the model was fit from a DataFrame.
+    """
+    from scipy.stats import norm
+
+    beta = np.asarray(model.beta, dtype=float)
+    cov = robust_covariance(model, cluster)
+    se = np.sqrt(np.diag(cov))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        z = beta / se
+        p = 2.0 * (1.0 - norm.cdf(np.abs(z)))
+    out = {"covariance": cov, "se": se, "z": z, "p_value": p}
+    names = getattr(model, "feature_names", None)
+    if names is not None:
+        out["covariate"] = list(names)
+    return out
+
+
 def _transform_times(t: np.ndarray, transform: str) -> np.ndarray:
     if transform == "identity":
         return t.astype(float)
