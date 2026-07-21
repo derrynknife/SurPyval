@@ -9,9 +9,11 @@
 from copy import copy
 from typing import TYPE_CHECKING, Any, Callable
 
+import autograd.numpy as anp
 import numpy as np
 import numpy.ma as ma
 import numpy.typing as npt
+from autograd import grad
 from numpy.linalg import inv, pinv
 from scipy.optimize import minimize, root
 from scipy.stats import norm
@@ -25,8 +27,8 @@ from surpyval.univariate.nonparametric import (
     NelsonAalen,
     Turnbull,
 )
-
 from surpyval.utils import validate_coxph, validate_coxph_df_inputs
+
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from .tvc import handle_tvc
 
@@ -145,6 +147,75 @@ def _sub(a, mask):
     if a is None:
         return None
     return np.asarray(a)[mask]
+
+
+# Cap on the tie-set size for the average-over-orderings exact method. Its
+# risk-set recursion is O(2^d) in the number ``d`` of tied deaths at a single
+# time, so a large tie set is both slow and a sign the exact-marginal method is
+# the wrong tool -- Efron is the intended approximation there.
+_EXACT_MAX_TIES = 12
+
+
+def _elementary_symmetric(v, d):
+    """The ``d``-th elementary symmetric polynomial ``e_d`` of the entries of
+    ``v`` -- i.e. the sum, over every ``d``-subset of ``v``, of the product of
+    that subset's entries.
+
+    This is exactly the denominator of the Kalbfleisch-Prentice (discrete
+    conditional-logistic) tie contribution: summing ``prod exp(Z_j'b)`` over
+    the ``j`` in every size-``d`` subset of the risk set. It is computed by the
+    standard O(len(v) * d) recursion rather than by enumerating subsets, and is
+    written in ``autograd.numpy`` so the score and Hessian differentiate
+    through it.
+    """
+    # e[k] accumulates e_k; start at e_0 = 1, e_{>0} = 0.
+    e = [anp.ones_like(v[0])] + [anp.zeros_like(v[0]) for _ in range(d)]
+    for vk in v:
+        # Update high-to-low so each e[k] uses the previous iteration's e[k-1].
+        for k in range(d, 0, -1):
+            e[k] = e[k] + vk * e[k - 1]
+    return e[d]
+
+
+def _exact_ordering_logterm(a, risk_sum):
+    """``log`` of the average-over-orderings exact tie term.
+
+    For ``d`` tied deaths with risk scores ``a`` (``a_j = exp(Z_j'b)``) drawn
+    from a risk set whose total score is ``risk_sum``, the exact (continuous)
+    partial-likelihood contribution treats the tied deaths as having occurred
+    in some unknown order and sums the sequential Cox contribution over all
+    ``d!`` orderings:
+
+        T = sum_{orderings} prod_{m=1..d} 1 / (risk_sum - sum of placed a).
+
+    ``T`` is evaluated with an O(2^d) subset recursion ``h`` over the set of
+    already-placed deaths (``h[mask] = sum_{j in mask} h[mask - j] /
+    (risk_sum - A(mask - j))``), which is exact and far cheaper than the ``d!``
+    orderings. The numerator ``prod a_j = exp(b' * sum Z)`` is added separately
+    by the caller, so this returns ``log T`` only.
+    """
+    d = len(a)
+    full = (1 << d) - 1
+    # A[mask] = sum of a over the death-bits set in mask.
+    A = [anp.zeros_like(risk_sum) for _ in range(1 << d)]
+    for mask in range(1, 1 << d):
+        low = (mask & -mask).bit_length() - 1
+        A[mask] = A[mask ^ (1 << low)] + a[low]
+
+    h = [None] * (1 << d)
+    h[0] = anp.ones_like(risk_sum)
+    for mask in range(1, 1 << d):
+        total = anp.zeros_like(risk_sum)
+        m = mask
+        while m:
+            j = (m & -m).bit_length() - 1
+            prev = mask ^ (1 << j)
+            # risk_sum - A(prev) is strictly positive: prev omits death j, so
+            # it is at most (risk set minus one death), leaving >= a_j > 0.
+            total = total + h[prev] / (risk_sum - A[prev])
+            m ^= 1 << j
+        h[mask] = total
+    return anp.log(h[full])
 
 
 def _combine_generators(gens):
@@ -446,6 +517,167 @@ class CoxPH_:
 
         return log_like, jac_hess, True
 
+    def _prepare_exact_tie_data(self, x, Z, c, n, tl):
+        """Expand count-weighted rows and pre-compute, per event time, the
+        death rows, the (delayed-entry-aware) risk-set rows, and the death
+        covariate sum. Shared by the ``exact`` and ``kalbfleisch-prentice``
+        generators.
+
+        Counts ``n`` are expanded into individual rows -- a row with a count of
+        two events is genuinely two tied deaths -- so the exact and discrete
+        tie formulae see the true multiplicity. Non-integer counts have no such
+        interpretation and are rejected.
+        """
+        n = np.asarray(n, dtype=float)
+        n_int = np.round(n).astype(int)
+        if np.any(n_int < 1) or np.any(np.abs(n - n_int) > 1e-9):
+            raise ValueError(
+                "The 'exact' and 'kalbfleisch-prentice' tie methods require "
+                "integer counts n (each row is expanded to n identical "
+                "observations); use 'efron' or 'breslow' for fractional "
+                "weights."
+            )
+        rep = np.repeat(np.arange(len(x)), n_int)
+        xe = np.asarray(x, dtype=float)[rep]
+        ce = np.asarray(c, dtype=int)[rep]
+        tle = np.asarray(tl, dtype=float)[rep]
+        Ze = np.asarray(Z, dtype=float)[rep]
+
+        event_times = np.unique(xe[ce == 0])
+        death_idx = []
+        risk_idx = []
+        death_Z_sum = []
+        for tau in event_times:
+            d_mask = (xe == tau) & (ce == 0)
+            # Delayed entry: a row is at risk at tau only once it has entered
+            # (tl < tau) and before it exits (x >= tau).
+            r_mask = (tle < tau) & (xe >= tau)
+            death_idx.append(np.where(d_mask)[0])
+            risk_idx.append(np.where(r_mask)[0])
+            death_Z_sum.append(Ze[d_mask].sum(axis=0))
+        return Ze, event_times, death_idx, risk_idx, np.array(death_Z_sum)
+
+    @staticmethod
+    def _autograd_ll_jac_hess(neg_ll):
+        """Wrap a scalar ``autograd.numpy`` negative-log-likelihood into the
+        ``(neg_ll, jac_hess, True)`` contract used by :meth:`fit`.
+
+        The score is the reverse-mode automatic gradient (exact and cheap). The
+        observed information is obtained by forward finite-differencing that
+        gradient rather than by autograd's forward-over-reverse ``hessian``:
+        the exact tie term's O(2^d) risk-set recursion builds a large trace,
+        and re-differentiating it a second time makes the full Hessian
+        prohibitively slow, whereas ``p + 1`` gradient evaluations stay fast.
+        The resulting
+        information matrix is symmetrised; it is accurate to O(eps) and only
+        feeds the Newton step and the standard-error covariance.
+        """
+        score = grad(neg_ll)
+        eps = 1e-6
+
+        def jac_hess(beta):
+            beta = np.asarray(beta, dtype=float)
+            s0 = np.asarray(score(beta))
+            p = beta.shape[0]
+            hess_matrix = np.zeros((p, p))
+            for j in range(p):
+                db = beta.copy()
+                db[j] += eps
+                hess_matrix[:, j] = (np.asarray(score(db)) - s0) / eps
+            hess_matrix = 0.5 * (hess_matrix + hess_matrix.T)
+            return s0, hess_matrix
+
+        return neg_ll, jac_hess, True
+
+    def create_kalbfleisch_prentice_ll_jac_hess(self, x, Z, c, n, tl):
+        """Kalbfleisch-Prentice discrete (conditional-logistic) tie handling.
+
+        Treats tied event times as genuinely discrete: the contribution of a
+        tie set ``D`` (``d`` deaths) with risk set ``R`` is
+
+            exp(b' * sum_{j in D} Z_j) / e_d({exp(Z_k'b) : k in R}),
+
+        where ``e_d`` is the ``d``-th elementary symmetric polynomial of the
+        risk-set scores -- i.e. the sum over all ``d``-subsets of ``R`` of the
+        product of their scores. This is the exact discrete
+        proportional-hazards (Cox 1972 discrete model / Kalbfleisch-Prentice)
+        likelihood.
+        """
+        Ze, event_times, death_idx, risk_idx, S = self._prepare_exact_tie_data(
+            x, Z, c, n, tl
+        )
+        ds = [len(d) for d in death_idx]
+
+        def neg_ll(beta):
+            r = anp.exp(anp.dot(Ze, beta))
+            total = anp.zeros(())
+            for i in range(len(event_times)):
+                beta_S = anp.dot(S[i], beta)
+                e_d = _elementary_symmetric(r[risk_idx[i]], ds[i])
+                total = total + beta_S - anp.log(e_d)
+            return -total
+
+        return self._autograd_ll_jac_hess(neg_ll)
+
+    def create_exact_ll_jac_hess(self, x, Z, c, n, tl):
+        """Exact (average-over-orderings) partial-likelihood tie handling.
+
+        Appropriate when ties arise from coarse rounding of an underlying
+        continuous time. Each tie set is treated as having occurred in an
+        unknown order and its contribution is the sequential Cox partial
+        likelihood averaged over all orderings of the tied deaths (see
+        :func:`_exact_ordering_logterm`). Reduces to Breslow/Efron when there
+        are no ties.
+        """
+        Ze, event_times, death_idx, risk_idx, S = self._prepare_exact_tie_data(
+            x, Z, c, n, tl
+        )
+        ds = [len(d) for d in death_idx]
+        too_many = [
+            event_times[i] for i, d in enumerate(ds) if d > _EXACT_MAX_TIES
+        ]
+        if too_many:
+            raise ValueError(
+                "The 'exact' tie method is O(2^d) in the number of tied "
+                "deaths d at a single time; {} deaths tie at time {:g} "
+                "(limit {}). "
+                "Use method='efron' for heavily tied data.".format(
+                    max(ds), too_many[0], _EXACT_MAX_TIES
+                )
+            )
+
+        def neg_ll(beta):
+            r = anp.exp(anp.dot(Ze, beta))
+            total = anp.zeros(())
+            for i in range(len(event_times)):
+                beta_S = anp.dot(S[i], beta)
+                risk_sum = anp.sum(r[risk_idx[i]])
+                log_t = _exact_ordering_logterm(r[death_idx[i]], risk_sum)
+                # L_i = exp(b'S) * T, so log L_i = b'S + log T; for a single
+                # death T = 1/risk_sum, recovering the Breslow term b'S -
+                # log(risk_sum).
+                total = total + beta_S + log_t
+            return -total
+
+        return self._autograd_ll_jac_hess(neg_ll)
+
+    def _resolve_func_generator(self, method: str) -> Callable[..., Any]:
+        """Map a tie-handling ``method`` name to its likelihood generator."""
+        generators: dict[str, Callable[..., Any]] = {
+            "efron": self.create_efron_ll_jac_hess,
+            "breslow": self.create_breslow_ll_jac_hess,
+            "exact": self.create_exact_ll_jac_hess,
+            "kalbfleisch-prentice": (
+                self.create_kalbfleisch_prentice_ll_jac_hess
+            ),
+            "kp": self.create_kalbfleisch_prentice_ll_jac_hess,
+        }
+        if method not in generators:
+            raise ValueError(
+                "method must be one of {}".format(sorted(generators))
+            )
+        return generators[method]
+
     def fit(
         self,
         x: npt.ArrayLike,
@@ -475,7 +707,15 @@ class CoxPH_:
         tl: array-like, optional
             The left-truncation times of the observations.
         method: str, optional
-            The method to use for tie handling. Either 'efron' or 'breslow'.
+            The method to use for tie handling. One of ``'breslow'``
+            (default), ``'efron'``, ``'exact'`` (the average-over-orderings
+            exact partial likelihood, for ties from coarse rounding of
+            continuous time) or ``'kalbfleisch-prentice'`` (alias ``'kp'`` --
+            the exact discrete/conditional-logistic likelihood, for genuinely
+            discrete time). Breslow and Efron match what R's ``survival`` and
+            lifelines use by default; the two exact methods are only
+            meaningfully different under heavy ties and are correspondingly
+            more expensive.
         tol: float, optional
             The tolerance for the root finding algorithm.
         strata: array-like, optional
@@ -494,14 +734,7 @@ class CoxPH_:
         model: SemiParametricProportionalHazardsModel
             The fitted model.
         """
-        func_generator: Callable[..., Any]
-        if method == "efron":
-            func_generator = self.create_efron_ll_jac_hess
-        elif method == "breslow":
-            func_generator = self.create_breslow_ll_jac_hess
-        # TODO: Cox-Exact
-        # TODO: K&P
-        # See: https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
+        func_generator = self._resolve_func_generator(method)
 
         if strata is not None:
             return self._fit_stratified(
@@ -716,7 +949,8 @@ class CoxPH_:
             The formula to use for the model. If not provided, the column names
             will be used.
         method: str, optional
-            The method to use for tie handling. Either 'efron' or 'breslow'.
+            The tie-handling method: ``'breslow'``, ``'efron'``, ``'exact'``
+            or ``'kalbfleisch-prentice'`` (alias ``'kp'``). See :meth:`fit`.
         strata_col: str, optional
             The column name of the stratum label. When supplied the model is
             fitted stratified (a separate baseline hazard per stratum, shared

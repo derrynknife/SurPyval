@@ -317,3 +317,206 @@ def test_baseline_hazard_properties():
     assert np.all(model.h0 >= 0)
     assert np.all(np.diff(model.H0) >= 0)
     assert model.H0.shape == model.x.shape
+
+
+# ---------------------------------------------------------------------------
+# Exact and Kalbfleisch-Prentice tie-handling methods (issue #142)
+# ---------------------------------------------------------------------------
+
+
+def test_tie_methods_agree_without_ties():
+    # With every event time distinct there are no ties to break, so all four
+    # tie-handling methods must return the identical coefficient.
+    rng = np.random.default_rng(0)
+    n = 60
+    Z = rng.normal(size=(n, 1))
+    x = np.sort(rng.uniform(1, 100, n)) + np.arange(n) * 1e-3
+    c = np.zeros(n, dtype=int)
+
+    betas = {
+        m: CoxPH.fit(x=x, Z=Z, c=c, method=m).beta[0]
+        for m in ["breslow", "efron", "exact", "kalbfleisch-prentice"]
+    }
+    assert max(betas.values()) - min(betas.values()) < 1e-8
+
+
+def _neg_ll(method, x, Z, c):
+    from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+        CoxPH_,
+    )
+
+    tl = np.full(len(x), -np.inf)
+    gen = CoxPH_()._resolve_func_generator(method)
+    neg_ll, _, _ = gen(
+        np.asarray(x, float),
+        np.asarray(Z, float),
+        np.asarray(c, int),
+        np.ones(len(x)),
+        tl,
+    )
+    return neg_ll
+
+
+def test_kp_negll_matches_conditional_logistic():
+    # Two deaths tie at t=1; the KP contribution there is the exact discrete
+    # (conditional-logistic) term exp(b*(z0+z1)) / e_2, with e_2 the 2nd
+    # elementary symmetric polynomial of the four risk scores.
+    from itertools import combinations
+
+    x = np.array([1.0, 1.0, 2.0, 3.0])
+    Z = np.array([[0.5], [-0.5], [1.0], [0.0]])
+    c = np.array([0, 0, 0, 1])
+    zf = Z.ravel()
+    neg_ll = _neg_ll("kp", x, Z, c)
+
+    def brute(b):
+        s = np.exp(b * zf)
+        e2 = sum(s[i] * s[j] for i, j in combinations(range(4), 2))
+        ll = b * (zf[0] + zf[1]) - np.log(e2)
+        ll += b * zf[2] - np.log(s[2] + s[3])
+        return -ll
+
+    for b in (-0.7, 0.0, 0.3, 1.1):
+        assert np.isclose(float(neg_ll(np.array([b]))), brute(b))
+
+
+def test_exact_negll_matches_average_over_orderings():
+    # Same tie set under the exact (average-over-orderings) method: the two
+    # tied deaths could have occurred in either order, and the contribution is
+    # the sequential Cox term averaged over both orderings.
+    x = np.array([1.0, 1.0, 2.0, 3.0])
+    Z = np.array([[0.5], [-0.5], [1.0], [0.0]])
+    c = np.array([0, 0, 0, 1])
+    zf = Z.ravel()
+    neg_ll = _neg_ll("exact", x, Z, c)
+
+    def brute(b):
+        s = np.exp(b * zf)
+        R = s.sum()
+        a0, a1 = s[0], s[1]
+        T = (1 / R) * (1 / (R - a0)) + (1 / R) * (1 / (R - a1))
+        ll = np.log(a0 * a1) + np.log(T)
+        ll += b * zf[2] - np.log(s[2] + s[3])
+        return -ll
+
+    for b in (-0.7, 0.0, 0.3, 1.1):
+        assert np.isclose(float(neg_ll(np.array([b]))), brute(b))
+
+
+def test_exact_and_kp_differ_on_ties():
+    # On tied data the exact, KP, breslow and efron estimates should differ.
+    # Kept small (few tied deaths per time) because the exact method is O(2^d).
+    rng = np.random.default_rng(5)
+    n = 30
+    Z = rng.normal(size=(n, 1))
+    x = rng.integers(1, 11, size=n).astype(float)
+    c = (rng.uniform(size=n) < 0.2).astype(int)
+
+    betas = {
+        m: CoxPH.fit(x=x, Z=Z, c=c, method=m).beta
+        for m in ["breslow", "efron", "exact", "kp"]
+    }
+    assert not np.allclose(betas["exact"], betas["efron"])
+    assert not np.allclose(betas["kp"], betas["exact"])
+    assert not np.allclose(betas["kp"], betas["breslow"])
+
+
+@pytest.mark.parametrize("method", ["exact", "kp"])
+def test_exact_kp_return_finite_p_values_and_pd_hessian(method):
+    rng = np.random.default_rng(3)
+    n = 28
+    Z = rng.normal(size=(n, 1))
+    x = rng.integers(1, 7, size=n).astype(float)
+    c = (rng.uniform(size=n) < 0.2).astype(int)
+
+    model = CoxPH.fit(x=x, Z=Z, c=c, method=method)
+    assert model.p_values is not None
+    assert np.all(np.isfinite(model.p_values))
+    assert np.all((model.p_values >= 0) & (model.p_values <= 1))
+
+    H = model.jac(model.beta)[1]
+    assert np.allclose(H, H.T)
+    assert np.all(np.linalg.eigvalsh(H) > 0)
+
+
+@pytest.mark.parametrize("method", ["exact", "kp"])
+def test_exact_kp_hessian_matches_finite_difference(method):
+    from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+        CoxPH_,
+    )
+    from surpyval.utils import validate_coxph
+
+    rng = np.random.default_rng(9)
+    n = 40
+    Z = rng.normal(size=(n, 2))
+    x = rng.integers(1, 10, size=n).astype(float)
+    c = (rng.uniform(size=n) < 0.25).astype(int)
+    x, c, nn, tl, ZZ = validate_coxph(x, c, None, Z, None, method)
+
+    gen = CoxPH_()._resolve_func_generator(method)
+    neg_ll, jac_hess, _ = gen(x, ZZ, c, nn, tl)
+
+    b = np.array([0.3, -0.2])
+    score, H = jac_hess(b)
+    eps = 1e-6
+    eye = np.eye(2)
+    g_num = np.array(
+        [
+            (float(neg_ll(b + eps * eye[i])) - float(neg_ll(b - eps * eye[i])))
+            / (2 * eps)
+            for i in range(2)
+        ]
+    )
+    H_num = np.zeros((2, 2))
+    for i in range(2):
+        sp = jac_hess(b + eps * eye[i])[0]
+        sm = jac_hess(b - eps * eye[i])[0]
+        H_num[:, i] = (sp - sm) / (2 * eps)
+
+    assert np.allclose(score, g_num, atol=1e-5)
+    assert np.allclose(H, H_num, atol=1e-4)
+
+
+def test_kp_count_weights_equivalent_to_repeated_rows():
+    # A count of two must be identical to two repeated rows for KP, since the
+    # generator expands counts into individual tied observations.
+    rng = np.random.default_rng(11)
+    n = 24
+    Z = rng.normal(size=(n, 1))
+    x = rng.integers(1, 8, size=n).astype(float)
+    c = (rng.uniform(size=n) < 0.2).astype(int)
+
+    m_rep = CoxPH.fit(
+        x=np.repeat(x, 2),
+        Z=np.repeat(Z, 2, axis=0),
+        c=np.repeat(c, 2),
+        method="kp",
+    )
+    m_cnt = CoxPH.fit(x=x, Z=Z, c=c, n=np.full(n, 2), method="kp")
+    assert np.allclose(m_rep.beta, m_cnt.beta, atol=1e-5)
+
+
+def test_exact_rejects_excessive_ties():
+    # The exact method is O(2^d) in the tie multiplicity d, so a very large
+    # tie set is refused with a pointer to efron.
+    rng = np.random.default_rng(3)
+    n = 80
+    Z = rng.normal(size=(n, 1))
+    x = np.ones(n)  # every observation ties at the same time
+    c = np.zeros(n, dtype=int)
+    with pytest.raises(ValueError, match="O\\(2\\^d\\)"):
+        CoxPH.fit(x=x, Z=Z, c=c, method="exact")
+
+
+def test_kp_handles_heavy_ties():
+    # KP uses the elementary-symmetric recursion, which is polynomial in the
+    # tie size, so it fits heavily tied data the exact method would refuse.
+    rng = np.random.default_rng(3)
+    n = 40
+    Z = rng.normal(size=(n, 1))
+    x = rng.integers(1, 4, size=n).astype(float)
+    c = (rng.uniform(size=n) < 0.2).astype(int)
+
+    model = CoxPH.fit(x=x, Z=Z, c=c, method="kp")
+    assert np.all(np.isfinite(model.beta))
+    assert np.all(np.isfinite(model.p_values))
