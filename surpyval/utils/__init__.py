@@ -6,7 +6,7 @@ import numpy.typing as npt
 from formulaic import Formula
 from pandas import Series, isna
 
-COX_PH_METHODS = ["breslow", "efron"]
+COX_PH_METHODS = ["breslow", "efron", "exact", "kalbfleisch-prentice", "kp"]
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
 
 

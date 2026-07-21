@@ -93,6 +93,25 @@ Correctness
   inner estimators; and the documented untruncated example is byte-for-byte
   identical.
 
+Regression
+~~~~~~~~~~
+
+- **Exact and Kalbfleisch-Prentice tie handling for Cox** (#142). ``CoxPH.fit``
+  gains two further ``method`` choices beyond ``'breslow'`` and ``'efron'``:
+  ``'exact'`` (the average-over-orderings exact partial likelihood, for ties
+  that arise from coarse rounding of an underlying continuous time) and
+  ``'kalbfleisch-prentice'`` (alias ``'kp'`` -- the exact discrete /
+  conditional-logistic likelihood, for genuinely discrete time). Both honour
+  delayed entry (``tl``), stratification and count weights, and reduce to
+  Breslow/Efron when there are no ties. The KP denominator is the elementary
+  symmetric polynomial of the risk-set scores, computed by the standard
+  polynomial recursion; the exact term is summed over tied-death orderings by
+  an ``O(2^d)`` subset recursion, which is guarded against oversized tie sets.
+  Validated by matching a brute-force per-tie likelihood exactly, and by
+  score/Hessian agreement with finite differences. These methods are niche --
+  Breslow and Efron already match what R's ``survival`` and lifelines use by
+  default -- and correspondingly more expensive under heavy ties.
+
 v0.15.2 (20 Jul 2026)
 ---------------------
 
