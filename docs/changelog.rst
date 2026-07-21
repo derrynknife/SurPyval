@@ -96,6 +96,25 @@ Correctness
 Regression
 ~~~~~~~~~~
 
+- **Timeline (xicnt-style) input for time-varying-covariate Cox.**
+  ``CoxPH.fit_tvc_timeline`` / ``fit_tvc_timeline_from_df`` accept a covariate
+  *timeline* -- one row per covariate change per subject (``i``, ``x``, ``Z``,
+  ``c``) with the terminal event / censoring on the subject's last row -- as an
+  alternative to writing explicit ``(xl, xr]`` intervals for ``fit_tvc``. Each
+  covariate value holds from its time until the subject's next row, the first
+  time is the (delayed-)entry time and the last is the exit; the timeline is
+  expanded to start-stop intervals and fitted identically, so it gives the same
+  fit as the equivalent ``fit_tvc`` data.
+- **Time-varying-covariate Cox input harmonised to the surpyval convention.**
+  The start-stop interface (``CoxPH.fit_tvc`` / ``fit_tvc_from_df`` /
+  ``predict_tvc`` and ``handle_tvc``) is renamed to match surpyval's
+  vocabulary: the subject id is ``i`` (was ``ident``), the interval bounds are
+  ``xl`` / ``xr`` (were ``start`` / ``stop``), and the status is ``c`` (was
+  ``event``). ``c`` now follows the standard surpyval censoring convention --
+  ``0`` = event at ``xr``, ``1`` = right-censored -- which is the *inverse* of
+  the old ``event`` flag (``event=1`` -> ``c=0``). The DataFrame entry point's
+  columns are named ``xl_col`` / ``xr_col`` / ``c_col`` accordingly. Positional
+  calls are unaffected; keyword calls and the ``event`` values need updating.
 - **Accelerated Life with an Exponential distribution now fits.**
   ``AcceleratedLife(Exponential, life_model).fit(...)`` raised
   ``KeyError: 'lambda'`` because the life-parameter map named the Exponential's
