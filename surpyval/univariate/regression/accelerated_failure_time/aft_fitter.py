@@ -8,6 +8,7 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
+from .aft_tvc_fit import AFTTVCFitMixin
 
 
 class _LogLinearPhiModel:
@@ -25,7 +26,7 @@ class _LogLinearPhiModel:
         return {"beta_" + str(i): i for i in range(Z.shape[1])}
 
 
-class AFTFitter(DataFrameRegressionMixin):
+class AFTFitter(AFTTVCFitMixin, DataFrameRegressionMixin):
     """
     Accelerated Failure Time fitter using exp(beta'Z) as the acceleration
     factor.

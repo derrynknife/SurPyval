@@ -161,9 +161,9 @@ def test_exponential_ph_tvc_also_supported():
     assert np.all(np.isfinite(tvc.params))
 
 
-def test_aft_and_po_do_not_expose_tvc():
-    # Episode-splitting is not valid for accelerated failure time (needs an
-    # accumulated accelerated age) or proportional odds (no additive
-    # structure), so those fitters must not offer fit_tvc.
-    assert not hasattr(AFT(Weibull), "fit_tvc")
+def test_po_does_not_expose_tvc():
+    # Proportional odds has no additive/accumulated structure, so it must not
+    # offer fit_tvc. (Accelerated failure time now does, via its own
+    # accumulated-age likelihood -- see test_aft_tvc_fit.py.)
     assert not hasattr(PO(Weibull), "fit_tvc")
+    assert hasattr(AFT(Weibull), "fit_tvc")
