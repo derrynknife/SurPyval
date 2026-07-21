@@ -113,8 +113,12 @@ Regression
   continuously-varying covariate (``0.3 + 1e-4 * t``, ``sin(t)``) is rejected
   with ``StepValuedError`` rather than silently returning a wrong answer.
   ``sf_tvc`` may be given ``(xl, Z)`` arrays directly or a ``StepSchedule``.
-  Accelerated failure time (needs an accumulated accelerated age) and
-  proportional odds (no additive hazard) do not compose this way and raise.
+  The semi-parametric ``CoxPH`` gains the same ``sf_tvc`` / ``Hf_tvc`` and
+  ``StepSchedule`` convention (summing the fitted baseline-hazard jumps along
+  the path); the existing interval-oriented ``predict_tvc`` is unchanged and
+  ``sf_tvc`` agrees with it exactly. Accelerated failure time (needs an
+  accumulated accelerated age) and proportional odds (no additive hazard) do
+  not compose this way and raise.
 - **Time-varying covariates for the parametric PH and additive-hazards
   families** (#150). ``WeibullPH`` (and every ``PH(dist)``) and ``WeibullAH``
   (every ``AH(dist)``) gain ``fit_tvc`` / ``fit_tvc_timeline`` and the

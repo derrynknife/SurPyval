@@ -437,43 +437,22 @@ class ParametricRegressionModel:
 
     def _tvc_segments(self, schedule, t_max):
         """
-        Materialise ``schedule`` to ``t_max`` and return ``(starts, ends, Z)``
-        with the first segment held back to the time origin, so the cumulative
-        hazard is measured from ``0`` (unconditional survival).
+        Materialise ``schedule`` to ``t_max`` with the first segment held back
+        to the time origin (survival measured from ``0``).
         """
-        starts, ends, Z = schedule.segments(t_max)
-        if starts[0] > 0:
-            # Hold the first covariate back to the origin (matches the Cox
-            # ``predict_tvc`` clamp): survival is measured from t = 0.
-            starts = starts.copy()
-            starts[0] = 0.0
-        return starts, ends, Z
+        from .tvc_schedule import segments_from_origin
+
+        return segments_from_origin(schedule, t_max)
 
     def _to_schedule(self, Z, xl):
         """
         Coerce the ``sf_tvc`` covariate argument into a
-        :class:`~...tvc_schedule.StepSchedule`.
-
-        ``Z`` is either a ready-made schedule, or an array of per-segment
-        covariate rows whose segment start times are given in ``xl``.
+        :class:`~...tvc_schedule.StepSchedule` and check its covariate count
+        against the fitted model.
         """
-        from .tvc_schedule import StepSchedule
+        from .tvc_schedule import as_step_schedule
 
-        if isinstance(Z, StepSchedule):
-            if xl is not None:
-                raise ValueError(
-                    "xl must not be given when Z is already a StepSchedule"
-                )
-            schedule = Z
-        else:
-            if xl is None:
-                raise ValueError(
-                    "for the array form pass xl (the segment start times) "
-                    "alongside Z (one covariate row per segment); or pass a "
-                    "StepSchedule"
-                )
-            schedule = StepSchedule.from_changepoints(xl, Z)
-
+        schedule = as_step_schedule(Z, xl)
         n_cov = self.params.shape[0] - self.k_dist
         if schedule.p != n_cov:
             raise ValueError(

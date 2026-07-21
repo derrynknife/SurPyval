@@ -553,3 +553,45 @@ class StepSchedule:
         return "StepSchedule({}, {} segment(s), p={})".format(
             kind, self.Z.shape[0], self.p
         )
+
+
+# -- shared helpers for the model ``sf_tvc`` / ``Hf_tvc`` methods ----------
+#
+# These give every regression family (parametric PH/AH and the semi-parametric
+# Cox) the same time-varying-covariate calling convention: pass either a
+# ready-made StepSchedule, or ``(xl, Z)`` arrays (segment start times plus one
+# covariate row per segment).
+
+
+def as_step_schedule(Z, xl=None):
+    """
+    Coerce a model ``sf_tvc`` covariate argument into a :class:`StepSchedule`.
+
+    ``Z`` is either a ready-made schedule (then ``xl`` must be ``None``), or an
+    array of per-segment covariate rows whose segment start times are ``xl``.
+    """
+    if isinstance(Z, StepSchedule):
+        if xl is not None:
+            raise ValueError(
+                "xl must not be given when Z is already a StepSchedule"
+            )
+        return Z
+    if xl is None:
+        raise ValueError(
+            "for the array form pass xl (the segment start times) alongside "
+            "Z (one covariate row per segment); or pass a StepSchedule"
+        )
+    return StepSchedule.from_changepoints(xl, Z)
+
+
+def segments_from_origin(schedule, t_max):
+    """
+    Materialise ``schedule`` to ``t_max``, holding the first segment back to
+    the time origin so cumulative hazard is measured from ``0`` (unconditional
+    survival). Returns ``(starts, ends, Z)``.
+    """
+    starts, ends, Z = schedule.segments(t_max)
+    if starts[0] > 0:
+        starts = starts.copy()
+        starts[0] = 0.0
+    return starts, ends, Z

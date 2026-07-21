@@ -18,7 +18,11 @@ import numpy as np
 import pytest
 
 from surpyval import WeibullAFT, WeibullAH, WeibullPH, WeibullPO
-from surpyval.univariate.regression import StepSchedule, StepValuedError
+from surpyval.univariate.regression import (
+    CoxPH,
+    StepSchedule,
+    StepValuedError,
+)
 
 # -- StepSchedule (structural) --------------------------------------------
 
@@ -228,3 +232,93 @@ def test_end_to_end_fit_tvc_then_sf_tvc():
     s = model.sf_tvc([2.0, 5.0, 8.0], sched)
     assert s.shape == (3,)
     assert np.all((s >= 0) & (s <= 1)) and s[0] >= s[-1]
+
+
+# -- sf_tvc on the semi-parametric Cox model ------------------------------
+#
+# Cox shares the sf_tvc / StepSchedule convention with the parametric
+# families; sf_tvc is the schedule-oriented counterpart of the existing
+# interval-oriented predict_tvc, and the two must agree.
+
+
+def _fit_cox_tvc(seed=3, n=40):
+    rng = np.random.default_rng(seed)
+    ident, xl, xr, c, Z = [], [], [], [], []
+    for s in range(n):
+        split = 3.0
+        end = split + np.abs(rng.weibull(1.4)) * 6.0 + 0.5
+        z0 = rng.normal(0, 1)
+        ident += [s, s]
+        xl += [0.0, split]
+        xr += [split, end]
+        c += [1, 0]
+        Z += [[z0], [z0 + 0.2]]
+    return CoxPH.fit_tvc(
+        np.array(ident), np.array(xl), np.array(xr), np.array(c), np.array(Z)
+    )
+
+
+def test_cox_sf_tvc_matches_predict_tvc():
+    m = _fit_cox_tvc()
+    xl = np.array([0.0, 3.0])
+    xr = np.array([3.0, 8.0])
+    Z = np.array([[0.5], [0.7]])
+    times = np.array([2.0, 5.0, 7.5])
+    _, sf_pred, _ = m.predict_tvc(xl, xr, Z, times=times)
+    sf_new = m.sf_tvc(times, StepSchedule.from_intervals(xl, xr, Z))
+    assert np.allclose(sf_new, sf_pred)
+
+
+def test_cox_array_form_matches_schedule():
+    m = _fit_cox_tvc()
+    times = np.array([2.0, 5.0, 7.5])
+    a = m.sf_tvc(times, np.array([[0.5], [0.7]]), xl=np.array([0.0, 3.0]))
+    b = m.sf_tvc(times, StepSchedule.from_changepoints([0.0, 3.0], [0.5, 0.7]))
+    assert np.allclose(a, b)
+
+
+def test_cox_constant_reduces_to_sf_above_first_event():
+    # Cox's sf clamps the left tail (via _get_idx) to the first jump, so the
+    # constant reduction holds at/above the first event time, where the
+    # Breslow baseline is well defined.
+    m = _fit_cox_tvc()
+    z = 0.6
+    t = m.x[m.x > 0][:5]
+    a = m.sf_tvc(t, StepSchedule.constant([z]))
+    b = np.asarray(m.sf(t, np.array([z])), dtype=float).ravel()
+    assert np.allclose(a, b)
+
+
+def test_cox_conditional_survival():
+    m = _fit_cox_tvc()
+    sched = StepSchedule.from_intervals([0.0, 3.0], [3.0, 8.0], [[0.5], [0.7]])
+    cond = m.sf_tvc([7.5], sched, given=2.0)
+    manual = m.sf_tvc([7.5], sched) / m.sf_tvc([2.0], sched)
+    assert np.allclose(cond, manual)
+
+
+def test_cox_expression_schedule():
+    m = _fit_cox_tvc()
+    es = StepSchedule.from_expression(
+        "0.9 if t < 3 else 0.3", horizon=8, resolution=0.5
+    )
+    s = m.sf_tvc([2.0, 6.0], es)
+    assert np.all((s >= 0) & (s <= 1)) and s[0] >= s[1]
+
+
+def test_cox_covariate_count_checked():
+    m = _fit_cox_tvc()  # one covariate
+    with pytest.raises(ValueError, match="covariate"):
+        m.sf_tvc([2.0], StepSchedule.constant([0.5, 0.5]))
+
+
+def test_cox_stratified_rejects_sf_tvc():
+    rng = np.random.default_rng(0)
+    n = 120
+    Z = rng.normal(0, 1, (n, 1))
+    x = np.abs(rng.weibull(1.5, n) * 10) + 0.5
+    c = np.zeros(n)
+    strata = (Z[:, 0] > 0).astype(int)
+    m = CoxPH.fit(x=x, Z=Z, c=c, strata=strata)
+    with pytest.raises(NotImplementedError, match="stratified"):
+        m.sf_tvc([2.0], StepSchedule.constant([0.5]))
