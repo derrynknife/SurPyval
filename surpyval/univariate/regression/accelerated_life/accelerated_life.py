@@ -6,7 +6,10 @@ from .parameter_substitution import ParameterSubstitutionFitter
 # transforms needed to convert between the life-model output space and
 # the distribution's native parameter space.
 _LIFE_PARAM_MAP = {
-    "Exponential": ("lambda", lambda x: 1.0 / x, lambda x: 1.0 / x),
+    # The Exponential's native parameter is ``failure_rate`` (the rate,
+    # lambda); the life model produces a characteristic *life* (mean time), so
+    # the two transforms convert life <-> rate via ``1 / x``.
+    "Exponential": ("failure_rate", lambda x: 1.0 / x, lambda x: 1.0 / x),
     "Normal": ("mu", None, None),
     "Weibull": ("alpha", None, None),
     "Gumbel": ("mu", None, None),
