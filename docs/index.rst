@@ -99,6 +99,7 @@ Contents:
    Recurrent Event Analysis
    Recurrent Event Regression Analysis
    Degradation Analysis
+   Multivariate Analysis
 
 .. toctree::
    :maxdepth: 2

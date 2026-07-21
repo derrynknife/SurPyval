@@ -16,9 +16,15 @@ Classic examples:
 - A customer may churn, upgrade, or downgrade; the event that happens first
   changes the analysis for the remaining outcomes.
 
-Competing risks require special treatment because the causes are not
-independent; accounting for the wrong event type leads to biased estimates.
-This is sometimes called the "identifiability problem" in competing risks.
+Competing risks require special treatment because treating the competing
+events as ordinary independent censoring gives a quantity that cannot be
+interpreted as a real-world probability. A deeper subtlety is the
+**identifiability problem**: from competing-risks data alone the *marginal*
+(net, latent) distribution of each cause — the distribution that would be seen
+if the other causes were removed — cannot be identified without an untestable
+assumption about the dependence between causes. This is why the observable,
+well-defined target is the cumulative incidence function rather than a marginal
+cause-specific survival.
 
 Relationship to Univariate Analysis
 -------------------------------------
@@ -85,8 +91,10 @@ The overall density is:
 
     f(t) = \sum_{k=1}^{K} f_k(t) \prod_{j \neq k} S_j(t)
 
-SurPyval provides the ``CompetingRisks`` class for this model. Parameters for
-each cause distribution are estimated jointly by MLE.
+SurPyval provides the ``ParametricCompetingRisks`` class for this model. Under
+the independent-latent-times assumption the joint likelihood separates, so each
+cause's distribution is fitted independently by MLE with the *other* causes'
+events treated as right-censored.
 
 
 Regression: Fine-Gray and Cause-Specific PH
@@ -148,9 +156,9 @@ statistic is :math:`\chi^2` distributed with :math:`k - 1` degrees of freedom
 for :math:`k` groups. Reach for it when the question is "how many fail of this
 cause", and for the cause-specific log-rank when the question is "how fast".
 
-For examples of estimating cumulative incidence functions and comparing them
-with Gray's test, see the Competing Risks entry in the SurPyval Modelling
-section of the docs.
+For worked examples of estimating cumulative incidence functions, fitting the
+Fine-Gray and cause-specific proportional hazards models, and comparing groups
+with Gray's test, see the :doc:`Competing Risks SurPyval Modelling` page.
 
 
 Further Reading

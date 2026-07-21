@@ -187,8 +187,8 @@ standard tool in maintenance modelling; see [vanNoortwijk2009]_ for a survey.
 
 For worked examples of all of the above — fitting general-path and
 stochastic-process models, predicting remaining useful life, the Lu-Meeker
-diagnostic, and serialising a fitted model — see the Degradation entry in the
-SurPyval Modelling section of the docs.
+diagnostic, and serialising a fitted model — see the
+:doc:`Degradation Modelling with SurPyval` page.
 
 References
 ----------

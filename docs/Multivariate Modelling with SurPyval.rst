@@ -1,47 +1,16 @@
 Multivariate Modelling with SurPyval
 ====================================
 
-Every distribution covered so far is *univariate*: each unit has a single
-event time and units are treated as independent replicates. The
-``surpyval.multivariate`` module opens the **multivariate** axis of the model
-atlas -- several *correlated* event-time series modelled jointly. The
-dependence between the series is specified with a **copula**, while the
-marginal behaviour of each series is any existing SurPyval distribution.
+The ``surpyval.multivariate`` module models several *correlated* event-time
+series jointly. The dependence between the series is specified with a
+**copula** while the marginal behaviour of each series is any existing SurPyval
+distribution — so the margins and the dependence are chosen independently. For
+the concepts (Sklar's theorem, the copula families and their tail behaviour,
+and the estimation strategies) see the :doc:`Multivariate Analysis` page; this
+page is the how-to.
 
-A copula ``C(u_1, u_2)`` is a joint distribution on uniform margins. Coupling
-it with real margins :math:`F_1, F_2` gives the joint CDF
-
-.. math::
-
-   H(x_1, x_2) = C\big(F_1(x_1), F_2(x_2)\big).
-
-This cleanly separates *what each series looks like on its own* (the margins)
-from *how the series move together* (the copula).
-
-Available copulas
------------------
-
-.. list-table::
-   :header-rows: 1
-
-   * - Copula
-     - Parameter
-     - Dependence
-   * - ``Independence``
-     - none
-     - none (:math:`\tau = 0`)
-   * - ``Clayton``
-     - :math:`\theta > 0`
-     - lower-tail
-   * - ``Gumbel``
-     - :math:`\theta \geq 1`
-     - upper-tail
-   * - ``Frank``
-     - :math:`\theta \neq 0`
-     - symmetric, no tail
-   * - ``Gaussian``
-     - :math:`\rho \in (-1, 1)`
-     - symmetric, no tail
+SurPyval provides the ``Independence``, ``Clayton``, ``Gumbel``, ``Frank`` and
+``Gaussian`` copulas.
 
 Fitting a copula
 ----------------

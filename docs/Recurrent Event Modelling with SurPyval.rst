@@ -2,7 +2,10 @@ Recurrent Event Modelling with SurPyval
 =======================================
 
 This section is aims to show how you can use SurPyval to model counting
-processes.
+processes. For the concepts and mathematics behind these models — the HPP,
+the NHPP (Duane, Cox-Lewis, Crow-AMSAA), the renewal and virtual-age models,
+and the mean cumulative function — see the :doc:`Recurrent Event Analysis`
+page.
 
 Recurrent Event SurPyval Modelling
 ----------------------------------
@@ -27,7 +30,7 @@ pass it to the ``fit`` call of the ``NonParametricCounting`` class.
     model.plot()
 
 This shows the expected number of events at any time. The model is a step
-function since it is parametric and we have made no assumptions about the
+function since it is non-parametric and we have made no assumptions about the
 count between observed events.
 
 The result of this is a Non-Parametric Counting model that can be used just like
@@ -141,7 +144,7 @@ parametric models to model the number of events at any time. This is done by
 assuming a hazard rate for the inter-arrival times. This also has the same
 limitations as per single event survival analysis. That is, given we use a
 parametric representation of the hazard rate we are making assumptions about the
-shape of the cumulative incidence function. This allows us to extrapolate
+shape of the cumulative intensity function. This allows us to extrapolate
 above the highest observed values but may not be a good fit to the data.
 
 Let's fit a parametric model.
@@ -283,8 +286,8 @@ Generalized Renewal Process modelling is simple with SurPyval:
     model = GeneralizedRenewal.fit(x, dist=Weibull)
     model
 
-We cannot plot the cumulative incidence function of the model since it does
-not have a closed form solution. We can however plot the cumulative incidence
+We cannot plot the cumulative intensity function of the model since it does
+not have a closed form solution. We can however plot the cumulative intensity
 function of a monte carlo simulation of the model. Let's do that and compare
 it to a non-parametric description of the MCF:
 
@@ -301,7 +304,7 @@ second is the number of simulations to run. The more simulations you run the
 more accurate the model will be. The method returns a ``NonParametricCounting``
 model that can be used to plot the results.
 
-You can see that the cumulative incidence function of the model is a very good
+You can see that the cumulative intensity function of the model is a very good
 fit to the data. You can also see that it is "wavy." This is because the
 underlying distribution is Weibull with a reasonably high shape parameter. This
 means that the first inter-arrival time is going to be within a relatively

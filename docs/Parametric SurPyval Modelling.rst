@@ -333,7 +333,7 @@ The above plot does not look to be a good fit. However, if we use an offset we c
 
     model.plot()
 
-This is evidently a much better fit! The offset value for an offset distribution is saved as :code:`gamma` in the model object. Offsets can be used for any distribution supported on the half real line. Currently, this is the Weibull, Gamma, LogNormal, LogLogistic, and Exponential. For example:
+This is evidently a much better fit! The offset value for an offset distribution is saved as :code:`gamma` in the model object. Offsets can be used for any distribution whose support is the half real line :math:`(0, \infty)` — such as the Weibull, Gamma, LogNormal, LogLogistic and Exponential. For example:
 
 .. jupyter-execute::
 
@@ -382,7 +382,7 @@ A caution: offset parameters can be unidentifiable
 
 The offset ``gamma`` is a *threshold* parameter, and threshold parameters are statistically awkward. ``gamma`` trades off against the shape and scale parameters, so two very different parameter tuples can describe almost the same distribution. This means a fit can report parameters that are badly wrong while the distribution it implies is still an excellent fit to your data. It is important to understand this so you are not alarmed by - or misled by - the printed parameters.
 
-The clearest way to see this is to fit the same offset data with different estimation methods. Below we generate Gamma data shifted by ``gamma = 10`` and fit it both with maximum product of spacings (``MPP``) and maximum likelihood (``MLE``):
+The clearest way to see this is to fit the same offset data with different estimation methods. Below we generate Gamma data shifted by ``gamma = 10`` and fit it both with the probability-plotting method (``MPP``) and maximum likelihood (``MLE``):
 
 .. jupyter-execute::
 
@@ -493,7 +493,7 @@ You can see that the results are the same. This is because the maximum likelihoo
     mps_model = surv.Uniform.fit(x, how='MPS')
     print(*mps_model.params)
 
-You can see that using the MPS method we have parameters that are closer to the real values. This is because the MPS method can 'look outside' the existing values to estimate where the real value lies. See the details of this method in the 'Parametric Estimation' section. But the MPS method is useful when you need to estimate the point at which a distribution's support starts or for any disttribution that has unknown support. Concretely, this includes any offset distribution or a distribution with a finite upper and lower support (Uniform, Generalised Beta, Triangle)
+You can see that using the MPS method we have parameters that are closer to the real values. This is because the MPS method can 'look outside' the existing values to estimate where the real value lies. See the details of this method in the :doc:`Parametric Estimation` section. But the MPS method is useful when you need to estimate the point at which a distribution's support starts or for any distribution that has unknown support. Concretely, this includes any offset distribution or a distribution with a finite upper and lower support (such as the Uniform).
 
 The other important use case is when, for some reason, an alternate estimation method just does not work. For example:
 

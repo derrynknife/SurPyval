@@ -28,7 +28,7 @@ cumulative count. So the model becomes:
 
 .. math::
 
-    N(t) = \phi\left( X \right) \lambda t
+    N(t) = \phi\left( Z \right) \lambda t
 
 In this case, just as was the case with single event proportional hazard
 models, there is a factor that relates the covariates to the counting function.
@@ -41,11 +41,11 @@ rate even during optimisation. That is, our model will be:
 
 .. math::
 
-    N(t) = e^{X \beta} \lambda t
+    N(t) = e^{Z \beta} \lambda t
 
 
 This is the proportional intensity HPP model. The log-linear (exponential)
-link function :math:`e^{X\beta}` is the standard choice because it guarantees
+link function :math:`e^{Z\beta}` is the standard choice because it guarantees
 a positive rate regardless of the sign of :math:`\beta`, mirrors the Cox model
 for single events, and gives regression coefficients a direct multiplicative
 interpretation on the rate.
@@ -59,7 +59,7 @@ of a system decreases as a function of cumulative operating time, reflecting
 the notion that systems become more reliable through usage and corrective 
 actions. In the Duane process, the cumulative number of failures is modeled as 
 a function of time, providing a way to quantify reliability growth and 
-forecast future performance. The convetntional parameterisation for the Duane
+forecast future performance. The conventional parameterisation for the Duane
 is:
 
 .. math::
@@ -94,17 +94,17 @@ under different conditions easy and interpretable.
 
     \lambda(t) = \frac{dN(t)}{dt} = \alpha \beta t^{\beta - 1}
 
-3. The Proportional Intensity model incorporating a covariate :math:`x`:
+3. The Proportional Intensity model incorporating a covariate :math:`Z`:
 
 .. math::
 
-    \lambda(t \mid x) = \lambda_0(t) \exp(\gamma x)
+    \lambda(t \mid Z) = \lambda_0(t) \exp(Z \beta)
 
 4. The adjusted failure intensity function with the covariate effect in the context of the Duane model:
 
 .. math::
 
-    \lambda(t \mid x) = \alpha \beta t^{\beta - 1} \exp(\gamma x)
+    \lambda(t \mid Z) = \alpha \beta t^{\beta - 1} \exp(Z \beta)
 
 These equations outline the framework for modelling the reliability growth of a
 system, incorporating the effects of covariates on the failure intensity.
@@ -150,6 +150,11 @@ setting come from the delta method via ``cif_cb``.
 These methods form a comprehensive toolkit for researchers and practitioners
 working with recurrent event data, enabling detailed analysis and prediction of
 event occurrences.
+
+For worked examples — fitting the proportional-intensity HPP and NHPP models,
+reading off the event-count ratio between covariate settings, and plotting the
+covariate-conditional cumulative intensity with confidence bounds — see the
+:doc:`Recurrent Event Regression Modelling with SurPyval` page.
 
 References
 ----------
