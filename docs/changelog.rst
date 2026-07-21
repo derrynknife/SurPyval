@@ -96,6 +96,32 @@ Correctness
 Regression
 ~~~~~~~~~~
 
+- **Evaluate a fitted regression model along a time-varying covariate path**
+  (#170). A fitted ``WeibullPH`` (any ``PH(dist)``), ``WeibullAH`` (any
+  ``AH(dist)``) or ``WeibullAFT`` (any ``AFT(dist)``) gains ``sf_tvc`` (and
+  ``Hf_tvc``): given a piecewise-constant covariate schedule ``Z(t)`` it
+  returns the resulting survival ``S(t)``, with an optional ``given=`` age for
+  conditional survival. For proportional and additive hazards the cumulative
+  hazard is additive over disjoint intervals, so the survival along a step path
+  is the exact sum of the per-segment increments; for accelerated failure time
+  the path instead accumulates an *accelerated age*
+  ``ψ(x) = Σ exp(β'z)·(b − a)`` fed once through the baseline. Either way it
+  reduces to ordinary ``sf`` for a constant covariate. The covariate path is
+  described by a new
+  ``StepSchedule``, built structurally (``from_changepoints`` / ``from_intervals``
+  / ``cyclic`` for duty cycles) or from a step-valued expression string in
+  ``t`` (``from_expression``, e.g. ``"0.9 if t % 24 < 8 else 0.3"`` or
+  ``"0.3 * 2 ** floor(t / 1000)"``). Expressions are *proved* piecewise-constant
+  from their syntax tree before evaluation -- ``t`` may reach the value only
+  through a quantizer (``floor`` / ``ceil`` / ``//``) or a comparison -- so a
+  continuously-varying covariate (``0.3 + 1e-4 * t``, ``sin(t)``) is rejected
+  with ``StepValuedError`` rather than silently returning a wrong answer.
+  ``sf_tvc`` may be given ``(xl, Z)`` arrays directly or a ``StepSchedule``.
+  The semi-parametric ``CoxPH`` gains the same ``sf_tvc`` / ``Hf_tvc`` and
+  ``StepSchedule`` convention (summing the fitted baseline-hazard jumps along
+  the path); the existing interval-oriented ``predict_tvc`` is unchanged and
+  ``sf_tvc`` agrees with it exactly. Only proportional odds does not yet
+  expose a time-varying-covariate evaluation and raises.
 - **Time-varying covariates for the parametric PH and additive-hazards
   families** (#150). ``WeibullPH`` (and every ``PH(dist)``) and ``WeibullAH``
   (every ``AH(dist)``) gain ``fit_tvc`` / ``fit_tvc_timeline`` and the

@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING, Any, Callable
 import autograd.numpy as np
 import numpy.typing as npt
 
+from surpyval.serialisation import stamp_schema
 from surpyval.utils import _get_idx
 
 from .regression_data import prepare_Z
-from surpyval.serialisation import stamp_schema
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -374,3 +374,120 @@ class SemiParametricRegressionModel:
         last = H_cum.shape[0] - 1
         Hf = np.where(idx >= 0, H_cum[np.clip(idx, 0, last)], 0.0)
         return query, np.exp(-Hf), Hf
+
+    def _tvc_cumhaz(self, query, starts, Zseg):
+        r"""
+        Cumulative hazard of the fitted baseline at each ``query`` time for a
+        covariate that takes value ``Zseg[i]`` on the segment starting at
+        ``starts[i]``:
+
+        .. math::
+            H(t) = \sum_{u_j \le t} h_0(u_j)\, e^{\beta' Z(u_j)},
+
+        summing the baseline-hazard jumps ``h0`` at the fitted event times
+        weighted by the multiplier of the covariate *active* at each jump.
+        """
+        base_t = self.x
+        active = np.searchsorted(starts, base_t, side="right") - 1
+        active = np.clip(active, 0, starts.shape[0] - 1)
+        phi = np.exp(Zseg[active] @ self.beta)
+        H_cum = np.cumsum(self.h0 * phi)
+        idx = np.searchsorted(base_t, query, side="right") - 1
+        last = H_cum.shape[0] - 1
+        return np.where(idx >= 0, H_cum[np.clip(idx, 0, last)], 0.0)
+
+    def Hf_tvc(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | Any",
+        xl: "npt.ArrayLike | None" = None,
+    ) -> npt.NDArray:
+        r"""
+        Cumulative hazard for a covariate following a step schedule ``Z(t)``.
+
+        The Cox analogue of :meth:`predict_tvc` written to the shared
+        time-varying-covariate convention used by the parametric families:
+        ``Z`` is either a :class:`~...tvc_schedule.StepSchedule` or an array of
+        per-segment covariate rows with ``xl`` giving the segment start times.
+        The cumulative hazard sums the fitted baseline-hazard jumps weighted by
+        the covariate active at each jump (see :meth:`_tvc_cumhaz`).
+
+        Parameters
+        ----------
+        x : array_like
+            Times at which to evaluate the cumulative hazard.
+        Z : StepSchedule or array_like
+            The covariate path -- a
+            :class:`~...tvc_schedule.StepSchedule`, or per-segment covariate
+            rows (with ``xl`` giving the segment start times).
+        xl : array_like, optional
+            Segment start times, required only when ``Z`` is an array.
+        """
+        if self.is_stratified:
+            raise NotImplementedError(
+                "time-varying-covariate evaluation is not defined for a "
+                "stratified Cox fit (each stratum carries its own baseline "
+                "hazard); pick a stratum's model first"
+            )
+        from .tvc_schedule import as_step_schedule, segments_from_origin
+
+        schedule = as_step_schedule(Z, xl)
+        n_cov = np.asarray(self.beta).shape[0]
+        if schedule.p != n_cov:
+            raise ValueError(
+                "the schedule has {} covariate(s) but the model was fit with "
+                "{}".format(schedule.p, n_cov)
+            )
+        xq = np.atleast_1d(np.asarray(x, dtype=float))
+        t_max = float(np.max(xq))
+        if t_max <= 0:
+            raise ValueError("x must contain a positive time")
+        starts, _, Zseg = segments_from_origin(schedule, t_max)
+        return self._tvc_cumhaz(xq, starts, Zseg)
+
+    def sf_tvc(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | Any",
+        xl: "npt.ArrayLike | None" = None,
+        given: "float | None" = None,
+    ) -> npt.NDArray:
+        r"""
+        Survival for a covariate following a step (piecewise-constant) schedule
+        ``Z(t)``.
+
+        The Cox counterpart of the parametric ``sf_tvc``: ``S(x) = exp(-H(x))``
+        with ``H`` the baseline-jump sum of :meth:`Hf_tvc`, so every regression
+        family -- parametric proportional/additive hazards and semi-parametric
+        Cox -- shares one calling convention. ``predict_tvc`` remains for the
+        interval-oriented ``(xl, xr, Z)`` form and returning the baseline jump
+        times.
+
+        Parameters
+        ----------
+        x : array_like
+            Times at which to evaluate survival.
+        Z : StepSchedule or array_like
+            The covariate path. Either a
+            :class:`~...tvc_schedule.StepSchedule` (change-points, intervals, a
+            cyclic pattern, or a step-valued expression) or an array of
+            per-segment covariate rows with ``xl`` giving the segment start
+            times.
+        xl : array_like, optional
+            Segment start times, required only when ``Z`` is an array.
+        given : float, optional
+            If supplied, return the *conditional* survival given the item has
+            survived to age ``given``:
+            ``S(x | given) = exp(-(H(x) - H(given)))``.
+
+        Returns
+        -------
+        ndarray
+            Survival at each ``x`` (conditional on ``given`` when supplied).
+        """
+        H = self.Hf_tvc(x, Z, xl)
+        if given is not None:
+            given = float(given)
+            if given > 0:
+                H = H - self.Hf_tvc(given, Z, xl)[0]
+        return np.exp(-H)

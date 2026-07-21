@@ -13,6 +13,16 @@ All parametric regression models use :math:`\phi(Z) = e^{\beta'Z}` (log-linear
 covariates) except Accelerated Life models, which use domain-specific stress
 functions.
 
+**Time-varying covariates.** Where the cumulative hazard is additive over
+disjoint intervals, the proportional-hazards and additive-hazards families
+(``WeibullPH`` / ``PH(dist)`` and ``WeibullAH`` / ``AH(dist)``) also *fit*
+start-stop time-varying-covariate data with ``fit_tvc`` / ``fit_tvc_timeline``,
+reusing the ordinary maximum-likelihood fit. A fitted PH, AH or AFT model can
+then be *evaluated* along a piecewise-constant covariate path with ``sf_tvc`` /
+``Hf_tvc``, describing the path as a
+:class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`. See
+:ref:`tvc-parametric` in the how-to guide.
+
 
 Proportional Hazards (PH)
 --------------------------
@@ -118,4 +128,17 @@ Custom life models can be created by subclassing ``LifeModel``::
     :members: fit
 
 .. autoclass:: surpyval.univariate.regression.accelerated_life.lifemodel.LifeModel
+    :members:
+
+
+Time-varying covariate schedules
+--------------------------------
+
+A ``StepSchedule`` describes a piecewise-constant covariate path ``Z(t)`` for
+``sf_tvc`` / ``Hf_tvc`` evaluation. Build one structurally
+(``from_changepoints`` / ``from_intervals`` / ``cyclic`` / ``constant``) or from
+a step-valued expression string in ``t`` (``from_expression``); see
+:ref:`tvc-parametric` for worked examples.
+
+.. autoclass:: surpyval.univariate.regression.tvc_schedule.StepSchedule
     :members:

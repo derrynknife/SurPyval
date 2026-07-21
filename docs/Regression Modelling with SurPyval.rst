@@ -223,15 +223,19 @@ format directly — splitting a subject into intervals with the same covariates
 leaves the fit unchanged.
 
 Use :meth:`CoxPH.fit_tvc` (arrays) or :meth:`CoxPH.fit_tvc_from_df` (a
-start-stop ``DataFrame``). In the example below a covariate ``stress`` switches
-from 0 to 1 at a random time for each unit and genuinely raises the hazard once
-it turns on; units that fail before the switch contribute a single interval,
-those that survive it contribute two:
+start-stop ``DataFrame``). The interval bounds follow surpyval's ``xl`` / ``xr``
+naming and the status column ``c`` follows surpyval's censoring convention —
+``c = 0`` for the terminal event, ``c = 1`` for a right-censored interval end
+(a covariate change or administrative end). In the example below a covariate
+``stress`` switches from 0 to 1 at a random time for each unit and genuinely
+raises the hazard once it turns on; units that fail before the switch
+contribute a single interval, those that survive it contribute two:
 
 .. jupyter-execute::
 
     import pandas as pd
     from surpyval import CoxPH
+    from surpyval.univariate.regression import StepSchedule
 
     rng = np.random.default_rng(0)
     n, lam, beta = 2000, 0.5, 1.0
@@ -243,40 +247,63 @@ those that survive it contribute two:
     rows = []
     for i in range(n):
         if T[i] <= switch[i]:                    # failed before the switch
-            rows.append((i, 0.0, T[i], 1, 0.0))
+            rows.append((i, 0.0, T[i], 0, 0.0))     # c=0: event on one interval
         else:                                    # survived it: two intervals
-            rows.append((i, 0.0, switch[i], 0, 0.0))
-            rows.append((i, switch[i], T[i], 1, 1.0))
-    df = pd.DataFrame(rows, columns=['id', 'start', 'stop', 'event', 'stress'])
+            rows.append((i, 0.0, switch[i], 1, 0.0))  # c=1: covariate change
+            rows.append((i, switch[i], T[i], 0, 1.0)) # c=0: terminal event
+    df = pd.DataFrame(rows, columns=['id', 'xl', 'xr', 'c', 'stress'])
 
     model = CoxPH.fit_tvc_from_df(
-        df, id_col='id', start_col='start', stop_col='stop',
-        event_col='event', Z_cols='stress',
+        df, id_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
     )
     model
 
 The fitted coefficient recovers the simulated log-hazard-ratio of the stress
 (:math:`\beta \approx 1`) — a plain Cox fit that ignored the timing of the
-switch could not.
+switch could not. (A covariate *timeline* — one row per change per subject —
+can be given instead of explicit intervals with
+:meth:`CoxPH.fit_tvc_timeline`.)
 
 Because survival now depends on the *whole* covariate path, evaluate it with
-:meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.predict_tvc`,
-passing a subject's intervals. It returns the times, survival and cumulative
-hazard along that path; with a single constant interval it reduces exactly to
-``sf``. Here a unit stressed from ``t = 1`` onward has visibly lower survival
-than one never stressed:
+``sf_tvc``, describing the path as a :class:`StepSchedule` (or ``(xl, Z)``
+arrays). This is the same ``sf_tvc`` interface every regression family exposes
+(see :ref:`tvc-parametric`); with a single constant segment it reduces exactly
+to ``sf``. Here a unit stressed from ``t = 1`` onward has visibly lower
+survival than one never stressed:
 
 .. jupyter-execute::
 
-    t_never, s_never, _ = model.predict_tvc(start=[0.0], stop=[3.0], Z=[[0.0]])
-    t_late, s_late, _ = model.predict_tvc(
-        start=[0.0, 1.0], stop=[1.0, 3.0], Z=[[0.0], [1.0]]
-    )
-    plt.step(t_never, s_never, where='post', label='never stressed')
-    plt.step(t_late, s_late, where='post', label='stressed after t=1')
+    t = np.linspace(0.01, 3.0, 100)
+    never = StepSchedule.constant([0.0])
+    late = StepSchedule.from_changepoints([0.0, 1.0], [[0.0], [1.0]])
+    plt.plot(t, model.sf_tvc(t, never), label='never stressed')
+    plt.plot(t, model.sf_tvc(t, late), label='stressed after t=1')
     plt.legend()
     plt.xlabel('Time')
     plt.ylabel('S(t)')
+
+The older interval-oriented
+:meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.predict_tvc`
+— which returns the survival and cumulative hazard at the baseline jump times
+along a subject's ``(xl, xr]`` intervals — remains available and agrees with
+``sf_tvc`` exactly.
+
+.. note::
+
+   **Predicting along a future covariate path.** Some packages (lifelines, for
+   one) deliberately *refuse* to produce a survival curve from a
+   time-varying-covariate Cox model, reasoning that a subject's future
+   covariate values are unknown: you cannot know :math:`Z(u)` for :math:`u` up
+   to a future time :math:`t`, so an *observed* subject's survival past its
+   last record is undefined. SurPyval takes a different view because ``sf_tvc``
+   answers a different question. You *supply* the covariate path as a plan or a
+   hypothesis — mission phases, a periodic duty cycle, a scheduled load
+   increase — and given that stated :math:`Z(\cdot)` the survival
+   :math:`S(t \mid Z(\cdot))` is exactly defined. This is scenario / what-if
+   evaluation under an assumed trajectory, not a claim to know the future; the
+   answer is only ever as good as the covariate plan you feed it. When the
+   future schedule is genuinely unknown, that is a reason not to specify one —
+   not a reason for the model to refuse an otherwise well-posed question.
 
 Only left-truncation / delayed entry is available for Cox (supply a 1-D ``tl``
 to :meth:`CoxPH.fit`); right or interval truncation is rejected, because the
@@ -683,6 +710,85 @@ The ``PO`` factory accepts any distribution:
 A practical rule of thumb: if the Kaplan-Meier curves for different covariate
 groups converge at long times (rather than remaining parallel on the log-hazard
 scale), PO is likely a better fit than PH.
+
+
+.. _tvc-parametric:
+
+Time-varying covariates across families
+---------------------------------------
+
+The counting-process machinery shown for Cox is not unique to it. Wherever the
+cumulative hazard is *additive over disjoint time intervals*, a
+time-varying-covariate subject factorises exactly into one left-truncated
+observation per constant-covariate interval — so the parametric proportional
+hazards (``PH``) and additive hazards (``AH``) families fit start-stop data
+with the same ``fit_tvc`` / ``fit_tvc_timeline`` (and ``_from_df``) methods and
+the same ``i`` / ``xl`` / ``xr`` / ``c`` convention as Cox:
+
+.. jupyter-execute::
+
+    from surpyval import WeibullPH
+
+    ph = WeibullPH.fit_tvc_from_df(
+        df, id_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
+    )
+    ph.params
+
+**Evaluating a covariate path.** Every family that has a closed form along a
+step path — Cox, parametric ``PH`` and ``AH``, and accelerated failure time
+(``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus the
+matching ``Hf_tvc``). Pass either ``(xl, Z)`` arrays or a :class:`StepSchedule`,
+and ``given=`` for conditional survival :math:`S(x \mid \text{survived to } g)`.
+Proportional and additive hazards accumulate a cumulative hazard over the
+segments; AFT instead accumulates an *accelerated age*
+:math:`\psi(x) = \sum e^{\beta'z}\,(b - a)` and evaluates the baseline once at
+:math:`\psi`. Proportional odds has no such closed form yet, and raises.
+
+Describing the covariate path
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A :class:`StepSchedule` is a piecewise-constant covariate path. The covariate
+*must* be a step function — that is precisely what keeps each family's
+cumulative form exact — so a schedule can be built structurally (change-points,
+explicit intervals, or a repeating duty cycle) or from a step-valued expression
+in ``t``:
+
+.. jupyter-execute::
+
+    # structural
+    StepSchedule.from_changepoints([0.0, 500.0], [[0.0], [1.0]])   # a switch
+    StepSchedule.cyclic([0, 8], [[1.0], [0.0]], period=24)         # 8-on/16-off
+
+    # expression in t, materialised to a horizon
+    duty = StepSchedule.from_expression("1.0 if t % 24 < 8 else 0.0",
+                                        horizon=96)
+    trend = StepSchedule.from_expression("0.3 * 2 ** floor(t / 1000)",
+                                         horizon=5000)
+    trend
+
+An expression is proved piecewise-constant *statically*, from its syntax tree,
+before it is ever evaluated: ``t`` may reach the value only through a quantizer
+(``floor``, ``ceil``, ``//``) or a comparison. A genuinely continuous covariate
+(``0.3 + 1e-4 * t``, ``sin(t)``) is rejected with ``StepValuedError`` rather
+than silently returning a wrong answer — a covariate that varies continuously
+would break the exactness of the segment sum. (surpyval owns only this
+step-valued guarantee; sandboxing an *untrusted* expression string is the
+calling application's responsibility.)
+
+Evaluating the fitted parametric model along a path is then identical to the
+Cox case:
+
+.. jupyter-execute::
+
+    t = np.linspace(0.1, 3.0, 100)
+    never = ph.sf_tvc(t, StepSchedule.constant([0.0]))
+    late = ph.sf_tvc(t, StepSchedule.from_changepoints([0.0, 1.0],
+                                                       [[0.0], [1.0]]))
+    plt.plot(t, never, label='never stressed')
+    plt.plot(t, late, label='stressed after t=1')
+    plt.legend()
+    plt.xlabel('Time')
+    plt.ylabel('S(t)')
 
 
 Confidence Bounds
