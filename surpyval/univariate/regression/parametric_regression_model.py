@@ -427,6 +427,184 @@ class ParametricRegressionModel:
         Z = self._prepare_Z(Z)
         return self.model.sf(x, Z, *self.params)
 
+    # Families whose cumulative hazard is additive over disjoint time
+    # intervals, so a step-valued covariate path factorises exactly into a sum
+    # over its segments (the same structure that lets ``fit_tvc`` reshape TVC
+    # data). Accelerated failure time (covariate rescales time -> needs an
+    # accumulated accelerated age) and proportional odds (no additive form) do
+    # not compose this way and are refused below.
+    _TVC_EVALUABLE_KINDS = ("Proportional Hazard", "Additive Hazard")
+
+    def _tvc_segments(self, schedule, t_max):
+        """
+        Materialise ``schedule`` to ``t_max`` and return ``(starts, ends, Z)``
+        with the first segment held back to the time origin, so the cumulative
+        hazard is measured from ``0`` (unconditional survival).
+        """
+        starts, ends, Z = schedule.segments(t_max)
+        if starts[0] > 0:
+            # Hold the first covariate back to the origin (matches the Cox
+            # ``predict_tvc`` clamp): survival is measured from t = 0.
+            starts = starts.copy()
+            starts[0] = 0.0
+        return starts, ends, Z
+
+    def _to_schedule(self, Z, xl):
+        """
+        Coerce the ``sf_tvc`` covariate argument into a
+        :class:`~...tvc_schedule.StepSchedule`.
+
+        ``Z`` is either a ready-made schedule, or an array of per-segment
+        covariate rows whose segment start times are given in ``xl``.
+        """
+        from .tvc_schedule import StepSchedule
+
+        if isinstance(Z, StepSchedule):
+            if xl is not None:
+                raise ValueError(
+                    "xl must not be given when Z is already a StepSchedule"
+                )
+            schedule = Z
+        else:
+            if xl is None:
+                raise ValueError(
+                    "for the array form pass xl (the segment start times) "
+                    "alongside Z (one covariate row per segment); or pass a "
+                    "StepSchedule"
+                )
+            schedule = StepSchedule.from_changepoints(xl, Z)
+
+        n_cov = self.params.shape[0] - self.k_dist
+        if schedule.p != n_cov:
+            raise ValueError(
+                "the schedule has {} covariate(s) but the model was fit with "
+                "{}".format(schedule.p, n_cov)
+            )
+        return schedule
+
+    def Hf_tvc(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | Any",
+        xl: "npt.ArrayLike | None" = None,
+    ) -> npt.NDArray:
+        r"""
+        Cumulative hazard for a covariate following a step schedule ``Z(t)``.
+
+        For the proportional- and additive-hazards families the cumulative
+        hazard is additive over disjoint intervals, so along a piecewise
+        constant path it is exactly the sum of the per-segment increments
+
+        .. math::
+            H\bigl(x \mid Z(\cdot)\bigr)
+            = \sum_{\text{seg } (a, b]} \bigl[\,H(b, z) - H(a, z)\,\bigr],
+
+        each increment evaluated with the model's own ``Hf`` at the covariate
+        ``z`` active on that segment (the last segment clipped at ``x``). With
+        a single constant segment this reduces exactly to ``Hf(x, Z)``.
+
+        Parameters
+        ----------
+        x : array_like
+            Times at which to evaluate the cumulative hazard.
+        Z : StepSchedule or array_like
+            The covariate path -- either a
+            :class:`~...tvc_schedule.StepSchedule`, or an array of per-segment
+            covariate rows (with ``xl`` giving the segment start times).
+        xl : array_like, optional
+            Segment start times, required only when ``Z`` is an array.
+
+        Returns
+        -------
+        ndarray
+            The cumulative hazard at each ``x``.
+        """
+        if self.kind not in self._TVC_EVALUABLE_KINDS:
+            raise NotImplementedError(
+                "time-varying-covariate evaluation is only defined for the "
+                "proportional-hazards and additive-hazards families (this "
+                "model is '{}'). Accelerated failure time needs an "
+                "accumulated accelerated age and proportional odds has no "
+                "additive hazard "
+                "form; neither factorises over covariate segments.".format(
+                    self.kind
+                )
+            )
+        xq = np.atleast_1d(np.asarray(x, dtype=float))
+        schedule = self._to_schedule(Z, xl)
+        t_max = float(np.max(xq))
+        if t_max <= 0:
+            raise ValueError("x must contain a positive time")
+        starts, ends, Zseg = self._tvc_segments(schedule, t_max)
+
+        H = np.zeros(xq.shape[0], dtype=float)
+        for a, b, z in zip(starts, ends, Zseg):
+            zrow = np.asarray(z, dtype=float).reshape(1, -1)
+            upper = np.clip(xq, a, b)
+            hi = np.asarray(
+                self.model.Hf(upper, zrow, *self.params), dtype=float
+            ).ravel()
+            lo = np.asarray(
+                self.model.Hf(np.array([a]), zrow, *self.params), dtype=float
+            ).ravel()
+            H = H + (hi - lo)
+        return H
+
+    def sf_tvc(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | Any",
+        xl: "npt.ArrayLike | None" = None,
+        given: "float | None" = None,
+    ) -> npt.NDArray:
+        r"""
+        Survival for a covariate that follows a step (piecewise-constant)
+        schedule ``Z(t)``.
+
+        With a time-varying covariate the survival depends on the whole
+        covariate path, not one fixed vector. For the proportional- and
+        additive-hazards families this is exact along a step path:
+        ``S(x) = exp(-H(x))`` where ``H`` is the segment sum in
+        :meth:`Hf_tvc`. Only these families compose this way -- accelerated
+        failure time and proportional odds raise ``NotImplementedError``.
+
+        Parameters
+        ----------
+        x : array_like
+            Times at which to evaluate survival.
+        Z : StepSchedule or array_like
+            The covariate path. Either a
+            :class:`~...tvc_schedule.StepSchedule` (built from change-points,
+            intervals, a cyclic pattern, or a step-valued expression) or an
+            array of per-segment covariate rows with ``xl`` giving the segment
+            start times.
+        xl : array_like, optional
+            Segment start times, required only when ``Z`` is an array.
+        given : float, optional
+            If supplied, return the *conditional* survival given the item has
+            survived to age ``given``:
+            ``S(x | given) = exp(-(H(x) - H(given)))``.
+
+        Returns
+        -------
+        ndarray
+            Survival at each ``x`` (conditional on ``given`` when supplied).
+
+        Examples
+        --------
+        >>> from surpyval import WeibullPH
+        >>> from surpyval.univariate.regression import StepSchedule
+        >>> # ... model = WeibullPH.fit(...)
+        >>> sched = StepSchedule.from_changepoints([0, 500], [[0.0], [1.0]])
+        >>> model.sf_tvc([250, 750], sched)          # doctest: +SKIP
+        """
+        H = self.Hf_tvc(x, Z, xl)
+        if given is not None:
+            given = float(given)
+            if given > 0:
+                H = H - self.Hf_tvc(given, Z, xl)[0]
+        return np.exp(-H)
+
     def ff(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:

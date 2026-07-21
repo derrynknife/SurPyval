@@ -9,7 +9,6 @@ from .accelerated_failure_time import (
     NormalAFT,
     WeibullAFT,
 )
-from .buckley_james import BuckleyJames, BuckleyJamesModel
 from .accelerated_life import (
     AcceleratedLife,
     DualExponential,
@@ -38,6 +37,8 @@ from .additive_hazards import (
     NormalAH,
     WeibullAH,
 )
+from .buckley_james import BuckleyJames, BuckleyJamesModel
+from .parametric_regression_model import ParametricRegressionModel
 from .proportional_hazards import (
     PH,
     CoxPH,
@@ -50,8 +51,6 @@ from .proportional_hazards import (
     ProportionalHazardsFitter,
     WeibullPH,
 )
-from .parametric_regression_model import ParametricRegressionModel
-from .semi_parametric_regression_model import SemiParametricRegressionModel
 from .proportional_odds import (
     PO,
     ExponentialPO,
@@ -63,11 +62,16 @@ from .proportional_odds import (
     ProportionalOddsFitter,
     WeibullPO,
 )
+from .semi_parametric_regression_model import SemiParametricRegressionModel
+from .tvc_schedule import StepSchedule, StepValuedError
 
 __all__ = [
     # Result classes that hold to_dict / from_dict / to_json / from_json
     "ParametricRegressionModel",
     "SemiParametricRegressionModel",
+    # Time-varying-covariate step schedule for sf_tvc evaluation
+    "StepSchedule",
+    "StepValuedError",
     # Buckley-James semi-parametric AFT
     "BuckleyJames",
     "BuckleyJamesModel",

@@ -96,6 +96,25 @@ Correctness
 Regression
 ~~~~~~~~~~
 
+- **Evaluate a fitted PH / AH model along a time-varying covariate path**
+  (#170). A fitted ``WeibullPH`` (any ``PH(dist)``) or ``WeibullAH`` (any
+  ``AH(dist)``) gains ``sf_tvc`` (and ``Hf_tvc``): given a piecewise-constant
+  covariate schedule ``Z(t)`` it returns the resulting survival ``S(t)``, with
+  an optional ``given=`` age for conditional survival. Because the cumulative
+  hazard is additive over disjoint intervals, the survival along a step path is
+  the exact sum of the per-segment increments and reduces to ordinary ``sf``
+  for a constant covariate. The covariate path is described by a new
+  ``StepSchedule``, built structurally (``from_changepoints`` / ``from_intervals``
+  / ``cyclic`` for duty cycles) or from a step-valued expression string in
+  ``t`` (``from_expression``, e.g. ``"0.9 if t % 24 < 8 else 0.3"`` or
+  ``"0.3 * 2 ** floor(t / 1000)"``). Expressions are *proved* piecewise-constant
+  from their syntax tree before evaluation -- ``t`` may reach the value only
+  through a quantizer (``floor`` / ``ceil`` / ``//``) or a comparison -- so a
+  continuously-varying covariate (``0.3 + 1e-4 * t``, ``sin(t)``) is rejected
+  with ``StepValuedError`` rather than silently returning a wrong answer.
+  ``sf_tvc`` may be given ``(xl, Z)`` arrays directly or a ``StepSchedule``.
+  Accelerated failure time (needs an accumulated accelerated age) and
+  proportional odds (no additive hazard) do not compose this way and raise.
 - **Time-varying covariates for the parametric PH and additive-hazards
   families** (#150). ``WeibullPH`` (and every ``PH(dist)``) and ``WeibullAH``
   (every ``AH(dist)``) gain ``fit_tvc`` / ``fit_tvc_timeline`` and the
