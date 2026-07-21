@@ -96,6 +96,19 @@ Correctness
 Regression
 ~~~~~~~~~~
 
+- **Time-varying covariates for the parametric PH and additive-hazards
+  families** (#150). ``WeibullPH`` (and every ``PH(dist)``) and ``WeibullAH``
+  (every ``AH(dist)``) gain ``fit_tvc`` / ``fit_tvc_timeline`` and the
+  DataFrame variants, taking the same start-stop / timeline input as
+  ``CoxPH.fit_tvc`` (``i`` / ``xl`` / ``xr`` / ``c``, surpyval's censoring
+  convention). For these families the cumulative hazard is additive over time
+  intervals, so a time-varying-covariate subject factorises exactly into one
+  left-truncated observation per constant-covariate interval; the fitter simply
+  reshapes the data and reuses the ordinary parametric MLE, giving the same fit
+  as the equivalent non-time-varying data. Accelerated failure time and
+  proportional odds do not compose this way (they need an accumulated
+  accelerated age / have no additive structure), so they do not expose
+  ``fit_tvc``.
 - **Timeline (xicnt-style) input for time-varying-covariate Cox.**
   ``CoxPH.fit_tvc_timeline`` / ``fit_tvc_timeline_from_df`` accept a covariate
   *timeline* -- one row per covariate change per subject (``i``, ``x``, ``Z``,
