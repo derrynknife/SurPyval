@@ -427,13 +427,18 @@ class ParametricRegressionModel:
         Z = self._prepare_Z(Z)
         return self.model.sf(x, Z, *self.params)
 
-    # Families whose cumulative hazard is additive over disjoint time
-    # intervals, so a step-valued covariate path factorises exactly into a sum
-    # over its segments (the same structure that lets ``fit_tvc`` reshape TVC
-    # data). Accelerated failure time (covariate rescales time -> needs an
-    # accumulated accelerated age) and proportional odds (no additive form) do
-    # not compose this way and are refused below.
-    _TVC_EVALUABLE_KINDS = ("Proportional Hazard", "Additive Hazard")
+    # Families whose survival along a step-valued covariate path has an exact
+    # closed form. Proportional and additive hazards accumulate a *cumulative
+    # hazard* additively over the segments; accelerated failure time instead
+    # accumulates an *accelerated age* over the segments and then evaluates the
+    # baseline once. Proportional odds has neither structure (its time-varying
+    # odds form is not yet implemented) and is refused below.
+    _TVC_ADDITIVE_KINDS = ("Proportional Hazard", "Additive Hazard")
+    _TVC_EVALUABLE_KINDS = (
+        "Proportional Hazard",
+        "Additive Hazard",
+        "Accelerated Failure Time",
+    )
 
     def _tvc_segments(self, schedule, t_max):
         """
@@ -476,11 +481,14 @@ class ParametricRegressionModel:
 
         .. math::
             H\bigl(x \mid Z(\cdot)\bigr)
-            = \sum_{\text{seg } (a, b]} \bigl[\,H(b, z) - H(a, z)\,\bigr],
+            = \sum_{\text{seg } (a, b]} \bigl[\,H(b, z) - H(a, z)\,\bigr] .
 
-        each increment evaluated with the model's own ``Hf`` at the covariate
-        ``z`` active on that segment (the last segment clipped at ``x``). With
-        a single constant segment this reduces exactly to ``Hf(x, Z)``.
+        For accelerated failure time the covariate rescales time, so the path
+        accumulates an *accelerated age*
+        :math:`\psi(x) = \sum_{\text{seg}} e^{\beta' z}\,(b - a)` and the
+        cumulative hazard is the baseline evaluated there,
+        :math:`H(x \mid Z(\cdot)) = H_0(\psi(x))`. Either way a single constant
+        segment reduces exactly to ``Hf(x, Z)``.
 
         Parameters
         ----------
@@ -500,14 +508,11 @@ class ParametricRegressionModel:
         """
         if self.kind not in self._TVC_EVALUABLE_KINDS:
             raise NotImplementedError(
-                "time-varying-covariate evaluation is only defined for the "
-                "proportional-hazards and additive-hazards families (this "
-                "model is '{}'). Accelerated failure time needs an "
-                "accumulated accelerated age and proportional odds has no "
-                "additive hazard "
-                "form; neither factorises over covariate segments.".format(
-                    self.kind
-                )
+                "time-varying-covariate evaluation is defined for the "
+                "proportional-hazards, additive-hazards and "
+                "accelerated-failure-time families (this model is '{}'). The "
+                "proportional-odds time-varying form is not yet "
+                "implemented.".format(self.kind)
             )
         xq = np.atleast_1d(np.asarray(x, dtype=float))
         schedule = self._to_schedule(Z, xl)
@@ -516,6 +521,16 @@ class ParametricRegressionModel:
             raise ValueError("x must contain a positive time")
         starts, ends, Zseg = self._tvc_segments(schedule, t_max)
 
+        if self.kind in self._TVC_ADDITIVE_KINDS:
+            return self._tvc_hf_additive(xq, starts, ends, Zseg)
+        return self._tvc_hf_aft(xq, starts, ends, Zseg)
+
+    def _tvc_hf_additive(self, xq, starts, ends, Zseg):
+        """
+        Cumulative hazard along a step path for the additive-cumulative-hazard
+        families (PH, AH): telescoping sum of the model's ``Hf`` increment on
+        each segment, the last clipped at the query time.
+        """
         H = np.zeros(xq.shape[0], dtype=float)
         for a, b, z in zip(starts, ends, Zseg):
             zrow = np.asarray(z, dtype=float).reshape(1, -1)
@@ -529,6 +544,32 @@ class ParametricRegressionModel:
             H = H + (hi - lo)
         return H
 
+    def _tvc_hf_aft(self, xq, starts, ends, Zseg):
+        r"""
+        Cumulative hazard along a step path for accelerated failure time.
+
+        The covariate rescales time by ``phi(z) = exp(beta'z)``, so each
+        segment contributes ``phi(z) * (width)`` of *accelerated age*. The
+        accumulated age ``psi(x)`` is then fed once through the baseline
+        cumulative hazard ``H0``. This is exact for a step covariate and
+        reduces to ``Hf(x, Z)`` for a single constant segment.
+        """
+        dist_params = self.params[: self.k_dist]
+        phi_params = self.params[self.k_dist :]
+        psi = np.zeros(xq.shape[0], dtype=float)
+        for a, b, z in zip(starts, ends, Zseg):
+            zrow = np.asarray(z, dtype=float).reshape(1, -1)
+            phi_seg = float(
+                np.asarray(
+                    self.model._phi(zrow, *phi_params), dtype=float
+                ).ravel()[0]
+            )
+            width = np.clip(xq, a, b) - a
+            psi = psi + phi_seg * width
+        return np.asarray(
+            self.model.Hf_dist(psi, *dist_params), dtype=float
+        ).ravel()
+
     def sf_tvc(
         self,
         x: npt.ArrayLike,
@@ -541,11 +582,13 @@ class ParametricRegressionModel:
         schedule ``Z(t)``.
 
         With a time-varying covariate the survival depends on the whole
-        covariate path, not one fixed vector. For the proportional- and
-        additive-hazards families this is exact along a step path:
-        ``S(x) = exp(-H(x))`` where ``H`` is the segment sum in
-        :meth:`Hf_tvc`. Only these families compose this way -- accelerated
-        failure time and proportional odds raise ``NotImplementedError``.
+        covariate path, not one fixed vector. This is exact along a step path
+        for the proportional-hazards, additive-hazards and
+        accelerated-failure-time families: ``S(x) = exp(-H(x))`` with ``H`` the
+        per-segment accumulation in :meth:`Hf_tvc` (a cumulative-hazard sum for
+        PH/AH, an accelerated-age sum fed through the baseline for AFT). Only
+        proportional odds does not yet compose this way and raises
+        ``NotImplementedError``.
 
         Parameters
         ----------

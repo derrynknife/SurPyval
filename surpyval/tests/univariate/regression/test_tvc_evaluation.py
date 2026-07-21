@@ -143,7 +143,7 @@ def _fit(F, seed=0, n=300):
     return F.fit(x=x, Z=Z, c=c)
 
 
-@pytest.mark.parametrize("F", [WeibullPH, WeibullAH])
+@pytest.mark.parametrize("F", [WeibullPH, WeibullAH, WeibullAFT])
 def test_constant_schedule_reduces_to_sf(F):
     m = _fit(F)
     z = 0.7
@@ -153,7 +153,7 @@ def test_constant_schedule_reduces_to_sf(F):
     assert np.allclose(a, b)
 
 
-@pytest.mark.parametrize("F", [WeibullPH, WeibullAH])
+@pytest.mark.parametrize("F", [WeibullPH, WeibullAH, WeibullAFT])
 def test_array_form_matches_schedule(F):
     m = _fit(F)
     xl = np.array([0.0, 4.0])
@@ -179,13 +179,31 @@ def test_hf_tvc_equals_manual_telescoping(F):
     assert np.isclose(got, manual)
 
 
-@pytest.mark.parametrize("F", [WeibullPH, WeibullAH])
+@pytest.mark.parametrize("F", [WeibullPH, WeibullAH, WeibullAFT])
 def test_conditional_survival(F):
     m = _fit(F)
     sched = StepSchedule.from_changepoints([0.0, 4.0], [[0.2], [0.9]])
     cond = m.sf_tvc([6.0], sched, given=3.0)
     manual = m.sf_tvc([6.0], sched) / m.sf_tvc([3.0], sched)
     assert np.allclose(cond, manual)
+
+
+def test_aft_hf_tvc_equals_accumulated_accelerated_age():
+    # AFT rescales time: each segment contributes phi(z) * width of accelerated
+    # age, then the baseline cumulative hazard is evaluated once at the total.
+    m = _fit(WeibullAFT)
+    xl = np.array([0.0, 4.0])
+    Z = np.array([[0.2], [0.9]])
+    beta = np.asarray(m.params[m.k_dist :])
+    dist_params = m.params[: m.k_dist]
+    psi = np.exp(0.2 * beta[0]) * 4.0 + np.exp(0.9 * beta[0]) * (6.0 - 4.0)
+    manual = float(
+        np.asarray(
+            m.model.Hf_dist(np.array([psi]), *dist_params), dtype=float
+        ).ravel()[0]
+    )
+    got = m.Hf_tvc([6.0], Z, xl=xl)[0]
+    assert np.isclose(got, manual)
 
 
 def test_sf_tvc_survival_decreasing_and_bounded():
@@ -197,10 +215,9 @@ def test_sf_tvc_survival_decreasing_and_bounded():
     assert np.all(np.diff(s) <= 1e-12)  # monotone non-increasing
 
 
-@pytest.mark.parametrize("F", [WeibullAFT, WeibullPO])
-def test_aft_po_reject_tvc_evaluation(F):
-    m = _fit(F)
-    with pytest.raises(NotImplementedError, match="proportional-hazards"):
+def test_po_rejects_tvc_evaluation():
+    m = _fit(WeibullPO)
+    with pytest.raises(NotImplementedError, match="proportional-odds"):
         m.sf_tvc([2.0], StepSchedule.constant([0.5]))
 
 
