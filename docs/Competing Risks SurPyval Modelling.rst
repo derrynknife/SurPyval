@@ -65,8 +65,9 @@ Once fitted, you can query the CIF for each cause:
 Comparing incidence across groups: Gray's test
 ----------------------------------------------
 
-Having estimated a cumulative incidence function for each group, ``surpyval.
-gray_test`` tests whether the CIFs *differ* for a chosen cause. It is the
+Having estimated a cumulative incidence function for each group,
+``surpyval.gray_test`` tests whether the CIFs *differ* for a chosen cause. It is
+the
 competing-risks analogue of the log-rank test, but with an important
 distinction: where a cause-specific log-rank compares the instantaneous
 *hazards* of a cause, Gray's test compares the *incidence* — the CIFs directly.

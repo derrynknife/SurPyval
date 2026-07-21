@@ -105,18 +105,15 @@ By using this simple change, the highest value will not be 1, and will therefore
 
 Where k is the rank of an observation k is in (1, 2, 3, 4.... n) for n observations. Using these methods we can therefore plot the linearised version above.
 
-Combining this all together is simple witht surpyval.
-
-.. code::
-
-	x = [1, 4, 5, 7, 8, 9, 12, 14]
-	model = surv.Weibull.fit(x, how='MPP', heuristic='Blom')
-	model.plot()
+Fitting a distribution this way — the probability-plotting method with a chosen
+heuristic — produces a linearised plot whose slope and intercept give the
+parameters:
 
 .. image:: images/mpp-1.png
 	:align: center
 
-In this example we have used the probability plotting method with the Blom heuristic to estimate the parameters of the distribution. SurPyval has the option to use many different plotting methods, including the regular KM, NA, and FH non-parametric estimates. All you need to do is change the 'heuristic' parameter; SurPyval includes:
+The plot above uses the Blom heuristic to estimate the parameters of the
+distribution (see the SurPyval Modelling section for the code). SurPyval has the option to use many different plotting methods, including the regular KM, NA, and FH non-parametric estimates. All you need to do is change the 'heuristic' parameter; SurPyval includes:
 
 .. list-table:: SurPyval Modelling Methods
    :header-rows: 1
@@ -167,7 +164,7 @@ In this example we have used the probability plotting method with the Blom heuri
    * - Larsen
      - 0.567
      - -0.134
-   * - Larsen
+   * - Tukey
      - 1/3
      - 1/3
    * - None
@@ -243,9 +240,18 @@ An easy and intuitive way to understand this is to compare these two possibiliti
 
 In this example, again, we need to consider whether the red or black distribution is a more likely description of the observations, including some censored ones. Althought the right censored point for the black distribuiton is very likely, this does not mean it is a good fit because the 'average' across all observations is poor. Therefore, it should be obvious that the red distribution is the better fit.
 
-But what about truncated data
+Truncated data is handled with the same logic, but on the *conditional*
+likelihood. A truncated observation was only observable because it fell inside
+its truncation window :math:`(t_{l}, t_{r}]`, so each contribution is
+renormalised by the probability of landing in that window:
 
+.. math::
 
+    l = \frac{1}{n} \sum_{i=1}^{n} \ln \frac{f(x_{i} \mid \theta)}{F(t_{r_{i}} \mid \theta) - F(t_{l_{i}} \mid \theta)}.
+
+This inflates the contribution of observations from a narrow window, correcting
+for the units that could never have been seen — exactly the delayed-entry
+(left-truncation) and right-truncation adjustments.
 
 Maximum Product of Spacings (MPS)
 ---------------------------------
@@ -275,14 +281,8 @@ or, taking logs and negating for the optimiser exactly as we did for MLE,
 
 Because a geometric mean is largest when its terms are equal, this is maximised when the spacings are as uniform as possible — precisely the "evenly spread" condition above.
 
-Why bother, when MLE already works so well? The answer is those two *end* spacings, :math:`D_{1} = F(x_{(1)}) - 0` and :math:`D_{n+1} = 1 - F(x_{(n)})`. They let MPS "see" the room beyond the smallest and largest observations — information MLE simply throws away. This matters most when a parameter controls where the distribution's support *starts or ends*: an offset (three-parameter) distribution, or a finitely bounded one such as the Uniform, Generalised Beta or Triangular. There the likelihood is badly behaved, because MLE can drive the density to infinity by sliding the support boundary right up against the most extreme data point — a degenerate, unbounded likelihood. MPS cannot be fooled this way: pushing the boundary onto :math:`x_{(1)}` forces the first spacing :math:`D_{1}` to zero, and :math:`\ln 0 = -\infty` is the *worst* possible score, so the estimator is pulled back to a sensible interior solution. This is exactly why, in the :doc:`Parametric SurPyval Modelling` notes, the Uniform and the offset Log-Logistic are recovered far better with ``how='MPS'`` than with MLE.
+Why bother, when MLE already works so well? The answer is those two *end* spacings, :math:`D_{1} = F(x_{(1)}) - 0` and :math:`D_{n+1} = 1 - F(x_{(n)})`. They let MPS "see" the room beyond the smallest and largest observations — information MLE simply throws away. This matters most when a parameter controls where the distribution's support *starts or ends*: an offset (three-parameter) distribution, or a finitely bounded one such as the Uniform. There the likelihood is badly behaved, because MLE can drive the density to infinity by sliding the support boundary right up against the most extreme data point — a degenerate, unbounded likelihood. MPS cannot be fooled this way: pushing the boundary onto :math:`x_{(1)}` forces the first spacing :math:`D_{1}` to zero, and :math:`\ln 0 = -\infty` is the *worst* possible score, so the estimator is pulled back to a sensible interior solution. This is exactly why, in the :doc:`Parametric SurPyval Modelling` notes, the Uniform and the offset Log-Logistic are recovered far better with ``how='MPS'`` than with MLE.
 
 Censoring, ties and truncation are folded in with the same reasoning used for the likelihood. A right- or left-censored point contributes its survival :math:`R(x \mid \theta)` or CDF :math:`F(x \mid \theta)` — all we know is that the true value lies beyond the one we saw — and repeated (tied) observations contribute density terms, so exact ties do not collapse a spacing to zero. Left and right truncation are handled by renormalising the spacings over the observation window: every CDF value is rescaled as :math:`\left(F(x) - F(t_{l})\right) / \left(F(t_{r}) - F(t_{l})\right)` before the gaps are taken, so the spacings again run over a unit interval, now *conditional* on the observation having fallen inside the window. This renormalisation is what lets surpyval fit right-truncated data with MPS, which is otherwise awkward for the other estimators.
 
-Trading the density for spacings costs nothing asymptotically: under the usual regularity conditions MPS is consistent and asymptotically as efficient as MLE, attaining the same asymptotic variance. Its advantage is that it *stays* consistent in the awkward cases — J- or U-shaped densities, and distributions with unknown support — where the maximum likelihood estimate is inconsistent or fails to exist at all. In surpyval it is requested with ``how='MPS'`` and, like every other estimator, returns a fully-featured model:
-
-.. code:: python
-
-    model = surv.Weibull.fit(x, how='MPS')
-
-which makes it a robust fall-back whenever an MLE fit struggles with an offset or a bounded support.
+Trading the density for spacings costs nothing asymptotically: under the usual regularity conditions MPS is consistent and asymptotically as efficient as MLE, attaining the same asymptotic variance. Its advantage is that it *stays* consistent in the awkward cases — J- or U-shaped densities, and distributions with unknown support — where the maximum likelihood estimate is inconsistent or fails to exist at all. In surpyval it is requested with ``how='MPS'`` and, like every other estimator, returns a fully-featured model (see the :doc:`Parametric SurPyval Modelling` notes for the code). This makes it a robust fall-back whenever an MLE fit struggles with an offset or a bounded support.

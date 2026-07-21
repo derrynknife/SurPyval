@@ -18,12 +18,12 @@ integrals — is known as the counting-process formulation, but that is an
 implementation detail. Users navigate by their data type: "do my subjects
 experience repeated events?" If yes, this section applies.
 
-This section is split into two subsections:
+The two broad families of recurrent-event model, which differ in their methods,
+are:
 
-    1. Recurrent Event Modelling
+    1. Recurrent Event (counting-process) Modelling
     2. Renewal Modelling
 
-These are both types of recurrent event models but they differ in their methods.
 In a recurrent event model the inter-arrival time is based on some underlying
 hazard rate, whereas in a renewal model there is an underlying distribution where,
 after each event, the apparent age of the subject is changed.
@@ -82,7 +82,6 @@ for use. These are:
 
     - Duane
     - Cox-Lewis
-    - AMSAA
     - Crow-AMSAA
 
 See the API documentation to see the details of each of these models. The key
@@ -217,9 +216,10 @@ Where :math:`\alpha` is the life parameter of a location-scale distribution and
 :math:`q` is the effectiveness of the intervention. Unlike what is possible 
 with the G-Renewal process, if q is greater than zero the model captures the
 behaviour of when the intervention can improves the life of the subject. If 
-:math:`q = 0` then the repair is as-good-as-new. If :math:`q < 0` then the
-intervention is restoring some life but not to make it as good as new. Note
-that :math:`q` cannot be less than -1.
+:math:`q = 0` then the repair is as-good-as-new. If :math:`q < 0` then each
+repair leaves the item *worse* than before — a partial or harmful repair that
+shortens the subsequent life (a deteriorating system). Note that :math:`q`
+cannot be less than -1.
 
 As an example, if the life parameter of an items was 100 hours and the repair
 effectiveness was -0.2, then after the first repair the next time to an event
@@ -421,6 +421,12 @@ machinery: an item is simply absent from the risk set while it is unobserved.
 The virtual-age and renewal models cannot accommodate gaps, because the virtual
 age at the start of a later window depends on the unobserved failures during
 the gap.
+
+For worked examples — fitting the NHPP, HPP and renewal models, estimating and
+plotting the mean cumulative function, and handling gapped observation — see the
+:doc:`Recurrent Event Modelling with SurPyval` page. For covariate models see
+the :doc:`Recurrent Event Regression Analysis` and
+:doc:`Recurrent Event Regression Modelling with SurPyval` pages.
 
 References
 ----------

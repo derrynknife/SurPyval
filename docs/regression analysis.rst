@@ -6,13 +6,15 @@ The time until some event happens will, almost certainly, be impacted by factors
 
 Regression analysis is the process of capturing the effect that covariates have on the item. That is, we use data on other factors to 'regress' onto the survival distribution. The purpose of this type of regression is so that you can ask, and answer, questions like "what effect will increasing X have on the survival time?"
 
-Surpyval covers three types of regression models, these are:
+Surpyval covers five families of regression model, distinguished by *how* the covariates act on the distribution:
 
- - Proportional Hazards,
- - Accelerated Time, and
- - Accelerated Life.
+ - Proportional Hazards (they multiply the hazard),
+ - Accelerated Failure Time (they scale the time axis),
+ - Accelerated Life (they scale the life parameter),
+ - Proportional Odds (they multiply the odds of failure), and
+ - Additive Hazards (they add to the hazard).
 
-There are special cases when these are the same, however, it is important to understand the difference between them in general. I detail the differences in the following sections.
+There are special cases when several of these coincide, however, it is important to understand the difference between them in general. I detail the differences in the following sections.
 
 Proportional Hazards Model
 --------------------------
@@ -53,7 +55,7 @@ Where
 
 In this case the proportional term is the e raised to the power of the cross product of X and beta. Using this as the covairate function is a very common choice. This is because it will not ever become negative. It can capture situations where a covariate will increase the hazard rate if it's coefficient, beta, is positive, and it will decrease the hazard rate it it's coefficient is negative. Also, the dot product can capture a varying number of covariates with ease. For these reasons the Cox model is a widely used. Although you can choose any function for your covariates there is already likely literature about your problem which might indicate which function to use.
 
-Surpyval uses MLE to estimate the parameters for proportional hazards models. This is a simple conversion from regulare MLE since we know the relationship between a baseline distribution and the proportional hazards version. These relationships are:
+For a *parametric* proportional hazards model (a known baseline such as the Weibull) surpyval uses MLE to estimate the parameters. This is a simple conversion from regular MLE since we know the relationship between a baseline distribution and the proportional hazards version. (The Cox model in the next section is *semi-parametric* — its baseline is left unspecified and its coefficients are estimated by *partial* likelihood, not full MLE.) These relationships are:
 
 .. math::
 
@@ -83,34 +85,34 @@ By far the most common of any regression model of any kind (parametric, non-para
 The Cox model is used in a wide variety of fields. It has been used in criminology to study the recidivism of parolees, in engineering to understand the factors affecting tire reliability, and in medical science to understand factors affecting cancer and other diseases, among many many other applications. The wide use of the model shows the utility the model has and the broad applicability to solve problems.
 
 
-Accelerated Time
-----------------
+Accelerated Failure Time
+------------------------
 
-An accelerated time model is very similar to a proportional hazards model. The difference is where the function is applied; instead of multiplying the hazard function, and accelerated time model multiplies the time by the function of covariates. The general definition is:
+An accelerated failure time (AFT) model is very similar to a proportional hazards model. The difference is where the function is applied; instead of multiplying the hazard function, an accelerated failure time model multiplies the time by the function of covariates. The general definition is:
 
 .. math::
 
-	f(t|X) = f(\phi(X)t)
+	f(t|X) = \phi(X)\, f_{0}(\phi(X)t)
 
-It is called an accelerated time since the time term is transformed by the covariates, i.e. time is 'accelerated' by the covariates.
+It is called accelerated failure time since the time term is transformed by the covariates, i.e. time is 'accelerated' by the covariates.
 
 .. math::
 
 	t_{a} = \phi(X)t
 
 
-Just like proportinal hazards, there are simple transofmations that apply 
+Just like proportional hazards, there are simple transformations that apply. Note the density carries an extra :math:`\phi(X)` factor — the Jacobian of the time change of variables — while the survival and CDF do not:
 
 
 .. math::
 
-	f(t|X) = f(\phi(X)t) \\
+	f(t|X) = \phi(X)\, f_{0}(\phi(X)t) \\
 	\\
-	F(t|X) = F(\phi(X)t) \\
+	F(t|X) = F_{0}(\phi(X)t) \\
 	\\
-	S(t|X) = S(\phi(X)t)
+	S(t|X) = S_{0}(\phi(X)t)
 
-Given the simple transofmation of the time term the MLE is feasible with an additional transformation step. This is how surpyval estimates the parameters.
+Given the simple transformation of the time term the MLE is feasible with an additional transformation step. This is how surpyval estimates the parameters.
 
 Accelerated Life
 ----------------
@@ -121,7 +123,7 @@ An accelerated life model is, in many cases, simply the inverse of an accelerate
 
 	F(t|X) = \Phi\left(\frac{\phi(X)t - \mu}{\sigma}\right) \\
 
-Where :math:`\Phi` is the CDF of the standard normal distribution. In this case :math:`\mu` is the expected life of the model, however, we may isntead be interested in determining what effect covariates have on the expected life of an item. In this case we can simply substitute the expected life:
+Where :math:`\Phi` is the CDF of the standard normal distribution. In this case :math:`\mu` is the expected life of the model, however, we may instead be interested in determining what effect covariates have on the expected life of an item. In this case we can simply substitute the expected life:
 
 .. math::
 
@@ -157,6 +159,33 @@ An accelerated life model is, therefore, simply a model where the life parameter
 
 Given the simple substitution into the life parameter, surpyval uses MLE to calculate the parameters.
 
+Proportional Odds
+-----------------
+
+A proportional odds model acts on the *odds* of having failed rather than on the hazard. Writing the odds of failure by time :math:`t` as :math:`F(t) / S(t)`, the model multiplies the baseline odds by a function of the covariates:
+
+.. math::
+
+    \frac{F(t \mid X)}{S(t \mid X)} = \phi(X)\, \frac{F_{0}(t)}{S_{0}(t)}.
+
+Its defining feature is that the covariate effect *decays* over time — two survival curves under a proportional odds model converge as :math:`t \to \infty` rather than staying a constant multiple apart. This makes it the natural choice when a treatment or covariate matters early but its influence fades, a pattern proportional hazards cannot represent.
+
+Additive Hazards
+----------------
+
+Where proportional hazards *multiplies* the baseline hazard, an additive hazards model *adds* to it:
+
+.. math::
+
+    h(t \mid X) = h_{0}(t) + \beta \cdot X.
+
+The covariate shifts the absolute hazard by a constant amount at every time, rather than scaling it. This is often the more natural scale for risk-difference questions (excess deaths per unit time attributable to an exposure), and, like Cox, the Lin-Ying form leaves the baseline hazard unspecified and admits a closed-form estimator for :math:`\beta`.
+
+Semi-Parametric — Buckley-James
+-------------------------------
+
+Cox leaves the baseline *hazard* unspecified; Buckley-James is the accelerated-failure-time counterpart that leaves the *error distribution* unspecified. It fits an AFT model by iterating between imputing the censored failure times from the current fit (using the Kaplan-Meier residual distribution) and re-estimating the coefficients by least squares on the completed data. The result is a semi-parametric AFT: covariate effects on the log-time scale without committing to a parametric family for the baseline.
+
 Checking a proportional hazards fit
 -----------------------------------
 
@@ -190,4 +219,4 @@ Information criteria (AIC, BIC) compare how well models fit the data they were t
 - The **Brier score** :math:`BS(t)` is the weighted mean squared error between the predicted survival :math:`S(t \mid Z)` and the survival indicator :math:`\mathbb{1}(T > t)`; the **integrated Brier score** averages it over a time grid. Lower is better, and a useful model scores below the marginal Kaplan-Meier reference.
 - The **time-dependent AUC** (Uno's cumulative/dynamic estimator) measures discrimination as a function of the horizon — the probability that a subject who has failed by :math:`t` was assigned a higher risk than one still event-free. 0.5 is chance, 1.0 is perfect.
 
-For examples on how to do regression analysis — including checking the proportional hazards assumption, robust and stratified fits, and validating predictions — see the entry in the SurPyval Modelling section of the docs.
+For worked examples on how to do regression analysis — including checking the proportional hazards assumption, robust and stratified fits, and validating predictions — see the :doc:`Regression Modelling with SurPyval` page.

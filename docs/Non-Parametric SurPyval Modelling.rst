@@ -2,6 +2,10 @@
 Non-Parametric SurPyval Modelling
 =================================
 
+This page is the how-to companion to the :doc:`Non-Parametric Estimation` page,
+which covers the concepts and mathematics behind the Kaplan-Meier,
+Nelson-Aalen, Fleming-Harrington and Turnbull estimators.
+
 To get started, let's import some useful packages, as such, for the rest of this page we will assume the following imports have occurred:
 
 .. jupyter-execute::

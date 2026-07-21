@@ -11,6 +11,11 @@ on each unit, define failure as the measurement crossing a *threshold*,
 and extrapolate each unit's degradation trend to that threshold to obtain
 a failure time — even for units that never actually failed on test.
 
+For the concepts and the underlying theory — the general-path model, the
+Lu-Meeker two-stage correction, the induced failure-time distribution, and the
+stochastic-process (Wiener/Gamma) first-passage models — see the
+:doc:`Degradation Analysis` page.
+
 SurPyval implements the classic *pseudo-failure-time* approach:
 
 1. A degradation *path model* (e.g. linear) is fitted, by least squares,
@@ -500,7 +505,7 @@ uncertainty — remain available directly through ``model.life_model.cb(x, Z,
 ...)``.
 
 Stochastic-process degradation models
-=====================================
+-------------------------------------
 
 Everything above is the **general-path** approach: fit a deterministic curve to
 each unit, extrapolate it to the threshold to get a *pseudo failure time*, then

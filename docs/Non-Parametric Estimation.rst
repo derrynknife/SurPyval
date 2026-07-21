@@ -125,12 +125,19 @@ where
 
 Using this estimate of the survival function, it can be input to the start of this procedure and it done again. This can then be repeated over and over until the values do not change. At this point we have reached the NPMLE estimate of the survival function!
 
-The Turnbull estimation is the only non-parametric method that can be used with truncated and left censored data. Therefore it must be used when using the plotting methods in the parametric package when you have truncated or left censored data.
+The Turnbull estimator is the only non-parametric method that can handle left censoring, interval censoring, and right truncation (and arbitrary combinations of censoring and truncation). Left truncation / delayed entry on its own is handled by the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators too, via the ``tl`` keyword; it is only the left/interval censoring and right truncation that require Turnbull. Turnbull must therefore be used to supply the plotting positions in the parametric package whenever such data is present.
 
-On Surpyval's Default
----------------------
+On Surpyval's recommended estimator
+-----------------------------------
 
-Surpyval uses the Fleming-Harrington estimator as the default. The rationale for this is because it has optimal behaviour. That is, it performs well where the Kaplan-Meier and the Nelson-Aalen behave poorly.
+Two distinct "defaults" are worth separating. When a non-parametric estimate is
+used *internally* as the plotting position for a parametric probability plot,
+surpyval uses the Nelson-Aalen estimator (as noted above), because for a
+completely observed data set it never assigns probability 1 to the largest
+value and so plots cleanly on a transformed axis. When you want a *standalone*
+non-parametric survival estimate, however, the Fleming-Harrington estimator is
+the recommended choice. The rationale is that it has near-optimal behaviour: it
+performs well where the Kaplan-Meier and the Nelson-Aalen behave poorly.
 
 The Kaplan-Meier, since it tends to 1, results in cases where it overstates the probability of failure. It is because of this that the Kaplan-Meier should not be used in circumstances of competing risks. As an example, a comparison between a Nelson-Aalen and Kaplan-Meier estimate over time (I have plotted the Fleming-Harrington estimate for later discussion):
 
@@ -142,7 +149,7 @@ On the contrary, the Nelson-Aalen estimate performs poorly with lots of ties. Th
 .. image:: images/km_na_low_comparison.png
     :align: center
 
-The Fleming-Harrington, plotted in red in the above two charts, optimises between these two estimators. The Fleming-Harrington estimate approaches the Nelson-Aalen under the conditions of where the Nelson-Aalen estimate performs well and the Kaplan-Meier does poorly. Fleming-Harrington also does well where the Nelson-Aalen estimate does poorly but the Kaplan-Meier does well. Although the two examples provided are in the extreme, it is worth using the Fleming-Harrington by default since it is more flexible; it is therefore, for this reason, that surpyval does exactly that. This is not to say not to use KM or NA, but only when you are sure you are making the correct assumptions about what you are doing!
+The Fleming-Harrington, plotted in red in the above two charts, optimises between these two estimators. The Fleming-Harrington estimate approaches the Nelson-Aalen under the conditions of where the Nelson-Aalen estimate performs well and the Kaplan-Meier does poorly. Fleming-Harrington also does well where the Nelson-Aalen estimate does poorly but the Kaplan-Meier does well. Although the two examples provided are in the extreme, it is worth reaching for the Fleming-Harrington as a general-purpose non-parametric estimator since it is more flexible; it is for this reason that surpyval recommends it. This is not to say not to use KM or NA, but only when you are sure you are making the correct assumptions about what you are doing!
 
 Comparing two groups: the log-rank test
 ---------------------------------------
@@ -163,6 +170,8 @@ A hazard ratio (from a log-rank test or a Cox model) only has a clean interpreta
     \text{RMST}(\tau) = \int_0^{\tau} S(t)\, dt,
 
 which is exactly the average event-free time over the first :math:`\tau` units and is always well defined. Comparing two groups by the **difference** in their RMST gives an effect measured in the natural units of time, with a variance obtained from Greenwood's formula, and needs no assumption about the shape of, or relationship between, the two hazards.
+
+For worked examples — fitting the Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull estimators, and comparing groups with the log-rank test and RMST difference — see the :doc:`Non-Parametric SurPyval Modelling` page.
 
 References
 ----------

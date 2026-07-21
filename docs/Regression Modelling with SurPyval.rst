@@ -8,6 +8,11 @@ in a hot, dirty one. A patient's survival may depend on age, dosage, and
 comorbidities. The question regression modelling answers is: *how much* do these
 factors matter, and in what direction?
 
+For the concepts and mathematics behind the regression families used here — the
+proportional-hazards, accelerated-failure-time, accelerated-life, proportional-odds
+and additive-hazards models, plus the Cox diagnostics, robust and stratified fits,
+and prediction-validation metrics — see the :doc:`regression analysis` page.
+
 Regression survival modelling is fundamentally about capturing the relationship
 between covariates :math:`Z` and the survival distribution. Unlike ordinary
 regression, we must handle censored observations — items that had not yet failed
