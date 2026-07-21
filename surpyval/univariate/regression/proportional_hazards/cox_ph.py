@@ -30,7 +30,7 @@ from surpyval.univariate.nonparametric import (
 from surpyval.utils import validate_coxph, validate_coxph_df_inputs
 
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
-from .tvc import handle_tvc
+from .tvc import handle_tvc, handle_tvc_timeline
 
 nonparametric_dists = {
     "Nelson-Aalen": NelsonAalen,
@@ -976,10 +976,10 @@ class CoxPH_:
 
     def fit_tvc(
         self,
-        ident: npt.ArrayLike,
-        start: npt.ArrayLike,
-        stop: npt.ArrayLike,
-        event: npt.ArrayLike,
+        i: npt.ArrayLike,
+        xl: npt.ArrayLike,
+        xr: npt.ArrayLike,
+        c: npt.ArrayLike,
         Z: npt.ArrayLike,
         n: npt.ArrayLike | None = None,
         method: str = "efron",
@@ -988,18 +988,21 @@ class CoxPH_:
         """
         Fit a Cox model with time-varying covariates in start-stop format.
 
-        Each row is one interval ``(start, stop]`` of a subject (identified by
-        ``ident``) on which the covariate row ``Z`` is constant; ``event`` is 1
-        only on the interval that ends at the subject's event. The rows are
-        validated (see :func:`~surpyval.univariate.regression.
-        proportional_hazards.tvc.handle_tvc`) and fitted as delayed-entry
-        observations -- exact for the Cox partial likelihood.
+        Each row is one observation interval ``(xl, xr]`` of a subject
+        (identified by ``i``) on which the covariate row ``Z`` is constant;
+        ``c`` is ``0`` (event) only on the interval that ends at the subject's
+        event and ``1`` (right-censored) otherwise. The rows are validated (see
+        :func:`~surpyval.univariate.regression.proportional_hazards.tvc.
+        handle_tvc`) and fitted as delayed-entry observations -- exact for the
+        Cox partial likelihood.
 
         Parameters
         ----------
-        ident, start, stop, event, Z : array_like
-            The start-stop interval data (subject id, entry time, exit time,
-            terminal-event flag, and per-interval covariates).
+        i, xl, xr, c, Z : array_like
+            The start-stop interval data: subject id, interval entry time
+            ``xl``, exit time ``xr``, censoring flag ``c`` (``0`` event at
+            ``xr``, ``1`` right-censored -- surpyval's convention), and the
+            per-interval covariates.
         n : array_like, optional
             Count weight per interval row.
         method : {'efron', 'breslow'}, optional
@@ -1015,7 +1018,7 @@ class CoxPH_:
             semi_parametric_regression_model.SemiParametricRegressionModel.
             predict_tvc`.
         """
-        x, c, n_arr, tl, Z_arr, _ = handle_tvc(ident, start, stop, event, Z, n)
+        x, c, n_arr, tl, Z_arr, _ = handle_tvc(i, xl, xr, c, Z, n)
         model = self.fit(
             x=x, Z=Z_arr, c=c, n=n_arr, tl=tl, method=method, tol=tol
         )
@@ -1026,9 +1029,9 @@ class CoxPH_:
         self,
         df: "pd.DataFrame",
         id_col: str,
-        start_col: str,
-        stop_col: str,
-        event_col: str,
+        xl_col: str,
+        xr_col: str,
+        c_col: str,
         Z_cols: str | list[str],
         n_col: str | None = None,
         method: str = "efron",
@@ -1037,15 +1040,105 @@ class CoxPH_:
         Fit a time-varying-covariate Cox model from a start-stop DataFrame.
 
         See :meth:`fit_tvc`; ``Z_cols`` names the covariate column(s) and the
-        remaining arguments name the id / start / stop / event columns.
+        remaining arguments name the id / ``xl`` / ``xr`` / ``c`` columns.
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         model = self.fit_tvc(
-            ident=df[id_col].to_numpy(),
-            start=df[start_col].to_numpy(),
-            stop=df[stop_col].to_numpy(),
-            event=df[event_col].to_numpy(),
+            i=df[id_col].to_numpy(),
+            xl=df[xl_col].to_numpy(),
+            xr=df[xr_col].to_numpy(),
+            c=df[c_col].to_numpy(),
             Z=df[cols].to_numpy(),
+            n=None if n_col is None else df[n_col].to_numpy(),
+            method=method,
+        )
+        model.feature_names = cols
+        return model
+
+    def fit_tvc_timeline(
+        self,
+        i: npt.ArrayLike,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike,
+        n: npt.ArrayLike | None = None,
+        method: str = "efron",
+        tol: float = 1e-10,
+    ) -> SemiParametricRegressionModel:
+        """
+        Fit a time-varying-covariate Cox model from a covariate *timeline*.
+
+        This is the timeline / ``xicnt``-style alternative to
+        :meth:`fit_tvc`'s explicit ``(start, stop]`` intervals. Each subject's
+        rows give its covariate history: a covariate value ``Z`` takes effect
+        at time ``x`` and holds until the subject's next row, with the terminal
+        event / censoring marked on the last row's ``c``. The timeline is
+        expanded to start-stop intervals (see
+        :func:`~surpyval.univariate.regression.proportional_hazards.tvc.
+        handle_tvc_timeline`) and fitted exactly as :meth:`fit_tvc`, so it
+        gives an identical fit to the equivalent start-stop data.
+
+        Parameters
+        ----------
+        i : array_like
+            Subject identifier for each timeline row (the ``xicnt`` item id).
+        x : array_like
+            The time each row's covariate value takes effect. Strictly
+            increasing within a subject; the first is the entry
+            (delayed-entry) time, the last is the event / censoring time.
+        Z : array_like
+            The covariate vector effective from this row's ``x``. The value on
+            a subject's terminal (last) row is ignored.
+        c : array_like
+            Censoring status; only each subject's last row is read (``0``
+            event, ``1`` right-censored).
+        n : array_like, optional
+            Per-subject count weight (read from the terminal row).
+        method : {'efron', 'breslow'}, optional
+            Tie-handling method. Default ``'efron'``.
+        tol : float, optional
+            Optimiser tolerance.
+
+        Returns
+        -------
+        SemiParametricRegressionModel
+            The fitted model, with ``is_tvc`` set.
+        """
+        i_ss, xl, xr, c_ss, Z_ss, n_ss = handle_tvc_timeline(i, x, Z, c, n)
+        return self.fit_tvc(
+            i=i_ss,
+            xl=xl,
+            xr=xr,
+            c=c_ss,
+            Z=Z_ss,
+            n=n_ss,
+            method=method,
+            tol=tol,
+        )
+
+    def fit_tvc_timeline_from_df(
+        self,
+        df: "pd.DataFrame",
+        id_col: str,
+        time_col: str,
+        Z_cols: str | list[str],
+        c_col: str,
+        n_col: str | None = None,
+        method: str = "efron",
+    ) -> SemiParametricRegressionModel:
+        """
+        Fit a timeline TVC Cox model from a DataFrame.
+
+        See :meth:`fit_tvc_timeline`; ``time_col`` names the change-point time
+        column, ``Z_cols`` the covariate column(s) and ``c_col`` the terminal
+        event / censoring column (``0`` event, ``1`` censored).
+        """
+        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+        model = self.fit_tvc_timeline(
+            i=df[id_col].to_numpy(),
+            x=df[time_col].to_numpy(),
+            Z=df[cols].to_numpy(),
+            c=df[c_col].to_numpy(),
             n=None if n_col is None else df[n_col].to_numpy(),
             method=method,
         )

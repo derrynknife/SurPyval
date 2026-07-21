@@ -80,21 +80,24 @@ def test_cox_tvc_round_trip():
     # contiguous intervals with a covariate that changes at the split.
     rng = np.random.default_rng(3)
     n = 40
-    ident, start, stop, event, Zrows = [], [], [], [], []
+    ident, xl, xr, c, Zrows = [], [], [], [], []
     for s in range(n):
         split = 3.0
         end = split + np.abs(rng.weibull(1.4)) * 6.0 + 0.5
         z0 = rng.normal(0, 1)
         ident += [s, s]
-        start += [0.0, split]
-        stop += [split, end]
-        event += [0, 1]  # event on the terminal interval
+        xl += [0.0, split]
+        xr += [split, end]
+        c += [
+            1,
+            0,
+        ]  # censored split, then event (c=0) on the terminal interval
         Zrows += [[z0], [z0 + 0.2]]
     model = CoxPH.fit_tvc(
         np.array(ident),
-        np.array(start),
-        np.array(stop),
-        np.array(event),
+        np.array(xl),
+        np.array(xr),
+        np.array(c),
         np.array(Zrows),
     )
     assert model.is_tvc

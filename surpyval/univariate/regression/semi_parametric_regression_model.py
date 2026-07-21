@@ -304,8 +304,8 @@ class SemiParametricRegressionModel:
 
     def predict_tvc(
         self,
-        start: npt.ArrayLike,
-        stop: npt.ArrayLike,
+        xl: npt.ArrayLike,
+        xr: npt.ArrayLike,
         Z: npt.ArrayLike,
         times: "npt.ArrayLike | None" = None,
     ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray]":
@@ -325,10 +325,10 @@ class SemiParametricRegressionModel:
 
         Parameters
         ----------
-        start, stop : array_like
-            The subject's covariate-path intervals ``(start, stop]``, one per
-            row (as given to :meth:`~...CoxPH.fit_tvc`). Usually contiguous
-            from ``0``.
+        xl, xr : array_like
+            The subject's covariate-path intervals ``(xl, xr]``, one per row
+            (as given to :meth:`~...CoxPH.fit_tvc`). Usually contiguous from
+            ``0``.
         Z : array_like
             The covariate row active on each interval, one row per interval.
         times : array_like, optional
@@ -342,32 +342,30 @@ class SemiParametricRegressionModel:
             of the subject along its covariate path. Outside the supplied path
             the nearest interval's covariate is held constant.
         """
-        start_a = np.atleast_1d(np.asarray(start, dtype=float))
-        stop_a = np.atleast_1d(np.asarray(stop, dtype=float))
+        xl_a = np.atleast_1d(np.asarray(xl, dtype=float))
+        xr_a = np.atleast_1d(np.asarray(xr, dtype=float))
         Z_a = np.asarray(Z, dtype=float)
         if Z_a.ndim == 1:
             Z_a = Z_a.reshape(-1, 1)
-        if not (start_a.shape[0] == stop_a.shape[0] == Z_a.shape[0]):
-            raise ValueError(
-                "start, stop and Z must have the same number of rows"
-            )
-        if np.any(start_a >= stop_a):
-            raise ValueError("every interval must have start < stop")
+        if not (xl_a.shape[0] == xr_a.shape[0] == Z_a.shape[0]):
+            raise ValueError("xl, xr and Z must have the same number of rows")
+        if np.any(xl_a >= xr_a):
+            raise ValueError("every interval must have xl < xr")
 
-        order = np.argsort(start_a)
-        start_a, stop_a, Z_a = start_a[order], stop_a[order], Z_a[order]
+        order = np.argsort(xl_a)
+        xl_a, xr_a, Z_a = xl_a[order], xr_a[order], Z_a[order]
 
         # The active interval at a baseline jump time u is the last interval
-        # whose start is at or before u; times outside the path are clamped to
+        # whose xl is at or before u; times outside the path are clamped to
         # the first/last interval (covariate held constant).
         base_t = self.x
-        active = np.searchsorted(start_a, base_t, side="right") - 1
-        active = np.clip(active, 0, start_a.shape[0] - 1)
+        active = np.searchsorted(xl_a, base_t, side="right") - 1
+        active = np.clip(active, 0, xl_a.shape[0] - 1)
         phi = np.exp(Z_a[active] @ self.beta)
         H_cum = np.cumsum(self.h0 * phi)
 
         if times is None:
-            within = (base_t > start_a[0]) & (base_t <= stop_a[-1])
+            within = (base_t > xl_a[0]) & (base_t <= xr_a[-1])
             query = base_t[within]
         else:
             query = np.atleast_1d(np.asarray(times, dtype=float))
