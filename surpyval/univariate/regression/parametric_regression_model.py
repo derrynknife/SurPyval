@@ -8,6 +8,7 @@ import numpy.typing as npt
 from matplotlib import pyplot as plt
 from scipy.stats import norm, uniform
 
+from surpyval.serialisation import stamp_schema
 from surpyval.utils import fsli_to_xcnt
 
 from ._bounds import (
@@ -18,7 +19,6 @@ from ._bounds import (
     numerical_hessian,
 )
 from .regression_data import prepare_Z
-from surpyval.serialisation import stamp_schema
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -98,6 +98,63 @@ class ParametricRegressionModel:
 
     # -- serialisation -----------------------------------------------------
 
+    def _serialise_link(self) -> "dict[str, Any]":
+        """The link-identity head of :meth:`to_dict`.
+
+        Encodes just enough to rebuild the covariate link: for the fixed-form
+        families the link name; for Accelerated Life the built-in life-model
+        name. Raises ``NotImplementedError`` for any link that cannot be
+        reconstructed from a name.
+        """
+        phi_param_map = getattr(self.reg_model, "phi_param_map", None)
+        if not isinstance(phi_param_map, dict):
+            raise NotImplementedError(
+                "This model's covariate coefficients are not a fixed name map "
+                "and cannot be serialised."
+            )
+        reg_name = getattr(self.reg_model, "name", None)
+        base: dict[str, Any] = {
+            "parameterization": "parametric-regression",
+            "kind": self.kind,
+            "distribution": self.distribution.name,
+            "phi_param_map": {
+                str(k): int(v) for k, v in phi_param_map.items()
+            },
+        }
+
+        if self.kind == "Accelerated Life":
+            from surpyval.univariate.regression.accelerated_life import (
+                LIFE_MODELS,
+            )
+
+            if reg_name not in LIFE_MODELS:
+                raise NotImplementedError(
+                    "Serialisation of an Accelerated Life model requires a "
+                    "built-in life model (one of {}); the {!r} life model "
+                    "cannot be rebuilt from a name.".format(
+                        sorted(LIFE_MODELS), reg_name
+                    )
+                )
+            base["life_model_name"] = reg_name
+            return base
+
+        if self.kind not in _SERIALISABLE_KINDS:
+            raise NotImplementedError(
+                "Serialisation is implemented for the fixed-form regression "
+                "families (Accelerated Failure Time, Proportional Hazard, "
+                "Proportional Odds, Additive Hazard) and Accelerated Life; "
+                "the {!r} model's covariate link cannot be rebuilt from a "
+                "name.".format(self.kind)
+            )
+        if reg_name not in _SERIALISABLE_REG_NAMES:
+            raise NotImplementedError(
+                "This {} model carries a non-standard covariate link ({!r}) "
+                "that cannot be serialised; only the built-in log-linear / "
+                "additive links round-trip.".format(self.kind, reg_name)
+            )
+        base["reg_model_name"] = reg_name
+        return base
+
     def to_dict(self) -> dict:
         """
         Serialise this fitted regression model to a plain ``dict``.
@@ -111,57 +168,29 @@ class ParametricRegressionModel:
         restored model can also produce confidence bounds
         (``cb``/``param_cb``/``standard_errors``).
 
-        Only the fixed-form parametric families round-trip -- Accelerated
-        Failure Time, Proportional Hazards, Proportional Odds and (parametric)
-        Additive Hazards -- whose covariate link is fully determined by the
-        ``kind`` and coefficients. A model with a bespoke covariate link (for
-        example an Accelerated Life parameter-substitution model, whose link
-        is an arbitrary life-model) cannot be rebuilt from a name and raises
-        ``NotImplementedError``.
+        Two link forms round-trip. The fixed-form parametric families --
+        Accelerated Failure Time, Proportional Hazards, Proportional Odds and
+        (parametric) Additive Hazards -- whose covariate link is fully
+        determined by the ``kind`` and coefficients; and Accelerated Life
+        parameter-substitution models built on a built-in life model
+        (``Power``, ``Eyring``, ``Arrhenius``-style ``Exponential``, ...),
+        which are rebuilt from the distribution and life-model names. A model
+        with a genuinely bespoke covariate link (e.g. a custom life model whose
+        parameterisation is not a fixed name map) cannot be rebuilt from a name
+        and raises ``NotImplementedError``.
 
         See Also
         --------
         from_dict, to_json, from_json
         """
-        if self.kind not in _SERIALISABLE_KINDS:
-            raise NotImplementedError(
-                "Serialisation is implemented for the fixed-form regression "
-                "families (Accelerated Failure Time, Proportional Hazard, "
-                "Proportional Odds, Additive Hazard); the {!r} model's "
-                "covariate link cannot be rebuilt from a name.".format(
-                    self.kind
-                )
-            )
-        reg_name = getattr(self.reg_model, "name", None)
-        if reg_name not in _SERIALISABLE_REG_NAMES:
-            raise NotImplementedError(
-                "This {} model carries a non-standard covariate link ({!r}) "
-                "that cannot be serialised; only the built-in log-linear / "
-                "additive links round-trip.".format(self.kind, reg_name)
-            )
-        phi_param_map = getattr(self.reg_model, "phi_param_map", None)
-        if not isinstance(phi_param_map, dict):
-            raise NotImplementedError(
-                "This model's covariate coefficients are not a fixed name map "
-                "and cannot be serialised."
-            )
-
-        out: dict[str, Any] = {
-            "parameterization": "parametric-regression",
-            "kind": self.kind,
-            "distribution": self.distribution.name,
-            "reg_model_name": reg_name,
-            "phi_param_map": {
-                str(k): int(v) for k, v in phi_param_map.items()
-            },
-            "params": np.asarray(self.params, dtype=float).tolist(),
-            "k": int(self.k),
-            "k_dist": int(self.k_dist),
-            "fixed": {str(k): float(v) for k, v in self.fixed.items()},
-            "gamma": float(getattr(self, "gamma", 0.0)),
-            "p": float(getattr(self, "p", 1.0)),
-            "f0": float(getattr(self, "f0", 0.0)),
-        }
+        out: dict[str, Any] = self._serialise_link()
+        out["params"] = np.asarray(self.params, dtype=float).tolist()
+        out["k"] = int(self.k)
+        out["k_dist"] = int(self.k_dist)
+        out["fixed"] = {str(k): float(v) for k, v in self.fixed.items()}
+        out["gamma"] = float(getattr(self, "gamma", 0.0))
+        out["p"] = float(getattr(self, "p", 1.0))
+        out["f0"] = float(getattr(self, "f0", 0.0))
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
@@ -213,33 +242,53 @@ class ParametricRegressionModel:
                 "model dict"
             )
         kind = model_dict["kind"]
-        if kind not in _SERIALISABLE_KINDS:
-            raise ValueError(
-                "Cannot deserialise regression kind {!r}".format(kind)
-            )
-        factory_name, phi_kind = _SERIALISABLE_KINDS[kind]
-
         dist = getattr(surpyval, model_dict["distribution"], None)
         if not isinstance(dist, ParametricFitter):
             raise ValueError(
                 "Unknown distribution {!r}".format(model_dict["distribution"])
             )
-        factory = getattr(surpyval, factory_name)
-        fitter = factory(dist)
 
         params = np.array(model_dict["params"], dtype=float)
         k_dist = int(model_dict["k_dist"])
-        phi_param_map = {
-            k: int(v) for k, v in model_dict["phi_param_map"].items()
-        }
 
-        reg_model = types.SimpleNamespace(
-            name=model_dict["reg_model_name"],
-            phi_param_map=phi_param_map,
-        )
-        if phi_kind == "exp":
-            # the log-linear multiplier exp(beta'Z), matching the fitters
-            reg_model.phi = lambda Z, *p: np.exp(np.dot(Z, np.array(p)))
+        reg_model: Any
+        if kind == "Accelerated Life":
+            # Rebuild the parameter-substitution fitter from the distribution
+            # and the built-in life model; the fitter carries the life-model's
+            # phi and the distribution's life-parameter transforms, so it
+            # predicts identically. The reg_model is the life-model singleton
+            # itself (its phi and phi_param_map drive phi() and __repr__).
+            from surpyval.univariate.regression.accelerated_life import (
+                LIFE_MODELS,
+                AcceleratedLife,
+            )
+
+            life_name = model_dict.get("life_model_name")
+            if life_name not in LIFE_MODELS:
+                raise ValueError(
+                    "Cannot deserialise Accelerated Life model with life "
+                    "model {!r}".format(life_name)
+                )
+            reg_model = LIFE_MODELS[life_name]
+            fitter = AcceleratedLife(dist, reg_model)
+        elif kind in _SERIALISABLE_KINDS:
+            factory_name, phi_kind = _SERIALISABLE_KINDS[kind]
+            factory = getattr(surpyval, factory_name)
+            fitter = factory(dist)
+            phi_param_map = {
+                k: int(v) for k, v in model_dict["phi_param_map"].items()
+            }
+            reg_model = types.SimpleNamespace(
+                name=model_dict["reg_model_name"],
+                phi_param_map=phi_param_map,
+            )
+            if phi_kind == "exp":
+                # the log-linear multiplier exp(beta'Z), matching the fitters
+                reg_model.phi = lambda Z, *p: np.exp(np.dot(Z, np.array(p)))
+        else:
+            raise ValueError(
+                "Cannot deserialise regression kind {!r}".format(kind)
+            )
 
         out = cls()
         out.model = fitter

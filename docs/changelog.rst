@@ -129,6 +129,19 @@ Serialisation
   ``Parametric.to_dict``: ``_neg_ll`` (always) and ``gamma`` / ``p`` / ``f0``
   (for offset / LFP / zero-inflated models) were emitted as NumPy scalars,
   which MongoDB's BSON encoder rejects; they are now native floats.
+- **Accelerated Life model serialisation.** Fitted Accelerated Life
+  parameter-substitution models (``AcceleratedLife(dist, life_model)``) now
+  round-trip through ``to_dict`` / ``from_dict`` / ``to_json`` / ``from_json``
+  and the package-level ``surpyval.from_dict``. Previously only the fixed-form
+  covariate families (AFT, PH, PO, AH) serialised and any Accelerated Life
+  model raised ``NotImplementedError``. The model is rebuilt from the stored
+  distribution and built-in life-model names (``Power``, ``Eyring``,
+  ``Linear``, the Arrhenius-style ``Exponential``, the dual-stress
+  ``DualPower`` / ``DualExponential`` / ``PowerExponential``, and their
+  inverses), so the restored model predicts identically and, when a covariance
+  was stored, reproduces the same confidence bounds. A genuinely custom life
+  model (whose parameterisation is not a fixed name map) is still refused with
+  a clear error.
 
 v0.15.2 (20 Jul 2026)
 ---------------------
