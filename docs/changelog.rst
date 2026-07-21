@@ -112,6 +112,24 @@ Regression
   Breslow and Efron already match what R's ``survival`` and lifelines use by
   default -- and correspondingly more expensive under heavy ties.
 
+Serialisation
+~~~~~~~~~~~~~
+
+- **Survival tree & forest serialisation** (#191). ``SurvivalTree`` and
+  ``RandomSurvivalForest`` now implement ``to_dict`` / ``from_dict`` (and
+  ``to_json`` / ``from_json``), completing the serialisation campaign that had
+  deferred them while the forest was crash-prone. A tree serialises as its
+  recursive node structure with each leaf stored as its own fitted model
+  (``Parametric`` / ``NonParametric``, or a sentinel for the empty
+  ``NeverOccurs`` leaf), so a restored tree predicts identically without
+  re-fitting; a forest is the ensemble settings plus its trees. Both carry a
+  ``"model"`` class tag and dispatch through the package-level
+  ``surpyval.from_dict`` / ``surpyval.from_json``, are schema-stamped, and are
+  BSON-native for MongoDB. In the course of this, a latent leak was fixed in
+  ``Parametric.to_dict``: ``_neg_ll`` (always) and ``gamma`` / ``p`` / ``f0``
+  (for offset / LFP / zero-inflated models) were emitted as NumPy scalars,
+  which MongoDB's BSON encoder rejects; they are now native floats.
+
 v0.15.2 (20 Jul 2026)
 ---------------------
 

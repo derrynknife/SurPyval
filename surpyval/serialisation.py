@@ -73,6 +73,8 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "WienerProcessModel": "surpyval.degradation.process_models",
     "GammaProcessModel": "surpyval.degradation.process_models",
+    "SurvivalTree": "surpyval.beta.ml.forest.tree",
+    "RandomSurvivalForest": "surpyval.beta.ml.forest.forest",
 }
 
 # ``"parameterization"`` value -> (defining module, class name), for

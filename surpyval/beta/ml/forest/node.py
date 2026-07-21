@@ -12,6 +12,7 @@ from surpyval.beta.ml.forest.deviance_split import (
     needs_full_likelihood_split,
 )
 from surpyval.beta.ml.forest.log_rank_split import log_rank_split
+from surpyval.serialisation import to_native
 from surpyval.univariate.parametric import NeverOccurs
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -26,6 +27,9 @@ class Node(ABC):
         x: int | float | ArrayLike,
         Z: NDArray,
     ) -> NDArray: ...
+
+    @abstractmethod
+    def to_dict(self) -> dict: ...
 
 
 class IntermediateNode(Node):
@@ -86,6 +90,31 @@ class IntermediateNode(Node):
         if Z[self.split_feature_index] <= self.split_feature_value:
             return self.left_child.apply_model_function(function_name, x, Z)
         return self.right_child.apply_model_function(function_name, x, Z)
+
+    def to_dict(self) -> dict:
+        """Serialise the split rule and both child subtrees. The training
+        data is deliberately not stored -- a restored tree is a predictor,
+        rebuilt from its structure and its leaf models, not re-fitted."""
+        return {
+            "node": "intermediate",
+            "split_feature_index": int(self.split_feature_index),
+            "split_feature_value": float(self.split_feature_value),
+            "feature_indices_in": to_native(self.feature_indices_in),
+            "left": self.left_child.to_dict(),
+            "right": self.right_child.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, node_dict: dict) -> "IntermediateNode":
+        # Rebuild without re-running ``build_tree`` (which needs the data):
+        # the split rule and children fully determine prediction.
+        node = cls.__new__(cls)
+        node.split_feature_index = node_dict["split_feature_index"]
+        node.split_feature_value = node_dict["split_feature_value"]
+        node.feature_indices_in = np.asarray(node_dict["feature_indices_in"])
+        node.left_child = node_from_dict(node_dict["left"])
+        node.right_child = node_from_dict(node_dict["right"])
+        return node
 
 
 class TerminalNode(Node):
@@ -152,6 +181,49 @@ class TerminalNode(Node):
         _: NDArray,
     ) -> NDArray:
         return getattr(self.model, function_name)(x)
+
+    def to_dict(self) -> dict:
+        """Serialise the leaf as its *fitted* model rather than its data, so
+        the restored leaf predicts without re-fitting. ``NeverOccurs`` (the
+        empty / all-censored leaf) is a parameterless class, stored as a
+        string sentinel; every other leaf is a ``Parametric`` or
+        ``NonParametric`` model with its own ``to_dict``."""
+        model = self.model
+        if model is NeverOccurs:
+            leaf: str | dict = "NeverOccurs"
+        else:
+            leaf = model.to_dict()
+        return {"node": "terminal", "kind": self.kind, "leaf": leaf}
+
+    @classmethod
+    def from_dict(cls, node_dict: dict) -> "TerminalNode":
+        # Local import avoids any import cycle through the package-level
+        # serialisation dispatcher.
+        from surpyval.serialisation import from_dict as _restore_model
+
+        node = cls.__new__(cls)
+        node.kind = node_dict["kind"]
+        # A restored predictor carries no training data.
+        node.data = None  # type: ignore[assignment]
+        leaf = node_dict["leaf"]
+        model = NeverOccurs if leaf == "NeverOccurs" else _restore_model(leaf)
+        # ``model`` is a cached_property; seed the instance ``__dict__`` slot
+        # so the getter (which needs ``data``) never runs on a restored node.
+        node.__dict__["model"] = model
+        return node
+
+
+def node_from_dict(node_dict: dict) -> Node:
+    """Restore an ``IntermediateNode`` or ``TerminalNode`` from its dict."""
+    kind = node_dict.get("node")
+    if kind == "intermediate":
+        return IntermediateNode.from_dict(node_dict)
+    if kind == "terminal":
+        return TerminalNode.from_dict(node_dict)
+    raise ValueError(
+        f"Unrecognised tree node dict (node={kind!r}); expected "
+        "'intermediate' or 'terminal'."
+    )
 
 
 def build_tree(
