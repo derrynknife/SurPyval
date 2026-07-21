@@ -1,4 +1,6 @@
+import json
 from math import log2, sqrt
+from pathlib import Path
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -6,7 +8,8 @@ from numpy.typing import ArrayLike, NDArray
 from surpyval.beta.ml.forest.deviance_split import (
     needs_full_likelihood_split,
 )
-from surpyval.beta.ml.forest.node import build_tree
+from surpyval.beta.ml.forest.node import build_tree, node_from_dict
+from surpyval.serialisation import stamp_schema
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -153,6 +156,49 @@ class SurvivalTree:
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
         return self.apply_model_function("Hf", x, Z)
+
+    def to_dict(self) -> dict:
+        """Serialise the fitted tree to a plain, JSON/BSON-safe dictionary.
+
+        Only what prediction needs is stored -- the tree ``kind``, the
+        resolved ``n_features_split`` and the recursive node structure with
+        its fitted leaf models. The training data and covariate matrix are
+        not persisted: a restored tree is a predictor, not a re-fittable
+        object.
+        """
+        return stamp_schema(
+            {
+                "model": "SurvivalTree",
+                "kind": self.kind,
+                "n_features_split": int(self.n_features_split),
+                "root": self._root.to_dict(),
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "SurvivalTree":
+        """Reconstruct a fitted tree from a :meth:`to_dict` dictionary."""
+        if model_dict.get("model") != "SurvivalTree":
+            raise ValueError(
+                "Must create a SurvivalTree from a SurvivalTree model dict"
+            )
+        tree = cls.__new__(cls)
+        tree.kind = model_dict["kind"]
+        tree.n_features_split = model_dict["n_features_split"]
+        # A restored tree predicts but is not re-fittable; it holds no data.
+        tree.data = None  # type: ignore[assignment]
+        tree.Z = None  # type: ignore[assignment]
+        tree._root = node_from_dict(model_dict["root"])
+        return tree
+
+    def to_json(self, fp: str | Path) -> None:
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_json(cls, fp: str | Path) -> "SurvivalTree":
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
 
 def parse_n_features_split(

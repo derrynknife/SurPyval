@@ -20,12 +20,13 @@ if TYPE_CHECKING:
 
     from surpyval.utils.surpyval_data import SurpyvalData
 
+from surpyval.serialisation import stamp_schema, to_native
+
 from .probability_plotting import (
     adjust_heuristic,
     draw_probability_plot,
     probability_plot_data,
 )
-from surpyval.serialisation import stamp_schema
 
 # Shared inputs for the confidence-bound computations: the fitted parameter
 # vector ``phi_hat`` (core params plus any LFP/ZI parameters), its covariance
@@ -194,22 +195,22 @@ class Parametric(ParametricDistribution):
                 out["data"] = data_dict
 
         out["params"] = np.array(self.params).tolist()
-        out["lfp"] = self.lfp
+        out["lfp"] = bool(self.lfp)
 
         if self.lfp:
-            out["p"] = self.p
+            out["p"] = to_native(self.p)
         else:
             out["p"] = 1.0
 
-        out["zi"] = self.zi
+        out["zi"] = bool(self.zi)
         if self.zi:
-            out["f0"] = self.f0
+            out["f0"] = to_native(self.f0)
         else:
             out["f0"] = 0.0
 
-        out["offset"] = self.offset
+        out["offset"] = bool(self.offset)
         if self.offset:
-            out["gamma"] = self.gamma
+            out["gamma"] = to_native(self.gamma)
         else:
             out["gamma"] = 0.0
 
@@ -221,7 +222,7 @@ class Parametric(ParametricDistribution):
         if getattr(self, "cov_matrix", None) is not None:
             out["cov_matrix"] = self.cov_matrix.tolist()
         if hasattr(self, "_neg_ll"):
-            out["_neg_ll"] = self._neg_ll
+            out["_neg_ll"] = to_native(self._neg_ll)
 
         return stamp_schema(out)
 

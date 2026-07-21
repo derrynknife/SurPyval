@@ -1,8 +1,12 @@
+import json
+from pathlib import Path
+
 import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.beta.ml.forest.tree import SurvivalTree
+from surpyval.serialisation import stamp_schema
 from surpyval.utils.score import score
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -191,3 +195,47 @@ class RandomSurvivalForest:
         """Harrell's concordance index of the forest's mortality scores."""
         scores: ArrayLike = self.mortality(x, Z)
         return score(x, c, scores, tie_tol)
+
+    def to_dict(self) -> dict:
+        """Serialise the fitted forest to a plain, JSON/BSON-safe dictionary:
+        the ensemble settings and every fitted tree. The training data is not
+        persisted -- a restored forest is a predictor, not re-fittable."""
+        return stamp_schema(
+            {
+                "model": "RandomSurvivalForest",
+                "kind": self.kind,
+                "n_trees": int(self.n_trees),
+                "bootstrap": bool(self.bootstrap),
+                "trees": [tree.to_dict() for tree in self.trees],
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "RandomSurvivalForest":
+        """Reconstruct a fitted forest from a :meth:`to_dict` dictionary."""
+        if model_dict.get("model") != "RandomSurvivalForest":
+            raise ValueError(
+                "Must create a RandomSurvivalForest from a "
+                "RandomSurvivalForest model dict"
+            )
+        forest = cls.__new__(cls)
+        forest.kind = model_dict["kind"]
+        forest.n_trees = model_dict["n_trees"]
+        forest.bootstrap = model_dict["bootstrap"]
+        # A restored forest predicts but is not re-fittable; it holds no data.
+        forest.data = None  # type: ignore[assignment]
+        forest.Z = None  # type: ignore[assignment]
+        forest.trees = [
+            SurvivalTree.from_dict(tree_dict)
+            for tree_dict in model_dict["trees"]
+        ]
+        return forest
+
+    def to_json(self, fp: str | Path) -> None:
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_json(cls, fp: str | Path) -> "RandomSurvivalForest":
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
