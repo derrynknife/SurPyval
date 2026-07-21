@@ -96,6 +96,14 @@ Correctness
 Regression
 ~~~~~~~~~~
 
+- **Accelerated Life with an Exponential distribution now fits.**
+  ``AcceleratedLife(Exponential, life_model).fit(...)`` raised
+  ``KeyError: 'lambda'`` because the life-parameter map named the Exponential's
+  parameter ``"lambda"`` while the distribution actually calls it
+  ``"failure_rate"``. The name is corrected (the ``life <-> rate`` transforms
+  were already right), so Exponential accelerated-life models fit, predict and
+  serialise; a guard test now checks every distribution's declared life
+  parameter is a real parameter of that distribution.
 - **Exact and Kalbfleisch-Prentice tie handling for Cox** (#142). ``CoxPH.fit``
   gains two further ``method`` choices beyond ``'breslow'`` and ``'efron'``:
   ``'exact'`` (the average-over-orderings exact partial likelihood, for ties
