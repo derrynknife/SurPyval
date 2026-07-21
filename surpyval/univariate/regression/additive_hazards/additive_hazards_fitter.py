@@ -40,6 +40,7 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
+from ..tvc_fit import TVCFitMixin
 
 
 class _AdditiveReg:
@@ -49,7 +50,7 @@ class _AdditiveReg:
     phi_param_map: object
 
 
-class AdditiveHazardsFitter(DataFrameRegressionMixin):
+class AdditiveHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
     def __init__(self, name, dist):
         self.name = name
         self.dist = dist
