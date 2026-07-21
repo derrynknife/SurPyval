@@ -28,11 +28,13 @@ import pytest
 
 import surpyval
 from surpyval import (
+    AcceleratedLife,
     AdditiveHazards,
     BuckleyJames,
     CoxPH,
     KaplanMeier,
     MixtureModel,
+    Power,
     Turnbull,
     Weibull,
     WeibullPH,
@@ -188,6 +190,24 @@ def _fit_weibull_ph():
     return WeibullPH.fit(x=x, Z=Z, c=c)
 
 
+def _fit_accelerated_life():
+    rng = np.random.default_rng(7)
+    xs, Zs = [], []
+    for s in (1.0, 2.0, 3.0, 4.0):
+        life = 500.0 * s**-1.2
+        xs.append(life * rng.weibull(2.2, 40))
+        Zs.append(np.full(40, s))
+    x = np.concatenate(xs)
+    Z = np.concatenate(Zs).reshape(-1, 1)
+    return AcceleratedLife(Weibull, Power).fit(x=x, Z=Z)
+
+
+def _check_al_sf(model, restored):
+    t = np.array([50.0, 150.0, 300.0])
+    Z = np.full((t.size, 1), 2.5)
+    assert np.allclose(model.sf(t, Z), restored.sf(t, Z), equal_nan=True)
+
+
 def _fit_cox():
     x, Z, c = _semipar_data(1)
     return CoxPH.fit(x, Z, c=c)
@@ -338,6 +358,7 @@ CASES = {
     "non_parametric": (_fit_non_parametric, _check_R),
     "turnbull_interval": (_fit_turnbull, _check_R),
     "parametric_regression": (_fit_weibull_ph, _check_sf_Z),
+    "accelerated_life": (_fit_accelerated_life, _check_al_sf),
     "cox": (_fit_cox, _check_sf_Z),
     "additive_hazards": (_fit_additive_hazards, _check_sf_Z),
     "buckley_james": (_fit_buckley_james, _check_beta),

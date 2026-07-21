@@ -5,9 +5,11 @@ Hazards, Proportional Odds and (parametric) Additive Hazards -- round-trip
 through ``to_dict``/``from_dict`` (and the JSON file variants): the restored
 model predicts identically to the original, its parameter names line up, and
 -- when a covariance was stored -- it reproduces the same confidence bounds
-without needing the original data. Models whose covariate link cannot be
-rebuilt from a name (Accelerated Life parameter-substitution) are refused, and
-an untrusted dict cannot resolve an arbitrary distribution.
+without needing the original data. Accelerated Life parameter-substitution
+models built on a built-in life model (Power, Eyring, ...) also round-trip,
+rebuilt from the distribution and life-model names. Only a genuinely custom
+life model whose parameterisation is not a fixed name map is refused, and an
+untrusted dict cannot resolve an arbitrary distribution.
 """
 
 import json
@@ -15,7 +17,17 @@ import json
 import numpy as np
 import pytest
 
-from surpyval import AFT, AH, PH, PO, AcceleratedLife, Power, Weibull
+from surpyval import (
+    AFT,
+    AH,
+    PH,
+    PO,
+    AcceleratedLife,
+    Eyring,
+    Power,
+    Weibull,
+)
+from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
@@ -113,14 +125,72 @@ def test_phi_round_trip():
     )
 
 
-def test_accelerated_life_is_refused():
-    rng = np.random.default_rng(1)
-    n = 100
-    Z = (np.abs(rng.normal(0, 1, n)) + 0.5).reshape(-1, 1)
-    x = np.abs(Weibull.random(n, 10.0, 2.0)) + 0.1
-    c = np.zeros(n)
+def _al_data(seed=1, per=40, stresses=(1.0, 2.0, 3.0, 4.0)):
+    rng = np.random.default_rng(seed)
+    xs, Zs = [], []
+    for s in stresses:
+        life = 500.0 * s**-1.2
+        xs.append(life * rng.weibull(2.2, per))
+        Zs.append(np.full(per, s))
+    x = np.concatenate(xs)
+    Z = np.concatenate(Zs).reshape(-1, 1)
+    return x, Z, np.zeros_like(x)
+
+
+@pytest.mark.parametrize("life_model", [Power, Eyring])
+def test_accelerated_life_round_trips(life_model):
+    x, Z, c = _al_data()
+    model = AcceleratedLife(Weibull, life_model).fit(x, Z=Z, c=c)
+
+    d = model.to_dict()
+    assert d["kind"] == "Accelerated Life"
+    assert d["life_model_name"] == life_model.name
+    json.dumps(d)  # JSON-safe
+
+    restored = ParametricRegressionModel.from_dict(d)
+    assert np.allclose(model.params, restored.params)
+
+    xq = np.linspace(1.0, 400.0, 12)
+    for z in (1.5, 2.5, 3.5):
+        Zq = np.full((xq.size, 1), z)
+        assert np.allclose(
+            model.sf(xq, Zq), restored.sf(xq, Zq), equal_nan=True
+        )
+    Zphi = np.array([[1.5], [2.5], [3.5]])
+    assert np.allclose(
+        np.asarray(model.phi(Zphi), dtype=float),
+        np.asarray(restored.phi(Zphi), dtype=float),
+    )
+
+
+def test_accelerated_life_dispatches_through_package():
+    import surpyval
+
+    x, Z, c = _al_data()
     model = AcceleratedLife(Weibull, Power).fit(x, Z=Z, c=c)
-    with pytest.raises(NotImplementedError, match="fixed-form"):
+    restored = surpyval.from_dict(model.to_dict())
+    assert isinstance(restored, ParametricRegressionModel)
+    assert restored.kind == "Accelerated Life"
+
+
+def test_custom_life_model_is_refused():
+    # A user-defined life model is not in the built-in registry and its
+    # parameterisation cannot be rebuilt from a name, so it is refused.
+    class _CustomLife(LifeModel):
+        def __init__(self):
+            super().__init__(
+                "MyCustomLink", {"a": 0, "b": 1}, ((0, None),) * 2
+            )
+
+        def phi(self, Z, *params):
+            return params[0] * Z ** params[1]
+
+        def phi_init(self, life, Z):
+            return [1.0, 1.0]
+
+    x, Z, c = _al_data()
+    model = AcceleratedLife(Weibull, _CustomLife()).fit(x, Z=Z, c=c)
+    with pytest.raises(NotImplementedError, match="built-in life model"):
         model.to_dict()
 
 
