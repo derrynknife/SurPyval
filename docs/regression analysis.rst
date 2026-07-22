@@ -211,6 +211,21 @@ Stratification
 
 When proportional hazards fails for a *nuisance* covariate — a study site, a batch, a device generation you would rather not model — the standard remedy is **stratification**: allow a separate baseline hazard :math:`h_{0,g}(t)` for each stratum :math:`g` while sharing the coefficients :math:`\beta`. Because the partial likelihood is summed *within* strata, risk sets never cross a stratum boundary and the nuisance factor is removed from the comparison without ever estimating its effect. The Cox partial likelihood factorises across strata, so this is a small change to the estimation with a large gain in robustness.
 
+Time-varying covariates
+-----------------------
+
+A covariate can change *during* a subject's follow-up — a dose is raised, a treatment begins, a machine is moved to a harsher environment. Such a covariate path is represented in the **counting-process (start-stop) format**: each subject contributes one row per interval :math:`(x_l, x_r]` on which its covariate vector is constant, and only the interval ending at the subject's event carries the terminal status. surpyval writes this with its usual vocabulary — the subject id ``i``, the interval bounds ``xl`` / ``xr``, and the censoring flag ``c`` (``0`` event, ``1`` right-censored interval end).
+
+**Fitting.** Whether a subject's episodes can be fitted as if they were independent observations depends on the family. Where the cumulative hazard is *additive over disjoint intervals* — proportional hazards, additive hazards, and (semi-parametric) Cox — a subject splits **exactly** into one left-truncated (delayed-entry) observation per constant-covariate interval:
+
+.. math::
+
+    H\bigl(x_r \mid Z\bigr) - H\bigl(x_l \mid Z\bigr)
+
+is the interval's contribution and the subject's likelihood is the product over its intervals, so the ordinary maximum-likelihood fitter recovers the same estimate from the reshaped rows (the *episode-splitting identity*). Accelerated failure time is different: the covariate rescales the *time axis*, so the baseline is evaluated at the subject's accumulated **accelerated age** :math:`\psi = \sum_k e^{\beta' z_k}\,(b_k - a_k)`, and the episode entry ages in that sum depend on :math:`\beta`. The episodes therefore do not separate into independent rows, and AFT is fitted with a dedicated accumulated-age likelihood that re-accumulates :math:`\psi` per subject on each optimiser step. Proportional odds has neither structure and is not fitted from time-varying data.
+
+**Evaluation.** Given an already-fitted model and a covariate path :math:`Z(t)`, the survival :math:`S(t \mid Z(\cdot))` is exact when the path is **piecewise-constant** (a step function). For proportional and additive hazards (and Cox) it is the sum of the per-segment cumulative-hazard increments; for AFT it is the baseline evaluated at the accumulated accelerated age. A continuously-varying covariate would break the exactness of these segment sums, so the step-valued requirement is a correctness precondition, not a convenience. Unlike some packages, surpyval is willing to evaluate a model along a *future* covariate path — because that path is *supplied* as a plan or hypothesis (mission phases, a duty cycle, a scheduled load), making :math:`S(t \mid Z(\cdot))` a well-posed conditional question rather than a claim to know the future.
+
 Validating a survival predictor
 -------------------------------
 
