@@ -734,6 +734,25 @@ the same ``i`` / ``xl`` / ``xr`` / ``c`` convention as Cox:
     )
     ph.params
 
+**Accelerated failure time** also fits start-stop data through the same
+``fit_tvc`` interface. AFT rescales the *time axis* rather than the hazard, so a
+subject's likelihood depends on its accumulated *accelerated age*
+:math:`\psi = \sum e^{\beta'z}\,(b - a)` across intervals and cannot be
+reshaped into independent left-truncated rows the way PH/AH can; ``WeibullAFT``
+fits it with a dedicated accumulated-age likelihood instead, but the call is
+identical:
+
+.. jupyter-execute::
+
+    from surpyval import WeibullAFT
+
+    aft = WeibullAFT.fit_tvc_from_df(
+        df, id_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
+    )
+    aft.params
+
+Proportional odds is the one family without time-varying-covariate fitting.
+
 **Evaluating a covariate path.** Every family that has a closed form along a
 step path — Cox, parametric ``PH`` and ``AH``, and accelerated failure time
 (``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus the
@@ -789,6 +808,123 @@ Cox case:
     plt.legend()
     plt.xlabel('Time')
     plt.ylabel('S(t)')
+
+
+Worked example: forecasting equipment on a duty cycle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Putting the two halves together — fitting on a time-varying covariate and then
+evaluating a *future* path — answers a question that comes up constantly in
+reliability but that a semi-parametric time-varying Cox fit (as in lifelines)
+cannot: *my equipment runs on a duty cycle; how long will it last, and how much
+longer if I change that cycle?* The fit tells you how much the load matters; the
+forecast turns that into a survival curve for any schedule you might run next,
+including ones the fleet has never yet seen.
+
+Consider a fleet of pumps that alternate week-long **high-load** and
+**low-load** shifts. High load wears a pump faster. Pumps enter service in
+different weeks, so their cycles are offset — and that phase spread is exactly
+what lets the load effect be identified. We observe each pump in start-stop
+format, one row per week, with the load on that week as the covariate:
+
+.. note::
+
+   **When a time-varying covariate earns its keep.** The load coefficient is
+   estimated from *contrast within the risk set*: at each failure, does the
+   pump that failed carry a heavier load than the others still running? If every
+   pump ran the identical cycle locked to one calendar — all high-load in the
+   same weeks — there is no such contrast, load is perfectly confounded with
+   time, and the coefficient is not estimable (a Cox fit goes singular; a
+   parametric fit returns a silently biased number). Operational spread across
+   the fleet — staggered commissioning, different shift patterns, idle periods —
+   is what makes the effect measurable. When your equipment really is all
+   operated the same way there is nothing for a time-varying covariate to
+   latch onto, and the right tool is an ordinary ``Weibull`` fit to the
+   failure times: it characterises reliability under that one
+   operating regime (it just cannot forecast a *different* cycle, because the
+   data never varied the load).
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    rng = np.random.default_rng(1)
+    n_pumps, horizon = 40, 60
+    alpha, shape, load_effect = 30.0, 2.0, 0.9   # ground truth for the demo
+
+    rows = []
+    for pump in range(n_pumps):
+        phase = pump % 2                    # starts on a high or a low shift
+        energy = rng.exponential(1.0)       # latent failure threshold
+        H = 0.0
+        for week in range(horizon):
+            load = 1.0 if (week + phase) % 2 == 0 else 0.0
+            dH = (((week + 1) / alpha) ** shape - (week / alpha) ** shape) \
+                * np.exp(load_effect * load)
+            failed = (H + dH) >= energy
+            rows.append((pump, week, week + 1, 0 if failed else 1, load))
+            if failed:
+                break
+            H += dH
+
+    df = pd.DataFrame(rows, columns=['pump', 'xl', 'xr', 'c', 'load'])
+    df.head()
+
+Fitting is the ordinary ``fit_tvc_from_df`` call. A ``WeibullPH`` recovers both
+the baseline wear-out (the Weibull ``alpha`` and ``beta``) and the load effect
+as a coefficient; ``exp(beta_load)`` is the hazard ratio of a high-load week
+against a low-load one:
+
+.. jupyter-execute::
+
+    from surpyval import WeibullPH
+
+    model = WeibullPH.fit_tvc_from_df(
+        df, id_col='pump', xl_col='xl', xr_col='xr', c_col='c', Z_cols='load',
+    )
+    print('parameters :', np.round(model.params, 3))
+    print('load hazard ratio exp(beta) : %.2f' % np.exp(model.params[-1]))
+
+Now the part that motivates the whole exercise. Because the fit is fully
+parametric, ``sf_tvc`` will evaluate the survival curve along *any* step
+schedule you hand it — not just paths the pumps actually ran. That makes it a
+planning tool: pose each candidate duty cycle as a :class:`StepSchedule` and
+read off the survival it implies. Here we compare the current 50/50 cycle
+against an *eased* cycle (one high week in four) and a punishing always-high
+regime:
+
+.. jupyter-execute::
+
+    from surpyval.univariate.regression import StepSchedule
+
+    horizon_f = 60
+    cycles = {
+        'current: 1 week on / 1 week off': '1.0 if t % 2 < 1 else 0.0',
+        'eased: 1 week on / 3 weeks off':  '1.0 if t % 4 < 1 else 0.0',
+        'always high load':                '1.0',
+    }
+
+    t = np.linspace(0.5, horizon_f, 200)
+    for label, expr in cycles.items():
+        sched = StepSchedule.from_expression(expr, horizon=horizon_f)
+        sf = model.sf_tvc(t, sched)
+        median = t[np.argmax(sf < 0.5)] if np.any(sf < 0.5) else np.nan
+        print('%-34s median life ~ %4.1f weeks' % (label, median))
+        plt.plot(t, sf, label=label)
+
+    plt.legend()
+    plt.xlabel('Weeks in service')
+    plt.ylabel('S(t)')
+    plt.title('Forecast pump survival under alternative duty cycles')
+
+The eased cycle buys a few weeks of median life over the current one, and the
+always-high regime costs several — a quantitative answer to "should we throttle
+back?" that falls straight out of the fitted model. None of these three curves
+required running a pump on that schedule; they are the model's forecast under a
+covariate plan you supply. A semi-parametric time-varying Cox model has no
+baseline hazard beyond the last observed event time, so it cannot produce a
+survival curve into the future at all — which is why this scenario forecasting
+needs the parametric ``fit_tvc`` / ``sf_tvc`` pair.
 
 
 Confidence Bounds
