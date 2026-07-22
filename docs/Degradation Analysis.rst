@@ -190,6 +190,39 @@ stochastic-process models, predicting remaining useful life, the Lu-Meeker
 diagnostic, and serialising a fitted model — see the
 :doc:`Degradation Modelling with SurPyval` page.
 
+Destructive degradation
+-----------------------
+
+Both approaches so far assume each unit is measured *repeatedly* over time. In a
+**destructive** test the act of measuring destroys the specimen — a coupon must
+be broken to read its strength, insulation driven to breakdown — so each unit
+yields exactly **one** :math:`(t, y)` observation. With one point per unit there
+are no paths to fit and no increments to accumulate, so neither the general-path
+nor the stochastic-process machinery applies [Meeker1998]_.
+
+Instead the **distribution of the degradation as a function of time** is modelled
+directly. The measurement follows a location-scale distribution whose location
+moves with a transform of time,
+
+.. math::
+
+    Y \mid t \ \sim\ \mathrm{dist}\bigl(\text{loc} = \beta_0 + \beta_1\,\varphi(t),
+    \ \text{scale} = \sigma\bigr),
+
+with :math:`\varphi` a time transform (identity, log, ...). This is an ordinary
+censored location-scale regression of the response on :math:`\varphi(t)`, so
+destructive measurements that are only bounded — a strength below the test floor,
+a specimen that survived the maximum load — enter as left- or right-censored
+observations in the usual way.
+
+A unit fails when its degradation crosses the threshold :math:`D_f`. Because only
+the location moves with time, the population ordering is preserved, and the
+failure-time distribution is read straight off the fitted degradation
+distribution: for **increasing** degradation (wear, crack growth)
+:math:`F_T(t) = P(Y(t) > D_f)`, and for **decreasing** degradation (strength
+loss) :math:`F_T(t) = P(Y(t) < D_f)`. This is the standard destructive-degradation
+(degradation-distribution) model; see [Meeker1998]_.
+
 References
 ----------
 
