@@ -96,6 +96,21 @@ Correctness
 Regression
 ~~~~~~~~~~
 
+- **Time-varying-covariate fitting for accelerated failure time** (#150).
+  ``WeibullAFT`` (and every ``AFT(dist)``) gains ``fit_tvc`` /
+  ``fit_tvc_timeline`` and the DataFrame variants, taking the same start-stop /
+  timeline input (``i`` / ``xl`` / ``xr`` / ``c``) as the other families.
+  Because AFT rescales the time axis, a subject's likelihood depends on its
+  *accumulated accelerated age* ``ψ = Σ exp(β'z)(b − a)`` across intervals and
+  does not factorise into independent left-truncated rows the way the
+  proportional/additive-hazards families do, so it is fit with a dedicated
+  accumulated-age likelihood (a within-subject scan each optimiser step) rather
+  than the reshape-and-refit used for PH/AH. The shared MLE code is untouched:
+  the fit binds the custom likelihood onto its own result object, so confidence
+  bounds (a numerical Hessian of that likelihood) are correct, and information
+  criteria are reported on the subject count rather than the episode rows. This
+  closes the last open part of #150; with #170's evaluation side, AFT now has
+  full time-varying-covariate support.
 - **Evaluate a fitted regression model along a time-varying covariate path**
   (#170). A fitted ``WeibullPH`` (any ``PH(dist)``), ``WeibullAH`` (any
   ``AH(dist)``) or ``WeibullAFT`` (any ``AFT(dist)``) gains ``sf_tvc`` (and
