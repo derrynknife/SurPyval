@@ -31,6 +31,11 @@ unit is not degrading, or is trending away from the threshold), the unit
 is treated as right censored at its last observed time, and the censoring
 is passed through to the lifetime distribution fit.
 
+This page also covers two alternatives to the pseudo-failure-time approach:
+the `Stochastic-process degradation models`_ (Wiener and Gamma processes,
+which model the increments directly), and `Destructive degradation`_ for tests
+where each specimen can be measured only once.
+
 Degradation path models
 -----------------------
 
@@ -814,13 +819,69 @@ rather than through noisy per-unit pseudo failure times. The general-path models
 remain the better choice when each unit truly follows a smooth deterministic
 trend observed with error, or when you need a specific parametric path shape.
 
+Destructive degradation
+-----------------------
+
+Everything so far assumes each unit is measured *repeatedly* over time. In a
+**destructive** test the measurement destroys the specimen — you break a coupon
+to read its strength, or drive insulation to breakdown — so each unit yields
+exactly **one** ``(time, degradation)`` point. There are no per-unit paths to
+fit and extrapolate, so the pseudo-failure-time machinery above does not apply.
+
+:class:`~surpyval.degradation.DestructiveDegradation` instead models the
+*population* degradation distribution directly, as a location-scale regression
+whose location moves with a transform of time,
+:math:`Y \mid t \sim \mathrm{dist}(\text{loc} = \beta_0 + \beta_1\,\varphi(t),
+\ \sigma)`, and induces the lifetime distribution by crossing the failure
+threshold. In the example below strength *decreases* with age and a unit fails
+once it drops below ``D_f`` — the direction is inferred from the trend:
+
+.. jupyter-execute::
+
+    from surpyval import Normal
+    from surpyval.degradation import DestructiveDegradation
+
+    rng = np.random.default_rng(0)
+    n = 300
+    age = rng.uniform(0, 40, n)                      # one specimen per point
+    strength = 100.0 - 1.5 * age + rng.normal(0, 5.0, n)
+    D_f = 40.0                                       # failed below this strength
+
+    model = DestructiveDegradation.fit(
+        age, strength, threshold=D_f, distribution=Normal,
+    )
+    model
+
+The fitted model exposes the induced *lifetime* distribution at the threshold
+(``sf`` / ``ff`` / ``Hf`` / ``df``) and the fitted *degradation* distribution
+over time (``degradation_quantile``):
+
+.. jupyter-execute::
+
+    t = np.linspace(1, 50, 100)
+    plt.plot(t, model.sf(t), label='reliability S(t)')
+    plt.plot(t, model.degradation_quantile(0.5, t) / 100.0,
+             '--', label='median strength (scaled)')
+    plt.axhline(D_f / 100.0, color='0.7', lw=1)
+    plt.legend()
+    plt.xlabel('Age')
+
+The response distribution is ``LogNormal`` by default (a positive-valued
+measurement); use ``Normal`` when the response can be negative. The time
+transform :math:`\varphi` is ``"linear"`` by default — ``"log"``, ``"sqrt"``,
+``"reciprocal"`` or ``"best"`` (lowest AICc) are also available. Because the
+fit goes through the distribution's own likelihood, censored measurements — a
+strength below the test floor (left-censored), a specimen that did not break at
+the maximum load (right-censored) — are passed through the ordinary ``c``
+argument, and ``cb`` gives bootstrap confidence bounds on the induced lifetime.
+
 Saving and loading a fitted model
 ---------------------------------
 
 Every fitted degradation model can be serialised to a dictionary or JSON file
 and rebuilt later — the general-path ``DegradationModel``, the stochastic-
-process ``WienerProcessModel`` / ``GammaProcessModel``, and the
-``InducedFailureDistribution``:
+process ``WienerProcessModel`` / ``GammaProcessModel``, the destructive
+``DestructiveDegradationModel``, and the ``InducedFailureDistribution``:
 
 .. jupyter-execute::
 

@@ -734,6 +734,25 @@ the same ``i`` / ``xl`` / ``xr`` / ``c`` convention as Cox:
     )
     ph.params
 
+**Accelerated failure time** also fits start-stop data through the same
+``fit_tvc`` interface. AFT rescales the *time axis* rather than the hazard, so a
+subject's likelihood depends on its accumulated *accelerated age*
+:math:`\psi = \sum e^{\beta'z}\,(b - a)` across intervals and cannot be
+reshaped into independent left-truncated rows the way PH/AH can; ``WeibullAFT``
+fits it with a dedicated accumulated-age likelihood instead, but the call is
+identical:
+
+.. jupyter-execute::
+
+    from surpyval import WeibullAFT
+
+    aft = WeibullAFT.fit_tvc_from_df(
+        df, id_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
+    )
+    aft.params
+
+Proportional odds is the one family without time-varying-covariate fitting.
+
 **Evaluating a covariate path.** Every family that has a closed form along a
 step path — Cox, parametric ``PH`` and ``AH``, and accelerated failure time
 (``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus the
