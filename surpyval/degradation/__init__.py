@@ -41,3 +41,8 @@ from .process_models import (  # isort: skip
     WienerProcess,
     WienerProcessModel,
 )
+
+from .destructive import (  # isort: skip
+    DestructiveDegradation,
+    DestructiveDegradationModel,
+)

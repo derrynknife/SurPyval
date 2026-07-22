@@ -93,6 +93,25 @@ Correctness
   inner estimators; and the documented untruncated example is byte-for-byte
   identical.
 
+Degradation
+~~~~~~~~~~~
+
+- **Destructive degradation modelling** (#153). New
+  ``surpyval.degradation.DestructiveDegradation`` for tests whose measurement
+  destroys the specimen, so each unit yields a single ``(time, degradation)``
+  point (material/adhesive strength, breakdown voltage, ...). With no per-unit
+  paths to fit, the population degradation distribution is modelled directly as
+  a location-scale regression on a time transform,
+  ``Y | t ~ dist(loc = β₀ + β₁·φ(t), σ)`` (``LogNormal`` or ``Normal``;
+  ``φ`` = linear / log / sqrt / reciprocal, or ``transform="best"`` by AICc),
+  and the lifetime distribution is induced by crossing the failure threshold
+  (``sf`` / ``ff`` / ``Hf`` / ``df``), with the increasing (wear) vs decreasing
+  (strength-loss) direction inferred automatically. Censored measurements (a
+  strength below the test floor, a specimen that did not break) are handled
+  through the ordinary ``c`` convention; ``cb`` gives bootstrap bounds and the
+  model round-trips through ``to_dict`` / ``from_dict``. This completes the
+  degradation half of #153 alongside the stochastic-process models.
+
 Regression
 ~~~~~~~~~~
 
