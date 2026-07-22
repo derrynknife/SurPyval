@@ -6,6 +6,27 @@ If you want to contribute to SurPyval, please do! Please review the current open
 
 SurPyval is in the process of complying with the PEP8 standard so please make all contributions as per that standard.
 
+Branching and releases
+----------------------
+
+SurPyval uses a two-tier branch model to keep continuous integration and the
+documentation build from running on every change:
+
+* **master** is the release branch. It is only updated at a version release,
+  and pushing a ``v*`` tag to it publishes the package and rebuilds the hosted
+  documentation.
+* **develop** is the long-lived integration branch. Feature work is done on a
+  short-lived branch and opened as a pull request into ``develop``.
+* At release time ``develop`` is merged into ``master`` in a single pull
+  request and the new version is tagged.
+
+Continuous integration (``.github/workflows/actions.yml``) therefore runs on
+**pull requests into develop or master** and on **pushes to master**, rather
+than on every push to every branch. Read the Docs is configured to build
+``master`` and tags only. The net effect is that the full test suite and the
+documentation build run once per pull request and once per release, instead of
+once per intermediate commit.
+
 Documentation
 -------------
 
