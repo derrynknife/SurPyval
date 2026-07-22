@@ -824,10 +824,25 @@ including ones the fleet has never yet seen.
 Consider a fleet of pumps that alternate week-long **high-load** and
 **low-load** shifts. High load wears a pump faster. Pumps enter service in
 different weeks, so their cycles are offset — and that phase spread is exactly
-what lets the load effect be identified (if every pump ran high load in the same
-weeks, no comparison within the risk set could separate load from calendar
-time). We observe each pump in start-stop format, one row per week, with the
-load on that week as the covariate:
+what lets the load effect be identified. We observe each pump in start-stop
+format, one row per week, with the load on that week as the covariate:
+
+.. note::
+
+   **When a time-varying covariate earns its keep.** The load coefficient is
+   estimated from *contrast within the risk set*: at each failure, does the
+   pump that failed carry a heavier load than the others still running? If every
+   pump ran the identical cycle locked to one calendar — all high-load in the
+   same weeks — there is no such contrast, load is perfectly confounded with
+   time, and the coefficient is not estimable (a Cox fit goes singular; a
+   parametric fit returns a silently biased number). Operational spread across
+   the fleet — staggered commissioning, different shift patterns, idle periods —
+   is what makes the effect measurable. When your equipment really is all
+   operated the same way there is nothing for a time-varying covariate to
+   latch onto, and the right tool is an ordinary ``Weibull`` fit to the
+   failure times: it characterises reliability under that one
+   operating regime (it just cannot forecast a *different* cycle, because the
+   data never varied the load).
 
 .. jupyter-execute::
 
