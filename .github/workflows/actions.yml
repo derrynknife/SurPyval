@@ -2,7 +2,15 @@ name: actions
 
 run-name: SurPyval CI
 
-on: [push]
+# Run CI on pull requests into the integration branches and on pushes to
+# master (i.e. release merges + tags). Feature work accumulates on `develop`
+# via PRs; day-to-day pushes to feature branches no longer each trigger the
+# full suite. See docs/Contributing.rst for the branching / release flow.
+on:
+  pull_request:
+    branches: [develop, master]
+  push:
+    branches: [master]
 
 env:
   SRC: surpyval # Source directory to run jobs on
