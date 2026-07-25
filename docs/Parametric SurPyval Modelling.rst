@@ -826,6 +826,32 @@ we want the confidence interval. That is, the ``on`` keyword can be any of ``sf`
 This will work with models that you create as well, so even a user defined Distribution will be able to have the
 confidence intervals computed. Creating these models is discussed in the section below.
 
+Bounds on the *parameters* themselves come from ``param_cb``. By default it
+returns a Wald interval built from the parameter's standard error. For small or
+heavily censored samples the Wald interval - being symmetric on a transformed
+scale - can have poor coverage, and the reliability-engineering convention is to
+use a **likelihood-ratio** (profile) interval instead, via ``method='lr'``:
+
+.. jupyter-execute::
+
+    np.random.seed(3)
+    x = Weibull.random(15, 10, 2)     # a small sample
+    model = Weibull.fit(x)
+
+    print("Wald :", model.param_cb('beta', method='wald'))
+    print("LR   :", model.param_cb('beta', method='lr'))
+
+The likelihood-ratio interval is the set of shape values whose profile deviance
+stays within the :math:`\chi^2_1` critical value, with the scale re-optimised at
+each candidate. Unlike the Wald interval it is transformation-invariant,
+respects the parameter's support, and need not be symmetric about the estimate -
+here the upper bound sits further from the fitted value than the lower one, as
+you would expect for a shape parameter from a small sample. Because it is
+computed from the likelihood directly it needs the original data, so it is only
+available on a model fit in-process (not one restored from ``from_dict``), and
+is not yet supported for offset / limited-failure-population / zero-inflated
+models; those fall back to ``method='wald'``.
+
 
 Creating a custom Distribution
 ------------------------------
