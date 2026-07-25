@@ -297,3 +297,203 @@ def test_cb_round_trips_through_serialization(lfp_model):
     assert np.allclose(
         restored.cb(t, on="sf", bound="two-sided", alpha_ci=0.05), expected
     )
+
+
+# ---------------------------------------------------------------------------
+# Likelihood-ratio (profile) parameter bounds: param_cb(..., method="lr")
+# ---------------------------------------------------------------------------
+
+
+def _deviance_at(model, name, value):
+    """2 * (profile neg-ll at ``value`` - neg-ll at the MLE)."""
+    idx = model.dist.param_map[name]
+    nll_hat = float(
+        model.dist._neg_ll_func(
+            model.surv_data, *model.params, model.gamma, model.f0, model.p
+        )
+    )
+    return 2.0 * (model._profile_neg_ll(idx, value) - nll_hat)
+
+
+@pytest.mark.parametrize("name", ["alpha", "beta"])
+def test_lr_bound_deviance_hits_chi2_critical(weibull_model, name):
+    # The defining property: at each LR bound the profile deviance equals the
+    # chi-squared(1) critical value for the level.
+    lo, hi = weibull_model.param_cb(name, method="lr", alpha_ci=0.05)
+    crit = z(0.975) ** 2
+    assert _deviance_at(weibull_model, name, lo) == pytest.approx(
+        crit, abs=1e-4
+    )
+    assert _deviance_at(weibull_model, name, hi) == pytest.approx(
+        crit, abs=1e-4
+    )
+
+
+@pytest.mark.parametrize("name", ["alpha", "beta"])
+def test_lr_brackets_point_estimate(weibull_model, name):
+    lo, hi = weibull_model.param_cb(name, method="lr")
+    hat = weibull_model.params[weibull_model.dist.param_map[name]]
+    assert lo < hat < hi
+
+
+def test_lr_agrees_with_wald_in_large_samples():
+    # With plenty of data the profile likelihood is close to quadratic, so the
+    # LR interval and the Wald interval nearly coincide.
+    np.random.seed(11)
+    x = surv.Weibull.random(3000, 10.0, 2.0)
+    m = surv.Weibull.fit(x)
+    for name in ("alpha", "beta"):
+        wald = m.param_cb(name, method="wald")
+        lr = m.param_cb(name, method="lr")
+        assert np.allclose(wald, lr, rtol=2e-2)
+
+
+def test_lr_one_sided_inside_two_sided(weibull_model):
+    lo2, hi2 = weibull_model.param_cb("beta", method="lr", bound="two-sided")
+    upper = weibull_model.param_cb("beta", method="lr", bound="upper")[0]
+    lower = weibull_model.param_cb("beta", method="lr", bound="lower")[0]
+    # One-sided bounds use the smaller critical value, so they sit strictly
+    # inside the corresponding two-sided bound.
+    assert upper < hi2
+    assert lower > lo2
+
+
+def test_lr_single_parameter_distribution():
+    np.random.seed(7)
+    x = surv.Exponential.random(80, 0.1)
+    m = surv.Exponential.fit(x)
+    lo, hi = m.param_cb("failure_rate", method="lr")
+    hat = m.params[0]
+    assert lo < hat < hi
+    crit = z(0.975) ** 2
+    assert _deviance_at(m, "failure_rate", hi) == pytest.approx(crit, abs=1e-4)
+
+
+def test_lr_handles_right_censoring():
+    np.random.seed(9)
+    x = surv.Weibull.random(120, 20.0, 1.5)
+    c = (x > 25).astype(int)
+    x = np.minimum(x, 25.0)
+    m = surv.Weibull.fit(x=x, c=c)
+    lo, hi = m.param_cb("beta", method="lr")
+    assert lo < m.params[1] < hi
+
+
+def test_lr_rejects_deserialised_model(weibull_model):
+    # LR bounds need the data; a rehydrated model does not carry it.
+    restored = surv.Parametric.from_dict(weibull_model.to_dict())
+    with pytest.raises(ValueError, match="original data"):
+        restored.param_cb("beta", method="lr")
+    # Wald still works from the stored covariance.
+    restored.param_cb("beta", method="wald")
+
+
+def test_lr_rejects_offset_model():
+    np.random.seed(13)
+    x = surv.Weibull.random(200, 10.0, 2.0) + 5.0
+    m = surv.Weibull.fit(x, offset=True)
+    with pytest.raises(NotImplementedError):
+        m.param_cb("alpha", method="lr")
+
+
+def test_param_cb_rejects_unknown_method(weibull_model):
+    with pytest.raises(ValueError, match="Unknown confidence-bound method"):
+        weibull_model.param_cb("beta", method="bootstrap")
+
+
+# ---------------------------------------------------------------------------
+# Likelihood-ratio (profile) function bounds: cb(..., method="lr")
+# ---------------------------------------------------------------------------
+
+
+def test_lr_cb_band_brackets_point(weibull_model):
+    t = np.linspace(3, 16, 12)
+    for on in ("sf", "ff", "Hf", "hf", "df"):
+        band = weibull_model.cb(t, on=on, method="lr")
+        point = getattr(weibull_model, on)(t)
+        assert np.all(band[:, 0] <= point + 1e-9)
+        assert np.all(point - 1e-9 <= band[:, 1])
+
+
+def test_lr_cb_matches_reparametrisation_for_weibull_sf():
+    # Gold standard: the LR band on reliability equals the range of R over the
+    # deviance region, which for a Weibull can be computed independently by
+    # profiling with alpha expressed through R = exp(-(t/alpha)**beta).
+    from scipy.optimize import brentq, minimize
+
+    np.random.seed(4)
+    x = surv.Weibull.random(25, 10.0, 2.0)
+    m = surv.Weibull.fit(x)
+    nll_hat = float(
+        m.dist._neg_ll_func(m.surv_data, *m.params, m.gamma, m.f0, m.p)
+    )
+    crit = z(0.975) ** 2
+
+    def reparam_band(t):
+        def dev_R(R):
+            def obj(beta):
+                b = beta[0]
+                alpha = t / ((-np.log(R)) ** (1.0 / b))
+                return float(
+                    m.dist._neg_ll_func(m.surv_data, alpha, b, 0, 0, 1)
+                )
+
+            r = minimize(obj, [m.params[1]], method="Nelder-Mead")
+            return 2.0 * (r.fun - nll_hat)
+
+        r_hat = m.sf(t)
+        lo = brentq(lambda R: dev_R(R) - crit, 1e-6, r_hat - 1e-9)
+        hi = brentq(lambda R: dev_R(R) - crit, r_hat + 1e-9, 1 - 1e-6)
+        return lo, hi
+
+    for t in (5.0, 10.0, 14.0):
+        band = m.cb(np.array([t]), on="sf", method="lr")
+        lo_ref, hi_ref = reparam_band(t)
+        assert band[0, 0] == pytest.approx(lo_ref, abs=1e-3)
+        assert band[0, 1] == pytest.approx(hi_ref, abs=1e-3)
+
+
+def test_lr_cb_agrees_with_wald_large_sample():
+    np.random.seed(1)
+    x = surv.Weibull.random(3000, 10.0, 2.0)
+    m = surv.Weibull.fit(x)
+    t = np.linspace(5, 15, 6)
+    wald = m.cb(t, on="sf", method="wald")
+    lr = m.cb(t, on="sf", method="lr")
+    assert np.allclose(wald, lr, atol=2e-3)
+
+
+def test_lr_cb_one_sided_inside_two_sided(weibull_model):
+    t = np.linspace(4, 15, 8)
+    band = weibull_model.cb(t, on="sf", method="lr")
+    upper = weibull_model.cb(t, on="sf", method="lr", bound="upper")
+    lower = weibull_model.cb(t, on="sf", method="lr", bound="lower")
+    assert np.all(upper <= band[:, 1] + 1e-9)
+    assert np.all(lower >= band[:, 0] - 1e-9)
+
+
+def test_lr_cb_ff_is_sf_reflected(weibull_model):
+    t = np.linspace(4, 15, 8)
+    sf_band = weibull_model.cb(t, on="sf", method="lr")
+    ff_band = weibull_model.cb(t, on="ff", method="lr")
+    assert np.allclose(ff_band[:, 0], 1.0 - sf_band[:, 1], atol=1e-4)
+    assert np.allclose(ff_band[:, 1], 1.0 - sf_band[:, 0], atol=1e-4)
+
+
+def test_lr_cb_rejects_deserialised(weibull_model):
+    restored = surv.Parametric.from_dict(weibull_model.to_dict())
+    with pytest.raises(ValueError, match="original data"):
+        restored.cb(np.array([10.0]), on="sf", method="lr")
+
+
+def test_lr_cb_rejects_offset_model():
+    np.random.seed(13)
+    x = surv.Weibull.random(200, 10.0, 2.0) + 5.0
+    m = surv.Weibull.fit(x, offset=True)
+    with pytest.raises(NotImplementedError):
+        m.cb(np.array([12.0]), on="sf", method="lr")
+
+
+def test_cb_rejects_unknown_method(weibull_model):
+    with pytest.raises(ValueError, match="Unknown confidence-bound method"):
+        weibull_model.cb(np.array([10.0]), on="sf", method="bootstrap")

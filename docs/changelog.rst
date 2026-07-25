@@ -1,6 +1,30 @@
 Changelog
 =========
 
+v0.17.0 (unreleased)
+--------------------
+
+- **Likelihood-ratio confidence bounds on model functions.** ``cb`` gains the
+  same ``method`` argument: ``method="lr"`` returns a profile-likelihood band
+  on ``sf`` / ``ff`` / ``Hf`` / ``hf`` / ``df``. At each time the bound is the
+  extreme value of the function over the parameter confidence region
+  :math:`\{\theta : 2[\text{nll}(\theta) - \text{nll}_{\hat{}}] \le \chi^2_1\}`,
+  found by constrained optimisation with a warm-started sweep over the time
+  grid. Like the parameter version it is transformation-invariant and better
+  behaved in small samples than the Wald/delta band, needs the original data,
+  and does not yet cover offset / LFP / ZI models.
+- **Likelihood-ratio confidence bounds on parameters.** A fitted parametric
+  model's ``param_cb`` gains a ``method`` argument: ``method="wald"`` (the
+  existing default) or ``method="lr"`` for a profile-likelihood
+  (likelihood-ratio) bound. The interval is the set of parameter values whose
+  profile deviance stays below the :math:`\chi^2_1` critical value, with the
+  remaining parameters re-optimised at each candidate. Unlike the Wald bound it
+  is transformation-invariant, respects the parameter's support boundary, and
+  need not be symmetric about the estimate -- usually better small-sample
+  coverage, and the reliability-engineering default. It needs the original
+  data (a deserialised model raises, directing you to ``method="wald"``);
+  offset / LFP / ZI models are not yet supported.
+
 v0.16.0 (22 Jul 2026)
 ---------------------
 

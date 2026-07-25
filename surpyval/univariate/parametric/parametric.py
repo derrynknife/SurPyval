@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import matplotlib.pyplot as plt
 import numpy.typing as npt
 from autograd import jacobian
+from scipy.optimize import NonlinearConstraint, brentq, minimize
 from scipy.special import ndtri as z
 from scipy.stats import uniform
 
@@ -260,11 +261,44 @@ class Parametric(ParametricDistribution):
             return "Unable to fit values"
 
     def param_cb(
-        self, name: str, alpha_ci: float = 0.05, bound: str = "two-sided"
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         """
         Method to calculate the confidence bound on a parameter.
+
+        Two interval methods are available via ``method``:
+
+        - ``"wald"`` (default) -- a symmetric bound from the parameter's
+          standard error, computed on a scale chosen from the parameter's
+          support (log for a positive parameter, logit for a probability) so
+          the interval stays valid.
+        - ``"lr"`` -- a profile-likelihood (likelihood-ratio) bound. The
+          interval is the set of values whose profile deviance
+          :math:`2[\\ell(\\hat\\theta) - \\ell_p(\\theta)]` stays below the
+          :math:`\\chi^2_1` critical value, with the remaining parameters
+          re-optimised at each candidate. It is transformation-invariant,
+          respects the parameter's boundary, and need not be symmetric about
+          the estimate -- usually better small-sample coverage than Wald, and
+          the reliability-engineering default. Aliases: ``"likelihood"``,
+          ``"likelihood-ratio"``, ``"profile"``.
         """
+        if method.lower() in (
+            "lr",
+            "likelihood",
+            "likelihood-ratio",
+            "profile",
+        ):
+            return self._param_cb_lr(name, alpha_ci, bound)
+        elif method.lower() != "wald":
+            raise ValueError(
+                f"Unknown confidence-bound method '{method}'; "
+                "use 'wald' or 'lr'."
+            )
+
         if name in ("p", "f0"):
             if name == "p" and not self.lfp:
                 raise ValueError("'p' is only estimated for lfp models")
@@ -311,6 +345,157 @@ class Parametric(ParametricDistribution):
             factor = z(alpha) * np.sqrt(var)
             bounds = -bounds * factor
             return p_hat + bounds
+
+    def _profile_neg_ll(self, idx: int, value: float) -> float:
+        """Profile negative log-likelihood with core parameter ``idx`` fixed.
+
+        Holds the ``idx``-th distribution parameter at ``value`` and minimises
+        the negative log-likelihood over the remaining core parameters (warm
+        started from the fit). ``gamma``, ``f0`` and ``p`` are held at their
+        fitted values -- likelihood-ratio bounds for offset / LFP / ZI models
+        are not yet supported, so the public entry point rejects them before
+        this is reached.
+        """
+        fixed = np.array(self.params, dtype=float)
+        fixed[idx] = value
+        free_idx = [j for j in range(len(fixed)) if j != idx]
+
+        def neg_ll(theta):
+            return float(
+                self.dist._neg_ll_func(
+                    self.surv_data, *theta, self.gamma, self.f0, self.p
+                )
+            )
+
+        if not free_idx:
+            # Single-parameter distribution: nothing left to profile over.
+            return neg_ll(fixed)
+
+        def obj(free_vals):
+            theta = fixed.copy()
+            theta[free_idx] = free_vals
+            return neg_ll(theta)
+
+        sci_bounds = []
+        for j in free_idx:
+            lo, hi = self.dist.bounds[j]
+            # A hard zero lower bound is nudged up so log-terms stay finite.
+            lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
+            hi_s = np.inf if hi is None else hi
+            sci_bounds.append((lo_s, hi_s))
+
+        x0 = fixed[free_idx]
+        res = minimize(obj, x0, method="L-BFGS-B", bounds=sci_bounds)
+        best = res.fun
+        if not np.isfinite(best):
+            res2 = minimize(obj, x0, method="Nelder-Mead")
+            if np.isfinite(res2.fun):
+                best = res2.fun
+        return float(best)
+
+    def _param_cb_lr(
+        self, name: str, alpha_ci: float, bound: str
+    ) -> npt.NDArray:
+        """Profile-likelihood (likelihood-ratio) bound on a parameter.
+
+        The bound(s) solve ``2[nll_p(v) - nll_hat] = c`` where ``nll_p`` is the
+        profile negative log-likelihood, ``nll_hat`` the fitted value, and
+        ``c`` the chi-squared critical value (``z**2``) at the requested level.
+        The deviance is zero at the estimate and increases away from it, so
+        each side is bracketed by stepping out in units of the Wald standard
+        error and then solved by ``brentq``. A parameter boundary reached
+        before the deviance crosses ``c`` returns the boundary (an interval
+        open at the support edge).
+        """
+        if self.method != "MLE":
+            raise ValueError("Only MLE has confidence bounds")
+        if not hasattr(self, "surv_data"):
+            raise ValueError(
+                "Likelihood-ratio bounds need the original data, which a "
+                "deserialised model does not carry; refit in-process, or "
+                "use method='wald' (which uses the stored covariance)."
+            )
+        if self.offset or self.lfp or self.zi:
+            raise NotImplementedError(
+                "Likelihood-ratio bounds are not yet available for offset, "
+                "limited-failure-population or zero-inflated models; use "
+                "method='wald'."
+            )
+        if name in ("p", "f0"):
+            raise NotImplementedError(
+                "Likelihood-ratio bounds on 'p' / 'f0' are not yet "
+                "available; use method='wald'."
+            )
+
+        idx = self.dist.param_map[name]
+        theta_hat = float(self.params[idx])
+        nll_hat = float(
+            self.dist._neg_ll_func(
+                self.surv_data, *self.params, self.gamma, self.f0, self.p
+            )
+        )
+
+        lo_b, hi_b = self.dist.bounds[idx]
+        lo_b = -np.inf if lo_b is None else lo_b
+        hi_b = np.inf if hi_b is None else hi_b
+
+        if bound == "two-sided":
+            crit = z(1.0 - alpha_ci / 2.0) ** 2
+        elif bound in ("lower", "upper"):
+            crit = z(1.0 - alpha_ci) ** 2
+        else:
+            raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
+
+        hess_inv = getattr(self, "hess_inv", None)
+        if (
+            hess_inv is not None
+            and np.ndim(hess_inv) == 2
+            and np.isfinite(hess_inv[idx, idx])
+            and hess_inv[idx, idx] > 0
+        ):
+            se = float(np.sqrt(hess_inv[idx, idx]))
+        else:
+            se = 0.5 * abs(theta_hat) if theta_hat != 0 else 1.0
+
+        def deviance(v):
+            return 2.0 * (self._profile_neg_ll(idx, v) - nll_hat)
+
+        def solve_side(direction):
+            limit = hi_b if direction > 0 else lo_b
+            below = theta_hat  # deviance(below) ~ 0 < crit
+            step = se
+            for _ in range(80):
+                v = theta_hat + direction * step
+                at_edge = (direction > 0 and v >= limit) or (
+                    direction < 0 and v <= limit
+                )
+                if at_edge:
+                    v = limit
+                if deviance(v) >= crit:
+                    a, b = sorted((below, v))
+                    return float(
+                        brentq(
+                            lambda x: deviance(x) - crit,
+                            a,
+                            b,
+                            xtol=1e-8,
+                            rtol=1e-8,
+                        )
+                    )
+                if at_edge:
+                    # Hit the support boundary without crossing: the interval
+                    # is open at the edge.
+                    return float(limit)
+                below = v
+                step *= 1.6
+            return float(v)
+
+        if bound == "two-sided":
+            return np.array([solve_side(-1), solve_side(1)])
+        elif bound == "lower":
+            return np.array([solve_side(-1)])
+        else:
+            return np.array([solve_side(1)])
 
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -866,6 +1051,7 @@ class Parametric(ParametricDistribution):
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         r"""
         Confidence bounds of the ``on`` function at the ``alpa_ci`` level of
@@ -885,6 +1071,18 @@ class Parametric(ParametricDistribution):
             Defaults to two-sided.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
+        method : ('wald', 'lr'), str, optional
+            ``"wald"`` (default) propagates the parameter covariance through
+            the ``on`` function by the delta method. ``"lr"`` gives a
+            profile-likelihood (likelihood-ratio) band: at each ``t`` the bound
+            is the extreme value of the ``on`` function over the parameter
+            confidence region ``{theta : 2[nll(theta) - nll_hat] <= chi2}``.
+            The likelihood-ratio band is transformation-invariant and does not
+            rely on a quadratic approximation, so it is usually better in small
+            samples (the reliability-engineering default), but it is computed
+            pointwise and so is slower, needs the original data (a deserialised
+            model raises), and is not yet available for offset / LFP / ZI
+            models.
 
         Returns
         -------
@@ -897,6 +1095,19 @@ class Parametric(ParametricDistribution):
         t = np.atleast_1d(t)
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
+
+        if method.lower() in (
+            "lr",
+            "likelihood",
+            "likelihood-ratio",
+            "profile",
+        ):
+            return self._cb_lr(t, on, alpha_ci, bound)
+        elif method.lower() != "wald":
+            raise ValueError(
+                f"Unknown confidence-bound method '{method}'; "
+                "use 'wald' or 'lr'."
+            )
 
         ctx = self._cb_context()
 
@@ -922,6 +1133,127 @@ class Parametric(ParametricDistribution):
             np.seterr(**old_err_state)
 
         return cb
+
+    def _cb_lr_on_func(self, on):
+        """Return ``g(t, theta)`` for the requested ``on`` function.
+
+        Evaluates the chosen distribution function at a single time for a
+        candidate core-parameter vector, so the profile optimiser can push it
+        to the edge of the likelihood region.
+        """
+        valid = ("sf", "R", "ff", "F", "Hf", "hf", "df")
+        if on not in valid:
+            raise ValueError(f"'on' must be one of {valid}")
+
+        def g(t, theta):
+            xt = np.atleast_1d(t) - self.gamma
+            if on in ("sf", "R"):
+                return self.dist.sf(xt, *theta)[0]
+            if on in ("ff", "F"):
+                return self.dist.ff(xt, *theta)[0]
+            if on == "Hf":
+                return self.dist.Hf(xt, *theta)[0]
+            if on == "hf":
+                return self.dist.hf(xt, *theta)[0]
+            return self.dist.df(xt, *theta)[0]
+
+        return g
+
+    def _cb_lr(self, t, on, alpha_ci, bound):
+        """Profile-likelihood (likelihood-ratio) band on a model function.
+
+        At each time the bound is the extreme value of the ``on`` function over
+        the parameter confidence region ``{theta : deviance(theta) <= crit}``,
+        found by constrained optimisation (SLSQP). The times are visited in
+        order and each optimiser is warm started from the previous solution,
+        which keeps the pointwise sweep fast. The core MLE path is untouched --
+        this only re-evaluates the stored likelihood on ``surv_data``.
+        """
+        if not hasattr(self, "surv_data"):
+            raise ValueError(
+                "Likelihood-ratio bounds need the original data, which a "
+                "deserialised model does not carry; refit in-process, or "
+                "use method='wald' (which uses the stored covariance)."
+            )
+        if self.offset or self.lfp or self.zi:
+            raise NotImplementedError(
+                "Likelihood-ratio confidence bounds are not yet available "
+                "for offset, limited-failure-population or zero-inflated "
+                "models; use method='wald'."
+            )
+        if bound not in ("two-sided", "lower", "upper"):
+            raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
+
+        g = self._cb_lr_on_func(on)
+        theta_hat = np.array(self.params, dtype=float)
+        nll_hat = float(
+            self.dist._neg_ll_func(
+                self.surv_data, *theta_hat, self.gamma, self.f0, self.p
+            )
+        )
+
+        def deviance(theta):
+            return 2.0 * (
+                float(
+                    self.dist._neg_ll_func(
+                        self.surv_data, *theta, self.gamma, self.f0, self.p
+                    )
+                )
+                - nll_hat
+            )
+
+        if bound == "two-sided":
+            crit = z(1.0 - alpha_ci / 2.0) ** 2
+        else:
+            crit = z(1.0 - alpha_ci) ** 2
+
+        sci_bounds = []
+        for lo, hi in self.dist.bounds:
+            lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
+            hi_s = np.inf if hi is None else hi
+            sci_bounds.append((lo_s, hi_s))
+        constraint = NonlinearConstraint(deviance, -np.inf, crit)
+
+        t = np.atleast_1d(t).astype(float)
+        order = np.argsort(t)
+        t_sorted = t[order]
+
+        def extreme(time, sign, warm):
+            # sign = +1 minimises g (lower bound); -1 maximises g (upper).
+            res = minimize(
+                lambda th: sign * g(time, th),
+                warm,
+                method="SLSQP",
+                bounds=sci_bounds,
+                constraints=[constraint],
+            )
+            x = res.x if res.success else warm
+            return g(time, x), x
+
+        want_lower = bound in ("two-sided", "lower")
+        want_upper = bound in ("two-sided", "upper")
+        lo_vals = np.empty(t_sorted.shape)
+        hi_vals = np.empty(t_sorted.shape)
+        warm_lo = theta_hat.copy()
+        warm_hi = theta_hat.copy()
+
+        old_err_state = np.seterr(all="ignore")
+        try:
+            for i, time in enumerate(t_sorted):
+                if want_lower:
+                    lo_vals[i], warm_lo = extreme(time, 1.0, warm_lo)
+                if want_upper:
+                    hi_vals[i], warm_hi = extreme(time, -1.0, warm_hi)
+        finally:
+            np.seterr(**old_err_state)
+
+        inv = np.argsort(order)
+        if bound == "two-sided":
+            return np.column_stack([lo_vals[inv], hi_vals[inv]])
+        elif bound == "lower":
+            return lo_vals[inv]
+        else:
+            return hi_vals[inv]
 
     def _cb_context(self):
         """Assemble the parameter vector and covariance used by ``cb``.
