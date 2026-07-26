@@ -4,6 +4,18 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Fixed: formula-fit regression models now round-trip through serialisation**
+  (#244). A regression model fit with ``fit_from_df(..., formula=...)`` using a
+  categorical term dropped its design-matrix transformer on ``to_dict`` /
+  ``from_dict``, so a restored model failed to evaluate from raw covariates
+  (``['sex[F]', 'sex[M]'] not in dataframe columns``). ``to_dict`` now persists
+  the categorical factor levels and numeric column names, and ``from_dict``
+  rebuilds an equivalent ``formulaic`` model spec, so a restored model expands
+  raw covariates identically to the original -- for the parametric families
+  (PH/AFT/PO/AH) and Cox. Data-dependent transforms (``scale()`` / ``center()``)
+  keep fitted statistics that cannot be restored from levels, so serialising
+  such a formula now raises early at ``to_dict`` rather than round-tripping to a
+  silently wrong encoding.
 - **Likelihood-ratio confidence bounds on model functions.** ``cb`` gains the
   same ``method`` argument: ``method="lr"`` returns a profile-likelihood band
   on ``sf`` / ``ff`` / ``Hf`` / ``hf`` / ``df``. At each time the bound is the

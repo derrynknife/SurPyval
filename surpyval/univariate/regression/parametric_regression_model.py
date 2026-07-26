@@ -18,7 +18,11 @@ from ._bounds import (
     logit_sf_bound,
     numerical_hessian,
 )
-from .regression_data import prepare_Z
+from .regression_data import (
+    model_spec_to_meta,
+    prepare_Z,
+    rebuild_model_spec,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -194,7 +198,12 @@ class ParametricRegressionModel:
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
-            out["formula"] = self.formula
+            out["formula"] = str(self.formula)
+            # Persist the categorical levels / numeric columns needed to
+            # rebuild the formula's design-matrix transformer on load, so a
+            # restored model expands raw covariates the same way (#244).
+            if self._model_spec is not None:
+                out["formula_meta"] = model_spec_to_meta(self._model_spec)
 
         # Store the parameter covariance so the restored model can produce
         # confidence bounds without the original data. Only for data-fit
@@ -309,6 +318,13 @@ class ParametricRegressionModel:
         out.f0 = float(model_dict.get("f0", 0.0))
         out.feature_names = model_dict.get("feature_names")
         out.formula = model_dict.get("formula")
+
+        # Rebuild the formula's design-matrix transformer so the restored
+        # model expands raw covariates (e.g. categoricals) at prediction time
+        # exactly as the original did (#244).
+        formula_meta = model_dict.get("formula_meta")
+        if out.formula is not None and formula_meta is not None:
+            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
 
         if "covariance" in model_dict:
             out._restored_covariance = np.array(
