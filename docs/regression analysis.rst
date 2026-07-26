@@ -206,6 +206,30 @@ The model-based standard errors assume every observation is independent. When th
 
 which reduces to the usual variance when there is one observation per cluster and there is no within-cluster correlation.
 
+Shared frailty
+--------------
+
+Cluster-robust errors *correct* for within-cluster correlation but do not *model* it. A **shared-frailty** model does the opposite: it introduces the correlation explicitly through an unobserved random effect. Each group :math:`g` (a manufacturing lot, a site, a repairable unit) is given a **frailty** :math:`u_g` — a random multiplier shared by every member of the group — acting on the hazard:
+
+.. math::
+
+    h\bigl(t \mid Z, u_g\bigr) = u_g \, h_0(t) \, e^{\beta' Z},
+
+with the frailties drawn once per group from a Gamma distribution of mean 1 and variance :math:`\theta`. The frailty is the survival analogue of a random intercept: it absorbs whatever unmeasured feature makes a whole group fail faster or slower than its covariates predict, and :math:`\theta` measures that between-group variability (:math:`\theta = 0` recovers ordinary proportional hazards). This is the *conditional* / random-effects counterpart of the *marginal* cluster-robust correction above — same within-group correlation, modelled rather than merely accounted for.
+
+Because the frailty multiplies the *cumulative* hazard, a Gamma frailty integrates out of a group's likelihood in closed form. Writing :math:`D_g` for the number of events in group :math:`g` and :math:`H_g = \sum_{j \in g} e^{\beta' z_j} H_0(t_j)` for the sum of its members' cumulative hazards, the group contributes
+
+.. math::
+
+    \sum_{\text{events}} \log\!\bigl(h_0 \, e^{\beta' Z}\bigr)
+    - \tfrac{1}{\theta}\log\theta - \log\Gamma\!\bigl(\tfrac{1}{\theta}\bigr)
+    + \log\Gamma\!\bigl(D_g + \tfrac{1}{\theta}\bigr)
+    - \bigl(D_g + \tfrac{1}{\theta}\bigr)\log\!\bigl(H_g + \tfrac{1}{\theta}\bigr)
+
+to the marginal log-likelihood, which is maximised jointly over the baseline parameters, :math:`\beta`, and :math:`\theta`. The same conjugacy makes the **posterior** frailty of an observed group a closed form, :math:`\hat u_g = (D_g + 1/\theta)/(H_g + 1/\theta)` — an empirical-Bayes estimate shrunk toward 1, larger for groups that fail early.
+
+The distinction between the two curves the model can draw matters. Integrating the frailty out gives the **marginal** (population-averaged) survival of a unit from an *unknown* group, :math:`S(t \mid Z) = (1 + \theta \, e^{\beta' Z} H_0(t))^{-1/\theta}` — a Laplace transform of the frailty distribution, and always heavier-tailed than the baseline. Conditioning on a value :math:`u` gives :math:`S(t \mid Z, u) = e^{-u \, e^{\beta' Z} H_0(t)}`, used with :math:`\hat u_g` to predict a *new* member of an *already-observed* group. A subtle consequence is that a mixture of groups makes the **population** hazard bend down over time even when every group's hazard rises, because the frail groups fail first and leave robust survivors — so an apparent decreasing hazard can be a heterogeneity artifact rather than a real one. Identification requires within-group replication: with a single group, or one observation per group, :math:`\theta` is confounded with the baseline shape and cannot be estimated.
+
 Stratification
 --------------
 

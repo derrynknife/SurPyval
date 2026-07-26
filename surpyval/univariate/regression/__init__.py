@@ -38,6 +38,15 @@ from .additive_hazards import (
     WeibullAH,
 )
 from .buckley_james import BuckleyJames, BuckleyJamesModel
+from .frailty import (
+    ExponentialFrailty,
+    Frailty,
+    FrailtyFitter,
+    FrailtyModel,
+    GammaFrailty,
+    LogNormalFrailty,
+    WeibullFrailty,
+)
 from .parametric_regression_model import ParametricRegressionModel
 from .proportional_hazards import (
     PH,
@@ -69,6 +78,14 @@ __all__ = [
     # Result classes that hold to_dict / from_dict / to_json / from_json
     "ParametricRegressionModel",
     "SemiParametricRegressionModel",
+    "FrailtyModel",
+    # Shared-frailty proportional hazards (Gamma frailty)
+    "Frailty",
+    "FrailtyFitter",
+    "ExponentialFrailty",
+    "GammaFrailty",
+    "LogNormalFrailty",
+    "WeibullFrailty",
     # Time-varying-covariate step schedule for sf_tvc evaluation
     "StepSchedule",
     "StepValuedError",
