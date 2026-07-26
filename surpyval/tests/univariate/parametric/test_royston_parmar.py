@@ -107,7 +107,7 @@ def test_right_censoring_and_truncation():
     xc = np.minimum(x, 20.0)
     rp = RoystonParmar.fit(xc, c=c, df=3)
     assert rp.n_events == int((c == 0).sum())
-    tl = np.full_like(x, 1.0)
+    tl = np.full_like(x, x.min() / 2.0)
     rp_t = RoystonParmar.fit(x, tl=tl, df=2)
     assert np.isfinite(rp_t._neg_ll)
 
@@ -139,7 +139,85 @@ def test_guards():
         RoystonParmar.fit(x, scale="weird")
     with pytest.raises(ValueError, match="positive"):
         RoystonParmar.fit(np.array([-1.0, 2.0, 3.0]))
-    with pytest.raises(ValueError, match="right-censored"):
-        RoystonParmar.fit(np.array([1.0, 2.0, 3.0]), c=np.array([0, 2, 1]))
+    # Right-censored-only data is not identifiable.
     with pytest.raises(ValueError, match="event"):
         RoystonParmar.fit(np.array([1.0, 2.0, 3.0]), c=np.array([1, 1, 1]))
+
+
+def test_left_censoring_recovers_baseline():
+    # Left-censoring a chunk of the smallest times should still recover a
+    # baseline close to fitting the fully-observed data.
+    np.random.seed(20)
+    x = Weibull.random(800, 10.0, 1.8)
+    thresh = 4.0
+    c = np.where(x < thresh, -1, 0)
+    xc = np.where(x < thresh, thresh, x)
+    rp = RoystonParmar.fit(xc, c=c, df=3)
+    full = RoystonParmar.fit(x, df=3)
+    t = np.array([6.0, 10.0, 16.0, 24.0])
+    assert np.allclose(rp.sf(t), full.sf(t), atol=4e-2)
+
+
+def test_interval_censoring_recovers_baseline():
+    # Round each event down/up to an inspection grid: interval-censored data
+    # should recover a survival curve close to the exact-data fit.
+    np.random.seed(21)
+    x = Weibull.random(800, 10.0, 1.6)
+    grid = np.arange(0.0, 60.0, 2.0)
+    idx = np.searchsorted(grid, x)
+    xl = grid[idx - 1]
+    xr = grid[idx]
+    keep = xl > 0
+    rp = RoystonParmar.fit(xl=xl[keep], xr=xr[keep], df=3)
+    full = RoystonParmar.fit(x[keep], df=3)
+    t = np.array([6.0, 10.0, 16.0, 24.0])
+    assert np.allclose(rp.sf(t), full.sf(t), atol=4e-2)
+    assert rp.n_events == 0  # all interval-censored
+
+
+def test_right_truncation_correction():
+    # Right-truncated sampling (only failures before ``tr`` are seen) is
+    # corrected by conditioning on T <= tr; the fit should be finite and the
+    # correction should move the estimate relative to ignoring truncation.
+    np.random.seed(22)
+    x = Weibull.random(2000, 10.0, 1.8)
+    tr_val = 12.0
+    seen = x <= tr_val
+    xs = x[seen]
+    corrected = RoystonParmar.fit(xs, tr=tr_val, df=2, scale="hazard")
+    naive = RoystonParmar.fit(xs, df=2, scale="hazard")
+    full = RoystonParmar.fit(x, df=2, scale="hazard")
+    assert np.isfinite(corrected._neg_ll)
+    # The truncation-corrected mean should sit closer to the true full-data
+    # mean than the biased naive fit that ignores the sampling.
+    assert abs(corrected.mean() - full.mean()) < abs(
+        naive.mean() - full.mean()
+    )
+
+
+def test_mixed_censoring_and_truncation_fits():
+    # A single dataset combining observed, right-, left- and interval-censored
+    # rows with left-truncation must fit and give a valid survival curve.
+    np.random.seed(23)
+    base = Weibull.random(600, 10.0, 1.6)
+    x_list: list = []
+    c_list: list = []
+    for v in base:
+        if v < 3.0:  # left-censored
+            x_list.append(3.0)
+            c_list.append(-1)
+        elif v > 25.0:  # right-censored
+            x_list.append(25.0)
+            c_list.append(1)
+        elif 8.0 < v < 12.0:  # interval-censored into a coarse window
+            x_list.append([8.0, 12.0])
+            c_list.append(2)
+        else:  # exactly observed
+            x_list.append(float(v))
+            c_list.append(0)
+    rp = RoystonParmar.fit(x=x_list, c=c_list, tl=1.0, df=2)
+    assert np.isfinite(rp._neg_ll)
+    t = np.array([2.0, 5.0, 10.0, 20.0])
+    s = rp.sf(t)
+    assert np.all((s >= 0) & (s <= 1))
+    assert np.all(np.diff(s) <= 1e-9)

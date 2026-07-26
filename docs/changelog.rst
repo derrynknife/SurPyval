@@ -18,8 +18,10 @@ v0.17.0 (unreleased)
   The fitted ``RoystonParmarModel`` exposes ``sf`` / ``ff`` / ``hf`` / ``Hf`` /
   ``df`` / ``qf`` / ``random`` / ``mean``, a linear-predictor confidence band
   (``cb``), ``aic`` / ``bic`` for choosing ``df``, and ``to_dict`` /
-  ``from_dict``. Observed, right-censored, weighted, and left-truncated data are
-  supported.
+  ``from_dict``. The likelihood supports the full arbitrary
+  censoring/truncation surface -- observed, right-, left- and interval-censored
+  observations (pass ``xl`` / ``xr`` or 2-element ``x`` rows), with left- and/or
+  right-truncation (``tl`` / ``tr`` / ``t``) and observation weights (``n``).
 - **Shared-frailty proportional-hazards models (Gamma frailty).** A new
   ``Frailty(distribution)`` factory (with pre-built ``WeibullFrailty``,
   ``ExponentialFrailty``, ``LogNormalFrailty``, ``GammaFrailty`` instances) fits

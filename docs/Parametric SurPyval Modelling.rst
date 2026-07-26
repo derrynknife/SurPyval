@@ -758,8 +758,10 @@ with its confidence band:
 The spline follows the two-component shape the single Weibull misses. Because
 the spline is linear beyond its boundary knots, the model extrapolates with a
 Weibull-like tail rather than a wild cubic — which is what makes it safe to read
-off a restricted-mean survival time or a far quantile. Right-censored, weighted,
-and left-truncated data are all supported (``c``, ``n``, ``tl``), and a fitted
+off a restricted-mean survival time or a far quantile. The full arbitrary
+censoring/truncation surface is supported — observed, right-, left- and
+interval-censored data (``c``, or ``xl`` / ``xr``), with left- and/or
+right-truncation and weights (``tl`` / ``tr`` / ``t``, ``n``) — and a fitted
 model serialises with ``to_dict`` / ``from_dict`` like any other.
 
 Discrete Distributions

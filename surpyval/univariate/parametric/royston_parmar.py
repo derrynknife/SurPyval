@@ -27,6 +27,12 @@ knots at their extremes, the internal knots at equally-spaced centiles. Beyond
 the boundary knots the spline is linear (the "restricted" part), so the model
 extrapolates with a Weibull-like tail. The number of knots -- set through
 ``df`` -- is the modelling choice; compare a few by AIC / BIC.
+
+The likelihood supports the full SurpyvalData censoring/truncation surface:
+observed, right-, left- and interval-censored observations, with left- and/or
+right-truncation. Right-censored contribute ``log S``, left-censored
+``log(1 - S)``, interval-censored ``log(S(l) - S(r))``, and truncation divides
+each observation's contribution by ``S(t_l) - S(t_r)``.
 """
 
 import json
@@ -105,6 +111,22 @@ def _sf_from_eta(eta: np.ndarray, scale: str) -> np.ndarray:
     if scale == "odds":
         return 1.0 / (1.0 + np.exp(eta))
     return norm.sf(eta)
+
+
+def _sf_at(times: np.ndarray, knots: np.ndarray, gamma: np.ndarray, scale: str):
+    """Survival at arbitrary times, with the boundary conventions the
+    censoring/truncation likelihoods need: ``S = 1`` at times ``<= 0`` (and
+    ``-inf``) and ``S = 0`` at ``+inf``. Finite positive times go through the
+    spline as usual.
+    """
+    times = np.asarray(times, dtype=float)
+    out = np.empty(times.shape, dtype=float)
+    pos = np.isfinite(times) & (times > 0.0)
+    if np.any(pos):
+        eta = _rcs_basis(np.log(times[pos]), knots) @ gamma
+        out[pos] = _sf_from_eta(eta, scale)
+    out[~pos] = np.where(np.isposinf(times[~pos]), 0.0, 1.0)
+    return out
 
 
 class RoystonParmarModel:
@@ -343,27 +365,43 @@ class RoystonParmar_:
 
     def fit(
         self,
-        x: Any,
+        x: Any = None,
         c: Any = None,
         n: Any = None,
+        t: Any = None,
+        xl: Any = None,
+        xr: Any = None,
         tl: Any = None,
+        tr: Any = None,
         df: int = 3,
         scale: str = "hazard",
         knots: Any = None,
     ) -> RoystonParmarModel:
         """Fit a Royston-Parmar model by maximum likelihood.
 
+        Accepts the full SurpyvalData censoring/truncation surface: observed,
+        right-, left- and interval-censored observations, with left- and/or
+        right-truncation (delayed entry and right-truncated sampling).
+
         Parameters
         ----------
         x : array_like
-            Observed times (all strictly positive).
+            Observed times (strictly positive). For interval-censored rows the
+            entry is a 2-element ``[left, right]`` pair (see ``c``).
         c : array_like, optional
-            Censoring flags: ``0`` event, ``1`` right-censored. Default all
-            events.
+            Censoring flags: ``0`` event, ``1`` right-censored, ``-1``
+            left-censored, ``2`` interval-censored. Default all events.
         n : array_like, optional
             Observation weights / counts. Default 1.
-        tl : array_like or scalar, optional
-            Left-truncation (delayed-entry) time per observation.
+        t : array_like, optional
+            ``(m, 2)`` array of ``[left, right]`` truncation bounds per row.
+            Mutually exclusive with ``tl`` / ``tr``.
+        xl, xr : array_like, optional
+            Left/right interval bounds for interval-censored data, as an
+            alternative to passing 2-element ``x`` rows.
+        tl, tr : array_like or scalar, optional
+            Left- and right-truncation bounds. A scalar truncates every
+            observation at that value.
         df : int, optional
             Degrees of freedom = number of spline terms beyond the intercept;
             ``df - 1`` internal knots. ``df = 1`` is a Weibull (``scale`` =
@@ -376,62 +414,79 @@ class RoystonParmar_:
         """
         if scale not in _SCALES:
             raise ValueError(f"scale must be one of {_SCALES}; got {scale!r}")
-        x = np.asarray(x, dtype=float).ravel()
-        if np.any(x <= 0):
+
+        from surpyval.utils.surpyval_data import SurpyvalData
+
+        data = SurpyvalData(
+            x=x, c=c, n=n, t=t, xl=xl, xr=xr, tl=tl, tr=tr,
+            group_and_sort=True,
+        )
+
+        if np.any(data.x_min <= 0):
             raise ValueError(
                 "Royston-Parmar requires strictly positive times."
             )
-        c = (
-            np.zeros(x.shape[0], dtype=int)
-            if c is None
-            else np.asarray(c, dtype=int).ravel()
-        )
-        if not np.all(np.isin(c, (0, 1))):
-            raise ValueError(
-                "Royston-Parmar supports observed (c=0) and right-censored "
-                "(c=1) data only."
-            )
-        w = (
-            np.ones(x.shape[0])
-            if n is None
-            else np.asarray(n, dtype=float).ravel()
-        )
-        if tl is not None:
-            tl = np.broadcast_to(np.asarray(tl, dtype=float), x.shape).copy()
 
-        event = c == 0
-        if int(event.sum()) == 0:
-            raise ValueError("At least one event (c=0) is required.")
+        # Per-type times and weights.
+        x_o, n_o = data.x_o, data.n_o.astype(float)
+        x_r, n_r = data.x_r, data.n_r.astype(float)
+        x_l, n_l = data.x_l, data.n_l.astype(float)
+        x_il, x_ir, n_i = data.x_il, data.x_ir, data.n_i.astype(float)
+        x_tl, x_tr, n_t = data.x_tl, data.x_tr, data.n_t.astype(float)
+
+        # Right-censored-only data carries no finite MLE: at least one
+        # observed event, left- or interval-censored row is needed to identify
+        # the baseline.
+        if (x_o.size + x_l.size + x_il.size) == 0:
+            raise ValueError(
+                "Royston-Parmar requires at least one event (or left- or "
+                "interval-censored) observation; right-censored-only data is "
+                "not identifiable."
+            )
+
+        # Knots go on the exactly-observed event log-times when there are any,
+        # else on whatever finite failure information the data provide.
+        event_times = x_o
+        if event_times.size == 0:
+            event_times = np.concatenate([x_il, x_ir, x_l])
+            event_times = event_times[np.isfinite(event_times)]
 
         if knots is None:
             n_internal = max(int(df) - 1, 0)
-            knots = _place_knots(x[event], n_internal)
+            knots = _place_knots(event_times, n_internal)
         else:
             knots = np.asarray(knots, dtype=float)
         n_params = len(knots)  # [1, x] + (len(knots) - 2) internal terms
 
-        lx = np.log(x)
-        B = _rcs_basis(lx, knots)
-        Bd = _rcs_deriv(lx, knots)
-        B_tl = None if tl is None else _rcs_basis(np.log(tl), knots)
+        lx_o = np.log(x_o) if x_o.size else x_o
+        B_o = _rcs_basis(lx_o, knots) if x_o.size else None
+        Bd_o = _rcs_deriv(lx_o, knots) if x_o.size else None
+        B_r = _rcs_basis(np.log(x_r), knots) if x_r.size else None
+        B_l = _rcs_basis(np.log(x_l), knots) if x_l.size else None
+        B_il = _rcs_basis(np.log(x_il), knots) if x_il.size else None
+        B_ir = _rcs_basis(np.log(x_ir), knots) if x_ir.size else None
 
         def neg_ll(g):
-            eta = B @ g
-            sp = Bd @ g
-            log_S, log_negdS = _scale_terms(eta, scale)
-            ll = np.sum(w * log_S)  # log S for everyone
-            ll += np.sum(
-                w[event]
-                * (
-                    log_negdS[event]
-                    + np.log(sp[event])
-                    - lx[event]
-                    - log_S[event]
-                )
-            )  # events: swap log S -> log f = log(-dS) + log s' - log t
-            if B_tl is not None:
-                log_S_tl, _ = _scale_terms(B_tl @ g, scale)
-                ll -= np.sum(w * log_S_tl)  # condition on survival to tl
+            ll = 0.0
+            if B_o is not None:  # events: log f = log(-dS) + log s' - log t
+                eta = B_o @ g
+                sp = Bd_o @ g
+                _, log_negdS = _scale_terms(eta, scale)
+                ll += np.sum(n_o * (log_negdS + np.log(sp) - lx_o))
+            if B_r is not None:  # right-censored: log S
+                log_S_r, _ = _scale_terms(B_r @ g, scale)
+                ll += np.sum(n_r * log_S_r)
+            if B_l is not None:  # left-censored: log F = log(1 - S)
+                log_S_l, _ = _scale_terms(B_l @ g, scale)
+                ll += np.sum(n_l * np.log1p(-np.exp(log_S_l)))
+            if B_il is not None:  # interval-censored: log(S(l) - S(r))
+                S_il = _sf_from_eta(B_il @ g, scale)
+                S_ir = _sf_from_eta(B_ir @ g, scale)
+                ll += np.sum(n_i * np.log(S_il - S_ir))
+            if x_tl.size:  # truncation: divide by P(entry <= T <= exit)
+                S_tl = _sf_at(x_tl, knots, g, scale)
+                S_tr = _sf_at(x_tr, knots, g, scale)
+                ll -= np.sum(n_t * np.log(S_tl - S_tr))
             return -ll
 
         # Initialise from the Weibull/log-normal that the no-knot model is.
@@ -461,8 +516,14 @@ class RoystonParmar_:
         model.knots = knots
         model.params = gamma
         model.covariance = covariance
-        model.n = int(x.shape[0])
-        model.n_events = int(event.sum())
+        model.n = int(
+            round(
+                float(
+                    n_o.sum() + n_r.sum() + n_l.sum() + n_i.sum()
+                )
+            )
+        )
+        model.n_events = int(round(float(n_o.sum())))
         model._neg_ll = float(res.fun)
         return model
 
