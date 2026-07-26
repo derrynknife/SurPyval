@@ -927,6 +927,65 @@ survival curve into the future at all — which is why this scenario forecasting
 needs the parametric ``fit_tvc`` / ``sf_tvc`` pair.
 
 
+Shared-frailty models
+---------------------
+
+When your data come in **groups** — lots from the same supplier, units at the
+same site, repeated failures of one repairable machine — the members of a group
+tend to fail more alike than units from different groups, because they share
+something you did not measure. A **shared-frailty** model captures that with a
+random hazard multiplier ``u`` shared within each group, on top of a
+proportional-hazards baseline. Fit it with the :func:`~surpyval.Frailty`
+factory (or a pre-built instance like ``WeibullFrailty``), passing a ``groups``
+label per observation:
+
+.. jupyter-execute::
+
+    from surpyval import WeibullFrailty
+
+    rng = np.random.default_rng(1)
+    n_groups, per = 60, 6
+    rows_x, rows_c, rows_z, rows_g = [], [], [], []
+    for g in range(n_groups):
+        u = rng.gamma(1 / 0.6, 0.6)              # group frailty, mean 1
+        for _ in range(per):
+            z = rng.normal()
+            t = 20 * (-np.log(rng.uniform()) / (np.exp(0.8 * z) * u)) ** (1 / 1.8)
+            rows_x.append(min(t, 40)); rows_c.append(0 if t <= 40 else 1)
+            rows_z.append(z); rows_g.append(g)
+
+    model = WeibullFrailty.fit(
+        x=np.array(rows_x), c=np.array(rows_c),
+        Z=np.array(rows_z).reshape(-1, 1), groups=np.array(rows_g),
+    )
+    print(model.summary())
+    print("theta 95% CI:", np.round(model.param_cb("theta"), 3))
+
+The frailty variance ``theta`` quantifies the between-group spread; its
+confidence interval sitting clear of zero is evidence of real heterogeneity.
+The per-group posterior frailties — an empirical-Bayes estimate for each
+observed group, shrunk toward 1 — are on ``model.frailties``.
+
+Prediction comes in two flavours. The default is **marginal** (population
+averaged), the right curve for a *new* unit from an *unknown* group; passing
+``group=`` conditions on an observed group's posterior frailty, for another unit
+from a group you have already seen:
+
+.. jupyter-execute::
+
+    t = np.linspace(1, 40, 100)
+    z = np.array([0.0])
+    plt.plot(t, model.sf(t, z), 'k-', label='marginal (new group)')
+    g0 = model.group_labels[0]
+    plt.plot(t, model.sf(t, z, group=g0), 'b--',
+             label=f'conditional on group {g0}')
+    plt.legend(); plt.xlabel('Time'); plt.ylabel('S(t)')
+
+Omit ``Z`` entirely for a pure random-effects survival model (grouped data, no
+covariates). Only Gamma frailty is available for now, on observed and
+right-censored data.
+
+
 Confidence Bounds
 -----------------
 

@@ -4,6 +4,24 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Shared-frailty proportional-hazards models (Gamma frailty).** A new
+  ``Frailty(distribution)`` factory (with pre-built ``WeibullFrailty``,
+  ``ExponentialFrailty``, ``LogNormalFrailty``, ``GammaFrailty`` instances) fits
+  a proportional-hazards model with a random hazard multiplier shared within a
+  group -- ``h(t | Z, u) = u h0(t) exp(beta'Z)``, ``u`` drawn once per group
+  from a Gamma of mean 1 and variance ``theta``. ``.fit(x, Z, c, groups=...)``
+  and ``.fit_from_df(..., group_col=...)`` maximise the closed-form marginal
+  likelihood (the Gamma frailty integrates out per group), so it captures
+  unobserved between-group heterogeneity and the within-group correlation it
+  induces -- the conditional/random-effects complement to the cluster-robust
+  standard errors added in 0.16. The fitted ``FrailtyModel`` reports the frailty
+  variance ``theta`` (with a Wald CI), the per-group posterior (empirical-Bayes)
+  frailties, and predicts either **marginally** (population-averaged, the
+  default -- ``S = (1 + theta e^{beta'Z} H0)^{-1/theta}``) or **conditionally**
+  on an observed group or a supplied frailty value via ``sf(x, Z, group=...)`` /
+  ``sf(x, Z, frailty=...)``. Omitting ``Z`` gives a pure random-effects survival
+  model. Serialises with ``to_dict`` / ``from_dict``. Gamma frailty only for
+  now; log-normal, Cox, and nested/hierarchical frailty are planned.
 - **Fixed: formula-fit regression models now round-trip through serialisation**
   (#244). A regression model fit with ``fit_from_df(..., formula=...)`` using a
   categorical term dropped its design-matrix transformer on ``to_dict`` /

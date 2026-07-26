@@ -36,6 +36,7 @@ _TAGGED_MODELS: dict[str, str] = {
     "SemiParametricRegressionModel": (
         "surpyval.univariate.regression.semi_parametric_regression_model"
     ),
+    "FrailtyModel": ("surpyval.univariate.regression.frailty.frailty_model"),
     "AdditiveHazardsModel": (
         "surpyval.univariate.regression.additive_hazards.additive_hazards"
     ),
