@@ -44,6 +44,7 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.univariate.regression.buckley_james.buckley_james"
     ),
     "MixtureModel": "surpyval.univariate.parametric.mixture_model",
+    "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),
     "FineGrayModel": (
         "surpyval.univariate.competing_risks.regression.fine_gray"
     ),

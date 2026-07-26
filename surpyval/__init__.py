@@ -50,6 +50,8 @@ from surpyval.univariate.parametric import (
     Parametric,
     Poisson,
     Rayleigh,
+    RoystonParmar,
+    RoystonParmarModel,
     Uniform,
     Weibull,
 )
