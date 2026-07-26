@@ -8,7 +8,11 @@ import numpy.typing as npt
 from surpyval.serialisation import stamp_schema
 from surpyval.utils import _get_idx
 
-from .regression_data import prepare_Z
+from .regression_data import (
+    model_spec_to_meta,
+    prepare_Z,
+    rebuild_model_spec,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -127,7 +131,11 @@ class SemiParametricRegressionModel:
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
-            out["formula"] = self.formula
+            out["formula"] = str(self.formula)
+            # Persist the transformer state so a restored model expands raw
+            # covariates (e.g. categoricals) the same way (#244).
+            if self._model_spec is not None:
+                out["formula_meta"] = model_spec_to_meta(self._model_spec)
         return stamp_schema(out)
 
     def to_json(self, fp: "str | Path") -> None:
@@ -174,6 +182,12 @@ class SemiParametricRegressionModel:
             out._neg_log_like = float(model_dict["_neg_log_like"])
         out.feature_names = model_dict.get("feature_names")
         out.formula = model_dict.get("formula")
+
+        # Rebuild the formula's design-matrix transformer so the restored
+        # model expands raw covariates the same way (#244).
+        formula_meta = model_dict.get("formula_meta")
+        if out.formula is not None and formula_meta is not None:
+            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
         return out
 
     @classmethod

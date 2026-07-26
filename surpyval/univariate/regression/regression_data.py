@@ -133,6 +133,96 @@ def prepare_Z(
     )
 
 
+def model_spec_to_meta(model_spec: Any) -> dict:
+    """
+    Capture the JSON-safe state needed to rebuild a ``formulaic`` model spec.
+
+    A model fit with a ``formula`` carries a ``formulaic`` ``ModelSpec`` that
+    knows how to expand raw covariates into the fitted design matrix -- in
+    particular the levels of any categorical factor (``sex`` -> ``sex[F]``,
+    ``sex[M]``). That spec is not itself JSON-serialisable, so this extracts
+    the minimum needed to regenerate an equivalent one on load: the categorical
+    factor levels and the names of the numeric covariate columns. The formula
+    string is stored separately by the caller.
+
+    Data-dependent (stateful) transforms such as ``scale(x)`` or ``center(x)``
+    keep fitted statistics in the spec's ``transform_state`` that cannot be
+    recovered from levels alone; a formula using one raises
+    ``NotImplementedError`` rather than round-tripping to a silently wrong
+    encoding.
+    """
+    if getattr(model_spec, "transform_state", None):
+        raise NotImplementedError(
+            "Serialising a formula that uses a data-dependent transform "
+            "(e.g. scale() or center()) is not supported: its fitted "
+            "statistics cannot be restored. Refit with the covariate entered "
+            "directly (the baseline distribution absorbs location and scale), "
+            "or with a covariate list instead of a formula."
+        )
+
+    value_vars = {
+        str(v)
+        for v in model_spec.variables
+        if any(str(r).endswith("VALUE") for r in v.roles)
+    }
+
+    factor_levels: dict[str, list] = {}
+    for factor, (_kind, state) in model_spec.encoder_state.items():
+        if "categories" not in state:
+            continue
+        factor = str(factor)
+        if factor not in value_vars:
+            # A wrapped categorical such as ``C(sex)`` does not name a bare
+            # column, so the template below cannot type it. These are rare;
+            # fall back to Wald-free refitting rather than guess.
+            raise NotImplementedError(
+                "Serialising a wrapped categorical term "
+                f"('{factor}') is not yet supported; enter the column "
+                "directly (surpyval treats string / object columns as "
+                "categorical automatically)."
+            )
+        factor_levels[factor] = [str(c) for c in state["categories"]]
+
+    numeric_features = sorted(value_vars - set(factor_levels))
+    return {
+        "factor_levels": factor_levels,
+        "numeric_features": numeric_features,
+    }
+
+
+def rebuild_model_spec(formula: str, meta: dict) -> Any:
+    """
+    Reconstruct a ``formulaic`` model spec from a formula and stored metadata.
+
+    A small template DataFrame is built with each categorical column typed to
+    the stored levels and each numeric column a placeholder, then the same
+    ``"0 + " + formula`` is re-materialised against it. ``formulaic`` derives
+    an encoder state identical to fit time (the encoding depends on the formula
+    and the factor levels, not the row values), so the returned spec expands
+    raw covariates exactly as the original did.
+    """
+    formula = str(formula)
+    factor_levels = meta.get("factor_levels", {})
+    numeric_features = meta.get("numeric_features", [])
+
+    height = max((len(lv) for lv in factor_levels.values()), default=1)
+    template: dict[str, Any] = {}
+    for col, levels in factor_levels.items():
+        reps = (height + len(levels) - 1) // len(levels)
+        template[col] = pd.Categorical(
+            (list(levels) * reps)[:height], categories=list(levels)
+        )
+    for col in numeric_features:
+        # 1.0 (not 0.0) keeps log / reciprocal terms finite while the spec is
+        # derived; only the encoder structure is kept, not these values.
+        template[col] = np.ones(height)
+
+    model_matrix = Formula("0 + " + formula).get_model_matrix(
+        pd.DataFrame(template)
+    )
+    return model_matrix.model_spec
+
+
 class DataFrameRegressionMixin:
     """
     Mixin adding a ``fit_from_df`` method to a parametric regression fitter.
