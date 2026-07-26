@@ -113,7 +113,9 @@ def _sf_from_eta(eta: np.ndarray, scale: str) -> np.ndarray:
     return norm.sf(eta)
 
 
-def _sf_at(times: np.ndarray, knots: np.ndarray, gamma: np.ndarray, scale: str):
+def _sf_at(
+    times: np.ndarray, knots: np.ndarray, gamma: np.ndarray, scale: str
+):
     """Survival at arbitrary times, with the boundary conventions the
     censoring/truncation likelihoods need: ``S = 1`` at times ``<= 0`` (and
     ``-inf``) and ``S = 0`` at ``+inf``. Finite positive times go through the
@@ -418,7 +420,14 @@ class RoystonParmar_:
         from surpyval.utils.surpyval_data import SurpyvalData
 
         data = SurpyvalData(
-            x=x, c=c, n=n, t=t, xl=xl, xr=xr, tl=tl, tr=tr,
+            x=x,
+            c=c,
+            n=n,
+            t=t,
+            xl=xl,
+            xr=xr,
+            tl=tl,
+            tr=tr,
             group_and_sort=True,
         )
 
@@ -517,11 +526,7 @@ class RoystonParmar_:
         model.params = gamma
         model.covariance = covariance
         model.n = int(
-            round(
-                float(
-                    n_o.sum() + n_r.sum() + n_l.sum() + n_i.sum()
-                )
-            )
+            round(float(n_o.sum() + n_r.sum() + n_l.sum() + n_i.sum()))
         )
         model.n_events = int(round(float(n_o.sum())))
         model._neg_ll = float(res.fun)
