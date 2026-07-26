@@ -713,6 +713,55 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
 
 Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data.
 
+Flexible parametric (Royston-Parmar)
+------------------------------------
+
+Sometimes no standard distribution fits: the hazard turns over, has a bathtub,
+or is multi-modal. A **Royston-Parmar** model handles this by replacing the
+straight line a Weibull draws for its log-cumulative-hazard against log-time
+with a **restricted cubic spline** — a smooth, fully parametric baseline of
+arbitrary shape. It is as flexible as a Cox baseline but, being parametric,
+gives a smooth hazard and **extrapolates**, which a Cox fit cannot.
+
+``RoystonParmar.fit`` takes a ``df`` (degrees of freedom = spline terms; ``df=1``
+is exactly a Weibull) and a ``scale``: ``"hazard"`` (proportional hazards),
+``"odds"`` (proportional odds), or ``"normal"`` (probit; ``df=1`` is a
+log-normal). Knots default to quantiles of the event times. Here we fit data
+whose hazard a single Weibull cannot capture, and pick ``df`` by AIC:
+
+.. jupyter-execute::
+
+    from surpyval import RoystonParmar, Weibull
+
+    np.random.seed(2)
+    x = np.concatenate([Weibull.random(400, 3, 5), Weibull.random(400, 30, 1.2)])
+
+    for df in (1, 2, 3, 4):
+        m = RoystonParmar.fit(x, df=df)
+        print(f"df={df}  AIC={m.aic():8.1f}")
+
+The AIC keeps improving past ``df=1`` (the Weibull), then stops — the usual way
+to choose the number of knots. Take the best and look at the fitted survival
+with its confidence band:
+
+.. jupyter-execute::
+
+    model = RoystonParmar.fit(x, df=3)
+
+    t = np.linspace(0.5, 50, 200)
+    plt.plot(t, model.sf(t), 'k-', label='Royston-Parmar (df=3)')
+    band = model.cb(t, on='sf')
+    plt.plot(t, band, 'r--')
+    plt.plot(t, Weibull.fit(x).sf(t), 'b:', label='Weibull')
+    plt.legend(); plt.xlabel('Time'); plt.ylabel('S(t)')
+
+The spline follows the two-component shape the single Weibull misses. Because
+the spline is linear beyond its boundary knots, the model extrapolates with a
+Weibull-like tail rather than a wild cubic — which is what makes it safe to read
+off a restricted-mean survival time or a far quantile. Right-censored, weighted,
+and left-truncated data are all supported (``c``, ``n``, ``tl``), and a fitted
+model serialises with ``to_dict`` / ``from_dict`` like any other.
+
 Discrete Distributions
 ----------------------
 

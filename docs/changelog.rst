@@ -4,6 +4,22 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
+  df=..., scale=...)`` fits a flexible parametric survival model that replaces
+  the straight log-cumulative-hazard-vs-log-time line of a Weibull with a
+  restricted cubic spline, giving a smooth, fully parametric baseline of
+  arbitrary shape -- flexible like a Cox baseline but extrapolable like a
+  parametric one. Three link scales: ``"hazard"`` (proportional hazards; ``df``
+  = 1 is a Weibull), ``"odds"`` (proportional odds), and ``"normal"`` (probit;
+  ``df`` = 1 is a log-normal). Knots are placed at quantiles of the event
+  log-times by default (or supplied explicitly), and beyond the boundary knots
+  the spline is linear, so the model extrapolates with a Weibull-like tail --
+  which pairs naturally with the restricted-mean survival time added in 0.16.
+  The fitted ``RoystonParmarModel`` exposes ``sf`` / ``ff`` / ``hf`` / ``Hf`` /
+  ``df`` / ``qf`` / ``random`` / ``mean``, a linear-predictor confidence band
+  (``cb``), ``aic`` / ``bic`` for choosing ``df``, and ``to_dict`` /
+  ``from_dict``. Observed, right-censored, weighted, and left-truncated data are
+  supported.
 - **Shared-frailty proportional-hazards models (Gamma frailty).** A new
   ``Frailty(distribution)`` factory (with pre-built ``WeibullFrailty``,
   ``ExponentialFrailty``, ``LogNormalFrailty``, ``GammaFrailty`` instances) fits
