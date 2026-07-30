@@ -56,6 +56,11 @@ class SemiParametricRegressionModel:
     #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
     #: by ``CoxPH.fit`` for residuals and the proportional-hazards test.
     _fit_data: dict
+    #: For a TVC (start-stop) fit: subject id per *internal* (sorted) row,
+    #: and the permutation from the caller's row order to the internal order
+    #: (#259 — used to align user-supplied cluster labels).
+    tvc_subject_ids: "npt.NDArray | None" = None
+    tvc_row_order: "npt.NDArray | None" = None
 
     def __init__(self, kind: str, parameterization: str) -> None:
         self.kind = kind

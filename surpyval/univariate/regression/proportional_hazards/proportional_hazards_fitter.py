@@ -263,10 +263,11 @@ class ProportionalHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
             # be a plain list without a ``.shape`` (#261) — and fall back to
             # zeros when no phi initialiser is configured (previously an
             # unbound-name error).
+            Z_data = np.asarray(data.Z)
             if callable(self.phi_init):
-                init_phi = self.phi_init(data.Z)
+                init_phi = self.phi_init(Z_data)
             else:
-                init_phi = np.zeros(data.Z.shape[1])
+                init_phi = np.zeros(Z_data.shape[1])
 
             init = np.array([*ps, *init_phi])
         else:

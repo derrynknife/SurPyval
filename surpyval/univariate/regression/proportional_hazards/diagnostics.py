@@ -270,8 +270,9 @@ def robust_covariance(
                 f"({n_obs}); got {cluster.shape[0]}."
             )
         row_order = getattr(model, "tvc_row_order", None)
-        if row_order is not None and not np.array_equal(
-            cluster, getattr(model, "tvc_subject_ids", None)
+        subject_ids = getattr(model, "tvc_subject_ids", None)
+        if row_order is not None and (
+            subject_ids is None or not np.array_equal(cluster, subject_ids)
         ):
             # The residuals are in the internal (subject, entry)-sorted
             # order; user labels arrive in the caller's original row order
