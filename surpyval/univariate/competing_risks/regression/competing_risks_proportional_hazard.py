@@ -50,16 +50,21 @@ class CompetingRisksProportionalHazards:
             if event not in self.event_idx_map:
                 raise ValueError("Unrecognised event type for this model")
             e_i = self.event_idx_map[event]
-            return (arr[e_i, idx] * self.phi_e(Z, e_i))[rev]
-
-        # All causes combined: each cause contributes with its OWN
-        # coefficients, so the all-cause (cumulative) hazard is the sum of
-        # H0_e(t) * exp(beta_e'Z), not a single summed-coefficient term.
-        total = sum(
-            arr[e_i, idx] * self.phi_e(Z, e_i)
-            for e_i in self.event_idx_map.values()
-        )
-        return total[rev]
+            out = (arr[e_i, idx] * self.phi_e(Z, e_i))[rev]
+        else:
+            # All causes combined: each cause contributes with its OWN
+            # coefficients, so the all-cause (cumulative) hazard is the sum
+            # of H0_e(t) * exp(beta_e'Z), not a single summed-coefficient
+            # term.
+            total = sum(
+                arr[e_i, idx] * self.phi_e(Z, e_i)
+                for e_i in self.event_idx_map.values()
+            )
+            out = total[rev]
+        # Query times before the first event have index -1, which would
+        # otherwise wrap to the last step value; the step functions are all
+        # zero there (#253).
+        return np.where(idx[rev] < 0, 0.0, out)
 
     def hf(self, x, Z, event=None, interp="step"):
         if self.how == "Fine-Gray":
@@ -106,11 +111,16 @@ class CompetingRisksProportionalHazards:
 
         lambda_e = self.hf(self.x, Z, event)
         S = self.sf(self.x, Z)
+        # Aalen-Johansen increment: the hazard at t_i acts on the population
+        # alive just *before* t_i, so weight by S(t_i-) — the survival after
+        # the previous event time — not S(t_i) (#253).
+        S_prev = np.concatenate([[1.0], S[:-1]])
         # iif = instantaneous incidence function
-        iif = lambda_e * S
+        iif = lambda_e * S_prev
         cif = iif.cumsum()
 
-        return cif[idx][rev]
+        # Times before the first event would wrap to the last value (#253).
+        return np.where(idx[rev] < 0, 0.0, cif[idx][rev])
 
     @classmethod
     def fit_from_df(

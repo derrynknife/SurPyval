@@ -280,7 +280,15 @@ class ProportionalHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
         else:
             phi_param_map = self.phi_param_map
 
-        param_map = {**self.param_map, **phi_param_map}
+        # The covariate coefficients sit after the distribution parameters
+        # in the packed parameter vector, so their map indices must be
+        # offset by the number of distribution parameters — otherwise
+        # ``fixed={"beta_0": v}`` silently pins the first *distribution*
+        # parameter instead (#251).
+        param_map = {
+            **self.param_map,
+            **{k: v + len(self.param_map) for k, v in phi_param_map.items()},
+        }
 
         # Create functions to make parameters unbounded for optimisation
         # Also create function to insert fixed values.

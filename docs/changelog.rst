@@ -4,6 +4,107 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Fixed: Cox delayed-entry / start-stop (TVC) fits had corrupted scores and
+  Hessians whenever any covariate value was negative** (#250). The
+  left-truncation risk-set adjustment was forward-filled with
+  ``np.minimum.accumulate`` — valid for the scalar (positive, non-increasing)
+  sum but wrong for the signed Z-weighted score and information sums, which it
+  clamped to a stale running minimum. The optimiser could "converge" to a
+  spurious zero of the corrupted score (wrong coefficients with no warning),
+  and even rescued fits carried garbage standard errors, p-values, ``check_ph``
+  and cluster-robust covariance. The adjustment is now an exact suffix-sum
+  gather (``not_yet_entered``), valid for signed quantities; the analytic score
+  and information now match numerical differentiation of the partial
+  log-likelihood under delayed entry. All-positive covariates were unaffected.
+- **Fixed: parametric PH ``fixed={"beta_0": ...}`` silently pinned the first
+  distribution parameter instead of the covariate coefficient** (#251). The
+  covariate parameter map was merged without the distribution-parameter
+  offset (AFT/PO/AH were unaffected), so ``WeibullPH.fit(x, Z,
+  fixed={"beta_0": v})`` fixed ``alpha`` to ``v`` and left ``beta_0`` free,
+  corrupting the fit and its covariance. The map is now offset like the other
+  regression families.
+- **Fixed: nonparametric competing-risks CIFs were systematically
+  underestimated** (#253). The Aalen-Johansen incidence increment weighted
+  each cause-specific hazard by the survival *after* the jump, ``S(t)``,
+  instead of ``S(t-)`` — with one cause and no censoring the CIF topped out
+  at ~0.72 instead of 1. Cause-specific CIFs now sum exactly to ``1 - S``
+  (Kaplan-Meier weighting). The same correction applies to the Cox-path
+  cause-specific ``cif``. Also fixed: query times before the first observed
+  event wrapped to the *last* step value (``sf(0.1)`` on data starting at 1
+  returned the final survival instead of 1) in both the nonparametric and
+  Cox-path predictors, and ``CompetingRisks.fit_from_df`` stored the source
+  DataFrame as ``model.df``, shadowing the density method — it is now
+  ``model.source_df``.
+- **Fixed: likelihood-ratio confidence bounds ignored user-fixed
+  parameters** (#255). Profiling silently re-freed a parameter fixed at fit
+  time, letting the profile drop below the fitted negative log-likelihood and
+  inflating the interval several-fold (``Weibull.fit(x, fixed={"beta": 5})``
+  gave an ``alpha`` LR interval ~5x the Wald width). Fixed parameters now stay
+  pinned during both the parameter profile and the function-band constrained
+  search, and requesting an LR bound *on* a fixed parameter raises a clear
+  ``ValueError``.
+- **Fixed: MixtureModel likelihood and EM corrections** (#254). Counts from
+  grouped/tied data were applied as per-component likelihood *powers* before
+  mixing (``sum w_i f_i^n != (sum w_i f_i)^n``), so any tied data (e.g.
+  rounded measurements) silently skewed the mixing weights — a true 50/50
+  Weibull mixture fit as 14/86. Counts now multiply the mixture
+  log-likelihood; the mixing-weight update is count-weighted; the M-step now
+  minimises the proper EM Q-function (responsibilities times component
+  log-likelihoods) instead of an ad-hoc responsibilities-as-weights
+  objective; and the interval-censored contribution was ``F(l) - F(r)``
+  (negative) — now ``F(r) - F(l)``. Truncation (``tl``/``tr``/``t``) was
+  accepted but silently ignored; truncated data is now fitted by direct
+  maximum likelihood on the truncation-corrected observed likelihood
+  (the window couples the components, so label-based EM does not apply).
+  Also fixed: ``xl``/``xr``-only input crashed on ``len(None)``, and ``df``
+  crashed on integer input.
+- **Fixed: LFP / zero-inflated / offset parametric model conventions made
+  mutually consistent** (#256). ``df``/``hf`` for combined LFP+ZI models used
+  ``(1 - f0) * p`` where ``sf``/``ff`` and the likelihood use ``(p - f0)`` —
+  the density did not integrate to the failure probability. ``mean()`` and
+  ``moment()`` ignored ``f0`` entirely. ``qf``/``random`` placed the
+  zero-inflation mass at the offset ``gamma`` while ``df``/``ff`` place it at
+  0, so ``qf`` did not invert ``ff``. Offset models returned ``ff < 0`` /
+  ``sf > 1`` / NaNs below ``gamma`` — now clamped to the boundary values.
+  ``cb`` returned NaN where the point estimate sits on the boundary
+  (``sf == 1``, e.g. ``t <= gamma``) — now the boundary. ``random()`` crashed
+  for LFP models when the binomial draw produced zero failures. ``aic_c``
+  penalised a different parameter count than ``aic``. The numerically stable
+  left-censored likelihood branch was unreachable (inverted ``f0`` check).
+- **Fixed: distribution-level defects** (#257). ``LogNormal.fit`` crashed for
+  any data with geometric mean < 1 (the location ``mu`` was wrongly bounded
+  positive). ``Bernoulli.fit`` was broken for essentially every input (it
+  broadcast ``x`` against the literal ``[0, 1]`` and mishandled ``n=None``).
+  Offset MPP fits with ``rr="x"`` mis-inverted the regression for
+  Exponential and Gamma (silently wrong ``lambda``/``gamma``); the Gamma
+  offset MPP also seeded its shape search from unshifted-data moments and
+  now multi-starts it. Gamma's censored non-offset ``rr="x"`` crashed on a
+  length mismatch. ``ExpoWeibull.sf``/``Hf``/``log_sf`` underflowed to
+  0/inf/-inf in the (reachable) right tail — rewritten in a
+  cancellation-free ``expm1``/``log1p`` form. Probability-plot y-axis
+  inverse transforms were not inverses for Exponential, GumbelLEV and Beta
+  (silently mislabelled plot axes). ``Logistic`` log-functions overflowed
+  in the deep tail (now ``logaddexp``). ``ExactEventTime.fit`` without both
+  censoring sides now raises an informative error.
+- **Fixed: formula fits with a categorical covariate were non-identified —
+  categoricals are now reference-level coded** (#252). ``fit_from_df(...,
+  formula="age + sex")`` used to expand ``sex`` into a *full one-hot*
+  (``sex[F]``, ``sex[M]``) whose columns sum to a constant — exactly
+  collinear with the baseline distribution's scale (or the Cox baseline), so
+  the likelihood was flat along a ridge and the reported coefficients and
+  standard errors were optimizer-path noise (predictions were unaffected,
+  which is why it went unseen). Formulas are now materialised with their
+  implicit intercept, giving categoricals standard treatment coding, and the
+  intercept column is dropped (the baseline provides it).
+
+  **Migration note:** feature names and coefficient meanings change for
+  formula fits with categoricals — ``['sex[F]', 'sex[M]']`` becomes
+  ``['sex[T.M]']``, and the coefficient is the log-hazard-ratio (or
+  equivalent) of that level versus the reference (first) level, matching R,
+  lifelines and statsmodels. Predictions from refitted models are unchanged.
+  An explicit ``"0 + ..."`` formula opts back into full-rank coding. This
+  also fixes the ``LinAlgError`` crash in Buckley-James formula fits with
+  categoricals.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a

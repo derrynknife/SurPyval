@@ -143,10 +143,12 @@ def test_qf_inverts_ff_for_zero_inflation():
 
 
 def test_qf_respects_offset_with_cure_and_inflation():
-    # gamma + f0 + p all together: mass below f0 lands on the offset, the
-    # interior inverts ff, and u >= p is infinite.
+    # gamma + f0 + p all together: mass below f0 is the zero-inflation
+    # point mass at 0 (consistent with ff(0) == f0, df's mass at x == 0 and
+    # the likelihood, #256), the interior inverts ff, and u >= p is
+    # infinite.
     model = Weibull.from_params([10.0, 2.0], gamma=5.0, p=0.7, f0=0.1)
-    assert model.qf(0.05) == 5.0
+    assert model.qf(0.05) == 0.0
     u = np.array([0.2, 0.4, 0.6])
     q = model.qf(u)
     assert np.all(q > 5.0)

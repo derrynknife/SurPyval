@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from surpyval import CoxPH, ExponentialPH, WeibullPH
+from surpyval import CoxPH, ExponentialPH, Weibull, WeibullPH
 
 
 @pytest.fixture(autouse=True)
@@ -520,3 +520,24 @@ def test_kp_handles_heavy_ties():
     model = CoxPH.fit(x=x, Z=Z, c=c, method="kp")
     assert np.all(np.isfinite(model.beta))
     assert np.all(np.isfinite(model.p_values))
+
+
+def test_ph_fixed_covariate_coefficient_pins_correct_parameter():
+    # ``fixed={"beta_0": v}`` must pin the first covariate coefficient, not
+    # the first distribution parameter (#251: the phi param map was merged
+    # without the k_dist offset, so beta_0 collided with alpha).
+    np.random.seed(5)
+    x = Weibull.random(200, 10, 3)
+    Z = np.random.normal(size=(200, 2))
+
+    free = WeibullPH.fit(x, Z=Z)
+    fixed_beta0 = WeibullPH.fit(x, Z=Z, fixed={"beta_0": 0.5})
+
+    assert fixed_beta0.params[2] == pytest.approx(0.5, abs=1e-12)
+    # The distribution parameters must remain close to the free fit, not be
+    # pinned to the fixed value.
+    assert fixed_beta0.params[0] == pytest.approx(free.params[0], rel=0.2)
+
+    # Fixing a distribution parameter by name still works.
+    fixed_shape = WeibullPH.fit(x, Z=Z, fixed={"beta": 3.0})
+    assert fixed_shape.params[1] == pytest.approx(3.0, abs=1e-12)

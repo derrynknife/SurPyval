@@ -142,6 +142,25 @@ def at_risk_beta_Z(arr, n, gb_x):
     return R[::-1].cumsum(axis=0)[::-1]
 
 
+def not_yet_entered(pos, mass_by_tl):
+    """Per unique event time, the total ``mass_by_tl`` of observations whose
+    entry (left-truncation) time is at or after that event time — the amount
+    to subtract from the reverse-cumulative at-risk sums so that a subject
+    only enters the risk set strictly after its ``tl``.
+
+    ``pos`` is ``searchsorted(unique_tl, unique_x, side="left")``. This is an
+    exact suffix-sum gather and is valid for *signed* quantities (the
+    Z-weighted score and information sums), unlike the previous scatter +
+    ``minimum.accumulate`` forward fill, which is only a forward fill for
+    positive non-increasing sequences and silently corrupted the gradient and
+    Hessian of every delayed-entry / start-stop fit containing a negative
+    covariate value (#250).
+    """
+    suffix = mass_by_tl[::-1].cumsum(axis=0)[::-1]
+    pad = np.zeros((1,) + suffix.shape[1:])
+    return np.concatenate([suffix, pad], axis=0)[pos]
+
+
 def _sub(a, mask):
     """Index ``a`` by ``mask``, passing ``None`` through unchanged."""
     if a is None:
@@ -296,7 +315,9 @@ class CoxPH_:
 
         x_ = gb_x.unique
         x_tl = gb_tl.unique
-        idx = np.searchsorted(x_, x_tl, side="right")
+        # For each unique event time, how many unique entry times precede it:
+        # feeds the not-yet-entered suffix-sum gather below.
+        pos = np.searchsorted(x_tl, x_, side="left")
 
         def log_like(beta):
             beta_z = Z @ beta
@@ -305,18 +326,11 @@ class CoxPH_:
             e_beta_z = np.exp(beta_z).reshape(-1, 1)
 
             x_, Ri = gb_x.sum(n * e_beta_z)
-            trunc = gb_tl.sum(n * e_beta_z)[1]
 
             Ri = Ri[::-1].cumsum(axis=0)[::-1]
 
-            trunc = trunc[::-1].cumsum(axis=0)[::-1] - trunc
-
-            TRi = np.ones_like(Ri) * np.inf
-
-            TRi[idx] = trunc
-            TRi = np.minimum.accumulate(TRi)
-            # Subtract the truncated values from the others.
-            Ri = Ri - TRi
+            # Subtract the not-yet-entered mass from the risk sums.
+            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
 
@@ -353,32 +367,12 @@ class CoxPH_:
             Z2Ri = gb_x.sum(z2_e_beta_z)[1]
             Z2Ri = Z2Ri[::-1].cumsum(axis=0)[::-1]
 
-            trunc = gb_tl.sum(n * e_beta_z)[1]
-            trunc = trunc[::-1].cumsum(axis=0)[::-1] - trunc
-
-            z_trunc = gb_tl.sum(n * z_e_beta_z)[1]
-            z_trunc = z_trunc[::-1].cumsum(axis=0)[::-1] - z_trunc
-
-            z2_trunc = gb_tl.sum(z2_e_beta_z)[1]
-            z2_trunc = z2_trunc[::-1].cumsum(axis=0)[::-1] - z2_trunc
-
-            TRi = np.ones_like(Ri) * np.inf
-            ZTRi = np.ones_like(ZRi) * np.inf
-            Z2TRi = np.ones_like(Z2Ri) * np.inf
-
-            TRi[idx] = trunc
-            TRi = np.minimum.accumulate(TRi)
-
-            ZTRi[idx] = z_trunc
-            ZTRi = np.minimum.accumulate(ZTRi)
-
-            Z2TRi[idx] = z2_trunc
-            Z2TRi = np.minimum.accumulate(Z2TRi)
-
-            # Subtract the truncated values from the non-truncated risk set.
-            Ri -= TRi
-            ZRi -= ZTRi
-            Z2Ri -= Z2TRi
+            # Subtract the not-yet-entered mass from the risk sums. The
+            # Z-weighted sums are signed, so this must be the exact gather —
+            # see ``not_yet_entered`` (#250).
+            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+            ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
+            Z2Ri = Z2Ri - not_yet_entered(pos, gb_tl.sum(z2_e_beta_z)[1])
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
             ZDi = gb_x.sum(n_d_x * z_e_beta_z)[1]
@@ -424,7 +418,9 @@ class CoxPH_:
 
         x_ = gb_x.unique
         x_tl = gb_tl.unique
-        idx = np.searchsorted(x_, x_tl, side="right")
+        # For each unique event time, how many unique entry times precede it:
+        # feeds the not-yet-entered suffix-sum gather below.
+        pos = np.searchsorted(x_tl, x_, side="left")
 
         # Create the log_like function for the data
         def log_like(beta):
@@ -435,15 +431,8 @@ class CoxPH_:
             e_beta_z = np.exp(beta_z).reshape(-1, 1)
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
 
-            trunc = gb_tl.sum(n * e_beta_z)[1]
-            trunc = trunc[::-1].cumsum(axis=0)[::-1] - trunc
-
-            TRi = np.ones_like(Ri) * np.inf
-
-            TRi[idx] = trunc
-            TRi = np.minimum.accumulate(TRi)
-
-            Ri -= TRi
+            # Subtract the not-yet-entered mass from the risk sums.
+            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
 
             Ri = np.log(Ri)
             Ri = n_d.reshape(-1, 1) * Ri
@@ -469,32 +458,12 @@ class CoxPH_:
             Z2Ri = gb_x.sum(z2_e_beta_z)[1]
             Z2Ri = Z2Ri[::-1].cumsum(axis=0)[::-1]
 
-            trunc = gb_tl.sum(n * e_beta_z)[1]
-            trunc = trunc[::-1].cumsum(axis=0)[::-1] - trunc
-
-            z_trunc = gb_tl.sum(n * z_e_beta_z)[1]
-            z_trunc = z_trunc[::-1].cumsum(axis=0)[::-1] - z_trunc
-
-            z2_trunc = gb_tl.sum(z2_e_beta_z)[1]
-            z2_trunc = z2_trunc[::-1].cumsum(axis=0)[::-1] - z2_trunc
-
-            TRi = np.ones_like(Ri) * np.inf
-            ZTRi = np.ones_like(ZRi) * np.inf
-            Z2TRi = np.ones_like(Z2Ri) * np.inf
-
-            TRi[idx] = trunc
-            TRi = np.minimum.accumulate(TRi)
-
-            ZTRi[idx] = z_trunc
-            ZTRi = np.minimum.accumulate(ZTRi)
-
-            Z2TRi[idx] = z2_trunc
-            Z2TRi = np.minimum.accumulate(Z2TRi)
-
-            # Subtract the truncated values from the non-truncated risk set.
-            Ri -= TRi
-            ZRi -= ZTRi
-            Z2Ri -= Z2TRi
+            # Subtract the not-yet-entered mass from the risk sums. The
+            # Z-weighted sums are signed, so this must be the exact gather —
+            # see ``not_yet_entered`` (#250).
+            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+            ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
+            Z2Ri = Z2Ri - not_yet_entered(pos, gb_tl.sum(z2_e_beta_z)[1])
 
             EZ = ZRi / Ri
             EZ = n_d.reshape(-1, 1) * EZ

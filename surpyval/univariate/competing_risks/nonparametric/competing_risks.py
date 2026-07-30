@@ -125,10 +125,15 @@ class CompetingRisks:
             arr = self.CIF
 
         if event is None:
-            return arr.sum(axis=0)[idx][rev]
+            out = arr.sum(axis=0)[idx][rev]
         else:
             e = self.event_idx_map[event]
-            return arr[e, idx][rev]
+            out = arr[e, idx][rev]
+        # Query times before the first observed time have index -1, which
+        # would otherwise wrap to the *last* step value; every step function
+        # here (hazard, cumulative hazard, IIF, CIF) is zero before the
+        # first event time.
+        return np.where(idx[rev] < 0, 0.0, out)
 
     def hf(self, x, event=None):
         return self._f("h", x, event)
@@ -171,7 +176,9 @@ class CompetingRisks:
     ):
         x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
         model = cls.fit(x, e, c, n, method)
-        model.df = df
+        # Keep the source frame without shadowing the ``df`` (density)
+        # method (#253).
+        model.source_df = df
         return model
 
     @classmethod
@@ -227,6 +234,11 @@ class CompetingRisks:
         model.d_e = d_e
         model.h0_e = d_e / r
         model.H0_e = model.h0_e.cumsum(axis=1)
-        model.IIF = model.S * model.h0_e
+        # Aalen-Johansen increment: the cause-specific hazard at t_i acts on
+        # the population still alive just *before* t_i, so the incidence
+        # weight is S(t_i-) — the survival after the previous event time —
+        # not S(t_i) (#253).
+        S_prev = np.concatenate([[1.0], S[:-1]])
+        model.IIF = S_prev * model.h0_e
         model.CIF = model.IIF.cumsum(axis=1)
         return model

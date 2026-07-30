@@ -266,16 +266,18 @@ class Logistic_(ParametricFitter):
         return mu
 
     def log_df(self, x, mu, sigma):
+        # logaddexp(0, -z) = log(1 + e^-z) without overflowing exp for
+        # z < -709 (#257).
         z = (x - mu) / sigma
-        return -(z + np.log(sigma) + 2 * np.log1p(np.exp(-z)))
+        return -(z + np.log(sigma) + 2 * np.logaddexp(0.0, -z))
 
     def log_sf(self, x, mu, sigma):
         z = (x - mu) / sigma
-        return -(z + np.log1p(np.exp(-z)))
+        return -(z + np.logaddexp(0.0, -z))
 
     def log_ff(self, x, mu, sigma):
         z = (x - mu) / sigma
-        return -np.log1p(np.exp(-z))
+        return -np.logaddexp(0.0, -z)
 
     def mgf(self, t, mu, sigma):
         return np.exp(mu * t) * abeta(1 + sigma * t, 1 - sigma * t)

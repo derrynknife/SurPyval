@@ -303,7 +303,9 @@ class GumbelLEV_(ParametricFitter):
         return out
 
     def mpp_inv_y_transform(self, y, *params):
-        return 1 - np.exp(-np.exp(y))
+        # Inverse of the LEV transform y = -log(-log(F)) is
+        # F = exp(-exp(-y)); the previous form was the SEV inverse (#257).
+        return np.exp(-np.exp(-y))
 
     def moment(self, n, mu, sigma):
         return gumbel_r.moment(n, loc=mu, scale=sigma)

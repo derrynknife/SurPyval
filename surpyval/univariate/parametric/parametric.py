@@ -346,6 +346,12 @@ class Parametric(ParametricDistribution):
             bounds = -bounds * factor
             return p_hat + bounds
 
+    def _user_fixed_idx(self) -> set:
+        """Core-parameter indices the user fixed at fit time (empty set for
+        models without fitting info, e.g. ``from_params``)."""
+        info = getattr(self, "fitting_info", None) or {}
+        return set(info.get("fixed_idx", []) or [])
+
     def _profile_neg_ll(self, idx: int, value: float) -> float:
         """Profile negative log-likelihood with core parameter ``idx`` fixed.
 
@@ -358,7 +364,13 @@ class Parametric(ParametricDistribution):
         """
         fixed = np.array(self.params, dtype=float)
         fixed[idx] = value
-        free_idx = [j for j in range(len(fixed)) if j != idx]
+        # Parameters the user fixed at fit time stay fixed during the
+        # profile — re-freeing them makes the profile drop below the fitted
+        # nll and silently inflates the interval (#255).
+        user_fixed = self._user_fixed_idx()
+        free_idx = [
+            j for j in range(len(fixed)) if j != idx and j not in user_fixed
+        ]
 
         def neg_ll(theta):
             return float(
@@ -428,6 +440,11 @@ class Parametric(ParametricDistribution):
             )
 
         idx = self.dist.param_map[name]
+        if idx in self._user_fixed_idx():
+            raise ValueError(
+                f"'{name}' was fixed at fit time; a confidence bound on a "
+                "fixed parameter is not defined."
+            )
         theta_hat = float(self.params[idx])
         nll_hat = float(
             self.dist._neg_ll_func(
@@ -530,7 +547,13 @@ class Parametric(ParametricDistribution):
         """
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
-        return 1 - self.p + (self.p - self.f0) * self.dist.sf(xg, *self.params)
+        base_sf = self.dist.sf(xg, *self.params)
+        # Below the (possibly offset) support the base distribution has not
+        # started: clamp to R0 = 1 rather than evaluating the base function
+        # at a negative argument (#256).
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        base_sf = np.where(xg < s0, 1.0, base_sf)
+        return 1 - self.p + (self.p - self.f0) * base_sf
 
     def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -565,10 +588,13 @@ class Parametric(ParametricDistribution):
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
         x = np.asarray(x)
-
-        return self.f0 + (self.p - self.f0) * self.dist.ff(
-            x - self.gamma, *self.params  # type: ignore[operator]
-        )
+        xg = x - self.gamma  # type: ignore[operator]
+        base_ff = self.dist.ff(xg, *self.params)
+        # Below the (possibly offset) support the base CDF is 0; evaluating
+        # the base function at a negative argument gave F < 0 (#256).
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        base_ff = np.where(xg < s0, 0.0, base_ff)
+        return self.f0 + (self.p - self.f0) * base_ff
 
     def df(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -603,22 +629,18 @@ class Parametric(ParametricDistribution):
         array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
         """
         x = np.asarray(x)
+        xg = x - self.gamma  # type: ignore[operator]
+        base_df = self.dist.df(xg, *self.params)
+        # Below the (possibly offset) support the density is 0 (#256).
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        base_df = np.where(xg < s0, 0.0, base_df)
         if self.f0 == 0:
-            df = self.p * self.dist.df(
-                x - self.gamma, *self.params  # type: ignore[operator]
-            )
+            df = self.p * base_df
         else:
-            df = np.where(
-                x == 0,
-                self.f0,
-                (
-                    (1 - self.f0)
-                    * self.p
-                    * self.dist.df(
-                        x - self.gamma, *self.params  # type: ignore[operator]
-                    )
-                ),
-            )
+            # The continuous part carries mass (p - f0) — the same constant
+            # as sf/ff and the likelihood; (1 - f0) * p was inconsistent
+            # with them for combined LFP + ZI models (#256).
+            df = np.where(x == 0, self.f0, (self.p - self.f0) * base_df)
         return df
 
     def hf(self, x: npt.ArrayLike) -> npt.NDArray:
@@ -654,10 +676,10 @@ class Parametric(ParametricDistribution):
         array([0.003, 0.012, 0.027, 0.048, 0.075])
         """
         x = np.asarray(x)
-        if self.p == 1:
-            return self.dist.hf(
-                x - self.gamma, *self.params  # type: ignore[operator]
-            )
+        if (self.p == 1) and (self.f0 == 0):
+            xg = x - self.gamma  # type: ignore[operator]
+            s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+            return np.where(xg < s0, 0.0, self.dist.hf(xg, *self.params))
         else:
             return self.df(x) / self.sf(x)
 
@@ -695,10 +717,10 @@ class Parametric(ParametricDistribution):
         """
         x = np.asarray(x)
 
-        if self.p == 1:
-            return self.dist.Hf(
-                x - self.gamma, *self.params  # type: ignore[operator]
-            )
+        if (self.p == 1) and (self.f0 == 0):
+            xg = x - self.gamma  # type: ignore[operator]
+            s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+            return np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
         else:
             return -np.log(self.sf(x))
 
@@ -756,7 +778,9 @@ class Parametric(ParametricDistribution):
             # base == 1 (the u >= p region) makes the base quantile diverge;
             # it is overwritten with inf just below, so silence it here.
             q = self.gamma + self.dist.qf(base, *self.params)
-        q = np.where(u <= self.f0, float(self.gamma), q)
+        # The zero-inflation mass sits at 0 — consistent with df (mass at
+        # x == 0), ff(0) = f0 and the likelihood — not at the offset (#256).
+        q = np.where(u <= self.f0, 0.0, q)
         q = np.where(u >= self.p, np.inf, q)
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
@@ -881,14 +905,16 @@ class Parametric(ParametricDistribution):
                 self.dist.qf(uniform.rvs(size=n_obs), *self.params)
                 + self.gamma
             )
-            s = np.ones(np.array(size) - n_obs) * np.max(f) + 1
+            s = np.ones(np.array(size) - n_obs) * self._censor_time(f)
 
             return fsli_to_xcnt(f, s)
 
         elif (self.p == 1) and (self.f0 != 0):
             n_doa = np.random.binomial(size, self.f0)
 
-            x0 = np.zeros(n_doa) + self.gamma
+            # The zero-inflation mass sits at 0, consistent with df / ff /
+            # qf and the likelihood (#256).
+            x0 = np.zeros(n_doa)
             x = (
                 self.dist.qf(uniform.rvs(size=size - n_doa), *self.params)
                 + self.gamma
@@ -904,7 +930,7 @@ class Parametric(ParametricDistribution):
 
             N = np.atleast_2d(N)
             n_doa, n_obs, n_cens = N[:, 0], N[:, 1], N[:, 2]
-            x0 = np.zeros(n_doa) + self.gamma
+            x0 = np.zeros(n_doa)
 
             x = (
                 self.dist.qf(uniform.rvs(size=n_obs), *self.params)
@@ -912,8 +938,16 @@ class Parametric(ParametricDistribution):
             )
 
             f = np.concatenate([x, x0])
-            s = np.ones(n_cens) * np.max(f) + 1
+            s = np.ones(n_cens) * self._censor_time(f)
             return fsli_to_xcnt(f, s)
+
+    def _censor_time(self, f: npt.NDArray) -> float:
+        """A censoring time beyond every drawn failure, valid even when the
+        LFP draw produced no failures (``np.max`` of an empty array raised
+        before, #256)."""
+        if np.size(f):
+            return float(np.max(f)) + 1.0
+        return float(self.dist.qf(0.999, *self.params)) + self.gamma + 1.0
 
     def mean(self) -> float:
         r"""
@@ -933,7 +967,12 @@ class Parametric(ParametricDistribution):
         8.929795115692489
         """
         if not hasattr(self, "_mean"):
-            self._mean = self.p * (self.dist.mean(*self.params) + self.gamma)
+            # Defective mean: the zero-inflated mass f0 sits at 0 and
+            # contributes nothing, so the continuous part carries (p - f0)
+            # — ``p`` alone ignored f0 (#256).
+            self._mean = (self.p - self.f0) * (
+                self.dist.mean(*self.params) + self.gamma
+            )
         return self._mean
 
     def var(self) -> float:
@@ -990,8 +1029,9 @@ class Parametric(ParametricDistribution):
         times and the cured fraction ``1 - p`` contributes nothing (rather than
         the raw moment, which diverges when a cured fraction is present because
         those units never fail). It is
-        :math:`p\\,\\mathbb{E}\\!\\left[(\\gamma + X)^n\\right]` for :math:`X`
-        the base distribution.
+        :math:`(p - f_0)\\,\\mathbb{E}\\!\\left[(\\gamma + X)^n\\right]` for
+        :math:`X` the base distribution (the zero-inflated mass sits at 0 and
+        contributes nothing to a moment about zero).
         """
         # Defective n-th moment E[(gamma + X)^n] weighted by the failing
         # proportion p; the binomial expansion recombines the base raw
@@ -1003,7 +1043,9 @@ class Parametric(ParametricDistribution):
         shifted = sum(
             comb(n, k) * self.gamma ** (n - k) * base[k] for k in range(n + 1)
         )
-        return float(self.p * shifted)
+        # The zero-inflated mass f0 sits at 0 and contributes nothing to a
+        # moment about zero, so the continuous part carries (p - f0) (#256).
+        return float((self.p - self.f0) * shifted)
 
     def entropy(self) -> float:
         r"""
@@ -1207,8 +1249,15 @@ class Parametric(ParametricDistribution):
         else:
             crit = z(1.0 - alpha_ci) ** 2
 
+        user_fixed = self._user_fixed_idx()
         sci_bounds = []
-        for lo, hi in self.dist.bounds:
+        for j, (lo, hi) in enumerate(self.dist.bounds):
+            if j in user_fixed:
+                # A parameter the user fixed at fit time is pinned during
+                # the constrained search too (#255).
+                v = float(theta_hat[j])
+                sci_bounds.append((v, v))
+                continue
             lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
             hi_s = np.inf if hi is None else hi
             sci_bounds.append((lo_s, hi_s))
@@ -1293,9 +1342,23 @@ class Parametric(ParametricDistribution):
         return core, p, f0
 
     def _cb_full_sf(self, x, phi, ctx):
-        """Survival function including the LFP and zero-inflation mass."""
+        """Survival function including the LFP and zero-inflation mass.
+
+        Points below the (offset) support are clamped *before* the base sf is
+        evaluated: a negative argument produces NaN (fractional powers), and
+        one NaN poisons the whole autograd jacobian in the delta-method
+        variance (#256).
+        """
         core, p, f0 = self._cb_unpack(phi, ctx)
-        return 1 - p + (p - f0) * self.dist.sf(x - self.gamma, *core)
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        xg = x - self.gamma
+        below = xg < s0
+        if np.any(below):
+            # Evaluate the unselected branch just inside the support so it
+            # stays finite (np.where evaluates both branches under autograd).
+            xg = np.where(below, s0 + 1e-10, xg)
+        base_sf = np.where(below, 1.0, self.dist.sf(xg, *core))
+        return 1 - p + (p - f0) * base_sf
 
     def _cb_delta_var(self, func, ctx):
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
@@ -1326,8 +1389,13 @@ class Parametric(ParametricDistribution):
         else:
             diff = -z(alpha_ci) * np.sqrt(var_R)
 
-        exponent = diff / (R_hat * (1 - R_hat))
-        R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
+        with np.errstate(all="ignore"):
+            exponent = diff / (R_hat * (1 - R_hat))
+            R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
+        # At the boundary (R = 0 or 1, e.g. t <= gamma) the logit transform
+        # degenerates to 0/0; the bound there is the boundary itself (#256).
+        R_cb = np.where(np.broadcast_to(R_hat == 1.0, R_cb.shape), 1.0, R_cb)
+        R_cb = np.where(np.broadcast_to(R_hat == 0.0, R_cb.shape), 0.0, R_cb)
         return R_cb.T
 
     def _cb_rate_bound(self, t, ctx, alpha_ci, bound, on):
@@ -1489,7 +1557,9 @@ class Parametric(ParametricDistribution):
         if hasattr(self, "_aic_c"):
             return self._aic_c
         else:
-            k = len(self.params)
+            # Same parameter count as the aic() penalty it corrects —
+            # including gamma / p / f0 when fitted (#256).
+            k = self.k
             n = self.data["n"].sum()
             self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
             return self._aic_c

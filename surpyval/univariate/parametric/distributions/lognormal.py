@@ -11,7 +11,9 @@ class LogNormal_(ParametricFitter):
         super().__init__(
             name=name,
             k=2,
-            bounds=((0, None), (0, None)),
+            # mu is the mean of the *log* data — any real number. A (0, None)
+            # bound made every fit with geometric mean < 1 fail (#257).
+            bounds=((None, None), (0, None)),
             support=(0, np.inf),
             param_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},

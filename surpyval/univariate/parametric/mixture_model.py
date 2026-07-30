@@ -125,30 +125,72 @@ class MixtureModel(Distribution):
             return "Unable to fit values"
 
     def likelihood(self, params):
+        """Per-observation likelihood of one component (no count powers:
+        counts ``n`` enter the log-likelihood as multipliers -- raising the
+        per-component likelihood to ``n`` *before* mixing is wrong, since
+        ``sum_i w_i f_i^n != (sum_i w_i f_i)^n`` (#254)."""
         data = self.data
         like_o = self.dist.df(data.x_o, *params)
         like_r = self.dist.sf(data.x_r, *params)
         like_l = self.dist.ff(data.x_l, *params)
-        like_i = self.dist.ff(data.x_il, *params) - self.dist.ff(
-            data.x_ir, *params
+        like_i = self.dist.ff(data.x_ir, *params) - self.dist.ff(
+            data.x_il, *params
         )
         like = np.zeros(len(self.data.x))
         like[data.c == 0] = like_o
         like[data.c == 1] = like_r
         like[data.c == -1] = like_l
         like[data.c == 2] = like_i
-        like = np.power(like, data.n)
         return like
 
+    def _window_prob(self, params_i):
+        """One component's probability of landing in each observation's
+        truncation window ``(tl, tr]`` -- the per-component piece of the
+        truncation correction."""
+        tl, tr = self.data.tl, self.data.tr
+        lo = np.zeros(len(self.data.x))
+        fin = np.isfinite(tl)
+        if fin.any():
+            lo[fin] = self.dist.ff(tl[fin], *params_i)
+        hi = np.ones(len(self.data.x))
+        fin = np.isfinite(tr)
+        if fin.any():
+            hi[fin] = self.dist.ff(tr[fin], *params_i)
+        return hi - lo
+
+    def neg_ll_of(self, w, params):
+        """Observed negative log-likelihood of the mixture: counts multiply
+        in the log domain, and truncated observations are conditioned on
+        their window through the mixture probability of the window."""
+        f = np.zeros(len(self.data.x))
+        for i in range(self.m):
+            f += w[i] * self.likelihood(params[i])
+        with np.errstate(all="ignore"):
+            ll = np.sum(self.data.n * np.log(f))
+            if self._truncated:
+                win = np.zeros(len(self.data.x))
+                for i in range(self.m):
+                    win += w[i] * self._window_prob(params[i])
+                ll -= np.sum(self.data.n * np.log(win))
+        return -ll
+
     def Q(self, params):
+        """EM M-step objective: the (negative) expected complete-data
+        log-likelihood over the component labels -- counts times
+        responsibilities times each component's log-likelihood."""
         params = params.reshape(self.m, self.dist.k)
-        f = np.zeros_like(self.p)
+        total = 0.0
         for i in range(self.m):
             like = self.likelihood(params[i])
-            f[i] = np.multiply(self.p[i], like)
-        f = -np.sum(np.log(f.sum(axis=0)))
-        self.loglike = f
-        return f
+            with np.errstate(all="ignore"):
+                loglike = np.log(like)
+            contrib = np.where(
+                self.p[i] > 0,
+                self.data.n * self.p[i] * np.nan_to_num(loglike, nan=-1e300),
+                0.0,
+            )
+            total -= contrib.sum()
+        return total
 
     def expectation(self):
         for i in range(self.m):
@@ -156,7 +198,8 @@ class MixtureModel(Distribution):
             like = np.multiply(self.w[i], like)
             self.p[i] = like
         self.p = np.divide(self.p, np.sum(self.p, axis=0))
-        self.w = np.sum(self.p, axis=1) / len(self.data.x)
+        # Mixing weights are count-weighted responsibility totals.
+        self.w = (self.p * self.data.n).sum(axis=1) / self.data.n.sum()
 
     def maximisation(self):
         bounds = self.dist.bounds * self.m
@@ -166,6 +209,9 @@ class MixtureModel(Distribution):
     def EM(self):
         self.expectation()
         self.maximisation()
+        # Convergence is tracked on the observed likelihood, not the
+        # M-step objective.
+        self.loglike = self.neg_ll_of(self.w, self.params)
 
     def _em(self, tol=1e-10, max_iter=1000):
         i = 0
@@ -272,15 +318,55 @@ class MixtureModel(Distribution):
 
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
 
-        if len(x) < self.m * (self.dist.k + 1):
+        # Count observations from the validated data so ``xl``/``xr``-only
+        # input works (#254), and weigh by counts.
+        if data.n.sum() < self.m * (self.dist.k + 1):
             raise ValueError("More parameters than data points")
 
         self.data = data
+        self._truncated = bool(np.isfinite(data.t).any())
         self.p = np.ones(shape=(self.m, len(self.data.x))) / self.m
 
         self.initialise_params()
 
-        self._em()
+        if self._truncated:
+            # The truncation correction couples the components through the
+            # mixture window probability, so the label-based EM does not
+            # apply; maximise the observed truncated likelihood directly,
+            # warm-started from the split-fit initialisation (#254).
+            self._direct_mle()
+        else:
+            self._em()
+
+    def _direct_mle(self):
+        """Directly maximise the observed (truncation-corrected) negative
+        log-likelihood over the mixing weights (via softmax logits) and the
+        component parameters."""
+        k = self.dist.k
+
+        def unpack(theta):
+            logits = np.append(theta[: self.m - 1], 0.0)
+            logits = logits - logits.max()
+            w = np.exp(logits)
+            w = w / w.sum()
+            params = theta[self.m - 1 :].reshape(self.m, k)
+            return w, params
+
+        def obj(theta):
+            w, params = unpack(theta)
+            return self.neg_ll_of(w, params)
+
+        bounds = [(None, None)] * (self.m - 1)
+        for _ in range(self.m):
+            for lo, hi in self.dist.bounds:
+                lo_s = None if lo is None else (1e-10 if lo == 0 else lo)
+                bounds.append((lo_s, hi))
+
+        x0 = np.concatenate([np.zeros(self.m - 1), self.params.ravel()])
+        with np.errstate(all="ignore"):
+            res = minimize(obj, x0, bounds=bounds)
+        self.w, self.params = unpack(res.x)
+        self.loglike = float(res.fun)
 
     def mean(self):
         mean = 0
@@ -316,6 +402,7 @@ class MixtureModel(Distribution):
         array like
             The probability density function evaluated at x.
         """
+        x = np.asarray(x, dtype=float)
         df = np.zeros_like(x)
         for i in range(self.m):
             df += self.w[i] * self.dist.df(x, *self.params[i])

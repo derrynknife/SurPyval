@@ -1116,10 +1116,16 @@ def wrangle_and_check_form_and_Z_cols(Z_cols, formula, df):
         feature_names = list(Z_cols)
         model_spec = None
     else:
-        form = Formula("0 + " + formula)
+        # Materialise with the implicit intercept so categoricals get
+        # reference-level coding, then drop the intercept column — the
+        # baseline hazard plays that role, and a full one-hot is collinear
+        # with it (#252). An explicit "0 + ..." formula opts out.
+        form = Formula(formula)
         model_matrix = form.get_model_matrix(df, na_action="ignore")
-        feature_names = list(model_matrix.columns)
         model_spec = model_matrix.model_spec
+        if "Intercept" in model_matrix.columns:
+            model_matrix = model_matrix.drop(columns=["Intercept"])
+        feature_names = list(model_matrix.columns)
         Z = model_matrix.values.astype(float)
         mask = ~np.any(np.isnan(Z), axis=1)
 
