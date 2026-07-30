@@ -116,7 +116,14 @@ class FrailtyModel:
         s = eta * H0
         u = self._resolve_frailty(group, frailty)
         if u is None:
-            out = np.log1p(self.theta * s) / self.theta
+            if self.theta < 1e-12:
+                # theta -> 0 is the no-frailty PH limit
+                # log(1 + theta s)/theta -> s; dividing by a zero theta
+                # (e.g. frailty-free data, or a restored model) gave NaN
+                # (#262).
+                out = s
+            else:
+                out = np.log1p(self.theta * s) / self.theta
         else:
             out = u * s
         return out
@@ -200,6 +207,11 @@ class FrailtyModel:
         else:
             raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
         if positive:
+            if est <= 0:
+                # A boundary estimate (theta -> 0: no detectable frailty)
+                # has no log-scale Wald interval; dividing by zero gave
+                # NaN/ZeroDivision (#262).
+                return np.zeros_like(signs, dtype=float)
             return est * np.exp(signs * q * se / est)
         return est + signs * q * se
 

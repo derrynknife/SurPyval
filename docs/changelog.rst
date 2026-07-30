@@ -144,6 +144,12 @@ v0.17.0 (unreleased)
   conditioning would require the unobserved pre-entry covariate path, so
   rather than guess it the fit raises an informative error pointing to Cox
   TVC (``CoxPH.fit_tvc``), which handles delayed entry and gaps exactly.
+- **Fixed: frailty models handle the ``theta -> 0`` (no-frailty) limit**
+  (#262). A frailty variance that underflows to zero — frailty-free data, or
+  a restored model — gave NaN marginal predictions (division by ``theta``)
+  and a NaN/crashing Wald interval; the marginal now takes the well-defined
+  proportional-hazards limit ``eta * H0``, and a boundary estimate returns a
+  zero-width interval instead of dividing by zero.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a
