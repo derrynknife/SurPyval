@@ -20,6 +20,22 @@ if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
 
 
+def drop_intercept(model_matrix: Any) -> Any:
+    """Drop the intercept column from a materialised model matrix.
+
+    Formulas are materialised *with* their implicit intercept so that
+    ``formulaic`` gives categorical terms reference-level (reduced-rank)
+    coding — with no intercept it emits a full one-hot whose columns sum to
+    a constant, which is exactly collinear with the baseline distribution's
+    scale (or the Cox baseline), leaving the coefficients non-identified
+    (#252). The intercept column itself is then removed because the baseline
+    plays that role.
+    """
+    if "Intercept" in model_matrix.columns:
+        return model_matrix.drop(columns=["Intercept"])
+    return model_matrix
+
+
 def design_matrix_from_df(
     df: pd.DataFrame,
     Z_cols: str | list[str] | None = None,
@@ -38,9 +54,12 @@ def design_matrix_from_df(
         The column name(s) of the covariates to use.
     formula : str, optional
         A ``formulaic`` formula describing the design matrix, e.g.
-        ``"age + sex + age:sex"``. An intercept is never added (the baseline
-        distribution provides the intercept), so the formula is parsed as
-        ``"0 + " + formula``.
+        ``"age + sex + age:sex"``. The formula is materialised with its
+        implicit intercept so categoricals get reference-level
+        (reduced-rank) coding, and the intercept column is then dropped —
+        the baseline distribution provides the intercept, and a full
+        one-hot encoding would be exactly collinear with it (#252). Pass an
+        explicit ``"0 + ..."`` to opt out and keep full-rank coding.
 
     Returns
     -------
@@ -63,9 +82,10 @@ def design_matrix_from_df(
         )
 
     if formula is not None:
-        model_matrix = Formula("0 + " + formula).get_model_matrix(df)
-        feature_names = list(model_matrix.columns)
+        model_matrix = Formula(formula).get_model_matrix(df)
         model_spec = model_matrix.model_spec
+        model_matrix = drop_intercept(model_matrix)
+        feature_names = list(model_matrix.columns)
         Z = np.asarray(model_matrix, dtype=float)
         return Z, feature_names, model_spec
 
@@ -118,7 +138,8 @@ def prepare_Z(
         return np.asarray(Z)
 
     if model_spec is not None:
-        return np.asarray(model_spec.get_model_matrix(Z), dtype=float)
+        model_matrix = drop_intercept(model_spec.get_model_matrix(Z))
+        return np.asarray(model_matrix, dtype=float)
 
     if feature_names is not None:
         unknown = [c for c in feature_names if c not in Z.columns]
@@ -196,10 +217,11 @@ def rebuild_model_spec(formula: str, meta: dict) -> Any:
 
     A small template DataFrame is built with each categorical column typed to
     the stored levels and each numeric column a placeholder, then the same
-    ``"0 + " + formula`` is re-materialised against it. ``formulaic`` derives
-    an encoder state identical to fit time (the encoding depends on the formula
-    and the factor levels, not the row values), so the returned spec expands
-    raw covariates exactly as the original did.
+    formula (with its implicit intercept, matching fit time — #252) is
+    re-materialised against it. ``formulaic`` derives an encoder state
+    identical to fit time (the encoding depends on the formula and the factor
+    levels, not the row values), so the returned spec expands raw covariates
+    exactly as the original did.
     """
     formula = str(formula)
     factor_levels = meta.get("factor_levels", {})
@@ -217,9 +239,7 @@ def rebuild_model_spec(formula: str, meta: dict) -> Any:
         # derived; only the encoder structure is kept, not these values.
         template[col] = np.ones(height)
 
-    model_matrix = Formula("0 + " + formula).get_model_matrix(
-        pd.DataFrame(template)
-    )
+    model_matrix = Formula(formula).get_model_matrix(pd.DataFrame(template))
     return model_matrix.model_spec
 
 

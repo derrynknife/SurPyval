@@ -86,6 +86,25 @@ v0.17.0 (unreleased)
   (silently mislabelled plot axes). ``Logistic`` log-functions overflowed
   in the deep tail (now ``logaddexp``). ``ExactEventTime.fit`` without both
   censoring sides now raises an informative error.
+- **Fixed: formula fits with a categorical covariate were non-identified —
+  categoricals are now reference-level coded** (#252). ``fit_from_df(...,
+  formula="age + sex")`` used to expand ``sex`` into a *full one-hot*
+  (``sex[F]``, ``sex[M]``) whose columns sum to a constant — exactly
+  collinear with the baseline distribution's scale (or the Cox baseline), so
+  the likelihood was flat along a ridge and the reported coefficients and
+  standard errors were optimizer-path noise (predictions were unaffected,
+  which is why it went unseen). Formulas are now materialised with their
+  implicit intercept, giving categoricals standard treatment coding, and the
+  intercept column is dropped (the baseline provides it).
+
+  **Migration note:** feature names and coefficient meanings change for
+  formula fits with categoricals — ``['sex[F]', 'sex[M]']`` becomes
+  ``['sex[T.M]']``, and the coefficient is the log-hazard-ratio (or
+  equivalent) of that level versus the reference (first) level, matching R,
+  lifelines and statsmodels. Predictions from refitted models are unchanged.
+  An explicit ``"0 + ..."`` formula opts back into full-rank coding. This
+  also fixes the ``LinAlgError`` crash in Buckley-James formula fits with
+  categoricals.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a
