@@ -64,6 +64,10 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
             Z = np.ones_like(x) * Z
         else:
             Z = np.array(Z)
+        if Z.ndim == 1:
+            # A 1-D stress vector (one stress variable) becomes a single
+            # column so the per-stress masking below works (#261).
+            Z = Z.reshape(-1, 1)
 
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
@@ -91,6 +95,10 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
             Z = np.ones_like(x) * Z
         else:
             Z = np.array(Z)
+        if Z.ndim == 1:
+            # A 1-D stress vector (one stress variable) becomes a single
+            # column so the per-stress masking below works (#261).
+            Z = Z.reshape(-1, 1)
 
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
@@ -117,6 +125,10 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
             Z = np.ones_like(x) * Z
         else:
             Z = np.array(Z)
+        if Z.ndim == 1:
+            # A 1-D stress vector (one stress variable) becomes a single
+            # column so the per-stress masking below works (#261).
+            Z = Z.reshape(-1, 1)
         return self.hf(x, Z, *params) * np.exp(-self.Hf(x, Z, *params))
 
     def sf(self, x, Z, *params):
@@ -125,6 +137,10 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
             Z = np.ones_like(x) * Z
         else:
             Z = np.array(Z)
+        if Z.ndim == 1:
+            # A 1-D stress vector (one stress variable) becomes a single
+            # column so the per-stress masking below works (#261).
+            Z = Z.reshape(-1, 1)
         return np.exp(-self.Hf(x, Z, *params))
 
     def ff(self, x, Z, *params):
@@ -133,6 +149,10 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
             Z = np.ones_like(x) * Z
         else:
             Z = np.array(Z)
+        if Z.ndim == 1:
+            # A 1-D stress vector (one stress variable) becomes a single
+            # column so the per-stress masking below works (#261).
+            Z = Z.reshape(-1, 1)
         return -np.expm1(-self.Hf(x, Z, *params))
 
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
@@ -175,6 +195,9 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
         Z_out = []
         if isinstance(Z, tuple):
             Z = np.random.uniform(*Z, size)
+        Z = np.asarray(Z)
+        if Z.ndim == 1:
+            Z = Z.reshape(-1, 1)
 
         for stress in np.unique(Z, axis=0):
             life_param_mask = (
@@ -211,7 +234,12 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
     ) -> ParametricRegressionModel:
         x_arr: npt.NDArray = np.asarray(x)
         data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
-        data.add_covariates(Z)
+        # A 1-D stress vector (one stress variable) becomes a single column
+        # so the per-stress masking in the initialiser works (#261).
+        Z_arr = np.asarray(Z)
+        if Z_arr.ndim == 1:
+            Z_arr = Z_arr.reshape(-1, 1)
+        data.add_covariates(Z_arr)
         life_parameter_idx = self.param_map[self.life_parameter]
         if fixed is None:
             fixed = {}
@@ -289,11 +317,13 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
         else:
             phi_param_map = self.life_model.phi_param_map
 
+        # Keep the merged map local: assigning it to ``self.param_map``
+        # mutated the fitter, so a second ``fit()`` re-merged on top of the
+        # already-merged map and produced out-of-range indices (#261).
         param_map = {
             **self.param_map,
             **{k: v + len(self.param_map) for k, v in phi_param_map.items()},
         }
-        self.param_map = param_map
 
         transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
             x, bounds, fixed, param_map
@@ -335,7 +365,10 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
         model.phi_params = phi_params
         model.res = res
         model._neg_ll = res.fun
-        model.fixed = self.fixed
+        # Store the full merged fixed dict (baseline-derived + fitter-level +
+        # user-supplied), not just the fitter's own — otherwise standard
+        # errors are reported for parameters that were held fixed (#261).
+        model.fixed = fixed
         model.k_dist = self.k_dist
         model.fun = fun
 

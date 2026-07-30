@@ -56,6 +56,11 @@ class SemiParametricRegressionModel:
     #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
     #: by ``CoxPH.fit`` for residuals and the proportional-hazards test.
     _fit_data: dict
+    #: For a TVC (start-stop) fit: subject id per *internal* (sorted) row,
+    #: and the permutation from the caller's row order to the internal order
+    #: (#259 — used to align user-supplied cluster labels).
+    tvc_subject_ids: "npt.NDArray | None" = None
+    tvc_row_order: "npt.NDArray | None" = None
 
     def __init__(self, kind: str, parameterization: str) -> None:
         self.kind = kind
@@ -369,11 +374,14 @@ class SemiParametricRegressionModel:
         order = np.argsort(xl_a)
         xl_a, xr_a, Z_a = xl_a[order], xr_a[order], Z_a[order]
 
-        # The active interval at a baseline jump time u is the last interval
-        # whose xl is at or before u; times outside the path are clamped to
-        # the first/last interval (covariate held constant).
+        # The active interval at a baseline jump time u follows the fitted
+        # (xl, xr] convention: the interval with xl < u <= xr, i.e. the OLD
+        # covariate is still at risk at exactly its stop time (#259 —
+        # ``side="right"`` credited a jump at a change time to the NEW
+        # covariate, contradicting the likelihood). Times outside the path
+        # are clamped to the first/last interval (covariate held constant).
         base_t = self.x
-        active = np.searchsorted(xl_a, base_t, side="right") - 1
+        active = np.searchsorted(xl_a, base_t, side="left") - 1
         active = np.clip(active, 0, xl_a.shape[0] - 1)
         phi = np.exp(Z_a[active] @ self.beta)
         H_cum = np.cumsum(self.h0 * phi)
@@ -402,7 +410,9 @@ class SemiParametricRegressionModel:
         weighted by the multiplier of the covariate *active* at each jump.
         """
         base_t = self.x
-        active = np.searchsorted(starts, base_t, side="right") - 1
+        # (xl, xr] convention, matching the fit: the old covariate is at
+        # risk at exactly its stop time (#259).
+        active = np.searchsorted(starts, base_t, side="left") - 1
         active = np.clip(active, 0, starts.shape[0] - 1)
         phi = np.exp(Zseg[active] @ self.beta)
         H_cum = np.cumsum(self.h0 * phi)

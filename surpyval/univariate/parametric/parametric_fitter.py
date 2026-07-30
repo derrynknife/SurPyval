@@ -420,6 +420,16 @@ class ParametricFitter:
                         lower=self.support[0], upper=self.support[1]
                     )
                     raise ValueError(detail)
+                elif (
+                    (surv_data.x[:, 0] < self.support[0]) & (surv_data.c == 2)
+                ).any():
+                    # An interval endpoint strictly below the support makes
+                    # the CDF evaluate outside its domain: NaN likelihood
+                    # everywhere and a silent initial-guess "fit" (#261).
+                    detail = detail_template.format(
+                        lower=self.support[0], upper=self.support[1]
+                    )
+                    raise ValueError(detail)
             else:
                 if (
                     (surv_data.x <= self.support[0]) & (surv_data.c == 0)
@@ -431,6 +441,17 @@ class ParametricFitter:
                 elif (
                     (surv_data.x >= self.support[1]) & (surv_data.c == 0)
                 ).any():
+                    detail = detail_template.format(
+                        lower=self.support[0], upper=self.support[1]
+                    )
+                    raise ValueError(detail)
+                elif (
+                    (surv_data.x <= self.support[0]) & (surv_data.c == -1)
+                ).any():
+                    # A left-censored point at or below the support start is
+                    # a zero-probability observation: the likelihood is
+                    # -inf/NaN everywhere and the optimiser silently
+                    # returns the initial guess (#261).
                     detail = detail_template.format(
                         lower=self.support[0], upper=self.support[1]
                     )
@@ -999,7 +1020,9 @@ class ParametricFitter:
             fitting_info["fixed_idx"] = fixed_idx
             fitting_info["not_fixed"] = not_fixed
 
-            if init == []:
+            # ``len``-based check: comparing an ndarray to ``[]`` raises a
+            # broadcast error (#261).
+            if init is None or len(np.atleast_1d(init)) == 0:
                 init = self._initial_guess(x, c, n, offset, zi, lfp, heuristic)
 
             init = np.atleast_1d(init)

@@ -148,7 +148,10 @@ class Parametric(ParametricDistribution):
             )
         how = model_dict["how"]
         if "data" in model_dict:
-            data = model_dict["data"]
+            # Coerce the JSON lists back to arrays so downstream users
+            # (``bic``, ``aic_c``, re-serialisation with data) work on a
+            # restored model just as on a fitted one (#261).
+            data = {k: np.asarray(v) for k, v in model_dict["data"].items()}
         else:
             data = None
         offset = model_dict["offset"]
@@ -175,6 +178,10 @@ class Parametric(ParametricDistribution):
             out._neg_ll = model_dict["_neg_ll"]
 
         out.params = np.array(model_dict["params"])
+
+        # Restore the support interval, which fit-time construction sets via
+        # the fitter (#261).
+        dist._set_support(out, offset)
 
         return out
 
@@ -319,7 +326,14 @@ class Parametric(ParametricDistribution):
         else:
             idx = self.dist.param_map[name]
             p_hat = self.params[idx]
-            var = self.hess_inv[idx, idx]
+            hess_inv = getattr(self, "hess_inv", None)
+            if hess_inv is None:
+                raise ValueError(
+                    "Model carries no parameter covariance (the Hessian was "
+                    "singular at the optimum, or the model was not fit by "
+                    "MLE); confidence bounds are unavailable."
+                )
+            var = hess_inv[idx, idx]
             param_bounds = self.dist.bounds[idx]
 
         if bound == "two-sided":
@@ -331,6 +345,11 @@ class Parametric(ParametricDistribution):
         elif bound == "upper":
             alpha = alpha_ci
             bounds = np.array([1])
+        else:
+            raise ValueError(
+                "bound must be 'two-sided', 'lower' or 'upper'; got "
+                f"{bound!r}"
+            )
 
         if param_bounds == (0, None):
             exponent = z(alpha) * np.sqrt(var) / p_hat
@@ -1171,6 +1190,11 @@ class Parametric(ParametricDistribution):
                 cb = -np.log(self._cb_sf_bound(t, ctx, alpha_ci, bound))
             elif on in ["hf", "df"]:
                 cb = self._cb_rate_bound(t, ctx, alpha_ci, bound, on)
+            else:
+                raise ValueError(
+                    "'on' must be one of 'sf', 'R', 'ff', 'F', 'Hf', 'hf' "
+                    f"or 'df'; got {on!r}"
+                )
         finally:
             np.seterr(**old_err_state)
 
@@ -1324,8 +1348,15 @@ class Parametric(ParametricDistribution):
 
         cov = getattr(self, "cov_matrix", None)
         if cov is None:
+            hess_inv = getattr(self, "hess_inv", None)
+            if hess_inv is None:
+                raise ValueError(
+                    "Model carries no parameter covariance (the Hessian "
+                    "was singular at the optimum, or the model was not fit "
+                    "by MLE); confidence bounds are unavailable."
+                )
             cov = np.zeros((len(phi_hat), len(phi_hat)))
-            cov[:n_core, :n_core] = np.copy(self.hess_inv)
+            cov[:n_core, :n_core] = np.copy(hess_inv)
 
         return _CBContext(phi_hat=phi_hat, cov=cov, n_core=n_core)
 

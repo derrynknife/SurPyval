@@ -259,8 +259,15 @@ class ProportionalHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
 
         if init is None or len(init) == 0:  # type: ignore[arg-type]
             ps = self.dist.fit_from_surpyval_data(data).params
+            # Use the validated covariate array — the raw ``Z`` argument may
+            # be a plain list without a ``.shape`` (#261) — and fall back to
+            # zeros when no phi initialiser is configured (previously an
+            # unbound-name error).
+            Z_data = np.asarray(data.Z)
             if callable(self.phi_init):
-                init_phi = self.phi_init(Z)
+                init_phi = self.phi_init(Z_data)
+            else:
+                init_phi = np.zeros(Z_data.shape[1])
 
             init = np.array([*ps, *init_phi])
         else:

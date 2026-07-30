@@ -105,6 +105,35 @@ v0.17.0 (unreleased)
   An explicit ``"0 + ..."`` formula opts back into full-rank coding. This
   also fixes the ``LinAlgError`` crash in Buckley-James formula fits with
   categoricals.
+- **Fixed: regression serialisation and robustness batch** (#261).
+  Buckley-James and Lin-Ying additive-hazards models now persist their
+  formula encoder state (the #244 treatment), so restored models predict
+  from DataFrames with transforms/categoricals; repeated save/load cycles of
+  a parametric regression model no longer silently drop the stored
+  covariance; ``ParametricRegressionModel.random`` (broken on every path —
+  it ignored ``Z``) now dispatches to the fitter's covariate-aware sampler;
+  the ``AcceleratedLife`` fitter is no longer stateful across fits, keeps
+  user-fixed parameters in ``model.fixed`` (SEs were reported for
+  constrained parameters), and accepts 1-D stress vectors; ``WeibullPH.fit``
+  accepts plain-list covariates; ``fit(init=<ndarray>)`` no longer crashes;
+  deserialised univariate models support ``bic``/``aic_c``/re-serialisation
+  and carry their support interval; interval/left-censored observations
+  below the distribution's support are rejected at validation instead of
+  producing a NaN likelihood and a silent initial-guess "fit" (whose
+  reported likelihood now matches its returned parameters); and invalid
+  ``cb``/``param_cb`` arguments raise ``ValueError`` instead of
+  ``UnboundLocalError``.
+- **Fixed: TVC prediction and alignment** (#259). Predicting along a
+  covariate schedule treated intervals as ``[xl, xr)``, so a baseline-hazard
+  jump exactly at a covariate-change time was weighted by the *new*
+  covariate while the fitted likelihood uses ``(xl, xr]`` — predictions now
+  match the fit, and a query time returns the same value regardless of the
+  other query points. Cluster-robust standard errors on start-stop (TVC)
+  fits now permute user-supplied per-row cluster labels into the internal
+  row order (previously silently misassigned unless the input was already
+  sorted), and default to clustering by subject. An exactly singular
+  information matrix now degrades to the pseudo-inverse/NaN path instead of
+  crashing.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a

@@ -244,8 +244,16 @@ def mle(model):
 
         results["cov_matrix"] = cov_matrix
         results["hess_inv"] = hess_inv
-        results["_neg_ll"] = res["fun"]
-        results["log_likelihood"] = -res["fun"]
+        # On the fallback path the returned parameters are the initial
+        # guess, so the reported likelihood must be evaluated there — not
+        # taken from the failed optimizer (#261).
+        if use_initial:
+            with np.errstate(all="ignore"):
+                neg_ll_val = float(fun(init, offset, lfp, zi, True))
+        else:
+            neg_ll_val = float(res["fun"])
+        results["_neg_ll"] = neg_ll_val
+        results["log_likelihood"] = -neg_ll_val
         results["res"] = res
         results["optimizer"] = (
             best_method if best_method is not None else method
