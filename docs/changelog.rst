@@ -23,6 +23,18 @@ v0.17.0 (unreleased)
   fixed={"beta_0": v})`` fixed ``alpha`` to ``v`` and left ``beta_0`` free,
   corrupting the fit and its covariance. The map is now offset like the other
   regression families.
+- **Fixed: nonparametric competing-risks CIFs were systematically
+  underestimated** (#253). The Aalen-Johansen incidence increment weighted
+  each cause-specific hazard by the survival *after* the jump, ``S(t)``,
+  instead of ``S(t-)`` — with one cause and no censoring the CIF topped out
+  at ~0.72 instead of 1. Cause-specific CIFs now sum exactly to ``1 - S``
+  (Kaplan-Meier weighting). The same correction applies to the Cox-path
+  cause-specific ``cif``. Also fixed: query times before the first observed
+  event wrapped to the *last* step value (``sf(0.1)`` on data starting at 1
+  returned the final survival instead of 1) in both the nonparametric and
+  Cox-path predictors, and ``CompetingRisks.fit_from_df`` stored the source
+  DataFrame as ``model.df``, shadowing the density method — it is now
+  ``model.source_df``.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a
