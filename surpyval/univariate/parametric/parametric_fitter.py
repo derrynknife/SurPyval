@@ -185,7 +185,10 @@ class ParametricFitter:
     def ll_left_censored(self, x, n, *params):
         *params, gamma, f0, p = params
         x = x - gamma
-        if f0 == 1:
+        if f0 == 0:
+            # No zero-inflation: F_mix = p * F, so the numerically stable
+            # log_ff path applies (the branch was inverted as ``f0 == 1``,
+            # which never occurs, #256).
             return np.sum(n * self.log_ff(x, *params)) + n.sum() * np.log(p)
         else:
             return np.sum(n * np.log(f0 + (p - f0) * self.ff(x, *params)))

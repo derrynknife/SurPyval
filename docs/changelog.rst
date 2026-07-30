@@ -58,6 +58,34 @@ v0.17.0 (unreleased)
   (the window couples the components, so label-based EM does not apply).
   Also fixed: ``xl``/``xr``-only input crashed on ``len(None)``, and ``df``
   crashed on integer input.
+- **Fixed: LFP / zero-inflated / offset parametric model conventions made
+  mutually consistent** (#256). ``df``/``hf`` for combined LFP+ZI models used
+  ``(1 - f0) * p`` where ``sf``/``ff`` and the likelihood use ``(p - f0)`` —
+  the density did not integrate to the failure probability. ``mean()`` and
+  ``moment()`` ignored ``f0`` entirely. ``qf``/``random`` placed the
+  zero-inflation mass at the offset ``gamma`` while ``df``/``ff`` place it at
+  0, so ``qf`` did not invert ``ff``. Offset models returned ``ff < 0`` /
+  ``sf > 1`` / NaNs below ``gamma`` — now clamped to the boundary values.
+  ``cb`` returned NaN where the point estimate sits on the boundary
+  (``sf == 1``, e.g. ``t <= gamma``) — now the boundary. ``random()`` crashed
+  for LFP models when the binomial draw produced zero failures. ``aic_c``
+  penalised a different parameter count than ``aic``. The numerically stable
+  left-censored likelihood branch was unreachable (inverted ``f0`` check).
+- **Fixed: distribution-level defects** (#257). ``LogNormal.fit`` crashed for
+  any data with geometric mean < 1 (the location ``mu`` was wrongly bounded
+  positive). ``Bernoulli.fit`` was broken for essentially every input (it
+  broadcast ``x`` against the literal ``[0, 1]`` and mishandled ``n=None``).
+  Offset MPP fits with ``rr="x"`` mis-inverted the regression for
+  Exponential and Gamma (silently wrong ``lambda``/``gamma``); the Gamma
+  offset MPP also seeded its shape search from unshifted-data moments and
+  now multi-starts it. Gamma's censored non-offset ``rr="x"`` crashed on a
+  length mismatch. ``ExpoWeibull.sf``/``Hf``/``log_sf`` underflowed to
+  0/inf/-inf in the (reachable) right tail — rewritten in a
+  cancellation-free ``expm1``/``log1p`` form. Probability-plot y-axis
+  inverse transforms were not inverses for Exponential, GumbelLEV and Beta
+  (silently mislabelled plot axes). ``Logistic`` log-functions overflowed
+  in the deep tail (now ``logaddexp``). ``ExactEventTime.fit`` without both
+  censoring sides now raises an informative error.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a

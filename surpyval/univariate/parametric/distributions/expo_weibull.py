@@ -77,7 +77,11 @@ class ExpoWeibull_(ParametricFitter):
         array([9.94911330e-01, 8.72902497e-01, 4.23286791e-01, 5.06674866e-02,
                5.34717283e-04])
         """
-        return 1 - np.power(1 - np.exp(-((x / alpha) ** beta)), mu)
+        # -expm1(mu * log1p(-exp(-t))) is the cancellation-free form of
+        # 1 - (1 - e^-t)^mu: the naive form underflows to exactly 0 once
+        # e^-t < 1e-16 (x ~ 2.5 alpha for beta ~ 4), sending Hf/log_sf to
+        # inf/-inf for representable tail probabilities (#257).
+        return -np.expm1(mu * np.log1p(-np.exp(-((x / alpha) ** beta))))
 
     def ff(self, x, alpha, beta, mu):
         r"""
@@ -322,7 +326,11 @@ class ExpoWeibull_(ParametricFitter):
         return mu * np.log1p(-np.exp(-((x / alpha) ** beta)))
 
     def log_sf(self, x, alpha, beta, mu):
-        return np.log1p(-np.power(-np.expm1(-((x / alpha) ** beta)), mu))
+        # log of the cancellation-free sf form; the naive log1p(-(...)^mu)
+        # returns -inf once the inner power rounds to 1 (#257).
+        return np.log(
+            -np.expm1(mu * np.log1p(-np.exp(-((x / alpha) ** beta))))
+        )
 
     def mean(self, alpha, beta, mu):
         def func(x):
