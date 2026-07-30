@@ -16,6 +16,13 @@ v0.17.0 (unreleased)
   gather (``not_yet_entered``), valid for signed quantities; the analytic score
   and information now match numerical differentiation of the partial
   log-likelihood under delayed entry. All-positive covariates were unaffected.
+- **Fixed: parametric PH ``fixed={"beta_0": ...}`` silently pinned the first
+  distribution parameter instead of the covariate coefficient** (#251). The
+  covariate parameter map was merged without the distribution-parameter
+  offset (AFT/PO/AH were unaffected), so ``WeibullPH.fit(x, Z,
+  fixed={"beta_0": v})`` fixed ``alpha`` to ``v`` and left ``beta_0`` free,
+  corrupting the fit and its covariance. The map is now offset like the other
+  regression families.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a
