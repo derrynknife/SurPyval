@@ -43,6 +43,21 @@ v0.17.0 (unreleased)
   pinned during both the parameter profile and the function-band constrained
   search, and requesting an LR bound *on* a fixed parameter raises a clear
   ``ValueError``.
+- **Fixed: MixtureModel likelihood and EM corrections** (#254). Counts from
+  grouped/tied data were applied as per-component likelihood *powers* before
+  mixing (``sum w_i f_i^n != (sum w_i f_i)^n``), so any tied data (e.g.
+  rounded measurements) silently skewed the mixing weights — a true 50/50
+  Weibull mixture fit as 14/86. Counts now multiply the mixture
+  log-likelihood; the mixing-weight update is count-weighted; the M-step now
+  minimises the proper EM Q-function (responsibilities times component
+  log-likelihoods) instead of an ad-hoc responsibilities-as-weights
+  objective; and the interval-censored contribution was ``F(l) - F(r)``
+  (negative) — now ``F(r) - F(l)``. Truncation (``tl``/``tr``/``t``) was
+  accepted but silently ignored; truncated data is now fitted by direct
+  maximum likelihood on the truncation-corrected observed likelihood
+  (the window couples the components, so label-based EM does not apply).
+  Also fixed: ``xl``/``xr``-only input crashed on ``len(None)``, and ``df``
+  crashed on integer input.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a
