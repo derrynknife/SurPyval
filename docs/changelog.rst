@@ -35,6 +35,14 @@ v0.17.0 (unreleased)
   Cox-path predictors, and ``CompetingRisks.fit_from_df`` stored the source
   DataFrame as ``model.df``, shadowing the density method — it is now
   ``model.source_df``.
+- **Fixed: likelihood-ratio confidence bounds ignored user-fixed
+  parameters** (#255). Profiling silently re-freed a parameter fixed at fit
+  time, letting the profile drop below the fitted negative log-likelihood and
+  inflating the interval several-fold (``Weibull.fit(x, fixed={"beta": 5})``
+  gave an ``alpha`` LR interval ~5x the Wald width). Fixed parameters now stay
+  pinned during both the parameter profile and the function-band constrained
+  search, and requesting an LR bound *on* a fixed parameter raises a clear
+  ``ValueError``.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a

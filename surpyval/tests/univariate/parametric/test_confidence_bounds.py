@@ -497,3 +497,31 @@ def test_lr_cb_rejects_offset_model():
 def test_cb_rejects_unknown_method(weibull_model):
     with pytest.raises(ValueError, match="Unknown confidence-bound method"):
         weibull_model.cb(np.array([10.0]), on="sf", method="bootstrap")
+
+
+def test_lr_bounds_respect_user_fixed_parameters():
+    # A parameter fixed at fit time must stay fixed during profiling (#255):
+    # re-freeing it made the profile drop below the fitted nll and inflated
+    # the interval several-fold.
+    np.random.seed(1)
+    x = surv.Weibull.random(100, 10, 3)
+    m = surv.Weibull.fit(x, fixed={"beta": 5.0})
+
+    lr = m.param_cb("alpha", method="lr")
+    wald = m.param_cb("alpha")
+    # The conditional LR interval is comparable to the Wald interval (both
+    # condition on beta = 5), not several times wider.
+    assert lr[0] == pytest.approx(wald[0], rel=0.05)
+    assert lr[1] == pytest.approx(wald[1], rel=0.05)
+
+    # A confidence bound on the fixed parameter itself is undefined.
+    with pytest.raises(ValueError, match="fixed at fit time"):
+        m.param_cb("beta", method="lr")
+
+    # The LR function band must bracket the point estimate with the fixed
+    # parameter pinned.
+    t = np.array([5.0, 10.0, 15.0])
+    band = m.cb(t, on="sf", method="lr")
+    point = m.sf(t)
+    assert np.all(band[:, 0] <= point + 1e-9)
+    assert np.all(point <= band[:, 1] + 1e-9)

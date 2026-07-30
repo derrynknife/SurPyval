@@ -346,6 +346,12 @@ class Parametric(ParametricDistribution):
             bounds = -bounds * factor
             return p_hat + bounds
 
+    def _user_fixed_idx(self) -> set:
+        """Core-parameter indices the user fixed at fit time (empty set for
+        models without fitting info, e.g. ``from_params``)."""
+        info = getattr(self, "fitting_info", None) or {}
+        return set(info.get("fixed_idx", []) or [])
+
     def _profile_neg_ll(self, idx: int, value: float) -> float:
         """Profile negative log-likelihood with core parameter ``idx`` fixed.
 
@@ -358,7 +364,13 @@ class Parametric(ParametricDistribution):
         """
         fixed = np.array(self.params, dtype=float)
         fixed[idx] = value
-        free_idx = [j for j in range(len(fixed)) if j != idx]
+        # Parameters the user fixed at fit time stay fixed during the
+        # profile — re-freeing them makes the profile drop below the fitted
+        # nll and silently inflates the interval (#255).
+        user_fixed = self._user_fixed_idx()
+        free_idx = [
+            j for j in range(len(fixed)) if j != idx and j not in user_fixed
+        ]
 
         def neg_ll(theta):
             return float(
@@ -428,6 +440,11 @@ class Parametric(ParametricDistribution):
             )
 
         idx = self.dist.param_map[name]
+        if idx in self._user_fixed_idx():
+            raise ValueError(
+                f"'{name}' was fixed at fit time; a confidence bound on a "
+                "fixed parameter is not defined."
+            )
         theta_hat = float(self.params[idx])
         nll_hat = float(
             self.dist._neg_ll_func(
@@ -1207,8 +1224,15 @@ class Parametric(ParametricDistribution):
         else:
             crit = z(1.0 - alpha_ci) ** 2
 
+        user_fixed = self._user_fixed_idx()
         sci_bounds = []
-        for lo, hi in self.dist.bounds:
+        for j, (lo, hi) in enumerate(self.dist.bounds):
+            if j in user_fixed:
+                # A parameter the user fixed at fit time is pinned during
+                # the constrained search too (#255).
+                v = float(theta_hat[j])
+                sci_bounds.append((v, v))
+                continue
             lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
             hi_s = np.inf if hi is None else hi
             sci_bounds.append((lo_s, hi_s))
