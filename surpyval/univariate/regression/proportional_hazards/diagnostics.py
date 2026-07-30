@@ -255,6 +255,11 @@ def robust_covariance(
     dfbeta = compute_residuals(model, "dfbeta")  # (n_obs, p)
     n_obs = dfbeta.shape[0]
 
+    if cluster is None and getattr(model, "is_tvc", False):
+        # Start-stop rows of one subject are correlated by construction, so
+        # a TVC fit defaults to clustering by subject (#259).
+        cluster = getattr(model, "tvc_subject_ids", None)
+
     if cluster is None:
         grouped = dfbeta
     else:
@@ -264,6 +269,14 @@ def robust_covariance(
                 "`cluster` must have one label per observation "
                 f"({n_obs}); got {cluster.shape[0]}."
             )
+        row_order = getattr(model, "tvc_row_order", None)
+        if row_order is not None and not np.array_equal(
+            cluster, getattr(model, "tvc_subject_ids", None)
+        ):
+            # The residuals are in the internal (subject, entry)-sorted
+            # order; user labels arrive in the caller's original row order
+            # and must be permuted the same way (#259).
+            cluster = cluster[row_order]
         labels, inv_idx = np.unique(cluster, return_inverse=True)
         grouped = np.zeros((labels.size, dfbeta.shape[1]))
         np.add.at(grouped, inv_idx, dfbeta)

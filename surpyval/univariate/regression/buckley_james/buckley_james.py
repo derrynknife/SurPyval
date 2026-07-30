@@ -220,7 +220,15 @@ class BuckleyJamesModel:
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
-            out["formula"] = self.formula
+            out["formula"] = str(self.formula)
+            # Persist the categorical levels / numeric columns needed to
+            # rebuild the formula's design-matrix transformer on load, so a
+            # restored model expands raw covariates the same way (#244,
+            # applied to Buckley-James in #261).
+            if getattr(self, "_model_spec", None) is not None:
+                from ..regression_data import model_spec_to_meta
+
+                out["formula_meta"] = model_spec_to_meta(self._model_spec)
         return stamp_schema(out)
 
     def to_json(self, fp):
@@ -261,6 +269,11 @@ class BuckleyJamesModel:
         )
         out.feature_names = model_dict.get("feature_names")
         out.formula = model_dict.get("formula")
+        formula_meta = model_dict.get("formula_meta")
+        if out.formula is not None and formula_meta is not None:
+            from ..regression_data import rebuild_model_spec
+
+            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
         return out
 
     @classmethod

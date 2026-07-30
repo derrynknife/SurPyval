@@ -738,7 +738,12 @@ class CoxPH_:
             # Finds the p-value for the null hypothesis
             # that the coefficient is 0.
             hessian_matrix = jac(res.x)[1]
-            var = np.diag(inv(hessian_matrix))
+            # An exactly singular information matrix raises before the
+            # pseudo-inverse fallback can run (#259); route it there.
+            try:
+                var = np.diag(inv(hessian_matrix))
+            except np.linalg.LinAlgError:
+                var = np.full(len(np.atleast_1d(res.x)), -1.0)
             # Use the pseudo-inverse if the hessian does not have a
             # diagonal that is all positive.
             if np.any(var <= 0):
@@ -837,7 +842,11 @@ class CoxPH_:
                 res = fallback
 
         hessian_matrix = jac(res.x)[1]
-        var = np.diag(inv(hessian_matrix))
+        # Exactly singular -> route to the pseudo-inverse fallback (#259).
+        try:
+            var = np.diag(inv(hessian_matrix))
+        except np.linalg.LinAlgError:
+            var = np.full(len(np.atleast_1d(res.x)), -1.0)
         if np.any(var <= 0):
             var = np.diag(pinv(hessian_matrix))
         with np.errstate(invalid="ignore"):
@@ -987,11 +996,19 @@ class CoxPH_:
             semi_parametric_regression_model.SemiParametricRegressionModel.
             predict_tvc`.
         """
-        x, c, n_arr, tl, Z_arr, _ = handle_tvc(i, xl, xr, c, Z, n)
+        x, c, n_arr, tl, Z_arr, ident = handle_tvc(i, xl, xr, c, Z, n)
         model = self.fit(
             x=x, Z=Z_arr, c=c, n=n_arr, tl=tl, method=method, tol=tol
         )
         model.is_tvc = True
+        # Subject ids per *internal* (sorted) row, and the permutation from
+        # the caller's row order to the internal order: residuals and
+        # cluster-robust SEs align with the internal order, so user-supplied
+        # per-row labels must be permuted the same way (#259).
+        model.tvc_subject_ids = ident
+        model.tvc_row_order = np.lexsort(
+            (np.asarray(xl, dtype=float), np.asarray(i))
+        )
         return model
 
     def fit_tvc_from_df(

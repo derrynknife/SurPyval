@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
-from scipy.stats import norm, uniform
+from scipy.stats import norm
 
 from surpyval.serialisation import stamp_schema
-from surpyval.utils import fsli_to_xcnt
 
 from ._bounds import (
     bound_signs,
@@ -206,17 +205,20 @@ class ParametricRegressionModel:
                 out["formula_meta"] = model_spec_to_meta(self._model_spec)
 
         # Store the parameter covariance so the restored model can produce
-        # confidence bounds without the original data. Only for data-fit
-        # models whose covariance is finite (a boundary optimum gives nan).
+        # confidence bounds without the original data: from the fit when
+        # available, else the covariance restored from a previous dict so
+        # repeated save/load cycles do not silently lose it (#261).
         if hasattr(self, "data") and getattr(self, "res", None) is not None:
             try:
                 cov = self.covariance()
             except Exception:
                 cov = None
-            if cov is not None and np.all(np.isfinite(cov)):
-                out["covariance"] = np.asarray(cov, dtype=float).tolist()
-            if hasattr(self, "_neg_ll"):
-                out["_neg_ll"] = float(self._neg_ll)
+        else:
+            cov = getattr(self, "_restored_covariance", None)
+        if cov is not None and np.all(np.isfinite(cov)):
+            out["covariance"] = np.asarray(cov, dtype=float).tolist()
+        if hasattr(self, "_neg_ll"):
+            out["_neg_ll"] = float(self._neg_ll)
         return stamp_schema(out)
 
     def to_json(self, fp: "str | Path") -> None:
@@ -832,54 +834,21 @@ class ParametricRegressionModel:
         >>> np.random.seed(1)
         >>> model.random(1)
         array([8.14127103])
-        >>> model.random(10)
-        array([10.84103403,  0.48542084,  7.11387062,  5.41420125,  4.59286657,
-                5.90703589,  7.5124326 ,  7.96575225,  9.18134126,
-                8.16000438])
+        >>> from surpyval import WeibullPH
+        >>> np.random.seed(1)
+        >>> model = WeibullPH.fit(x, Z)
+        >>> x_rand, Z_rand = model.random(10, Z[:1])
         """
-        if (self.p == 1) and (self.f0 == 0):
-            return (
-                self.dist.qf(uniform.rvs(size=size), *self.params) + self.gamma
-            )
-        elif (self.p != 1) and (self.f0 == 0):
-            n_obs = np.random.binomial(size, self.p)
-
-            f = (
-                self.dist.qf(uniform.rvs(size=n_obs), *self.params)
-                + self.gamma
-            )
-            s = np.ones(np.array(size) - n_obs) * np.max(f) + 1
-
-            return fsli_to_xcnt(f, s)
-
-        elif (self.p == 1) and (self.f0 != 0):
-            n_doa = np.random.binomial(size, self.f0)
-
-            x0 = np.zeros(n_doa) + self.gamma
-            x = (
-                self.dist.qf(uniform.rvs(size=size - n_doa), *self.params)
-                + self.gamma
-            )
-            x = np.concatenate([x, x0])
-            np.random.shuffle(x)
-
-            return x
-        else:
-            N = np.random.multinomial(
-                1, [self.f0, self.p - self.f0, 1.0 - self.p], size
-            ).sum(axis=0)
-            N = np.atleast_2d(N)
-            n_doa, n_obs, n_cens = N[:, 0], N[:, 1], N[:, 2]
-            x0 = np.zeros(n_doa) + self.gamma
-            x = (
-                self.dist.qf(uniform.rvs(size=n_obs), *self.params)
-                + self.gamma
-            )
-            f = np.concatenate([x, x0])
-            s = np.ones(n_cens) * np.max(f) + 1
-            # raise NotImplementedError("Combo zero-inflated and lfp model not
-            # yet supported")
-            return fsli_to_xcnt(f, s)
+        # Dispatch to the regression fitter's own covariate-aware sampler
+        # (#261): the previous implementation ignored ``Z`` entirely and
+        # read LFP/ZI attributes regression fits never set, so it crashed
+        # on every path.
+        Z = self._prepare_Z(Z)
+        if hasattr(self.model, "random"):
+            return self.model.random(size, Z, *self.params)
+        raise NotImplementedError(
+            f"random() is not implemented for {self.kind} models."
+        )
 
     def neg_ll(self) -> float:
         r"""
