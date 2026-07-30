@@ -4,6 +4,18 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Fixed: Cox delayed-entry / start-stop (TVC) fits had corrupted scores and
+  Hessians whenever any covariate value was negative** (#250). The
+  left-truncation risk-set adjustment was forward-filled with
+  ``np.minimum.accumulate`` — valid for the scalar (positive, non-increasing)
+  sum but wrong for the signed Z-weighted score and information sums, which it
+  clamped to a stale running minimum. The optimiser could "converge" to a
+  spurious zero of the corrupted score (wrong coefficients with no warning),
+  and even rescued fits carried garbage standard errors, p-values, ``check_ph``
+  and cluster-robust covariance. The adjustment is now an exact suffix-sum
+  gather (``not_yet_entered``), valid for signed quantities; the analytic score
+  and information now match numerical differentiation of the partial
+  log-likelihood under delayed entry. All-positive covariates were unaffected.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a
