@@ -17,6 +17,7 @@ These tests pin the properties that make that likelihood correct:
 """
 
 import numpy as np
+import pytest
 
 from surpyval import WeibullAFT, WeibullPH
 from surpyval.univariate.regression.accelerated_failure_time import (
@@ -193,3 +194,50 @@ def test_core_mle_unchanged():
 def test_ph_has_no_custom_aft_likelihood():
     # AFT's fit_tvc must not leak onto PH/AH (they use the reshape mixin).
     assert aft_tvc_fit.AFTTVCFitMixin not in type(WeibullPH).__mro__
+
+
+def _contiguous_tvc_data(seed=3, n=60):
+    rng = np.random.default_rng(seed)
+    rows_i, rows_xl, rows_xr, rows_c, rows_z = [], [], [], [], []
+    for i in range(n):
+        z = rng.normal()
+        t = rng.exponential(np.exp(0.3 * z)) * 5
+        change = 0.5 * t
+        rows_i += [i, i]
+        rows_xl += [0.0, change]
+        rows_xr += [change, t]
+        rows_c += [1, 0]
+        rows_z += [[z], [z + 0.5]]
+    return (
+        np.array(rows_i),
+        np.array(rows_xl),
+        np.array(rows_xr),
+        np.array(rows_c),
+        np.array(rows_z),
+    )
+
+
+def test_delayed_entry_is_refused():
+    # The accumulated-age likelihood integrates the covariate path from 0;
+    # pre-entry covariates are unobserved, and the fit used to silently
+    # drop the missing exposure (shifting every window by +5 returned
+    # bit-identical parameters, #258).
+    i, xl, xr, c, Z = _contiguous_tvc_data()
+    with pytest.raises(ValueError, match="enters observation"):
+        WeibullAFT.fit_tvc(i, xl + 5.0, xr + 5.0, c, Z)
+
+
+def test_gapped_intervals_are_refused():
+    i, xl, xr, c, Z = _contiguous_tvc_data()
+    xl_gap = xl.copy()
+    # Open a gap before each subject's second interval.
+    second = np.arange(1, len(xl), 2)
+    xl_gap[second] = xl_gap[second] + 0.25 * (xr[second] - xl[second])
+    with pytest.raises(ValueError, match="gap between observation"):
+        WeibullAFT.fit_tvc(i, xl_gap, xr, c, Z)
+
+
+def test_contiguous_from_zero_still_fits():
+    i, xl, xr, c, Z = _contiguous_tvc_data()
+    m = WeibullAFT.fit_tvc(i, xl, xr, c, Z)
+    assert np.all(np.isfinite(m.params))
