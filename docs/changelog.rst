@@ -4,6 +4,19 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Fixed: censored/truncated Gamma and Beta fits had a silently corrupted
+  Wald covariance** (#270). The autograd shims for the incomplete
+  gamma/beta functions stripped the derivative trace in their
+  shape-parameter VJPs, zeroing every second-derivative contribution
+  through a shape parameter: the stored covariance was wrong (12x the
+  true sampling variance in one repro) and not even symmetric, corrupting
+  ``param_cb``, ``cb``, plot bands and the serialised covariance while
+  the point estimates were fine. The shape derivatives are now traced
+  primitives with numerical second-derivative VJPs, so autograd Hessians
+  match the true observed information (verified against numerical
+  differentiation to ~1e-6 for censored Gamma and Beta, including offset
+  fits); ``mle`` additionally validates Hessian symmetry and falls back
+  to a numerical Hessian if a corrupted one ever reappears.
 - **Fixed: Turnbull excluded the right endpoint of interval- and
   left-censored observations from their support** (#272). An interval
   ``(l, r]`` whose right endpoint coincided with an exactly observed event
