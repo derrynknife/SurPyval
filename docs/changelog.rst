@@ -173,6 +173,19 @@ v0.17.0 (unreleased)
   crashing. The truncated-fit degeneracy detector now inspects only the
   identifiable region, so partial collapses are reported as degenerate
   rather than as generic non-convergence.
+- **Changed: the proportional-hazards test now uses the standard
+  Grambsch-Therneau forms** (#262). The per-covariate statistic is
+  ``d (Vu)_j^2 / (Sgc2 V_jj)`` with ``V`` the inverse information — the form
+  used by R's ``cox.zph`` and lifelines — replacing the previous
+  information-diagonal variant (both are valid chi-square screens, but they
+  weight cross-covariate information differently, so surpyval could flag a
+  different covariate than R/lifelines on the same data). The ``"km"`` time
+  transform is now the true ``1 - KM(t)`` fit on the full data (censoring
+  included) rather than the censoring-blind ECDF of event times.
+  ``check_ph`` now matches lifelines to numerical precision (verified
+  against lifelines 0.30.3); reported per-covariate statistics change for
+  multi-covariate models. The global test was already the standard form and
+  is unchanged.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a
