@@ -626,10 +626,15 @@ def xcnt_handler(
                 + " respective observed values"
             )
     else:
-        if (t[:, 0] > x).any():
+        # Strictly less: under the (entry, exit] risk-interval convention a
+        # value at exactly its own left-truncation time has a zero-length
+        # observation window — contradictory data that previously slipped
+        # through and silently distorted the Turnbull estimate (#260).
+        if ((t[:, 0] >= x) & np.isfinite(t[:, 0])).any():
             raise ValueError(
-                "All left truncated values must be less than the respective"
-                + " observed values"
+                "All left truncated values must be strictly less than the"
+                + " respective observed values: a value at its own left"
+                + " truncation time has a zero-length observation window."
             )
         elif (t[:, 1] < x).any():
             raise ValueError(
@@ -826,8 +831,13 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     d = np.bincount(idx, weights=n * (1 - c))
     # do is drop outs - i.e right censored
     do = np.bincount(idx, weights=n * c)
-    # e is the number of items that have entered observation by each x
-    e = ((tl[:, np.newaxis] <= x[np.newaxis, :]) * n[:, np.newaxis]).sum(0)
+    # e is the number of items that have entered observation *before* each
+    # x: the standard (entry, exit] risk-interval convention (R survival /
+    # lifelines) — a subject entering exactly at an event time is not at
+    # risk for that event. The previous inclusive comparison put surpyval's
+    # KM on the nonstandard side and made it disagree with Turnbull's NPMLE
+    # at exact entry/event ties (#260).
+    e = ((tl[:, np.newaxis] < x[np.newaxis, :]) * n[:, np.newaxis]).sum(0)
     # r is the number of people at risk at each x
     r = e + d - d.cumsum() + do - do.cumsum()
     # change to correct data types

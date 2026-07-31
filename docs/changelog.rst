@@ -150,6 +150,29 @@ v0.17.0 (unreleased)
   and a NaN/crashing Wald interval; the marginal now takes the well-defined
   proportional-hazards limit ``eta * H0``, and a boundary estimate returns a
   zero-width interval instead of dividing by zero.
+- **Fixed: Turnbull confidence intervals and the delayed-entry risk-set
+  convention** (#260). On plain right-censored data (where Turnbull reduces
+  exactly to Kaplan-Meier) the variance was computed from the EM's
+  *expected*-count ladder, which redistributes censored mass as fractional
+  later events and silently understated it — confidence intervals were
+  anti-conservative (e.g. Var(H) 0.47 vs the correct Greenwood 0.63). The
+  variance now uses the observed-count ladder in that regime and matches
+  Kaplan-Meier's Greenwood intervals exactly; genuinely interval-censored
+  data keeps the expected-count approximation (use ``bootstrap_cb`` for
+  calibrated intervals there).
+
+  **Convention change:** delayed-entry risk sets now follow the standard
+  ``(entry, exit]`` convention (R ``survival`` / lifelines): a subject
+  entering observation exactly at an event time is *not* at risk for that
+  event. Kaplan-Meier/Nelson-Aalen previously counted it, disagreeing with
+  Turnbull's NPMLE on identical data; the two now agree. Fits only change
+  where an entry time exactly ties an event time. Consistently, a value at
+  exactly its own left-truncation time (a zero-length observation window)
+  is now rejected at validation instead of silently distorting the
+  estimate, and ``Turnbull.fit(..., max_iter=0)`` raises instead of
+  crashing. The truncated-fit degeneracy detector now inspects only the
+  identifiable region, so partial collapses are reported as degenerate
+  rather than as generic non-convergence.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a
