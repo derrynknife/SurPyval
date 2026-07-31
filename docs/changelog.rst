@@ -134,6 +134,22 @@ v0.17.0 (unreleased)
   sorted), and default to clustering by subject. An exactly singular
   information matrix now degrades to the pseudo-inverse/NaN path instead of
   crashing.
+- **Fixed: AFT time-varying-covariate fits now refuse delayed entry and
+  observation gaps instead of silently dropping the missing exposure**
+  (#258). The accumulated accelerated age ``psi(T)`` integrates the covariate
+  path from time 0; a subject entering observation late (or with gaps) has
+  unobserved covariates over the uncovered window, and the likelihood
+  previously treated that time as contributing zero ageing — shifting every
+  subject's window by +5 returned bit-identical parameters. Correct
+  conditioning would require the unobserved pre-entry covariate path, so
+  rather than guess it the fit raises an informative error pointing to Cox
+  TVC (``CoxPH.fit_tvc``), which handles delayed entry and gaps exactly.
+- **Fixed: frailty models handle the ``theta -> 0`` (no-frailty) limit**
+  (#262). A frailty variance that underflows to zero — frailty-free data, or
+  a restored model — gave NaN marginal predictions (division by ``theta``)
+  and a NaN/crashing Wald interval; the marginal now takes the well-defined
+  proportional-hazards limit ``eta * H0``, and a boundary estimate returns a
+  zero-width interval instead of dividing by zero.
 - **Royston-Parmar flexible parametric models.** ``RoystonParmar.fit(x, c=...,
   df=..., scale=...)`` fits a flexible parametric survival model that replaces
   the straight log-cumulative-hazard-vs-log-time line of a Weibull with a

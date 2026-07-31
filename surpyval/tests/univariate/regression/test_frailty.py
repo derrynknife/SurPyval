@@ -9,6 +9,9 @@ from scipy.special import gammaln
 
 import surpyval as surv
 from surpyval import ExponentialFrailty, Frailty, Weibull, WeibullFrailty
+from surpyval.univariate.regression.frailty.frailty_model import (
+    FrailtyModel,
+)
 
 
 def _sim(seed=7, G=80, per=6, alpha=12.0, shape=1.8, beta=0.9, theta=0.6):
@@ -199,3 +202,22 @@ def test_exponential_frailty_available():
     m = ExponentialFrailty.fit(x=x, Z=Z, c=c, groups=groups)
     assert m.dist.name == "Exponential"
     assert m.theta > 0
+
+
+def test_theta_zero_gives_ph_limit_not_nan():
+    # theta -> 0 is the no-frailty PH limit: Hf = eta * H0. Dividing by a
+    # zero theta (frailty-free data, or a restored model) gave NaN (#262).
+    m = FrailtyModel.__new__(FrailtyModel)
+    m.dist = Weibull
+    m.dist_params = np.array([10.0, 3.0])
+    m.beta = np.array([])
+    m.theta = 0.0
+    m.family = "gamma"
+    m._frailties = {}
+    m.feature_names = None
+    m.formula = None
+    m._model_spec = None
+
+    x = np.array([2.0, 5.0, 10.0])
+    assert np.allclose(m.Hf(x), Weibull.Hf(x, 10.0, 3.0))
+    assert np.all(np.isfinite(m.sf(x)))
