@@ -4,6 +4,21 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Fixed: the MPS estimator returned wrong parameters for censored,
+  tied, truncated, and offset-truncated data** (#268). Four defects: the
+  censored/ties block was divided by a different count than the
+  spacings, making the estimator inconsistent even without truncation
+  (integer-tied Weibull data fit as ``(13.7, 1.52)`` vs the true
+  ``(10, 2)``); censored survivor/CDF terms were not conditioned on the
+  truncation window (truncated + censored fits biased to
+  ``(11.7, 4.36)``); offset fits passed unshifted truncation bounds to
+  the shifted distribution (objective infinite at the true parameters);
+  and interval-censored input crashed deep in ``np.hstack`` instead of a
+  clear validation error. The objective is now the Cheng-Amin sum form
+  (spacings + tie densities + conditional censored terms in one sum),
+  bounds are shifted with the data (clamped at the support), and
+  interval data raises an informative ``ValueError``. All four scenarios
+  now track MLE to within ~2%.
 - **Fixed: censored/truncated Gamma and Beta fits had a silently corrupted
   Wald covariance** (#270). The autograd shims for the incomplete
   gamma/beta functions stripped the derivative trace in their
