@@ -198,11 +198,20 @@ class ParametricFitter:
         *params, gamma, f0, p = params
         xr = xr - gamma
         xl = xl - gamma
-        right = np.where(np.isfinite(xr), self.ff(xr, *params), 1)
-        left = np.where(np.isfinite(xl), self.ff(xl, *params), 0)
-        return np.sum(
-            n * np.log(np.maximum(right - left, 0.0))
-        ) + n.sum() * np.log(p - f0)
+        # Probabilities must come from the mixture CDF
+        # F_mix(t) = f0 + (p - f0) * F0(t), not (p - f0) * F0(t): with no
+        # right bound (tr = inf) the window probability is the mixture
+        # survival 1 - F_mix(tl), which includes the never-failing mass
+        # (1 - p). The old (p - f0) * (1 - F0(tl)) form made the LFP +
+        # left-truncation likelihood unbounded (#269). For finite-bound
+        # intervals the f0 terms cancel, so plain fits are unchanged.
+        right = np.where(
+            np.isfinite(xr), f0 + (p - f0) * self.ff(xr, *params), 1.0
+        )
+        left = np.where(
+            np.isfinite(xl), f0 + (p - f0) * self.ff(xl, *params), 0.0
+        )
+        return np.sum(n * np.log(np.maximum(right - left, 0.0)))
 
     def parameter_transform(self, x_min, params):
         *params, gamma, f0, p = params

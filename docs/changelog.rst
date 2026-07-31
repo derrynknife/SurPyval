@@ -4,6 +4,36 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Fixed: LFP fits with left truncation maximised an unbounded likelihood
+  and returned degenerate parameters with optimiser success** (#269). The
+  truncation normaliser used ``(p - f0) * (1 - F0(tl))`` — dropping the
+  never-failing mass from the survival at entry — instead of the mixture
+  survival ``1 - f0 - (p - f0) * F0(tl)``. ``Weibull.fit(x, c, tl=...,
+  lfp=True)`` returned ``alpha ~ 1e-42`` on healthy data; it now recovers
+  the true parameters. Finite-bound windows (interval censoring, double
+  truncation) are algebraically unchanged.
+- **Fixed: parametric PH ``random()`` sampled the wrong distribution and
+  crashed with two or more covariates** (#271). The sampler inverted
+  ``qf(U ** phi)`` where PH requires ``qf(1 - U ** (1 / phi))``, so every
+  draw with a non-zero covariate effect came from the wrong distribution
+  (empirical SF 0.67 vs model 0.89 in the repro); the covariate broadcast
+  also raised ``ValueError`` for multi-covariate models. Draws now
+  reproduce the model's own ``sf`` and the returned covariates have shape
+  ``(size, p)``.
+- **Fixed: Royston-Parmar silently returned NaN models** (#274). The BFGS
+  polish replaced the finite Nelder-Mead result even when it diverged
+  (e.g. on doubly-truncated data); it is now kept only when finite and
+  better, and a non-finite final likelihood raises. Quantile knot
+  placement over too-few or tied event times produced coincident knots
+  and an all-NaN model with no warning; ``fit`` now validates that the
+  data contain at least ``df + 1`` distinct event times and that knots
+  are distinct, raising an informative ``ValueError``.
+- **Fixed: numeric MOM fits stopped far from the moment-matching
+  solution** (#275). The optimiser ran with ``tol=1e-1`` and no
+  convergence check, so ``how="MOM"`` with ``offset=True`` or ``fixed``
+  returned e.g. ``beta ~ 3-4`` for true ``beta = 2`` silently. The path
+  now optimises tightly, polishes with Nelder-Mead when needed, and warns
+  if the sample moments remain unmatched.
 - **Fixed: Cox delayed-entry / start-stop (TVC) fits had corrupted scores and
   Hessians whenever any covariate value was negative** (#250). The
   left-truncation risk-set adjustment was forward-filled with
