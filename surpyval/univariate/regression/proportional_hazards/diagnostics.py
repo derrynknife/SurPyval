@@ -313,7 +313,9 @@ def robust_summary(
     return out
 
 
-def _transform_times(t: np.ndarray, transform: str) -> np.ndarray:
+def _transform_times(
+    t: np.ndarray, transform: str, fit_data: "dict | None" = None
+) -> np.ndarray:
     if transform == "identity":
         return t.astype(float)
     if transform == "log":
@@ -321,8 +323,25 @@ def _transform_times(t: np.ndarray, transform: str) -> np.ndarray:
     if transform == "rank":
         return np.argsort(np.argsort(t)).astype(float)
     if transform == "km":
-        # Scale-free transform (Grambsch-Therneau default): the empirical
-        # CDF of the event times, a monotone stand-in for 1 - KM(t).
+        # Scale-free transform (Grambsch-Therneau default): 1 - KM(t) with
+        # the Kaplan-Meier estimate fit on the *full* data, so censoring
+        # weighs in — the previous censoring-blind ECDF of event times
+        # deviated from the R/lifelines convention (#262).
+        if fit_data is not None:
+            from surpyval.utils import xcnt_to_xrd
+
+            x_all = np.asarray(fit_data["x"], dtype=float)
+            c_all = np.asarray(fit_data["c"], dtype=int)
+            n_all = np.asarray(fit_data["n"], dtype=float)
+            tl_all = np.asarray(fit_data.get("tl", None), dtype=float)
+            t_mat = np.column_stack([tl_all, np.full(x_all.shape[0], np.inf)])
+            xk, rk, dk = xcnt_to_xrd(x_all, c_all, n_all, t_mat)
+            with np.errstate(all="ignore"):
+                surv = np.cumprod(1.0 - dk / rk)
+            idx = np.searchsorted(xk, t, side="right") - 1
+            g = np.where(idx >= 0, 1.0 - surv[np.clip(idx, 0, None)], 0.0)
+            return g.astype(float)
+        # Without the fit data fall back to the ECDF of the event times.
         ranks = np.searchsorted(np.sort(t), t, side="right")
         return ranks.astype(float) / t.size
     raise ValueError(
@@ -358,10 +377,9 @@ def check_ph(
 
     Notes
     -----
-    Per-covariate tests use the information diagonal (a marginal working
-    covariance) and so do not adjust for non-proportionality in the *other*
-    covariates; the global test uses the full information and does. For a
-    single covariate the two coincide.
+    Both the global and per-covariate statistics follow the
+    Grambsch-Therneau forms used by R's ``cox.zph`` and lifelines, so the
+    results are directly comparable across packages (#262).
     """
     _require_cox(model)
     if transform not in _TRANSFORMS:
@@ -377,7 +395,7 @@ def check_ph(
     t_events = x[event_rows]
     w_events = n[event_rows]  # count weight per event record
 
-    g = _transform_times(t_events, transform)
+    g = _transform_times(t_events, transform, fit_data=data)
     g_bar = np.average(g, weights=w_events)
     gc = g - g_bar
 
@@ -404,12 +422,18 @@ def check_ph(
     global_stat = float((n_events / Sgc2) * (u @ V @ u))
     global_p = float(chi2.sf(global_stat, df=p))
 
-    # Per-covariate marginal test: T_j = d u_j^2 / (Sgc2 * I_jj) ~ chi2_1.
-    info_diag = np.diag(info)
+    # Per-covariate test, Grambsch-Therneau / cox.zph / lifelines form:
+    # T_j = d (V u)_j^2 / (Sgc2 * V_jj) ~ chi2_1, with V = I^{-1}. The
+    # previous d u_j^2 / (Sgc2 * I_jj) form is also a valid chi2_1 screen
+    # but weights cross-covariate information differently, so users
+    # cross-checking against R / lifelines saw different covariates
+    # flagged (#262).
+    Vu = V @ u
+    V_diag = np.diag(V)
     names = getattr(model, "feature_names", None)
     per_cov = []
     for j in range(p):
-        stat_j = float(n_events * u[j] ** 2 / (Sgc2 * info_diag[j]))
+        stat_j = float(n_events * Vu[j] ** 2 / (Sgc2 * V_diag[j]))
         entry = {
             "statistic": stat_j,
             "df": 1,
