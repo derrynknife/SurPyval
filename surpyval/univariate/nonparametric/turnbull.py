@@ -26,7 +26,27 @@ def turnbull(
     per-observation weights over ranges (difference arrays). Each
     iteration is O(N + M) in both time and memory.
     """
+    if max_iter < 1:
+        raise ValueError(f"max_iter must be at least 1; got {max_iter}")
     any_truncated = np.isfinite(t).any()
+    # Exact + right-censored (possibly weighted) untruncated data is the
+    # regime where Turnbull reduces exactly to Kaplan-Meier; keep the raw
+    # inputs so the variance can use the *observed* count ladder rather
+    # than the EM's expected-count ladder, which redistributes censored
+    # mass as fractional later events and silently understates the
+    # variance (#260).
+    km_reducible = (
+        (not any_truncated)
+        and np.asarray(x).ndim == 1
+        and not np.isin(c, (-1, 2)).any()
+    )
+    if km_reducible:
+        x_raw, c_raw, n_raw, t_raw = (
+            np.asarray(x).copy(),
+            np.asarray(c).copy(),
+            np.asarray(n).copy(),
+            np.asarray(t).copy(),
+        )
     # Find all unique bounding points
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
     # Add the times at which there was an observation again since
@@ -207,8 +227,25 @@ def turnbull(
     # non-identifiable degenerate state, not a real estimate.
     if not degenerate and R.size > 2:
         reported = R[:-2]
+        if any_truncated:
+            # Only inspect the identifiable region: positions before the
+            # earliest entry time are pinned at 1.0 and previously masked
+            # every partial collapse from the detector (#260).
+            min_tl = (
+                np.min(tl[np.isfinite(tl)])
+                if np.isfinite(tl).any()
+                else -np.inf
+            )
+            idx0 = int(
+                np.searchsorted(
+                    bounds[: reported.shape[0]], min_tl, side="right"
+                )
+            )
+            inspect = reported[idx0:] if idx0 < reported.shape[0] else reported
+        else:
+            inspect = reported
         if not np.all(np.isfinite(reported)) or (
-            any_truncated and np.nanmax(reported) < 1e-8
+            any_truncated and inspect.size > 0 and np.nanmax(inspect) < 1e-8
         ):
             degenerate = True
 
@@ -295,6 +332,31 @@ def turnbull(
     if any_truncated:
         out["var_r"] = r_var[1:-1]
         out["var_d"] = d_var[1:-1]
+    elif km_reducible:
+        # Variance from the observed counts (the Greenwood ladder): the
+        # estimation ladder redistributes each right-censored observation
+        # as fractional expected events at later times, inflating the
+        # information and giving silently narrower intervals (#260). Only
+        # positions with observed events contribute to the variance sum.
+        from surpyval.utils import xcnt_to_xrd
+
+        xg, rg, dg = xcnt_to_xrd(x_raw, c_raw, n_raw, t_raw)
+        ladder_x = bounds[1:-1]
+        var_d = np.zeros(ladder_x.shape[0])
+        var_r = np.ones(ladder_x.shape[0])
+        pos = np.searchsorted(xg, ladder_x)
+        ok = pos < xg.shape[0]
+        ok[ok] = np.isclose(xg[pos[ok]], ladder_x[ok])
+        var_r[ok] = rg[pos[ok]]
+        # Exact times appear twice on the bounds ladder (the zero-width
+        # [x, x] interval trick); credit each event count once so the
+        # cumulative variance steps once per event time.
+        first = np.ones(ladder_x.shape[0], dtype=bool)
+        first[1:] = ladder_x[1:] != ladder_x[:-1]
+        take = ok & first
+        var_d[take] = dg[pos[take]]
+        out["var_r"] = var_r
+        out["var_d"] = var_d
     out["R"] = R[0:-2]
     out["F"] = 1 - R[0:-2]
     out["R_upper"] = R[0:-2]
