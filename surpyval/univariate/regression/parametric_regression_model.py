@@ -405,6 +405,15 @@ class ParametricRegressionModel:
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         Z = self._prepare_Z(Z)
+        if not hasattr(self.reg_model, "phi"):
+            # Additive-hazards reg models have no multiplier: the
+            # covariate effect enters as beta'Z added to the hazard, so
+            # phi() is undefined rather than an AttributeError (#277).
+            raise NotImplementedError(
+                "phi() is not defined for additive-hazards models: the "
+                "covariate effect is additive (beta'Z on the hazard), "
+                "not a multiplier."
+            )
         return self.reg_model.phi(Z, *self.phi_params)
 
     def sf(

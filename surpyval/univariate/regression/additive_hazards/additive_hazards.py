@@ -222,14 +222,43 @@ class AdditiveHazardsModel:
         idx = np.searchsorted(self.x, x, side="right") - 1
         return idx
 
-    def hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+    def _h0_rate(
+        self, x: npt.NDArray, bandwidth: "float | None" = None
     ) -> npt.NDArray:
+        # Kernel-smoothed (Ramlau-Hansen) baseline hazard *rate* from the
+        # increments of the corrected baseline cumulative hazard H0 (the
+        # raw self.h0 = d/S0 jumps include the covariate-mean drift and
+        # are dimensionless besides -- adding such a jump to the rate
+        # beta'Z was dimensionally incoherent and asymptotically dropped
+        # the baseline from hf/df entirely, #277).
+        if bandwidth is None:
+            spread = float(np.std(self.x)) if self.x.size > 1 else 1.0
+            bandwidth = max(
+                1.06 * spread * max(self.x.size, 2) ** (-1 / 5), 1e-12
+            )
+        dH0 = np.diff(np.concatenate([[0.0], self.H0]))
+        u = (x[:, None] - self.x[None, :]) / bandwidth
+        kern = np.where(np.abs(u) <= 1.0, 0.75 * (1.0 - u**2), 0.0)
+        return (kern * dH0[None, :]).sum(axis=1) / bandwidth
+
+    def hf(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        bandwidth: "float | None" = None,
+    ) -> npt.NDArray:
+        """
+        Hazard rate ``h0(t) + beta'Z`` with a kernel-smoothed baseline.
+
+        The semiparametric baseline is a step cumulative hazard, so the
+        rate requires smoothing (Epanechnikov kernel over the increments;
+        ``bandwidth`` defaults to a normal-reference rule on the event
+        times). Estimates near the boundaries of the observed time range
+        are attenuated by kernel truncation.
+        """
         Z = self._prepare_Z(Z)
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        idx = self._h0_at(x)
-        h0 = np.where(idx < 0, 0.0, self.h0[np.clip(idx, 0, self.x.size - 1)])
-        return h0 + (Z @ self.beta)
+        return self._h0_rate(x, bandwidth) + (Z @ self.beta)
 
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"

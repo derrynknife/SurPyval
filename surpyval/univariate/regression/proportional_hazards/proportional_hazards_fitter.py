@@ -111,10 +111,17 @@ class ProportionalHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
     def random(self, size, Z, *params):
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
-        U = np.random.uniform(0, 1, size)
-        x = self.dist.qf(U ** (self.phi(Z, *phi_params)), *dist_params)
-        Z_out = np.ones_like(x) * Z
-        return x.flatten(), Z_out.flatten()
+        Z_arr = np.atleast_2d(np.asarray(Z, dtype=float))
+        x = []
+        Z_out = []
+        for row in Z_arr:
+            phi = self.phi(row, *phi_params)
+            U = np.random.uniform(0, 1, size)
+            # S(x|Z) = S0(x)^phi, so inverting S(x|Z) = U gives
+            # x = qf(1 - U^(1/phi)); U^phi inverts the wrong quantity.
+            x.append(self.dist.qf(1 - U ** (1.0 / phi), *dist_params))
+            Z_out.append(np.tile(row, (size, 1)))
+        return np.concatenate(x), np.vstack(Z_out)
 
     def neg_ll(self, data, *params):
         return regression_neg_ll(self, data, *params)

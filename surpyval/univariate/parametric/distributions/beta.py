@@ -404,6 +404,7 @@ class Beta_(ParametricFitter):
         x,
         c=None,
         n=None,
+        t=None,
         heuristic="Nelson-Aalen",
         rr="y",
         on_d_is_0=False,

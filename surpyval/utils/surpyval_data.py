@@ -184,7 +184,12 @@ class SurpyvalData:
             tuple
                 The xrd data.
         """
-        if not hasattr(self, "xrd"):
+        # Cache per estimator: the first call used to be returned for
+        # every later call regardless of a different ``estimator``
+        # argument (#282).
+        if not hasattr(self, "_xrd_cache"):
+            self._xrd_cache: dict = {}
+        if estimator not in self._xrd_cache:
             if (
                 np.isfinite(self.t[:, 1]).any()
                 or (2 in self.c)
@@ -198,8 +203,8 @@ class SurpyvalData:
                 xrd = surpyval.utils.xcnt_to_xrd(
                     self.x, self.c, self.n, self.t
                 )
-            self.xrd = xrd
-        return self.xrd
+            self._xrd_cache[estimator] = xrd
+        return self._xrd_cache[estimator]
 
     def _split_by_mask(
         self, mask: np.ndarray
@@ -208,13 +213,31 @@ class SurpyvalData:
         return x, self.n[mask]
 
     def __getitem__(self, index):
-        return SurpyvalData(
-            np.atleast_1d(self.x[index]),
+        # A scalar index on interval-censored (2-D) data used to flatten
+        # one [xl, xr] row into two 1-D observations and crash the type
+        # split; keep the row structure instead (#282).
+        if self.x.ndim == 2:
+            x_idx = np.atleast_2d(self.x[index])
+        else:
+            x_idx = np.atleast_1d(self.x[index])
+        out = SurpyvalData(
+            x_idx,
             np.atleast_1d(self.c[index]),
             np.atleast_1d(self.n[index]),
             np.atleast_2d(self.t[index]),
             handle=False,
         )
+        # Carry the covariates through (slicing used to silently return
+        # Z=None, losing alignment, #282).
+        if getattr(self, "Z", None) is not None:
+            Z_arr = np.asarray(self.Z)
+            Z_idx = Z_arr[index]
+            if Z_arr.ndim == 2:
+                Z_idx = np.atleast_2d(Z_idx)
+            else:
+                Z_idx = np.atleast_1d(Z_idx)
+            out.add_covariates(Z_idx)
+        return out
 
     def __len__(self) -> int:
         return len(self.x)

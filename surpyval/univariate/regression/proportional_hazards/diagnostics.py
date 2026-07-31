@@ -54,24 +54,30 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
     return model._fit_data
 
 
-def _H0_at(
-    model: "SemiParametricRegressionModel", t: np.ndarray
-) -> np.ndarray:
-    """Breslow cumulative baseline hazard ``H0(t)`` as a right-continuous
-    step function: the sum of the baseline hazard increments at event times
-    ``<= t`` (0 below the first event time)."""
-    idx = np.searchsorted(model.x, t, side="right")
-    H0_padded = np.concatenate([[0.0], model.H0])
-    return H0_padded[idx]
+def _risk_set_means(data: dict, beta: np.ndarray, tie_method: str = "breslow"):
+    """Per distinct event time: risk-set covariate means and baseline-hazard
+    step aggregates, weighted by ``n * exp(beta'Z)`` and respecting delayed
+    entry.
 
+    Under Efron ties the ``m`` tied deaths at a time are spread over ``m``
+    pseudo-risk-sets ``S0 - (l/m) * S0_D`` (Therneau & Grambsch ch. 3), and
+    every returned quantity is the corresponding step aggregate; with
+    Breslow (or no ties) each event time is a single step and the classic
+    forms are recovered. Using Breslow forms for an Efron fit made the
+    residuals, ``check_ph`` and the robust covariance disagree with R /
+    lifelines under heavy ties (#279).
 
-def _risk_set_means(data: dict, beta: np.ndarray):
-    """For every distinct event time, the covariate mean over the risk set,
-    weighted by ``n * exp(beta'Z)`` and respecting delayed entry.
+    Returns ``(event_times, Zbar, S0, d, A, B, A_own, B_own)`` where per
+    event time ``k``:
 
-    Returns ``(event_times, Zbar, S0, d)`` where ``Zbar[k]`` is the risk-set
-    covariate mean at ``event_times[k]``, ``S0[k]`` the summed risk weight and
-    ``d[k]`` the ``n``-weighted number of events there.
+    - ``Zbar[k]``: tie-averaged risk-set covariate mean ``mean_l(E_l)``
+      (the Schoenfeld expectation),
+    - ``S0[k]``: full risk weight, ``d[k]``: n-weighted deaths,
+    - ``A[k] = sum_l 1 / S0_l``: the baseline-hazard increment seen by a
+      subject at risk through the whole tie group,
+    - ``B[k] = sum_l E_l / S0_l`` (p-vector),
+    - ``A_own[k] = sum_l (1 - l/m) / S0_l``: the partial increment a tied
+      death itself accrues, and ``B_own[k]`` its E-weighted analogue.
     """
     x, c, n, Z, tl = (
         data["x"],
@@ -81,20 +87,48 @@ def _risk_set_means(data: dict, beta: np.ndarray):
         data["tl"],
     )
     w = n * np.exp(Z @ beta)  # risk weight per observation
+    efron = str(tie_method).lower() == "efron"
 
     event_times = np.unique(x[c == 0])
     p = Z.shape[1]
-    Zbar = np.empty((event_times.size, p))
-    S0 = np.empty(event_times.size)
-    d = np.empty(event_times.size)
+    K = event_times.size
+    Zbar = np.empty((K, p))
+    S0 = np.empty(K)
+    d = np.empty(K)
+    A = np.empty(K)
+    B = np.empty((K, p))
+    A_own = np.empty(K)
+    B_own = np.empty((K, p))
     for k, tau in enumerate(event_times):
         at_risk = (tl < tau) & (x >= tau)
         s0 = w[at_risk].sum()
-        S0[k] = s0
-        Zbar[k] = (w[at_risk, None] * Z[at_risk]).sum(axis=0) / s0
+        s1 = (w[at_risk, None] * Z[at_risk]).sum(axis=0)
         is_event = (x == tau) & (c == 0)
-        d[k] = n[is_event].sum()
-    return event_times, Zbar, S0, d
+        d_k = float(n[is_event].sum())
+        S0[k] = s0
+        d[k] = d_k
+        m = int(round(d_k))
+        if efron and m > 1:
+            s0D = w[is_event].sum()
+            s1D = (w[is_event, None] * Z[is_event]).sum(axis=0)
+            fracs = np.arange(m) / m  # l/m for l = 0..m-1
+            s0_l = s0 - fracs * s0D
+            e_l = (s1[None, :] - fracs[:, None] * s1D[None, :]) / s0_l[:, None]
+            inv_l = 1.0 / s0_l
+            own_coef = 1.0 - fracs  # (m - l)/m
+            Zbar[k] = e_l.mean(axis=0)
+            A[k] = inv_l.sum()
+            B[k] = (inv_l[:, None] * e_l).sum(axis=0)
+            A_own[k] = (own_coef * inv_l).sum()
+            B_own[k] = ((own_coef * inv_l)[:, None] * e_l).sum(axis=0)
+        else:
+            zbar = s1 / s0
+            Zbar[k] = zbar
+            A[k] = d_k / s0
+            B[k] = zbar * (d_k / s0)
+            A_own[k] = A[k]
+            B_own[k] = B[k]
+    return event_times, Zbar, S0, d, A, B, A_own, B_own
 
 
 def _information(model: "SemiParametricRegressionModel") -> np.ndarray:
@@ -153,10 +187,28 @@ def compute_residuals(
         data["Z"],
         data["tl"],
     )
+    tie_method = getattr(model, "tie_method", "breslow")
+
+    event_times, Zbar, S0, d, A, B, A_own, B_own = _risk_set_means(
+        data, beta, tie_method
+    )
 
     if kind in ("martingale", "deviance"):
+        # Expected events from the tie-method-consistent baseline
+        # increments (A); a tied death accrues only its own partial step
+        # (A_own) at its event time under Efron (#279). With Breslow (or
+        # no ties) A_own == A and this equals H0(x) - H0(tl).
         delta = (c == 0).astype(float)
-        cum_haz = np.exp(Z @ beta) * (_H0_at(model, x) - _H0_at(model, tl))
+        Lam = np.concatenate([[0.0], np.cumsum(A)])
+
+        def _Lam_at(t):
+            return Lam[np.searchsorted(event_times, t, side="right")]
+
+        cum_haz = _Lam_at(x) - _Lam_at(tl)
+        event_rows = np.flatnonzero(c == 0)
+        own_idx = np.searchsorted(event_times, x[event_rows])
+        cum_haz[event_rows] += A_own[own_idx] - A[own_idx]
+        cum_haz = np.exp(Z @ beta) * cum_haz
         martingale = delta - cum_haz
         if kind == "martingale":
             return martingale
@@ -169,11 +221,9 @@ def compute_residuals(
         dev = np.where(delta == 0, -np.sqrt(2.0 * cum_haz), dev)
         return dev
 
-    event_times, Zbar, S0, d = _risk_set_means(data, beta)
-
     if kind in ("schoenfeld", "scaled_schoenfeld"):
-        # One residual per event observation: covariate minus the risk-set
-        # mean at its event time.
+        # One residual per event observation: covariate minus the
+        # (tie-averaged) risk-set mean at its event time.
         event_rows = np.flatnonzero(c == 0)
         zbar_idx = np.searchsorted(event_times, x[event_rows])
         sch = Z[event_rows] - Zbar[zbar_idx]
@@ -187,24 +237,31 @@ def compute_residuals(
         return beta + n_events * (sch @ V)
 
     # Score / dfbeta residuals. The score residual for observation i is
-    #   delta_i (Z_i - Zbar(x_i)) - exp(beta'Z_i) * sum_k in-window
-    #       (Z_i - Zbar_k) (d_k / S0_k)
-    # summing over event times k in the observation's at-risk window.
+    #   delta_i (Z_i - Zbar(x_i))
+    #     - exp(beta'Z_i) * sum_{k in window} (Z_i * A_k - B_k)
+    # where A_k / B_k are the per-event step aggregates from
+    # _risk_set_means, and a tied death's own event time contributes its
+    # partial (A_own, B_own) instead (#279). Breslow reduces to the
+    # classic (Z_i - Zbar_k) d_k / S0_k form.
     w = np.exp(Z @ beta)
-    delta = (c == 0).astype(float)
-    increments = d / S0  # baseline-hazard increment per event time
     score = np.zeros_like(Z, dtype=float)
     # First term (only for events).
     event_rows = np.flatnonzero(c == 0)
     zbar_idx = np.searchsorted(event_times, x[event_rows])
     score[event_rows] += Z[event_rows] - Zbar[zbar_idx]
     # Second term: subtract the expected score accrued while at risk.
+    is_event_row = c == 0
     for i in range(Z.shape[0]):
         in_window = (event_times > tl[i]) & (event_times <= x[i])
         if not in_window.any():
             continue
-        contrib = (Z[i] - Zbar[in_window]) * increments[in_window, None]
-        score[i] -= w[i] * contrib.sum(axis=0)
+        A_sum = A[in_window].sum()
+        B_sum = B[in_window].sum(axis=0)
+        if is_event_row[i]:
+            k_own = np.searchsorted(event_times, x[i])
+            A_sum += A_own[k_own] - A[k_own]
+            B_sum += B_own[k_own] - B[k_own]
+        score[i] -= w[i] * (Z[i] * A_sum - B_sum)
     score = score * n[:, None]
     if kind == "score":
         return score
@@ -321,7 +378,13 @@ def _transform_times(
     if transform == "log":
         return np.log(t)
     if transform == "rank":
-        return np.argsort(np.argsort(t)).astype(float)
+        # Average ranks for tied event times (scipy.stats.rankdata), as
+        # in R / lifelines; ordinal argsort ranks split ties arbitrarily
+        # and changed the statistic on tied data (#279). The constant
+        # offset relative to 0-based ranks cancels in the centring.
+        from scipy.stats import rankdata
+
+        return rankdata(t).astype(float)
     if transform == "km":
         # Scale-free transform (Grambsch-Therneau default): 1 - KM(t) with
         # the Kaplan-Meier estimate fit on the *full* data, so censoring
@@ -379,7 +442,10 @@ def check_ph(
     -----
     Both the global and per-covariate statistics follow the
     Grambsch-Therneau forms used by R's ``cox.zph`` and lifelines, so the
-    results are directly comparable across packages (#262).
+    results are directly comparable across packages (#262), including
+    under tied event times for Efron fits (#279). The ``"rank"``
+    transform uses average ranks for ties (R's convention); lifelines'
+    ``"rank"`` is a cumulative event count and differs on tied data.
     """
     _require_cox(model)
     if transform not in _TRANSFORMS:

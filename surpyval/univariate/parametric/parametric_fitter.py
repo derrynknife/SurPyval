@@ -198,11 +198,20 @@ class ParametricFitter:
         *params, gamma, f0, p = params
         xr = xr - gamma
         xl = xl - gamma
-        right = np.where(np.isfinite(xr), self.ff(xr, *params), 1)
-        left = np.where(np.isfinite(xl), self.ff(xl, *params), 0)
-        return np.sum(
-            n * np.log(np.maximum(right - left, 0.0))
-        ) + n.sum() * np.log(p - f0)
+        # Probabilities must come from the mixture CDF
+        # F_mix(t) = f0 + (p - f0) * F0(t), not (p - f0) * F0(t): with no
+        # right bound (tr = inf) the window probability is the mixture
+        # survival 1 - F_mix(tl), which includes the never-failing mass
+        # (1 - p). The old (p - f0) * (1 - F0(tl)) form made the LFP +
+        # left-truncation likelihood unbounded (#269). For finite-bound
+        # intervals the f0 terms cancel, so plain fits are unchanged.
+        right = np.where(
+            np.isfinite(xr), f0 + (p - f0) * self.ff(xr, *params), 1.0
+        )
+        left = np.where(
+            np.isfinite(xl), f0 + (p - f0) * self.ff(xl, *params), 0.0
+        )
+        return np.sum(n * np.log(np.maximum(right - left, 0.0)))
 
     def parameter_transform(self, x_min, params):
         *params, gamma, f0, p = params
@@ -253,26 +262,31 @@ class ParametricFitter:
         D_0_1_normed = (all_F - F_tl) / denom
         D = np.diff(D_0_1_normed)
 
-        # Censoring
-        Dr = self.sf(x[c == 1], *params)
-        Dl = self.ff(x[c == -1], *params)
+        # Censored contributions, conditioned on the truncation window:
+        # under truncation the sample comes from the conditional
+        # distribution, so survivor/CDF terms are renormalised exactly
+        # like the spacings (previously they were left unconditioned,
+        # biasing every truncated + censored fit, #268).
+        Dr = (F_tr - self.ff(x[c == 1], *params)) / denom
+        Dl = (self.ff(x[c == -1], *params) - F_tl) / denom
 
+        # Cheng-Amin sum form: one log-spacing per distinct observed
+        # value (plus the two boundary spacings), (n - 1) conditional
+        # density terms for ties, and one conditional survivor/CDF term
+        # per censored unit -- all in a single sum. The previous form
+        # divided the spacings block and the censored/ties block by
+        # different counts, which made the estimator inconsistent for
+        # censored or tied data (#268); dividing the single sum by the
+        # total count only scales the objective.
+        obj = np.sum(np.log(D))
         if (n_obs > 1).any():
-            n_ties = (n_obs - 1).sum()
-            Df = self.df(x_obs, *params)
-            LL = np.concatenate([Dl, Df, Dr])
-            ll_n = np.concatenate([n[c == -1], (n_obs - 1), n[c == 1]])
-        else:
-            Df = []
-            n_ties = n_obs.sum()
-            LL = np.concatenate([Dl, Dr])
-            ll_n = np.concatenate([n[c == -1], n[c == 1]])
-
-        M = np.log(D)
-        M = -np.sum(M) / (M.shape[0])
-
-        LL = -(np.log(LL) * ll_n).sum() / (n.sum() - n_obs.sum() + n_ties)
-        return M + LL
+            Df = self.df(x_obs, *params) / denom
+            obj = obj + np.sum((n_obs - 1) * np.log(Df))
+        if (c == 1).any():
+            obj = obj + np.sum(n[c == 1] * np.log(Dr))
+        if (c == -1).any():
+            obj = obj + np.sum(n[c == -1] * np.log(Dl))
+        return -obj / n.sum()
 
     def _moment(self, n, *params, offset=False):
         if offset:
@@ -456,6 +470,16 @@ class ParametricFitter:
                         lower=self.support[0], upper=self.support[1]
                     )
                     raise ValueError(detail)
+
+        if how == "MPS" and (surv_data.c == 2).any():
+            # neg_mean_D has no interval-censored term; without this
+            # guard 2-D input dies deep in np.hstack with a cryptic
+            # dimensions error (#268).
+            raise ValueError(
+                "MPS does not support interval-censored observations; "
+                "use MLE (or MPP with the Turnbull heuristic) for "
+                "interval data."
+            )
 
         if (surv_data.tl[0] != surv_data.tl).any() and how == "MPS":
             raise ValueError("Left truncated value can only be single number \

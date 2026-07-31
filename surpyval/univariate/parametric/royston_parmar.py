@@ -462,9 +462,25 @@ class RoystonParmar_:
 
         if knots is None:
             n_internal = max(int(df) - 1, 0)
+            n_distinct = np.unique(event_times).size
+            if n_distinct < n_internal + 2:
+                raise ValueError(
+                    f"Royston-Parmar with df={df} needs at least "
+                    f"{n_internal + 2} distinct event times to place "
+                    f"{n_internal + 2} knots; the data have {n_distinct}. "
+                    "Reduce df (df=1 fits a two-parameter model with no "
+                    "internal knots) or pass explicit knots."
+                )
             knots = _place_knots(event_times, n_internal)
         else:
             knots = np.asarray(knots, dtype=float)
+        if np.unique(knots).size != len(knots):
+            raise ValueError(
+                "Royston-Parmar knots must be distinct; quantile placement "
+                "over tied event times produced coincident knots "
+                f"({np.exp(knots).tolist()} in time units). Reduce df or "
+                "pass explicit knots."
+            )
         n_params = len(knots)  # [1, x] + (len(knots) - 2) internal terms
 
         lx_o = np.log(x_o) if x_o.size else x_o
@@ -508,7 +524,18 @@ class RoystonParmar_:
                 method="Nelder-Mead",
                 options={"maxiter": 20000, "xatol": 1e-9, "fatol": 1e-9},
             )
-            res = minimize(neg_ll, res.x, method="BFGS")
+            # The BFGS polish can diverge (e.g. from a boundary point on
+            # doubly-truncated data); keep it only if it produced a finite
+            # improvement over the Nelder-Mead result (#274).
+            res_polish = minimize(neg_ll, res.x, method="BFGS")
+            if np.isfinite(res_polish.fun) and res_polish.fun <= res.fun:
+                res = res_polish
+        if not np.isfinite(res.fun):
+            raise ValueError(
+                "Royston-Parmar optimisation failed to find a finite "
+                "likelihood; the model may be unidentifiable for these data "
+                "(check truncation bounds and df)."
+            )
         gamma = res.x
 
         covariance = None

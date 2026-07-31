@@ -226,9 +226,16 @@ class Beta4_(ParametricFitter):
         >>> Beta4.df(x, 3, 4, 2, 3)
         array([0.4374, 1.2288, 1.8522, 2.0736, 1.875 ])
         """
-        num = (x - a) ** (alpha - 1) * (b - x) ** (beta - 1)
+        # The density is zero outside [a, b]; evaluating the power terms
+        # there returned arbitrary nonzero, negative, or NaN values
+        # (fractional powers of negative bases), so hf inherited garbage
+        # on any grid extending past the fitted support (#280).
+        x = np.asarray(x, dtype=float)
+        inside = (x >= a) & (x <= b)
+        xc = np.where(inside, x, 0.5 * (a + b))
+        num = (xc - a) ** (alpha - 1) * (b - xc) ** (beta - 1)
         den = abeta(alpha, beta) * (b - a) ** (alpha + beta - 1)
-        return num / den
+        return np.where(inside, num / den, 0.0)
 
     def hf(self, x, alpha, beta, a, b):
         r"""
