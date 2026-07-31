@@ -237,8 +237,13 @@ class CompetingRisks:
         # Aalen-Johansen increment: the cause-specific hazard at t_i acts on
         # the population still alive just *before* t_i, so the incidence
         # weight is S(t_i-) — the survival after the previous event time —
-        # not S(t_i) (#253).
-        S_prev = np.concatenate([[1.0], S[:-1]])
+        # not S(t_i) (#253). The weight must be the *product-limit* (KM)
+        # survival regardless of the estimator reported as sf: only KM
+        # satisfies the telescoping identity sum_j S(t-)·d_j/r = 1 - S(t),
+        # so pairing the discrete hazard increment with exp(-H) inflates
+        # the CIF and can push the total incidence past 1 (#278).
+        S_km = S if method == "Kaplan-Meier" else km(r, d)
+        S_prev = np.concatenate([[1.0], S_km[:-1]])
         model.IIF = S_prev * model.h0_e
         model.CIF = model.IIF.cumsum(axis=1)
         return model

@@ -57,6 +57,7 @@ def mpp(model):
             x,
             c,
             n,
+            t=t,
             heuristic=heuristic,
             rr=rr,
             on_d_is_0=on_d_is_0,

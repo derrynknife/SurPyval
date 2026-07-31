@@ -797,14 +797,15 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     array([5, 4, 3, 2, 1])
     >>> d
     array([1, 0, 0, 1, 1])
-    >>> # Using left truncated data
+    >>> # Using left truncated data: under the (entry, exit] convention a
+    >>> # subject entering exactly at an event time is not at risk for it.
     >>> x = np.array([1, 2, 3, 4, 5])
     >>> tl = np.array([0, 1, 2, 3, 4])
     >>> x, r, d = xcnt_to_xrd(x, tl=tl)
     >>> x
     array([1., 2., 3., 4., 5.])
     >>> r
-    array([2, 2, 2, 2, 1])
+    array([1, 1, 1, 1, 1])
     >>> d
     array([1, 1, 1, 1, 1])
     """
@@ -813,11 +814,11 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     if np.isfinite(t[:, 1]).any():
         raise ValueError("xrd format can't be used right truncated data")
 
-    if (t[:, 0] == t[0, 0]).all() and np.isfinite(t[0, 0]):
-        warnings.warn(
-            "Ignoring left truncated values as all observations truncated at"
-            + " same value"
-        )
+    # No warning for a shared entry time: validation guarantees tl < x for
+    # every observation, so a common entry time never alters the (entry,
+    # exit] risk sets -- the old "Ignoring left truncated values" warning
+    # fired on perfectly ordinary inputs like tl=0 everywhere, e.g. from
+    # check_ph on a model fit with a constant entry column (#282).
 
     if ((c != 1) & (c != 0)).any():
         raise ValueError(
@@ -902,6 +903,19 @@ def xrd_to_xcnt(x, r, d):
     mask = n_f != 0
     n_f = n_f[mask]
     x_f = x_f[mask]
+
+    # A risk set that grows (after accounting for that step's events) means
+    # late entry / left truncation, which the xcnt output cannot represent;
+    # the old np.abs() silently converted such data into a different study
+    # instead of raising (#281).
+    r_arr = np.asarray(r)
+    d_arr = np.asarray(d)
+    if (np.diff(r_arr) + d_arr[:-1] > 0).any():
+        raise ValueError(
+            "The risk set increases between observation times (late entry /"
+            " left truncation); truncation cannot be represented in xcnt"
+            " output, so this data cannot be converted with xrd_to_xcnt."
+        )
 
     delta = np.abs(np.diff(np.hstack([r, [0]])))
 

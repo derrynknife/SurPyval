@@ -53,12 +53,16 @@ def test_censored_after_event_still_comparable():
 
 
 def test_tied_time_event_vs_censored():
-    # At a tied time the censored sample outlived the event, so the
-    # event having the higher mortality scores 1, otherwise 0.5.
+    # At a tied time the censored sample outlived the event, so the pair
+    # is fully comparable (Harrell): the event having the higher
+    # mortality scores 1, a genuine score tie 0.5, and the event having
+    # the *lower* mortality is discordant and scores 0 (it used to be
+    # credited 0.5, biasing tie-heavy data toward 0.5, #276).
     x = [5.0, 5.0]
     c = [0, 1]
     assert score(x, c, [2.0, 1.0]) == 1.0
-    assert score(x, c, [1.0, 2.0]) == 0.5
+    assert score(x, c, [1.5, 1.5]) == 0.5
+    assert score(x, c, [1.0, 2.0]) == 0.0
 
 
 def test_tied_time_both_events():

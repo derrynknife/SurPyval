@@ -28,9 +28,12 @@ def score(
     # 6. If x_1 == x_2 and both are deaths,
     #    if x_hat_1 == x_hat_2 => concordance += 1
     #    else concordance += 0.5
-    # 7. If x_1 == x_2 and only one of them is a death (say x_1),
+    # 7. If x_1 == x_2 and only one of them is a death (say x_1), the
+    #    censored observation demonstrably outlived the death, so the
+    #    pair is fully comparable (Harrell):
     #    if x_hat_1 > x_hat_2 => concordance += 1
-    #    otherwise => concordance += 0.5
+    #    if x_hat_1 == x_hat_2 => concordance += 0.5
+    #    if x_hat_1 < x_hat_2 => concordance += 0 (discordant, #276)
     # c-index = concordance / n_permissible_pairs
 
     # Correct input
@@ -80,11 +83,17 @@ def score(
                 else:
                     concordance += 0.5
             else:
-                if c_1 == 0 and x_hat_1 > x_hat_2:
-                    concordance += 1
-                elif c_2 == 0 and x_hat_2 > x_hat_1:
-                    concordance += 1
+                # Exactly one of the tied pair is a death; the censored
+                # subject outlived it, so the pair is fully comparable:
+                # 0.5 only on a genuine score tie, 0 when the death has
+                # the lower risk score (previously credited 0.5, #276).
+                if c_1 == 0:
+                    death_score, other_score = x_hat_1, x_hat_2
                 else:
+                    death_score, other_score = x_hat_2, x_hat_1
+                if isclose(death_score, other_score, abs_tol=tie_tol):
                     concordance += 0.5
+                elif death_score > other_score:
+                    concordance += 1
 
     return concordance / n_permissible_pairs

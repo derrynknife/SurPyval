@@ -4,6 +4,66 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Fixed: Cox residuals, ``check_ph`` and robust standard errors now
+  apply the Efron tie correction for Efron fits** (#279). All residuals
+  used plain Breslow risk-set means and increments regardless of the tie
+  method, so heavily tied Efron fits (the ``fit_from_df`` default)
+  disagreed with R/lifelines — ``check_ph`` km statistic 0.36 vs 0.72,
+  robust SEs ~20% small. Schoenfeld residuals and ``check_ph`` (km,
+  identity, log transforms) now match lifelines to 6+ figures under
+  heavy ties; martingale and score residual sums vanish at the MLE for
+  both tie methods; dfbeta correlates 0.999 with exact leave-one-out
+  influence. The ``"rank"`` transform now uses average ranks for ties
+  (R's ``cox.zph`` convention; lifelines' cumulative-count variant is
+  nonstandard).
+- **Fixed: the concordance index credited 0.5 to a discordant
+  event/censored pair tied in time** (#276). Harrell's C treats the
+  censored subject as having outlived the tied event, so the pair is
+  fully comparable: 1/0.5/0 by score order. Tie-heavy data was biased
+  toward 0.5; results now match lifelines up to the (documented)
+  both-events-tied-time convention difference.
+- **Fixed: Lin-Ying additive-hazards ``hf``/``df`` added the baseline
+  *jump* to a hazard *rate*** (#277) — dimensionally incoherent, and as
+  n grows the baseline vanished entirely (``hf -> beta'Z``). The
+  baseline rate is now a kernel-smoothed (Ramlau-Hansen, Epanechnikov)
+  estimate from the corrected cumulative-baseline increments, with a
+  ``bandwidth`` argument. ``phi()`` on additive-hazards models now
+  raises a clear ``NotImplementedError`` (the covariate effect is
+  additive, not a multiplier) instead of an ``AttributeError``.
+- **Fixed: competing-risks CIFs could exceed 1 with the default
+  Nelson-Aalen method** (#278). The Aalen-Johansen increment paired the
+  discrete hazard ``d/r`` with the exponential survival ``exp(-H)``;
+  only the product-limit survival satisfies the telescoping identity,
+  so total incidence reached 1.22-1.31 in small samples. Increments now
+  always use the product-limit ``S(t-)``; the reported ``sf`` keeps the
+  requested estimator.
+- **Fixed: distribution edge cases** (#280). LogLogistic: ``sf``/``ff``
+  are defined at ``x = 0`` (previously ``ZeroDivisionError``/NaN) and
+  ``log_sf``/``log_ff`` use a ``logaddexp`` form that no longer
+  overflows to ``-inf`` for large ``alpha**beta``. Beta4: ``df``/``hf``
+  are 0 outside the support instead of arbitrary/negative/NaN values.
+  Rayleigh, Gamma and Exponential custom probability-plotting paths now
+  forward truncation bounds (previously silently dropped), and Rayleigh
+  masks plotting positions at F = 1 (the ECDF heuristic returned NaN
+  parameters). Uniform's closed-form MLE rejects interval-censored data
+  with a clear error instead of a cryptic ``IndexError``.
+- **Fixed: ``xrd_to_xcnt`` silently corrupted late-entry data** (#281).
+  A risk set that grows between observation times (left truncation)
+  cannot be represented in xcnt output; the ``np.abs`` of the risk-set
+  differences masked the increase and returned a different study. It
+  now raises an informative ``ValueError``.
+- **Fixed: container and robustness batch** (#282). ``SurpyvalData``:
+  scalar indexing on interval-censored data no longer flattens the
+  interval row (IndexError), slicing carries covariates ``Z`` through,
+  and ``to_xrd`` caches per estimator instead of returning the first
+  call's result for every later estimator. Nonparametric models: scalar
+  ``hf``/``df`` return the step's hazard increment instead of always
+  NaN, and confidence bounds fall back to the point estimate when no
+  point on the curve has a finite variance (single-observation fits
+  returned NaN bounds). ``check_ph`` no longer emits a spurious
+  "ignoring left truncated values" warning for models fit with a
+  constant entry column (``tl = 0``), and the stale pre-#260
+  ``xcnt_to_xrd`` docstring example was updated.
 - **Fixed: the MPS estimator returned wrong parameters for censored,
   tied, truncated, and offset-truncated data** (#268). Four defects: the
   censored/ties block was divided by a different count than the

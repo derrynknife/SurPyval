@@ -187,6 +187,24 @@ class NonParametric(NonParametricDistribution):
         idx = np.argsort(x)
         rev = np.argsort(idx)
         x = x[idx]
+        if x.size == 1:
+            # The pairwise-difference construction below yields a single
+            # zero for scalar input (nothing to backfill from), so hf()
+            # and df() always returned NaN for scalars (#282). Use the
+            # model's own step ladder instead: the discrete hazard
+            # increment of the step containing x (forward-filled over
+            # zero-increment censoring steps), matching what the array
+            # path returns for the same point inside a grid.
+            xs = np.atleast_1d(self.x)
+            H_steps = np.atleast_1d(self.Hf(xs, interp=interp))
+            dH = np.diff(np.hstack([[0.0], H_steps]))
+            pos = np.searchsorted(xs, x[0], side="right") - 1
+            if pos < 0:
+                return np.array([np.nan])[rev]
+            sub = dH[: pos + 1]
+            nz = sub[sub > 0]
+            out = nz[-1] if nz.size else np.nan
+            return np.array([out])[rev]
         hf = np.diff(
             np.hstack(
                 [self.Hf(x[0], interp=interp), self.Hf(x, interp=interp)]
@@ -449,15 +467,22 @@ class NonParametric(NonParametricDistribution):
             R_out = self.R + np.sqrt(self.greenwood * self.R**2) * stat
 
         # Allows for confidence bound to be estimated up to the last value.
-        # only used in event that there is no right censoring.
+        # only used in event that there is no right censoring. When *no*
+        # point on the curve has a finite bound (e.g. a single
+        # observation), fall back to the point estimate rather than
+        # propagating an all-NaN nanmin (#282).
+        def _fill_upper(row):
+            finite = np.isfinite(row)
+            if finite.any():
+                return np.where(finite, row, row[finite].min())
+            return np.asarray(self.R, dtype=float).copy()
+
         if bound == "upper":
-            R_out = np.where(np.isfinite(R_out), R_out, np.nanmin(R_out))
+            R_out = _fill_upper(R_out)
         elif bound == "lower":
             R_out = np.where(np.isfinite(R_out), R_out, 0)
         else:
-            R_out[0, :] = np.where(
-                np.isfinite(R_out[0, :]), R_out[0, :], np.nanmin(R_out[0, :])
-            )
+            R_out[0, :] = _fill_upper(R_out[0, :])
             R_out[1, :] = np.where(np.isfinite(R_out[1, :]), R_out[1, :], 0)
 
         if interp == "step":

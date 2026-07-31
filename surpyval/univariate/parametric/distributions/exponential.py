@@ -401,13 +401,17 @@ class Exponential_(ParametricFitter):
         x,
         c=None,
         n=None,
+        t=None,
         heuristic="Nelson-Aalen",
         rr="y",
         on_d_is_0=False,
         offset=False,
     ):
         assert rr in ["x", "y"]
-        x_pp, r, d, F = plotting_positions(x, c=c, n=n, heuristic=heuristic)
+        # Forward the truncation windows (previously dropped, #280).
+        x_pp, r, d, F = plotting_positions(
+            x, c=c, n=n, t=t, heuristic=heuristic
+        )
 
         if not on_d_is_0:
             x_pp = x_pp[d > 0]

@@ -367,6 +367,16 @@ class Uniform_(ParametricFitter):
         return np.log(b - a)
 
     def mle(self, data):
+        if np.asarray(data.x).ndim == 2 or (data.c == 2).any():
+            # The closed-form min/max estimator is not the MLE with
+            # interval-censored rows (an interval term favours shrinking
+            # the range), and the masks below assume 1-D x -- interval
+            # input used to die with a cryptic IndexError (#280).
+            raise ValueError(
+                "Uniform distribution MLE does not support "
+                "interval-censored observations."
+            )
+
         if (data.c[data.x == data.x.max()] == 1).all():
             raise ValueError(
                 "Uniform distribution cannot be estimated using MLE when"
