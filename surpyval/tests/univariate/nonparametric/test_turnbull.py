@@ -325,7 +325,9 @@ def test_km_entry_tie_uses_strict_entry_convention():
     x = np.array([2.0, 3.0, 3.0, 4.0, 5.0, 6.0])
     tl = np.array([0.0, 0.0, 1.0, 1.0, 2.0, 2.0])
     km_model = surpyval.KaplanMeier.fit(x, tl=tl)
-    tb_model = surpyval.Turnbull.fit(x, tl=tl, turnbull_estimator="Kaplan-Meier")
+    tb_model = surpyval.Turnbull.fit(
+        x, tl=tl, turnbull_estimator="Kaplan-Meier"
+    )
     assert float(np.ravel(km_model.sf(2.0))[0]) == pytest.approx(0.75)
     assert float(np.ravel(tb_model.sf(2.0))[0]) == pytest.approx(
         0.75, abs=1e-6
