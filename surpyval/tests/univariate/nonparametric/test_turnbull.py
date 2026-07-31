@@ -225,13 +225,27 @@ def _degenerate_case():
     return x, c, n, tl
 
 
-def test_turnbull_degenerate_state_is_flagged_and_warns():
+def test_turnbull_previously_degenerate_case_now_identifiable():
+    # The #203 reproduction collapsed because left-censored and
+    # entry-spanning interval supports extended below the observation
+    # windows. With each support intersected with its own truncation
+    # window (#273) the data are identifiable and the EM converges to a
+    # healthy estimate instead of the all-zero fixed point.
     x, c, n, tl = _degenerate_case()
-    with pytest.warns(UserWarning, match="degenerate"):
-        model = surpyval.Turnbull.fit(x=x, c=c, n=n, tl=tl)
-    # The degenerate direction is detected and surfaced, rather than a
-    # silent all-zero survival curve being returned as if converged.
-    assert model.degenerate is True
+    model = surpyval.Turnbull.fit(x=x, c=c, n=n, tl=tl, max_iter=200000)
+    assert model.degenerate is False
+    assert model.converged is True
+    R = np.asarray(model.R)
+    assert R[-1] < 0.1  # survival still falls essentially to zero
+    assert np.nanmax(R) == pytest.approx(1.0)
+    assert np.all(np.diff(R) <= 1e-12)  # monotone non-increasing
+
+
+def test_turnbull_non_convergence_still_warns():
+    # The same case stopped early must warn rather than return silently.
+    x, c, n, tl = _degenerate_case()
+    with pytest.warns(UserWarning, match="did not converge"):
+        surpyval.Turnbull.fit(x=x, c=c, n=n, tl=tl, max_iter=100)
 
 
 def test_turnbull_healthy_truncated_fit_is_not_flagged():

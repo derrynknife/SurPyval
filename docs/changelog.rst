@@ -4,6 +4,34 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Fixed: Turnbull excluded the right endpoint of interval- and
+  left-censored observations from their support** (#272). An interval
+  ``(l, r]`` whose right endpoint coincided with an exactly observed event
+  time was forbidden from having failed at ``r`` (and a left-censored
+  observation from having failed at its own bound), pushing its mass onto
+  earlier atoms — ``sf`` between the atoms was 0.45 where the (l, r]
+  NPMLE (Turnbull 1976, lifelines, icenReg) gives 0.83. Supports now
+  include the atom at the right endpoint, matching the (entry, exit]
+  convention adopted in #260.
+- **Fixed: Turnbull under truncation — variance ladder, support windows,
+  and degenerate-interval inputs** (#273). (1) The truncated variance
+  ladder redistributed right-censored mass as fractional later events and
+  kept censored items at risk via conditional tail probabilities — the
+  anti-conservative mechanism #260 removed for untruncated data — and at
+  the last event produced huge *negative* Greenwood increments that
+  passed the finiteness guard. It now uses observed counts (events at
+  exact atoms, censored items leave at censoring), reducing exactly to
+  the delayed-entry Kaplan-Meier Greenwood ladder for exact +
+  right-censored data. (2) Each observation's support is now intersected
+  with its own truncation window: mass can no longer be redistributed to
+  times where the observed event provably cannot be, which previously
+  drove the EM to a degenerate all-zero fixed point on valid
+  left-censored + delayed-entry data — including the original #203
+  reproduction, which now converges to a healthy estimate. An empty
+  intersection raises an informative ``ValueError``. (3) The KM-reducible
+  variance branch now recognises exact + right-censored data expressed as
+  degenerate intervals (``xl == xr`` / ``xr = inf``), which previously
+  fell back to the anti-conservative expected-count ladder.
 - **Fixed: LFP fits with left truncation maximised an unbounded likelihood
   and returned degenerate parameters with optimiser success** (#269). The
   truncation normaliser used ``(p - f0) * (1 - F0(tl))`` — dropping the
