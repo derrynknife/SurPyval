@@ -1,8 +1,8 @@
 Changelog
 =========
 
-v0.17.0 (unreleased)
---------------------
+v0.17.0 (1 August 2026)
+-----------------------
 
 - **Discrete distributions are now structurally separated from the
   continuous catalogue.** A new ``DiscreteParametricFitter`` base class
