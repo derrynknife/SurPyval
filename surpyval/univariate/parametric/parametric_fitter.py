@@ -74,6 +74,11 @@ class ParametricFitter:
     gradients.
     """
 
+    # Whether the distribution's mass sits on integers rather than a
+    # continuum. ``DiscreteParametricFitter`` overrides this; fit-method
+    # validation and callers branch on the trait.
+    discrete = False
+
     def __init__(
         self,
         name: str,
@@ -360,6 +365,15 @@ class ParametricFitter:
                 f"{self.name} distribution does not work"
                 " with probability plot fitting; use how='MLE', 'MSE' or"
                 " 'MOM' instead"
+            )
+            raise ValueError(detail)
+
+        if how == "MPS" and self.discrete:
+            detail = (
+                f"{self.name} is a discrete distribution; maximum product"
+                " of spacings (MPS) is defined by increments of a"
+                " continuous CDF, and repeated integer observations make"
+                " the spacings degenerate. Use how='MLE' instead."
             )
             raise ValueError(detail)
 

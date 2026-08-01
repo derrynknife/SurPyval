@@ -4,6 +4,7 @@ from .beta4 import Beta4
 from .beta_geometric import BetaGeometric
 from .binomial import Binomial
 from .custom_distribution import CustomDistribution
+from .degenerate import InstantlyOccurs, NeverOccurs
 from .discrete_weibull import DiscreteWeibull
 from .discretize import Discretize, DiscretizedFitter
 from .exact_event_time import ExactEventTime

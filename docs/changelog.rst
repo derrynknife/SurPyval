@@ -4,6 +4,24 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Discrete distributions are now structurally separated from the
+  continuous catalogue.** A new ``DiscreteParametricFitter`` base class
+  (Geometric, Poisson, DiscreteWeibull, NegativeBinomial, Binomial,
+  Bernoulli/FixedEventProbability, BetaGeometric, and ``Discretize``
+  wrappers) is the single home for what discreteness means when fitting:
+  the ``discrete`` trait, the central ``supports_mpp = False`` (each
+  class previously set its own flag), and a new clear rejection of
+  ``how="MPS"`` — spacings are increments of a continuous CDF and
+  repeated integers make them degenerate, so this now raises instead of
+  fitting nonsense. MLE, MSE and MOM behaviour is unchanged.
+- **``InstantlyOccurs`` and ``NeverOccurs`` are now first-class
+  degenerate distributions** in
+  ``univariate/parametric/distributions/degenerate.py`` (previously
+  partial-API classes tucked into ``parametric/__init__.py``). They gain
+  the missing ``df``/``hf``/``qf``/``mean`` methods and serialisation:
+  ``to_dict`` stamps the schema and ``surpyval.from_dict`` restores the
+  class itself (identity preserved, as the survival-tree leaves
+  require). Historical import paths keep working.
 - **Simplification: one shared ``fit()`` skeleton for the parametric
   regression families** (#295). PH, AFT, PO and parametric AH carried
   five copy-pasted versions of the same fit pipeline — data prep, the

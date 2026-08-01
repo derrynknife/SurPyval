@@ -1,12 +1,14 @@
 from scipy.stats import uniform
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.discrete_fitter import (
+    DiscreteParametricFitter,
+)
 
 from ..parametric import Parametric
 
 
-class Bernoulli_(ParametricFitter):
+class Bernoulli_(DiscreteParametricFitter):
     def __init__(self, name):
         super().__init__(
             name=name,

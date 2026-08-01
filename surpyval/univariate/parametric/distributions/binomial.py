@@ -1,12 +1,14 @@
 from scipy.stats import binom
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.discrete_fitter import (
+    DiscreteParametricFitter,
+)
 
 from ..parametric import Parametric
 
 
-class Binomial_(ParametricFitter):
+class Binomial_(DiscreteParametricFitter):
     r"""
     The Binomial distribution: the number of events (failures) ``k`` in a
     fixed number ``n`` of independent pass/fail trials, each with event
@@ -33,10 +35,6 @@ class Binomial_(ParametricFitter):
             param_map={"n": 0, "p": 1},
             plot_x_scale="linear",
         )
-        # A binomial is a discrete count distribution with a fixed number
-        # of trials; probability plotting (which assumes a continuous,
-        # invertible CDF) does not apply.
-        self.supports_mpp = False
 
     def df(self, x, n, p):
         r"""

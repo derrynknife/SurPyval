@@ -11,10 +11,7 @@ Parametric Analysis
 
 """
 
-import numpy as np
-
-from surpyval.distribution import Distribution
-
+from .discrete_fitter import DiscreteParametricFitter
 from .distributions import (
     Bernoulli,
     Beta,
@@ -35,10 +32,12 @@ from .distributions import (
     Geometric,
     Gumbel,
     GumbelLEV,
+    InstantlyOccurs,
     Logistic,
     LogLogistic,
     LogNormal,
     NegativeBinomial,
+    NeverOccurs,
     Normal,
     Poisson,
     Rayleigh,
@@ -49,39 +48,3 @@ from .mixture_model import MixtureModel
 from .parametric import Parametric
 from .parametric_fitter import ParametricFitter
 from .royston_parmar import RoystonParmar, RoystonParmarModel
-
-
-class NeverOccurs(Distribution):
-    @classmethod
-    def sf(cls, x):
-        return np.ones_like(x).astype(float)
-
-    @classmethod
-    def ff(cls, x):
-        return np.zeros_like(x).astype(float)
-
-    @classmethod
-    def Hf(cls, x):
-        return np.zeros_like(x).astype(float)
-
-    @classmethod
-    def random(cls, size):
-        return np.ones(size) * np.inf
-
-
-class InstantlyOccurs(Distribution):
-    @classmethod
-    def sf(cls, x):
-        return np.zeros_like(x).astype(float)
-
-    @classmethod
-    def ff(cls, x):
-        return np.ones_like(x).astype(float)
-
-    @classmethod
-    def Hf(cls, x):
-        return np.full_like(x, np.inf, dtype=float)
-
-    @classmethod
-    def random(cls, size):
-        return np.zeros(size)
