@@ -2,6 +2,10 @@ from autograd.scipy.stats import norm
 from scipy.stats import norm as scipy_norm
 from surpyval import np
 from surpyval.univariate import parametric as para
+from surpyval.univariate.parametric.fitters.closed_form import (
+    is_uncensored_and_untruncated,
+    weighted_mean_and_std,
+)
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
 
@@ -48,6 +52,23 @@ class Normal_(ParametricFitter):
         return para.Normal.fit(
             x[c != -1], c[c != -1], n[c != -1], how="MPP"
         ).params
+
+    def _closed_form_mle(self, data):
+        r"""Exact MLE on complete data: the sample mean and (MLE)
+        standard deviation, dividing by the total weight rather than
+        ``total - 1``.
+
+        Any censoring makes this the Tobit model and any truncation
+        introduces a :math:`\Phi` normaliser; in both cases the score
+        picks up :math:`\phi/\Phi` ratios with no analytic solution, so
+        those fall back to the optimiser.
+        """
+        if not is_uncensored_and_untruncated(data):
+            return None
+        x = np.asarray(data.x, dtype=float)
+        if x.ndim != 1:
+            return None
+        return weighted_mean_and_std(x, data.n)
 
     def sf(self, x, mu, sigma):
         r"""

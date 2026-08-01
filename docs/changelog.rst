@@ -1,6 +1,88 @@
 Changelog
 =========
 
+v0.17.1 (unreleased)
+--------------------
+
+- **Exact closed-form maximum likelihood for the Exponential, Normal and
+  LogNormal, where one exists.** These have analytic MLEs -- the
+  Exponential's events-over-exposure ratio, the Normal's mean and
+  standard deviation -- so the fit no longer builds an initial guess or
+  runs the five-optimiser ladder. Because the closed form is *exact*,
+  the result is not merely faster but at least as good: verified that
+  its log-likelihood is never worse than the optimiser's, and its
+  parameters agree to within the optimiser's own convergence tolerance
+  (~1e-8), as do its confidence bounds. At n=1000 a LogNormal fit goes
+  from 135 ms to 10 ms, a Normal from 42 ms to 5 ms, and an Exponential
+  from 11 ms to 5 ms; Weibull and the rest are untouched.
+
+  The applicability conditions are exact. The Exponential admits right
+  censoring and left truncation (which only moves each unit's exposure
+  from ``x`` to ``x - tl``), but falls back to the optimiser for left or
+  interval censoring and for right truncation, each of which makes the
+  score transcendental. The Normal and LogNormal need complete,
+  untruncated data: any censoring makes them the Tobit model and any
+  truncation introduces a normal-CDF normaliser.
+- **Fixed: closed-form fits silently ignored ``lfp``, ``zi``, ``offset``
+  and fixed parameters.** The hook that short-circuited to a
+  distribution's analytic MLE fired before any of these were checked, so
+  ``Uniform.fit(x, lfp=True)`` returned ``p = 1.0`` and
+  ``Uniform.fit(x, fixed={"a": 0.0})`` ignored the held value -- in both
+  cases without warning. Requests carrying that structure now go to the
+  optimiser, which estimates them.
+- **Fixed: ``Uniform`` fits had no usable log-likelihood.**
+  ``Uniform.fit(x).aic()`` raised ``AttributeError`` and ``cb()`` raised
+  for want of a covariance. The log density is now defined directly
+  rather than through the generic ``log(hf) - Hf`` identity, which is
+  ``nan`` at the upper support edge (where ``sf`` is 0) -- exactly where
+  the MLE puts ``b``. ``neg_ll``, ``aic``, ``bic`` and ``aic_c`` are now
+  correct. No parameter covariance is offered, deliberately: the Uniform
+  MLE is an order statistic sitting on the support edge rather than an
+  interior stationary point, so the observed information is not positive
+  definite and its inverse carries negative variances; ``cb`` refuses
+  rather than returning silent ``nan`` bounds.
+
+- **Tests: a breadth sweep over Turnbull's supported inputs.** Every
+  combination of censoring type (observed, left, right, interval, and all
+  four mixed), truncation form (none, left, right, both) and hazard
+  estimator (Nelson-Aalen, Kaplan-Meier, Fleming-Harrington) is now fitted
+  and checked for a converged, valid, monotone survival curve with a
+  coherent risk-set ladder, complementing the existing tests that each pin
+  one regime. The sweep also pins that the estimator choice is honoured,
+  and that Fleming-Harrington coincides with Nelson-Aalen exactly when
+  event times are distinct (its tied-event correction being the only
+  difference). Building it surfaced #308.
+- **Known issue: left censoring combined with left truncation** (#308).
+  Turnbull either raises "censoring interval does not intersect its own
+  truncation window" on data where the intersection is plainly non-empty,
+  or fails to converge and returns a degenerate estimate. A left-censored
+  row lives on the ``(-inf, x]`` bound, and the support-window
+  intersection added for #273 drops that bound whenever an entry time
+  sits above its lower edge, even though the event interval ``(tl, x]``
+  is non-empty. Only fits with *both* left-censored observations and
+  left truncation are affected. The sweep marks this regime ``xfail``
+  (strict), so it will report as soon as it is fixed.
+
+- **Fixed: ``xcnt_to_xrd`` was quadratic in time and memory, and raised
+  ``MemoryError`` past roughly 50,000 observations** (#306). The at-risk
+  entry count was built as an ``N x K`` comparison matrix
+  (observations × distinct times): 20,000 observations needed a 3.2 GB
+  intermediate and ~15 s, and 50,000 attempted an 18.6 GiB allocation and
+  failed. Because this conversion feeds every nonparametric estimator —
+  and the MLE initial guess, which comes from probability plotting — the
+  ceiling applied to most of the package: ``Weibull.fit`` on 50,000
+  points raised ``MemoryError`` even though the likelihood itself was
+  fine. The entry count is now computed in two linear branches: a
+  constant when nothing is left truncated (the common case, where the
+  matrix was entirely ``True`` and merely recomputed ``n.sum()``), and a
+  sorted ``searchsorted`` lookup otherwise. ``side="left"`` counts
+  strictly-less-than exactly as the previous ``<`` did, so the
+  ``(entry, exit]`` convention from #260 is unchanged, and integer counts
+  make the cumulative sum exact — values are bit-identical. A
+  ``Weibull.fit`` at n=10,000 goes from 1,836 ms to 182 ms; 200,000
+  points now fit in 5.6 s and a 500,000-point Kaplan-Meier in 8.1 s,
+  where both previously failed.
+
 v0.17.0 (1 August 2026)
 -----------------------
 
