@@ -165,6 +165,82 @@ def test_interval_censored_two_dimensional_x():
     assert_matches_oracle(x, c, n, t)
 
 
+# -- the no-op fast path -----------------------------------------------
+#
+# Distinct leading values mean every row is already its own group, in
+# input order, so grouping is the identity and is skipped. `is` is the
+# observable: the fast path hands the inputs straight back.
+
+
+def _takes_fast_path(x, c, n, t):
+    got = group_xcnt(x, c, n, t)
+    return all(a is b for a, b in zip(got, (x, c, n, t)))
+
+
+def test_distinct_values_are_returned_untouched():
+    x = np.array([3.0, 1.0, 2.0])
+    c = np.array([1, 0, -1])
+    n = np.array([2, 5, 1], dtype=np.int64)
+    t = np.column_stack([[-INF, 0.0, 0.5], [INF, 7.0, INF]])
+    assert _takes_fast_path(x, c, n, t)
+    assert_matches_oracle(x, c, n, t)
+
+
+def test_distinct_leading_column_is_enough_for_two_dimensional_x():
+    # A distinct left endpoint makes whole rows distinct whatever the
+    # right endpoint, c or t hold, so the check need only look at it.
+    x = np.column_stack([[1.0, 2.0, 3.0], [4.0, 4.0, 4.0]])
+    c = np.full(3, 2)
+    n = np.ones(3, dtype=np.int64)
+    t = np.column_stack([np.full(3, -INF), np.full(3, INF)])
+    assert _takes_fast_path(x, c, n, t)
+    assert_matches_oracle(x, c, n, t)
+
+
+def test_tied_leading_column_still_groups():
+    x = np.column_stack([[1.0, 1.0, 2.0], [3.0, 9.0, 4.0]])
+    c = np.full(3, 2)
+    n = np.ones(3, dtype=np.int64)
+    t = np.column_stack([np.full(3, -INF), np.full(3, INF)])
+    assert not _takes_fast_path(x, c, n, t)
+    assert_matches_oracle(x, c, n, t)
+
+
+def test_repeated_x_takes_the_grouping_path():
+    x = np.array([1.0, 1.0, 2.0])
+    c = np.zeros(3, dtype=int)
+    n = np.ones(3, dtype=np.int64)
+    t = np.column_stack([np.full(3, -INF), np.full(3, INF)])
+    assert not _takes_fast_path(x, c, n, t)
+    assert_matches_oracle(x, c, n, t)
+
+
+def test_empty_input_is_returned_unchanged():
+    # Not compared against the oracle: the dictionary version built its
+    # outputs from empty lists, so `t` came back with shape (0,) rather
+    # than (0, 2). Handing the inputs back keeps the shapes right.
+    x = np.array([], dtype=float)
+    c = np.array([], dtype=int)
+    n = np.array([], dtype=np.int64)
+    t = np.empty((0, 2))
+    assert _takes_fast_path(x, c, n, t)
+
+
+@pytest.mark.parametrize("n_nan,fast", [(1, True), (2, False)])
+def test_nan_x_is_handled_conservatively(n_nan, fast):
+    # np.unique collapses repeated nans, so two of them fail the distinct
+    # count and drop to the grouping path -- which is what we want, since
+    # nan != nan means they must stay separate groups. One nan is
+    # genuinely distinct and can take the fast path.
+    x = np.array([np.nan] * n_nan + [3.0, 4.0])
+    size = x.size
+    c = np.zeros(size, dtype=int)
+    n = np.ones(size, dtype=np.int64)
+    t = np.column_stack([np.full(size, -INF), np.full(size, INF)])
+    assert _takes_fast_path(x, c, n, t) is fast
+    assert_matches_oracle(x, c, n, t)
+
+
 def test_float_counts_stay_float():
     x = np.array([1.0, 1.0, 2.0])
     c = np.zeros(3, dtype=int)

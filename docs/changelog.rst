@@ -28,6 +28,20 @@ v0.17.1 (unreleased)
   and small fits improve too -- Exponential at n=1000 from 5.9 ms to
   2.4 ms. Kaplan-Meier at n=100,000 now takes 140 ms.
 
+  On top of that, grouping is now skipped entirely when there is
+  nothing to group. Continuous measurements have distinct values, so
+  every row is already its own group in input order and the operation
+  is the identity -- but the data handler runs it several times per
+  fit regardless. Distinct values in the leading column of ``x`` are
+  enough to establish this (they make whole rows distinct whatever
+  ``c`` and ``t`` hold), which costs one sort of one column against
+  three sorts of the full key. Only tied data -- rounded, discrete, or
+  heavily weighted -- takes the grouping path now. Grouping 100,000
+  distinct points falls from 74 ms to 1.2 ms, taking the Normal fit
+  above to 64 ms, Weibull to 505 ms, and Kaplan-Meier to 63 ms. Repeated
+  ``nan`` values deliberately fail the check and fall through to
+  grouping, since ``nan != nan`` means they must stay separate.
+
 - **Exact closed-form maximum likelihood for the Exponential, Normal and
   LogNormal, where one exists.** These have analytic MLEs -- the
   Exponential's events-over-exposure ratio, the Normal's mean and

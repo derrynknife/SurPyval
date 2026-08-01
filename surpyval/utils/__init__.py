@@ -77,7 +77,8 @@ def _group_ids(key):
     order = np.lexsort(key.T[::-1])
     ordered = key[order]
     starts = np.empty(len(ordered), dtype=bool)
-    starts[0] = True
+    if len(ordered) > 0:
+        starts[0] = True
     if len(ordered) > 1:
         starts[1:] = (ordered[1:] != ordered[:-1]).any(axis=1)
     group = np.empty(len(ordered), dtype=np.intp)
@@ -105,7 +106,24 @@ def group_xcnt(x, c, n, t):
     ``t.min()`` are exactly such a tie, so a plain sorted ``np.unique``
     would silently reorder them. The lexsort below reproduces the
     original nesting instead.
+
+    When nothing needs grouping the inputs are returned as they are,
+    rather than copied. Callers inside the package sort immediately
+    afterwards, which copies, so nothing aliases in practice.
     """
+    # Continuous data has nothing to group: every row is already its own
+    # group, and since the ordering is x-major and each x occurs once,
+    # that order *is* the input order. So the answer is the input,
+    # untouched. Establishing this costs one sort of a single column,
+    # against three sorts of the full key -- and it is the common case,
+    # since only tied (rounded, discrete, or heavily weighted) data
+    # groups at all. Distinct values in the first column are enough:
+    # they make whole rows distinct whatever c and t hold. Empty input
+    # trivially satisfies this and is likewise handed straight back.
+    leading = x if x.ndim == 1 else x[:, 0]
+    if np.unique(leading).size == leading.size:
+        return x, c, n, t
+
     x_columns = x.reshape(-1, 1) if x.ndim == 1 else x
     group, first_full = _group_ids(np.column_stack([x_columns, c, t]))
     by_x, first_x = _group_ids(x_columns)
