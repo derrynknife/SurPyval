@@ -59,8 +59,10 @@ class LogLogistic_(ParametricFitter):
         >>> LogLogistic.sf(x, 3, 4)
         array([0.62245933, 0.5621765 , 0.5       , 0.4378235 , 0.37754067])
         """
-        exp_term = (x / alpha) ** -beta
-        return exp_term / (1 + exp_term)
+        # 1 / (1 + (x/alpha)^beta): algebraically identical to the
+        # (x/alpha)^-beta form but defined at x = 0 (sf(0) = 1) instead
+        # of raising/NaN-ing on the negative power (#280).
+        return 1.0 / (1.0 + (x / alpha) ** beta)
 
     def cs(self, x, X, alpha, beta):
         r"""
@@ -131,7 +133,10 @@ class LogLogistic_(ParametricFitter):
         >>> LogLogistic.ff(x, 3, 4)
         array([0.01219512, 0.16494845, 0.5       , 0.75964392, 0.88526912])
         """
-        return 1.0 / (1 + (x / alpha) ** -beta)
+        # z^beta / (1 + z^beta) rather than 1 / (1 + z^-beta): the
+        # negative power raised/NaN-ed at x = 0, where ff(0) = 0 (#280).
+        z = (x / alpha) ** beta
+        return z / (1.0 + z)
 
     def df(self, x, alpha, beta):
         r"""
@@ -314,10 +319,17 @@ class LogLogistic_(ParametricFitter):
         )
 
     def log_sf(self, x, alpha, beta):
-        return beta * np.log(alpha) - np.log(alpha**beta + x**beta)
+        # logaddexp form: log(alpha^beta + x^beta) overflows for
+        # beta*log(alpha) or beta*log(x) beyond ~709 even when the log
+        # probability itself is modest (#280).
+        la = beta * np.log(alpha)
+        lx = beta * np.log(x)
+        return la - np.logaddexp(la, lx)
 
     def log_ff(self, x, alpha, beta):
-        return beta * np.log(x) - np.log(alpha**beta + x**beta)
+        la = beta * np.log(alpha)
+        lx = beta * np.log(x)
+        return lx - np.logaddexp(la, lx)
 
     def mpp_x_transform(self, x, gamma=0):
         return np.log(x - gamma)

@@ -392,7 +392,9 @@ class Beta_(ParametricFitter):
         return self.qf(y, *params)
 
     def mpp_inv_y_transform(self, y, *params):
-        return abetainc(y, *params)
+        # The inverse of the quantile transform is the CDF; the point must
+        # be the *last* argument of betainc, not the first shape (#257).
+        return abetainc(*params, y)
 
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
@@ -402,6 +404,7 @@ class Beta_(ParametricFitter):
         x,
         c=None,
         n=None,
+        t=None,
         heuristic="Nelson-Aalen",
         rr="y",
         on_d_is_0=False,

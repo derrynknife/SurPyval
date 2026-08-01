@@ -189,3 +189,90 @@ def test_partial_truncation_matches_baseline():
     model = WeibullPH.fit(x=x, Z=Z, t=t)
 
     assert np.allclose(model.params[:2], baseline.params, atol=1e-2)
+
+
+def _delayed_entry_signed_data(seed=11, n=60):
+    # Staggered delayed entry with *signed* covariates: the configuration
+    # that corrupted the analytic Cox score/Hessian when the truncation
+    # adjustment was forward-filled with ``minimum.accumulate`` (#250).
+    rng = np.random.default_rng(seed)
+    Z = rng.normal(size=(n, 2))
+    x = rng.exponential(np.exp(-(0.5 * Z[:, 0] - 0.3 * Z[:, 1])))
+    c = np.zeros(n, dtype=int)
+    tl = np.where(rng.uniform(size=n) < 0.5, x * rng.uniform(0.1, 0.6, n), 0.0)
+    return x, Z, c, tl
+
+
+@pytest.mark.parametrize("method", ["efron", "breslow"])
+def test_cox_delayed_entry_jacobian_matches_numeric(method):
+    # Analytic score and observed information must match numerical
+    # differentiation of the partial log-likelihood under delayed entry
+    # with signed covariates (#250).
+    from surpyval import CoxPH
+
+    x, Z, c, tl = _delayed_entry_signed_data()
+    factory = (
+        CoxPH.create_efron_ll_jac_hess
+        if method == "efron"
+        else CoxPH.create_breslow_ll_jac_hess
+    )
+    ll, jac_hess = factory(x, Z, c, np.ones(len(x)), tl)[:2]
+
+    beta = np.array([0.3, -0.2])
+    eps = 1e-5
+    eye = np.eye(2)
+    num_jac = np.array(
+        [
+            (ll(beta + eps * eye[k]) - ll(beta - eps * eye[k])) / (2 * eps)
+            for k in range(2)
+        ]
+    )
+    ana_jac, ana_hess = jac_hess(beta)
+    assert np.allclose(num_jac, np.asarray(ana_jac, float), atol=1e-5)
+
+    num_hess = np.zeros((2, 2))
+    for k in range(2):
+        for m in range(2):
+            ek, em = eps * eye[k], eps * eye[m]
+            num_hess[k, m] = (
+                ll(beta + ek + em)
+                - ll(beta + ek - em)
+                - ll(beta - ek + em)
+                + ll(beta - ek - em)
+            ) / (4 * eps * eps)
+    assert np.allclose(num_hess, np.asarray(ana_hess, float), atol=1e-3)
+
+
+def test_cox_tvc_fit_reaches_own_mle_with_signed_covariate():
+    # Before #250 the corrupted score let ``root`` "converge" to a spurious
+    # zero on start-stop data with a signed covariate. The fit must land on
+    # the maximiser of the model's own partial likelihood.
+    from scipy.optimize import minimize
+
+    from surpyval import CoxPH
+
+    rng = np.random.default_rng(42)
+    n = 120
+    rows_i, rows_xl, rows_xr, rows_c, rows_z = [], [], [], [], []
+    for i in range(n):
+        z1, z2 = rng.normal(), rng.normal()
+        t = rng.exponential(np.exp(-0.4 * z2))
+        change = 0.5 * t
+        tend = min(t, 4.0)
+        rows_i += [i, i]
+        rows_xl += [0.0, change]
+        rows_xr += [change, tend]
+        rows_c += [1, 0 if t < 4 else 1]
+        rows_z += [[z1], [z2]]
+    i_arr = np.array(rows_i)
+    xl = np.array(rows_xl)
+    xr = np.array(rows_xr)
+    c = np.array(rows_c)
+    Z = np.array(rows_z)
+
+    model = CoxPH.fit_tvc(i_arr, xl, xr, c, Z)
+    beta_fit = np.atleast_1d(model.params)[0]
+
+    ll = CoxPH.create_efron_ll_jac_hess(xr, Z, c, np.ones(len(xr)), xl)[0]
+    direct = minimize(lambda b: ll(np.atleast_1d(b)), [0.0]).x[0]
+    assert beta_fit == pytest.approx(direct, abs=1e-4)

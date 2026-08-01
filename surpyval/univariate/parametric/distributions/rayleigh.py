@@ -347,17 +347,29 @@ class Rayleigh_(ParametricFitter):
         x,
         c=None,
         n=None,
+        t=None,
         heuristic="Nelson-Aalen",
         rr="y",
         on_d_is_0=False,
         offset=False,
     ):
         assert rr in ["x", "y"]
-        x_pp, r, d, F = plotting_positions(x, c=c, n=n, heuristic=heuristic)
+        # Forward the truncation windows: the custom Rayleigh path used to
+        # drop them silently, making fits with and without tl/tr
+        # bit-identical (#280).
+        x_pp, r, d, F = plotting_positions(
+            x, c=c, n=n, t=t, heuristic=heuristic
+        )
 
         if not on_d_is_0:
             x_pp = x_pp[d > 0]
             F = F[d > 0]
+
+        # Plotting positions of exactly 0 or 1 have no finite transform
+        # (sqrt(-log 0) = inf poisoned e.g. the ECDF heuristic, #280).
+        valid = (F != 0) & (F != 1)
+        x_pp = x_pp[valid]
+        F = F[valid]
 
         # Linearise
         y_pp = self.mpp_y_transform(F)
@@ -393,9 +405,6 @@ class Rayleigh_(ParametricFitter):
 
     def mpp_x_transform(self, x):
         return x
-
-    def mpp_inv_x_transform(self, x, gamma=0):
-        return x - gamma
 
     def mpp_y_transform(self, y, *params):
         mask = y == 0

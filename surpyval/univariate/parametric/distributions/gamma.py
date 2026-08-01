@@ -466,12 +466,16 @@ class Gamma_(ParametricFitter):
         x,
         c=None,
         n=None,
+        t=None,
         heuristic="Nelson-Aalen",
         rr="y",
         on_d_is_0=False,
         offset=False,
     ):
-        x_pp, r, d, F = plotting_positions(x, c=c, n=n, heuristic=heuristic)
+        # Forward the truncation windows (previously dropped, #280).
+        x_pp, r, d, F = plotting_positions(
+            x, c=c, n=n, t=t, heuristic=heuristic
+        )
 
         results = {}
 
@@ -509,19 +513,32 @@ class Gamma_(ParametricFitter):
             def fun(a):
                 return -pearsonr(x_pp, self.mpp_y_transform(F, a, 1.0))[0]
 
-            res = minimize(fun, init[0], bounds=((0, None),))
-            alpha = res.x[0]
+            # The moment-based init is computed from the *unshifted* data,
+            # which diverges for strongly offset data (tiny relative spread
+            # -> huge alpha) and strands the correlation search at a bad
+            # local optimum. Try several starts and keep the best (#257).
+            starts = {float(init[0]), 0.5, 1.0, 2.0, 5.0}
+            best = None
+            for a0 in starts:
+                res = minimize(fun, [a0], bounds=((1e-8, None),))
+                if best is None or res.fun < best.fun:
+                    best = res
+            alpha = best.x[0]
 
             y_pp = self.mpp_y_transform(F, alpha)
 
             if rr == "y":
+                # y = beta * (x - gamma): slope is beta, intercept is
+                # -beta * gamma.
                 params = np.polyfit(x_pp, y_pp, 1)
                 beta = params[0]
                 gamma = -params[1] / beta
             elif rr == "x":
+                # x = y / beta + gamma: slope is 1/beta and the intercept
+                # IS gamma (#257).
                 params = np.polyfit(y_pp, x_pp, 1)
                 beta = 1.0 / params[0]
-                gamma = -params[1] / beta
+                gamma = params[1]
 
             results["gamma"] = gamma
             results["params"] = np.array([alpha, beta])
@@ -541,15 +558,18 @@ class Gamma_(ParametricFitter):
                 beta, residuals, _, _ = np.linalg.lstsq(x_pp, y_pp)
                 beta = beta[0]
             else:
+                # Regress against the same filtered plotting positions used
+                # everywhere else — the raw ``x`` argument has a different
+                # length whenever any point was filtered (#257).
 
                 def fun(a):
                     y = self.mpp_y_transform(F, a, 1.0)[:, np.newaxis]
-                    return np.linalg.lstsq(y, x)[1]
+                    return np.linalg.lstsq(y, x_pp)[1]
 
                 res = minimize(fun, init[0], bounds=((0, None),))
                 alpha = res.x[0]
                 beta = np.linalg.lstsq(
-                    self.mpp_y_transform(F, alpha, 1.0)[:, np.newaxis], x
+                    self.mpp_y_transform(F, alpha, 1.0)[:, np.newaxis], x_pp
                 )[0][0]
                 beta = 1.0 / beta
 

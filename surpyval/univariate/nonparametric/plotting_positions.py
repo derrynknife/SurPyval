@@ -4,6 +4,33 @@ from pandas import Series
 from surpyval.univariate import nonparametric as nonp
 from surpyval.utils import xcnt_handler, xcnt_to_xrd
 
+# Estimator-form heuristics share one dispatch; the (A, B) constants
+# define the rank-based plotting-position formula F = (rank - A) / (N + B).
+ESTIMATOR_FUNCS = {
+    "Nelson-Aalen": nonp.nelson_aalen,
+    "Kaplan-Meier": nonp.kaplan_meier,
+    "Fleming-Harrington": nonp.fleming_harrington,
+}
+
+HEURISTIC_AB = {
+    "Blom": (0.375, 0.25),
+    "Median": (0.3, 0.4),
+    "ECDF": (0.0, 0.0),
+    "ECDF_Adj": (0.0, 1.0),
+    "Modal": (1.0, -1.0),
+    "Midpoint": (0.5, 0.0),
+    "Mean": (0.0, 1.0),
+    "Weibull": (0.0, 1.0),
+    "Benard": (0.3, 0.2),
+    "Beard": (0.31, 0.38),
+    "Hazen": (0.5, 0.0),
+    "Gringorten": (0.44, 0.12),
+    "None": (0.0, 0.0),
+    "Larsen": (0.567, -0.134),
+    "Tukey": (1.0 / 3.0, 1.0 / 3.0),
+    "DPW": (1.0, 0.0),
+}
+
 
 def plotting_positions(
     x,
@@ -115,17 +142,9 @@ def plotting_positions(
 
     if heuristic == "Filliben":
         out = nonp.filliben(x, c, n, t)
-    elif heuristic == "Nelson-Aalen":
+    elif heuristic in ESTIMATOR_FUNCS:
         x, r, d = xcnt_to_xrd(x, c, n, t)
-        R = nonp.nelson_aalen(r, d)
-        return x, r, d, 1 - R
-    elif heuristic == "Kaplan-Meier":
-        x, r, d = xcnt_to_xrd(x, c, n, t)
-        R = nonp.kaplan_meier(r, d)
-        return x, r, d, 1 - R
-    elif heuristic == "Fleming-Harrington":
-        x, r, d = xcnt_to_xrd(x, c, n, t)
-        R = nonp.fleming_harrington(r, d)
+        R = ESTIMATOR_FUNCS[heuristic](r, d)
         return x, r, d, 1 - R
     elif heuristic == "Turnbull":
         out = nonp.turnbull(x, c, n, t, estimator=turnbull_estimator)
@@ -147,38 +166,7 @@ def plotting_positions(
         d = 1 - c
         r = np.linspace(N, 1, num=N)
 
-        if heuristic == "Blom":
-            A, B = 0.375, 0.25
-        elif heuristic == "Median":
-            A, B = 0.3, 0.4
-        elif heuristic == "ECDF":
-            A, B = 0, 0
-        elif heuristic == "ECDF_Adj":
-            A, B = 0, 1
-        elif heuristic == "Modal":
-            A, B = 1.0, -1.0
-        elif heuristic == "Midpoint":
-            A, B = 0.5, 0.0
-        elif heuristic == "Mean":
-            A, B = 0.0, 1.0
-        elif heuristic == "Weibull":
-            A, B = 0.0, 1.0
-        elif heuristic == "Benard":
-            A, B = 0.3, 0.2
-        elif heuristic == "Beard":
-            A, B = 0.31, 0.38
-        elif heuristic == "Hazen":
-            A, B = 0.5, 0.0
-        elif heuristic == "Gringorten":
-            A, B = 0.44, 0.12
-        elif heuristic == "None":
-            A, B = 0.0, 0.0
-        elif heuristic == "Larsen":
-            A, B = 0.567, -0.134
-        elif heuristic == "Tukey":
-            A, B = 1.0 / 3.0, 1.0 / 3.0
-        elif heuristic == "DPW":
-            A, B = 1.0, 0.0
+        A, B = HEURISTIC_AB[heuristic]
 
         F = (ranks - A) / (N + B)
         R = 1 - Series(F).ffill().fillna(0).values

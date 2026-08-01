@@ -40,9 +40,7 @@ Lin, D. Y. and Ying, Z. (1994), "Semiparametric analysis of the additive
 risk model", Biometrika 81, 61-71.
 """
 
-import json
 from copy import copy
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -53,7 +51,7 @@ from scipy.stats import norm
 from surpyval.utils import check_Z_and_x, wrangle_Z, xcnt_handler
 
 from ..regression_data import design_matrix_from_df, prepare_Z
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -79,7 +77,7 @@ def _validate(
     return x_arr, c_arr, n_arr, Z_arr
 
 
-class AdditiveHazardsModel:
+class AdditiveHazardsModel(SerialisableMixin):
     """
     A fitted Lin & Ying additive hazards model, returned by
     :meth:`AdditiveHazards.fit`.
@@ -161,13 +159,15 @@ class AdditiveHazardsModel:
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
-            out["formula"] = self.formula
-        return stamp_schema(out)
+            out["formula"] = str(self.formula)
+            # Persist the encoder state so a restored model expands raw
+            # covariates the same way (#244, applied to the Lin-Ying
+            # additive-hazards model in #261).
+            if getattr(self, "_model_spec", None) is not None:
+                from ..regression_data import model_spec_to_meta
 
-    def to_json(self, fp: "str | Path") -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
+                out["formula_meta"] = model_spec_to_meta(self._model_spec)
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "AdditiveHazardsModel":
@@ -196,13 +196,12 @@ class AdditiveHazardsModel:
             out.p_values = np.array(model_dict["p_values"], dtype=float)
         out.feature_names = model_dict.get("feature_names")
         out.formula = model_dict.get("formula")
-        return out
+        formula_meta = model_dict.get("formula_meta")
+        if out.formula is not None and formula_meta is not None:
+            from ..regression_data import rebuild_model_spec
 
-    @classmethod
-    def from_json(cls, fp: "str | Path") -> "AdditiveHazardsModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
+            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
+        return out
 
     def _h0_at(self, x: npt.NDArray) -> npt.NDArray:
         # Right-continuous step lookup of the baseline (cumulative) hazard at
@@ -210,14 +209,50 @@ class AdditiveHazardsModel:
         idx = np.searchsorted(self.x, x, side="right") - 1
         return idx
 
-    def hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+    def _h0_rate(
+        self, x: npt.NDArray, bandwidth: "float | None" = None
     ) -> npt.NDArray:
+        # Kernel-smoothed (Ramlau-Hansen) baseline hazard *rate* from the
+        # increments of the corrected baseline cumulative hazard H0 (the
+        # raw self.h0 = d/S0 jumps include the covariate-mean drift and
+        # are dimensionless besides -- adding such a jump to the rate
+        # beta'Z was dimensionally incoherent and asymptotically dropped
+        # the baseline from hf/df entirely, #277).
+        if bandwidth is None:
+            spread = float(np.std(self.x)) if self.x.size > 1 else 0.0
+            scale = max(abs(float(np.mean(self.x))), 1.0)
+            if spread <= 1e-8 * scale:
+                # All event times (nearly) coincident relative to the time
+                # scale: the normal-reference rule collapses to the floor
+                # and hf returns Dirac spikes; fall back to a bandwidth on
+                # the scale of the times themselves (#289).
+                spread = scale
+            bandwidth = max(
+                1.06 * spread * max(self.x.size, 2) ** (-1 / 5), 1e-12
+            )
+        dH0 = np.diff(np.concatenate([[0.0], self.H0]))
+        u = (x[:, None] - self.x[None, :]) / bandwidth
+        kern = np.where(np.abs(u) <= 1.0, 0.75 * (1.0 - u**2), 0.0)
+        return (kern * dH0[None, :]).sum(axis=1) / bandwidth
+
+    def hf(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        bandwidth: "float | None" = None,
+    ) -> npt.NDArray:
+        """
+        Hazard rate ``h0(t) + beta'Z`` with a kernel-smoothed baseline.
+
+        The semiparametric baseline is a step cumulative hazard, so the
+        rate requires smoothing (Epanechnikov kernel over the increments;
+        ``bandwidth`` defaults to a normal-reference rule on the event
+        times). Estimates near the boundaries of the observed time range
+        are attenuated by kernel truncation.
+        """
         Z = self._prepare_Z(Z)
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        idx = self._h0_at(x)
-        h0 = np.where(idx < 0, 0.0, self.h0[np.clip(idx, 0, self.x.size - 1)])
-        return h0 + (Z @ self.beta)
+        return self._h0_rate(x, bandwidth) + (Z @ self.beta)
 
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"

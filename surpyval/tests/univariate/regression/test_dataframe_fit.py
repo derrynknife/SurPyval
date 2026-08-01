@@ -16,7 +16,10 @@ def _make_df(seed=0, n=200):
     age = rng.normal(50, 10, n)
     sex = rng.choice(["M", "F"], n)
     beta = 0.03 * (age - 50) + np.where(sex == "M", 0.4, 0.0)
-    x = Weibull.random(n, 10, 2) * np.exp(-beta / 2)
+    # Draw the baseline Weibull(10, 2) from the seeded generator rather than
+    # ``Weibull.random`` (which uses the global RNG) so the fixture is fully
+    # deterministic and does not depend on test-execution order.
+    x = 10.0 * (-np.log(rng.uniform(size=n))) ** (1 / 2.0) * np.exp(-beta / 2)
     c = np.zeros(n)
     return pd.DataFrame({"time": x, "age": age, "sex": sex, "censored": c})
 
@@ -127,8 +130,12 @@ def test_single_string_z_col():
 
 
 def test_accelerated_life_fit_from_df():
+    rng = np.random.default_rng(0)
     stresses = np.repeat([1.0, 2.0, 3.0, 4.0], 40)
-    x = Weibull.random(len(stresses), 100 / stresses, 3)
+    # Seeded Weibull(100/stress, 3) draw (not the global-RNG Weibull.random).
+    x = (100 / stresses) * (-np.log(rng.uniform(size=len(stresses)))) ** (
+        1 / 3.0
+    )
     df = pd.DataFrame(
         {"time": x, "stress": stresses, "censored": np.zeros_like(x)}
     )

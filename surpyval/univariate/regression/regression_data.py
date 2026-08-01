@@ -20,6 +20,22 @@ if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
 
 
+def drop_intercept(model_matrix: Any) -> Any:
+    """Drop the intercept column from a materialised model matrix.
+
+    Formulas are materialised *with* their implicit intercept so that
+    ``formulaic`` gives categorical terms reference-level (reduced-rank)
+    coding — with no intercept it emits a full one-hot whose columns sum to
+    a constant, which is exactly collinear with the baseline distribution's
+    scale (or the Cox baseline), leaving the coefficients non-identified
+    (#252). The intercept column itself is then removed because the baseline
+    plays that role.
+    """
+    if "Intercept" in model_matrix.columns:
+        return model_matrix.drop(columns=["Intercept"])
+    return model_matrix
+
+
 def design_matrix_from_df(
     df: pd.DataFrame,
     Z_cols: str | list[str] | None = None,
@@ -38,9 +54,12 @@ def design_matrix_from_df(
         The column name(s) of the covariates to use.
     formula : str, optional
         A ``formulaic`` formula describing the design matrix, e.g.
-        ``"age + sex + age:sex"``. An intercept is never added (the baseline
-        distribution provides the intercept), so the formula is parsed as
-        ``"0 + " + formula``.
+        ``"age + sex + age:sex"``. The formula is materialised with its
+        implicit intercept so categoricals get reference-level
+        (reduced-rank) coding, and the intercept column is then dropped —
+        the baseline distribution provides the intercept, and a full
+        one-hot encoding would be exactly collinear with it (#252). Pass an
+        explicit ``"0 + ..."`` to opt out and keep full-rank coding.
 
     Returns
     -------
@@ -63,9 +82,10 @@ def design_matrix_from_df(
         )
 
     if formula is not None:
-        model_matrix = Formula("0 + " + formula).get_model_matrix(df)
-        feature_names = list(model_matrix.columns)
+        model_matrix = Formula(formula).get_model_matrix(df)
         model_spec = model_matrix.model_spec
+        model_matrix = drop_intercept(model_matrix)
+        feature_names = list(model_matrix.columns)
         Z = np.asarray(model_matrix, dtype=float)
         return Z, feature_names, model_spec
 
@@ -118,7 +138,8 @@ def prepare_Z(
         return np.asarray(Z)
 
     if model_spec is not None:
-        return np.asarray(model_spec.get_model_matrix(Z), dtype=float)
+        model_matrix = drop_intercept(model_spec.get_model_matrix(Z))
+        return np.asarray(model_matrix, dtype=float)
 
     if feature_names is not None:
         unknown = [c for c in feature_names if c not in Z.columns]
@@ -131,6 +152,95 @@ def prepare_Z(
         "named covariates. Fit the model with 'fit_from_df' (or pass a numpy "
         "array) to predict from a DataFrame."
     )
+
+
+def model_spec_to_meta(model_spec: Any) -> dict:
+    """
+    Capture the JSON-safe state needed to rebuild a ``formulaic`` model spec.
+
+    A model fit with a ``formula`` carries a ``formulaic`` ``ModelSpec`` that
+    knows how to expand raw covariates into the fitted design matrix -- in
+    particular the levels of any categorical factor (``sex`` -> ``sex[F]``,
+    ``sex[M]``). That spec is not itself JSON-serialisable, so this extracts
+    the minimum needed to regenerate an equivalent one on load: the categorical
+    factor levels and the names of the numeric covariate columns. The formula
+    string is stored separately by the caller.
+
+    Data-dependent (stateful) transforms such as ``scale(x)`` or ``center(x)``
+    keep fitted statistics in the spec's ``transform_state`` that cannot be
+    recovered from levels alone; a formula using one raises
+    ``NotImplementedError`` rather than round-tripping to a silently wrong
+    encoding.
+    """
+    if getattr(model_spec, "transform_state", None):
+        raise NotImplementedError(
+            "Serialising a formula that uses a data-dependent transform "
+            "(e.g. scale() or center()) is not supported: its fitted "
+            "statistics cannot be restored. Refit with the covariate entered "
+            "directly (the baseline distribution absorbs location and scale), "
+            "or with a covariate list instead of a formula."
+        )
+
+    value_vars = {
+        str(v)
+        for v in model_spec.variables
+        if any(str(r).endswith("VALUE") for r in v.roles)
+    }
+
+    factor_levels: dict[str, list] = {}
+    for factor, (_kind, state) in model_spec.encoder_state.items():
+        if "categories" not in state:
+            continue
+        factor = str(factor)
+        if factor not in value_vars:
+            # A wrapped categorical such as ``C(sex)`` does not name a bare
+            # column, so the template below cannot type it. These are rare;
+            # fall back to Wald-free refitting rather than guess.
+            raise NotImplementedError(
+                "Serialising a wrapped categorical term "
+                f"('{factor}') is not yet supported; enter the column "
+                "directly (surpyval treats string / object columns as "
+                "categorical automatically)."
+            )
+        factor_levels[factor] = [str(c) for c in state["categories"]]
+
+    numeric_features = sorted(value_vars - set(factor_levels))
+    return {
+        "factor_levels": factor_levels,
+        "numeric_features": numeric_features,
+    }
+
+
+def rebuild_model_spec(formula: str, meta: dict) -> Any:
+    """
+    Reconstruct a ``formulaic`` model spec from a formula and stored metadata.
+
+    A small template DataFrame is built with each categorical column typed to
+    the stored levels and each numeric column a placeholder, then the same
+    formula (with its implicit intercept, matching fit time — #252) is
+    re-materialised against it. ``formulaic`` derives an encoder state
+    identical to fit time (the encoding depends on the formula and the factor
+    levels, not the row values), so the returned spec expands raw covariates
+    exactly as the original did.
+    """
+    formula = str(formula)
+    factor_levels = meta.get("factor_levels", {})
+    numeric_features = meta.get("numeric_features", [])
+
+    height = max((len(lv) for lv in factor_levels.values()), default=1)
+    template: dict[str, Any] = {}
+    for col, levels in factor_levels.items():
+        reps = (height + len(levels) - 1) // len(levels)
+        template[col] = pd.Categorical(
+            (list(levels) * reps)[:height], categories=list(levels)
+        )
+    for col in numeric_features:
+        # 1.0 (not 0.0) keeps log / reciprocal terms finite while the spec is
+        # derived; only the encoder structure is kept, not these values.
+        template[col] = np.ones(height)
+
+    model_matrix = Formula(formula).get_model_matrix(pd.DataFrame(template))
+    return model_matrix.model_spec
 
 
 class DataFrameRegressionMixin:

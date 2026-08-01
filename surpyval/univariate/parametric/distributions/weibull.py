@@ -353,14 +353,8 @@ class Weibull_(ParametricFitter):
     def log_sf(self, x, alpha, beta):
         return -((x / alpha) ** beta)
 
-    def log_ff(self, x, alpha, beta):
-        return np.log(self.ff(x, alpha, beta))
-
     def mpp_x_transform(self, x):
         return np.log(x)
-
-    def mpp_inv_x_transform(self, x, gamma=0):
-        return np.exp(x - gamma)
 
     def mpp_y_transform(self, y, *params):
         mask = (y == 0) | (y == 1)

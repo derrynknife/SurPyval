@@ -1,17 +1,14 @@
-import json
-from pathlib import Path
-
 import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.beta.ml.forest.tree import SurvivalTree
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.score import score
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
-class RandomSurvivalForest:
+class RandomSurvivalForest(SerialisableMixin):
     """Random Survival Forest
 
     Specs:
@@ -230,12 +227,3 @@ class RandomSurvivalForest:
             for tree_dict in model_dict["trees"]
         ]
         return forest
-
-    def to_json(self, fp: str | Path) -> None:
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
-    @classmethod
-    def from_json(cls, fp: str | Path) -> "RandomSurvivalForest":
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))

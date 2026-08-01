@@ -8,12 +8,15 @@ from scipy.optimize import minimize
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._fit_skeleton import HazardIdentitiesMixin
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 
 
-class ParameterSubstitutionFitter(DataFrameRegressionMixin):
+class ParameterSubstitutionFitter(
+    HazardIdentitiesMixin, DataFrameRegressionMixin
+):
     def __init__(
         self,
         kind,
@@ -64,6 +67,10 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
             Z = np.ones_like(x) * Z
         else:
             Z = np.array(Z)
+        if Z.ndim == 1:
+            # A 1-D stress vector (one stress variable) becomes a single
+            # column so the per-stress masking below works (#261).
+            Z = Z.reshape(-1, 1)
 
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
@@ -91,6 +98,10 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
             Z = np.ones_like(x) * Z
         else:
             Z = np.array(Z)
+        if Z.ndim == 1:
+            # A 1-D stress vector (one stress variable) becomes a single
+            # column so the per-stress masking below works (#261).
+            Z = Z.reshape(-1, 1)
 
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
@@ -111,29 +122,9 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
 
         return hf
 
-    def df(self, x, Z, *params):
-        x = np.array(x)
-        if np.isscalar(Z):
-            Z = np.ones_like(x) * Z
-        else:
-            Z = np.array(Z)
-        return self.hf(x, Z, *params) * np.exp(-self.Hf(x, Z, *params))
-
-    def sf(self, x, Z, *params):
-        x = np.array(x)
-        if np.isscalar(Z):
-            Z = np.ones_like(x) * Z
-        else:
-            Z = np.array(Z)
-        return np.exp(-self.Hf(x, Z, *params))
-
-    def ff(self, x, Z, *params):
-        x = np.array(x)
-        if np.isscalar(Z):
-            Z = np.ones_like(x) * Z
-        else:
-            Z = np.array(Z)
-        return -np.expm1(-self.Hf(x, Z, *params))
+    # sf/ff/df and the log identities come from HazardIdentitiesMixin;
+    # Hf and hf above already do the scalar/1-D stress coercion (#261),
+    # so the identities need no preamble of their own.
 
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
         out = []
@@ -158,15 +149,6 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
 
-    def log_df(self, x, Z, *params):
-        return np.log(self.hf(x, Z, *params)) - self.Hf(x, Z, *params)
-
-    def log_sf(self, x, Z, *params):
-        return -self.Hf(x, Z, *params)
-
-    def log_ff(self, x, Z, *params):
-        return np.log(self.ff(x, Z, *params))
-
     def random(self, size, Z, *params):
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
@@ -175,6 +157,9 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
         Z_out = []
         if isinstance(Z, tuple):
             Z = np.random.uniform(*Z, size)
+        Z = np.asarray(Z)
+        if Z.ndim == 1:
+            Z = Z.reshape(-1, 1)
 
         for stress in np.unique(Z, axis=0):
             life_param_mask = (
@@ -211,7 +196,12 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
     ) -> ParametricRegressionModel:
         x_arr: npt.NDArray = np.asarray(x)
         data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
-        data.add_covariates(Z)
+        # A 1-D stress vector (one stress variable) becomes a single column
+        # so the per-stress masking in the initialiser works (#261).
+        Z_arr = np.asarray(Z)
+        if Z_arr.ndim == 1:
+            Z_arr = Z_arr.reshape(-1, 1)
+        data.add_covariates(Z_arr)
         life_parameter_idx = self.param_map[self.life_parameter]
         if fixed is None:
             fixed = {}
@@ -289,11 +279,13 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
         else:
             phi_param_map = self.life_model.phi_param_map
 
+        # Keep the merged map local: assigning it to ``self.param_map``
+        # mutated the fitter, so a second ``fit()`` re-merged on top of the
+        # already-merged map and produced out-of-range indices (#261).
         param_map = {
             **self.param_map,
             **{k: v + len(self.param_map) for k, v in phi_param_map.items()},
         }
-        self.param_map = param_map
 
         transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
             x, bounds, fixed, param_map
@@ -335,7 +327,10 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
         model.phi_params = phi_params
         model.res = res
         model._neg_ll = res.fun
-        model.fixed = self.fixed
+        # Store the full merged fixed dict (baseline-derived + fitter-level +
+        # user-supplied), not just the fitter's own — otherwise standard
+        # errors are reported for parameters that were held fixed (#261).
+        model.fixed = fixed
         model.k_dist = self.k_dist
         model.fun = fun
 

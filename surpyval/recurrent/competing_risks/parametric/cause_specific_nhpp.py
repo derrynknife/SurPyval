@@ -19,8 +19,6 @@ reuses the whole intensity-fitting, inference and diagnostic machinery
 unchanged.
 """
 
-import json
-
 from matplotlib import pyplot as plt
 
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
@@ -29,10 +27,10 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
 )
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.utils.recurrent_utils import handle_xicn
-from surpyval.serialisation import stamp_schema, to_native
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 
-class CauseSpecificNHPP:
+class CauseSpecificNHPP(SerialisableMixin):
     """
     Parametric cause-specific intensity model for a recurrent process with
     competing event types.
@@ -73,11 +71,6 @@ class CauseSpecificNHPP:
             }
         )
 
-    def to_json(self, fp):
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict):
         """
@@ -100,13 +93,6 @@ class CauseSpecificNHPP:
             for cause, sub in zip(out.event_types, model_dict["models"])
         }
         return out
-
-    @classmethod
-    def from_json(cls, fp):
-        """Load a cause-specific NHPP from a JSON file written by
-        :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     # --- per-item observation windows ------------------------------------
 
@@ -203,9 +189,7 @@ class CauseSpecificNHPP:
                 cc.append(1)
                 ctl.append(entry)
 
-            cause_data = handle_xicn(
-                cx, ci, cc, tl=ctl, as_recurrent_data=True
-            )
+            cause_data = handle_xicn(cx, ci, cc, tl=ctl)
             out.models[cause] = dist.fit_from_recurrent_data(
                 cause_data, how=how, init=init
             )
@@ -260,9 +244,7 @@ class CauseSpecificNHPP:
                 "`e` (event types) is required for a cause-specific "
                 "intensity model."
             )
-        data = handle_xicn(
-            x, i, c, n, tl=tl, tr=tr, e=e, as_recurrent_data=True
-        )
+        data = handle_xicn(x, i, c, n, tl=tl, tr=tr, e=e)
         return cls.fit_from_recurrent_data(data, dist=dist, how=how, init=init)
 
     @classmethod

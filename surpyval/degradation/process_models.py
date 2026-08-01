@@ -21,14 +21,12 @@ degradation:
   distribution comes from the (regularised) incomplete gamma function.
 """
 
-import json
-
 import numpy as np
 from scipy.integrate import quad
 from scipy.optimize import brentq, minimize_scalar
 from scipy.special import gammaincc, gammaln
 from scipy.stats import norm
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 __all__ = [
     "WienerProcess",
@@ -121,7 +119,7 @@ class ProcessRUL:
 # --------------------------------------------------------------------------
 
 
-class WienerProcessModel:
+class WienerProcessModel(SerialisableMixin):
     """
     A fitted Wiener-process degradation model, ``W(t) = mu*t + sigma*B(t)``.
 
@@ -159,11 +157,6 @@ class WienerProcessModel:
             }
         )
 
-    def to_json(self, fp) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "WienerProcessModel":
         """Rebuild a Wiener-process model from a :meth:`to_dict` dict."""
@@ -175,12 +168,6 @@ class WienerProcessModel:
         return cls(
             model_dict["mu"], model_dict["sigma"], model_dict["threshold"]
         )
-
-    @classmethod
-    def from_json(cls, fp) -> "WienerProcessModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def _ig(self, distance):
         # Inverse-Gaussian (mean nu, shape lam) parameters for first passage
@@ -349,7 +336,7 @@ class WienerProcess:
 # --------------------------------------------------------------------------
 
 
-class GammaProcessModel:
+class GammaProcessModel(SerialisableMixin):
     """
     A fitted Gamma-process degradation model with stationary independent
     increments: over an interval ``dt`` the degradation increment is
@@ -388,11 +375,6 @@ class GammaProcessModel:
             }
         )
 
-    def to_json(self, fp) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "GammaProcessModel":
         """Rebuild a gamma-process model from a :meth:`to_dict` dict."""
@@ -404,12 +386,6 @@ class GammaProcessModel:
         return cls(
             model_dict["alpha"], model_dict["beta"], model_dict["threshold"]
         )
-
-    @classmethod
-    def from_json(cls, fp) -> "GammaProcessModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def _ff_distance(self, t, distance):
         # P(T <= t) = P(W(t) >= distance) with W(t) ~ Gamma(alpha t, beta).

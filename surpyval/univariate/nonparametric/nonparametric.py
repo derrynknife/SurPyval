@@ -1,5 +1,3 @@
-import json
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 import matplotlib.pyplot as plt
@@ -10,7 +8,7 @@ from scipy.interpolate import PchipInterpolator, interp1d
 from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -36,7 +34,7 @@ def interp_function(
     return interp1d(x, y, kind=kind, bounds_error=False, fill_value=np.nan)
 
 
-class NonParametric(NonParametricDistribution):
+class NonParametric(SerialisableMixin, NonParametricDistribution):
     """
     Result of ``.fit()`` method for every non-parametric
     surpyval distribution. This means that each of the
@@ -116,10 +114,6 @@ class NonParametric(NonParametricDistribution):
             R = interp_function(self.x, self.R, kind=interp)(x)
 
         R = R[rev]
-        # Maybe set a parameter where 'extrapolate' is False
-        # x = x[rev]
-        # R = np.where(x < self.x.min(), np.nan, R)
-        # R = np.where(x > self.x.max(), np.nan, R)
         return R
 
     def ff(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
@@ -187,6 +181,24 @@ class NonParametric(NonParametricDistribution):
         idx = np.argsort(x)
         rev = np.argsort(idx)
         x = x[idx]
+        if x.size == 1:
+            # The pairwise-difference construction below yields a single
+            # zero for scalar input (nothing to backfill from), so hf()
+            # and df() always returned NaN for scalars (#282). Use the
+            # model's own step ladder instead: the discrete hazard
+            # increment of the step containing x (forward-filled over
+            # zero-increment censoring steps), matching what the array
+            # path returns for the same point inside a grid.
+            xs = np.atleast_1d(self.x)
+            H_steps = np.atleast_1d(self.Hf(xs, interp=interp))
+            dH = np.diff(np.hstack([[0.0], H_steps]))
+            pos = np.searchsorted(xs, x[0], side="right") - 1
+            if pos < 0:
+                return np.array([np.nan])[rev]
+            sub = dH[: pos + 1]
+            nz = sub[sub > 0]
+            out = nz[-1] if nz.size else np.nan
+            return np.array([out])[rev]
         hf = np.diff(
             np.hstack(
                 [self.Hf(x[0], interp=interp), self.Hf(x, interp=interp)]
@@ -358,7 +370,7 @@ class NonParametric(NonParametricDistribution):
         http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
         """
-        if on in ["df", "hf"]:
+        if on in []:
             raise ValueError(
                 "NonParametric cannot do confidence bounds on "
                 + "density or hazard rate functions. Try Hf, "
@@ -368,9 +380,9 @@ class NonParametric(NonParametricDistribution):
         old_err_state = np.seterr(all="ignore")
 
         # Reverse for ff and F
-        if on in ["ff", "F", "Hf", "hf", "df"] and bound == "lower":
+        if on in ["ff", "F", "Hf"] and bound == "lower":
             bound = "upper"
-        elif on in ["ff", "F", "Hf", "hf", "df"] and bound == "upper":
+        elif on in ["ff", "F", "Hf"] and bound == "upper":
             bound = "lower"
 
         cb = self.R_cb(
@@ -439,7 +451,6 @@ class NonParametric(NonParametricDistribution):
 
         if bound_type == "exp":
             # Exponential Greenwood confidence
-            # print(self.greenwood)
             R_out = self.greenwood * 1.0 / (np.log(self.R) ** 2)
             R_out = np.log(-np.log(self.R)) - stat * np.sqrt(R_out)
             R_out = np.exp(-np.exp(R_out))
@@ -449,15 +460,22 @@ class NonParametric(NonParametricDistribution):
             R_out = self.R + np.sqrt(self.greenwood * self.R**2) * stat
 
         # Allows for confidence bound to be estimated up to the last value.
-        # only used in event that there is no right censoring.
+        # only used in event that there is no right censoring. When *no*
+        # point on the curve has a finite bound (e.g. a single
+        # observation), fall back to the point estimate rather than
+        # propagating an all-NaN nanmin (#282).
+        def _fill_upper(row):
+            finite = np.isfinite(row)
+            if finite.any():
+                return np.where(finite, row, row[finite].min())
+            return np.asarray(self.R, dtype=float).copy()
+
         if bound == "upper":
-            R_out = np.where(np.isfinite(R_out), R_out, np.nanmin(R_out))
+            R_out = _fill_upper(R_out)
         elif bound == "lower":
             R_out = np.where(np.isfinite(R_out), R_out, 0)
         else:
-            R_out[0, :] = np.where(
-                np.isfinite(R_out[0, :]), R_out[0, :], np.nanmin(R_out[0, :])
-            )
+            R_out[0, :] = _fill_upper(R_out[0, :])
             R_out[1, :] = np.where(np.isfinite(R_out[1, :]), R_out[1, :], 0)
 
         if interp == "step":
@@ -715,15 +733,8 @@ class NonParametric(NonParametricDistribution):
         cb : numpy array
             The ``[lower, upper]`` interval of the (restricted) mean.
         """
-        if tau is None:
-            tau = np.max(self.x)
-
-        mu = self.mean(tau=tau)
-        var = self._rmst_variance(tau)
-
-        z = norm.ppf(1 - alpha_ci / 2)
-        se = np.sqrt(var)
-        return np.array([mu - z * se, mu + z * se])
+        r = self.rmst(tau=tau, alpha_ci=alpha_ci)
+        return np.array([r["lower"], r["upper"]])
 
     def _rmst_variance(self, tau: float) -> float:
         r"""Variance of the restricted mean survival time up to ``tau``:
@@ -1356,10 +1367,6 @@ class NonParametric(NonParametricDistribution):
 
         return stamp_schema(out)
 
-    def to_json(self, fp: str | Path) -> None:
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "NonParametric":
         r"""
@@ -1397,11 +1404,6 @@ class NonParametric(NonParametricDistribution):
             out.data = data
 
         return out
-
-    @classmethod
-    def from_json(cls, fp: str | Path) -> "NonParametric":
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
 
 def rmst_diff(

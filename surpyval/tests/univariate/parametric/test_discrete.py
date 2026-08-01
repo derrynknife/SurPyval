@@ -218,6 +218,45 @@ def test_supports_mpp_is_false():
         Geometric.fit(Geometric.random(200, 0.3), how="MPP")
 
 
+def test_discrete_distributions_are_discrete_fitters():
+    # The discrete/continuous distinction is structural: every integer-
+    # support distribution is a DiscreteParametricFitter with the
+    # ``discrete`` trait, and the continuous catalogue is not.
+    from surpyval import Bernoulli, Binomial, FixedEventProbability
+    from surpyval.univariate.parametric import DiscreteParametricFitter
+
+    for dist in (
+        Geometric,
+        Poisson,
+        DiscreteWeibull,
+        NegativeBinomial,
+        Binomial,
+        Bernoulli,
+        FixedEventProbability,
+        BetaGeometric,
+        DiscretizedWeibull,
+    ):
+        assert isinstance(dist, DiscreteParametricFitter), dist.name
+        assert dist.discrete is True
+        assert dist.supports_mpp is False
+    for dist in (Weibull, Gamma, LogNormal, Normal):
+        assert not isinstance(dist, DiscreteParametricFitter)
+        assert dist.discrete is False
+
+
+def test_mps_rejected_for_discrete():
+    # Maximum product of spacings is defined by increments of a continuous
+    # CDF; repeated integers make the spacings degenerate, so it must be
+    # rejected with a clear error rather than fit nonsense.
+    x = Geometric.random(200, 0.3)
+    with pytest.raises(ValueError, match="MPS"):
+        Geometric.fit(x, how="MPS")
+    with pytest.raises(ValueError, match="MPS"):
+        Poisson.fit(Poisson.random(200, 3.0), how="MPS")
+    # MLE remains the standard path.
+    assert 0.0 < Geometric.fit(x).params[0] < 1.0
+
+
 # --- Tier 2: Poisson, Beta-Geometric, and the Discretize wrapper ----------
 
 

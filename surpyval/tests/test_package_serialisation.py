@@ -95,6 +95,63 @@ def test_parametric_regression_dispatch():
     assert np.allclose(model.sf(t, Z=z), restored.sf(t, Z=z))
 
 
+def _formula_df(seed=0, n=200):
+    import pandas as pd
+
+    rng = np.random.default_rng(seed)
+    sex = rng.choice(["M", "F"], n)
+    age = rng.uniform(30, 70, n)
+    x = 10 * np.exp(-0.4 * (sex == "M")) * rng.weibull(2.0, n)
+    return pd.DataFrame(
+        {
+            "time": x,
+            "c": rng.integers(0, 2, n).astype(int),
+            "age": age,
+            "sex": sex,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "formula", ["age + sex", "age + sex + age:sex", "np.log(age) + sex"]
+)
+def test_formula_regression_round_trips_with_raw_covariates(formula):
+    # #244: a formula fit with a categorical must round-trip so the restored
+    # model expands *raw* covariates (sex -> sex[F], sex[M]) identically.
+    import pandas as pd
+
+    df = _formula_df()
+    model = WeibullPH.fit_from_df(df, x_col="time", c_col="c", formula=formula)
+    restored = surpyval.from_dict(_rt(model.to_dict()))
+
+    raw_Z = pd.DataFrame({"age": [40.0, 55.0], "sex": ["M", "F"]})
+    t = np.array([5.0, 12.0])
+    assert np.allclose(model.sf(t, raw_Z), restored.sf(t, raw_Z))
+
+
+def test_formula_cox_round_trips_with_raw_covariates():
+    import pandas as pd
+
+    df = _formula_df(seed=2)
+    model = CoxPH.fit_from_df(df, x_col="time", c_col="c", formula="age + sex")
+    restored = surpyval.from_dict(_rt(model.to_dict()))
+
+    raw_Z = pd.DataFrame({"age": [40.0, 55.0], "sex": ["M", "F"]})
+    t = np.array([5.0, 12.0])
+    assert np.allclose(model.sf(t, raw_Z), restored.sf(t, raw_Z))
+
+
+def test_stateful_transform_formula_serialisation_raises():
+    df = _formula_df(seed=3)
+    model = WeibullPH.fit_from_df(
+        df, x_col="time", c_col="c", formula="scale(age) + sex"
+    )
+    # scale() keeps fitted stats that cannot be restored from levels; the
+    # failure is raised early (at to_dict) rather than a silently wrong encode.
+    with pytest.raises(NotImplementedError, match="data-dependent transform"):
+        model.to_dict()
+
+
 # -- tagged families (one representative per family) --------------------------
 
 

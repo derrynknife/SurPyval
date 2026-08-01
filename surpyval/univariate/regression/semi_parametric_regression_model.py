@@ -1,20 +1,22 @@
-import json
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils import _get_idx
 
-from .regression_data import prepare_Z
+from .regression_data import (
+    model_spec_to_meta,
+    prepare_Z,
+    rebuild_model_spec,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
 
 
-class SemiParametricRegressionModel:
+class SemiParametricRegressionModel(SerialisableMixin):
     # Covariate metadata populated when the model is fit from a pandas
     # DataFrame via ``CoxPH.fit_from_df``.
     feature_names: list[str] | None = None
@@ -52,6 +54,11 @@ class SemiParametricRegressionModel:
     #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
     #: by ``CoxPH.fit`` for residuals and the proportional-hazards test.
     _fit_data: dict
+    #: For a TVC (start-stop) fit: subject id per *internal* (sorted) row,
+    #: and the permutation from the caller's row order to the internal order
+    #: (#259 — used to align user-supplied cluster labels).
+    tvc_subject_ids: "npt.NDArray | None" = None
+    tvc_row_order: "npt.NDArray | None" = None
 
     def __init__(self, kind: str, parameterization: str) -> None:
         self.kind = kind
@@ -127,13 +134,12 @@ class SemiParametricRegressionModel:
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
-            out["formula"] = self.formula
+            out["formula"] = str(self.formula)
+            # Persist the transformer state so a restored model expands raw
+            # covariates (e.g. categoricals) the same way (#244).
+            if self._model_spec is not None:
+                out["formula_meta"] = model_spec_to_meta(self._model_spec)
         return stamp_schema(out)
-
-    def to_json(self, fp: "str | Path") -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "SemiParametricRegressionModel":
@@ -174,13 +180,13 @@ class SemiParametricRegressionModel:
             out._neg_log_like = float(model_dict["_neg_log_like"])
         out.feature_names = model_dict.get("feature_names")
         out.formula = model_dict.get("formula")
-        return out
 
-    @classmethod
-    def from_json(cls, fp: "str | Path") -> "SemiParametricRegressionModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
+        # Rebuild the formula's design-matrix transformer so the restored
+        # model expands raw covariates the same way (#244).
+        formula_meta = model_dict.get("formula_meta")
+        if out.formula is not None and formula_meta is not None:
+            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
+        return out
 
     def _baseline_arrays(
         self, stratum: Any
@@ -355,24 +361,20 @@ class SemiParametricRegressionModel:
         order = np.argsort(xl_a)
         xl_a, xr_a, Z_a = xl_a[order], xr_a[order], Z_a[order]
 
-        # The active interval at a baseline jump time u is the last interval
-        # whose xl is at or before u; times outside the path are clamped to
-        # the first/last interval (covariate held constant).
+        # The active interval at a baseline jump time u follows the fitted
+        # (xl, xr] convention: the interval with xl < u <= xr, i.e. the OLD
+        # covariate is still at risk at exactly its stop time (#259 —
+        # ``side="right"`` credited a jump at a change time to the NEW
+        # covariate, contradicting the likelihood). Times outside the path
+        # are clamped to the first/last interval (covariate held constant).
         base_t = self.x
-        active = np.searchsorted(xl_a, base_t, side="right") - 1
-        active = np.clip(active, 0, xl_a.shape[0] - 1)
-        phi = np.exp(Z_a[active] @ self.beta)
-        H_cum = np.cumsum(self.h0 * phi)
-
         if times is None:
             within = (base_t > xl_a[0]) & (base_t <= xr_a[-1])
             query = base_t[within]
         else:
             query = np.atleast_1d(np.asarray(times, dtype=float))
 
-        idx = np.searchsorted(base_t, query, side="right") - 1
-        last = H_cum.shape[0] - 1
-        Hf = np.where(idx >= 0, H_cum[np.clip(idx, 0, last)], 0.0)
+        Hf = self._tvc_cumhaz(query, xl_a, Z_a)
         return query, np.exp(-Hf), Hf
 
     def _tvc_cumhaz(self, query, starts, Zseg):
@@ -388,7 +390,9 @@ class SemiParametricRegressionModel:
         weighted by the multiplier of the covariate *active* at each jump.
         """
         base_t = self.x
-        active = np.searchsorted(starts, base_t, side="right") - 1
+        # (xl, xr] convention, matching the fit: the old covariate is at
+        # risk at exactly its stop time (#259).
+        active = np.searchsorted(starts, base_t, side="left") - 1
         active = np.clip(active, 0, starts.shape[0] - 1)
         phi = np.exp(Zseg[active] @ self.beta)
         H_cum = np.cumsum(self.h0 * phi)

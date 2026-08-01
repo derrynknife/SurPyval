@@ -33,7 +33,6 @@ two-point cycle rather than a fixed point -- a known feature of the estimator
 -- which is detected and resolved by averaging the cycle.
 """
 
-import json
 import warnings
 
 import numpy as np
@@ -43,7 +42,7 @@ from surpyval.utils import (
     wrangle_Z,
     xcnt_handler,
 )
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 
 def _residual_km(e, delta, w):
@@ -145,7 +144,7 @@ def _fit_beta(Y, delta, Z, w, tol, max_iter):
     return beta, it, converged
 
 
-class BuckleyJamesModel:
+class BuckleyJamesModel(SerialisableMixin):
     """
     A fitted Buckley-James accelerated-failure-time model.
 
@@ -220,13 +219,16 @@ class BuckleyJamesModel:
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
-            out["formula"] = self.formula
-        return stamp_schema(out)
+            out["formula"] = str(self.formula)
+            # Persist the categorical levels / numeric columns needed to
+            # rebuild the formula's design-matrix transformer on load, so a
+            # restored model expands raw covariates the same way (#244,
+            # applied to Buckley-James in #261).
+            if getattr(self, "_model_spec", None) is not None:
+                from ..regression_data import model_spec_to_meta
 
-    def to_json(self, fp):
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
+                out["formula_meta"] = model_spec_to_meta(self._model_spec)
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict):
@@ -261,13 +263,12 @@ class BuckleyJamesModel:
         )
         out.feature_names = model_dict.get("feature_names")
         out.formula = model_dict.get("formula")
-        return out
+        formula_meta = model_dict.get("formula_meta")
+        if out.formula is not None and formula_meta is not None:
+            from ..regression_data import rebuild_model_spec
 
-    @classmethod
-    def from_json(cls, fp):
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
+            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
+        return out
 
     def sf(self, x, Z):
         """Survival ``P(T > x | Z) = S_eps(log x - beta'Z)`` for a single

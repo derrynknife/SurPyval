@@ -1,13 +1,12 @@
-import json
 from collections import namedtuple
 from copy import copy, deepcopy
 from math import comb
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 import matplotlib.pyplot as plt
 import numpy.typing as npt
 from autograd import jacobian
+from scipy.optimize import NonlinearConstraint, brentq, minimize
 from scipy.special import ndtri as z
 from scipy.stats import uniform
 
@@ -20,7 +19,8 @@ if TYPE_CHECKING:
 
     from surpyval.utils.surpyval_data import SurpyvalData
 
-from surpyval.serialisation import stamp_schema, to_native
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.univariate.information_criteria import InformationCriteriaMixin
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -36,7 +36,9 @@ from .probability_plotting import (
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
 
 
-class Parametric(ParametricDistribution):
+class Parametric(
+    InformationCriteriaMixin, SerialisableMixin, ParametricDistribution
+):
     """
     Result of ``.fit()`` or ``.from_params()`` method for every parametric
     surpyval distribution.
@@ -122,11 +124,6 @@ class Parametric(ParametricDistribution):
         self.param_map = param_map
 
     @classmethod
-    def from_json(cls, fp: str | Path) -> "Parametric":
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
-
-    @classmethod
     def from_dict(cls, model_dict: dict) -> "Parametric":
         # Imported here since parametric_fitter imports this module
         from surpyval.univariate.parametric.parametric_fitter import (
@@ -147,7 +144,10 @@ class Parametric(ParametricDistribution):
             )
         how = model_dict["how"]
         if "data" in model_dict:
-            data = model_dict["data"]
+            # Coerce the JSON lists back to arrays so downstream users
+            # (``bic``, ``aic_c``, re-serialisation with data) work on a
+            # restored model just as on a fitted one (#261).
+            data = {k: np.asarray(v) for k, v in model_dict["data"].items()}
         else:
             data = None
         offset = model_dict["offset"]
@@ -174,6 +174,10 @@ class Parametric(ParametricDistribution):
             out._neg_ll = model_dict["_neg_ll"]
 
         out.params = np.array(model_dict["params"])
+
+        # Restore the support interval, which fit-time construction sets via
+        # the fitter (#261).
+        dist._set_support(out, offset)
 
         return out
 
@@ -214,21 +218,14 @@ class Parametric(ParametricDistribution):
         else:
             out["gamma"] = 0.0
 
-        if hasattr(self, "hess_inv"):
-            if self.hess_inv is None:
-                pass
-            else:
-                out["hess_inv"] = self.hess_inv.tolist()
+        if getattr(self, "hess_inv", None) is not None:
+            out["hess_inv"] = self.hess_inv.tolist()
         if getattr(self, "cov_matrix", None) is not None:
             out["cov_matrix"] = self.cov_matrix.tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
 
         return stamp_schema(out)
-
-    def to_json(self, fp: str | Path) -> None:
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
 
     def __repr__(self) -> str:
         if hasattr(self, "params"):
@@ -260,11 +257,44 @@ class Parametric(ParametricDistribution):
             return "Unable to fit values"
 
     def param_cb(
-        self, name: str, alpha_ci: float = 0.05, bound: str = "two-sided"
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         """
         Method to calculate the confidence bound on a parameter.
+
+        Two interval methods are available via ``method``:
+
+        - ``"wald"`` (default) -- a symmetric bound from the parameter's
+          standard error, computed on a scale chosen from the parameter's
+          support (log for a positive parameter, logit for a probability) so
+          the interval stays valid.
+        - ``"lr"`` -- a profile-likelihood (likelihood-ratio) bound. The
+          interval is the set of values whose profile deviance
+          :math:`2[\\ell(\\hat\\theta) - \\ell_p(\\theta)]` stays below the
+          :math:`\\chi^2_1` critical value, with the remaining parameters
+          re-optimised at each candidate. It is transformation-invariant,
+          respects the parameter's boundary, and need not be symmetric about
+          the estimate -- usually better small-sample coverage than Wald, and
+          the reliability-engineering default. Aliases: ``"likelihood"``,
+          ``"likelihood-ratio"``, ``"profile"``.
         """
+        if method.lower() in (
+            "lr",
+            "likelihood",
+            "likelihood-ratio",
+            "profile",
+        ):
+            return self._param_cb_lr(name, alpha_ci, bound)
+        elif method.lower() != "wald":
+            raise ValueError(
+                f"Unknown confidence-bound method '{method}'; "
+                "use 'wald' or 'lr'."
+            )
+
         if name in ("p", "f0"):
             if name == "p" and not self.lfp:
                 raise ValueError("'p' is only estimated for lfp models")
@@ -285,7 +315,14 @@ class Parametric(ParametricDistribution):
         else:
             idx = self.dist.param_map[name]
             p_hat = self.params[idx]
-            var = self.hess_inv[idx, idx]
+            hess_inv = getattr(self, "hess_inv", None)
+            if hess_inv is None:
+                raise ValueError(
+                    "Model carries no parameter covariance (the Hessian was "
+                    "singular at the optimum, or the model was not fit by "
+                    "MLE); confidence bounds are unavailable."
+                )
+            var = hess_inv[idx, idx]
             param_bounds = self.dist.bounds[idx]
 
         if bound == "two-sided":
@@ -297,6 +334,11 @@ class Parametric(ParametricDistribution):
         elif bound == "upper":
             alpha = alpha_ci
             bounds = np.array([1])
+        else:
+            raise ValueError(
+                "bound must be 'two-sided', 'lower' or 'upper'; got "
+                f"{bound!r}"
+            )
 
         if param_bounds == (0, None):
             exponent = z(alpha) * np.sqrt(var) / p_hat
@@ -311,6 +353,174 @@ class Parametric(ParametricDistribution):
             factor = z(alpha) * np.sqrt(var)
             bounds = -bounds * factor
             return p_hat + bounds
+
+    def _user_fixed_idx(self) -> set:
+        """Core-parameter indices the user fixed at fit time (empty set for
+        models without fitting info, e.g. ``from_params``)."""
+        info = getattr(self, "fitting_info", None) or {}
+        return set(info.get("fixed_idx", []) or [])
+
+    def _profile_neg_ll(self, idx: int, value: float) -> float:
+        """Profile negative log-likelihood with core parameter ``idx`` fixed.
+
+        Holds the ``idx``-th distribution parameter at ``value`` and minimises
+        the negative log-likelihood over the remaining core parameters (warm
+        started from the fit). ``gamma``, ``f0`` and ``p`` are held at their
+        fitted values -- likelihood-ratio bounds for offset / LFP / ZI models
+        are not yet supported, so the public entry point rejects them before
+        this is reached.
+        """
+        fixed = np.array(self.params, dtype=float)
+        fixed[idx] = value
+        # Parameters the user fixed at fit time stay fixed during the
+        # profile — re-freeing them makes the profile drop below the fitted
+        # nll and silently inflates the interval (#255).
+        user_fixed = self._user_fixed_idx()
+        free_idx = [
+            j for j in range(len(fixed)) if j != idx and j not in user_fixed
+        ]
+
+        def neg_ll(theta):
+            return float(
+                self.dist._neg_ll_func(
+                    self.surv_data, *theta, self.gamma, self.f0, self.p
+                )
+            )
+
+        if not free_idx:
+            # Single-parameter distribution: nothing left to profile over.
+            return neg_ll(fixed)
+
+        def obj(free_vals):
+            theta = fixed.copy()
+            theta[free_idx] = free_vals
+            return neg_ll(theta)
+
+        sci_bounds = []
+        for j in free_idx:
+            lo, hi = self.dist.bounds[j]
+            # A hard zero lower bound is nudged up so log-terms stay finite.
+            lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
+            hi_s = np.inf if hi is None else hi
+            sci_bounds.append((lo_s, hi_s))
+
+        x0 = fixed[free_idx]
+        res = minimize(obj, x0, method="L-BFGS-B", bounds=sci_bounds)
+        best = res.fun
+        if not np.isfinite(best):
+            res2 = minimize(obj, x0, method="Nelder-Mead")
+            if np.isfinite(res2.fun):
+                best = res2.fun
+        return float(best)
+
+    def _param_cb_lr(
+        self, name: str, alpha_ci: float, bound: str
+    ) -> npt.NDArray:
+        """Profile-likelihood (likelihood-ratio) bound on a parameter.
+
+        The bound(s) solve ``2[nll_p(v) - nll_hat] = c`` where ``nll_p`` is the
+        profile negative log-likelihood, ``nll_hat`` the fitted value, and
+        ``c`` the chi-squared critical value (``z**2``) at the requested level.
+        The deviance is zero at the estimate and increases away from it, so
+        each side is bracketed by stepping out in units of the Wald standard
+        error and then solved by ``brentq``. A parameter boundary reached
+        before the deviance crosses ``c`` returns the boundary (an interval
+        open at the support edge).
+        """
+        if self.method != "MLE":
+            raise ValueError("Only MLE has confidence bounds")
+        if not hasattr(self, "surv_data"):
+            raise ValueError(
+                "Likelihood-ratio bounds need the original data, which a "
+                "deserialised model does not carry; refit in-process, or "
+                "use method='wald' (which uses the stored covariance)."
+            )
+        if self.offset or self.lfp or self.zi:
+            raise NotImplementedError(
+                "Likelihood-ratio bounds are not yet available for offset, "
+                "limited-failure-population or zero-inflated models; use "
+                "method='wald'."
+            )
+        if name in ("p", "f0"):
+            raise NotImplementedError(
+                "Likelihood-ratio bounds on 'p' / 'f0' are not yet "
+                "available; use method='wald'."
+            )
+
+        idx = self.dist.param_map[name]
+        if idx in self._user_fixed_idx():
+            raise ValueError(
+                f"'{name}' was fixed at fit time; a confidence bound on a "
+                "fixed parameter is not defined."
+            )
+        theta_hat = float(self.params[idx])
+        nll_hat = float(
+            self.dist._neg_ll_func(
+                self.surv_data, *self.params, self.gamma, self.f0, self.p
+            )
+        )
+
+        lo_b, hi_b = self.dist.bounds[idx]
+        lo_b = -np.inf if lo_b is None else lo_b
+        hi_b = np.inf if hi_b is None else hi_b
+
+        if bound == "two-sided":
+            crit = z(1.0 - alpha_ci / 2.0) ** 2
+        elif bound in ("lower", "upper"):
+            crit = z(1.0 - alpha_ci) ** 2
+        else:
+            raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
+
+        hess_inv = getattr(self, "hess_inv", None)
+        if (
+            hess_inv is not None
+            and np.ndim(hess_inv) == 2
+            and np.isfinite(hess_inv[idx, idx])
+            and hess_inv[idx, idx] > 0
+        ):
+            se = float(np.sqrt(hess_inv[idx, idx]))
+        else:
+            se = 0.5 * abs(theta_hat) if theta_hat != 0 else 1.0
+
+        def deviance(v):
+            return 2.0 * (self._profile_neg_ll(idx, v) - nll_hat)
+
+        def solve_side(direction):
+            limit = hi_b if direction > 0 else lo_b
+            below = theta_hat  # deviance(below) ~ 0 < crit
+            step = se
+            for _ in range(80):
+                v = theta_hat + direction * step
+                at_edge = (direction > 0 and v >= limit) or (
+                    direction < 0 and v <= limit
+                )
+                if at_edge:
+                    v = limit
+                if deviance(v) >= crit:
+                    a, b = sorted((below, v))
+                    return float(
+                        brentq(
+                            lambda x: deviance(x) - crit,
+                            a,
+                            b,
+                            xtol=1e-8,
+                            rtol=1e-8,
+                        )
+                    )
+                if at_edge:
+                    # Hit the support boundary without crossing: the interval
+                    # is open at the edge.
+                    return float(limit)
+                below = v
+                step *= 1.6
+            return float(v)
+
+        if bound == "two-sided":
+            return np.array([solve_side(-1), solve_side(1)])
+        elif bound == "lower":
+            return np.array([solve_side(-1)])
+        else:
+            return np.array([solve_side(1)])
 
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -345,7 +555,13 @@ class Parametric(ParametricDistribution):
         """
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
-        return 1 - self.p + (self.p - self.f0) * self.dist.sf(xg, *self.params)
+        base_sf = self.dist.sf(xg, *self.params)
+        # Below the (possibly offset) support the base distribution has not
+        # started: clamp to R0 = 1 rather than evaluating the base function
+        # at a negative argument (#256).
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        base_sf = np.where(xg < s0, 1.0, base_sf)
+        return 1 - self.p + (self.p - self.f0) * base_sf
 
     def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -380,10 +596,13 @@ class Parametric(ParametricDistribution):
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
         x = np.asarray(x)
-
-        return self.f0 + (self.p - self.f0) * self.dist.ff(
-            x - self.gamma, *self.params  # type: ignore[operator]
-        )
+        xg = x - self.gamma  # type: ignore[operator]
+        base_ff = self.dist.ff(xg, *self.params)
+        # Below the (possibly offset) support the base CDF is 0; evaluating
+        # the base function at a negative argument gave F < 0 (#256).
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        base_ff = np.where(xg < s0, 0.0, base_ff)
+        return self.f0 + (self.p - self.f0) * base_ff
 
     def df(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -418,22 +637,18 @@ class Parametric(ParametricDistribution):
         array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
         """
         x = np.asarray(x)
+        xg = x - self.gamma  # type: ignore[operator]
+        base_df = self.dist.df(xg, *self.params)
+        # Below the (possibly offset) support the density is 0 (#256).
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        base_df = np.where(xg < s0, 0.0, base_df)
         if self.f0 == 0:
-            df = self.p * self.dist.df(
-                x - self.gamma, *self.params  # type: ignore[operator]
-            )
+            df = self.p * base_df
         else:
-            df = np.where(
-                x == 0,
-                self.f0,
-                (
-                    (1 - self.f0)
-                    * self.p
-                    * self.dist.df(
-                        x - self.gamma, *self.params  # type: ignore[operator]
-                    )
-                ),
-            )
+            # The continuous part carries mass (p - f0) — the same constant
+            # as sf/ff and the likelihood; (1 - f0) * p was inconsistent
+            # with them for combined LFP + ZI models (#256).
+            df = np.where(x == 0, self.f0, (self.p - self.f0) * base_df)
         return df
 
     def hf(self, x: npt.ArrayLike) -> npt.NDArray:
@@ -469,10 +684,10 @@ class Parametric(ParametricDistribution):
         array([0.003, 0.012, 0.027, 0.048, 0.075])
         """
         x = np.asarray(x)
-        if self.p == 1:
-            return self.dist.hf(
-                x - self.gamma, *self.params  # type: ignore[operator]
-            )
+        if (self.p == 1) and (self.f0 == 0):
+            xg = x - self.gamma  # type: ignore[operator]
+            s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+            return np.where(xg < s0, 0.0, self.dist.hf(xg, *self.params))
         else:
             return self.df(x) / self.sf(x)
 
@@ -510,10 +725,10 @@ class Parametric(ParametricDistribution):
         """
         x = np.asarray(x)
 
-        if self.p == 1:
-            return self.dist.Hf(
-                x - self.gamma, *self.params  # type: ignore[operator]
-            )
+        if (self.p == 1) and (self.f0 == 0):
+            xg = x - self.gamma  # type: ignore[operator]
+            s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+            return np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
         else:
             return -np.log(self.sf(x))
 
@@ -571,7 +786,9 @@ class Parametric(ParametricDistribution):
             # base == 1 (the u >= p region) makes the base quantile diverge;
             # it is overwritten with inf just below, so silence it here.
             q = self.gamma + self.dist.qf(base, *self.params)
-        q = np.where(u <= self.f0, float(self.gamma), q)
+        # The zero-inflation mass sits at 0 — consistent with df (mass at
+        # x == 0), ff(0) = f0 and the likelihood — not at the offset (#256).
+        q = np.where(u <= self.f0, 0.0, q)
         q = np.where(u >= self.p, np.inf, q)
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
@@ -696,14 +913,16 @@ class Parametric(ParametricDistribution):
                 self.dist.qf(uniform.rvs(size=n_obs), *self.params)
                 + self.gamma
             )
-            s = np.ones(np.array(size) - n_obs) * np.max(f) + 1
+            s = np.ones(np.array(size) - n_obs) * self._censor_time(f)
 
             return fsli_to_xcnt(f, s)
 
         elif (self.p == 1) and (self.f0 != 0):
             n_doa = np.random.binomial(size, self.f0)
 
-            x0 = np.zeros(n_doa) + self.gamma
+            # The zero-inflation mass sits at 0, consistent with df / ff /
+            # qf and the likelihood (#256).
+            x0 = np.zeros(n_doa)
             x = (
                 self.dist.qf(uniform.rvs(size=size - n_doa), *self.params)
                 + self.gamma
@@ -719,7 +938,7 @@ class Parametric(ParametricDistribution):
 
             N = np.atleast_2d(N)
             n_doa, n_obs, n_cens = N[:, 0], N[:, 1], N[:, 2]
-            x0 = np.zeros(n_doa) + self.gamma
+            x0 = np.zeros(n_doa)
 
             x = (
                 self.dist.qf(uniform.rvs(size=n_obs), *self.params)
@@ -727,8 +946,16 @@ class Parametric(ParametricDistribution):
             )
 
             f = np.concatenate([x, x0])
-            s = np.ones(n_cens) * np.max(f) + 1
+            s = np.ones(n_cens) * self._censor_time(f)
             return fsli_to_xcnt(f, s)
+
+    def _censor_time(self, f: npt.NDArray) -> float:
+        """A censoring time beyond every drawn failure, valid even when the
+        LFP draw produced no failures (``np.max`` of an empty array raised
+        before, #256)."""
+        if np.size(f):
+            return float(np.max(f)) + 1.0
+        return float(self.dist.qf(0.999, *self.params)) + self.gamma + 1.0
 
     def mean(self) -> float:
         r"""
@@ -748,7 +975,12 @@ class Parametric(ParametricDistribution):
         8.929795115692489
         """
         if not hasattr(self, "_mean"):
-            self._mean = self.p * (self.dist.mean(*self.params) + self.gamma)
+            # Defective mean: the zero-inflated mass f0 sits at 0 and
+            # contributes nothing, so the continuous part carries (p - f0)
+            # — ``p`` alone ignored f0 (#256).
+            self._mean = (self.p - self.f0) * (
+                self.dist.mean(*self.params) + self.gamma
+            )
         return self._mean
 
     def var(self) -> float:
@@ -805,8 +1037,9 @@ class Parametric(ParametricDistribution):
         times and the cured fraction ``1 - p`` contributes nothing (rather than
         the raw moment, which diverges when a cured fraction is present because
         those units never fail). It is
-        :math:`p\\,\\mathbb{E}\\!\\left[(\\gamma + X)^n\\right]` for :math:`X`
-        the base distribution.
+        :math:`(p - f_0)\\,\\mathbb{E}\\!\\left[(\\gamma + X)^n\\right]` for
+        :math:`X` the base distribution (the zero-inflated mass sits at 0 and
+        contributes nothing to a moment about zero).
         """
         # Defective n-th moment E[(gamma + X)^n] weighted by the failing
         # proportion p; the binomial expansion recombines the base raw
@@ -818,7 +1051,9 @@ class Parametric(ParametricDistribution):
         shifted = sum(
             comb(n, k) * self.gamma ** (n - k) * base[k] for k in range(n + 1)
         )
-        return float(self.p * shifted)
+        # The zero-inflated mass f0 sits at 0 and contributes nothing to a
+        # moment about zero, so the continuous part carries (p - f0) (#256).
+        return float((self.p - self.f0) * shifted)
 
     def entropy(self) -> float:
         r"""
@@ -866,6 +1101,7 @@ class Parametric(ParametricDistribution):
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         r"""
         Confidence bounds of the ``on`` function at the ``alpa_ci`` level of
@@ -885,6 +1121,18 @@ class Parametric(ParametricDistribution):
             Defaults to two-sided.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
+        method : ('wald', 'lr'), str, optional
+            ``"wald"`` (default) propagates the parameter covariance through
+            the ``on`` function by the delta method. ``"lr"`` gives a
+            profile-likelihood (likelihood-ratio) band: at each ``t`` the bound
+            is the extreme value of the ``on`` function over the parameter
+            confidence region ``{theta : 2[nll(theta) - nll_hat] <= chi2}``.
+            The likelihood-ratio band is transformation-invariant and does not
+            rely on a quadratic approximation, so it is usually better in small
+            samples (the reliability-engineering default), but it is computed
+            pointwise and so is slower, needs the original data (a deserialised
+            model raises), and is not yet available for offset / LFP / ZI
+            models.
 
         Returns
         -------
@@ -897,6 +1145,19 @@ class Parametric(ParametricDistribution):
         t = np.atleast_1d(t)
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
+
+        if method.lower() in (
+            "lr",
+            "likelihood",
+            "likelihood-ratio",
+            "profile",
+        ):
+            return self._cb_lr(t, on, alpha_ci, bound)
+        elif method.lower() != "wald":
+            raise ValueError(
+                f"Unknown confidence-bound method '{method}'; "
+                "use 'wald' or 'lr'."
+            )
 
         ctx = self._cb_context()
 
@@ -918,10 +1179,143 @@ class Parametric(ParametricDistribution):
                 cb = -np.log(self._cb_sf_bound(t, ctx, alpha_ci, bound))
             elif on in ["hf", "df"]:
                 cb = self._cb_rate_bound(t, ctx, alpha_ci, bound, on)
+            else:
+                raise ValueError(
+                    "'on' must be one of 'sf', 'R', 'ff', 'F', 'Hf', 'hf' "
+                    f"or 'df'; got {on!r}"
+                )
         finally:
             np.seterr(**old_err_state)
 
         return cb
+
+    def _cb_lr_on_func(self, on):
+        """Return ``g(t, theta)`` for the requested ``on`` function.
+
+        Evaluates the chosen distribution function at a single time for a
+        candidate core-parameter vector, so the profile optimiser can push it
+        to the edge of the likelihood region.
+        """
+        valid = ("sf", "R", "ff", "F", "Hf", "hf", "df")
+        if on not in valid:
+            raise ValueError(f"'on' must be one of {valid}")
+
+        def g(t, theta):
+            xt = np.atleast_1d(t) - self.gamma
+            if on in ("sf", "R"):
+                return self.dist.sf(xt, *theta)[0]
+            if on in ("ff", "F"):
+                return self.dist.ff(xt, *theta)[0]
+            if on == "Hf":
+                return self.dist.Hf(xt, *theta)[0]
+            if on == "hf":
+                return self.dist.hf(xt, *theta)[0]
+            return self.dist.df(xt, *theta)[0]
+
+        return g
+
+    def _cb_lr(self, t, on, alpha_ci, bound):
+        """Profile-likelihood (likelihood-ratio) band on a model function.
+
+        At each time the bound is the extreme value of the ``on`` function over
+        the parameter confidence region ``{theta : deviance(theta) <= crit}``,
+        found by constrained optimisation (SLSQP). The times are visited in
+        order and each optimiser is warm started from the previous solution,
+        which keeps the pointwise sweep fast. The core MLE path is untouched --
+        this only re-evaluates the stored likelihood on ``surv_data``.
+        """
+        if not hasattr(self, "surv_data"):
+            raise ValueError(
+                "Likelihood-ratio bounds need the original data, which a "
+                "deserialised model does not carry; refit in-process, or "
+                "use method='wald' (which uses the stored covariance)."
+            )
+        if self.offset or self.lfp or self.zi:
+            raise NotImplementedError(
+                "Likelihood-ratio confidence bounds are not yet available "
+                "for offset, limited-failure-population or zero-inflated "
+                "models; use method='wald'."
+            )
+        if bound not in ("two-sided", "lower", "upper"):
+            raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
+
+        g = self._cb_lr_on_func(on)
+        theta_hat = np.array(self.params, dtype=float)
+        nll_hat = float(
+            self.dist._neg_ll_func(
+                self.surv_data, *theta_hat, self.gamma, self.f0, self.p
+            )
+        )
+
+        def deviance(theta):
+            return 2.0 * (
+                float(
+                    self.dist._neg_ll_func(
+                        self.surv_data, *theta, self.gamma, self.f0, self.p
+                    )
+                )
+                - nll_hat
+            )
+
+        if bound == "two-sided":
+            crit = z(1.0 - alpha_ci / 2.0) ** 2
+        else:
+            crit = z(1.0 - alpha_ci) ** 2
+
+        user_fixed = self._user_fixed_idx()
+        sci_bounds = []
+        for j, (lo, hi) in enumerate(self.dist.bounds):
+            if j in user_fixed:
+                # A parameter the user fixed at fit time is pinned during
+                # the constrained search too (#255).
+                v = float(theta_hat[j])
+                sci_bounds.append((v, v))
+                continue
+            lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
+            hi_s = np.inf if hi is None else hi
+            sci_bounds.append((lo_s, hi_s))
+        constraint = NonlinearConstraint(deviance, -np.inf, crit)
+
+        t = np.atleast_1d(t).astype(float)
+        order = np.argsort(t)
+        t_sorted = t[order]
+
+        def extreme(time, sign, warm):
+            # sign = +1 minimises g (lower bound); -1 maximises g (upper).
+            res = minimize(
+                lambda th: sign * g(time, th),
+                warm,
+                method="SLSQP",
+                bounds=sci_bounds,
+                constraints=[constraint],
+            )
+            x = res.x if res.success else warm
+            return g(time, x), x
+
+        want_lower = bound in ("two-sided", "lower")
+        want_upper = bound in ("two-sided", "upper")
+        lo_vals = np.empty(t_sorted.shape)
+        hi_vals = np.empty(t_sorted.shape)
+        warm_lo = theta_hat.copy()
+        warm_hi = theta_hat.copy()
+
+        old_err_state = np.seterr(all="ignore")
+        try:
+            for i, time in enumerate(t_sorted):
+                if want_lower:
+                    lo_vals[i], warm_lo = extreme(time, 1.0, warm_lo)
+                if want_upper:
+                    hi_vals[i], warm_hi = extreme(time, -1.0, warm_hi)
+        finally:
+            np.seterr(**old_err_state)
+
+        inv = np.argsort(order)
+        if bound == "two-sided":
+            return np.column_stack([lo_vals[inv], hi_vals[inv]])
+        elif bound == "lower":
+            return lo_vals[inv]
+        else:
+            return hi_vals[inv]
 
     def _cb_context(self):
         """Assemble the parameter vector and covariance used by ``cb``.
@@ -943,8 +1337,15 @@ class Parametric(ParametricDistribution):
 
         cov = getattr(self, "cov_matrix", None)
         if cov is None:
+            hess_inv = getattr(self, "hess_inv", None)
+            if hess_inv is None:
+                raise ValueError(
+                    "Model carries no parameter covariance (the Hessian "
+                    "was singular at the optimum, or the model was not fit "
+                    "by MLE); confidence bounds are unavailable."
+                )
             cov = np.zeros((len(phi_hat), len(phi_hat)))
-            cov[:n_core, :n_core] = np.copy(self.hess_inv)
+            cov[:n_core, :n_core] = np.copy(hess_inv)
 
         return _CBContext(phi_hat=phi_hat, cov=cov, n_core=n_core)
 
@@ -961,9 +1362,23 @@ class Parametric(ParametricDistribution):
         return core, p, f0
 
     def _cb_full_sf(self, x, phi, ctx):
-        """Survival function including the LFP and zero-inflation mass."""
+        """Survival function including the LFP and zero-inflation mass.
+
+        Points below the (offset) support are clamped *before* the base sf is
+        evaluated: a negative argument produces NaN (fractional powers), and
+        one NaN poisons the whole autograd jacobian in the delta-method
+        variance (#256).
+        """
         core, p, f0 = self._cb_unpack(phi, ctx)
-        return 1 - p + (p - f0) * self.dist.sf(x - self.gamma, *core)
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        xg = x - self.gamma
+        below = xg < s0
+        if np.any(below):
+            # Evaluate the unselected branch just inside the support so it
+            # stays finite (np.where evaluates both branches under autograd).
+            xg = np.where(below, s0 + 1e-10, xg)
+        base_sf = np.where(below, 1.0, self.dist.sf(xg, *core))
+        return 1 - p + (p - f0) * base_sf
 
     def _cb_delta_var(self, func, ctx):
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
@@ -994,8 +1409,13 @@ class Parametric(ParametricDistribution):
         else:
             diff = -z(alpha_ci) * np.sqrt(var_R)
 
-        exponent = diff / (R_hat * (1 - R_hat))
-        R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
+        with np.errstate(all="ignore"):
+            exponent = diff / (R_hat * (1 - R_hat))
+            R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
+        # At the boundary (R = 0 or 1, e.g. t <= gamma) the logit transform
+        # degenerates to 0/0; the bound there is the boundary itself (#256).
+        R_cb = np.where(np.broadcast_to(R_hat == 1.0, R_cb.shape), 1.0, R_cb)
+        R_cb = np.where(np.broadcast_to(R_hat == 0.0, R_cb.shape), 0.0, R_cb)
         return R_cb.T
 
     def _cb_rate_bound(self, t, ctx, alpha_ci, bound, on):
@@ -1033,134 +1453,12 @@ class Parametric(ParametricDistribution):
             cb = cb.T
         return cb
 
-    def neg_ll(self) -> float:
-        r"""
-
-        The negative log-likelihood for the model, if it was fit with the
-        ``fit()`` method. Not available if fit with the ``from_params()``
-        method.
-
-        Returns
-        -------
-
-        neg_ll : float
-            The negative log-likelihood of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.neg_ll()
-        262.52685642385734
-        """
-        if self.data is None:
-            raise ValueError("Must have been fit with data")
-
-        return self._neg_ll
-
-    def bic(self) -> float:
-        r"""
-
-        The Bayesian Information Criterion (BIC) for the model, if it
-        was fit with the ``fit()`` method. Not available if fit with the
-        ``from_params()`` method.
-
-        Returns
-        -------
-
-        bic : float
-            The BIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.bic()
-        534.2640532196908
-
-        References
-        ----------
-
-        `Bayesian Information Criterion for Censored Survival Models
-        <https://www.jstor.org/stable/2677130>`_.
-
-        """
-        if hasattr(self, "_bic"):
-            return self._bic
-        else:
-            self._bic = (
-                self.k * np.log(self.data["n"][self.data["c"] == 0].sum())
-                + 2 * self.neg_ll()
-            )
-            return self._bic
-
-    def aic(self) -> float:
-        r"""
-        The Aikake Information Criterion (AIC) for the model, if it was
-        fit with the ``fit()`` method. Not available if fit with the
-        ``from_params()`` method.
-
-        Returns
-        -------
-
-        aic : float
-            The AIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.aic()
-        529.0537128477147
-        """
-        if hasattr(self, "_aic"):
-            return self._aic
-        else:
-            self._aic = 2 * self.k + 2 * self.neg_ll()
-            return self._aic
-
-    def aic_c(self) -> float:
-        r"""
-        The Corrected Aikake Information Criterion (AIC) for the model,
-        if it was fit with the ``fit()`` method. Not available if fit with
-        the ``from_params()`` method.
-
-        Returns
-        -------
-
-        aic_c : float
-            The Corrected AIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.aic()
-        529.1774241879209
-        """
-        if hasattr(self, "_aic_c"):
-            return self._aic_c
-        else:
-            k = len(self.params)
-            n = self.data["n"].sum()
-            self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
-            return self._aic_c
+    # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin. The aic_c
+    # correction uses the same parameter count as the aic() penalty it
+    # corrects — including gamma / p / f0 when fitted (#256).
+    def _ic_counts(self):
+        n, c = self.data["n"], self.data["c"]
+        return n[c == 0].sum(), n.sum()
 
     def get_plot_data(
         self, heuristic: str = "Nelson-Aalen", alpha_ci: float = 0.05

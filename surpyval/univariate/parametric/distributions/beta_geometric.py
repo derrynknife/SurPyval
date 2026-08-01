@@ -3,10 +3,12 @@ from scipy.stats import beta as beta_rv
 from scipy.stats import geom
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.discrete_fitter import (
+    DiscreteParametricFitter,
+)
 
 
-class BetaGeometric_(ParametricFitter):
+class BetaGeometric_(DiscreteParametricFitter):
     r"""
 
     The (shifted) Beta-Geometric distribution: a discrete-time frailty model
@@ -43,7 +45,6 @@ class BetaGeometric_(ParametricFitter):
             param_map={"a": 0, "b": 1},
             plot_x_scale="linear",
         )
-        self.supports_mpp = False
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         # A neutral, proper starting point; the Beta(1, 1) mixing is the

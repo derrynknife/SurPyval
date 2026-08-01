@@ -713,6 +713,57 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
 
 Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data.
 
+Flexible parametric (Royston-Parmar)
+------------------------------------
+
+Sometimes no standard distribution fits: the hazard turns over, has a bathtub,
+or is multi-modal. A **Royston-Parmar** model handles this by replacing the
+straight line a Weibull draws for its log-cumulative-hazard against log-time
+with a **restricted cubic spline** — a smooth, fully parametric baseline of
+arbitrary shape. It is as flexible as a Cox baseline but, being parametric,
+gives a smooth hazard and **extrapolates**, which a Cox fit cannot.
+
+``RoystonParmar.fit`` takes a ``df`` (degrees of freedom = spline terms; ``df=1``
+is exactly a Weibull) and a ``scale``: ``"hazard"`` (proportional hazards),
+``"odds"`` (proportional odds), or ``"normal"`` (probit; ``df=1`` is a
+log-normal). Knots default to quantiles of the event times. Here we fit data
+whose hazard a single Weibull cannot capture, and pick ``df`` by AIC:
+
+.. jupyter-execute::
+
+    from surpyval import RoystonParmar, Weibull
+
+    np.random.seed(2)
+    x = np.concatenate([Weibull.random(400, 3, 5), Weibull.random(400, 30, 1.2)])
+
+    for df in (1, 2, 3, 4):
+        m = RoystonParmar.fit(x, df=df)
+        print(f"df={df}  AIC={m.aic():8.1f}")
+
+The AIC keeps improving past ``df=1`` (the Weibull), then stops — the usual way
+to choose the number of knots. Take the best and look at the fitted survival
+with its confidence band:
+
+.. jupyter-execute::
+
+    model = RoystonParmar.fit(x, df=3)
+
+    t = np.linspace(0.5, 50, 200)
+    plt.plot(t, model.sf(t), 'k-', label='Royston-Parmar (df=3)')
+    band = model.cb(t, on='sf')
+    plt.plot(t, band, 'r--')
+    plt.plot(t, Weibull.fit(x).sf(t), 'b:', label='Weibull')
+    plt.legend(); plt.xlabel('Time'); plt.ylabel('S(t)')
+
+The spline follows the two-component shape the single Weibull misses. Because
+the spline is linear beyond its boundary knots, the model extrapolates with a
+Weibull-like tail rather than a wild cubic — which is what makes it safe to read
+off a restricted-mean survival time or a far quantile. The full arbitrary
+censoring/truncation surface is supported — observed, right-, left- and
+interval-censored data (``c``, or ``xl`` / ``xr``), with left- and/or
+right-truncation and weights (``tl`` / ``tr`` / ``t``, ``n``) — and a fitted
+model serialises with ``to_dict`` / ``from_dict`` like any other.
+
 Discrete Distributions
 ----------------------
 
@@ -825,6 +876,62 @@ This shows that we can change the confidence level with ``alpha_ci`` and that we
 we want the confidence interval. That is, the ``on`` keyword can be any of ``sf``, ``ff``, ``df``, ``hf``, or ``Hf``.
 This will work with models that you create as well, so even a user defined Distribution will be able to have the
 confidence intervals computed. Creating these models is discussed in the section below.
+
+The band above is a *Wald* band: it propagates the parameter covariance through
+the function by the delta method. ``cb`` also offers a **likelihood-ratio**
+band via ``method='lr'``. At each time the bound is the most extreme value of
+the function - here the reliability - over the parameter confidence region, so
+it is transformation-invariant and does not rely on a quadratic approximation.
+On small or heavily censored samples the two can differ noticeably, with the
+likelihood-ratio band usually the better calibrated:
+
+.. jupyter-execute::
+
+    np.random.seed(10)
+    x = Weibull.random(20, 10, 3)     # a small sample
+    model = Weibull.fit(x)
+
+    x_plot = np.linspace(2, 18, 60)
+    plt.plot(x_plot, model.sf(x_plot), color='black', label='estimate')
+    wald = model.cb(x_plot, on='sf', method='wald')
+    lr = model.cb(x_plot, on='sf', method='lr')
+    plt.plot(x_plot, wald, color='red', linestyle='--', label='Wald')
+    plt.plot(x_plot, lr, color='blue', linestyle=':', label='likelihood ratio')
+    handles, labels = plt.gca().get_legend_handles_labels()
+    plt.legend(handles[:3], ['estimate', 'Wald', 'likelihood ratio'])
+    plt.xlabel('Time')
+    plt.ylabel('R(t)')
+
+The likelihood-ratio band is computed pointwise, so it is slower than the Wald
+band, needs the original data (a model restored from ``from_dict`` raises), and
+is not yet available for offset / limited-failure-population / zero-inflated
+models.
+
+Bounds on the *parameters* themselves come from ``param_cb``. By default it
+returns a Wald interval built from the parameter's standard error. For small or
+heavily censored samples the Wald interval - being symmetric on a transformed
+scale - can have poor coverage, and the reliability-engineering convention is to
+use a **likelihood-ratio** (profile) interval instead, via ``method='lr'``:
+
+.. jupyter-execute::
+
+    np.random.seed(3)
+    x = Weibull.random(15, 10, 2)     # a small sample
+    model = Weibull.fit(x)
+
+    print("Wald :", model.param_cb('beta', method='wald'))
+    print("LR   :", model.param_cb('beta', method='lr'))
+
+The likelihood-ratio interval is the set of shape values whose profile deviance
+stays within the :math:`\chi^2_1` critical value, with the scale re-optimised at
+each candidate. Unlike the Wald interval it is transformation-invariant,
+respects the parameter's support, and need not be symmetric about the estimate -
+here the upper bound sits further from the fitted value than the lower one, as
+you would expect for a shape parameter from a small sample. Because it is
+computed from the likelihood directly it needs the original data, so it is only
+available on a model fit in-process (not one restored from ``from_dict``), and
+is not yet supported for offset / limited-failure-population / zero-inflated
+models; those fall back to ``method='wald'``.
 
 
 Creating a custom Distribution

@@ -8,7 +8,8 @@ can therefore land on a wildly wrong ``(gamma, *params)`` tuple while the
 that behaviour down with numbers so it does not surprise anyone, and so a
 future "fix" to the offset initialisers can be judged on the divergence
 that actually matters (KL / Wasserstein) rather than on the parameter
-error alone.
+error alone. (#257 was exactly such a fix for the Gamma MPP path: its
+test now asserts parameter recovery as well.)
 """
 
 import numpy as np
@@ -63,45 +64,42 @@ def _summary(dist, true_params, how, seed=0):
     }
 
 
-def test_mpp_offset_gamma_parameters_absurd_but_distribution_close():
-    """MPP offset on Gamma recovers an absurd parameter tuple
-    (gamma far negative, shape inflated by orders of magnitude) yet the
-    implied distribution is almost indistinguishable from the truth: a
-    high-shape Gamma parked near the origin mimics the offset Gamma."""
+def test_mpp_offset_gamma_parameters_recovered():
+    """MPP offset on Gamma used to land on an absurd parameter tuple
+    (huge shape, gamma far off) that merely mimicked the true
+    distribution. This was the divergence this module existed to pin
+    down; #257 fixed the initialiser (multi-started shape search) and
+    the rr="x" inversion, so the *parameters* are now recovered too."""
     s = _summary(Gamma, (3.0, 2.0), how="MPP")
 
-    # The parameters are wildly wrong - this is the "failure".
-    assert s["fit"].gamma < 5.0, s["fit"].gamma
-    assert s["max_param_rel_err"] > 5.0  # >500% off
+    # The parameters are now close to the truth.
+    assert abs(s["fit"].gamma - TRUE_GAMMA) < 1.0, s["fit"].gamma
+    assert s["max_param_rel_err"] < 0.20  # within 20%
 
-    # ...but the distribution barely moves.
+    # ...and the distribution remains essentially exact.
     assert s["mean_rel_err"] < 0.01  # mean within 1%
     assert s["median_rel_err"] < 0.03  # median within 3%
     assert s["std_rel_err"] < 0.10  # spread within 10%
-    assert s["kl_nats"] < 0.20  # KL well under a fifth of a nat
-    assert s["wasserstein_frac_std"] < 0.25
-
-    # The headline: distribution error is far smaller than parameter error.
-    assert s["mean_rel_err"] < s["max_param_rel_err"] / 100
+    assert s["kl_nats"] < 0.01
+    assert s["wasserstein_frac_std"] < 0.05
 
 
-def test_mom_offset_rayleigh_biased_but_central_predictions_hold():
-    """MOM offset on Rayleigh biases gamma low and, unlike the Gamma
-    case, the divergence is *modest, not negligible*: the spread is
-    visibly wrong even though the central predictions stay accurate."""
+def test_mom_offset_rayleigh_parameters_recovered():
+    """MOM offset on Rayleigh used to stop far from the moment-matching
+    solution (the numeric path ran with tol=1e-1 and no convergence
+    check), biasing gamma low and the spread high. #275 tightened the
+    optimisation, so the parameters are now recovered too."""
     s = _summary(Rayleigh, (3.0,), how="MOM")
 
-    # gamma is biased away from the truth.
-    assert abs(s["fit"].gamma - TRUE_GAMMA) > 0.4
+    # The parameters are now close to the truth.
+    assert abs(s["fit"].gamma - TRUE_GAMMA) < 0.5, s["fit"].gamma
+    assert s["max_param_rel_err"] < 0.10  # within 10%
 
-    # Central predictions remain trustworthy...
+    # ...and the distribution matches.
     assert s["mean_rel_err"] < 0.02  # mean within 2%
     assert s["median_rel_err"] < 0.02  # median within 2%
-
-    # ...but the distribution is genuinely off in its spread: this is the
-    # "modest, not negligible" caveat made concrete.
-    assert s["std_rel_err"] > 0.10  # std off by more than 10%
-    assert 0.02 < s["kl_nats"] < 0.15  # small, but not zero
+    assert s["std_rel_err"] < 0.10  # spread within 10%
+    assert s["kl_nats"] < 0.02
 
 
 def test_mle_offset_is_the_accurate_baseline():

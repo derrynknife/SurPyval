@@ -2,10 +2,12 @@ from autograd.scipy.special import gammainc, gammaincc, gammaln
 from scipy.stats import poisson
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.discrete_fitter import (
+    DiscreteParametricFitter,
+)
 
 
-class Poisson_(ParametricFitter):
+class Poisson_(DiscreteParametricFitter):
     r"""
 
     The Poisson distribution as a discrete count model on the non-negative
@@ -40,9 +42,6 @@ class Poisson_(ParametricFitter):
             param_map={"mu": 0},
             plot_x_scale="linear",
         )
-        # A discrete lifetime is fit by maximum likelihood, not probability
-        # plotting (which assumes a continuous inverse CDF).
-        self.supports_mpp = False
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         # The Poisson mean is mu, so the sample mean is the moment seed.

@@ -26,6 +26,8 @@ def turnbull(
     per-observation weights over ranges (difference arrays). Each
     iteration is O(N + M) in both time and memory.
     """
+    if max_iter < 1:
+        raise ValueError(f"max_iter must be at least 1; got {max_iter}")
     any_truncated = np.isfinite(t).any()
     # Find all unique bounding points
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
@@ -64,9 +66,12 @@ def turnbull(
     # - a right-censored event may sit on any bound strictly after the
     #   censoring time;
     # - an interval-censored event (including left censored, whose interval
-    #   is (-inf, xr)) may sit on any bound in [xl, xr), *except* the
-    #   zero-width exact interval at xl when xl is also an exactly observed
-    #   time -- the event is known to be after xl.
+    #   is (-inf, xr]) may sit on any bound in (xl, xr]: the zero-width
+    #   exact interval at xl is excluded when xl is also an exactly
+    #   observed time (the event is known to be after xl), and the one at
+    #   xr is *included* -- the standard (l, r] convention (Turnbull 1976),
+    #   under which an interval whose right endpoint coincides with an
+    #   exact event time may have failed at that time (#272).
     exact = xl == xr
     right = ~exact & np.isinf(xr)
     interval = ~exact & ~right
@@ -80,23 +85,56 @@ def turnbull(
     lo[interval] = np.searchsorted(
         bounds, xl[interval], side="left"
     ) + np.isin(xl[interval], exact_times)
-    hi[interval] = np.searchsorted(bounds, xr[interval], side="left") - 1
+    hi[interval] = (
+        np.searchsorted(bounds, xr[interval], side="left")
+        - 1
+        + np.isin(xr[interval], exact_times)
+    )
+
+    # Exact + right-censored (possibly weighted) untruncated data -- in
+    # either 1-D or degenerate-interval form -- is the regime where
+    # Turnbull reduces exactly to Kaplan-Meier; keep equivalent 1-D
+    # inputs so the variance can use the *observed* count ladder rather
+    # than the EM's expected-count ladder, which redistributes censored
+    # mass as fractional later events and silently understates the
+    # variance (#260, #273).
+    km_reducible = (not any_truncated) and not interval.any()
+    if km_reducible:
+        x_raw = xl.copy()
+        c_raw = np.where(exact, 0, 1)
+        n_raw = np.asarray(n).copy()
+        t_raw = np.asarray(t).copy()
 
     # Each observation's truncation window is likewise a contiguous index
     # range [w_lo, w_hi]: the bound points at which an event was observable
     # -- strictly after its left truncation time and at or before its right
     # truncation time.
     if any_truncated:
-        w_lo = np.where(
+        w_lo_all = np.where(
             np.isfinite(tl), np.searchsorted(bounds, tl, side="right"), 0
         )
-        w_hi = np.where(
+        w_hi_all = np.where(
             np.isfinite(tr),
             np.searchsorted(bounds, tr, side="right") - 1,
             M - 1,
         )
+        # An observation's event provably lies inside its own truncation
+        # window (it was observed), so its support is the *intersection*
+        # of its censoring support with the window. Without this, mass
+        # from left-censored or entry-spanning interval observations is
+        # redistributed below the entry time -- where the event cannot
+        # be -- and the EM can wander to the degenerate all-zero fixed
+        # point on perfectly valid data (#273).
+        lo = np.maximum(lo, w_lo_all)
+        hi = np.minimum(hi, w_hi_all)
+        if (lo > hi).any():
+            raise ValueError(
+                "An observation's censoring interval does not intersect "
+                "its own truncation window, so it has zero probability of "
+                "being observed as recorded; check the x, c and t inputs."
+            )
         truncated = np.isfinite(tl) | np.isfinite(tr)
-        w_lo, w_hi = w_lo[truncated], w_hi[truncated]
+        w_lo, w_hi = w_lo_all[truncated], w_hi_all[truncated]
         n_truncated = n[truncated]
 
     # The identifiable support: a bound may carry probability mass only if it
@@ -207,8 +245,25 @@ def turnbull(
     # non-identifiable degenerate state, not a real estimate.
     if not degenerate and R.size > 2:
         reported = R[:-2]
+        if any_truncated:
+            # Only inspect the identifiable region: positions before the
+            # earliest entry time are pinned at 1.0 and previously masked
+            # every partial collapse from the detector (#260).
+            min_tl = (
+                np.min(tl[np.isfinite(tl)])
+                if np.isfinite(tl).any()
+                else -np.inf
+            )
+            idx0 = int(
+                np.searchsorted(
+                    bounds[: reported.shape[0]], min_tl, side="right"
+                )
+            )
+            inspect = reported[idx0:] if idx0 < reported.shape[0] else reported
+        else:
+            inspect = reported
         if not np.all(np.isfinite(reported)) or (
-            any_truncated and np.nanmax(reported) < 1e-8
+            any_truncated and inspect.size > 0 and np.nanmax(inspect) < 1e-8
         ):
             degenerate = True
 
@@ -229,60 +284,67 @@ def turnbull(
         )
 
     if any_truncated:
-        # Variance ladder from *observed* information only. The estimation
+        # Variance ladder from *observed* counts only. The estimation
         # ladder above includes the ghost events -- they are what make the
         # estimate correct under truncation -- but ghosts are not data, and
-        # a risk set inflated by them understates the variance. Instead,
-        # each observed item contributes its conditional probability of
-        # still being event-free at each bound, and only while that bound
-        # lies inside its observation window (so delayed entry removes it
-        # from the early risk sets, exactly as in the Kaplan-Meier
-        # delayed-entry risk set, to which this reduces for exactly
-        # observed left-truncated data):
-        #
-        #   r_var[j] = sum_i n_i * 1[w_lo_i <= j <= w_hi_i] * P_i(T >= j)
-        #
-        # with P_i(T >= j) equal to 1 before the item's support, the
-        # conditional tail (cum[hi+1] - cum[j]) / P(support) inside it, and
-        # 0 after it. Piece one and the constant part of piece two are
-        # range-adds; the j-dependent part is cum[j] times a range-added
-        # weight -- all still O(N + M). For untruncated data this ladder
-        # equals the estimation ladder, so it is only computed (and only
-        # used for the variance) when truncation is present.
+        # a risk set inflated by them understates the variance. Exactly
+        # observed items count one event at their atom and leave the risk
+        # set there; right-censored items count no event anywhere and
+        # leave the risk set at their censoring time (the previous ladder
+        # redistributed their mass as fractional later events and kept
+        # them at risk via a conditional tail probability -- the same
+        # anti-conservative mechanism #260 removed for untruncated data,
+        # and at the last event the near-equal r and d floats produced
+        # huge *negative* Greenwood increments, #273). Only genuinely
+        # interval/left-censored items, whose event position is unknown,
+        # keep the probabilistic redistribution over their support. Every
+        # item is at risk only while the bound lies inside its own
+        # observation window, so delayed entry removes it from the early
+        # risk sets exactly as in the Kaplan-Meier delayed-entry risk
+        # set -- to which this ladder reduces for exact + right-censored
+        # left-truncated data.
         cumulative = np.concatenate([[0.0], np.cumsum(p)])
         support_p = cumulative[hi + 1] - cumulative[lo]
-        weight = np.where(support_p > 0, n / support_p, 0.0)
-        delta = np.zeros(M + 1)
-        np.add.at(delta, lo, weight)
-        np.add.at(delta, hi + 1, -weight)
-        d_var = p * np.cumsum(delta[:M])
 
-        w_lo_all = np.where(
-            np.isfinite(tl), np.searchsorted(bounds, tl, side="right"), 0
-        )
-        w_hi_all = np.where(
-            np.isfinite(tr),
-            np.searchsorted(bounds, tr, side="right") - 1,
-            M - 1,
-        )
+        # Events: hard counts at exact atoms; interval rows redistribute.
+        d_var = np.zeros(M)
+        np.add.at(d_var, lo[exact], n[exact])
+        weight_int = np.where(interval & (support_p > 0), n / support_p, 0.0)
+        delta = np.zeros(M + 1)
+        np.add.at(delta, lo, weight_int)
+        np.add.at(delta, hi + 1, -weight_int)
+        d_var += p * np.cumsum(delta[:M])
 
         const = np.zeros(M + 1)
         coeff = np.zeros(M + 1)
-        # Before the support (probability 1), within the window.
+        # Exact rows: at risk through their event atom, within the window.
         a1 = w_lo_all
         b1 = np.minimum(lo, w_hi_all)
-        ok = a1 <= b1
+        ok = exact & (a1 <= b1)
         np.add.at(const, a1[ok], n[ok])
         np.add.at(const, b1[ok] + 1, -n[ok])
-        # Within the support (conditional tail), within the window.
+        # Right-censored rows: at risk through their censoring time (the
+        # last bound before their support starts), within the window.
+        b1r = np.minimum(lo - 1, w_hi_all)
+        ok = right & (a1 <= b1r)
+        np.add.at(const, a1[ok], n[ok])
+        np.add.at(const, b1r[ok] + 1, -n[ok])
+        # Interval rows: probability 1 before the support, conditional
+        # tail (cum[hi+1] - cum[j]) / P(support) inside it, 0 after --
+        # all within the window. The j-dependent part is cum[j] times a
+        # range-added weight, keeping the ladder O(N + M).
+        ok = interval & (a1 <= b1)
+        np.add.at(const, a1[ok], n[ok])
+        np.add.at(const, b1[ok] + 1, -n[ok])
         a2 = np.maximum(lo + 1, w_lo_all)
         b2 = np.minimum(hi, w_hi_all)
-        ok = (a2 <= b2) & (support_p > 0)
+        ok = interval & (a2 <= b2) & (support_p > 0)
         tail_const = np.where(
             support_p > 0, n * cumulative[hi + 1] / support_p, 0.0
         )
         np.add.at(const, a2[ok], tail_const[ok])
         np.add.at(const, b2[ok] + 1, -tail_const[ok])
+        weight = np.where(support_p > 0, n / support_p, 0.0)
         np.add.at(coeff, a2[ok], weight[ok])
         np.add.at(coeff, b2[ok] + 1, -weight[ok])
 
@@ -295,6 +357,31 @@ def turnbull(
     if any_truncated:
         out["var_r"] = r_var[1:-1]
         out["var_d"] = d_var[1:-1]
+    elif km_reducible:
+        # Variance from the observed counts (the Greenwood ladder): the
+        # estimation ladder redistributes each right-censored observation
+        # as fractional expected events at later times, inflating the
+        # information and giving silently narrower intervals (#260). Only
+        # positions with observed events contribute to the variance sum.
+        from surpyval.utils import xcnt_to_xrd
+
+        xg, rg, dg = xcnt_to_xrd(x_raw, c_raw, n_raw, t_raw)
+        ladder_x = bounds[1:-1]
+        var_d = np.zeros(ladder_x.shape[0])
+        var_r = np.ones(ladder_x.shape[0])
+        pos = np.searchsorted(xg, ladder_x)
+        ok = pos < xg.shape[0]
+        ok[ok] = np.isclose(xg[pos[ok]], ladder_x[ok])
+        var_r[ok] = rg[pos[ok]]
+        # Exact times appear twice on the bounds ladder (the zero-width
+        # [x, x] interval trick); credit each event count once so the
+        # cumulative variance steps once per event time.
+        first = np.ones(ladder_x.shape[0], dtype=bool)
+        first[1:] = ladder_x[1:] != ladder_x[:-1]
+        take = ok & first
+        var_d[take] = dg[pos[take]]
+        out["var_r"] = var_r
+        out["var_d"] = var_d
     out["R"] = R[0:-2]
     out["F"] = 1 - R[0:-2]
     out["R_upper"] = R[0:-2]

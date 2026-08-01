@@ -1,10 +1,12 @@
 from scipy.stats import uniform
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.discrete_fitter import (
+    DiscreteParametricFitter,
+)
 
 
-class Geometric_(ParametricFitter):
+class Geometric_(DiscreteParametricFitter):
     r"""
 
     The Geometric distribution: the discrete analogue of the Exponential.
@@ -36,9 +38,6 @@ class Geometric_(ParametricFitter):
             param_map={"p": 0},
             plot_x_scale="linear",
         )
-        # Probability plotting assumes a continuous inverse CDF; a discrete
-        # lifetime is fit by maximum likelihood.
-        self.supports_mpp = False
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         # Method-of-moments seed: the mean of a geometric on {1, 2, ...} is

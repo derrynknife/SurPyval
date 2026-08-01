@@ -43,21 +43,6 @@ def _check_x_not_empty(func):
     return wrap
 
 
-def init_from_bounds(dist):
-    out = []
-    for low, high in dist.bounds:
-        if (low is None) and (high is None):
-            out.append(0)
-        elif high is None:
-            out.append(low + 1.0)
-        elif low is None:
-            out.append(high - 1.0)
-        else:
-            out.append((high + low) / 2.0)
-
-    return out
-
-
 def check_no_censoring(c):
     return any(c != 0)
 
@@ -626,10 +611,15 @@ def xcnt_handler(
                 + " respective observed values"
             )
     else:
-        if (t[:, 0] > x).any():
+        # Strictly less: under the (entry, exit] risk-interval convention a
+        # value at exactly its own left-truncation time has a zero-length
+        # observation window — contradictory data that previously slipped
+        # through and silently distorted the Turnbull estimate (#260).
+        if ((t[:, 0] >= x) & np.isfinite(t[:, 0])).any():
             raise ValueError(
-                "All left truncated values must be less than the respective"
-                + " observed values"
+                "All left truncated values must be strictly less than the"
+                + " respective observed values: a value at its own left"
+                + " truncation time has a zero-length observation window."
             )
         elif (t[:, 1] < x).any():
             raise ValueError(
@@ -681,61 +671,6 @@ def xcnt_handler(
         x, c, n, t = xcnt_sort(x, c, n, t)
 
     return x, c, n, t
-
-
-def xcn_to_fsl(x, c=None, n=None):
-    """
-    Converts the xcn format to the fsl format.
-
-    Parameters
-    ----------
-
-    x: array
-        array of values of variable for which observations were made.
-    c: array, optional (default: None)
-        array of censoring values (-1, 0, 1, 2) corrseponding to x. If None, an
-        array of 0s is created corresponding to each x.
-    n: array, optional (default: None)
-        array of count of observations at each x and with censoring c. If None,
-        an array of ones is created.
-
-    Returns
-    -------
-
-    f: array
-        array of values for which the failure/death was observed
-    s: array
-        array of right censored observation values
-    l: array
-        array of left censored observation values
-
-    Examples
-    --------
-    >>> x = np.array([1, 2, 3, 4, 5])
-    >>> c = np.array([0, 1, 1, 0, 0])
-    >>> n = np.array([1, 1, 1, 1, 1])
-    >>> f, s, l = xcn_to_fsl(x, c, n)
-    >>> f
-    array([1, 4, 5])
-    >>> s
-    array([2, 3])
-    >>> l
-    array([], dtype=float64)
-    """
-
-    x = np.array(x)
-    if c is None:
-        c = np.zeros_like(x)
-    if n is None:
-        n = np.ones_like(x).astype(int)
-
-    c = np.array(c)
-    n = np.array(n).astype(int)
-
-    f = np.repeat(x[c == 0], n[c == 0])
-    s = np.repeat(x[c == 1], n[c == 1])
-    l = np.repeat(x[c == -1], n[c == -1])
-    return f, s, l
 
 
 def xcn_to_fs(x, c=None, n=None):
@@ -792,14 +727,15 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     array([5, 4, 3, 2, 1])
     >>> d
     array([1, 0, 0, 1, 1])
-    >>> # Using left truncated data
+    >>> # Using left truncated data: under the (entry, exit] convention a
+    >>> # subject entering exactly at an event time is not at risk for it.
     >>> x = np.array([1, 2, 3, 4, 5])
     >>> tl = np.array([0, 1, 2, 3, 4])
     >>> x, r, d = xcnt_to_xrd(x, tl=tl)
     >>> x
     array([1., 2., 3., 4., 5.])
     >>> r
-    array([2, 2, 2, 2, 1])
+    array([1, 1, 1, 1, 1])
     >>> d
     array([1, 1, 1, 1, 1])
     """
@@ -808,11 +744,11 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     if np.isfinite(t[:, 1]).any():
         raise ValueError("xrd format can't be used right truncated data")
 
-    if (t[:, 0] == t[0, 0]).all() and np.isfinite(t[0, 0]):
-        warnings.warn(
-            "Ignoring left truncated values as all observations truncated at"
-            + " same value"
-        )
+    # No warning for a shared entry time: validation guarantees tl < x for
+    # every observation, so a common entry time never alters the (entry,
+    # exit] risk sets -- the old "Ignoring left truncated values" warning
+    # fired on perfectly ordinary inputs like tl=0 everywhere, e.g. from
+    # check_ph on a model fit with a constant entry column (#282).
 
     if ((c != 1) & (c != 0)).any():
         raise ValueError(
@@ -826,8 +762,13 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     d = np.bincount(idx, weights=n * (1 - c))
     # do is drop outs - i.e right censored
     do = np.bincount(idx, weights=n * c)
-    # e is the number of items that have entered observation by each x
-    e = ((tl[:, np.newaxis] <= x[np.newaxis, :]) * n[:, np.newaxis]).sum(0)
+    # e is the number of items that have entered observation *before* each
+    # x: the standard (entry, exit] risk-interval convention (R survival /
+    # lifelines) — a subject entering exactly at an event time is not at
+    # risk for that event. The previous inclusive comparison put surpyval's
+    # KM on the nonstandard side and made it disagree with Turnbull's NPMLE
+    # at exact entry/event ties (#260).
+    e = ((tl[:, np.newaxis] < x[np.newaxis, :]) * n[:, np.newaxis]).sum(0)
     # r is the number of people at risk at each x
     r = e + d - d.cumsum() + do - do.cumsum()
     # change to correct data types
@@ -892,6 +833,19 @@ def xrd_to_xcnt(x, r, d):
     mask = n_f != 0
     n_f = n_f[mask]
     x_f = x_f[mask]
+
+    # A risk set that grows (after accounting for that step's events) means
+    # late entry / left truncation, which the xcnt output cannot represent;
+    # the old np.abs() silently converted such data into a different study
+    # instead of raising (#281).
+    r_arr = np.asarray(r)
+    d_arr = np.asarray(d)
+    if (np.diff(r_arr) + d_arr[:-1] > 0).any():
+        raise ValueError(
+            "The risk set increases between observation times (late entry /"
+            " left truncation); truncation cannot be represented in xcnt"
+            " output, so this data cannot be converted with xrd_to_xcnt."
+        )
 
     delta = np.abs(np.diff(np.hstack([r, [0]])))
 
@@ -1009,16 +963,6 @@ def fs_to_xcnt(f=None, s=None):
     return fsl_to_xcnt(f, s, None)
 
 
-def _scale(ll, n, scale):
-    if scale:
-        # Sometimes the ll can get too big. If we normalise it
-        # against the number of observations it is smaller
-        # This allows for better performance of the optimizer.
-        return ll.sum() / n.sum()
-    else:
-        return ll.sum()
-
-
 def _get_idx(x_target, x):
     """
     Function to get the indices for a given vector of x values
@@ -1116,10 +1060,16 @@ def wrangle_and_check_form_and_Z_cols(Z_cols, formula, df):
         feature_names = list(Z_cols)
         model_spec = None
     else:
-        form = Formula("0 + " + formula)
+        # Materialise with the implicit intercept so categoricals get
+        # reference-level coding, then drop the intercept column — the
+        # baseline hazard plays that role, and a full one-hot is collinear
+        # with it (#252). An explicit "0 + ..." formula opts out.
+        form = Formula(formula)
         model_matrix = form.get_model_matrix(df, na_action="ignore")
-        feature_names = list(model_matrix.columns)
         model_spec = model_matrix.model_spec
+        if "Intercept" in model_matrix.columns:
+            model_matrix = model_matrix.drop(columns=["Intercept"])
+        feature_names = list(model_matrix.columns)
         Z = model_matrix.values.astype(float)
         mask = ~np.any(np.isnan(Z), axis=1)
 
@@ -1173,10 +1123,7 @@ def validate_cr_inputs(x, c, n, e, method):
     check_e_and_x(e, x)
 
     # Not implemented, yet.
-    if (-1 in c) or (2 in c):
-        raise ValueError(
-            "Left or interval censoring not implemented with Competing Risks"
-        )
+    check_left_or_int_cens(c)
 
     # Ensure all cases where c is 0, e is not None and
     # where c is 1 e is None
@@ -1184,7 +1131,7 @@ def validate_cr_inputs(x, c, n, e, method):
 
     # Two baselines
     # TODO: Add fleming-harrington
-    if method not in ["Nelson-Aalen", "Kaplan-Meier"]:
+    if method not in FG_BASELINE_OPTIONS:
         raise ValueError("Unrecognised baseline method")
 
     return x, c, n, e
@@ -1249,12 +1196,15 @@ def validate_tv_coxph(id, tl, x, Z, c, n):
             x_i = x[id == i]
             _check_an_ids_tl_and_x(i, tl_i, x_i)
 
+    # One validation pass is enough: mask the already-validated arrays
+    # (including the truncation bounds — the old second xcnt_handler call
+    # used the unmasked tl and would raise a confusing length error
+    # whenever wrangle_Z actually dropped NaN rows).
     Z, mask = wrangle_Z(Z)
-    x, c, n = (arr[mask] for arr in (x, c, n))
+    x, c, n, t = (arr[mask] for arr in (x, c, n, t))
     x, c, n, Z = (arr.astype(float) for arr in [x, c, n, Z])
 
     check_Z_and_x(Z, x)
-    x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
 
     return t[:, 0], x, Z, c, n
 

@@ -2,11 +2,13 @@ from autograd.scipy.special import gammaln
 from scipy.stats import nbinom
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.discrete_fitter import (
+    DiscreteParametricFitter,
+)
 from surpyval.utils.autograd_gamma_compat import betainc, betaincln
 
 
-class NegativeBinomial_(ParametricFitter):
+class NegativeBinomial_(DiscreteParametricFitter):
     r"""
 
     The Negative Binomial distribution as a discrete lifetime on the
@@ -42,7 +44,6 @@ class NegativeBinomial_(ParametricFitter):
             param_map={"r": 0, "p": 1},
             plot_x_scale="linear",
         )
-        self.supports_mpp = False
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         # Method-of-moments seed from the shifted counts Y = T - 1: for the

@@ -77,19 +77,6 @@ def efron_jit(n_d, Ri, Di, out):
 
 
 # @njit
-# def efron_jac_jit(n_d, Ri, ZRi, Di, ZDi, out):
-#     for i in range(len(n_d)):
-#         val = np.zeros(out.shape[1])
-
-#         if n_d[i] == 0:
-#             continue
-#         for j in range(int(n_d[i])):
-#             c = j / n_d[i]
-#             val = val + ((ZRi[i] - (c * ZDi[i])) / (Ri[i] - (c * Di[i])))
-#         out[i] = val
-#     return out
-
-
 def efron_jac(n_d, Ri, ZRi, Di, ZDi, masked_array):
     # Vectorised implementation of term two of the efron ll
     # jacobian.
@@ -140,6 +127,25 @@ def at_risk_beta_Z(arr, n, gb_x):
     R = gb_x.sum(n * arr)[1]
     # Get the reverse cumulative sum
     return R[::-1].cumsum(axis=0)[::-1]
+
+
+def not_yet_entered(pos, mass_by_tl):
+    """Per unique event time, the total ``mass_by_tl`` of observations whose
+    entry (left-truncation) time is at or after that event time — the amount
+    to subtract from the reverse-cumulative at-risk sums so that a subject
+    only enters the risk set strictly after its ``tl``.
+
+    ``pos`` is ``searchsorted(unique_tl, unique_x, side="left")``. This is an
+    exact suffix-sum gather and is valid for *signed* quantities (the
+    Z-weighted score and information sums), unlike the previous scatter +
+    ``minimum.accumulate`` forward fill, which is only a forward fill for
+    positive non-increasing sequences and silently corrupted the gradient and
+    Hessian of every delayed-entry / start-stop fit containing a negative
+    covariate value (#250).
+    """
+    suffix = mass_by_tl[::-1].cumsum(axis=0)[::-1]
+    pad = np.zeros((1,) + suffix.shape[1:])
+    return np.concatenate([suffix, pad], axis=0)[pos]
 
 
 def _sub(a, mask):
@@ -218,6 +224,50 @@ def _exact_ordering_logterm(a, risk_sum):
     return anp.log(h[full])
 
 
+def _solve_beta_and_p_values(neg_ll, jac, beta_init, tol):
+    """Root-find the score (with BFGS fallback) and compute Wald p-values
+    from the observed information; shared by ``fit`` and
+    ``_fit_stratified`` so the most-patched block in this file exists
+    exactly once."""
+    # Have found that root finding is faster than minimization. ``jac``
+    # returns (score, hessian), hence ``jac=True``.
+    res = root(jac, beta_init, jac=True, tol=tol)
+
+    # MINPACK's hybr root-finder can stall on delayed-entry data with
+    # staggered risk sets (e.g. the start-stop representation used for
+    # time-varying covariates) even though the partial log-likelihood is
+    # well behaved there. Fall back to a direct minimisation of the
+    # negative partial log-likelihood whenever root-finding fails to
+    # converge or lands at a worse point, so such fits still succeed.
+    if not res.success:
+        fallback = minimize(
+            lambda b: float(neg_ll(b)), beta_init, method="BFGS"
+        )
+        if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
+            res = fallback
+
+    hessian_matrix = jac(res.x)[1]
+    # An exactly singular information matrix raises before the
+    # pseudo-inverse fallback can run (#259); route it there.
+    try:
+        var = np.diag(inv(hessian_matrix))
+    except np.linalg.LinAlgError:
+        var = np.full(len(np.atleast_1d(res.x)), -1.0)
+    # Use the pseudo-inverse if the hessian does not have a diagonal that
+    # is all positive.
+    if np.any(var <= 0):
+        var = np.diag(pinv(hessian_matrix))
+    # A near-singular information matrix (e.g. a degenerate start-stop
+    # design with duplicated rows) can still leave a non-positive
+    # variance; the resulting standard error is simply unavailable (nan),
+    # which is the correct signal, so suppress the sqrt-of-negative
+    # warning rather than emit it.
+    with np.errstate(invalid="ignore"):
+        z_score = res.x / np.sqrt(var)
+    p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
+    return res, p_values
+
+
 def _combine_generators(gens):
     """Sum per-stratum ``(log_like, jac_hess)`` generators into one.
 
@@ -241,7 +291,16 @@ def _combine_generators(gens):
             hess_total = h if hess_total is None else hess_total + h
         return jac_total, hess_total
 
-    return neg_ll, jac_hess, True
+    return neg_ll, jac_hess
+
+
+def cox_at_risk_mask(x, tl, tau):
+    """The Cox risk-set convention, in one place (#299): a row is at risk
+    at event time ``tau`` once it has entered (``tl < tau`` — strict, so a
+    start-stop row is not at risk at its own entry time) and until it
+    exits (``x >= tau`` — inclusive, so a row is at risk at its own event
+    or censoring time)."""
+    return (tl < tau) & (x >= tau)
 
 
 class CoxPH_:
@@ -253,32 +312,41 @@ class CoxPH_:
         self, beta, x, c, n, Z, tl=None
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         # Breslow baseline hazard. The risk set at each event time ``tau_i``
-        # is every observation that has entered (``tl < tau_i``; delayed
-        # entry / start-stop) and has not yet exited (``x >= tau_i``), each
-        # weighted by its count ``n`` and hazard multiplier ``exp(Z'beta)``.
-        # Respecting ``tl`` is what makes the baseline correct for
-        # left-truncated and time-varying-covariate (start-stop) data.
+        # follows ``cox_at_risk_mask`` (entered ``tl < tau_i``, not yet
+        # exited ``x >= tau_i``), each row weighted by its count ``n`` and
+        # hazard multiplier ``exp(Z'beta)``. Respecting ``tl`` is what makes
+        # the baseline correct for left-truncated and time-varying-covariate
+        # (start-stop) data. Computed by suffix sums — the risk set is
+        # everyone with ``x >= tau_i`` minus the not-yet-entered
+        # ``tl >= tau_i`` (valid because ``tl < x`` on every row) — the same
+        # subtraction the Efron generator uses, replacing the previous
+        # O(K·N) Python loop (#299).
 
         unique_x = np.unique(x)
         if tl is None:
             tl = np.full(x.shape[0], -np.inf)
 
+        w = n * np.exp(Z @ beta)
+
+        event = c == 0
         d = np.zeros_like(unique_x)
-        r = np.zeros_like(unique_x)
-        e_beta_z = np.exp(Z @ beta)
+        np.add.at(d, np.searchsorted(unique_x, x[event]), n[event])
 
-        for i, tau_i in enumerate(unique_x):
-            mask_d_i = (x == tau_i) & (c == 0)
-            d[i] = n[mask_d_i].sum()
+        r_exit = np.zeros_like(unique_x)
+        np.add.at(r_exit, np.searchsorted(unique_x, x), w)
+        r_exit = r_exit[::-1].cumsum()[::-1]
 
-            mask_at_risk_i = (tl < tau_i) & (x >= tau_i)
-            r[i] = (n[mask_at_risk_i] * e_beta_z[mask_at_risk_i]).sum()
+        # Bucket each row at the largest event time <= its entry time; the
+        # suffix sum then gives, at each tau_i, the weight not yet entered.
+        k = np.searchsorted(unique_x, tl, side="right") - 1
+        entered_late = k >= 0
+        r_pre = np.zeros_like(unique_x)
+        np.add.at(r_pre, k[entered_late], w[entered_late])
+        r_pre = r_pre[::-1].cumsum()[::-1]
 
-        return unique_x, r, d
+        return unique_x, r_exit - r_pre, d
 
-    def create_efron_ll_jac_hess(
-        self, x, Z, c, n, tl, with_jac=True, with_hess=True
-    ):
+    def create_efron_ll_jac_hess(self, x, Z, c, n, tl):
         # The reference used to compute the jacobian and hessian
         # was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
         # Left-truncation is handled by subtracting the pre-entry risk set
@@ -296,7 +364,9 @@ class CoxPH_:
 
         x_ = gb_x.unique
         x_tl = gb_tl.unique
-        idx = np.searchsorted(x_, x_tl, side="right")
+        # For each unique event time, how many unique entry times precede it:
+        # feeds the not-yet-entered suffix-sum gather below.
+        pos = np.searchsorted(x_tl, x_, side="left")
 
         def log_like(beta):
             beta_z = Z @ beta
@@ -305,18 +375,11 @@ class CoxPH_:
             e_beta_z = np.exp(beta_z).reshape(-1, 1)
 
             x_, Ri = gb_x.sum(n * e_beta_z)
-            trunc = gb_tl.sum(n * e_beta_z)[1]
 
             Ri = Ri[::-1].cumsum(axis=0)[::-1]
 
-            trunc = trunc[::-1].cumsum(axis=0)[::-1] - trunc
-
-            TRi = np.ones_like(Ri) * np.inf
-
-            TRi[idx] = trunc
-            TRi = np.minimum.accumulate(TRi)
-            # Subtract the truncated values from the others.
-            Ri = Ri - TRi
+            # Subtract the not-yet-entered mass from the risk sums.
+            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
 
@@ -353,32 +416,12 @@ class CoxPH_:
             Z2Ri = gb_x.sum(z2_e_beta_z)[1]
             Z2Ri = Z2Ri[::-1].cumsum(axis=0)[::-1]
 
-            trunc = gb_tl.sum(n * e_beta_z)[1]
-            trunc = trunc[::-1].cumsum(axis=0)[::-1] - trunc
-
-            z_trunc = gb_tl.sum(n * z_e_beta_z)[1]
-            z_trunc = z_trunc[::-1].cumsum(axis=0)[::-1] - z_trunc
-
-            z2_trunc = gb_tl.sum(z2_e_beta_z)[1]
-            z2_trunc = z2_trunc[::-1].cumsum(axis=0)[::-1] - z2_trunc
-
-            TRi = np.ones_like(Ri) * np.inf
-            ZTRi = np.ones_like(ZRi) * np.inf
-            Z2TRi = np.ones_like(Z2Ri) * np.inf
-
-            TRi[idx] = trunc
-            TRi = np.minimum.accumulate(TRi)
-
-            ZTRi[idx] = z_trunc
-            ZTRi = np.minimum.accumulate(ZTRi)
-
-            Z2TRi[idx] = z2_trunc
-            Z2TRi = np.minimum.accumulate(Z2TRi)
-
-            # Subtract the truncated values from the non-truncated risk set.
-            Ri -= TRi
-            ZRi -= ZTRi
-            Z2Ri -= Z2TRi
+            # Subtract the not-yet-entered mass from the risk sums. The
+            # Z-weighted sums are signed, so this must be the exact gather —
+            # see ``not_yet_entered`` (#250).
+            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+            ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
+            Z2Ri = Z2Ri - not_yet_entered(pos, gb_tl.sum(z2_e_beta_z)[1])
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
             ZDi = gb_x.sum(n_d_x * z_e_beta_z)[1]
@@ -407,7 +450,7 @@ class CoxPH_:
 
             return jacobian, hess_matrix
 
-        return log_like, jac_hess, True
+        return log_like, jac_hess
 
     def create_breslow_ll_jac_hess(self, x, Z, c, n, tl):
         # The reference used to compute the jacobian and hessian
@@ -424,7 +467,9 @@ class CoxPH_:
 
         x_ = gb_x.unique
         x_tl = gb_tl.unique
-        idx = np.searchsorted(x_, x_tl, side="right")
+        # For each unique event time, how many unique entry times precede it:
+        # feeds the not-yet-entered suffix-sum gather below.
+        pos = np.searchsorted(x_tl, x_, side="left")
 
         # Create the log_like function for the data
         def log_like(beta):
@@ -435,15 +480,8 @@ class CoxPH_:
             e_beta_z = np.exp(beta_z).reshape(-1, 1)
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
 
-            trunc = gb_tl.sum(n * e_beta_z)[1]
-            trunc = trunc[::-1].cumsum(axis=0)[::-1] - trunc
-
-            TRi = np.ones_like(Ri) * np.inf
-
-            TRi[idx] = trunc
-            TRi = np.minimum.accumulate(TRi)
-
-            Ri -= TRi
+            # Subtract the not-yet-entered mass from the risk sums.
+            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
 
             Ri = np.log(Ri)
             Ri = n_d.reshape(-1, 1) * Ri
@@ -469,32 +507,12 @@ class CoxPH_:
             Z2Ri = gb_x.sum(z2_e_beta_z)[1]
             Z2Ri = Z2Ri[::-1].cumsum(axis=0)[::-1]
 
-            trunc = gb_tl.sum(n * e_beta_z)[1]
-            trunc = trunc[::-1].cumsum(axis=0)[::-1] - trunc
-
-            z_trunc = gb_tl.sum(n * z_e_beta_z)[1]
-            z_trunc = z_trunc[::-1].cumsum(axis=0)[::-1] - z_trunc
-
-            z2_trunc = gb_tl.sum(z2_e_beta_z)[1]
-            z2_trunc = z2_trunc[::-1].cumsum(axis=0)[::-1] - z2_trunc
-
-            TRi = np.ones_like(Ri) * np.inf
-            ZTRi = np.ones_like(ZRi) * np.inf
-            Z2TRi = np.ones_like(Z2Ri) * np.inf
-
-            TRi[idx] = trunc
-            TRi = np.minimum.accumulate(TRi)
-
-            ZTRi[idx] = z_trunc
-            ZTRi = np.minimum.accumulate(ZTRi)
-
-            Z2TRi[idx] = z2_trunc
-            Z2TRi = np.minimum.accumulate(Z2TRi)
-
-            # Subtract the truncated values from the non-truncated risk set.
-            Ri -= TRi
-            ZRi -= ZTRi
-            Z2Ri -= Z2TRi
+            # Subtract the not-yet-entered mass from the risk sums. The
+            # Z-weighted sums are signed, so this must be the exact gather —
+            # see ``not_yet_entered`` (#250).
+            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+            ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
+            Z2Ri = Z2Ri - not_yet_entered(pos, gb_tl.sum(z2_e_beta_z)[1])
 
             EZ = ZRi / Ri
             EZ = n_d.reshape(-1, 1) * EZ
@@ -515,7 +533,7 @@ class CoxPH_:
 
             return jacobian, hess_matrix
 
-        return log_like, jac_hess, True
+        return log_like, jac_hess
 
     def _prepare_exact_tie_data(self, x, Z, c, n, tl):
         """Expand count-weighted rows and pre-compute, per event time, the
@@ -549,9 +567,7 @@ class CoxPH_:
         death_Z_sum = []
         for tau in event_times:
             d_mask = (xe == tau) & (ce == 0)
-            # Delayed entry: a row is at risk at tau only once it has entered
-            # (tl < tau) and before it exits (x >= tau).
-            r_mask = (tle < tau) & (xe >= tau)
+            r_mask = cox_at_risk_mask(xe, tle, tau)
             death_idx.append(np.where(d_mask)[0])
             risk_idx.append(np.where(r_mask)[0])
             death_Z_sum.append(Ze[d_mask].sum(axis=0))
@@ -560,7 +576,7 @@ class CoxPH_:
     @staticmethod
     def _autograd_ll_jac_hess(neg_ll):
         """Wrap a scalar ``autograd.numpy`` negative-log-likelihood into the
-        ``(neg_ll, jac_hess, True)`` contract used by :meth:`fit`.
+        ``(neg_ll, jac_hess)`` contract used by :meth:`fit`.
 
         The score is the reverse-mode automatic gradient (exact and cheap). The
         observed information is obtained by forward finite-differencing that
@@ -587,7 +603,7 @@ class CoxPH_:
             hess_matrix = 0.5 * (hess_matrix + hess_matrix.T)
             return s0, hess_matrix
 
-        return neg_ll, jac_hess, True
+        return neg_ll, jac_hess
 
     def create_kalbfleisch_prentice_ll_jac_hess(self, x, Z, c, n, tl):
         """Kalbfleisch-Prentice discrete (conditional-logistic) tie handling.
@@ -746,51 +762,15 @@ class CoxPH_:
         # Good initial guess assumes no impact
         beta_init = np.zeros(Z.shape[1])
 
-        neg_ll, jac, hess = func_generator(x, Z, c, n, tl)
+        neg_ll, jac = func_generator(x, Z, c, n, tl)
 
-        # Have found that root finding is faster than minimization
-        res = root(jac, beta_init, jac=hess, tol=tol)
-
-        # MINPACK's hybr root-finder can stall on delayed-entry data with
-        # staggered risk sets (e.g. the start-stop representation used for
-        # time-varying covariates) even though the partial log-likelihood is
-        # well behaved there. Fall back to a direct minimisation of the
-        # negative partial log-likelihood whenever root-finding fails to
-        # converge or lands at a worse point, so such fits still succeed.
-        if not res.success:
-            fallback = minimize(
-                lambda b: float(neg_ll(b)), beta_init, method="BFGS"
-            )
-            if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
-                res = fallback
-
-        # The hessian is at [1] of the jac function
-        if hess:
-            # Finds the p-value for the null hypothesis
-            # that the coefficient is 0.
-            hessian_matrix = jac(res.x)[1]
-            var = np.diag(inv(hessian_matrix))
-            # Use the pseudo-inverse if the hessian does not have a
-            # diagonal that is all positive.
-            if np.any(var <= 0):
-                var = np.diag(pinv(hessian_matrix))
-            # A near-singular information matrix (e.g. a degenerate
-            # start-stop design with duplicated rows) can still leave a
-            # non-positive variance; the resulting standard error is simply
-            # unavailable (nan), which is the correct signal, so suppress the
-            # sqrt-of-negative warning rather than emit it.
-            with np.errstate(invalid="ignore"):
-                z_score = res.x / np.sqrt(var)
-            p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
-        else:
-            p_values = None
+        res, p_values = _solve_beta_and_p_values(neg_ll, jac, beta_init, tol)
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values
         model.neg_ll = neg_ll
         model.jac = jac
-        model.hess = hess
         model.tie_method = method
         model.baseline_method = "breslow"
         model.res = res
@@ -856,31 +836,16 @@ class CoxPH_:
         if n_params is None:
             raise ValueError("no observations to fit")
         gens = [g for _, g, _ in per_stratum]
-        neg_ll, jac, hess = _combine_generators(gens)
+        neg_ll, jac = _combine_generators(gens)
 
         beta_init = np.zeros(n_params)
-        res = root(jac, beta_init, jac=hess, tol=tol)
-        if not res.success:
-            fallback = minimize(
-                lambda b: float(neg_ll(b)), beta_init, method="BFGS"
-            )
-            if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
-                res = fallback
-
-        hessian_matrix = jac(res.x)[1]
-        var = np.diag(inv(hessian_matrix))
-        if np.any(var <= 0):
-            var = np.diag(pinv(hessian_matrix))
-        with np.errstate(invalid="ignore"):
-            z_score = res.x / np.sqrt(var)
-        p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
+        res, p_values = _solve_beta_and_p_values(neg_ll, jac, beta_init, tol)
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values
         model.neg_ll = neg_ll
         model.jac = jac
-        model.hess = hess
         model.tie_method = method
         model.baseline_method = "breslow"
         model.res = res
@@ -1018,11 +983,19 @@ class CoxPH_:
             semi_parametric_regression_model.SemiParametricRegressionModel.
             predict_tvc`.
         """
-        x, c, n_arr, tl, Z_arr, _ = handle_tvc(i, xl, xr, c, Z, n)
+        x, c, n_arr, tl, Z_arr, ident = handle_tvc(i, xl, xr, c, Z, n)
         model = self.fit(
             x=x, Z=Z_arr, c=c, n=n_arr, tl=tl, method=method, tol=tol
         )
         model.is_tvc = True
+        # Subject ids per *internal* (sorted) row, and the permutation from
+        # the caller's row order to the internal order: residuals and
+        # cluster-robust SEs align with the internal order, so user-supplied
+        # per-row labels must be permuted the same way (#259).
+        model.tvc_subject_ids = ident
+        model.tvc_row_order = np.lexsort(
+            (np.asarray(xl, dtype=float), np.asarray(i))
+        )
         return model
 
     def fit_tvc_from_df(

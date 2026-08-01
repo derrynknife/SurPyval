@@ -187,3 +187,33 @@ def test_per_covariate_names_from_dataframe():
     ph = m.check_ph()
     names = [e.get("covariate") for e in ph["per_covariate"]]
     assert names == ["temp", "volt"]
+
+
+def _ph_test_dataset():
+    # Correlated covariates with a time-varying effect on the first, so
+    # the per-covariate statistics genuinely differ between conventions.
+    np.random.seed(11)
+    n = 200
+    Z = np.random.normal(size=(n, 2))
+    Z[:, 1] = 0.5 * Z[:, 0] + np.random.normal(size=n)
+    u = np.random.uniform(size=n)
+    x = -np.log(u) / (0.1 * np.exp(0.8 * Z[:, 0]))
+    cut = np.quantile(x, 0.8)
+    c = (x > cut).astype(int)
+    return np.minimum(x, cut), Z, c
+
+
+def test_check_ph_matches_lifelines_convention():
+    # Grambsch-Therneau per-covariate statistic d (Vu)_j^2 / (Sgc2 V_jj)
+    # with the km transform as 1 - KM(t) (#262). Reference values computed
+    # with lifelines 0.30.3 ``proportional_hazard_test(time_transform="km")``
+    # on this exact dataset.
+    x, Z, c = _ph_test_dataset()
+    model = sp.CoxPH.fit(x=x, Z=Z, c=c)
+    res = model.check_ph(transform="km")
+    stats = [e["statistic"] for e in res["per_covariate"]]
+    assert stats[0] == pytest.approx(0.178375, abs=2e-4)
+    assert stats[1] == pytest.approx(0.182189, abs=2e-4)
+    pvals = [e["p_value"] for e in res["per_covariate"]]
+    assert pvals[0] == pytest.approx(0.672773, abs=2e-4)
+    assert pvals[1] == pytest.approx(0.669498, abs=2e-4)

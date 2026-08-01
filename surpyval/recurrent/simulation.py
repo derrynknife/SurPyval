@@ -94,9 +94,10 @@ class RecurrenceSimulationMixin:
         and renewal models, which carry no top-level ``dist`` -- are left
         unchanged.
         """
-        dist = getattr(self, "dist", None)
-        if dist is not None and dist.name == "CoxLewis":
-            model.mcf_hat += np.exp(self.params[0])
+        # The former Cox-Lewis mcf_hat correction was dead code (it
+        # compared against the wrong name string) and would have been
+        # wrong had it fired: cif(0) = 0 and the inverse-CIF sampler is
+        # exact, so the simulated MCF needs no baseline offset (#288).
         return model
 
     def _simulate_count_xicn(self, events, items, seed):
@@ -219,7 +220,7 @@ class RecurrenceSimulationMixin:
         from surpyval.utils.recurrent_utils import handle_xicn
 
         xicn = self._simulate_count_xicn(events, items, seed)
-        return handle_xicn(as_recurrent_data=True, **xicn)
+        return handle_xicn(**xicn)
 
     def time_terminated_simulation_data(
         self, T, items=1, tol=1e-8, max_events=10_000, seed=None
@@ -257,7 +258,7 @@ class RecurrenceSimulationMixin:
         from surpyval.utils.recurrent_utils import handle_xicn
 
         xicn = self._simulate_time_xicn(T, items, tol, max_events, seed)
-        return handle_xicn(as_recurrent_data=True, **xicn)
+        return handle_xicn(**xicn)
 
     def count_terminated_simulation(self, events, items=1, seed=None):
         """

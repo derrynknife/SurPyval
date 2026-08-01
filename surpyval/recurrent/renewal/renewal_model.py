@@ -1,14 +1,15 @@
-import json
 from typing import Any
 
 import numpy as np
 
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 
-class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
+class RenewalModel(
+    SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
+):
     """
     A fitted renewal / imperfect-repair recurrence model.
 
@@ -121,11 +122,6 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
             out["m"] = self.m
         return stamp_schema(out)
 
-    def to_json(self, fp) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RenewalModel":
         """
@@ -192,12 +188,6 @@ class RenewalModel(RecurrenceSimulationMixin, LikelihoodInferenceMixin):
             )
         # GeneralizedOneRenewal
         return fitter.fit_from_parameters(params, restoration, dist=dist)
-
-    @classmethod
-    def from_json(cls, fp) -> "RenewalModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def _new_sequence_sampler(self):
         return self._sampler_factory(self)

@@ -1,15 +1,13 @@
-import json
 import types
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
-from scipy.stats import norm, uniform
+from scipy.stats import norm
 
-from surpyval.serialisation import stamp_schema
-from surpyval.utils import fsli_to_xcnt
+from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.univariate.information_criteria import InformationCriteriaMixin
 
 from ._bounds import (
     bound_signs,
@@ -18,7 +16,11 @@ from ._bounds import (
     logit_sf_bound,
     numerical_hessian,
 )
-from .regression_data import prepare_Z
+from .regression_data import (
+    model_spec_to_meta,
+    prepare_Z,
+    rebuild_model_spec,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -48,7 +50,7 @@ _SERIALISABLE_REG_NAMES = {
 }
 
 
-class ParametricRegressionModel:
+class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     """
     Result of ``.fit()`` or ``.from_params()`` method for parametric
     regression modelling.
@@ -194,26 +196,29 @@ class ParametricRegressionModel:
         if self.feature_names is not None:
             out["feature_names"] = list(self.feature_names)
         if self.formula is not None:
-            out["formula"] = self.formula
+            out["formula"] = str(self.formula)
+            # Persist the categorical levels / numeric columns needed to
+            # rebuild the formula's design-matrix transformer on load, so a
+            # restored model expands raw covariates the same way (#244).
+            if self._model_spec is not None:
+                out["formula_meta"] = model_spec_to_meta(self._model_spec)
 
         # Store the parameter covariance so the restored model can produce
-        # confidence bounds without the original data. Only for data-fit
-        # models whose covariance is finite (a boundary optimum gives nan).
+        # confidence bounds without the original data: from the fit when
+        # available, else the covariance restored from a previous dict so
+        # repeated save/load cycles do not silently lose it (#261).
         if hasattr(self, "data") and getattr(self, "res", None) is not None:
             try:
                 cov = self.covariance()
             except Exception:
                 cov = None
-            if cov is not None and np.all(np.isfinite(cov)):
-                out["covariance"] = np.asarray(cov, dtype=float).tolist()
-            if hasattr(self, "_neg_ll"):
-                out["_neg_ll"] = float(self._neg_ll)
+        else:
+            cov = getattr(self, "_restored_covariance", None)
+        if cov is not None and np.all(np.isfinite(cov)):
+            out["covariance"] = np.asarray(cov, dtype=float).tolist()
+        if hasattr(self, "_neg_ll"):
+            out["_neg_ll"] = float(self._neg_ll)
         return stamp_schema(out)
-
-    def to_json(self, fp: "str | Path") -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "ParametricRegressionModel":
@@ -310,6 +315,13 @@ class ParametricRegressionModel:
         out.feature_names = model_dict.get("feature_names")
         out.formula = model_dict.get("formula")
 
+        # Rebuild the formula's design-matrix transformer so the restored
+        # model expands raw covariates (e.g. categoricals) at prediction time
+        # exactly as the original did (#244).
+        formula_meta = model_dict.get("formula_meta")
+        if out.formula is not None and formula_meta is not None:
+            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
+
         if "covariance" in model_dict:
             out._restored_covariance = np.array(
                 model_dict["covariance"], dtype=float
@@ -317,12 +329,6 @@ class ParametricRegressionModel:
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
         return out
-
-    @classmethod
-    def from_json(cls, fp: "str | Path") -> "ParametricRegressionModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """
@@ -387,6 +393,15 @@ class ParametricRegressionModel:
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         Z = self._prepare_Z(Z)
+        if not hasattr(self.reg_model, "phi"):
+            # Additive-hazards reg models have no multiplier: the
+            # covariate effect enters as beta'Z added to the hazard, so
+            # phi() is undefined rather than an AttributeError (#277).
+            raise NotImplementedError(
+                "phi() is not defined for additive-hazards models: the "
+                "covariate effect is additive (beta'Z on the hazard), "
+                "not a multiplier."
+            )
         return self.reg_model.phi(Z, *self.phi_params)
 
     def sf(
@@ -816,205 +831,32 @@ class ParametricRegressionModel:
         >>> np.random.seed(1)
         >>> model.random(1)
         array([8.14127103])
-        >>> model.random(10)
-        array([10.84103403,  0.48542084,  7.11387062,  5.41420125,  4.59286657,
-                5.90703589,  7.5124326 ,  7.96575225,  9.18134126,
-                8.16000438])
-        """
-        if (self.p == 1) and (self.f0 == 0):
-            return (
-                self.dist.qf(uniform.rvs(size=size), *self.params) + self.gamma
-            )
-        elif (self.p != 1) and (self.f0 == 0):
-            n_obs = np.random.binomial(size, self.p)
-
-            f = (
-                self.dist.qf(uniform.rvs(size=n_obs), *self.params)
-                + self.gamma
-            )
-            s = np.ones(np.array(size) - n_obs) * np.max(f) + 1
-
-            return fsli_to_xcnt(f, s)
-
-        elif (self.p == 1) and (self.f0 != 0):
-            n_doa = np.random.binomial(size, self.f0)
-
-            x0 = np.zeros(n_doa) + self.gamma
-            x = (
-                self.dist.qf(uniform.rvs(size=size - n_doa), *self.params)
-                + self.gamma
-            )
-            x = np.concatenate([x, x0])
-            np.random.shuffle(x)
-
-            return x
-        else:
-            N = np.random.multinomial(
-                1, [self.f0, self.p - self.f0, 1.0 - self.p], size
-            ).sum(axis=0)
-            N = np.atleast_2d(N)
-            n_doa, n_obs, n_cens = N[:, 0], N[:, 1], N[:, 2]
-            x0 = np.zeros(n_doa) + self.gamma
-            x = (
-                self.dist.qf(uniform.rvs(size=n_obs), *self.params)
-                + self.gamma
-            )
-            f = np.concatenate([x, x0])
-            s = np.ones(n_cens) * np.max(f) + 1
-            # raise NotImplementedError("Combo zero-inflated and lfp model not
-            # yet supported")
-            return fsli_to_xcnt(f, s)
-
-    def neg_ll(self) -> float:
-        r"""
-
-        The the negative log-likelihood for the model, if it was fit with the
-        ``fit()`` method. Not available if fit with the ``from_params()``
-        method.
-
-        Parameters
-        ----------
-
-        None
-
-        Returns
-        -------
-
-        neg_ll : float
-            The negative log-likelihood of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
+        >>> from surpyval import WeibullPH
         >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.neg_ll()
-        262.52685642385734
+        >>> model = WeibullPH.fit(x, Z)
+        >>> x_rand, Z_rand = model.random(10, Z[:1])
         """
-        if not hasattr(self, "data"):
-            raise ValueError("Must have been fit with data")
+        # Dispatch to the regression fitter's own covariate-aware sampler
+        # (#261): the previous implementation ignored ``Z`` entirely and
+        # read LFP/ZI attributes regression fits never set, so it crashed
+        # on every path.
+        Z = self._prepare_Z(Z)
+        if hasattr(self.model, "random"):
+            return self.model.random(size, Z, *self.params)
+        raise NotImplementedError(
+            f"random() is not implemented for {self.kind} models."
+        )
 
-        return self._neg_ll
+    # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin.
+    def _ic_counts(self):
+        n, c = self.data.n, self.data.c
+        return n[c == 0].sum(), n.sum()
 
-    def bic(self) -> float:
-        r"""
-
-        The the Bayesian Information Criterion (BIC) for the model, if it was
-        fit with the ``fit()`` method. Not available if fit with the
-        ``from_params()`` method.
-
-        Parameters
-        ----------
-
-        None
-
-        Returns
-        -------
-
-        bic : float
-            The BIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.bic()
-        534.2640532196908
-
-        References:
-        -----------
-
-        `Bayesian Information Criterion for Censored Survival Models
-        <https://www.jstor.org/stable/2677130>`_.
-
-        """
-        if hasattr(self, "_bic"):
-            return self._bic
-        else:
-            self._bic = (
-                self.k * np.log(self.data.n[self.data.c == 0].sum())
-                + 2 * self.neg_ll()
-            )
-            return self._bic
-
-    def aic(self) -> float:
-        r"""
-
-        The the Aikake Information Criterion (AIC) for the model, if it was
-        fit with the ``fit()`` method. Not available if fit with the
-        ``from_params()`` method.
-
-        Parameters
-        ----------
-
-        None
-
-        Returns
-        -------
-
-        aic : float
-            The AIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.aic()
-        529.0537128477147
-        """
-        if hasattr(self, "_aic"):
-            return self._aic
-        else:
-            self._aic = 2 * self.k + 2 * self.neg_ll()
-            return self._aic
-
-    def aic_c(self) -> float:
-        r"""
-
-        The the Corrected Aikake Information Criterion (AIC) for the model, if
-        it was fit with the ``fit()`` method. Not available if fit with the
-        ``from_params()`` method.
-
-        Parameters
-        ----------
-
-        None
-
-        Returns
-        -------
-
-        aic_c : float
-            The Corrected AIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.aic()
-        529.1774241879209
-        """
-        if hasattr(self, "_aic_c"):
-            return self._aic_c
-        else:
-            k = len(self.params)
-            n = self.data.n.sum()
-            self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
-            return self._aic_c
+    def _ic_k_aic_c(self):
+        # Regression models have historically used the full parameter-
+        # vector length here (which can differ from ``self.k`` when
+        # parameters are fixed); preserved as-is (#298).
+        return len(self.params)
 
     # -- confidence bounds -------------------------------------------------
 

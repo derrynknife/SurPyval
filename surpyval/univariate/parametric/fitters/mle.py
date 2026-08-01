@@ -230,6 +230,15 @@ def mle(model):
             else:
                 u_var = u_full[var_idx]
                 hess_u = hessian(transformed_fun)(u_var)
+                # A corrupted autograd Hessian (e.g. a primitive whose
+                # VJP silently drops second-order terms) shows up as
+                # asymmetry; recompute numerically rather than invert
+                # garbage (#270).
+                asym = np.max(np.abs(hess_u - hess_u.T)) > 1e-4 * max(
+                    np.max(np.abs(hess_u)), 1.0
+                )
+                if np.isnan(hess_u).any() or asym:
+                    hess_u = Hessian(transformed_fun)(u_var)
                 cov_u = inv(hess_u)
                 if np.isnan(cov_u).any():
                     cov_u = inv(Hessian(transformed_fun)(u_var))
@@ -244,8 +253,16 @@ def mle(model):
 
         results["cov_matrix"] = cov_matrix
         results["hess_inv"] = hess_inv
-        results["_neg_ll"] = res["fun"]
-        results["log_likelihood"] = -res["fun"]
+        # On the fallback path the returned parameters are the initial
+        # guess, so the reported likelihood must be evaluated there — not
+        # taken from the failed optimizer (#261).
+        if use_initial:
+            with np.errstate(all="ignore"):
+                neg_ll_val = float(fun(init, offset, lfp, zi, True))
+        else:
+            neg_ll_val = float(res["fun"])
+        results["_neg_ll"] = neg_ll_val
+        results["log_likelihood"] = -neg_ll_val
         results["res"] = res
         results["optimizer"] = (
             best_method if best_method is not None else method

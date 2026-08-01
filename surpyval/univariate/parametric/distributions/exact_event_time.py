@@ -59,6 +59,15 @@ class ExactEventTime_(ParametricFitter):
                 censored data"
             )
 
+        # The estimator needs both a right-censored bound (below T) and a
+        # left-censored bound (above T); raise informatively rather than an
+        # opaque zero-size numpy reduction (#257).
+        if not (c == 1).any() or not (c == -1).any():
+            raise ValueError(
+                "ExactEventTime needs at least one right-censored (c=1) and "
+                "one left-censored (c=-1) observation to bracket the event "
+                "time."
+            )
         max_r = np.max(x[c == 1])
         min_l = np.min(x[c == -1])
 

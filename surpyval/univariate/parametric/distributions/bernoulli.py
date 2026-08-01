@@ -1,12 +1,14 @@
 from scipy.stats import uniform
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.discrete_fitter import (
+    DiscreteParametricFitter,
+)
 
 from ..parametric import Parametric
 
 
-class Bernoulli_(ParametricFitter):
+class Bernoulli_(DiscreteParametricFitter):
     def __init__(self, name):
         super().__init__(
             name=name,
@@ -141,10 +143,14 @@ class Bernoulli_(ParametricFitter):
 
     def fit(self, x, n=None):
         x = np.atleast_1d(x)
-        n = np.atleast_1d(n)
-
-        if not np.equal(x, np.array([0, 1])).all():
+        # Each observation must be a 0 or a 1 — elementwise, for any length
+        # (the previous check broadcast x against the literal [0, 1], so any
+        # input of length != 2 crashed and [1, 1] was rejected, #257).
+        if not np.isin(x, (0, 1)).all():
             raise ValueError("'x' must be either 0 or 1")
+        n = np.ones_like(x) if n is None else np.atleast_1d(n)
+        if n.shape[0] != x.shape[0]:
+            raise ValueError("'n' must be the same length as 'x'")
 
         model = Parametric(self, "MLE", None, False, False, False)
         p = (x * n).sum() / n.sum()
@@ -152,7 +158,7 @@ class Bernoulli_(ParametricFitter):
         return model
 
     def from_params(self, p):
-        p = np.atleast_1d(p)
+        p = float(np.squeeze(np.asarray(p)))
 
         if p > 1:
             raise ValueError("'p' must be less than 1")
@@ -161,7 +167,7 @@ class Bernoulli_(ParametricFitter):
             raise ValueError("'p' must be greater than 0")
 
         model = Parametric(self, "given parameters", None, False, False, False)
-        model.params = p
+        model.params = np.atleast_1d(p)
         return model
 
 

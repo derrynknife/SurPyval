@@ -34,57 +34,15 @@ Two ways to fix this are provided:
 import numpy as np
 from scipy.stats import norm
 
-# -- small delta-method helpers (self-contained) --------------------------
+# -- delta-method helpers shared with the recurrent package (the two
+# packages used to carry verbatim copies of these, the drift-prone
+# pattern that produced #288) ---------------------------------------------
 
-
-def _num_hessian(func, x):
-    x = np.asarray(x, dtype=float)
-    n = x.size
-    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(x), 1e-2)
-    H = np.zeros((n, n))
-    for i in range(n):
-        for j in range(i, n):
-            ei = np.zeros(n)
-            ei[i] = step[i]
-            ej = np.zeros(n)
-            ej[j] = step[j]
-            H[i, j] = H[j, i] = (
-                func(x + ei + ej)
-                - func(x + ei - ej)
-                - func(x - ei + ej)
-                + func(x - ei - ej)
-            ) / (4.0 * step[i] * step[j])
-    return H
-
-
-def _delta_se(func, mle, cov):
-    mle = np.asarray(mle, dtype=float)
-    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(mle), 1e-2)
-    cols = []
-    for i in range(mle.size):
-        ei = np.zeros(mle.size)
-        ei[i] = step[i]
-        cols.append(
-            (
-                np.asarray(func(mle + ei), dtype=float)
-                - np.asarray(func(mle - ei), dtype=float)
-            )
-            / (2.0 * step[i])
-        )
-    J = np.stack(cols, axis=-1)
-    var = np.einsum("...i,ij,...j->...", J, cov, J)
-    with np.errstate(invalid="ignore"):
-        return np.sqrt(var)
-
-
-def _bound_signs(alpha_ci, bound):
-    if bound == "two-sided":
-        return alpha_ci / 2.0, np.array([-1.0, 1.0])
-    elif bound == "lower":
-        return alpha_ci, np.array([-1.0])
-    elif bound == "upper":
-        return alpha_ci, np.array([1.0])
-    raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+from surpyval.recurrent.inference import (
+    _bound_signs,
+    delta_method_std_errors as _delta_se,
+    numerical_hessian as _num_hessian,
+)
 
 
 def _logit_bound(p_hat, se, alpha_ci, bound):
@@ -267,67 +225,20 @@ def analytic_cb(model, x, on, alpha_ci, bound):
     return (1.0 - sf_b) if on in ("ff", "F") else -np.log(sf_b)
 
 
-def bootstrap_cb(model, x, on, alpha_ci, bound, n_boot, seed):
-    import warnings
-
-    from .degradation_analysis import DegradationAnalysis
-
-    x = np.atleast_1d(np.asarray(x, dtype=float))
-    rng = np.random.default_rng(seed)
-    curves = []
-    # Each resampled fit may emit the usual small-sample path-covariance
-    # warnings; silence them here so a single bootstrap call does not surface
-    # hundreds of duplicates.
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        for _ in range(n_boot):
-            picks = rng.choice(len(model.units), size=len(model.units))
-            xs, ys, ids = [], [], []
-            for new_id, idx in enumerate(picks):
-                mask = model.i == model.units[idx]
-                xs.append(model.x[mask])
-                ys.append(model.y[mask])
-                ids.append(np.full(int(mask.sum()), new_id))
-            try:
-                m = DegradationAnalysis.fit(
-                    np.concatenate(xs),
-                    np.concatenate(ys),
-                    np.concatenate(ids),
-                    threshold=model.threshold,
-                    path=model.path_model,
-                    distribution=model._distribution,
-                    how=model._how,
-                )
-                curves.append(np.asarray(getattr(m, _on_method(on))(x)))
-            except Exception:
-                continue
-    if len(curves) < 2:
-        raise RuntimeError(
-            "The degradation bootstrap produced too few successful refits to "
-            "form a confidence bound."
-        )
-    curves = np.asarray(curves)
-    alpha, _ = _bound_signs(alpha_ci, bound)
-    if bound == "two-sided":
-        lo = np.quantile(curves, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(curves, 1.0 - alpha_ci / 2.0, axis=0)
-        return np.stack([lo, hi], axis=-1)
-    q = alpha_ci if bound == "lower" else 1.0 - alpha_ci
-    return np.quantile(curves, q, axis=0)
-
-
-def bootstrap_cb_accelerated(model, x, Z, on, alpha_ci, bound, n_boot, seed):
+def bootstrap_cb(model, x, on, alpha_ci, bound, n_boot, seed, Z=None):
     """
-    Two-stage bootstrap confidence bounds for an *accelerated* (covariate)
-    degradation model, evaluated at the stress ``Z``.
+    Two-stage bootstrap confidence bounds: resample units with
+    replacement and rerun the whole pipeline (per-unit path fit ->
+    pseudo failure time -> life fit) on each resample, so the
+    first-stage path/extrapolation uncertainty is folded in.
 
-    Units are resampled with replacement -- each carrying its stress row --
-    and the whole accelerated pipeline (per-unit path fit -> pseudo failure
-    time -> covariate life fit) is rerun on each resample, so the first-stage
-    path/extrapolation uncertainty is folded into the reliability at ``Z``
-    just as it is for the plain model. The selected path model is held fixed
-    across resamples (matching ``path="best"``'s chosen model), so the bound
-    reflects life-fit and extrapolation variability, not path re-selection.
+    For an *accelerated* (covariate) model pass the stress ``Z`` to
+    evaluate at: each resampled unit carries its stress row and the
+    covariate life fit is rerun per resample. The selected path model is
+    held fixed across resamples (matching ``path="best"``'s chosen
+    model), so the bound reflects life-fit and extrapolation
+    variability, not path re-selection. Refits whose curve is not
+    finite everywhere are dropped rather than poisoning the quantiles.
     """
     import warnings
 
@@ -338,6 +249,9 @@ def bootstrap_cb_accelerated(model, x, Z, on, alpha_ci, bound, n_boot, seed):
     method_name = _on_method(on)
     n_units = len(model.units)
     curves = []
+    # Each resampled fit may emit the usual small-sample path-covariance
+    # warnings; silence them here so a single bootstrap call does not surface
+    # hundreds of duplicates.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         for _ in range(n_boot):
@@ -349,7 +263,8 @@ def bootstrap_cb_accelerated(model, x, Z, on, alpha_ci, bound, n_boot, seed):
                 xs.append(model.x[mask])
                 ys.append(model.y[mask])
                 ids.append(np.full(n_meas, new_id))
-                Zs.append(np.tile(model.Z[idx], (n_meas, 1)))
+                if Z is not None:
+                    Zs.append(np.tile(model.Z[idx], (n_meas, 1)))
             try:
                 m = DegradationAnalysis.fit(
                     np.concatenate(xs),
@@ -359,18 +274,26 @@ def bootstrap_cb_accelerated(model, x, Z, on, alpha_ci, bound, n_boot, seed):
                     path=model.path_model,
                     distribution=model._distribution,
                     how=model._how,
-                    Z=np.concatenate(Zs),
+                    Z=None if Z is None else np.concatenate(Zs),
                 )
-                curve = np.asarray(getattr(m, method_name)(x, Z), dtype=float)
+                curve_fn = getattr(m, method_name)
+                curve = np.asarray(
+                    curve_fn(x) if Z is None else curve_fn(x, Z), dtype=float
+                )
                 if np.isfinite(curve).all():
                     curves.append(curve)
             except Exception:
                 continue
     if len(curves) < 2:
+        detail = (
+            " (a resample may not span enough stress levels to identify "
+            "the covariate fit)"
+            if Z is not None
+            else ""
+        )
         raise RuntimeError(
-            "The accelerated degradation bootstrap produced too few "
-            "successful refits to form a confidence bound (a resample may not "
-            "span enough stress levels to identify the covariate fit)."
+            "The degradation bootstrap produced too few successful refits "
+            "to form a confidence bound" + detail + "."
         )
     curves = np.asarray(curves)
     if bound == "two-sided":

@@ -393,20 +393,25 @@ class Exponential_(ParametricFitter):
         return out
 
     def mpp_inv_y_transform(self, y, *params):
-        return 1 - np.exp(y)
+        # Inverse of y = -log(1 - F) is F = 1 - exp(-y) (#257).
+        return 1 - np.exp(-y)
 
     def mpp(
         self,
         x,
         c=None,
         n=None,
+        t=None,
         heuristic="Nelson-Aalen",
         rr="y",
         on_d_is_0=False,
         offset=False,
     ):
         assert rr in ["x", "y"]
-        x_pp, r, d, F = plotting_positions(x, c=c, n=n, heuristic=heuristic)
+        # Forward the truncation windows (previously dropped, #280).
+        x_pp, r, d, F = plotting_positions(
+            x, c=c, n=n, t=t, heuristic=heuristic
+        )
 
         if not on_d_is_0:
             x_pp = x_pp[d > 0]
@@ -427,11 +432,18 @@ class Exponential_(ParametricFitter):
 
         if offset:
             if rr == "y":
+                # y = lambda * (x - gamma): slope is lambda, intercept is
+                # -lambda * gamma.
                 params = np.polyfit(x_pp, y_pp, 1)
-            elif rr == "x":
+                failure_rate = params[0]
+                gamma = -params[1] * (1.0 / failure_rate)
+            else:
+                # x = y / lambda + gamma: slope is 1/lambda and the
+                # intercept IS gamma (the y-on-x inversion was applied to
+                # the x-on-y fit, returning nonsense, #257).
                 params = np.polyfit(y_pp, x_pp, 1)
-            failure_rate = params[0]
-            gamma = -params[1] * (1.0 / failure_rate)
+                failure_rate = 1.0 / params[0]
+                gamma = params[1]
             return {"params": np.array([failure_rate]), "gamma": gamma}
         else:
             if rr == "y":

@@ -7,12 +7,14 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
-import json
 import textwrap
 
 import numpy as np
 
 import surpyval as surv
+from surpyval.univariate.competing_risks.aalen_johansen import (
+    aalen_johansen_iif,
+)
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier as km
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen as na
 from surpyval.utils import (
@@ -22,10 +24,10 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.serialisation import stamp_schema, to_native
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 
-class CompetingRisks:
+class CompetingRisks(SerialisableMixin):
     # Attributes populated by ``fit`` / ``from_dict``; declared for the type
     # checker.
     event_idx_map: dict
@@ -78,11 +80,6 @@ class CompetingRisks:
             out[name] = np.asarray(getattr(self, name), dtype=float).tolist()
         return stamp_schema(out)
 
-    def to_json(self, fp) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "CompetingRisks":
         """Rebuild a nonparametric competing-risks model from a dict."""
@@ -97,12 +94,6 @@ class CompetingRisks:
         for name in cls._SERIALISED_ARRAYS:
             setattr(out, name, np.array(model_dict[name], dtype=float))
         return out
-
-    @classmethod
-    def from_json(cls, fp) -> "CompetingRisks":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def __repr__(self):
         out = """\
@@ -125,10 +116,15 @@ class CompetingRisks:
             arr = self.CIF
 
         if event is None:
-            return arr.sum(axis=0)[idx][rev]
+            out = arr.sum(axis=0)[idx][rev]
         else:
             e = self.event_idx_map[event]
-            return arr[e, idx][rev]
+            out = arr[e, idx][rev]
+        # Query times before the first observed time have index -1, which
+        # would otherwise wrap to the *last* step value; every step function
+        # here (hazard, cumulative hazard, IIF, CIF) is zero before the
+        # first event time.
+        return np.where(idx[rev] < 0, 0.0, out)
 
     def hf(self, x, event=None):
         return self._f("h", x, event)
@@ -171,7 +167,9 @@ class CompetingRisks:
     ):
         x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
         model = cls.fit(x, e, c, n, method)
-        model.df = df
+        # Keep the source frame without shadowing the ``df`` (density)
+        # method (#253).
+        model.source_df = df
         return model
 
     @classmethod
@@ -227,6 +225,12 @@ class CompetingRisks:
         model.d_e = d_e
         model.h0_e = d_e / r
         model.H0_e = model.h0_e.cumsum(axis=1)
-        model.IIF = model.S * model.h0_e
+        # The incidence weight must be the *product-limit* (KM) survival
+        # regardless of the estimator reported as sf: only KM satisfies
+        # the telescoping identity sum_j S(t-)·d_j/r = 1 - S(t), so
+        # pairing the discrete hazard increment with exp(-H) inflates
+        # the CIF and can push the total incidence past 1 (#278).
+        S_km = S if method == "Kaplan-Meier" else km(r, d)
+        model.IIF = aalen_johansen_iif(S_km, model.h0_e)
         model.CIF = model.IIF.cumsum(axis=1)
         return model

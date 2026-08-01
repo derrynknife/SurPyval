@@ -36,6 +36,7 @@ _TAGGED_MODELS: dict[str, str] = {
     "SemiParametricRegressionModel": (
         "surpyval.univariate.regression.semi_parametric_regression_model"
     ),
+    "FrailtyModel": ("surpyval.univariate.regression.frailty.frailty_model"),
     "AdditiveHazardsModel": (
         "surpyval.univariate.regression.additive_hazards.additive_hazards"
     ),
@@ -43,6 +44,7 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.univariate.regression.buckley_james.buckley_james"
     ),
     "MixtureModel": "surpyval.univariate.parametric.mixture_model",
+    "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),
     "FineGrayModel": (
         "surpyval.univariate.competing_risks.regression.fine_gray"
     ),
@@ -76,6 +78,12 @@ _TAGGED_MODELS: dict[str, str] = {
     "DestructiveDegradationModel": "surpyval.degradation.destructive",
     "SurvivalTree": "surpyval.beta.ml.forest.tree",
     "RandomSurvivalForest": "surpyval.beta.ml.forest.forest",
+    # The degenerate distributions are stateless: the class is the model,
+    # so they serialise by name alone.
+    "NeverOccurs": ("surpyval.univariate.parametric.distributions.degenerate"),
+    "InstantlyOccurs": (
+        "surpyval.univariate.parametric.distributions.degenerate"
+    ),
 }
 
 # ``"parameterization"`` value -> (defining module, class name), for
@@ -94,6 +102,10 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
     "parametric-regression": (
         "surpyval.univariate.regression.parametric_regression_model",
         "ParametricRegressionModel",
+    ),
+    "copula": (
+        "surpyval.multivariate.parametric.copula.copula_model",
+        "CopulaModel",
     ),
 }
 
@@ -133,6 +145,23 @@ def to_native(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [to_native(v) for v in value]
     return value
+
+
+class SerialisableMixin:
+    """Shared ``to_json`` / ``from_json`` plumbing for serialisable
+    models: every class keeps only its ``to_dict`` / ``from_dict``
+    pair (this used to be copy-pasted into ~20 classes)."""
+
+    def to_json(self, fp):
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_json(cls, fp):
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
 
 
 def from_dict(model_dict: dict) -> Any:

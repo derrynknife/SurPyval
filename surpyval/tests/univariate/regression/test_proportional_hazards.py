@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from surpyval import CoxPH, ExponentialPH, WeibullPH
+from surpyval import CoxPH, ExponentialPH, Weibull, WeibullPH
 
 
 @pytest.fixture(autouse=True)
@@ -230,8 +230,7 @@ def test_efron_hessian_matches_finite_difference():
     c = (rng.uniform(size=N) < 0.25).astype(int)
 
     x, cc, nn, tl, ZZ = validate_coxph(t, c, np.ones(N), Z, None, "efron")
-    _, jac_hess, has_hess = CoxPH.create_efron_ll_jac_hess(x, ZZ, cc, nn, tl)
-    assert has_hess
+    _, jac_hess = CoxPH.create_efron_ll_jac_hess(x, ZZ, cc, nn, tl)
 
     beta = np.array([0.1, -0.1, 0.2])
     H = jac_hess(beta)[1]
@@ -347,7 +346,7 @@ def _neg_ll(method, x, Z, c):
 
     tl = np.full(len(x), -np.inf)
     gen = CoxPH_()._resolve_func_generator(method)
-    neg_ll, _, _ = gen(
+    neg_ll, _ = gen(
         np.asarray(x, float),
         np.asarray(Z, float),
         np.asarray(c, int),
@@ -454,7 +453,7 @@ def test_exact_kp_hessian_matches_finite_difference(method):
     x, c, nn, tl, ZZ = validate_coxph(x, c, None, Z, None, method)
 
     gen = CoxPH_()._resolve_func_generator(method)
-    neg_ll, jac_hess, _ = gen(x, ZZ, c, nn, tl)
+    neg_ll, jac_hess = gen(x, ZZ, c, nn, tl)
 
     b = np.array([0.3, -0.2])
     score, H = jac_hess(b)
@@ -520,3 +519,24 @@ def test_kp_handles_heavy_ties():
     model = CoxPH.fit(x=x, Z=Z, c=c, method="kp")
     assert np.all(np.isfinite(model.beta))
     assert np.all(np.isfinite(model.p_values))
+
+
+def test_ph_fixed_covariate_coefficient_pins_correct_parameter():
+    # ``fixed={"beta_0": v}`` must pin the first covariate coefficient, not
+    # the first distribution parameter (#251: the phi param map was merged
+    # without the k_dist offset, so beta_0 collided with alpha).
+    np.random.seed(5)
+    x = Weibull.random(200, 10, 3)
+    Z = np.random.normal(size=(200, 2))
+
+    free = WeibullPH.fit(x, Z=Z)
+    fixed_beta0 = WeibullPH.fit(x, Z=Z, fixed={"beta_0": 0.5})
+
+    assert fixed_beta0.params[2] == pytest.approx(0.5, abs=1e-12)
+    # The distribution parameters must remain close to the free fit, not be
+    # pinned to the fixed value.
+    assert fixed_beta0.params[0] == pytest.approx(free.params[0], rel=0.2)
+
+    # Fixing a distribution parameter by name still works.
+    fixed_shape = WeibullPH.fit(x, Z=Z, fixed={"beta": 3.0})
+    assert fixed_shape.params[1] == pytest.approx(3.0, abs=1e-12)

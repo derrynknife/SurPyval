@@ -9,7 +9,26 @@ from . import fallback_minimize
 
 def mps_fun(params, dist, x, inv_trans, const, c, n, tl, tr, offset):
     if offset:
-        x_new = x - inv_trans(const(params))[0]
+        gamma = inv_trans(const(params))[0]
+        x_new = x - gamma
+        # The truncation bounds live on the same (observed) timescale as
+        # x, so they must be shifted with it; leaving them unshifted
+        # evaluated F(tl) on the unshifted distribution and made the
+        # objective infinite at the true parameters (#268). Infinite
+        # bounds are unaffected by the shift. A shifted left bound at or
+        # below the base distribution's support carries F = 0 exactly --
+        # evaluate it as -inf rather than feeding a negative time to the
+        # base CDF (NaN for e.g. Weibull, which fails the whole fit).
+        s0 = dist.support[0]
+        tl = tl - gamma
+        tr = tr - gamma
+        if np.isfinite(tl) and tl <= s0:
+            tl = -np.inf
+        if np.isfinite(tr) and tr <= s0:
+            # The whole window sits below the support: F(tr) = 0 makes
+            # the spacings denominator collapse, which neg_mean_D
+            # reports as an infinite objective.
+            tr = s0
         params = inv_trans(const(params))[1:]
     else:
         params = inv_trans(const(params))

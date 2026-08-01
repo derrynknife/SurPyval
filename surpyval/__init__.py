@@ -1,4 +1,4 @@
-__version__ = "0.16.0"
+__version__ = "0.17.0"
 
 from autograd import numpy as np
 
@@ -50,6 +50,8 @@ from surpyval.univariate.parametric import (
     Parametric,
     Poisson,
     Rayleigh,
+    RoystonParmar,
+    RoystonParmarModel,
     Uniform,
     Weibull,
 )

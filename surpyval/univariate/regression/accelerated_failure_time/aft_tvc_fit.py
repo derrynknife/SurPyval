@@ -42,6 +42,47 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from ..parametric_regression_model import ParametricRegressionModel
 
 
+def _validate_full_coverage(x, tl, ident):
+    """
+    Require each subject's episodes to tile ``(0, T]`` completely: first
+    entry at 0 and no gaps between consecutive episodes.
+
+    The accumulated accelerated age ``psi(T) = sum_k phi_k (b_k - a_k)``
+    implements the integral from 0, so uncovered time would silently
+    contribute *zero* accelerated ageing — shifting every subject's window
+    by +5 used to return bit-identical parameters (#258). Conditioning a
+    delayed-entry AFT fit correctly needs ``psi`` over the unobserved
+    pre-entry window, i.e. covariate values the data does not contain, so
+    rather than guess them the fit refuses. Cox TVC (``CoxPH.fit_tvc``)
+    handles delayed entry and gaps exactly, because its risk-set partial
+    likelihood never needs the unobserved history.
+    """
+    uniq, starts, counts = np.unique(
+        ident, return_index=True, return_counts=True
+    )
+    for u, f, cnt in zip(uniq, starts, counts):
+        s_tl = tl[f : f + cnt]
+        s_x = x[f : f + cnt]
+        if s_tl[0] > 1e-12:
+            raise ValueError(
+                "subject {} enters observation at {} > 0: the accelerated "
+                "failure time TVC likelihood integrates the covariate path "
+                "from time 0, and the pre-entry covariates are unobserved. "
+                "Start each subject's first interval at 0, or use Cox TVC "
+                "(CoxPH.fit_tvc), which handles delayed entry "
+                "exactly.".format(u, s_tl[0])
+            )
+        if cnt > 1 and np.any(np.abs(s_tl[1:] - s_x[:-1]) > 1e-9):
+            raise ValueError(
+                "subject {} has a gap between observation intervals: the "
+                "accelerated failure time TVC likelihood needs the covariate "
+                "path over the subject's whole life, and the in-gap "
+                "covariates are unobserved. Make each subject's intervals "
+                "contiguous, or use Cox TVC (CoxPH.fit_tvc), which handles "
+                "gaps exactly.".format(u)
+            )
+
+
 def _grouped_episodes(x, c, n, tl, ident):
     """
     From the (subject-contiguous, entry-sorted) episode arrays returned by
@@ -189,6 +230,7 @@ class AFTTVCFitMixin:
         if Z.shape[0] == 1 and x.shape[0] != 1:
             Z = Z.reshape(-1, 1)
         p = Z.shape[1]
+        _validate_full_coverage(x, tl, ident)
         grp = _grouped_episodes(x, c, n, tl, ident)
 
         # Result fitter: a fresh AFTFitter (so all ordinary prediction

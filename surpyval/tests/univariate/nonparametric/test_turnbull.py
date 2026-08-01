@@ -225,13 +225,27 @@ def _degenerate_case():
     return x, c, n, tl
 
 
-def test_turnbull_degenerate_state_is_flagged_and_warns():
+def test_turnbull_previously_degenerate_case_now_identifiable():
+    # The #203 reproduction collapsed because left-censored and
+    # entry-spanning interval supports extended below the observation
+    # windows. With each support intersected with its own truncation
+    # window (#273) the data are identifiable and the EM converges to a
+    # healthy estimate instead of the all-zero fixed point.
     x, c, n, tl = _degenerate_case()
-    with pytest.warns(UserWarning, match="degenerate"):
-        model = surpyval.Turnbull.fit(x=x, c=c, n=n, tl=tl)
-    # The degenerate direction is detected and surfaced, rather than a
-    # silent all-zero survival curve being returned as if converged.
-    assert model.degenerate is True
+    model = surpyval.Turnbull.fit(x=x, c=c, n=n, tl=tl, max_iter=200000)
+    assert model.degenerate is False
+    assert model.converged is True
+    R = np.asarray(model.R)
+    assert R[-1] < 0.1  # survival still falls essentially to zero
+    assert np.nanmax(R) == pytest.approx(1.0)
+    assert np.all(np.diff(R) <= 1e-12)  # monotone non-increasing
+
+
+def test_turnbull_non_convergence_still_warns():
+    # The same case stopped early must warn rather than return silently.
+    x, c, n, tl = _degenerate_case()
+    with pytest.warns(UserWarning, match="did not converge"):
+        surpyval.Turnbull.fit(x=x, c=c, n=n, tl=tl, max_iter=100)
 
 
 def test_turnbull_healthy_truncated_fit_is_not_flagged():
@@ -295,3 +309,61 @@ def test_turnbull_untruncated_default_is_unchanged():
     ]
     assert np.allclose(model.R, expected, atol=1e-6)
     assert model.degenerate is False
+
+
+def test_untruncated_censored_variance_matches_greenwood():
+    # The estimation ladder redistributes right-censored mass as fractional
+    # expected events, silently understating the variance (#260). On data
+    # where Turnbull reduces exactly to KM, the confidence intervals must
+    # now match Greenwood's exactly.
+    x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    c = np.array([0, 0, 1, 0, 1])
+    km_model = surpyval.KaplanMeier.fit(x, c=c)
+    tb_model = surpyval.Turnbull.fit(x, c=c, turnbull_estimator="Kaplan-Meier")
+    km_g = dict(zip(km_model.x, km_model.greenwood))
+    tb_g = {}
+    for xx, g in zip(tb_model.x, tb_model.greenwood):
+        tb_g[xx] = g
+    for xx, g in km_g.items():
+        assert g == pytest.approx(tb_g[xx], abs=1e-12)
+    assert np.allclose(
+        km_model.cb([2.5, 4.0]), tb_model.cb([2.5, 4.0]), atol=1e-9
+    )
+
+
+def test_km_entry_tie_uses_strict_entry_convention():
+    # (entry, exit] risk intervals (R survival / lifelines): a subject
+    # entering exactly at an event time is not at risk for that event.
+    # KM previously counted it (sf(2) = 0.8333) and disagreed with the
+    # Turnbull NPMLE on identical data (#260).
+    x = np.array([2.0, 3.0, 3.0, 4.0, 5.0, 6.0])
+    tl = np.array([0.0, 0.0, 1.0, 1.0, 2.0, 2.0])
+    km_model = surpyval.KaplanMeier.fit(x, tl=tl)
+    tb_model = surpyval.Turnbull.fit(
+        x, tl=tl, turnbull_estimator="Kaplan-Meier"
+    )
+    assert float(np.ravel(km_model.sf(2.0))[0]) == pytest.approx(0.75)
+    assert float(np.ravel(tb_model.sf(2.0))[0]) == pytest.approx(
+        0.75, abs=1e-6
+    )
+
+
+def test_value_at_own_truncation_time_rejected():
+    # A value at exactly its own left-truncation time has a zero-length
+    # observation window under (entry, exit]; it previously slipped
+    # through and silently distorted the Turnbull estimate (#260).
+    with pytest.raises(ValueError, match="strictly less"):
+        surpyval.Turnbull.fit(
+            np.array([2.0, 3.0, 4.0]), tl=np.array([2.0, 1.0, 1.0])
+        )
+    with pytest.raises(ValueError, match="strictly less"):
+        surpyval.KaplanMeier.fit(
+            np.array([2.0, 3.0, 4.0]), tl=np.array([2.0, 1.0, 1.0])
+        )
+
+
+def test_max_iter_zero_raises():
+    with pytest.raises(ValueError, match="max_iter"):
+        surpyval.Turnbull.fit(
+            np.array([1.0, 2.0, 3.0]), c=np.array([0, 1, 0]), max_iter=0
+        )
