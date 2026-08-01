@@ -4,6 +4,42 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Removed: the alpha-stage ``SeriesModel``/``ParallelModel``
+  reliability-block composition** (#284). Nested composition produced
+  incorrect survival functions (``ParallelModel | ParallelModel``
+  returned a parallel model; mixed-type composition flattened blocks
+  instead of nesting them), and reliability block diagrams are covered
+  by the Repyability package. The ``surpyval.experimental`` shim now
+  re-exports only the tree/forest models.
+- **Fixed: ``NonParametricCounting.mcf_cb`` corrupted bounds for
+  off-grid queries** (#285). The out-of-range masks were applied to the
+  grid-length bound array before indexing by query position — zeroing
+  the whole upper-bound column, wrapping out-of-range queries to the
+  last grid value, and raising ``IndexError`` when queries outnumbered
+  the two bound rows. Bounds are now selected per query then masked
+  (below-min → 0, above-max/negative → NaN, mirroring ``mcf``), and
+  two-sided output is now ordered ``[lower, upper]``, consistent with
+  the parametric ``cif_cb`` (previously ``[upper, lower]``).
+- **Fixed: ``CoxLewis`` constrained the log-intensity intercept to be
+  non-negative** (#286), silently pinning fits at ``alpha = 0`` for any
+  process with a baseline rate below one event per time unit. The
+  intercept is now unbounded; a simulated ``(alpha, beta) = (-1, 0.05)``
+  process is recovered to ``(-1.006, 0.050)``.
+- **Fixed: recurrent-fitter batch** (#288). A typo (``x[:, 0]`` for
+  ``x_prev[:, 0]``) cancelled the observed-event exposure term for 2-D
+  event input without interval rows — degenerate ``[t, t]`` pairs now
+  fit identically to 1-D input. The dead (and would-be-wrong) Cox-Lewis
+  MCF correction in the simulator was deleted. The proportional-
+  intensity HPP/NHPP fitters now honour a user-supplied ``init``
+  (previously silently overwritten) and validate its length.
+- **Fixed: round-2 follow-ups** (#289). MPS tie densities are evaluated
+  only at genuinely tied points (untied points contributed
+  ``0 * log(0) = NaN`` where a clean infinite penalty was intended);
+  the additive-hazards kernel bandwidth falls back to the time scale
+  when event times are (nearly) coincident instead of returning Dirac
+  spikes; and ``Beta4.hf`` is 0 below and ``inf`` at/above the support
+  instead of NaN above it.
+
 - **Fixed: Cox residuals, ``check_ph`` and robust standard errors now
   apply the Efron tie correction for Efron fits** (#279). All residuals
   used plain Breslow risk-set means and increments regardless of the tie

@@ -94,9 +94,10 @@ class RecurrenceSimulationMixin:
         and renewal models, which carry no top-level ``dist`` -- are left
         unchanged.
         """
-        dist = getattr(self, "dist", None)
-        if dist is not None and dist.name == "CoxLewis":
-            model.mcf_hat += np.exp(self.params[0])
+        # The former Cox-Lewis mcf_hat correction was dead code (it
+        # compared against the wrong name string) and would have been
+        # wrong had it fired: cif(0) = 0 and the inverse-CIF sampler is
+        # exact, so the simulated MCF needs no baseline offset (#288).
         return model
 
     def _simulate_count_xicn(self, events, items, seed):

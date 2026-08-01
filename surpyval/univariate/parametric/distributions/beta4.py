@@ -266,7 +266,16 @@ class Beta4_(ParametricFitter):
         hf : scalar or numpy array
             The value(s) of the instantaneous hazard rate at x.
         """
-        return self.df(x, alpha, beta, a, b) / self.sf(x, alpha, beta, a, b)
+        # df = 0 and sf = 0 above the support made hf return NaN (0/0)
+        # for x > b; the hazard is 0 below the support (no mass yet) and
+        # infinite at/above the upper bound (no survivors) (#289).
+        x_arr = np.asarray(x, dtype=float)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out = self.df(x_arr, alpha, beta, a, b) / self.sf(
+                x_arr, alpha, beta, a, b
+            )
+        out = np.where(x_arr < a, 0.0, out)
+        return np.where(x_arr >= b, np.inf, out)
 
     def Hf(self, x, alpha, beta, a, b):
         r"""

@@ -97,6 +97,15 @@ class NonParametricCounting:
         bound_type="exp",
         dist="z",
     ):
+        """
+        Confidence bounds for the MCF at the query times ``x``.
+
+        Two-sided bounds return one row per query with columns ordered
+        ``[lower, upper]`` (matching the parametric ``cif_cb``); one-sided
+        bounds return a 1-D array. Queries below the first observed time
+        return 0; queries above the last observed time (or negative)
+        return NaN, mirroring :meth:`mcf`.
+        """
         # Greenwood's variance with a normal (z) critical value. Ref found:
         # http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
         if bound_type not in ["exp", "normal"]:
@@ -118,7 +127,11 @@ class NonParametricCounting:
                 stat = -stat
         elif bound == "two-sided":
             stat = norm.ppf((1 - confidence) / 2, 0, 1)
-            stat = np.array([-1, 1]).reshape(2, 1) * stat
+            # Row 0 carries the negative multiplier (lower bound), row 1
+            # the positive one, so two-sided output is [lower, upper] —
+            # it used to be [upper, lower], inconsistent with the
+            # parametric cif_cb (#285).
+            stat = np.array([1, -1]).reshape(2, 1) * stat
 
         if bound_type == "exp":
             # Exponential Greenwood confidence
@@ -130,14 +143,23 @@ class NonParametricCounting:
             mcf_cb = self.mcf_hat + np.sqrt(self.var * self.mcf_hat**2) * stat
         # Let's not assume we can predict above the highest measurement
         if interp == "step":
-            mcf_cb[np.where(x < self.x.min())] = 0
-            mcf_cb[np.where(x > self.x.max())] = np.nan
-            mcf_cb[np.where(x < 0)] = np.nan
+            # Select by query position FIRST, then mask the query-length
+            # result: the masks used to be applied to the grid-length
+            # array, which zeroed whole bound rows, wrapped out-of-range
+            # queries to the last grid value, and crashed with an
+            # IndexError for more queries than bounds (#285).
             idx = np.searchsorted(self.x, x, side="right") - 1
+            safe_idx = np.clip(idx, 0, None)
+            below = (x < self.x.min()) | (idx < 0)
+            invalid = (x > self.x.max()) | (x < 0)
             if bound == "two-sided":
-                mcf_cb = mcf_cb[:, idx].T
+                mcf_cb = mcf_cb[:, safe_idx].T
+                mcf_cb[below, :] = 0
+                mcf_cb[invalid, :] = np.nan
             else:
-                mcf_cb = mcf_cb[idx]
+                mcf_cb = mcf_cb[safe_idx]
+                mcf_cb[below] = 0
+                mcf_cb[invalid] = np.nan
         elif interp == "linear":
             if bound == "two-sided":
                 R1 = np.interp(x, self.x, mcf_cb[0, :])
