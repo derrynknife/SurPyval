@@ -1,6 +1,4 @@
-import json
 from math import log2, sqrt
-from pathlib import Path
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -9,11 +7,11 @@ from surpyval.beta.ml.forest.deviance_split import (
     needs_full_likelihood_split,
 )
 from surpyval.beta.ml.forest.node import build_tree, node_from_dict
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
-class SurvivalTree:
+class SurvivalTree(SerialisableMixin):
     """
     A Survival Tree, for use in `RandomSurvivalForest`.
 
@@ -190,15 +188,6 @@ class SurvivalTree:
         tree.Z = None  # type: ignore[assignment]
         tree._root = node_from_dict(model_dict["root"])
         return tree
-
-    def to_json(self, fp: str | Path) -> None:
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
-    @classmethod
-    def from_json(cls, fp: str | Path) -> "SurvivalTree":
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
 
 def parse_n_features_split(

@@ -34,57 +34,15 @@ Two ways to fix this are provided:
 import numpy as np
 from scipy.stats import norm
 
-# -- small delta-method helpers (self-contained) --------------------------
+# -- delta-method helpers shared with the recurrent package (the two
+# packages used to carry verbatim copies of these, the drift-prone
+# pattern that produced #288) ---------------------------------------------
 
-
-def _num_hessian(func, x):
-    x = np.asarray(x, dtype=float)
-    n = x.size
-    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(x), 1e-2)
-    H = np.zeros((n, n))
-    for i in range(n):
-        for j in range(i, n):
-            ei = np.zeros(n)
-            ei[i] = step[i]
-            ej = np.zeros(n)
-            ej[j] = step[j]
-            H[i, j] = H[j, i] = (
-                func(x + ei + ej)
-                - func(x + ei - ej)
-                - func(x - ei + ej)
-                + func(x - ei - ej)
-            ) / (4.0 * step[i] * step[j])
-    return H
-
-
-def _delta_se(func, mle, cov):
-    mle = np.asarray(mle, dtype=float)
-    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(mle), 1e-2)
-    cols = []
-    for i in range(mle.size):
-        ei = np.zeros(mle.size)
-        ei[i] = step[i]
-        cols.append(
-            (
-                np.asarray(func(mle + ei), dtype=float)
-                - np.asarray(func(mle - ei), dtype=float)
-            )
-            / (2.0 * step[i])
-        )
-    J = np.stack(cols, axis=-1)
-    var = np.einsum("...i,ij,...j->...", J, cov, J)
-    with np.errstate(invalid="ignore"):
-        return np.sqrt(var)
-
-
-def _bound_signs(alpha_ci, bound):
-    if bound == "two-sided":
-        return alpha_ci / 2.0, np.array([-1.0, 1.0])
-    elif bound == "lower":
-        return alpha_ci, np.array([-1.0])
-    elif bound == "upper":
-        return alpha_ci, np.array([1.0])
-    raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+from surpyval.recurrent.inference import (
+    _bound_signs,
+    delta_method_std_errors as _delta_se,
+    numerical_hessian as _num_hessian,
+)
 
 
 def _logit_bound(p_hat, se, alpha_ci, bound):

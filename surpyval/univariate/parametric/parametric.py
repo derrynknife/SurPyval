@@ -1,8 +1,6 @@
-import json
 from collections import namedtuple
 from copy import copy, deepcopy
 from math import comb
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 import matplotlib.pyplot as plt
@@ -21,7 +19,7 @@ if TYPE_CHECKING:
 
     from surpyval.utils.surpyval_data import SurpyvalData
 
-from surpyval.serialisation import stamp_schema, to_native
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -37,7 +35,7 @@ from .probability_plotting import (
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
 
 
-class Parametric(ParametricDistribution):
+class Parametric(SerialisableMixin, ParametricDistribution):
     """
     Result of ``.fit()`` or ``.from_params()`` method for every parametric
     surpyval distribution.
@@ -121,11 +119,6 @@ class Parametric(ParametricDistribution):
 
         self.bounds = bounds
         self.param_map = param_map
-
-    @classmethod
-    def from_json(cls, fp: str | Path) -> "Parametric":
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "Parametric":
@@ -222,21 +215,14 @@ class Parametric(ParametricDistribution):
         else:
             out["gamma"] = 0.0
 
-        if hasattr(self, "hess_inv"):
-            if self.hess_inv is None:
-                pass
-            else:
-                out["hess_inv"] = self.hess_inv.tolist()
+        if getattr(self, "hess_inv", None) is not None:
+            out["hess_inv"] = self.hess_inv.tolist()
         if getattr(self, "cov_matrix", None) is not None:
             out["cov_matrix"] = self.cov_matrix.tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
 
         return stamp_schema(out)
-
-    def to_json(self, fp: str | Path) -> None:
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
 
     def __repr__(self) -> str:
         if hasattr(self, "params"):

@@ -24,8 +24,6 @@ H_j(u))`. The cause CIFs sum to the all-cause failure probability
 :math:`1 - S(t)`.
 """
 
-import json
-
 import numpy as np
 from scipy.integrate import cumulative_trapezoid
 
@@ -36,7 +34,7 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
-from surpyval.serialisation import stamp_schema, to_native
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 
 def _validate(x, c, n, e):
@@ -64,7 +62,7 @@ def _validate(x, c, n, e):
     return x, c, n, e
 
 
-class ParametricCompetingRisks:
+class ParametricCompetingRisks(SerialisableMixin):
     """
     A parametric competing-risks model: one distribution per cause, combined
     into cumulative-incidence functions. Build it in one step from data with
@@ -95,11 +93,6 @@ class ParametricCompetingRisks:
             }
         )
 
-    def to_json(self, fp) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "ParametricCompetingRisks":
         """Rebuild a parametric competing-risks model from a dict."""
@@ -115,12 +108,6 @@ class ParametricCompetingRisks:
             for cause, sub in zip(out.causes, model_dict["models"])
         }
         return out
-
-    @classmethod
-    def from_json(cls, fp) -> "ParametricCompetingRisks":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def __repr__(self):
         dists = ", ".join(

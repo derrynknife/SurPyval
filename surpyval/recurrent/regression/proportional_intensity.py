@@ -1,5 +1,3 @@
-import json
-
 import numpy as np
 from matplotlib import pyplot as plt
 
@@ -11,11 +9,11 @@ from surpyval.recurrent.inference import (
 )
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 
 class ProportionalIntensityModel(
-    RecurrenceSimulationMixin, LikelihoodInferenceMixin
+    SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
 ):
     """
     Model to provide methods and attributes when using a fitted proportional
@@ -94,11 +92,6 @@ class ProportionalIntensityModel(
             }
         )
 
-    def to_json(self, fp):
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict):
         """
@@ -130,12 +123,6 @@ class ProportionalIntensityModel(
         out.params = np.array(model_dict["params"], dtype=float)
         out.coeffs = np.array(model_dict["coeffs"], dtype=float)
         return out
-
-    @classmethod
-    def from_json(cls, fp):
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def cif(self, x, Z):
         """

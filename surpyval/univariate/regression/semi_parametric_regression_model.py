@@ -1,11 +1,9 @@
-import json
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils import _get_idx
 
 from .regression_data import (
@@ -18,7 +16,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 
-class SemiParametricRegressionModel:
+class SemiParametricRegressionModel(SerialisableMixin):
     # Covariate metadata populated when the model is fit from a pandas
     # DataFrame via ``CoxPH.fit_from_df``.
     feature_names: list[str] | None = None
@@ -143,11 +141,6 @@ class SemiParametricRegressionModel:
                 out["formula_meta"] = model_spec_to_meta(self._model_spec)
         return stamp_schema(out)
 
-    def to_json(self, fp: "str | Path") -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "SemiParametricRegressionModel":
         """
@@ -194,12 +187,6 @@ class SemiParametricRegressionModel:
         if out.formula is not None and formula_meta is not None:
             out._model_spec = rebuild_model_spec(out.formula, formula_meta)
         return out
-
-    @classmethod
-    def from_json(cls, fp: "str | Path") -> "SemiParametricRegressionModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def _baseline_arrays(
         self, stratum: Any
@@ -381,20 +368,13 @@ class SemiParametricRegressionModel:
         # covariate, contradicting the likelihood). Times outside the path
         # are clamped to the first/last interval (covariate held constant).
         base_t = self.x
-        active = np.searchsorted(xl_a, base_t, side="left") - 1
-        active = np.clip(active, 0, xl_a.shape[0] - 1)
-        phi = np.exp(Z_a[active] @ self.beta)
-        H_cum = np.cumsum(self.h0 * phi)
-
         if times is None:
             within = (base_t > xl_a[0]) & (base_t <= xr_a[-1])
             query = base_t[within]
         else:
             query = np.atleast_1d(np.asarray(times, dtype=float))
 
-        idx = np.searchsorted(base_t, query, side="right") - 1
-        last = H_cum.shape[0] - 1
-        Hf = np.where(idx >= 0, H_cum[np.clip(idx, 0, last)], 0.0)
+        Hf = self._tvc_cumhaz(query, xl_a, Z_a)
         return query, np.exp(-Hf), Hf
 
     def _tvc_cumhaz(self, query, starts, Zseg):

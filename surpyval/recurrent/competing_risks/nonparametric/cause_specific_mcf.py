@@ -12,9 +12,7 @@ See ``surpyval.univariate.competing_risks`` for the univariate
 (time-to-first-event) competing-risks models.
 """
 
-import json
-
-from autograd import numpy as np
+import numpy as np
 from matplotlib import pyplot as plt
 
 from surpyval.recurrent.nonparametric.mcf import NonParametricCounting
@@ -22,26 +20,16 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
-from surpyval.serialisation import stamp_schema, to_native
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 
 def _counting_model_from_xrd(x, r, d):
-    """
-    Build a ``NonParametricCounting`` model from an explicit ``(x, r, d)``
-    triple so its ``mcf``/``mcf_cb``/``plot`` machinery can be reused for a
-    single cause. Mirrors the estimator in
-    ``NonParametricCounting.fit_from_recurrent_data``.
-    """
-    out = type(NonParametricCounting)()
-    out.x, out.r, out.d = x, r, d
-    out.mcf_hat = np.cumsum(d / r)
-    var = 1.0 / r**2 * (d * (1 - 1.0 / r) ** 2 + (r - d) * (0 - 1.0 / r) ** 2)
-    var = (d > 0).astype(int) * var
-    out.var = np.cumsum(var)
-    return out
+    """Single-cause ``NonParametricCounting`` from an ``(x, r, d)``
+    triple; delegates to the one shared estimator."""
+    return type(NonParametricCounting).from_xrd(x, r, d)
 
 
-class CauseSpecificMCF:
+class CauseSpecificMCF(SerialisableMixin):
     """
     Cause-specific Mean Cumulative Function for a recurrent process with
     competing event types.
@@ -75,11 +63,6 @@ class CauseSpecificMCF:
             }
         )
 
-    def to_json(self, fp):
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict):
         """
@@ -100,13 +83,6 @@ class CauseSpecificMCF:
             for cause, sub in zip(out.event_types, model_dict["models"])
         }
         return out
-
-    @classmethod
-    def from_json(cls, fp):
-        """Load a cause-specific MCF from a JSON file written by
-        :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def mcf(self, x, cause, interp="step"):
         """Cause-specific MCF evaluated at ``x`` for the given ``cause``."""
@@ -179,9 +155,7 @@ class CauseSpecificMCF:
         # Route through the shared recurrent handler so the marked data gets
         # the same validation, sorting and (scalar or per-row) truncation
         # handling as every other recurrent fit.
-        data = handle_xicn(
-            x, i, c, n, tl=tl, tr=tr, e=e, as_recurrent_data=True
-        )
+        data = handle_xicn(x, i, c, n, tl=tl, tr=tr, e=e)
         return cls.fit_from_recurrent_data(data)
 
     @classmethod

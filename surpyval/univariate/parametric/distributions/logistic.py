@@ -58,9 +58,6 @@ class Logistic_(ParametricFitter):
         exp_term = np.exp(-(x - mu) / sigma)
         return exp_term / (1 + exp_term)
 
-    def cs(self, x, X, mu, sigma):
-        return self.sf(x + X, mu, sigma) / self.sf(X, mu, sigma)
-
     def ff(self, x, mu, sigma):
         r"""
 

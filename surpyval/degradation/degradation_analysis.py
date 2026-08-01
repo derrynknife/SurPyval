@@ -11,7 +11,6 @@ observed time.
 """
 
 import inspect
-import json
 import warnings
 from dataclasses import dataclass, field
 from numbers import Number
@@ -37,7 +36,7 @@ from ._bounds import (
 )
 from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate, reml_estimate_nonlinear
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 
 def _is_regression_fitter(fitter) -> bool:
@@ -122,7 +121,7 @@ class RULPrediction:
     samples: npt.NDArray = field(repr=False)
 
 
-class InducedFailureDistribution:
+class InducedFailureDistribution(SerialisableMixin):
     """
     The population failure-time distribution *induced by the degradation path
     model* -- the Lu-Meeker approach.
@@ -182,11 +181,6 @@ class InducedFailureDistribution:
             }
         )
 
-    def to_json(self, fp) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "InducedFailureDistribution":
         """Rebuild an induced failure-time distribution from a dict."""
@@ -200,12 +194,6 @@ class InducedFailureDistribution:
             dtype=float,
         )
         return cls(samples, model_dict["threshold"], model_dict["path_name"])
-
-    @classmethod
-    def from_json(cls, fp) -> "InducedFailureDistribution":
-        """Load from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def ff(self, x: npt.ArrayLike) -> "float | npt.NDArray":
         """Failure probability ``P(T <= x)`` from the Monte-Carlo draws."""
@@ -255,7 +243,7 @@ class InducedFailureDistribution:
         )
 
 
-class DegradationModel:
+class DegradationModel(SerialisableMixin):
     """
     A fitted degradation analysis model.
 
@@ -454,11 +442,6 @@ class DegradationModel:
             }
         )
 
-    def to_json(self, fp) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "DegradationModel":
         """
@@ -507,12 +490,6 @@ class DegradationModel:
         out._distribution = None
         out._how = model_dict.get("how", "MLE")
         return out
-
-    @classmethod
-    def from_json(cls, fp) -> "DegradationModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     @property
     def is_accelerated(self) -> bool:

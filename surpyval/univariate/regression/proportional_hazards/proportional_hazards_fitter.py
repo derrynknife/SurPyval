@@ -250,17 +250,6 @@ class ProportionalHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
         data = SurpyvalData(x, c, n, t, group_and_sort=False)
         data.add_covariates(Z)
 
-        # Need to convert t to be at the edges of the support, if not
-        # within it.
-        # data.tl = data.t[:, 0]
-        # data.tr = t[:, 1]
-
-        # if np.isfinite(self.support[0]):
-        # tl = np.where(tl < self.support[0], self.support[0], tl)
-
-        # if np.isfinite(self.support[1]):
-        # tr = np.where(tl > self.support[1], self.support[1], tr)
-
         if fixed is None:
             fixed = {}
 

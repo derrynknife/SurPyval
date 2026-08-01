@@ -300,7 +300,7 @@ class ARI(RenewalFitMixin):
         ARI
             A fitted ARI object.
         """
-        data = handle_xicn(x, i, c, n, as_recurrent_data=True)
+        data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, m, init=init)
 
     def fit_from_parameters(self, dist_params, rho, m=1, dist=CrowAMSAA):

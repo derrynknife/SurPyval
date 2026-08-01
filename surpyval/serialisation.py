@@ -137,6 +137,23 @@ def to_native(value: Any) -> Any:
     return value
 
 
+class SerialisableMixin:
+    """Shared ``to_json`` / ``from_json`` plumbing for serialisable
+    models: every class keeps only its ``to_dict`` / ``from_dict``
+    pair (this used to be copy-pasted into ~20 classes)."""
+
+    def to_json(self, fp):
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        with open(fp, "w+") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def from_json(cls, fp):
+        """Load a model from a JSON file written by :meth:`to_json`."""
+        with open(fp, "r") as f:
+            return cls.from_dict(json.load(f))
+
+
 def from_dict(model_dict: dict) -> Any:
     """
     Restore any serialised SurPyval model from its dictionary.

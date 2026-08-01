@@ -35,8 +35,6 @@ right-truncation. Right-censored contribute ``log S``, left-censored
 each observation's contribution by ``S(t_l) - S(t_r)``.
 """
 
-import json
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -44,7 +42,7 @@ from scipy.optimize import brentq, minimize
 from scipy.special import ndtri as _ndtri
 from scipy.stats import norm
 
-from surpyval.serialisation import stamp_schema, to_native
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 _SCALES = ("hazard", "odds", "normal")
 
@@ -131,7 +129,7 @@ def _sf_at(
     return out
 
 
-class RoystonParmarModel:
+class RoystonParmarModel(SerialisableMixin):
     """A fitted Royston-Parmar flexible parametric model.
 
     Carries the spline ``knots``, the coefficients ``params`` (``gamma``), the
@@ -311,10 +309,6 @@ class RoystonParmarModel:
             out["covariance"] = np.asarray(self.covariance, float).tolist()
         return stamp_schema(out)
 
-    def to_json(self, fp: "str | Path") -> None:
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RoystonParmarModel":
         if model_dict.get("model") != "RoystonParmarModel":
@@ -329,11 +323,6 @@ class RoystonParmarModel:
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)
         return out
-
-    @classmethod
-    def from_json(cls, fp: "str | Path") -> "RoystonParmarModel":
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
 
 def _numerical_hessian(f, x, eps=1e-5):

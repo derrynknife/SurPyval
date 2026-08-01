@@ -7,7 +7,6 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
-import json
 import textwrap
 
 import numpy as np
@@ -22,10 +21,10 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.serialisation import stamp_schema, to_native
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 
-class CompetingRisks:
+class CompetingRisks(SerialisableMixin):
     # Attributes populated by ``fit`` / ``from_dict``; declared for the type
     # checker.
     event_idx_map: dict
@@ -78,11 +77,6 @@ class CompetingRisks:
             out[name] = np.asarray(getattr(self, name), dtype=float).tolist()
         return stamp_schema(out)
 
-    def to_json(self, fp) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "CompetingRisks":
         """Rebuild a nonparametric competing-risks model from a dict."""
@@ -97,12 +91,6 @@ class CompetingRisks:
         for name in cls._SERIALISED_ARRAYS:
             setattr(out, name, np.array(model_dict[name], dtype=float))
         return out
-
-    @classmethod
-    def from_json(cls, fp) -> "CompetingRisks":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def __repr__(self):
         out = """\
