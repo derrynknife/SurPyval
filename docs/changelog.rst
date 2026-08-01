@@ -4,6 +4,27 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **Tests: a breadth sweep over Turnbull's supported inputs.** Every
+  combination of censoring type (observed, left, right, interval, and all
+  four mixed), truncation form (none, left, right, both) and hazard
+  estimator (Nelson-Aalen, Kaplan-Meier, Fleming-Harrington) is now fitted
+  and checked for a converged, valid, monotone survival curve with a
+  coherent risk-set ladder, complementing the existing tests that each pin
+  one regime. The sweep also pins that the estimator choice is honoured,
+  and that Fleming-Harrington coincides with Nelson-Aalen exactly when
+  event times are distinct (its tied-event correction being the only
+  difference). Building it surfaced #308.
+- **Known issue: left censoring combined with left truncation** (#308).
+  Turnbull either raises "censoring interval does not intersect its own
+  truncation window" on data where the intersection is plainly non-empty,
+  or fails to converge and returns a degenerate estimate. A left-censored
+  row lives on the ``(-inf, x]`` bound, and the support-window
+  intersection added for #273 drops that bound whenever an entry time
+  sits above its lower edge, even though the event interval ``(tl, x]``
+  is non-empty. Only fits with *both* left-censored observations and
+  left truncation are affected. The sweep marks this regime ``xfail``
+  (strict), so it will report as soon as it is fixed.
+
 - **Fixed: ``xcnt_to_xrd`` was quadratic in time and memory, and raised
   ``MemoryError`` past roughly 50,000 observations** (#306). The at-risk
   entry count was built as an ``N x K`` comparison matrix
