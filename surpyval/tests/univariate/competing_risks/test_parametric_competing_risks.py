@@ -150,7 +150,9 @@ def test_fit_from_df():
 
 
 def test_three_causes():
-    rng = np.random.default_rng(12)
+    # As in ``_simulate``: the draws come from numpy's global state, so
+    # that is what has to be seeded.
+    np.random.seed(12)
     N = 5000
     t1 = Weibull.random(N, 20.0, 1.5)
     t2 = Weibull.random(N, 30.0, 2.0)
