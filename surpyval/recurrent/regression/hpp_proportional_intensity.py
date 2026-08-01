@@ -260,16 +260,28 @@ class ProportionalIntensityHPP:
         out.bounds = ((0, None),)
         out.support = (0.0, np.inf)
 
-        # Use the right endpoint for interval-censored (2D) observations when
-        # estimating each item's latest event time for the initial rate guess.
-        _x_max = data.x if data.x.ndim == 1 else data.x[:, 1]
-        _, _inv = np.unique(data.i, return_inverse=True)
-        _max_x = np.full(_inv.max() + 1, -np.inf)
-        np.maximum.at(_max_x, _inv, _x_max)
-        init = (data.n[data.c == 0]).sum() / _max_x.sum()
-
         num_covariates = data.Z.shape[1]
-        init = np.append(np.log(init), np.zeros(num_covariates))
+        if init is None:
+            # Use the right endpoint for interval-censored (2D) observations
+            # when estimating each item's latest event time for the initial
+            # rate guess.
+            _x_max = data.x if data.x.ndim == 1 else data.x[:, 1]
+            _, _inv = np.unique(data.i, return_inverse=True)
+            _max_x = np.full(_inv.max() + 1, -np.inf)
+            np.maximum.at(_max_x, _inv, _x_max)
+            rate = (data.n[data.c == 0]).sum() / _max_x.sum()
+            init = np.append(np.log(rate), np.zeros(num_covariates))
+        else:
+            # User-supplied starting values were previously overwritten
+            # unconditionally (#288). The first value is the baseline
+            # rate on its natural scale; optimisation runs on log(rate).
+            init = np.atleast_1d(np.asarray(init, dtype=float))
+            if init.size != 1 + num_covariates:
+                raise ValueError(
+                    f"init must have {1 + num_covariates} values (baseline "
+                    f"rate + {num_covariates} coefficients); got {init.size}."
+                )
+            init = np.append(np.log(init[0]), init[1:])
 
         neg_ll = self.create_negll_func(data)
 

@@ -86,7 +86,9 @@ class ProportionalIntensityNHPP:
         x_l = x if x.ndim == 1 else x[:, 0]
         x_r = x[:, 1] if x.ndim == 2 else None
 
-        x_prev_l = x_prev if x_prev.ndim == 1 else x[:, 0]
+        x_prev_l = (
+            x_prev if x_prev.ndim == 1 else x_prev[:, 0]
+        )  # not x[:, 0] (#288)
         x_prev_r = x_prev[:, 1] if x_prev.ndim == 2 else None
 
         # Untangle the observed data
@@ -204,10 +206,23 @@ class ProportionalIntensityNHPP:
         out.dist = dist
         out.data = data
 
-        init = np.ones(len(dist.param_names))
-
         num_covariates = data.Z.shape[1]
-        init = np.append(init, np.zeros(num_covariates))
+        expected = len(dist.param_names) + num_covariates
+        if init is None:
+            # Default start: unit baseline parameters, zero coefficients.
+            init = np.append(
+                np.ones(len(dist.param_names)), np.zeros(num_covariates)
+            )
+        else:
+            # User-supplied starting values were previously overwritten
+            # unconditionally (#288).
+            init = np.atleast_1d(np.asarray(init, dtype=float))
+            if init.size != expected:
+                raise ValueError(
+                    f"init must have {expected} values "
+                    f"({len(dist.param_names)} baseline parameters + "
+                    f"{num_covariates} coefficients); got {init.size}."
+                )
 
         neg_ll = self.create_negll_func(data, dist)
 

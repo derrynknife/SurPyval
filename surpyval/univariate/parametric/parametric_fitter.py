@@ -280,8 +280,13 @@ class ParametricFitter:
         # total count only scales the objective.
         obj = np.sum(np.log(D))
         if (n_obs > 1).any():
-            Df = self.df(x_obs, *params) / denom
-            obj = obj + np.sum((n_obs - 1) * np.log(Df))
+            # Evaluate the tie densities only at genuinely tied points:
+            # untied points contribute 0 * log(0) = NaN when the density
+            # underflows, poisoning the objective where a clean inf
+            # penalty is wanted (#289).
+            tied = n_obs > 1
+            Df = self.df(x_obs[tied], *params) / denom
+            obj = obj + np.sum((n_obs[tied] - 1) * np.log(Df))
         if (c == 1).any():
             obj = obj + np.sum(n[c == 1] * np.log(Dr))
         if (c == -1).any():

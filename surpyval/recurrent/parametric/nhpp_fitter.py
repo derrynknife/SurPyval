@@ -22,7 +22,9 @@ class NHPPFitter(IntensityModel):
         x_l = x if x.ndim == 1 else x[:, 0]
         x_r = x[:, 1] if x.ndim == 2 else None
 
-        x_prev_l = x_prev if x_prev.ndim == 1 else x[:, 0]
+        x_prev_l = (
+            x_prev if x_prev.ndim == 1 else x_prev[:, 0]
+        )  # not x[:, 0] (#288)
         x_prev_r = x_prev[:, 1] if x_prev.ndim == 2 else None
 
         x_o = x_l[c == 0] if has_observed else np.array([])

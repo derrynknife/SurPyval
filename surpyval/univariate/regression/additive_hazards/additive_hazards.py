@@ -232,7 +232,14 @@ class AdditiveHazardsModel:
         # beta'Z was dimensionally incoherent and asymptotically dropped
         # the baseline from hf/df entirely, #277).
         if bandwidth is None:
-            spread = float(np.std(self.x)) if self.x.size > 1 else 1.0
+            spread = float(np.std(self.x)) if self.x.size > 1 else 0.0
+            scale = max(abs(float(np.mean(self.x))), 1.0)
+            if spread <= 1e-8 * scale:
+                # All event times (nearly) coincident relative to the time
+                # scale: the normal-reference rule collapses to the floor
+                # and hf returns Dirac spikes; fall back to a bandwidth on
+                # the scale of the times themselves (#289).
+                spread = scale
             bandwidth = max(
                 1.06 * spread * max(self.x.size, 2) ** (-1 / 5), 1e-12
             )
