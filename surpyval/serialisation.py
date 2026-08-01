@@ -78,6 +78,12 @@ _TAGGED_MODELS: dict[str, str] = {
     "DestructiveDegradationModel": "surpyval.degradation.destructive",
     "SurvivalTree": "surpyval.beta.ml.forest.tree",
     "RandomSurvivalForest": "surpyval.beta.ml.forest.forest",
+    # The degenerate distributions are stateless: the class is the model,
+    # so they serialise by name alone.
+    "NeverOccurs": ("surpyval.univariate.parametric.distributions.degenerate"),
+    "InstantlyOccurs": (
+        "surpyval.univariate.parametric.distributions.degenerate"
+    ),
 }
 
 # ``"parameterization"`` value -> (defining module, class name), for

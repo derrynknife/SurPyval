@@ -1,8 +1,10 @@
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.discrete_fitter import (
+    DiscreteParametricFitter,
+)
 
 
-class DiscretizedFitter(ParametricFitter):
+class DiscretizedFitter(DiscreteParametricFitter):
     r"""
 
     A continuous lifetime distribution discretized to the positive integers
@@ -44,7 +46,6 @@ class DiscretizedFitter(ParametricFitter):
             param_map=dict(distribution.param_map),
             plot_x_scale=distribution.plot_x_scale,
         )
-        self.supports_mpp = False
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         return self.dist._parameter_initialiser(x, c=c, n=n, t=t)

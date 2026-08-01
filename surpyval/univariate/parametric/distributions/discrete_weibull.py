@@ -1,10 +1,12 @@
 from scipy.stats import uniform
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.discrete_fitter import (
+    DiscreteParametricFitter,
+)
 
 
-class DiscreteWeibull_(ParametricFitter):
+class DiscreteWeibull_(DiscreteParametricFitter):
     r"""
 
     The (Type I) discrete Weibull distribution of Nakagawa & Osaki (1975):
@@ -45,7 +47,6 @@ class DiscreteWeibull_(ParametricFitter):
             param_map={"q": 0, "beta": 1},
             plot_x_scale="linear",
         )
-        self.supports_mpp = False
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         # q ~ P(survive the first cycle) from the empirical fraction above 1;
