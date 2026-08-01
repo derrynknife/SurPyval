@@ -4,6 +4,44 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **``group_xcnt`` no longer walks every observation in Python.** The
+  step that collapses duplicate ``(x, c, t)`` rows accumulated into a
+  triple-nested ``defaultdict``, one iteration per observation. That is
+  linear but with a very large constant -- around 13 microseconds an
+  observation -- which made it the single dominant cost of fitting once
+  samples grew: 94% of a 50,000-point Normal fit, and two seconds at
+  100,000 points. It is now a sort plus ``np.bincount``. Fitted values
+  are bit-identical.
+
+  Group *ordering* is preserved exactly, which matters more than it
+  appears: ``xcnt_sort`` runs immediately afterwards and is a *stable*
+  sort keyed on ``c``, ``t.min(axis=1)`` and ``x``, so any rows tying on
+  all three keep whatever order grouping produced. Rows sharing an ``x``
+  and ``c`` with different ``tr`` but equal ``t.min()`` are exactly such
+  a tie, and a plain sorted ``np.unique`` would silently reorder them,
+  so the original x-major nesting is reproduced instead. Integer counts
+  also stay integer (``np.bincount`` returns float64), and ``nan``
+  entries keep their own groups as they did under dictionary keying.
+
+  Measured end to end: a Normal fit at n=100,000 goes from 1137 ms to
+  125 ms (9.1x), Weibull at n=100,000 from 3890 ms to 926 ms (4.2x),
+  and small fits improve too -- Exponential at n=1000 from 5.9 ms to
+  2.4 ms. Kaplan-Meier at n=100,000 now takes 140 ms.
+
+  On top of that, grouping is now skipped entirely when there is
+  nothing to group. Continuous measurements have distinct values, so
+  every row is already its own group in input order and the operation
+  is the identity -- but the data handler runs it several times per
+  fit regardless. Distinct values in the leading column of ``x`` are
+  enough to establish this (they make whole rows distinct whatever
+  ``c`` and ``t`` hold), which costs one sort of one column against
+  three sorts of the full key. Only tied data -- rounded, discrete, or
+  heavily weighted -- takes the grouping path now. Grouping 100,000
+  distinct points falls from 74 ms to 1.2 ms, taking the Normal fit
+  above to 64 ms, Weibull to 505 ms, and Kaplan-Meier to 63 ms. Repeated
+  ``nan`` values deliberately fail the check and fall through to
+  grouping, since ``nan != nan`` means they must stay separate.
+
 - **Exact closed-form maximum likelihood for the Exponential, Normal and
   LogNormal, where one exists.** These have analytic MLEs -- the
   Exponential's events-over-exposure ratio, the Normal's mean and
