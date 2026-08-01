@@ -4,6 +4,55 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Simplification: one shared ``fit()`` skeleton for the parametric
+  regression families** (#295). PH, AFT, PO and parametric AH carried
+  five copy-pasted versions of the same fit pipeline — data prep, the
+  #251 param-map offset merge, ``bounds_convert``, optimisation, model
+  assembly — which had already drifted (different optimiser ladders;
+  only some families setting ``dist_params``/``phi_params``). The
+  skeleton now lives once in ``_fit_skeleton.py`` (each family supplies
+  its optimiser strategy and covariate-link object), along with a single
+  ``LogLinearPhi`` for the ``exp(beta'Z)`` link previously defined
+  inline in seven places. Fitted values are bit-identical; each
+  family's historical optimiser ladder and serialisation name tags are
+  preserved exactly.
+- **Simplification: shared hazard identities and information criteria**
+  (#297, #298). The six ``sf``/``ff``/``df``/``log_*`` identities
+  derived from ``Hf``/``hf`` were repeated in four regression fitters;
+  they now live in one ``HazardIdentitiesMixin``. PH and parametric AH
+  ``ff`` now use ``-expm1(-H)`` (matching AFT/AL), which is more
+  accurate in the deep left tail where ``H`` is tiny; all other values
+  are bit-identical. ``neg_ll``/``aic``/``bic``/``aic_c`` were
+  duplicated between ``Parametric`` and ``ParametricRegressionModel``;
+  one ``InformationCriteriaMixin`` now serves both, preserving each
+  class's historical ``aic_c`` parameter-count convention exactly.
+- **Simplification: NHPP likelihood data split hoisted** (#296). The
+  five-way censoring/interval split of recurrent-event data (the code
+  that drifted into #288) was duplicated between the NHPP fitter and
+  the proportional-intensity NHPP fitter; it now lives once as
+  ``RecurrentEventData.split_for_nhpp_likelihood``. Fitted values are
+  bit-identical.
+- **Simplification: numerical dedup batch** (#299). The Aalen-Johansen
+  ``S(t-)`` incidence weighting (the pattern behind #253/#278) was
+  implemented three times — nonparametric ``CompetingRisks``, the
+  competing-risks PH ``cif`` and Gray's pooled CIF — and now lives once
+  in ``aalen_johansen_iif`` (Gray's pooled CIF is vectorised in the
+  process). The Cox at-risk rule (entry-strict ``tl < tau``,
+  exit-inclusive ``x >= tau``) is now documented in one
+  ``cox_at_risk_mask`` helper used by the exact-tie preparation and the
+  Schoenfeld risk-set means, and ``CoxPH.baseline`` replaces its
+  O(K·N) Python loop with the same suffix-sum subtraction the Efron
+  generator uses (values agree to ~1e-15 relative; pinned by the
+  R/lifelines comparison tests). The degradation ``bootstrap_cb`` and
+  ``bootstrap_cb_accelerated`` merged into one function (``Z=None``
+  selects the plain path; the plain path now also drops non-finite
+  refit curves instead of letting them poison the quantiles).
+  ``CopulaModel`` serialisation is now round-trippable: ``to_dict``
+  stamps the schema version and a new ``from_dict`` (registered with
+  ``surpyval.from_dict`` under the ``"copula"`` parameterization)
+  rebuilds the model, where previously the dictionary was written in a
+  form nothing could read. The CB transform sharing and Cox TVC
+  wrapper collapse from #299 are deferred.
 - **Simplification: low-risk cleanup batch from the code-simplification
   review** (#295-#299 track the medium-risk remainder). Dead code removed:
   the unused ``surv_sksurv_transformations`` module, ``init_from_bounds``,

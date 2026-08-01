@@ -34,10 +34,14 @@ import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
 
-from surpyval.univariate.parametric.fitters import bounds_convert
-from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._likelihood import regression_neg_ll
+from .._fit_skeleton import (
+    HazardIdentitiesMixin,
+    LogLinearPhi,
+    assemble_regression_model,
+    prepare_regression_fit,
+)
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from ..tvc_fit import TVCFitMixin
@@ -50,7 +54,9 @@ class _AdditiveReg:
     phi_param_map: object
 
 
-class AdditiveHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
+class AdditiveHazardsFitter(
+    HazardIdentitiesMixin, TVCFitMixin, DataFrameRegressionMixin
+):
     def __init__(self, name, dist):
         self.name = name
         self.dist = dist
@@ -78,26 +84,9 @@ class AdditiveHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
         beta = params[self.k_dist :]
         return self.Hf_dist(x, *dist_params) + x * self._beta_Z(Z, beta)
 
-    def sf(self, x, Z, *params):
-        return np.exp(-self.Hf(x, Z, *params))
-
-    def ff(self, x, Z, *params):
-        return 1 - np.exp(-self.Hf(x, Z, *params))
-
-    def df(self, x, Z, *params):
-        return self.hf(x, Z, *params) * np.exp(-self.Hf(x, Z, *params))
-
-    def log_df(self, x, Z, *params):
-        # log h - H. When the additive hazard is driven non-positive the log
-        # is nan; the optimiser then rejects that point (the fit fails rather
-        # than returning an invalid model).
-        return np.log(self.hf(x, Z, *params)) - self.Hf(x, Z, *params)
-
-    def log_sf(self, x, Z, *params):
-        return -self.Hf(x, Z, *params)
-
-    def log_ff(self, x, Z, *params):
-        return np.log(self.ff(x, Z, *params))
+    # sf/ff/df and the log identities come from HazardIdentitiesMixin;
+    # when the additive hazard is driven non-positive its log_df is nan
+    # and the optimiser rejects that point (see the module docstring).
 
     # mpp transforms are the identity (probability plotting is not used for
     # these models, but the interface is kept consistent with the other
@@ -214,30 +203,19 @@ class AdditiveHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
         >>> from surpyval import WeibullAH
         >>> model = WeibullAH.fit(x=x, Z=Z, c=c)
         """
-        data = SurpyvalData(x, c, n, t, group_and_sort=False)
-        data.add_covariates(Z)
-
-        if fixed is None:
-            fixed = {}
-
-        assert data.Z is not None  # set by add_covariates above
-        n_cov = data.Z.shape[1]
-        beta_param_map = {
-            "beta_" + str(i): self.k_dist + i for i in range(n_cov)
-        }
-        param_map = {**self.param_map, **beta_param_map}
-        bounds = (*self.bounds, *(((None, None),) * n_cov))
-
-        if init is None or len(init) == 0:  # type: ignore[arg-type]
-            ps = self.dist.fit_from_surpyval_data(data).params
-            init = np.array([*ps, *np.zeros(n_cov)])
-        else:
-            init = np.array(init)
-
-        transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
-            x, bounds, fixed, param_map
+        data, prep = prepare_regression_fit(
+            self,
+            x,
+            Z,
+            c,
+            n,
+            t,
+            init,
+            fixed,
+            LogLinearPhi.phi_bounds,
+            LogLinearPhi.make_param_map,
         )
-        init = transform(init)[not_fixed]
+        init, bounds, pmap, transform, inv_trans, const, fixed = prep
 
         with np.errstate(all="ignore"):
 
@@ -275,21 +253,17 @@ class AdditiveHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
 
         reg_model = _AdditiveReg()
         reg_model.name = "Additive [beta'Z]"
-        reg_model.phi_param_map = beta_param_map
+        reg_model.phi_param_map = pmap
 
-        model = ParametricRegressionModel()
-        model.distribution_param_map = self.param_map
-        model.phi_param_map = beta_param_map
-        model.model = self
-        model.reg_model = reg_model
-        model.kind = "Additive Hazard"
-        model.distribution = self.dist
-        model.params = np.array(params)
-        model.res = res
-        model._neg_ll = final_neg_ll
-        model.fixed = fixed
-        model.k_dist = self.k_dist
-        model.k = len(bounds)
-        model.data = data
-
-        return model
+        return assemble_regression_model(
+            self,
+            "Additive Hazard",
+            reg_model,
+            data,
+            res,
+            params,
+            bounds,
+            pmap,
+            fixed,
+            neg_ll=final_neg_ll,
+        )

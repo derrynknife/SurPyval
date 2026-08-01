@@ -97,6 +97,10 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
         "surpyval.univariate.regression.parametric_regression_model",
         "ParametricRegressionModel",
     ),
+    "copula": (
+        "surpyval.multivariate.parametric.copula.copula_model",
+        "CopulaModel",
+    ),
 }
 
 

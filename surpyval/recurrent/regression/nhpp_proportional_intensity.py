@@ -64,66 +64,30 @@ class ProportionalIntensityNHPP:
     """
 
     def create_negll_func(self, data, dist):
-        x, c, n = data.x, data.c, data.n
         Z = data.Z
-        # Covariates
-        x_prev = data.get_previous_x()
+        s = data.split_for_nhpp_likelihood()
+        x_o, x_o_prev = s["x_o"], s["x_o_prev"]
+        x_right, x_right_prev = s["x_right"], s["x_right_prev"]
+        x_left, n_left = s["x_left"], s["n_left"]
+        x_i_l, x_i_r, n_i = s["x_i_l"], s["x_i_r"], s["n_i"]
+        x_close_last, x_close_tr = s["x_close_last"], s["x_close_tr"]
 
-        has_interval_censoring = True if 2 in c else False
-        has_observed = True if 0 in c else False
-        has_left_censoring = True if -1 in c else False
-        has_right_censoring = True if 1 in c else False
-
-        x_l = x if x.ndim == 1 else x[:, 0]
-        x_r = x[:, 1] if x.ndim == 2 else None
-
-        x_prev_l = (
-            x_prev if x_prev.ndim == 1 else x_prev[:, 0]
-        )  # not x[:, 0] (#288)
-        x_prev_r = x_prev[:, 1] if x_prev.ndim == 2 else None
-
-        # Untangle the observed data
-        x_o = x_l[c == 0] if has_observed else np.array([])
-        if has_interval_censoring:
-            x_o_prev = x_prev_r[c == 0] if has_observed else np.array([])
-        else:
-            x_o_prev = x_prev_l[c == 0] if has_observed else np.array([])
-        Z_o = Z[c == 0] if has_observed else np.zeros((1, Z.shape[1]))
-
-        # Untangle the right censored data
-        x_right = x_l[c == 1] if has_right_censoring else np.array([])
-        if has_interval_censoring:
-            x_right_prev = (
-                x_prev_r[c == 1] if has_right_censoring else np.array([])
-            )
-        else:
-            x_right_prev = (
-                x_prev_l[c == 1] if has_right_censoring else np.array([])
-            )
+        # Covariate rows gathered with the same masks; the zeros((1, p))
+        # placeholders keep the dot products defined when a censoring
+        # type is absent (the matching x arrays are empty, so the terms
+        # vanish in the sums).
+        p_cov = Z.shape[1]
+        Z_o = Z[s["mask_o"]] if s["mask_o"].any() else np.zeros((1, p_cov))
         Z_right = (
-            Z[c == 1] if has_right_censoring else np.zeros((1, Z.shape[1]))
+            Z[s["mask_right"]]
+            if s["mask_right"].any()
+            else np.zeros((1, p_cov))
         )
-
-        # Untangle the left censored data
-        x_left = x_l[c == -1] if has_left_censoring else np.array([])
-        n_left = n[c == -1] if has_left_censoring else np.array([])
         Z_left = (
-            Z[c == -1] if has_left_censoring else np.zeros((1, Z.shape[1]))
+            Z[s["mask_left"]] if s["mask_left"].any() else np.zeros((1, p_cov))
         )
-
-        # Untangle the interval censored data
-        x_i_l = x_l[c == 2] if has_interval_censoring else np.array([])
-        x_i_r = x_r[c == 2] if has_interval_censoring else np.array([])
-        n_i = n[c == 2] if has_interval_censoring else np.array([])
-        Z_i = (
-            Z[c == 2] if has_interval_censoring else np.zeros((1, Z.shape[1]))
-        )
-
-        # Right window-close: for items with a finite right-truncation time
-        # ``tr`` the baseline intensity is integrated out to ``tr`` (scaled by
-        # the item's proportional factor). Empty for untruncated data.
-        x_close_last, x_close_tr, close_idx = data.get_right_truncation_close()
-        Z_close = Z[close_idx]
+        Z_i = Z[s["mask_i"]] if s["mask_i"].any() else np.zeros((1, p_cov))
+        Z_close = Z[s["close_idx"]]
 
         # Using the empty arrays avoids the need for if statements in the
         # likelihood function. It also means that the likelihood function

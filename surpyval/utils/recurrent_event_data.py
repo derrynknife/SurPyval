@@ -259,6 +259,59 @@ class RecurrentEventData:
 
         return np.concatenate(x_previous)
 
+    def split_for_nhpp_likelihood(self):
+        """Split the data into the pieces every NHPP-style likelihood
+        needs: per-censoring-type event and previous-event times, the
+        right-truncation window close, and the row masks (so regression
+        variants can gather covariates the same way). This preamble used
+        to be copy-pasted between the plain and proportional-intensity
+        NHPP fitters and drifted (#288); it now lives here once (#296).
+        """
+        x, c, n = self.x, self.c, self.n
+        x_prev = self.get_previous_x()
+
+        has_interval = 2 in c
+        x_l = x if x.ndim == 1 else x[:, 0]
+        x_r = x[:, 1] if x.ndim == 2 else None
+
+        x_prev_l = (
+            x_prev if x_prev.ndim == 1 else x_prev[:, 0]
+        )  # not x[:, 0] (#288)
+        x_prev_r = x_prev[:, 1] if x_prev.ndim == 2 else None
+        prev = x_prev_r if has_interval else x_prev_l
+
+        mask_o = c == 0
+        mask_right = c == 1
+        mask_left = c == -1
+        mask_i = c == 2
+
+        empty = np.array([])
+        out = {
+            "x_o": x_l[mask_o] if mask_o.any() else empty,
+            "x_o_prev": prev[mask_o] if mask_o.any() else empty,
+            "x_right": x_l[mask_right] if mask_right.any() else empty,
+            "x_right_prev": prev[mask_right] if mask_right.any() else empty,
+            "x_left": x_l[mask_left] if mask_left.any() else empty,
+            "n_left": n[mask_left] if mask_left.any() else empty,
+            "x_i_l": x_l[mask_i] if mask_i.any() else empty,
+            "x_i_r": x_r[mask_i] if mask_i.any() else empty,
+            "n_i": n[mask_i] if mask_i.any() else empty,
+            "mask_o": mask_o,
+            "mask_right": mask_right,
+            "mask_left": mask_left,
+            "mask_i": mask_i,
+        }
+        # Right window-close: for items with a finite right-truncation
+        # time ``tr`` the intensity is integrated out to ``tr`` rather
+        # than merely to the last observed event / censoring row. Empty
+        # for untruncated data.
+        (
+            out["x_close_last"],
+            out["x_close_tr"],
+            out["close_idx"],
+        ) = self.get_right_truncation_close()
+        return out
+
     def get_right_truncation_close(self):
         """
         Per-item integration bounds for the NHPP likelihood's right

@@ -19,6 +19,8 @@ import numpy as np
 from numpy.linalg import inv, pinv
 from scipy.stats import chi2
 
+from .cox_ph import cox_at_risk_mask
+
 if TYPE_CHECKING:  # pragma: no cover
     from ..semi_parametric_regression_model import (
         SemiParametricRegressionModel,
@@ -100,7 +102,7 @@ def _risk_set_means(data: dict, beta: np.ndarray, tie_method: str = "breslow"):
     A_own = np.empty(K)
     B_own = np.empty((K, p))
     for k, tau in enumerate(event_times):
-        at_risk = (tl < tau) & (x >= tau)
+        at_risk = cox_at_risk_mask(x, tl, tau)
         s0 = w[at_risk].sum()
         s1 = (w[at_risk, None] * Z[at_risk]).sum(axis=0)
         is_event = (x == tau) & (c == 0)

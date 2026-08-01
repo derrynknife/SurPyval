@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from surpyval.utils.surpyval_data import SurpyvalData
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.univariate.information_criteria import InformationCriteriaMixin
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -35,7 +36,9 @@ from .probability_plotting import (
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
 
 
-class Parametric(SerialisableMixin, ParametricDistribution):
+class Parametric(
+    InformationCriteriaMixin, SerialisableMixin, ParametricDistribution
+):
     """
     Result of ``.fit()`` or ``.from_params()`` method for every parametric
     surpyval distribution.
@@ -1450,136 +1453,12 @@ class Parametric(SerialisableMixin, ParametricDistribution):
             cb = cb.T
         return cb
 
-    def neg_ll(self) -> float:
-        r"""
-
-        The negative log-likelihood for the model, if it was fit with the
-        ``fit()`` method. Not available if fit with the ``from_params()``
-        method.
-
-        Returns
-        -------
-
-        neg_ll : float
-            The negative log-likelihood of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.neg_ll()
-        262.52685642385734
-        """
-        if self.data is None:
-            raise ValueError("Must have been fit with data")
-
-        return self._neg_ll
-
-    def bic(self) -> float:
-        r"""
-
-        The Bayesian Information Criterion (BIC) for the model, if it
-        was fit with the ``fit()`` method. Not available if fit with the
-        ``from_params()`` method.
-
-        Returns
-        -------
-
-        bic : float
-            The BIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.bic()
-        534.2640532196908
-
-        References
-        ----------
-
-        `Bayesian Information Criterion for Censored Survival Models
-        <https://www.jstor.org/stable/2677130>`_.
-
-        """
-        if hasattr(self, "_bic"):
-            return self._bic
-        else:
-            self._bic = (
-                self.k * np.log(self.data["n"][self.data["c"] == 0].sum())
-                + 2 * self.neg_ll()
-            )
-            return self._bic
-
-    def aic(self) -> float:
-        r"""
-        The Aikake Information Criterion (AIC) for the model, if it was
-        fit with the ``fit()`` method. Not available if fit with the
-        ``from_params()`` method.
-
-        Returns
-        -------
-
-        aic : float
-            The AIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.aic()
-        529.0537128477147
-        """
-        if hasattr(self, "_aic"):
-            return self._aic
-        else:
-            self._aic = 2 * self.k + 2 * self.neg_ll()
-            return self._aic
-
-    def aic_c(self) -> float:
-        r"""
-        The Corrected Aikake Information Criterion (AIC) for the model,
-        if it was fit with the ``fit()`` method. Not available if fit with
-        the ``from_params()`` method.
-
-        Returns
-        -------
-
-        aic_c : float
-            The Corrected AIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.aic()
-        529.1774241879209
-        """
-        if hasattr(self, "_aic_c"):
-            return self._aic_c
-        else:
-            # Same parameter count as the aic() penalty it corrects —
-            # including gamma / p / f0 when fitted (#256).
-            k = self.k
-            n = self.data["n"].sum()
-            self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
-            return self._aic_c
+    # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin. The aic_c
+    # correction uses the same parameter count as the aic() penalty it
+    # corrects — including gamma / p / f0 when fitted (#256).
+    def _ic_counts(self):
+        n, c = self.data["n"], self.data["c"]
+        return n[c == 0].sum(), n.sum()
 
     def get_plot_data(
         self, heuristic: str = "Nelson-Aalen", alpha_ci: float = 0.05

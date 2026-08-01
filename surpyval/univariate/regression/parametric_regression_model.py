@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from scipy.stats import norm
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.univariate.information_criteria import InformationCriteriaMixin
 
 from ._bounds import (
     bound_signs,
@@ -49,7 +50,7 @@ _SERIALISABLE_REG_NAMES = {
 }
 
 
-class ParametricRegressionModel(SerialisableMixin):
+class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     """
     Result of ``.fit()`` or ``.from_params()`` method for parametric
     regression modelling.
@@ -846,156 +847,16 @@ class ParametricRegressionModel(SerialisableMixin):
             f"random() is not implemented for {self.kind} models."
         )
 
-    def neg_ll(self) -> float:
-        r"""
+    # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin.
+    def _ic_counts(self):
+        n, c = self.data.n, self.data.c
+        return n[c == 0].sum(), n.sum()
 
-        The the negative log-likelihood for the model, if it was fit with the
-        ``fit()`` method. Not available if fit with the ``from_params()``
-        method.
-
-        Parameters
-        ----------
-
-        None
-
-        Returns
-        -------
-
-        neg_ll : float
-            The negative log-likelihood of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.neg_ll()
-        262.52685642385734
-        """
-        if not hasattr(self, "data"):
-            raise ValueError("Must have been fit with data")
-
-        return self._neg_ll
-
-    def bic(self) -> float:
-        r"""
-
-        The the Bayesian Information Criterion (BIC) for the model, if it was
-        fit with the ``fit()`` method. Not available if fit with the
-        ``from_params()`` method.
-
-        Parameters
-        ----------
-
-        None
-
-        Returns
-        -------
-
-        bic : float
-            The BIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.bic()
-        534.2640532196908
-
-        References:
-        -----------
-
-        `Bayesian Information Criterion for Censored Survival Models
-        <https://www.jstor.org/stable/2677130>`_.
-
-        """
-        if hasattr(self, "_bic"):
-            return self._bic
-        else:
-            self._bic = (
-                self.k * np.log(self.data.n[self.data.c == 0].sum())
-                + 2 * self.neg_ll()
-            )
-            return self._bic
-
-    def aic(self) -> float:
-        r"""
-
-        The the Aikake Information Criterion (AIC) for the model, if it was
-        fit with the ``fit()`` method. Not available if fit with the
-        ``from_params()`` method.
-
-        Parameters
-        ----------
-
-        None
-
-        Returns
-        -------
-
-        aic : float
-            The AIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.aic()
-        529.0537128477147
-        """
-        if hasattr(self, "_aic"):
-            return self._aic
-        else:
-            self._aic = 2 * self.k + 2 * self.neg_ll()
-            return self._aic
-
-    def aic_c(self) -> float:
-        r"""
-
-        The the Corrected Aikake Information Criterion (AIC) for the model, if
-        it was fit with the ``fit()`` method. Not available if fit with the
-        ``from_params()`` method.
-
-        Parameters
-        ----------
-
-        None
-
-        Returns
-        -------
-
-        aic_c : float
-            The Corrected AIC of the model
-
-        Examples
-        --------
-
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 3)
-        >>> model = Weibull.fit(x)
-        >>> model.aic()
-        529.1774241879209
-        """
-        if hasattr(self, "_aic_c"):
-            return self._aic_c
-        else:
-            k = len(self.params)
-            n = self.data.n.sum()
-            self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
-            return self._aic_c
+    def _ic_k_aic_c(self):
+        # Regression models have historically used the full parameter-
+        # vector length here (which can differ from ``self.k`` when
+        # parameters are fixed); preserved as-is (#298).
+        return len(self.params)
 
     # -- confidence bounds -------------------------------------------------
 

@@ -9,6 +9,9 @@ Copyright 2022 Cartiga LLC
 
 import numpy as np
 
+from surpyval.univariate.competing_risks.aalen_johansen import (
+    aalen_johansen_iif,
+)
 from surpyval.univariate.regression import CoxPH
 from surpyval.utils import (
     _get_idx,
@@ -111,13 +114,7 @@ class CompetingRisksProportionalHazards:
 
         lambda_e = self.hf(self.x, Z, event)
         S = self.sf(self.x, Z)
-        # Aalen-Johansen increment: the hazard at t_i acts on the population
-        # alive just *before* t_i, so weight by S(t_i-) — the survival after
-        # the previous event time — not S(t_i) (#253).
-        S_prev = np.concatenate([[1.0], S[:-1]])
-        # iif = instantaneous incidence function
-        iif = lambda_e * S_prev
-        cif = iif.cumsum()
+        cif = aalen_johansen_iif(S, lambda_e).cumsum()
 
         # Times before the first event would wrap to the last value (#253).
         return np.where(idx[rev] < 0, 0.0, cif[idx][rev])

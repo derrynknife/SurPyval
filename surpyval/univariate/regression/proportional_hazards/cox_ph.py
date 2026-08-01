@@ -294,6 +294,15 @@ def _combine_generators(gens):
     return neg_ll, jac_hess
 
 
+def cox_at_risk_mask(x, tl, tau):
+    """The Cox risk-set convention, in one place (#299): a row is at risk
+    at event time ``tau`` once it has entered (``tl < tau`` — strict, so a
+    start-stop row is not at risk at its own entry time) and until it
+    exits (``x >= tau`` — inclusive, so a row is at risk at its own event
+    or censoring time)."""
+    return (tl < tau) & (x >= tau)
+
+
 class CoxPH_:
     # Best reference I can find that covers all the
     # possibilities for estimating betas
@@ -303,28 +312,39 @@ class CoxPH_:
         self, beta, x, c, n, Z, tl=None
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         # Breslow baseline hazard. The risk set at each event time ``tau_i``
-        # is every observation that has entered (``tl < tau_i``; delayed
-        # entry / start-stop) and has not yet exited (``x >= tau_i``), each
-        # weighted by its count ``n`` and hazard multiplier ``exp(Z'beta)``.
-        # Respecting ``tl`` is what makes the baseline correct for
-        # left-truncated and time-varying-covariate (start-stop) data.
+        # follows ``cox_at_risk_mask`` (entered ``tl < tau_i``, not yet
+        # exited ``x >= tau_i``), each row weighted by its count ``n`` and
+        # hazard multiplier ``exp(Z'beta)``. Respecting ``tl`` is what makes
+        # the baseline correct for left-truncated and time-varying-covariate
+        # (start-stop) data. Computed by suffix sums — the risk set is
+        # everyone with ``x >= tau_i`` minus the not-yet-entered
+        # ``tl >= tau_i`` (valid because ``tl < x`` on every row) — the same
+        # subtraction the Efron generator uses, replacing the previous
+        # O(K·N) Python loop (#299).
 
         unique_x = np.unique(x)
         if tl is None:
             tl = np.full(x.shape[0], -np.inf)
 
+        w = n * np.exp(Z @ beta)
+
+        event = c == 0
         d = np.zeros_like(unique_x)
-        r = np.zeros_like(unique_x)
-        e_beta_z = np.exp(Z @ beta)
+        np.add.at(d, np.searchsorted(unique_x, x[event]), n[event])
 
-        for i, tau_i in enumerate(unique_x):
-            mask_d_i = (x == tau_i) & (c == 0)
-            d[i] = n[mask_d_i].sum()
+        r_exit = np.zeros_like(unique_x)
+        np.add.at(r_exit, np.searchsorted(unique_x, x), w)
+        r_exit = r_exit[::-1].cumsum()[::-1]
 
-            mask_at_risk_i = (tl < tau_i) & (x >= tau_i)
-            r[i] = (n[mask_at_risk_i] * e_beta_z[mask_at_risk_i]).sum()
+        # Bucket each row at the largest event time <= its entry time; the
+        # suffix sum then gives, at each tau_i, the weight not yet entered.
+        k = np.searchsorted(unique_x, tl, side="right") - 1
+        entered_late = k >= 0
+        r_pre = np.zeros_like(unique_x)
+        np.add.at(r_pre, k[entered_late], w[entered_late])
+        r_pre = r_pre[::-1].cumsum()[::-1]
 
-        return unique_x, r, d
+        return unique_x, r_exit - r_pre, d
 
     def create_efron_ll_jac_hess(self, x, Z, c, n, tl):
         # The reference used to compute the jacobian and hessian
@@ -547,9 +567,7 @@ class CoxPH_:
         death_Z_sum = []
         for tau in event_times:
             d_mask = (xe == tau) & (ce == 0)
-            # Delayed entry: a row is at risk at tau only once it has entered
-            # (tl < tau) and before it exits (x >= tau).
-            r_mask = (tle < tau) & (xe >= tau)
+            r_mask = cox_at_risk_mask(xe, tle, tau)
             death_idx.append(np.where(d_mask)[0])
             risk_idx.append(np.where(r_mask)[0])
             death_Z_sum.append(Ze[d_mask].sum(axis=0))
