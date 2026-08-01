@@ -63,28 +63,73 @@ def validate_float_array(arr, name):
         )
 
 
+def _group_ids(key):
+    """Group id per row, plus the row at which each group first appears.
+
+    ``np.lexsort`` rather than ``np.unique(axis=0)``: the latter takes a
+    structured-void view of the array, which is several times slower.
+    Because lexsort is stable, the first row of each run in sorted order
+    is also the group's earliest row in the original ordering, which is
+    what the caller needs. Rows containing ``nan`` never compare equal
+    and so stay in their own groups -- matching the dictionary keying
+    this replaced, where a ``nan`` key never matched another.
+    """
+    order = np.lexsort(key.T[::-1])
+    ordered = key[order]
+    starts = np.empty(len(ordered), dtype=bool)
+    starts[0] = True
+    if len(ordered) > 1:
+        starts[1:] = (ordered[1:] != ordered[:-1]).any(axis=1)
+    group = np.empty(len(ordered), dtype=np.intp)
+    group[order] = np.cumsum(starts) - 1
+    return group, order[starts]
+
+
 def group_xcnt(x, c, n, t):
-    grouped = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-    if x.ndim == 2:
-        for vx, vc, vn, vt in zip(x, c, n, t):
-            grouped[tuple(vx)][vc][tuple(vt)] += vn
-    else:
-        for vx, vc, vn, vt in zip(x, c, n, t):
-            grouped[vx][vc][tuple(vt)] += vn
+    """Collapse identical ``(x, c, t)`` rows, summing their counts.
 
-    x_out = []
-    c_out = []
-    n_out = []
-    t_out = []
+    This used to walk every observation in Python, accumulating into a
+    triple-nested ``defaultdict``. That is O(N) but with a very large
+    constant -- roughly 13 microseconds per observation -- which made it
+    the dominant cost of fitting: 94% of a 50,000-point Normal fit, and
+    two seconds at 100,000 points. It is now done by sorting and
+    ``np.bincount``.
 
-    for xv, level2 in grouped.items():
-        for cv, level3 in level2.items():
-            for tv, nv in level3.items():
-                x_out.append(xv)
-                c_out.append(cv)
-                n_out.append(nv)
-                t_out.append(tv)
-    return np.array(x_out), np.array(c_out), np.array(n_out), np.array(t_out)
+    The group *order* is preserved exactly, which is subtler than it
+    looks. The nested dictionary iterated x-major: outer by first
+    appearance of ``x``, then of ``(x, c)`` within it, then of the full
+    key. ``xcnt_sort`` runs immediately after this and re-sorts on
+    ``c``, ``t.min(axis=1)`` and ``x`` -- but it is a *stable* sort, so
+    rows tying on all three of those keep whatever order arrived. Rows
+    sharing an ``x`` and ``c`` with different ``tr`` but an equal
+    ``t.min()`` are exactly such a tie, so a plain sorted ``np.unique``
+    would silently reorder them. The lexsort below reproduces the
+    original nesting instead.
+    """
+    x_columns = x.reshape(-1, 1) if x.ndim == 1 else x
+    group, first_full = _group_ids(np.column_stack([x_columns, c, t]))
+    by_x, first_x = _group_ids(x_columns)
+    by_xc, first_xc = _group_ids(np.column_stack([x_columns, c]))
+
+    # One representative row per group: the row it first appeared at.
+    representative = first_full
+    # np.lexsort takes its *last* key as primary, so this orders by first
+    # appearance of x, then of (x, c), then of the whole key.
+    order = np.lexsort(
+        (
+            first_full,
+            first_xc[by_xc[representative]],
+            first_x[by_x[representative]],
+        )
+    )
+    representative = representative[order]
+
+    totals = np.bincount(group, weights=n, minlength=first_full.size)[order]
+    # ``bincount`` always returns float64; the counts were integers going
+    # in and callers rely on that (an integer ``n`` must stay integer).
+    totals = totals.astype(n.dtype)
+
+    return x[representative], c[representative], totals, t[representative]
 
 
 def xcnt_sort(x, c, n, t):
