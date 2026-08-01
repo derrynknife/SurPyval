@@ -23,7 +23,12 @@ from surpyval.univariate.competing_risks import (
 def _simulate(N, seed, cens=60.0):
     """Two-cause latent-minimum data: cause 1 ~ Weibull(30, 2.0), cause 2 ~
     Weibull(45, 1.2), with administrative right-censoring at ``cens``."""
-    rng = np.random.default_rng(seed)
+    # ``Weibull.random`` draws from numpy's *global* state, so seeding a
+    # local Generator left every one of these simulations unseeded and
+    # order-dependent -- the `seed` argument had no effect at all, and an
+    # unlucky draw could fail the tolerance-based assertions depending on
+    # which tests ran before.
+    np.random.seed(seed)
     t1 = Weibull.random(N, 30.0, 2.0)
     t2 = Weibull.random(N, 45.0, 1.2)
     t = np.minimum(t1, t2)
@@ -33,7 +38,6 @@ def _simulate(N, seed, cens=60.0):
     e = np.array(
         [None if ci == 1 else ei for ci, ei in zip(c, cause)], dtype=object
     )
-    del rng
     return x, e, c
 
 
@@ -155,7 +159,6 @@ def test_three_causes():
     idx = np.argmin(stack, axis=1)
     x = stack[np.arange(N), idx]
     e = np.array([idx_i + 1 for idx_i in idx], dtype=object)
-    del rng
     model = ParametricCompetingRisks.fit(
         x, e, dist={1: Weibull, 2: Weibull, 3: LogNormal}
     )

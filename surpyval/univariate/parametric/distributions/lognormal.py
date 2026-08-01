@@ -3,6 +3,10 @@ from scipy.stats import norm as scipy_norm
 
 from surpyval import np
 from surpyval.univariate import parametric as para
+from surpyval.univariate.parametric.fitters.closed_form import (
+    is_uncensored_and_untruncated,
+    weighted_mean_and_std,
+)
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
 
@@ -48,6 +52,19 @@ class LogNormal_(ParametricFitter):
         norm_mod = para.Normal.fit(np.log(x), c=c, n=n, how="MLE")
         mu, sigma = norm_mod.params
         return mu, sigma
+
+    def _closed_form_mle(self, data):
+        r"""Exact MLE on complete data: the Normal closed form applied to
+        :math:`\log x`, since the parameters are those of the underlying
+        normal. Censoring or truncation fall back to the optimiser for
+        the same reason they do for the Normal.
+        """
+        if not is_uncensored_and_untruncated(data):
+            return None
+        x = np.asarray(data.x, dtype=float)
+        if x.ndim != 1 or not (x > 0).all():
+            return None
+        return weighted_mean_and_std(np.log(x), data.n)
 
     def sf(self, x, mu, sigma):
         r"""

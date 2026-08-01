@@ -14,6 +14,7 @@ from ..nonparametric import plotting_positions as pp
 from .fitters import bounds_convert
 from .fitters.mle import mle
 from .fitters.mom import mom
+from .fitters.closed_form import closed_form_results
 from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mse import mse
@@ -64,9 +65,16 @@ class ParametricFitter:
     *params)`` and ``mpp_inv_y_transform(y, *params)``.
 
     A subclass can take over an entire estimation method by defining
-    ``mle(data)`` or ``mpp(x, c, n, heuristic, rr, on_d_is_0, offset)``,
-    both returning a results dict with at least a ``params`` numpy
-    array.
+    ``mpp(x, c, n, heuristic, rr, on_d_is_0, offset)``, returning a
+    results dict with at least a ``params`` numpy array.
+
+    A subclass with an exact analytic MLE may also define
+    ``_closed_form_mle(data)``, returning the parameter vector, or
+    ``None`` when the closed form does not apply to *that* data. It is
+    consulted before any initial guess or optimisation, so an eligible
+    fit skips both entirely; ``init`` has no effect on that path because
+    the closed form is exact. Structural requests (an offset, limited
+    failure population, zero inflation, or fixed parameters) bypass it.
 
     Implementations must do their math with ``surpyval.np``, which is
     ``autograd.numpy``: maximum likelihood estimation differentiates
@@ -1039,8 +1047,114 @@ class ParametricFitter:
 
         model = Parametric(self, how, data, offset, lfp, zi)
         model.surv_data = surv_data
-        fitting_info = {}
+        fitting_info: dict = {}
 
+        # An exact analytic MLE, where one exists for this distribution and
+        # this data, is attempted *before* the initial guess and bounds
+        # machinery below -- both of which exist only to seed and run the
+        # optimiser. Returns None whenever the closed form does not apply,
+        # and the numerical path proceeds untouched.
+        results = self._try_closed_form_mle(
+            surv_data, how, offset, lfp, zi, fixed
+        )
+
+        if results is None:
+            results = self._fit_numerically(
+                model,
+                fitting_info,
+                x,
+                c,
+                n,
+                tl,
+                tr,
+                how,
+                offset,
+                zi,
+                lfp,
+                fixed,
+                heuristic,
+                init,
+                rr,
+                on_d_is_0,
+                turnbull_estimator,
+            )
+        else:
+            model.fitting_info = fitting_info
+
+        for k, v in results.items():
+            setattr(model, k, v)
+
+        # Expose each fitted parameter by name (e.g. ``model.alpha``), but
+        # never overwrite the reserved offset / limited-failure /
+        # zero-inflation attributes, which the survival functions rely on.
+        # A distribution may legitimately name a parameter ``p`` (e.g.
+        # ``Geometric``, ``NegativeBinomial``); those remain available via
+        # ``model.params``.
+        reserved = {"gamma", "p", "f0"}
+        for k, v in zip(self.param_names, model.params):
+            if k not in reserved:
+                setattr(model, k, v)
+
+        self._set_support(model, offset)
+
+        return model
+
+    def _try_closed_form_mle(
+        self, surv_data, how, offset, lfp, zi, fixed
+    ) -> "dict | None":
+        """An exact analytic MLE, or ``None`` to use the optimiser.
+
+        Two conditions have to hold, and they live in different places
+        because they are different kinds of question.
+
+        The *structural* ones are checked here: an offset ``gamma``, a
+        limited-failure ``p``, zero-inflation ``f0`` or any user-fixed
+        parameter each adds structure the analytic solutions do not
+        solve for. These are properties of the requested model rather
+        than of the data, and they are identical for every distribution.
+
+        The *data-shape* condition is left to the distribution's own
+        ``_closed_form_mle``, which alone knows what it can solve -- the
+        Exponential accepts right censoring and left truncation, the
+        Normal needs complete data -- and which signals inapplicability
+        by returning ``None``.
+        """
+        if how != "MLE":
+            return None
+        if offset or lfp or zi or fixed:
+            return None
+
+        solver = getattr(self, "_closed_form_mle", None)
+        if solver is None:
+            return None
+
+        params = solver(surv_data)
+        if params is None:
+            return None
+
+        return closed_form_results(self, surv_data, params)
+
+    def _fit_numerically(
+        self,
+        model,
+        fitting_info,
+        x,
+        c,
+        n,
+        tl,
+        tr,
+        how,
+        offset,
+        zi,
+        lfp,
+        fixed,
+        heuristic,
+        init,
+        rr,
+        on_d_is_0,
+        turnbull_estimator,
+    ) -> dict:
+        """Seed an initial guess, convert bounds and run the estimator."""
         if how == "MPS":
             # Need to set the scalar truncation values
             # if the MPS method is used.
@@ -1084,25 +1198,7 @@ class ParametricFitter:
 
         model.fitting_info = fitting_info
 
-        results = METHOD_FUNC_DICT[how](model)
-
-        for k, v in results.items():
-            setattr(model, k, v)
-
-        # Expose each fitted parameter by name (e.g. ``model.alpha``), but
-        # never overwrite the reserved offset / limited-failure /
-        # zero-inflation attributes, which the survival functions rely on.
-        # A distribution may legitimately name a parameter ``p`` (e.g.
-        # ``Geometric``, ``NegativeBinomial``); those remain available via
-        # ``model.params``.
-        reserved = {"gamma", "p", "f0"}
-        for k, v in zip(self.param_names, model.params):
-            if k not in reserved:
-                setattr(model, k, v)
-
-        self._set_support(model, offset)
-
-        return model
+        return METHOD_FUNC_DICT[how](model)
 
     def from_params(self, params, gamma=None, p=None, f0=None):
         r"""

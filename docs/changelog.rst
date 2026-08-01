@@ -4,6 +4,44 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **Exact closed-form maximum likelihood for the Exponential, Normal and
+  LogNormal, where one exists.** These have analytic MLEs -- the
+  Exponential's events-over-exposure ratio, the Normal's mean and
+  standard deviation -- so the fit no longer builds an initial guess or
+  runs the five-optimiser ladder. Because the closed form is *exact*,
+  the result is not merely faster but at least as good: verified that
+  its log-likelihood is never worse than the optimiser's, and its
+  parameters agree to within the optimiser's own convergence tolerance
+  (~1e-8), as do its confidence bounds. At n=1000 a LogNormal fit goes
+  from 135 ms to 10 ms, a Normal from 42 ms to 5 ms, and an Exponential
+  from 11 ms to 5 ms; Weibull and the rest are untouched.
+
+  The applicability conditions are exact. The Exponential admits right
+  censoring and left truncation (which only moves each unit's exposure
+  from ``x`` to ``x - tl``), but falls back to the optimiser for left or
+  interval censoring and for right truncation, each of which makes the
+  score transcendental. The Normal and LogNormal need complete,
+  untruncated data: any censoring makes them the Tobit model and any
+  truncation introduces a normal-CDF normaliser.
+- **Fixed: closed-form fits silently ignored ``lfp``, ``zi``, ``offset``
+  and fixed parameters.** The hook that short-circuited to a
+  distribution's analytic MLE fired before any of these were checked, so
+  ``Uniform.fit(x, lfp=True)`` returned ``p = 1.0`` and
+  ``Uniform.fit(x, fixed={"a": 0.0})`` ignored the held value -- in both
+  cases without warning. Requests carrying that structure now go to the
+  optimiser, which estimates them.
+- **Fixed: ``Uniform`` fits had no usable log-likelihood.**
+  ``Uniform.fit(x).aic()`` raised ``AttributeError`` and ``cb()`` raised
+  for want of a covariance. The log density is now defined directly
+  rather than through the generic ``log(hf) - Hf`` identity, which is
+  ``nan`` at the upper support edge (where ``sf`` is 0) -- exactly where
+  the MLE puts ``b``. ``neg_ll``, ``aic``, ``bic`` and ``aic_c`` are now
+  correct. No parameter covariance is offered, deliberately: the Uniform
+  MLE is an order statistic sitting on the support edge rather than an
+  interior stationary point, so the observed information is not positive
+  definite and its inverse carries negative variances; ``cb`` refuses
+  rather than returning silent ``nan`` bounds.
+
 - **Tests: a breadth sweep over Turnbull's supported inputs.** Every
   combination of censoring type (observed, left, right, interval, and all
   four mixed), truncation form (none, left, right, both) and hazard

@@ -200,6 +200,21 @@ class Uniform_(ParametricFitter):
         """
         return self.df(x, a, b) / self.sf(x, a, b)
 
+    def log_df(self, x, a, b):
+        r"""Log density, :math:`-\ln(b - a)` on the support.
+
+        Defined directly rather than through the generic
+        :math:`\ln h(x) - H(x)` identity, which is ``nan`` at the upper
+        support edge: there ``sf`` is 0, so the identity evaluates
+        ``log(inf) - inf``. The MLE puts ``b`` exactly at the largest
+        observation, so that edge is always hit and the whole
+        log-likelihood came out ``nan`` -- taking ``neg_ll``, ``aic``,
+        ``bic`` and ``aic_c`` with it.
+        """
+        x = np.asarray(x, dtype=float)
+        inside = (x >= a) & (x <= b)
+        return np.where(inside, -np.log(b - a), -np.inf)
+
     def Hf(self, x, a, b):
         r"""
 
@@ -366,7 +381,7 @@ class Uniform_(ParametricFitter):
         """
         return np.log(b - a)
 
-    def mle(self, data):
+    def _closed_form_mle(self, data):
         if np.asarray(data.x).ndim == 2 or (data.c == 2).any():
             # The closed-form min/max estimator is not the MLE with
             # interval-censored rows (an interval term favours shrinking
@@ -404,10 +419,7 @@ class Uniform_(ParametricFitter):
                 " the lowest value is left truncated"
             )
 
-        params = np.array([np.min(data.x), np.max(data.x)])
-        results = {}
-        results["params"] = params
-        return results
+        return np.array([np.min(data.x), np.max(data.x)])
 
     def mpp_x_transform(self, x):
         return x
