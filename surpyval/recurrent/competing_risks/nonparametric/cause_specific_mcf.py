@@ -12,7 +12,6 @@ See ``surpyval.univariate.competing_risks`` for the univariate
 (time-to-first-event) competing-risks models.
 """
 
-import numpy as np
 from matplotlib import pyplot as plt
 
 from surpyval.recurrent.nonparametric.mcf import NonParametricCounting
