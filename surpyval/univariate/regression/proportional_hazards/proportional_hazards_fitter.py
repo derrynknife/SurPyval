@@ -3,11 +3,12 @@ from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
-from scipy.optimize import minimize
-
-from surpyval.univariate.parametric.fitters import bounds_convert
-from surpyval.utils.surpyval_data import SurpyvalData
-
+from .._fit_skeleton import (
+    HazardIdentitiesMixin,
+    assemble_regression_model,
+    optimise_ph,
+    prepare_regression_fit,
+)
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
@@ -21,7 +22,9 @@ class Phi:
     name: str
 
 
-class ProportionalHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
+class ProportionalHazardsFitter(
+    HazardIdentitiesMixin, TVCFitMixin, DataFrameRegressionMixin
+):
     def __init__(
         self,
         name,
@@ -67,15 +70,6 @@ class ProportionalHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
         hf_raw = self.hf_dist(x, *dist_params)
         return self.phi(Z, *phi_params) * hf_raw
 
-    def df(self, x, Z, *params):
-        return self.hf(x, Z, *params) * np.exp(-self.Hf(x, Z, *params))
-
-    def sf(self, x, Z, *params):
-        return np.exp(-self.Hf(x, Z, *params))
-
-    def ff(self, x, Z, *params):
-        return 1 - np.exp(-self.Hf(x, Z, *params))
-
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
         out = []
         for low, high in self.bounds:
@@ -98,15 +92,6 @@ class ProportionalHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
 
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
-
-    def log_df(self, x, Z, *params):
-        return np.log(self.hf(x, Z, *params)) - self.Hf(x, Z, *params)
-
-    def log_sf(self, x, Z, *params):
-        return -self.Hf(x, Z, *params)
-
-    def log_ff(self, x, Z, *params):
-        return np.log(self.ff(x, Z, *params))
 
     def random(self, size, Z, *params):
         dist_params = np.array(params[0 : self.k_dist])
@@ -247,92 +232,45 @@ class ProportionalHazardsFitter(TVCFitMixin, DataFrameRegressionMixin):
             beta_2: -25.952407717383302
             beta_3: 17.270173771235655
         """
-        data = SurpyvalData(x, c, n, t, group_and_sort=False)
-        data.add_covariates(Z)
-
-        if fixed is None:
-            fixed = {}
-
-        if init is None or len(init) == 0:  # type: ignore[arg-type]
-            ps = self.dist.fit_from_surpyval_data(data).params
-            # Use the validated covariate array — the raw ``Z`` argument may
-            # be a plain list without a ``.shape`` (#261) — and fall back to
-            # zeros when no phi initialiser is configured (previously an
-            # unbound-name error).
-            Z_data = np.asarray(data.Z)
-            if callable(self.phi_init):
-                init_phi = self.phi_init(Z_data)
-            else:
-                init_phi = np.zeros(Z_data.shape[1])
-
-            init = np.array([*ps, *init_phi])
-        else:
-            init = np.array(init)
-
-        # Dynamic or static bounds determination for models where the
-        # number of covariates is not fixed in advance.
-        if callable(self.phi_bounds):
-            bounds = (*self.bounds, *self.phi_bounds(data.Z))
-        else:
-            bounds = (*self.bounds, *self.phi_bounds)
-
-        # Dynamic or static parameter mapping for models where the
-        # number of covariates is not fixed in advance.
-        if callable(self.phi_param_map):
-            phi_param_map = self.phi_param_map(data.Z)
-        else:
-            phi_param_map = self.phi_param_map
-
-        # The covariate coefficients sit after the distribution parameters
-        # in the packed parameter vector, so their map indices must be
-        # offset by the number of distribution parameters — otherwise
-        # ``fixed={"beta_0": v}`` silently pins the first *distribution*
-        # parameter instead (#251).
-        param_map = {
-            **self.param_map,
-            **{k: v + len(self.param_map) for k, v in phi_param_map.items()},
-        }
-
-        # Create functions to make parameters unbounded for optimisation
-        # Also create function to insert fixed values.
-        transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
-            x, bounds, fixed, param_map
+        data, prep = prepare_regression_fit(
+            self,
+            x,
+            Z,
+            c,
+            n,
+            t,
+            init,
+            fixed,
+            self.phi_bounds,
+            self.phi_param_map,
+            self.phi_init,
         )
-
-        init = transform(init)[not_fixed]
+        init_t, bounds, pmap, transform, inv_trans, const, fixed = prep
 
         with np.errstate(all="ignore"):
 
             def fun(params):
                 return self.neg_ll(data, *inv_trans(const(params)))
 
-            res = minimize(fun, init)
-            res = minimize(fun, res.x, method="TNC")
+            res = optimise_ph(fun, init_t)
 
-        # Unpack parameters found from optimisation to actual values.
         params = inv_trans(const(res.x))
 
-        # Create "Phi" model
+        # Keep this fitter's possibly-custom phi (and its historical
+        # serialisation name) rather than assuming log-linear.
         reg_model = Phi()
         reg_model.phi = self.phi
-        reg_model.phi_param_map = phi_param_map
+        reg_model.phi_param_map = pmap
         reg_model.name = self.phi_name
 
-        # Create regression model.
-        model = ParametricRegressionModel()
-        model.distribution_param_map = self.param_map
-        model.phi_param_map = phi_param_map
-        model.model = self
-        model.reg_model = reg_model
-        model.kind = "Proportional Hazard"
-        model.distribution = self.dist
-        model.params = np.array(params)
-        model.res = res
-        model._neg_ll = res["fun"]
-        model.fixed = fixed
-        model.k_dist = self.k_dist
-        model.k = len(bounds)
-        model.phi_param_map = phi_param_map
-        model.data = data
-
-        return model
+        return assemble_regression_model(
+            self,
+            "Proportional Hazard",
+            reg_model,
+            data,
+            res,
+            params,
+            bounds,
+            pmap,
+            fixed,
+        )

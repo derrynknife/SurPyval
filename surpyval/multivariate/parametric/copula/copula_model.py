@@ -3,11 +3,12 @@
 import numpy as onp
 
 from surpyval.distribution import MultivariateDistribution
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 _EPS = 1e-10
 
 
-class CopulaModel(MultivariateDistribution):
+class CopulaModel(SerialisableMixin, MultivariateDistribution):
     """A fitted bivariate copula glued to two univariate margins.
 
     Attributes
@@ -90,13 +91,47 @@ class CopulaModel(MultivariateDistribution):
         margins = []
         for m in self.margins:
             margins.append(m.to_dict() if hasattr(m, "to_dict") else None)
-        return {
-            "parameterization": "copula",
-            "copula": self.copula.name,
-            "params": self.params.tolist(),
-            "how": self.method,
-            "margins": margins,
+        return stamp_schema(
+            {
+                "parameterization": "copula",
+                "copula": self.copula.name,
+                "params": self.params.tolist(),
+                "how": self.method,
+                "margins": margins,
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, model_dict):
+        import surpyval
+        from .archimedean import Clayton, Frank, Gumbel, Independence
+        from .elliptical import Gaussian
+
+        families = {
+            c.name: c for c in (Independence, Clayton, Gumbel, Frank, Gaussian)
         }
+        copula_name = model_dict["copula"]
+        if copula_name not in families:
+            raise ValueError(
+                f"Unknown copula family {copula_name!r}; expected one of "
+                f"{sorted(families)}. A custom copula cannot be rebuilt "
+                "from its name alone."
+            )
+        margins = []
+        for i, m in enumerate(model_dict["margins"]):
+            if m is None:
+                raise ValueError(
+                    f"Margin {i} was not serialisable (it has no `to_dict`), "
+                    "so this copula model cannot be rebuilt."
+                )
+            margins.append(surpyval.from_dict(m))
+        return cls(
+            families[copula_name],
+            model_dict["params"],
+            margins,
+            data=None,
+            how=model_dict.get("how", "given"),
+        )
 
     def __repr__(self):
         param_str = ", ".join(

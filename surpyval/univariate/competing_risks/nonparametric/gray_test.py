@@ -20,6 +20,10 @@ from typing import Any, NamedTuple
 import numpy as np
 from scipy.stats import chi2
 
+from surpyval.univariate.competing_risks.aalen_johansen import (
+    aalen_johansen_iif,
+)
+
 
 class GrayTestResult(NamedTuple):
     statistic: float
@@ -190,15 +194,17 @@ def _pooled_cif(x, all_event, is_cause, n, cause_times) -> np.ndarray:
     """Aalen-Johansen cumulative incidence of the cause on the pooled sample,
     evaluated at ``cause_times``."""
     times = np.unique(x)
-    surv = 1.0
-    cif = 0.0
-    out = {}
-    for t in times:
-        at_risk = n[x >= t].sum()
-        d_all = n[all_event & (x == t)].sum()
-        d_k = n[is_cause & (x == t)].sum()
-        if at_risk > 0:
-            cif += surv * d_k / at_risk
-            surv *= 1.0 - d_all / at_risk
-        out[t] = cif
-    return np.array([out[t] for t in cause_times])
+    t_idx = np.searchsorted(times, x)
+    counts = np.zeros(times.shape)
+    np.add.at(counts, t_idx, n)
+    # Everyone with x >= t is at risk at t.
+    r = counts[::-1].cumsum()[::-1]
+    d_all = np.zeros(times.shape)
+    np.add.at(d_all, t_idx[all_event], n[all_event])
+    d_k = np.zeros(times.shape)
+    np.add.at(d_k, t_idx[is_cause], n[is_cause])
+    h_all = np.where(r > 0, d_all / np.where(r > 0, r, 1.0), 0.0)
+    h_k = np.where(r > 0, d_k / np.where(r > 0, r, 1.0), 0.0)
+    S_km = np.cumprod(1.0 - h_all)
+    cif = aalen_johansen_iif(S_km, h_k).cumsum()
+    return cif[np.searchsorted(times, cause_times)]

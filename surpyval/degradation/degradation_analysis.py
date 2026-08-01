@@ -31,7 +31,6 @@ from surpyval.univariate.regression.parametric_regression_model import (
 from ._bounds import (
     analytic_cb,
     bootstrap_cb,
-    bootstrap_cb_accelerated,
     life_parameter_covariance,
 )
 from .path_models import PATH_MODELS, PathModel, get_path_model
@@ -1069,8 +1068,8 @@ class DegradationModel(SerialisableMixin):
                     "regression bounds."
                 )
             if method == "bootstrap":
-                return bootstrap_cb_accelerated(
-                    self, x, Z, on, alpha_ci, bound, n_boot, seed
+                return bootstrap_cb(
+                    self, x, on, alpha_ci, bound, n_boot, seed, Z=Z
                 )
             raise ValueError("`method` must be 'analytic' or 'bootstrap'")
         if method == "analytic":

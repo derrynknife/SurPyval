@@ -8,12 +8,15 @@ from scipy.optimize import minimize
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._fit_skeleton import HazardIdentitiesMixin
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 
 
-class ParameterSubstitutionFitter(DataFrameRegressionMixin):
+class ParameterSubstitutionFitter(
+    HazardIdentitiesMixin, DataFrameRegressionMixin
+):
     def __init__(
         self,
         kind,
@@ -119,41 +122,9 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
 
         return hf
 
-    def df(self, x, Z, *params):
-        x = np.array(x)
-        if np.isscalar(Z):
-            Z = np.ones_like(x) * Z
-        else:
-            Z = np.array(Z)
-        if Z.ndim == 1:
-            # A 1-D stress vector (one stress variable) becomes a single
-            # column so the per-stress masking below works (#261).
-            Z = Z.reshape(-1, 1)
-        return self.hf(x, Z, *params) * np.exp(-self.Hf(x, Z, *params))
-
-    def sf(self, x, Z, *params):
-        x = np.array(x)
-        if np.isscalar(Z):
-            Z = np.ones_like(x) * Z
-        else:
-            Z = np.array(Z)
-        if Z.ndim == 1:
-            # A 1-D stress vector (one stress variable) becomes a single
-            # column so the per-stress masking below works (#261).
-            Z = Z.reshape(-1, 1)
-        return np.exp(-self.Hf(x, Z, *params))
-
-    def ff(self, x, Z, *params):
-        x = np.array(x)
-        if np.isscalar(Z):
-            Z = np.ones_like(x) * Z
-        else:
-            Z = np.array(Z)
-        if Z.ndim == 1:
-            # A 1-D stress vector (one stress variable) becomes a single
-            # column so the per-stress masking below works (#261).
-            Z = Z.reshape(-1, 1)
-        return -np.expm1(-self.Hf(x, Z, *params))
+    # sf/ff/df and the log identities come from HazardIdentitiesMixin;
+    # Hf and hf above already do the scalar/1-D stress coercion (#261),
+    # so the identities need no preamble of their own.
 
     def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
         out = []
@@ -177,15 +148,6 @@ class ParameterSubstitutionFitter(DataFrameRegressionMixin):
 
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
-
-    def log_df(self, x, Z, *params):
-        return np.log(self.hf(x, Z, *params)) - self.Hf(x, Z, *params)
-
-    def log_sf(self, x, Z, *params):
-        return -self.Hf(x, Z, *params)
-
-    def log_ff(self, x, Z, *params):
-        return np.log(self.ff(x, Z, *params))
 
     def random(self, size, Z, *params):
         dist_params = np.array(params[0 : self.k_dist])

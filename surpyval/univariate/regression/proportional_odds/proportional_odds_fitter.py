@@ -1,11 +1,14 @@
 import autograd.numpy as np
 import numpy.typing as npt
-from scipy.optimize import minimize
 
-from surpyval.univariate.parametric.fitters import bounds_convert
-from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._likelihood import regression_neg_ll
+from .._fit_skeleton import (
+    LogLinearPhi,
+    assemble_regression_model,
+    optimise_nm_tnc,
+    prepare_regression_fit,
+)
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 
@@ -140,72 +143,41 @@ class ProportionalOddsFitter(DataFrameRegressionMixin):
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
     ) -> ParametricRegressionModel:
-        data = SurpyvalData(x, c, n, t, group_and_sort=False)
-        data.add_covariates(Z)
-
-        if fixed is None:
-            fixed = {}
-
-        if init is None:
-            ps = self.dist.fit_from_surpyval_data(data).params
-            assert data.Z is not None
-            phi_init = np.zeros(data.Z.shape[1])
-            init = np.array([*ps, *phi_init])
-        else:
-            init = np.array(init)
-
-        phi_bounds = self._phi_bounds(data.Z)
-        phi_param_map = self._phi_param_map(data.Z)
-        bounds = (*self.bounds, *phi_bounds)
-
-        param_map = {
-            **self.param_map,
-            **{k: v + len(self.param_map) for k, v in phi_param_map.items()},
-        }
-
-        transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
-            data.x, bounds, fixed, param_map
+        data, prep = prepare_regression_fit(
+            self,
+            x,
+            Z,
+            c,
+            n,
+            t,
+            init,
+            fixed,
+            self._phi_bounds,
+            self._phi_param_map,
         )
-        init = transform(init)[not_fixed]
+        init_t, bounds, pmap, transform, inv_trans, const, fixed = prep
 
         with np.errstate(all="ignore"):
 
             def fun(params):
                 return self.neg_ll(data, *inv_trans(const(params)))
 
-            res = minimize(
-                fun, init, method="Nelder-Mead", options={"maxiter": 1000}
-            )
-            res2 = minimize(fun, res.x, method="TNC")
-            res = res2 if res2.success else res
+            res = optimise_nm_tnc(fun, init_t)
 
         params = inv_trans(const(res.x))
+        reg_model = LogLinearPhi("Log Linear [exp(beta'Z)]", pmap)
 
-        _pm = phi_param_map
-
-        class _PhiModel:
-            name = "Log Linear [exp(beta'Z)]"
-            phi_param_map = _pm
-
-            def phi(self, Z, *p):
-                return np.exp(np.dot(Z, np.array(p)))
-
-        model = ParametricRegressionModel()
-        model.model = self
-        model.reg_model = _PhiModel()
-        model.kind = "Proportional Odds"
-        model.distribution = self.dist
-        model.params = np.array(params)
-        model.dist_params = np.array(params[: self.k_dist])
-        model.phi_params = np.array(params[self.k_dist :])
-        model.res = res
-        model._neg_ll = res.fun
-        model.fixed = fixed
-        model.k_dist = self.k_dist
-        model.k = len(bounds)
-        model.data = data
-
-        return model
+        return assemble_regression_model(
+            self,
+            "Proportional Odds",
+            reg_model,
+            data,
+            res,
+            params,
+            bounds,
+            pmap,
+            fixed,
+        )
 
 
 def PO(distribution):

@@ -11,50 +11,12 @@ from surpyval.utils.recurrent_utils import handle_xicn
 
 class NHPPFitter(IntensityModel):
     def create_negll_func(self, data):
-        x, c, n = data.x, data.c, data.n
-        x_prev = data.get_previous_x()
-
-        has_interval_censoring = True if 2 in c else False
-        has_observed = True if 0 in c else False
-        has_left_censoring = True if -1 in c else False
-        has_right_censoring = True if 1 in c else False
-
-        x_l = x if x.ndim == 1 else x[:, 0]
-        x_r = x[:, 1] if x.ndim == 2 else None
-
-        x_prev_l = (
-            x_prev if x_prev.ndim == 1 else x_prev[:, 0]
-        )  # not x[:, 0] (#288)
-        x_prev_r = x_prev[:, 1] if x_prev.ndim == 2 else None
-
-        x_o = x_l[c == 0] if has_observed else np.array([])
-        if has_interval_censoring:
-            x_o_prev = x_prev_r[c == 0] if has_observed else np.array([])
-        else:
-            x_o_prev = x_prev_l[c == 0] if has_observed else np.array([])
-
-        x_right = x_l[c == 1] if has_right_censoring else np.array([])
-        if has_interval_censoring:
-            x_right_prev = (
-                x_prev_r[c == 1] if has_right_censoring else np.array([])
-            )
-        else:
-            x_right_prev = (
-                x_prev_l[c == 1] if has_right_censoring else np.array([])
-            )
-
-        x_left = x_l[c == -1] if has_left_censoring else np.array([])
-        n_left = n[c == -1] if has_left_censoring else np.array([])
-
-        x_i_l = x_l[c == 2] if has_interval_censoring else np.array([])
-        x_i_r = x_r[c == 2] if has_interval_censoring else np.array([])
-        n_i = n[c == 2] if has_interval_censoring else np.array([])
-
-        # Right window-close: for items with a finite right-truncation time
-        # ``tr`` the intensity is integrated out to ``tr`` rather than
-        # merely to the last observed event / censoring row. These arrays are
-        # empty for untruncated data, so the term adds nothing in that case.
-        x_close_last, x_close_tr, _ = data.get_right_truncation_close()
+        s = data.split_for_nhpp_likelihood()
+        x_o, x_o_prev = s["x_o"], s["x_o_prev"]
+        x_right, x_right_prev = s["x_right"], s["x_right_prev"]
+        x_left, n_left = s["x_left"], s["n_left"]
+        x_i_l, x_i_r, n_i = s["x_i_l"], s["x_i_r"], s["n_i"]
+        x_close_last, x_close_tr = s["x_close_last"], s["x_close_tr"]
 
         # Using the empty arrays avoids the need for if statements in the
         # likelihood function. It also means that the likelihood function
