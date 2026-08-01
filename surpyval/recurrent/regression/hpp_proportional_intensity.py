@@ -242,9 +242,7 @@ class ProportionalIntensityHPP:
             An object containing the results of the fitting process, including
             parameter estimates.
         """
-        data = handle_xicn(
-            x, i, c, n, t=t, tl=tl, tr=tr, Z=Z, as_recurrent_data=True
-        )
+        data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
         return self.fit_from_recurrent_data(data, init=init)
 
     def fit_from_recurrent_data(self, data, dist=None, init=None):

@@ -3,7 +3,6 @@ from numbers import Number
 import numpy.typing as npt
 import pandas as pd
 from scipy.integrate import quad
-from scipy.special import expit
 from scipy.stats import uniform
 
 import surpyval
@@ -143,6 +142,13 @@ class ParametricFitter:
     def log_ff(self, x, *params):
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
+    def cs(self, x, X, *params):
+        # Conditional survival R(x + X) / R(X); distributions override
+        # this only to carry a docstring or a simplified closed form.
+        # The default also gives discrete distributions a working
+        # ``Parametric.cs`` (previously AttributeError).
+        return self.sf(x + X, *params) / self.sf(X, *params)
+
     def _plot_x_bounds(self, x, params):
         """Return (x_scale_min, x_scale_max) for probability plots.
 
@@ -212,14 +218,6 @@ class ParametricFitter:
             np.isfinite(xl), f0 + (p - f0) * self.ff(xl, *params), 0.0
         )
         return np.sum(n * np.log(np.maximum(right - left, 0.0)))
-
-    def parameter_transform(self, x_min, params):
-        *params, gamma, f0, p = params
-        p = expit(p)
-        f0 = expit(f0)
-        gamma = x_min - np.exp(gamma) if gamma < 0 else x_min - 1 - gamma
-        params = self._parameter_transform(*params)
-        return (*params, gamma, f0, p)
 
     def _log_likelihood(self, data, *params):
         return (
@@ -818,7 +816,6 @@ class ParametricFitter:
     def fit_from_ecdf(self, x: npt.ArrayLike, F: npt.ArrayLike) -> Parametric:
         model = Parametric(self, "given ecdf", None, False, False, False)
         res = mpp_from_ecfd(self, x, F)
-        model.dist = self
         model.params = np.array(res["params"])
         model.support = self.support
 
@@ -1042,12 +1039,9 @@ class ParametricFitter:
             transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
                 x, model.bounds, fixed, model.param_map
             )
-
-            fitting_info["transform"] = transform
             fitting_info["inv_trans"] = inv_trans
             fitting_info["const"] = const
             fitting_info["fixed_idx"] = fixed_idx
-            fitting_info["not_fixed"] = not_fixed
 
             # ``len``-based check: comparing an ndarray to ``[]`` raises a
             # broadcast error (#261).
@@ -1206,5 +1200,4 @@ class ParametricFitter:
                     f"Params {param_names} must be in" f" bounds {self.bounds}"
                 )
                 raise ValueError(detail)
-        model.dist = self
         return model

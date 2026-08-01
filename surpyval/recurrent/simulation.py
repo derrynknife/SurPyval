@@ -220,7 +220,7 @@ class RecurrenceSimulationMixin:
         from surpyval.utils.recurrent_utils import handle_xicn
 
         xicn = self._simulate_count_xicn(events, items, seed)
-        return handle_xicn(as_recurrent_data=True, **xicn)
+        return handle_xicn(**xicn)
 
     def time_terminated_simulation_data(
         self, T, items=1, tol=1e-8, max_events=10_000, seed=None
@@ -258,7 +258,7 @@ class RecurrenceSimulationMixin:
         from surpyval.utils.recurrent_utils import handle_xicn
 
         xicn = self._simulate_time_xicn(T, items, tol, max_events, seed)
-        return handle_xicn(as_recurrent_data=True, **xicn)
+        return handle_xicn(**xicn)
 
     def count_terminated_simulation(self, events, items=1, seed=None):
         """

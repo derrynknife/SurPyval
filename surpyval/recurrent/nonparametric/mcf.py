@@ -1,6 +1,4 @@
-import json
-
-from autograd import numpy as np
+import numpy as np
 from matplotlib import pyplot as plt
 from scipy.stats import norm
 
@@ -9,11 +7,11 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 
 @singleton_fitter
-class NonParametricCounting:
+class NonParametricCounting(SerialisableMixin):
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self):
@@ -39,11 +37,6 @@ class NonParametricCounting:
             }
         )
 
-    def to_json(self, fp):
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict):
         """
@@ -62,12 +55,6 @@ class NonParametricCounting:
         out.mcf_hat = np.array(model_dict["mcf_hat"], dtype=float)
         out.var = np.array(model_dict["var"], dtype=float)
         return out
-
-    @classmethod
-    def from_json(cls, fp):
-        """Load an MCF estimate from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def mcf(self, x, interp="step"):
         x = np.atleast_1d(x)
@@ -200,14 +187,13 @@ class NonParametricCounting:
                 )
         return ax
 
-    def fit_from_recurrent_data(self, data):
-        reject_unsupported_nonparametric(data, "NonParametricCounting")
-        out = type(self)()
-        out.data = data
-        out.x, out.r, out.d = data.to_xrd()
-        d = out.d
-        r = out.r
-
+    @classmethod
+    def from_xrd(cls, x, r, d):
+        """Build the Nelson-Aalen MCF and its Lawless-Nadeau variance
+        from an ``(x, r, d)`` triple; the single home of the estimator
+        (cause-specific MCF used to carry a drifted copy)."""
+        out = cls()
+        out.x, out.r, out.d = x, r, d
         out.mcf_hat = np.cumsum(d / r)
         var = (
             1.0
@@ -216,7 +202,12 @@ class NonParametricCounting:
         )
         var = (d > 0).astype(int) * var
         out.var = np.cumsum(var)
+        return out
 
+    def fit_from_recurrent_data(self, data):
+        reject_unsupported_nonparametric(data, "NonParametricCounting")
+        out = type(self).from_xrd(*data.to_xrd())
+        out.data = data
         return out
 
     def fit(self, x, i=None, c=None, n=None, tl=None, tr=None, windows=None):
@@ -251,7 +242,5 @@ class NonParametricCounting:
         -------
         NonParametricCounting
         """
-        data = handle_xicn(
-            x, i, c, n, tl=tl, tr=tr, as_recurrent_data=True, windows=windows
-        )
+        data = handle_xicn(x, i, c, n, tl=tl, tr=tr, windows=windows)
         return self.fit_from_recurrent_data(data)

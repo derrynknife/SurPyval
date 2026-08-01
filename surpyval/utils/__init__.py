@@ -43,21 +43,6 @@ def _check_x_not_empty(func):
     return wrap
 
 
-def init_from_bounds(dist):
-    out = []
-    for low, high in dist.bounds:
-        if (low is None) and (high is None):
-            out.append(0)
-        elif high is None:
-            out.append(low + 1.0)
-        elif low is None:
-            out.append(high - 1.0)
-        else:
-            out.append((high + low) / 2.0)
-
-    return out
-
-
 def check_no_censoring(c):
     return any(c != 0)
 
@@ -688,61 +673,6 @@ def xcnt_handler(
     return x, c, n, t
 
 
-def xcn_to_fsl(x, c=None, n=None):
-    """
-    Converts the xcn format to the fsl format.
-
-    Parameters
-    ----------
-
-    x: array
-        array of values of variable for which observations were made.
-    c: array, optional (default: None)
-        array of censoring values (-1, 0, 1, 2) corrseponding to x. If None, an
-        array of 0s is created corresponding to each x.
-    n: array, optional (default: None)
-        array of count of observations at each x and with censoring c. If None,
-        an array of ones is created.
-
-    Returns
-    -------
-
-    f: array
-        array of values for which the failure/death was observed
-    s: array
-        array of right censored observation values
-    l: array
-        array of left censored observation values
-
-    Examples
-    --------
-    >>> x = np.array([1, 2, 3, 4, 5])
-    >>> c = np.array([0, 1, 1, 0, 0])
-    >>> n = np.array([1, 1, 1, 1, 1])
-    >>> f, s, l = xcn_to_fsl(x, c, n)
-    >>> f
-    array([1, 4, 5])
-    >>> s
-    array([2, 3])
-    >>> l
-    array([], dtype=float64)
-    """
-
-    x = np.array(x)
-    if c is None:
-        c = np.zeros_like(x)
-    if n is None:
-        n = np.ones_like(x).astype(int)
-
-    c = np.array(c)
-    n = np.array(n).astype(int)
-
-    f = np.repeat(x[c == 0], n[c == 0])
-    s = np.repeat(x[c == 1], n[c == 1])
-    l = np.repeat(x[c == -1], n[c == -1])
-    return f, s, l
-
-
 def xcn_to_fs(x, c=None, n=None):
     x = np.array(x)
     if c is None:
@@ -1033,16 +963,6 @@ def fs_to_xcnt(f=None, s=None):
     return fsl_to_xcnt(f, s, None)
 
 
-def _scale(ll, n, scale):
-    if scale:
-        # Sometimes the ll can get too big. If we normalise it
-        # against the number of observations it is smaller
-        # This allows for better performance of the optimizer.
-        return ll.sum() / n.sum()
-    else:
-        return ll.sum()
-
-
 def _get_idx(x_target, x):
     """
     Function to get the indices for a given vector of x values
@@ -1203,10 +1123,7 @@ def validate_cr_inputs(x, c, n, e, method):
     check_e_and_x(e, x)
 
     # Not implemented, yet.
-    if (-1 in c) or (2 in c):
-        raise ValueError(
-            "Left or interval censoring not implemented with Competing Risks"
-        )
+    check_left_or_int_cens(c)
 
     # Ensure all cases where c is 0, e is not None and
     # where c is 1 e is None
@@ -1214,7 +1131,7 @@ def validate_cr_inputs(x, c, n, e, method):
 
     # Two baselines
     # TODO: Add fleming-harrington
-    if method not in ["Nelson-Aalen", "Kaplan-Meier"]:
+    if method not in FG_BASELINE_OPTIONS:
         raise ValueError("Unrecognised baseline method")
 
     return x, c, n, e
@@ -1279,12 +1196,15 @@ def validate_tv_coxph(id, tl, x, Z, c, n):
             x_i = x[id == i]
             _check_an_ids_tl_and_x(i, tl_i, x_i)
 
+    # One validation pass is enough: mask the already-validated arrays
+    # (including the truncation bounds — the old second xcnt_handler call
+    # used the unmasked tl and would raise a confusing length error
+    # whenever wrangle_Z actually dropped NaN rows).
     Z, mask = wrangle_Z(Z)
-    x, c, n = (arr[mask] for arr in (x, c, n))
+    x, c, n, t = (arr[mask] for arr in (x, c, n, t))
     x, c, n, Z = (arr.astype(float) for arr in [x, c, n, Z])
 
     check_Z_and_x(Z, x)
-    x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
 
     return t[:, 0], x, Z, c, n
 

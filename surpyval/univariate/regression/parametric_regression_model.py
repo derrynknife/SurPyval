@@ -1,6 +1,4 @@
-import json
 import types
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
@@ -8,7 +6,7 @@ import numpy.typing as npt
 from matplotlib import pyplot as plt
 from scipy.stats import norm
 
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 from ._bounds import (
     bound_signs,
@@ -51,7 +49,7 @@ _SERIALISABLE_REG_NAMES = {
 }
 
 
-class ParametricRegressionModel:
+class ParametricRegressionModel(SerialisableMixin):
     """
     Result of ``.fit()`` or ``.from_params()`` method for parametric
     regression modelling.
@@ -221,11 +219,6 @@ class ParametricRegressionModel:
             out["_neg_ll"] = float(self._neg_ll)
         return stamp_schema(out)
 
-    def to_json(self, fp: "str | Path") -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "ParametricRegressionModel":
         """
@@ -335,12 +328,6 @@ class ParametricRegressionModel:
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
         return out
-
-    @classmethod
-    def from_json(cls, fp: "str | Path") -> "ParametricRegressionModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """

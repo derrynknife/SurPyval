@@ -25,14 +25,12 @@ comes in two flavours:
   posterior frailty ``S(t \\mid Z, u) = e^{-u e^{\\beta'Z} H_0(t)}``.
 """
 
-import json
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 from scipy.special import ndtri as _z
 
-from surpyval.serialisation import stamp_schema, to_native
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 from ..regression_data import (
     model_spec_to_meta,
@@ -41,7 +39,7 @@ from ..regression_data import (
 )
 
 
-class FrailtyModel:
+class FrailtyModel(SerialisableMixin):
     """A fitted shared-frailty proportional-hazards model.
 
     See :class:`FrailtyFitter` for how one is produced. Prediction methods
@@ -272,10 +270,6 @@ class FrailtyModel:
                 out["formula_meta"] = model_spec_to_meta(self._model_spec)
         return stamp_schema(out)
 
-    def to_json(self, fp: "str | Path") -> None:
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "FrailtyModel":
         """Rebuild a model from a :meth:`to_dict` dictionary."""
@@ -317,8 +311,3 @@ class FrailtyModel:
         if out.formula is not None and formula_meta is not None:
             out._model_spec = rebuild_model_spec(out.formula, formula_meta)
         return out
-
-    @classmethod
-    def from_json(cls, fp: "str | Path") -> "FrailtyModel":
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))

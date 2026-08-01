@@ -63,15 +63,6 @@ class ProportionalIntensityNHPP:
     <BLANKLINE>
     """
 
-    def iif(self, x, rate):
-        return np.ones_like(x) * rate
-
-    def cif(self, x, rate):
-        return rate * x
-
-    def inv_cif(self, cif, rate):
-        return cif / rate
-
     def create_negll_func(self, data, dist):
         x, c, n = data.x, data.c, data.n
         Z = data.Z
@@ -301,7 +292,5 @@ class ProportionalIntensityNHPP:
             An object containing the results of the fitting process, including
             parameter estimates.
         """
-        data = handle_xicn(
-            x, i, c, n, t=t, tl=tl, tr=tr, Z=Z, as_recurrent_data=True
-        )
+        data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
         return self.fit_from_recurrent_data(data, dist, init)

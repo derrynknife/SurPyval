@@ -349,7 +349,7 @@ class GeneralizedRenewal(RenewalFitMixin):
             alpha: 2.399029078569064
             beta: 2.753920439616154
         """
-        data = handle_xicn(x, i, c, n, as_recurrent_data=True)
+        data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, kijima, init=init)
 
     def fit_from_parameters(self, params, q, kijima="i", dist=Weibull):

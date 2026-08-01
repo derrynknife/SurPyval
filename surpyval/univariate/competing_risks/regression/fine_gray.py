@@ -30,8 +30,6 @@ already had the event of interest, leave the risk set. The partial likelihood
 is the Breslow form of this weighted risk set.
 """
 
-import json
-
 import numpy as np
 from autograd import grad, hessian
 from autograd import numpy as anp
@@ -39,7 +37,7 @@ from scipy.optimize import minimize
 from scipy.stats import norm
 
 from surpyval.utils import validate_fine_gray_inputs
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 
 def _censoring_survival(x, c, n):
@@ -160,7 +158,7 @@ def _fit_cause(x, Z, e, c, n, cause):
     }
 
 
-class FineGrayModel:
+class FineGrayModel(SerialisableMixin):
     """
     A fitted Fine-Gray subdistribution-hazard model for one cause of interest.
 
@@ -211,11 +209,6 @@ class FineGrayModel:
             }
         )
 
-    def to_json(self, fp):
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict):
         """Rebuild a Fine-Gray model from a :meth:`to_dict` dictionary."""
@@ -240,12 +233,6 @@ class FineGrayModel:
                 "res": None,
             }
         )
-
-    @classmethod
-    def from_json(cls, fp):
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def phi(self, Z):
         return np.exp(np.asarray(Z, dtype=float) @ self.beta)

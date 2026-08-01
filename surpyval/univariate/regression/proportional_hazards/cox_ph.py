@@ -77,19 +77,6 @@ def efron_jit(n_d, Ri, Di, out):
 
 
 # @njit
-# def efron_jac_jit(n_d, Ri, ZRi, Di, ZDi, out):
-#     for i in range(len(n_d)):
-#         val = np.zeros(out.shape[1])
-
-#         if n_d[i] == 0:
-#             continue
-#         for j in range(int(n_d[i])):
-#             c = j / n_d[i]
-#             val = val + ((ZRi[i] - (c * ZDi[i])) / (Ri[i] - (c * Di[i])))
-#         out[i] = val
-#     return out
-
-
 def efron_jac(n_d, Ri, ZRi, Di, ZDi, masked_array):
     # Vectorised implementation of term two of the efron ll
     # jacobian.
@@ -237,6 +224,50 @@ def _exact_ordering_logterm(a, risk_sum):
     return anp.log(h[full])
 
 
+def _solve_beta_and_p_values(neg_ll, jac, beta_init, tol):
+    """Root-find the score (with BFGS fallback) and compute Wald p-values
+    from the observed information; shared by ``fit`` and
+    ``_fit_stratified`` so the most-patched block in this file exists
+    exactly once."""
+    # Have found that root finding is faster than minimization. ``jac``
+    # returns (score, hessian), hence ``jac=True``.
+    res = root(jac, beta_init, jac=True, tol=tol)
+
+    # MINPACK's hybr root-finder can stall on delayed-entry data with
+    # staggered risk sets (e.g. the start-stop representation used for
+    # time-varying covariates) even though the partial log-likelihood is
+    # well behaved there. Fall back to a direct minimisation of the
+    # negative partial log-likelihood whenever root-finding fails to
+    # converge or lands at a worse point, so such fits still succeed.
+    if not res.success:
+        fallback = minimize(
+            lambda b: float(neg_ll(b)), beta_init, method="BFGS"
+        )
+        if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
+            res = fallback
+
+    hessian_matrix = jac(res.x)[1]
+    # An exactly singular information matrix raises before the
+    # pseudo-inverse fallback can run (#259); route it there.
+    try:
+        var = np.diag(inv(hessian_matrix))
+    except np.linalg.LinAlgError:
+        var = np.full(len(np.atleast_1d(res.x)), -1.0)
+    # Use the pseudo-inverse if the hessian does not have a diagonal that
+    # is all positive.
+    if np.any(var <= 0):
+        var = np.diag(pinv(hessian_matrix))
+    # A near-singular information matrix (e.g. a degenerate start-stop
+    # design with duplicated rows) can still leave a non-positive
+    # variance; the resulting standard error is simply unavailable (nan),
+    # which is the correct signal, so suppress the sqrt-of-negative
+    # warning rather than emit it.
+    with np.errstate(invalid="ignore"):
+        z_score = res.x / np.sqrt(var)
+    p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
+    return res, p_values
+
+
 def _combine_generators(gens):
     """Sum per-stratum ``(log_like, jac_hess)`` generators into one.
 
@@ -260,7 +291,7 @@ def _combine_generators(gens):
             hess_total = h if hess_total is None else hess_total + h
         return jac_total, hess_total
 
-    return neg_ll, jac_hess, True
+    return neg_ll, jac_hess
 
 
 class CoxPH_:
@@ -295,9 +326,7 @@ class CoxPH_:
 
         return unique_x, r, d
 
-    def create_efron_ll_jac_hess(
-        self, x, Z, c, n, tl, with_jac=True, with_hess=True
-    ):
+    def create_efron_ll_jac_hess(self, x, Z, c, n, tl):
         # The reference used to compute the jacobian and hessian
         # was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
         # Left-truncation is handled by subtracting the pre-entry risk set
@@ -401,7 +430,7 @@ class CoxPH_:
 
             return jacobian, hess_matrix
 
-        return log_like, jac_hess, True
+        return log_like, jac_hess
 
     def create_breslow_ll_jac_hess(self, x, Z, c, n, tl):
         # The reference used to compute the jacobian and hessian
@@ -484,7 +513,7 @@ class CoxPH_:
 
             return jacobian, hess_matrix
 
-        return log_like, jac_hess, True
+        return log_like, jac_hess
 
     def _prepare_exact_tie_data(self, x, Z, c, n, tl):
         """Expand count-weighted rows and pre-compute, per event time, the
@@ -529,7 +558,7 @@ class CoxPH_:
     @staticmethod
     def _autograd_ll_jac_hess(neg_ll):
         """Wrap a scalar ``autograd.numpy`` negative-log-likelihood into the
-        ``(neg_ll, jac_hess, True)`` contract used by :meth:`fit`.
+        ``(neg_ll, jac_hess)`` contract used by :meth:`fit`.
 
         The score is the reverse-mode automatic gradient (exact and cheap). The
         observed information is obtained by forward finite-differencing that
@@ -556,7 +585,7 @@ class CoxPH_:
             hess_matrix = 0.5 * (hess_matrix + hess_matrix.T)
             return s0, hess_matrix
 
-        return neg_ll, jac_hess, True
+        return neg_ll, jac_hess
 
     def create_kalbfleisch_prentice_ll_jac_hess(self, x, Z, c, n, tl):
         """Kalbfleisch-Prentice discrete (conditional-logistic) tie handling.
@@ -715,56 +744,15 @@ class CoxPH_:
         # Good initial guess assumes no impact
         beta_init = np.zeros(Z.shape[1])
 
-        neg_ll, jac, hess = func_generator(x, Z, c, n, tl)
+        neg_ll, jac = func_generator(x, Z, c, n, tl)
 
-        # Have found that root finding is faster than minimization
-        res = root(jac, beta_init, jac=hess, tol=tol)
-
-        # MINPACK's hybr root-finder can stall on delayed-entry data with
-        # staggered risk sets (e.g. the start-stop representation used for
-        # time-varying covariates) even though the partial log-likelihood is
-        # well behaved there. Fall back to a direct minimisation of the
-        # negative partial log-likelihood whenever root-finding fails to
-        # converge or lands at a worse point, so such fits still succeed.
-        if not res.success:
-            fallback = minimize(
-                lambda b: float(neg_ll(b)), beta_init, method="BFGS"
-            )
-            if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
-                res = fallback
-
-        # The hessian is at [1] of the jac function
-        if hess:
-            # Finds the p-value for the null hypothesis
-            # that the coefficient is 0.
-            hessian_matrix = jac(res.x)[1]
-            # An exactly singular information matrix raises before the
-            # pseudo-inverse fallback can run (#259); route it there.
-            try:
-                var = np.diag(inv(hessian_matrix))
-            except np.linalg.LinAlgError:
-                var = np.full(len(np.atleast_1d(res.x)), -1.0)
-            # Use the pseudo-inverse if the hessian does not have a
-            # diagonal that is all positive.
-            if np.any(var <= 0):
-                var = np.diag(pinv(hessian_matrix))
-            # A near-singular information matrix (e.g. a degenerate
-            # start-stop design with duplicated rows) can still leave a
-            # non-positive variance; the resulting standard error is simply
-            # unavailable (nan), which is the correct signal, so suppress the
-            # sqrt-of-negative warning rather than emit it.
-            with np.errstate(invalid="ignore"):
-                z_score = res.x / np.sqrt(var)
-            p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
-        else:
-            p_values = None
+        res, p_values = _solve_beta_and_p_values(neg_ll, jac, beta_init, tol)
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values
         model.neg_ll = neg_ll
         model.jac = jac
-        model.hess = hess
         model.tie_method = method
         model.baseline_method = "breslow"
         model.res = res
@@ -830,35 +818,16 @@ class CoxPH_:
         if n_params is None:
             raise ValueError("no observations to fit")
         gens = [g for _, g, _ in per_stratum]
-        neg_ll, jac, hess = _combine_generators(gens)
+        neg_ll, jac = _combine_generators(gens)
 
         beta_init = np.zeros(n_params)
-        res = root(jac, beta_init, jac=hess, tol=tol)
-        if not res.success:
-            fallback = minimize(
-                lambda b: float(neg_ll(b)), beta_init, method="BFGS"
-            )
-            if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
-                res = fallback
-
-        hessian_matrix = jac(res.x)[1]
-        # Exactly singular -> route to the pseudo-inverse fallback (#259).
-        try:
-            var = np.diag(inv(hessian_matrix))
-        except np.linalg.LinAlgError:
-            var = np.full(len(np.atleast_1d(res.x)), -1.0)
-        if np.any(var <= 0):
-            var = np.diag(pinv(hessian_matrix))
-        with np.errstate(invalid="ignore"):
-            z_score = res.x / np.sqrt(var)
-        p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
+        res, p_values = _solve_beta_and_p_values(neg_ll, jac, beta_init, tol)
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values
         model.neg_ll = neg_ll
         model.jac = jac
-        model.hess = hess
         model.tie_method = method
         model.baseline_method = "breslow"
         model.res = res

@@ -406,9 +406,6 @@ class Rayleigh_(ParametricFitter):
     def mpp_x_transform(self, x):
         return x
 
-    def mpp_inv_x_transform(self, x, gamma=0):
-        return x - gamma
-
     def mpp_y_transform(self, y, *params):
         mask = y == 0
         out = np.zeros_like(y)

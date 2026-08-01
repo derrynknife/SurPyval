@@ -230,8 +230,7 @@ def test_efron_hessian_matches_finite_difference():
     c = (rng.uniform(size=N) < 0.25).astype(int)
 
     x, cc, nn, tl, ZZ = validate_coxph(t, c, np.ones(N), Z, None, "efron")
-    _, jac_hess, has_hess = CoxPH.create_efron_ll_jac_hess(x, ZZ, cc, nn, tl)
-    assert has_hess
+    _, jac_hess = CoxPH.create_efron_ll_jac_hess(x, ZZ, cc, nn, tl)
 
     beta = np.array([0.1, -0.1, 0.2])
     H = jac_hess(beta)[1]
@@ -347,7 +346,7 @@ def _neg_ll(method, x, Z, c):
 
     tl = np.full(len(x), -np.inf)
     gen = CoxPH_()._resolve_func_generator(method)
-    neg_ll, _, _ = gen(
+    neg_ll, _ = gen(
         np.asarray(x, float),
         np.asarray(Z, float),
         np.asarray(c, int),
@@ -454,7 +453,7 @@ def test_exact_kp_hessian_matches_finite_difference(method):
     x, c, nn, tl, ZZ = validate_coxph(x, c, None, Z, None, method)
 
     gen = CoxPH_()._resolve_func_generator(method)
-    neg_ll, jac_hess, _ = gen(x, ZZ, c, nn, tl)
+    neg_ll, jac_hess = gen(x, ZZ, c, nn, tl)
 
     b = np.array([0.3, -0.2])
     score, H = jac_hess(b)

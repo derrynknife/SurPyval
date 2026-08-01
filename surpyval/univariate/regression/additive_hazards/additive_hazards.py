@@ -40,9 +40,7 @@ Lin, D. Y. and Ying, Z. (1994), "Semiparametric analysis of the additive
 risk model", Biometrika 81, 61-71.
 """
 
-import json
 from copy import copy
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -53,7 +51,7 @@ from scipy.stats import norm
 from surpyval.utils import check_Z_and_x, wrangle_Z, xcnt_handler
 
 from ..regression_data import design_matrix_from_df, prepare_Z
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -79,7 +77,7 @@ def _validate(
     return x_arr, c_arr, n_arr, Z_arr
 
 
-class AdditiveHazardsModel:
+class AdditiveHazardsModel(SerialisableMixin):
     """
     A fitted Lin & Ying additive hazards model, returned by
     :meth:`AdditiveHazards.fit`.
@@ -171,11 +169,6 @@ class AdditiveHazardsModel:
                 out["formula_meta"] = model_spec_to_meta(self._model_spec)
         return stamp_schema(out)
 
-    def to_json(self, fp: "str | Path") -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "AdditiveHazardsModel":
         """
@@ -209,12 +202,6 @@ class AdditiveHazardsModel:
 
             out._model_spec = rebuild_model_spec(out.formula, formula_meta)
         return out
-
-    @classmethod
-    def from_json(cls, fp: "str | Path") -> "AdditiveHazardsModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def _h0_at(self, x: npt.NDArray) -> npt.NDArray:
         # Right-continuous step lookup of the baseline (cumulative) hazard at

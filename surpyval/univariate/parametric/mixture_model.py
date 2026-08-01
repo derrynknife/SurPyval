@@ -1,4 +1,3 @@
-import json
 import warnings
 
 from matplotlib import pyplot as plt
@@ -12,10 +11,10 @@ from .probability_plotting import (
     draw_probability_plot,
     probability_plot_data,
 )
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 
-class MixtureModel(Distribution):
+class MixtureModel(SerialisableMixin, Distribution):
     """
     A class for creating a Mixture Model fitter.
 
@@ -68,11 +67,6 @@ class MixtureModel(Distribution):
             }
         )
 
-    def to_json(self, fp) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
-
     @classmethod
     def from_dict(cls, model_dict: dict) -> "MixtureModel":
         """Rebuild a mixture model from a :meth:`to_dict` dictionary."""
@@ -94,12 +88,6 @@ class MixtureModel(Distribution):
         out.params = np.array(model_dict["params"], dtype=float)
         out.w = np.array(model_dict["w"], dtype=float)
         return out
-
-    @classmethod
-    def from_json(cls, fp) -> "MixtureModel":
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
 
     def __repr__(self):
         if self.params is not None:

@@ -4,6 +4,31 @@ Changelog
 v0.17.0 (unreleased)
 --------------------
 
+- **Simplification: low-risk cleanup batch from the code-simplification
+  review** (#295-#299 track the medium-risk remainder). Dead code removed:
+  the unused ``surv_sksurv_transformations`` module, ``init_from_bounds``,
+  ``_scale`` and ``xcn_to_fsl`` in utils, ``ParametricFitter.
+  parameter_transform`` (would have crashed if called), unused
+  ``mpp_inv_x_transform`` methods, commented-out blocks, the always-true
+  ``hess`` flag in the Cox generator contract (generators now return
+  ``(neg_ll, jac_hess)`` pairs), write-only ``fitting_info`` keys, and the
+  dead constant-rate methods on the PI-NHPP fitter. Duplication collapsed:
+  a shared ``SerialisableMixin`` now provides ``to_json``/``from_json``
+  for ~22 model classes; the degradation package imports the delta-method
+  helpers from ``recurrent.inference`` instead of carrying verbatim
+  copies; ``fit`` and ``_fit_stratified`` share one solve/p-value helper
+  in ``cox_ph.py``; ``NonParametricCounting.from_xrd`` is the single home
+  of the MCF estimator; ``predict_tvc`` reuses ``_tvc_cumhaz``; ``mean_cb``
+  delegates to ``rmst``. Plotting-position heuristics moved to dispatch
+  tables. ``ParametricFitter`` gains a default conditional-survival
+  ``cs`` (fixing ``AttributeError`` for the discrete distributions);
+  three docstring-free identity ``cs`` copies and Weibull's less-stable
+  ``log_ff`` override were deleted. Convention fixes: ``validate_tv_coxph``
+  no longer double-validates (and now masks the truncation bounds
+  alongside the data when covariate rows are dropped);
+  ``RecurrentEventData`` iterates statelessly and orders ``items``
+  deterministically; stale ``surpyval.alpha`` pointers updated.
+
 - **Removed: the alpha-stage ``SeriesModel``/``ParallelModel``
   reliability-block composition** (#284). Nested composition produced
   incorrect survival functions (``ParallelModel | ParallelModel``

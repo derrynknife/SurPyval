@@ -73,7 +73,7 @@ class RecurrentEventData:
         # event belongs to one of several mutually-exclusive types. ``None``
         # marks (e.g. the end-of-observation censoring row) are permitted.
         self.e = np.atleast_1d(e) if e is not None else None
-        self.items = list(set(self.i))
+        self.items = np.unique(self.i).tolist()
 
         if self.x.ndim == 1:
             self.interarrival_times = self.get_interarrival_times()
@@ -81,8 +81,6 @@ class RecurrentEventData:
             x_midpoints = self.x.copy()
             x_midpoints[self.c == -1, 0] = x_midpoints.min()
             self.midpoints = x_midpoints.mean(axis=1)
-
-        self._index = 0
 
     def to_xrd(self, estimator="Nelson-Aalen"):
         """
@@ -355,21 +353,9 @@ class RecurrentEventData:
         )
 
     def __iter__(self):
-        self._index = 0
-        return self
-
-    def __next__(self):
-        if self._index < len(self.x):
-            result = (
-                self.x[self._index],
-                self.i[self._index],
-                self.c[self._index],
-                self.n[self._index],
-            )
-            self._index += 1
-            return result
-        else:
-            raise StopIteration
+        # A stateless iterator: the old hand-rolled _index version broke
+        # nested iteration over the same object.
+        return zip(self.x, self.i, self.c, self.n)
 
     def __repr__(self):
         return f"""
