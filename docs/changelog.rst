@@ -1,6 +1,29 @@
 Changelog
 =========
 
+v0.17.1 (unreleased)
+--------------------
+
+- **Fixed: ``xcnt_to_xrd`` was quadratic in time and memory, and raised
+  ``MemoryError`` past roughly 50,000 observations** (#306). The at-risk
+  entry count was built as an ``N x K`` comparison matrix
+  (observations × distinct times): 20,000 observations needed a 3.2 GB
+  intermediate and ~15 s, and 50,000 attempted an 18.6 GiB allocation and
+  failed. Because this conversion feeds every nonparametric estimator —
+  and the MLE initial guess, which comes from probability plotting — the
+  ceiling applied to most of the package: ``Weibull.fit`` on 50,000
+  points raised ``MemoryError`` even though the likelihood itself was
+  fine. The entry count is now computed in two linear branches: a
+  constant when nothing is left truncated (the common case, where the
+  matrix was entirely ``True`` and merely recomputed ``n.sum()``), and a
+  sorted ``searchsorted`` lookup otherwise. ``side="left"`` counts
+  strictly-less-than exactly as the previous ``<`` did, so the
+  ``(entry, exit]`` convention from #260 is unchanged, and integer counts
+  make the cumulative sum exact — values are bit-identical. A
+  ``Weibull.fit`` at n=10,000 goes from 1,836 ms to 182 ms; 200,000
+  points now fit in 5.6 s and a 500,000-point Kaplan-Meier in 8.1 s,
+  where both previously failed.
+
 v0.17.0 (1 August 2026)
 -----------------------
 

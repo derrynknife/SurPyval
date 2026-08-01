@@ -688,6 +688,47 @@ def xcn_to_fs(x, c=None, n=None):
     return f, s
 
 
+def _entered_before(tl, x, n):
+    """Weighted count of observations that entered strictly before each ``x``.
+
+    ``e[j] = sum_i n_i * 1[tl_i < x_j]`` -- the ``(entry, exit]``
+    risk-interval convention (#260): a subject entering exactly at an event
+    time is not at risk for that event.
+
+    Written directly this is
+    ``((tl[:, None] < x[None, :]) * n[:, None]).sum(0)``, which materialises
+    an ``N x K`` matrix and so costs quadratic time *and* memory: at 20,000
+    observations that is a 3.2 GB intermediate taking ~15 s, and past ~50,000
+    it raised ``MemoryError`` outright. Two cheap branches give identical
+    counts:
+
+    * **nothing is left truncated** -- the default and by far the common
+      case. Every observation has entered before every event time, so the
+      whole matrix is ``True`` and ``e`` collapses to the constant
+      ``n.sum()``. The matrix was being built to recompute a scalar.
+    * **otherwise** -- sort the entry times once and read off the cumulative
+      weight below each ``x`` with ``searchsorted``. ``side="left"`` counts
+      entries *strictly* less than ``x``, matching the ``<`` above exactly,
+      so the ``(entry, exit]`` convention is preserved unchanged.
+
+    Counts are integers (``xcnt_handler`` rejects non-integer ``n``), so the
+    cumulative sum is exact and equals the summation it replaces bit for
+    bit. ``np.sort`` orders ``nan`` last and ``searchsorted`` treats it as
+    larger than every value, which reproduces ``nan < x == False`` -- the
+    behaviour of the form this replaces.
+    """
+    if np.isneginf(tl).all():
+        # No left truncation: everything is at risk from the outset.
+        return np.full(x.shape, n.sum(), dtype=n.dtype)
+
+    order = np.argsort(tl, kind="stable")
+    tl_sorted = tl[order]
+    cumulative = np.concatenate(
+        [np.zeros(1, dtype=n.dtype), np.cumsum(n[order])]
+    )
+    return cumulative[np.searchsorted(tl_sorted, x, side="left")]
+
+
 def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     """
     Converts the xcn format to the xrd format.
@@ -768,7 +809,7 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     # risk for that event. The previous inclusive comparison put surpyval's
     # KM on the nonstandard side and made it disagree with Turnbull's NPMLE
     # at exact entry/event ties (#260).
-    e = ((tl[:, np.newaxis] < x[np.newaxis, :]) * n[:, np.newaxis]).sum(0)
+    e = _entered_before(tl, x, n)
     # r is the number of people at risk at each x
     r = e + d - d.cumsum() + do - do.cumsum()
     # change to correct data types
