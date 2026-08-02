@@ -4,6 +4,25 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **Documentation caught up with the estimator changes above.** The
+  maximum likelihood notes in :doc:`Parametric Estimation` now cover the
+  observation that is *both* censored and truncated -- the contribution
+  it makes, why the numerator has to be capped by the truncation bound,
+  and the fact that surpyval recasts such a point as interval censored
+  in its internal representation rather than special-casing the
+  likelihood. The user's own ``x``, ``c``, ``n`` and ``t`` are untouched,
+  which is now said explicitly.
+
+  The method of moments section explains that the optimisation matches
+  scaled *central* moments rather than raw ones, and why that matters for
+  offset data, where every raw moment is dominated by the offset.
+
+  :doc:`Parametric SurPyval Modelling` gains a worked comparison of
+  ``neg_ll``, ``aic`` and ``bic`` across all five fit methods, showing
+  both that the criteria are available whatever the method and that MLE
+  attains the lowest negative log-likelihood -- a check that could not be
+  run before.
+
 - **An offset ``ExpoWeibull`` fit now seeds itself from the shifted
   data.** ``ExpoWeibull`` starts from a Gumbel fit to ``log(x)``, since
   a Weibull's logs are Gumbel distributed. With ``offset=True`` it took

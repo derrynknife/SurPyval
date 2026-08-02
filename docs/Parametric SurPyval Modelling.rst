@@ -529,6 +529,29 @@ Our estimation has worked! Even though we used the MPS estimate for the paramete
 
 This shows the power of the flexible API that surpyval offers, because if your modelling fails using one estimation method, you can use another. In this case, the MPS method is quite good at handling offset distributions. It is therefore a good approach to use when using offset distributions.
 
+That extends to the information criteria. A log-likelihood is a property of the
+parameters and the data, not of the search that found them, so ``neg_ll()``,
+``aic()``, ``bic()`` and ``aic_c()`` are available after *any* fit — not only
+after MLE:
+
+.. jupyter-execute::
+
+    np.random.seed(1)
+    x = surv.Weibull.random(500, 10., 2.)
+
+    print(f"{'how':<6}{'neg_ll':>12}{'AIC':>12}{'BIC':>12}")
+    for how in ["MLE", "MPS", "MSE", "MOM", "MPP"]:
+        m = surv.Weibull.fit(x, how=how)
+        print(f"{how:<6}{m.neg_ll():12.3f}{m.aic():12.3f}{m.bic():12.3f}")
+
+Two things are worth noticing. The first is that you can compare distributions
+by AIC or BIC regardless of how you fitted them, which is the usual way of
+choosing between candidate models. The second is a sanity check on the
+estimators themselves: MLE attains the lowest negative log-likelihood, because
+that is precisely the quantity it minimises. The others land close behind, each
+optimising something else — MPS the spacings, MSE the distance to the plotting
+positions, MOM the moments.
+
 As stated in the Non-Parametric section, there is a risk that using the Turnbull estimator when all
 values are trunctated by the same values. We will now show what happens. First, some example data:
 
