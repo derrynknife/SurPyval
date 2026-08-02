@@ -4,6 +4,36 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **Offset Gamma fits no longer start from a corrupted initial guess.**
+  Every offset-capable distribution returns the shift first in its
+  parameter vector, because ``_initial_guess`` overwrites that slot
+  with its own estimate of the shift. ``Gamma`` returned it *last*, so
+  the overwrite landed on the shape parameter and destroyed it, while
+  the initialiser's own copy of the shift stayed behind in the scale
+  slot: the seed came back as ``(offset, shape-ish, offset)``.
+
+  Compounding it, the shape approximation was computed on the raw
+  ``x``. On offset data the constant squashes
+  ``s = log(mean x) - mean(log x)`` towards zero, and since the shape
+  grows like ``1 / 12s`` the estimate exploded -- 649 for a true shape
+  of 3. The moments are now taken after the shift is removed.
+
+  The consequences were silent wrong answers, not just slow ones. A
+  600-point sample from ``Gamma(3, 4)`` shifted up by 10 fitted by MSE
+  returned a *negative* shift of -1.35 with a shape of 63.8; another
+  sample stopped after 0.03 s at the seed itself, reporting a scale
+  equal to the offset. Both now recover the shift, and the fit is also
+  4x faster (6.2 s to 1.6 s) because the optimiser no longer has to
+  travel back from a nonsense starting point. MLE was unaffected -- it
+  found its way regardless -- and non-offset fits are untouched.
+
+  Method of moments still disagrees on offset Gamma, but that is not a
+  defect: its solution matches the sample moments *better than the true
+  parameters do* (first three moments 10.76 / 116 / 1253 against the
+  truth's 10.75 / 115.7 / 1248). The three-parameter moment system with
+  a threshold is close to non-identifiable, which is why ``MOM`` is not
+  among the offset methods exercised in the test suite.
+
 - **Fitted parameters change for censored *and* truncated data: the
   likelihood was unbounded there (#310).** A censored observation is
   only ever known to lie inside its own truncation window -- it could
