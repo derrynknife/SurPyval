@@ -343,6 +343,61 @@ OFFSET_CASES = [
 ]
 
 
+@pytest.mark.parametrize(
+    "dist,dist_params", OFFSET_CASES, ids=[d.name for d, _ in OFFSET_CASES]
+)
+def test_offset_initialiser_puts_the_offset_first(dist, dist_params):
+    # `_initial_guess` overwrites slot 0 with the offset seed, so every
+    # offset initialiser must return gamma first. Gamma returned it last,
+    # which meant the overwrite landed on the shape and destroyed it --
+    # the seed came back as (offset, shape-estimate, offset) and MSE fits
+    # converged to nonsense.
+    shift = 10.0
+    x = dist.random(2000, *dist_params) + shift
+    c = np.zeros(x.size, dtype=int)
+    n = np.ones(x.size, dtype=np.int64)
+
+    init = np.asarray(
+        dist._initial_guess(x, c, n, True, False, False, "Nelson-Aalen"),
+        dtype=float,
+    )
+    assert len(init) == len(dist_params) + 1
+
+    # Slot 0 is the offset: just below the smallest observation.
+    assert init[0] == pytest.approx(x.min() - 1.0)
+    assert np.isfinite(init[1:]).all()
+    assert (init[1:] > 0).all()
+
+    # The tell-tale of an initialiser that returns the offset in the
+    # wrong position: `_initial_guess` writes the offset into slot 0
+    # while the initialiser's own copy of it is still sitting in a
+    # parameter slot, so the value appears twice and one real parameter
+    # estimate has been thrown away. Gamma returned
+    # ``(alpha, 1/beta, offset)`` and seeded (9.07, 14.88, 9.07) where
+    # the parameters are (3.0, 2.0).
+    assert not np.isclose(init[1:], init[0]).any(), (
+        f"{dist.name} seeded {init}: the offset {init[0]:.4g} also "
+        f"appears in a parameter slot, so its initialiser is returning "
+        f"the offset somewhere other than first"
+    )
+
+
+def test_offset_gamma_mse_recovers_the_shift():
+    # The user-visible consequence of the seeding bug above. With the
+    # offset written over the shape estimate, MSE returned a *negative*
+    # shift for data shifted up by 10, with a shape of 63 against a true
+    # 3 -- and on other samples it stopped after 0.03s at the seed
+    # itself, reporting beta equal to the offset. Neither raised.
+    np.random.seed(3)
+    shift = 10.0
+    x = Gamma.random(600, 3.0, 4.0) + shift
+
+    model = Gamma.fit(x, offset=True, how="MSE")
+    assert model.gamma == pytest.approx(shift, abs=0.5)
+    assert model.params[0] == pytest.approx(3.0, rel=0.4)
+    assert model.params[1] == pytest.approx(4.0, rel=0.4)
+
+
 @pytest.mark.parametrize("how", ["MLE", "MPS", "MSE", "MPP"])
 @pytest.mark.parametrize(
     "dist,dist_params", OFFSET_CASES, ids=[d.name for d, _ in OFFSET_CASES]
