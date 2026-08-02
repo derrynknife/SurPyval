@@ -133,28 +133,94 @@ class SurpyvalData:
         """
         Z_arr: np.ndarray = np.asarray(Z)
         self.Z = Z_arr
-        self.Z_o = Z_arr[self.c == 0]
-        self.Z_r = Z_arr[self.c == 1]
-        self.Z_l = Z_arr[self.c == -1]
-        self.Z_i = Z_arr[self.c == 2]
+        # The same masks the observation split used, not fresh ``c``
+        # comparisons: censored rows with a finite truncation bound are
+        # handed to the likelihood as intervals (#310), and their
+        # covariates have to move with them or every observation in the
+        # regression likelihood is paired with the wrong covariate row.
+        self.Z_o = Z_arr[self.mask_o]
+        self.Z_r = Z_arr[self.mask_r]
+        self.Z_l = Z_arr[self.mask_l]
+        self.Z_i = Z_arr[self.mask_i]
         # Covariates of the truncated subset, aligned with x_tl/x_tr/n_t so
         # that regression likelihoods can apply the truncation correction
         # using each truncated observation's own covariates.
         self.Z_t = Z_arr[self.truncated_mask]
 
     def _split_to_observation_types(self) -> None:
-        self.x_o, self.n_o = self._split_by_mask(self.c == 0)
-        self.x_r, self.n_r = self._split_by_mask(self.c == 1)
-        self.x_l, self.n_l = self._split_by_mask(self.c == -1)
-        if self.x.ndim == 2:
-            interval_mask = self.c == 2
-            self.x_il = self.x[interval_mask, 0]
-            self.x_ir = self.x[interval_mask, 1]
-            self.n_i = self.n[interval_mask]
+        """Split the data into the buckets the likelihoods consume.
+
+        A censored observation is only ever known to lie *inside its own
+        truncation window* -- it could not have been observed otherwise.
+        Its likelihood numerator must therefore be the probability of
+        that intersection, not of the raw censoring event:
+
+        =========================  =================  ===============
+        row                        correct numerator  unconditional
+        =========================  =================  ===============
+        left censored at x, tl     F(x) - F(tl)       F(x)
+        right censored at x, tr    F(tr) - F(x)       S(x)
+        =========================  =================  ===============
+
+        Using the unconditional form makes the contribution exceed one
+        -- it counts territory the truncation has already ruled out --
+        and the excess grows without bound as the fitted distribution's
+        mass slides outside the window. Every likelihood in the package
+        then has an unbounded direction and the optimiser runs off down
+        it, reporting success at nonsense parameters (#310).
+
+        Rather than teach each likelihood about truncation, such rows
+        are handed over as *intervals*: a left-censored row truncated at
+        ``tl`` becomes ``[tl, x]``, a right-censored row truncated at
+        ``tr`` becomes ``[x, tr]``. The interval term is already a
+        difference of CDFs, so it computes the correct numerator with no
+        change to any likelihood -- which is why interval-censored data
+        never had the bug.
+
+        Only rows with a *finite* bound on the relevant side are
+        recast. That is exactly where the defect lives, and it keeps
+        right censoring on the exact ``log_sf`` path: expressing it as
+        ``1 - F(x)`` loses all precision once ``F(x)`` rounds to one
+        (``log_sf`` of -49 comes back as ``-inf``), and the optimiser
+        evaluates the likelihood at parameters far enough from the data
+        for that to bite. Untruncated fits are therefore bit-identical.
+        """
+        t = self.t
+        has_tl = np.isfinite(t[:, 0])
+        has_tr = np.isfinite(t[:, 1])
+        recast_l = (self.c == -1) & has_tl
+        recast_r = (self.c == 1) & has_tr
+
+        # Kept as attributes because ``add_covariates`` must slice Z with
+        # the *same* masks: if a row changes bucket here and its
+        # covariates do not follow, the regression likelihood pairs every
+        # observation with the wrong covariate row.
+        self.mask_o = self.c == 0
+        self.mask_r = (self.c == 1) & ~has_tr
+        self.mask_l = (self.c == -1) & ~has_tl
+        self.mask_i = (self.c == 2) | recast_l | recast_r
+
+        self.x_o, self.n_o = self._split_by_mask(self.mask_o)
+        self.x_r, self.n_r = self._split_by_mask(self.mask_r)
+        self.x_l, self.n_l = self._split_by_mask(self.mask_l)
+
+        if self.mask_i.any():
+            lead = self.x if self.x.ndim == 1 else self.x[:, 0]
+            trail = self.x if self.x.ndim == 1 else self.x[:, -1]
+            # Interval rows keep their own bounds; recast rows take the
+            # truncation bound on the censored side.
+            lo = np.where(recast_l, t[:, 0], lead)
+            hi = np.where(
+                recast_r, t[:, 1], np.where(self.c == 2, trail, lead)
+            )
+            self.x_il = lo[self.mask_i]
+            self.x_ir = hi[self.mask_i]
+            self.n_i = self.n[self.mask_i]
         else:
             self.x_il = np.array([], dtype=float)
             self.x_ir = np.array([], dtype=float)
             self.n_i = np.array([], dtype=int)
+
         self.truncated_mask = np.isfinite(self.t).any(axis=1)
         self.x_tl, self.x_tr, self.n_t = (
             self.t[self.truncated_mask, 0],

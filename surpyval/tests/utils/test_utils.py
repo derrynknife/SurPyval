@@ -334,21 +334,20 @@ def test_xcnt_handler():
         xcnt_handler(x=[1, 2], t=[[0, 3], [1, 4]], tl=[0, 1])
 
 
-def test_xcnt_handler_warns_on_right_censored_with_finite_tr():
-    # A right-censored observation with a finite right-truncation time
-    # is contradictory (the event is after the censoring time, yet
-    # truncation says it was seen before tr) and can make
-    # truncation-adjusted likelihoods unbounded -- issue #195.
+def test_right_censored_with_finite_tr_is_accepted_without_warning():
+    # This used to warn as contradictory data (#195). It is not: the
+    # unit was detected, so its event is at or before tr, and it was
+    # censored, so the event is after x -- together simply x < X <= tr.
+    # A detector that registers an event but cannot resolve where in the
+    # remaining window it fell produces exactly this.
+    #
+    # The unbounded likelihoods that motivated the warning came from
+    # giving those rows the unconditional S(x), which includes the
+    # X > tr region truncation excludes (#310), not from the data.
     x = [1.0, 2.0, 3.0]
     c = [0, 1, 0]
-    with pytest.warns(UserWarning, match="right-censored"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         xcnt_handler(x=x, c=c, tr=[10.0, 10.0, 10.0])
-
-    # No warning when the right-censored row's truncation is infinite
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
         xcnt_handler(x=x, c=c, tr=[10.0, np.inf, 10.0])
-    # ... or when there is no right censoring at all
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
         xcnt_handler(x=x, c=[0, 0, 0], tr=[10.0, 10.0, 10.0])

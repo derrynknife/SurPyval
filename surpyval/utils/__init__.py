@@ -712,22 +712,20 @@ def xcnt_handler(
     n = n.astype(int)
     t = t.astype(float)
 
-    # A right-censored observation cannot carry finite right truncation:
-    # right-truncation sampling only admits units whose event occurred
-    # before ``tr``, while right censoring says the event is after the
-    # censoring time -- possibly beyond ``tr``. Such rows can make
-    # truncation-adjusted likelihoods unbounded (the fitted rate is
-    # driven towards zero), so flag them loudly.
-    if ((c == 1) & np.isfinite(t[:, 1])).any():
-        warnings.warn(
-            "Some right-censored observations have a finite right "
-            "truncation time. This is contradictory: right truncation "
-            "means the unit was only observable because its event "
-            "occurred before `tr`, while right censoring says the event "
-            "is after the censoring time. Such rows can make "
-            "truncation-adjusted likelihoods unbounded; check the data.",
-            stacklevel=2,
-        )
+    # Right censoring with a finite right truncation used to warn here
+    # as contradictory data (#195). It is not: the unit was detected, so
+    # its event is at or before ``tr``, and it was censored, so the
+    # event is after ``x``. Together that is simply ``x < X <= tr`` --
+    # the ordinary setup of a flux-limited or reporting-delay sample,
+    # e.g. a detector that registers an event but cannot resolve where
+    # in the remaining window it fell.
+    #
+    # The unbounded likelihoods that motivated the warning were not
+    # caused by the data. Right-censored rows were being given the
+    # unconditional ``S(x)``, which includes the ``X > tr`` region the
+    # truncation excludes, and that is what had no maximum (#310). With
+    # the conditional ``F(tr) - F(x)`` the fit is well posed and
+    # consistent, so the warning has been withdrawn.
 
     if group_and_sort:
         x, c, n, t = group_xcnt(x, c, n, t)
