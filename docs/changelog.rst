@@ -4,6 +4,55 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **Fitted parameters change for censored *and* truncated data: the
+  likelihood was unbounded there (#310).** A censored observation is
+  only ever known to lie inside its own truncation window -- it could
+  not have been observed otherwise -- so its likelihood numerator has to
+  be the probability of that intersection. Every likelihood in the
+  package instead used the unconditional form, ``F(x)`` for left
+  censoring and ``S(x)`` for right, and divided by a separately
+  accumulated window probability. That counts territory the truncation
+  has already ruled out, so the contribution exceeds one, and the excess
+  grows without limit as the fitted distribution's mass slides out of
+  the window.
+
+  The consequence was a silent wrong answer. On 200 left-censored
+  LogNormal points with a true ``mu`` of 0 and mild left truncation, the
+  fit returned ``mu = -7.81`` with ``neg_ll`` of ``-inf`` and
+  ``res.success`` set to ``True``. Across eight distributions, 21 of 48
+  censoring/truncation combinations returned a non-finite likelihood,
+  reporting parameters such as a Weibull ``alpha`` of 1.3e81 or a Normal
+  ``mu`` of -1.77e4. Regression was affected too, and failed more
+  quietly: adding left truncation to a working ``WeibullAFT`` fit
+  returned an entirely plausible-looking parameter vector whose
+  covariate coefficient had collapsed from a true 0.5 to 0.0018.
+
+  Rather than teach each likelihood about truncation, such rows are now
+  handed over as *intervals*: a left-censored row truncated at ``tl``
+  becomes ``[tl, x]``, a right-censored row truncated at ``tr`` becomes
+  ``[x, tr]``. The interval term is already a difference of CDFs, so it
+  computes the correct numerator with no change to any likelihood
+  function -- which is also why interval-censored data never had the
+  bug. One change in ``SurpyvalData`` therefore fixes the parametric,
+  regression, Royston-Parmar and mixture likelihoods together.
+
+  Only rows with a *finite* bound on the relevant side are recast, which
+  is exactly where the defect lived. Untruncated fits are bit-identical:
+  verified over 292 cases spanning ten distributions, seven censoring
+  regimes, two sample sizes, weighted and unweighted, and three
+  regression fitters, compared as exact float bit patterns. The
+  restriction also keeps right censoring on the exact ``log_sf`` path,
+  since expressing it as ``1 - F(x)`` loses all precision once ``F(x)``
+  rounds to one -- a ``log_sf`` of -49 comes back as ``-inf``, and the
+  optimiser does evaluate the likelihood that far from the data.
+
+  The LogNormal case above now fits ``mu = -0.56``, matching the
+  maximum of the correctly conditioned likelihood, and all 48
+  combinations return finite results. Right censoring combined with
+  finite right truncation remains contradictory data and keeps its
+  existing warning; what changes is that it now yields the coherent
+  conditional ``P(x < X <= tr)`` rather than an unbounded direction.
+
 - **``group_xcnt`` no longer walks every observation in Python.** The
   step that collapses duplicate ``(x, c, t)`` rows accumulated into a
   triple-nested ``defaultdict``, one iteration per observation. That is
