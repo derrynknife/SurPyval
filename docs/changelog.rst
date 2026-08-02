@@ -4,6 +4,22 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **ExpoWeibull no longer runs a nested optimiser ladder to build its
+  initial guess.** It seeds itself from a Gumbel fit to ``log(x)``, and
+  that inner fit was a full maximum likelihood run -- an optimiser
+  ladder, to produce a *starting point* for another optimiser. It cost
+  15-30% of the fit (20 ms at n=200, 41 ms at n=5000) and the
+  probability plot alone turned out to be just as good a seed: across 54
+  parameter combinations, plus right-censored, left-censored and heavily
+  tied data, every fit reached the same optimum to the optimiser's own
+  tolerance. Ordinary fits are about 20% faster.
+
+  The offset path keeps the refinement. There the seed reads ``log(x)``
+  of the *unshifted* data, so a large shift compresses the logs into a
+  narrow band and the probability plot is a poor starting point --
+  dropping it moved one fit in twelve to a worse optimum (861.898 to
+  861.962) and made that fit seven times slower.
+
 - **The ARI likelihood is evaluated for the whole sample at once, making
   imperfect-repair fits 30-160x faster.** It used to walk every event in
   Python, calling the baseline ``cif`` and ``iif`` and rebuilding the
