@@ -1,11 +1,30 @@
 Changelog
 =========
 
-v0.17.1 (unreleased)
---------------------
+v0.18.0 (2 August 2026)
+-----------------------
 
-- **Documentation caught up with the estimator changes above.** The
-  maximum likelihood notes in :doc:`Parametric Estimation` now cover the
+- **Documentation caught up with the estimator changes below.** The
+  most consequential correction is in :doc:`Parametric SurPyval
+  Modelling`, whose section on offset unidentifiability demonstrated the
+  hazard of threshold parameters by fitting ``Gamma(3, 2) + 10`` and
+  reporting that ``MPP`` returned a negative ``gamma`` with a shape
+  parameter inflated by two orders of magnitude. That has not been true
+  since #257 and #313: every fit method now recovers the offset to three
+  decimal places, at offsets from 10 to 1000 and at both small and large
+  samples. The page had also drifted from the test file it cites --
+  ``test_offset_divergence.py`` was tightened by #257 and #275 to assert
+  parameter *recovery*, the opposite of what the prose claimed.
+
+  The underlying theory is kept, since it is exactly what made a poor
+  starting point so damaging: ``gamma`` trades off against the shape and
+  scale, and the likelihood is flat along that ridge. It now reads as a
+  caution for your own data rather than a demonstration of broken
+  output, and names both causes of the old behaviour separately -- the
+  probability-plotting search stranded by a single starting shape, and
+  the moment-based initialisers taking their moments before the shift.
+
+  The maximum likelihood notes in :doc:`Parametric Estimation` now cover the
   observation that is *both* censored and truncated -- the contribution
   it makes, why the numerator has to be capped by the truncation bound,
   and the fact that surpyval recasts such a point as interval censored
