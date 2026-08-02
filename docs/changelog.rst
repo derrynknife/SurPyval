@@ -4,6 +4,59 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **ExpoWeibull no longer runs a nested optimiser ladder to build its
+  initial guess.** It seeds itself from a Gumbel fit to ``log(x)``, and
+  that inner fit was a full maximum likelihood run -- an optimiser
+  ladder, to produce a *starting point* for another optimiser. It cost
+  15-30% of the fit (20 ms at n=200, 41 ms at n=5000) and the
+  probability plot alone turned out to be just as good a seed: across 54
+  parameter combinations, plus right-censored, left-censored and heavily
+  tied data, every fit reached the same optimum to the optimiser's own
+  tolerance. Ordinary fits are about 20% faster.
+
+  The offset path keeps the refinement. There the seed reads ``log(x)``
+  of the *unshifted* data, so a large shift compresses the logs into a
+  narrow band and the probability plot is a poor starting point --
+  dropping it moved one fit in twelve to a worse optimum (861.898 to
+  861.962) and made that fit seven times slower.
+
+- **The ARI likelihood is evaluated for the whole sample at once, making
+  imperfect-repair fits 30-160x faster.** It used to walk every event in
+  Python, calling the baseline ``cif`` and ``iif`` and rebuilding the
+  intensity reduction from the failure history at each step -- around
+  ten milliseconds per event, repeated for every one of the optimiser's
+  several hundred objective evaluations. Fitting 250 items took 19
+  seconds and 1000 items was impractical.
+
+  The apparent obstacle is that the reduction depends on the failure
+  history, which looks inherently sequential. It is not: summing over
+  the reduction's *window offset* rather than over the failures turns it
+  into a handful of whole-array passes, and the offset only ever runs to
+  ``min(m, longest item)`` -- exactly one pass for ARI1. Each failure's
+  ordinal within its own item bounds the window, which is what stops one
+  item's history leaking into the next.
+
+  =========================  ==========  ==========
+  fit                        before      after
+  =========================  ==========  ==========
+  35 items x 6 events        2.11 s      0.07 s
+  250 items x 8 events       19.02 s     0.12 s
+  Cramer-von Mises, 10 boot  24.16 s     1.71 s
+  1000 items x 10 events     ~80 s       0.53 s
+  =========================  ==========  ==========
+
+  Results are unchanged to floating point: over 312 captured values --
+  the reduction helper across memory regimes, the objective on a fixed
+  parameter grid, fitted parameters and the rescaled-increment
+  residuals -- the largest relative difference is 1.1e-14, from
+  summation order. The original per-event implementation is kept in the
+  test suite as an oracle so the two cannot drift.
+
+  One behavioural nicety: a non-positive reduced intensity is outside
+  the model's support, and the scalar loop returned ``inf`` early on
+  reaching one. The vectorised form tests the whole array before taking
+  logs, so it returns ``inf`` rather than warning its way to a ``nan``.
+
 - **Method of moments now matches central moments rather than raw
   ones.** The two describe the same estimator -- the binomial transform
   between them is exact and bijective, so matching the first ``k``

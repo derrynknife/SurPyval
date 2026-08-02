@@ -531,3 +531,21 @@ def test_offset_gamma_mom_recovers_the_shape():
     # The point is that it is near 3 rather than near 17.
     assert model.params[0] == pytest.approx(3.0, rel=0.35)
     assert model.params[1] == pytest.approx(4.0, rel=0.35)
+
+
+def test_expoweibull_offset_keeps_the_refined_seed():
+    # ExpoWeibull seeds itself from a Gumbel fit to log(x). Without an
+    # offset the probability plot alone is enough -- 54 parameter
+    # combinations, plus right, left and heavily tied data, all reach the
+    # same optimum -- so the nested optimiser ladder there was 15-30% of
+    # the fit for nothing.
+    #
+    # With an offset it is not enough. The seed reads log(x) of the
+    # *unshifted* data, so a large shift compresses the logs into a
+    # narrow band and the plot is a poor starting point. This dataset is
+    # the one in twelve where dropping the refinement moved the fit to a
+    # worse optimum (861.898 -> 861.962) and made it seven times slower.
+    np.random.seed(8)
+    x = ExpoWeibull.random(300, 10.0, 2.0, 1.5) + 25.0
+    model = ExpoWeibull.fit(x, offset=True)
+    assert model.neg_ll() < 861.93
