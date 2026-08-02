@@ -4,6 +4,37 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **Method of moments now matches central moments rather than raw
+  ones.** The two describe the same estimator -- the binomial transform
+  between them is exact and bijective, so matching the first ``k``
+  central moments is matching the first ``k`` raw moments -- but raw
+  moments hide the answer from the optimiser once a distribution is
+  offset. ``E[X^k]`` is then dominated by ``gamma^k`` and the shape
+  contributes only a fractional correction: 0.5% of ``E[X^3]`` for a
+  Gamma(3, 4) shifted by 10. Fitting three parameters off the third
+  decimal place of a large number degenerates, and offset fits settled
+  on parameters that matched the sample moments *better than the true
+  parameters did* while being nowhere near them -- a shape of 17.7
+  against a true 3.0, unchanged at any sample size.
+
+  Central moments remove the offset by construction, so the shape is
+  the whole of the third moment rather than a rounding error in it. An
+  offset Gamma at n=5000 goes from ``gamma=49.01, alpha=15.74,
+  beta=9.07`` to ``gamma=50.01, alpha=2.74, beta=3.75`` against a true
+  ``(50, 3, 4)``, and the fit drops from up to 25 s to under a second.
+  Unshifted fits are unaffected -- Weibull, Gamma, Normal, LogNormal,
+  Logistic, Gumbel and Exponential all agree with the previous results
+  to at least four decimal places, because there the conditioning was
+  never the problem.
+
+  The terms are scaled by the sample's own ``sigma^k``, so each is
+  dimensionless: the mean in units of sigma, the relative variance
+  error, then the skewness difference. The mismatch warning's threshold
+  moves from 1e-4 to 1e-2 to suit those units. Healthy fits land near
+  1e-12 when the moment equations have an exact solution and near 1e-3
+  when sampling noise means none exists and the optimiser returns the
+  closest match; a fit that has actually failed sits near 0.5.
+
 - **Offset Gamma fits no longer start from a corrupted initial guess.**
   Every offset-capable distribution returns the shift first in its
   parameter vector, because ``_initial_guess`` overwrites that slot
