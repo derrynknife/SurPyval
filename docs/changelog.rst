@@ -4,6 +4,36 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **An offset ``ExpoWeibull`` fit now seeds itself from the shifted
+  data.** ``ExpoWeibull`` starts from a Gumbel fit to ``log(x)``, since
+  a Weibull's logs are Gumbel distributed. With ``offset=True`` it took
+  those logs *before* removing the shift, so it read ``log(x)`` where
+  the model wants ``log(x - gamma)``. A large offset compresses those
+  logs into a narrow band, the Gumbel ``sigma`` collapses, and
+  ``beta = 1 / sigma`` explodes: on 500 points from ``ExpoWeibull(10,
+  2, 1) + 100`` the seed came back as ``alpha = 111, beta = 23.5``
+  against a true 10 and 2. The maximum likelihood fit then failed
+  outright, returning ``nan`` and warning its way back to the MPP
+  estimate.
+
+  This was not an edge case. Over 120 offset fits -- four offsets, five
+  parameter sets, six replicates each -- **54 returned nan**, which is
+  every configuration at an offset of 100 or 1000. All 54 now converge,
+  none of the 66 that already worked changed for the worse, and the
+  whole sweep takes 25.5 seconds against 188.3, since a hopeless
+  starting point is expensive to fail from.
+
+  The offset is now estimated first and the shape parameters read off
+  ``x - gamma``. It is estimated as ``min(x) - 1``, which is what the
+  fitter installs regardless of what the initialiser returns -- seeding
+  against a different shift than the one being optimised under defeats
+  the point.
+
+  The nested Gumbel MLE that refines the offset seed is kept. Removing
+  it was tried, on the reasoning that shifting the data correctly makes
+  the probability plot alone good enough; it is not, and five of 48
+  offset fits landed on a worse optimum without it.
+
 - **``aic``, ``bic``, ``aic_c`` and ``neg_ll`` now work for every fit
   method.** They were available only after a maximum-likelihood or
   closed-form fit, because only those compute a log-likelihood on the
