@@ -540,15 +540,45 @@ def test_expoweibull_offset_keeps_the_refined_seed():
     # same optimum -- so the nested optimiser ladder there was 15-30% of
     # the fit for nothing.
     #
-    # With an offset it is not enough. The seed reads log(x) of the
-    # *unshifted* data, so a large shift compresses the logs into a
-    # narrow band and the plot is a poor starting point. This dataset is
-    # the one in twelve where dropping the refinement moved the fit to a
-    # worse optimum (861.898 -> 861.962) and made it seven times slower.
+    # With an offset it is not enough: five of 48 offset fits seeded from
+    # the plot alone landed on a worse optimum, one of them at 685.85
+    # against 622.26. So the offset path still refines -- on the shifted
+    # data, see test_expoweibull_offset_seeds_from_shifted_data.
     np.random.seed(8)
     x = ExpoWeibull.random(300, 10.0, 2.0, 1.5) + 25.0
     model = ExpoWeibull.fit(x, offset=True)
     assert model.neg_ll() < 861.93
+
+
+def test_expoweibull_offset_seeds_from_shifted_data():
+    # The offset initialiser used to take log(x) before removing the
+    # shift. A large offset compresses those logs into a narrow band, so
+    # the Gumbel sigma collapses and beta = 1 / sigma explodes: with a
+    # true beta of 2 the seed came back at 23.5, and the MLE then failed
+    # outright, returning nan and silently falling back to MPP.
+    #
+    # 54 of 120 offset fits returned nan that way -- every configuration
+    # at an offset of 100 or 1000. The offset is now estimated first and
+    # the seed read off x - gamma.
+    np.random.seed(11)
+    x = 100.0 + ExpoWeibull.random(500, 10.0, 2.0, 1.0)
+
+    gamma, alpha, beta, mu = ExpoWeibull._parameter_initialiser(x, offset=True)
+    # Seeded from x - gamma these sit near the truth; seeded from x they
+    # came back as alpha = 111, beta = 23.5.
+    assert beta == pytest.approx(2.0, rel=0.5)
+    assert alpha == pytest.approx(10.0, rel=0.5)
+
+    # ...and the fit that seed feeds now converges rather than returning
+    # nan and warning its way back to MPP.
+    model = ExpoWeibull.fit(x, offset=True)
+    assert np.isfinite(model.neg_ll())
+    assert model.gamma == pytest.approx(100.0, abs=1.0)
+
+    # The offset the fitter will actually install, so that the seed is
+    # taken against the same shift it will be optimised under.
+    assert gamma < x.min()
+    assert gamma == pytest.approx(x.min() - 1.0)
 
 
 # -- information criteria for every fit method --------------------------
