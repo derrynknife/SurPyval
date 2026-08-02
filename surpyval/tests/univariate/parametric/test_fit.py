@@ -549,3 +549,47 @@ def test_expoweibull_offset_keeps_the_refined_seed():
     x = ExpoWeibull.random(300, 10.0, 2.0, 1.5) + 25.0
     model = ExpoWeibull.fit(x, offset=True)
     assert model.neg_ll() < 861.93
+
+
+# -- information criteria for every fit method --------------------------
+#
+# Only MLE and the closed forms used to report a log-likelihood, because
+# only they compute one on the way to the answer. neg_ll, aic, bic and
+# aic_c therefore raised AttributeError for MPS, MSE, MOM and MPP -- the
+# usual way of choosing between distributions was unavailable for four
+# of the five methods. The log-likelihood belongs to the parameters and
+# the data, not to the search that found them.
+
+ALL_HOWS = ["MLE", "MPS", "MSE", "MOM", "MPP"]
+
+
+@pytest.mark.parametrize("how", ALL_HOWS)
+def test_information_criteria_available_for_every_method(how):
+    np.random.seed(1)
+    x = Weibull.random(500, 10.0, 2.0)
+    model = Weibull.fit(x, how=how)
+    for name in ("neg_ll", "aic", "bic", "aic_c"):
+        assert np.isfinite(getattr(model, name)()), f"{how}.{name}()"
+
+
+@pytest.mark.parametrize("how", ALL_HOWS)
+def test_reported_log_likelihood_is_the_one_at_the_fitted_parameters(how):
+    # Computed independently of the fitter, so a method that reported
+    # its own objective by mistake -- MPS's mean log-spacing, say, or
+    # MSE's sum of squares -- would be caught.
+    np.random.seed(1)
+    x = Weibull.random(500, 10.0, 2.0)
+    model = Weibull.fit(x, how=how)
+    direct = -np.sum(np.log(Weibull.from_params(list(model.params)).df(x)))
+    assert model.neg_ll() == pytest.approx(direct, rel=1e-10)
+
+
+def test_maximum_likelihood_attains_the_largest_likelihood():
+    # The defining property, and only checkable now that the other
+    # methods report one: no other estimator on the same data can beat
+    # MLE's log-likelihood.
+    np.random.seed(1)
+    x = Weibull.random(500, 10.0, 2.0)
+    best = Weibull.fit(x, how="MLE").neg_ll()
+    for how in ("MPS", "MSE", "MOM", "MPP"):
+        assert Weibull.fit(x, how=how).neg_ll() >= best - 1e-9, how
