@@ -487,3 +487,47 @@ def test_mse(dist, random_parameters):
             break
     else:
         raise AssertionError("MPS fit not very good in %s\n" % dist.name)
+
+
+def test_raw_to_central_moment_transform():
+    # mu_k = sum_j C(k, j) (-1)^(k-j) E[X^j] mean^(k-j), with the mean
+    # kept in the leading slot. Checked against a shifted Gamma, whose
+    # central moments are known exactly: a/b^2 and 2a/b^3.
+    from math import comb
+
+    from surpyval.univariate.parametric.fitters.mom import raw_to_central
+
+    g, a, b = 10.0, 3.0, 4.0
+    raw = []
+    for k in (1, 2, 3):
+        total = 0.0
+        for j in range(k + 1):
+            rising = 1.0
+            for i in range(j):
+                rising *= a + i
+            total += comb(k, j) * g ** (k - j) * rising / b**j
+        raw.append(total)
+
+    mean, var, mu3 = raw_to_central(np.array(raw))
+    assert mean == pytest.approx(g + a / b)
+    assert var == pytest.approx(a / b**2)
+    assert mu3 == pytest.approx(2 * a / b**3)
+
+
+def test_offset_gamma_mom_recovers_the_shape():
+    # MOM compares central moments, not raw ones. On an offset fit
+    # E[X^k] is dominated by gamma^k -- the shape is a 0.5% correction
+    # to E[X^3] -- so the raw-moment objective was nearly blind to it
+    # and settled on a shape of 17.7 against a true 3.0, matching the
+    # sample moments *better than the true parameters did*. MOM is not
+    # in the offset parametrisation above, so nothing caught this.
+    np.random.seed(11)
+    x = Gamma.random(10_000, 3.0, 4.0) + 10.0
+
+    model = Gamma.fit(x, offset=True, how="MOM")
+    assert model.gamma == pytest.approx(10.0, abs=0.5)
+    # Generous on the shape: the three-parameter moment estimator is
+    # biased upward at finite n because alpha goes like 1 / skewness^2.
+    # The point is that it is near 3 rather than near 17.
+    assert model.params[0] == pytest.approx(3.0, rel=0.35)
+    assert model.params[1] == pytest.approx(4.0, rel=0.35)
