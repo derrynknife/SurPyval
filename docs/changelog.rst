@@ -4,6 +4,36 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **``aic``, ``bic``, ``aic_c`` and ``neg_ll`` now work for every fit
+  method.** They were available only after a maximum-likelihood or
+  closed-form fit, because only those compute a log-likelihood on the
+  way to the answer. A model fitted with ``how='MPS'``, ``'MSE'``,
+  ``'MOM'`` or ``'MPP'`` raised ``AttributeError`` from all four --
+  which meant the usual way of choosing between distributions was
+  unavailable for four of the five methods, and failed with a message
+  that did not say why.
+
+  The log-likelihood is a property of the parameters and the data, not
+  of the search that found them, so it is now evaluated after any fit.
+  Methods that already reported one keep it exactly: maximum
+  likelihood's is the optimiser's own final objective, which on its
+  fallback path is deliberately taken at the initial guess rather than
+  at the failed result (#261).
+
+  A worked consequence, on 500 Weibull(10, 2) points -- the maximum
+  likelihood estimator attaining the maximum likelihood, which was not
+  checkable before:
+
+  ===========  ==========
+  method       ``neg_ll``
+  ===========  ==========
+  MLE          1466.3254
+  MPS          1466.3865
+  MOM          1466.3979
+  MSE          1466.6759
+  MPP          1470.7119
+  ===========  ==========
+
 - **MSE and MPS fits try BFGS before Newton-CG, and are several times
   faster for it.** Both go through a shared fallback that reached for
   Newton-CG first, which needs a hessian. Building one is

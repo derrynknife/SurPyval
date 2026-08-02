@@ -1084,6 +1084,32 @@ class ParametricFitter:
         for k, v in results.items():
             setattr(model, k, v)
 
+        # Only maximum likelihood and the closed forms report a
+        # log-likelihood, because only they compute one on the way to
+        # the answer. That left ``neg_ll``, ``aic``, ``bic`` and
+        # ``aic_c`` raising AttributeError for every MPS, MSE, MOM and
+        # MPP fit -- so the usual way of choosing between distributions
+        # was unavailable for four of the five methods.
+        #
+        # The log-likelihood is a property of the parameters and the
+        # data, not of the search that found them, so evaluate it here.
+        # Guarded by ``hasattr`` so the methods that already report one
+        # keep theirs untouched: maximum likelihood's is the optimiser's
+        # own final objective, which on its fallback path is deliberately
+        # taken at the initial guess rather than at the failed result
+        # (#261), and recomputing would quietly undo that.
+        if not hasattr(model, "_neg_ll"):
+            with np.errstate(all="ignore"):
+                model._neg_ll = float(
+                    self._neg_ll_func(
+                        surv_data,
+                        *model.params,
+                        model.gamma,
+                        model.f0,
+                        model.p,
+                    )
+                )
+
         # Expose each fitted parameter by name (e.g. ``model.alpha``), but
         # never overwrite the reserved offset / limited-failure /
         # zero-inflation attributes, which the survival functions rely on.
