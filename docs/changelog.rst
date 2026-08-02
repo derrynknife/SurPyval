@@ -4,6 +4,32 @@ Changelog
 v0.17.1 (unreleased)
 --------------------
 
+- **MSE and MPS fits try BFGS before Newton-CG, and are several times
+  faster for it.** Both go through a shared fallback that reached for
+  Newton-CG first, which needs a hessian. Building one is
+  disproportionately expensive for the distributions whose derivatives
+  autograd cannot take analytically -- the incomplete gamma is
+  central-differenced, so every second-order entry costs a difference of
+  differences. An offset Gamma MSE fit at n=5000 spent 8.2 of its 8.3
+  seconds there, and BFGS reached a marginally *better* optimum in half
+  a second.
+
+  Reversing the order was checked over 132 fits: MSE and MPS, nine
+  distributions, at two sample sizes, on plain, right-censored,
+  left-censored and offset data. 129 objectives came back identical,
+  three improved, none got worse, for 3.9x less time overall. Newton-CG
+  is still there, escalated to when BFGS fails, and Nelder-Mead behind
+  it; the zero-hessian guard is kept, since a hessian of zeros makes
+  Newton-CG stop at the initial guess while reporting success, so there
+  is nothing to escalate to and Nelder-Mead should take over.
+
+  ``scipy.optimize.least_squares`` was tried first, on the reasoning
+  that the MSE objective is a sum of squares and Gauss-Newton should
+  exploit it. It is far worse: it needs the full residual jacobian, so
+  n=5000 means 5000 rows each paying that central-differenced
+  derivative, and the same fit took 239 seconds against the scalar
+  gradient's three numbers.
+
 - **ExpoWeibull no longer runs a nested optimiser ladder to build its
   initial guess.** It seeds itself from a Gumbel fit to ``log(x)``, and
   that inner fit was a full maximum likelihood run -- an optimiser
