@@ -50,6 +50,18 @@ Because there is only one parameter of the exponential distribution, we need to 
 
 This is to say that the method of moments solution for the parameter of the exponential is simply the inverse of the average. This is an easy result. When we extend to other distributions with more than one parameter, such simple analytical solutions are not available, so numeric optimisation is needed. SurPyval uses numeric optimisation to compute the parameters for these distributions.
 
+That optimisation matches *central* moments — the variance, and the skew- and
+kurtosis-like higher moments about the mean — rather than the raw moments
+:math:`E[X^{k}]`, and scales each by the corresponding power of the standard
+deviation before comparing. The two are equivalent in exact arithmetic, since
+one set is a binomial transform of the other, but they are not equally easy to
+optimise. Raw moments of offset data are dominated by the offset: for data
+sitting near :math:`\gamma`, every :math:`E[X^{k}]` is close to
+:math:`\gamma^{k}`, so the moments grow like powers of the offset while the
+differences that actually identify the shape parameters are swamped. Centring
+removes that common term and the scaling puts each residual on a comparable
+footing, which leaves the estimator far better conditioned on shifted data.
+
 The method of moments, although interesting, can produce incorrect results, and it can only be used with observed data, so it cannot account for truncation or censoring. But it is good to understand as it is one of the oldest methods used to estimate the parameters of a distribution.
 
 Method of Probability Plotting (MPP)
@@ -252,6 +264,38 @@ renormalised by the probability of landing in that window:
 This inflates the contribution of observations from a narrow window, correcting
 for the units that could never have been seen — exactly the delayed-entry
 (left-truncation) and right-truncation adjustments.
+
+The two combine. An observation can be *both* censored and truncated: a unit
+that entered a study late and was still running when it ended, or the
+right-truncated failure of an instrument that can only record events below some
+threshold. Such a point must be conditioned on its own window, so a
+right-censored observation inside :math:`(t_{l}, t_{r}]` contributes
+
+.. math::
+
+    \frac{F(t_{r} \mid \theta) - F(x \mid \theta)}
+         {F(t_{r} \mid \theta) - F(t_{l} \mid \theta)},
+
+and a left-censored one contributes the mirror image with
+:math:`F(x) - F(t_{l})` on top. The numerator matters: it must be capped by the
+truncation bound rather than run out to infinity as :math:`R(x)` does. A ratio
+of :math:`R(x)` to the window probability is not a probability at all — it grows
+without bound as the fitted distribution puts less and less mass inside the
+window, so an optimiser can drive the likelihood arbitrarily high and return a
+meaningless answer while reporting success.
+
+SurPyval sidesteps this by *rewriting* the observation rather than special-casing
+the likelihood. A right-censored point with a finite :math:`t_{r}` is recast as
+the interval :math:`(x, t_{r}]`, and a left-censored point with a finite
+:math:`t_{l}` as :math:`(t_{l}, x]`, before the likelihood is ever evaluated.
+The expressions above are then just the ordinary interval-censored contribution,
+already conditioned by the truncation denominator. Where the relevant bound is
+infinite there is nothing to cap, and the point stays a plain censored
+observation so that the numerically stable ``log_sf`` is used.
+
+This rewriting happens inside surpyval's internal representation of the data.
+The ``x``, ``c``, ``n`` and ``t`` arrays you passed to ``fit`` are unchanged, and
+the model reports the data back to you exactly as you supplied it.
 
 Maximum Product of Spacings (MPS)
 ---------------------------------
