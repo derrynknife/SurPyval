@@ -228,6 +228,24 @@ class SurpyvalData:
             self.n[self.truncated_mask],
         )
 
+        # The truncation correction depends only on the observation
+        # *window*, not on where in it the observation fell, so it needs
+        # evaluating once per distinct window rather than once per row.
+        # Truncation is nearly always common to the whole sample -- a
+        # single burn-in time, one study entry date -- so this typically
+        # collapses hundreds of CDF evaluations per likelihood call into
+        # one, and the likelihood is called hundreds of times per fit.
+        if self.x_tl.size:
+            windows = np.column_stack([self.x_tl, self.x_tr])
+            unique, inverse = np.unique(windows, axis=0, return_inverse=True)
+            self.tl_unique = unique[:, 0]
+            self.tr_unique = unique[:, 1]
+            self.n_t_unique = np.bincount(inverse.ravel(), weights=self.n_t)
+        else:
+            self.tl_unique = np.array([])
+            self.tr_unique = np.array([])
+            self.n_t_unique = np.array([])
+
     def to_xrd(self, estimator="Nelson-Aalen") -> tuple:
         """
         Converts the data into the xrd format. If the data has right truncated

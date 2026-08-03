@@ -74,9 +74,13 @@ jobs:
         # Invoked as ``python -m`` so the plugins resolve against the
         # interpreter the dependencies were installed into, rather than
         # whichever ``pytest`` happens to be first on PATH.
+        #
+        # ``--run-ml`` opts the beta survival tree and forest tests back
+        # in. They are skipped by default because they are 97 of the
+        # suite's 180 seconds locally, but deployment still tests them.
         run:
           python -m pytest -n auto --cov=surpyval --cov-report=
-          --ignore=surpyval/tests/alpha
+          --ignore=surpyval/tests/alpha --run-ml
 
       - name: coverage
         run: |

@@ -109,12 +109,45 @@ def mle(model):
         # motivated the original order survives for the fits that
         # actually need it -- they are simply no longer paid for by the
         # fits that do not.
+        # scipy stops BFGS when max|grad| < gtol, and its default of 1e-5
+        # is an absolute threshold on a quantity that is not scale free.
+        # A log-likelihood's gradient shrinks like 1/theta, so on data
+        # measured in tens of thousands the test is met well short of
+        # the optimum and BFGS reports success on its first check --
+        # three reference fits on real data of that magnitude landed
+        # 1e-2 away in relative terms, at a likelihood 2e-3 below the
+        # answer they were recorded from. It had been invisible only
+        # because those fits used to end on Nelder-Mead, which is
+        # derivative free and so kept going (#323).
+        #
+        # Scaling the threshold by the gradient where the search starts
+        # asks instead that the gradient fall by a fixed number of
+        # orders of magnitude, which means the same thing at every
+        # scale. A fixed tighter constant does not: 1e-8 fixes the large
+        # fits but is unreachable for small samples, dropping an n=8
+        # Weibull out of BFGS and into TNC. At 1e-7 relative both ends
+        # converge on BFGS -- the large fits to 2e-8 and the small one
+        # to 4e-9.
+        gtol_rel = 1e-7
+
+        def bfgs_gtol(x0):
+            g0 = np.max(
+                np.abs(jac(np.asarray(x0, dtype=float), offset, lfp, zi, True))
+            )
+            if not np.isfinite(g0) or g0 <= 0:
+                return None
+            return max(gtol_rel * float(g0), 1e-12)
+
         for method, jac_i, hess_i in methods:
             opts = {"maxfun": 1000} if method == "TNC" else {"maxiter": 1000}
             if method in ("Nelder-Mead", "Powell") or best_result is None:
                 x0 = init
             else:
                 x0 = best_result.x
+            if method == "BFGS":
+                gtol = bfgs_gtol(x0)
+                if gtol is not None:
+                    opts["gtol"] = gtol
             res = minimize(
                 fun,
                 x0,

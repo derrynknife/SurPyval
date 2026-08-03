@@ -214,23 +214,69 @@ class ParametricFitter:
 
     @_check_x_not_empty
     def ll_interval_or_truncated(self, xl, xr, n, *params):
+        """
+        Log probability of falling inside each window ``(xl, xr]``.
+
+        An infinite bound is replaced by its analytic limit rather than
+        handed to the CDF. ``np.where`` selects the *value* correctly but
+        evaluates both branches, so ``ff(inf)`` was still taped by
+        autograd, and its nan derivative then propagated through the
+        selection regardless of which side was chosen. The objective was
+        right and the gradient was nan.
+
+        The consequence was not subtle. Every singly-truncated fit lost
+        all three gradient optimisers -- BFGS and Newton-CG each failed
+        after a single evaluation and TNC burned its whole 1000
+        evaluation budget -- leaving Nelder-Mead to finish derivative
+        free. A Weibull that fits in 0.014s took 1.36s, and a ``tl`` of 0
+        (a no-op, since ``F(0) = 0``) cost exactly the same as a real
+        truncation, which is what gives the cause away. Windows with
+        *both* bounds finite were always fast, because no infinity ever
+        reached the tape.
+
+        The infinity is substituted out of the *argument* before the CDF
+        sees it, so a single vectorised call covers every row whatever
+        its pattern of bounds. The outer ``np.where`` then selects
+        between two values that are both already finite, which is safe.
+
+        The stand-in cannot be an arbitrary constant. Zero looks natural
+        and is wrong: a Weibull with ``beta < 1`` has an unbounded
+        density derivative at the origin, so ``ff(0)`` would swap one nan
+        gradient for another. Reusing a bound that is genuinely present
+        keeps the stand-in inside the support and at the data's own
+        magnitude. Its value never reaches the result -- ``np.where``
+        discards it -- only its derivative has to be finite.
+
+        Probabilities come from the mixture CDF
+        ``F_mix(t) = f0 + (p - f0) * F0(t)``: with no right bound the
+        window probability is the mixture survival ``1 - F_mix(tl)``,
+        which includes the never-failing mass ``1 - p``. The old
+        ``(p - f0) * (1 - F0(tl))`` form made the LFP plus
+        left-truncation likelihood unbounded (#269). For finite-bound
+        intervals the ``f0`` terms cancel, so plain fits are unchanged.
+        """
         *params, gamma, f0, p = params
-        xr = xr - gamma
-        xl = xl - gamma
-        # Probabilities must come from the mixture CDF
-        # F_mix(t) = f0 + (p - f0) * F0(t), not (p - f0) * F0(t): with no
-        # right bound (tr = inf) the window probability is the mixture
-        # survival 1 - F_mix(tl), which includes the never-failing mass
-        # (1 - p). The old (p - f0) * (1 - F0(tl)) form made the LFP +
-        # left-truncation likelihood unbounded (#269). For finite-bound
-        # intervals the f0 terms cancel, so plain fits are unchanged.
-        right = np.where(
-            np.isfinite(xr), f0 + (p - f0) * self.ff(xr, *params), 1.0
+        if len(n) == 0:
+            return 0.0
+
+        lo_finite = np.isfinite(xl)
+        hi_finite = np.isfinite(xr)
+
+        # ``xl`` and ``xr`` are data, never traced, so this substitution
+        # is invisible to autograd -- it only changes what the CDF is
+        # asked to evaluate.
+        present = np.concatenate([xl[lo_finite], xr[hi_finite]])
+        stand_in = float(present[0]) if present.size else 1.0
+        xl_safe = np.where(lo_finite, xl, stand_in)
+        xr_safe = np.where(hi_finite, xr, stand_in)
+
+        upper = np.where(
+            hi_finite, f0 + (p - f0) * self.ff(xr_safe - gamma, *params), 1.0
         )
-        left = np.where(
-            np.isfinite(xl), f0 + (p - f0) * self.ff(xl, *params), 0.0
+        lower = np.where(
+            lo_finite, f0 + (p - f0) * self.ff(xl_safe - gamma, *params), 0.0
         )
-        return np.sum(n * np.log(np.maximum(right - left, 0.0)))
+        return np.sum(n * np.log(np.maximum(upper - lower, 0.0)))
 
     def _log_likelihood(self, data, *params):
         return (
@@ -241,7 +287,7 @@ class ParametricFitter:
                 data.x_il, data.x_ir, data.n_i, *params
             )
             - self.ll_interval_or_truncated(
-                data.x_tl, data.x_tr, data.n_t, *params
+                data.tl_unique, data.tr_unique, data.n_t_unique, *params
             )
         )
 
