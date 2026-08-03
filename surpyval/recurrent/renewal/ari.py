@@ -37,6 +37,76 @@ def ari_reduction(failure_intensities, rho, m):
     return rho * np.sum(weights * recent)
 
 
+def _reduction_sequence(failure_intensities, position, rho, m):
+    """``R_n`` after every failure at once, for failures from many items.
+
+    ``failure_intensities`` holds ``lambda_0`` at each *observed* failure
+    with the items laid end to end, and ``position`` gives each failure's
+    index within its own item, which is what keeps one item's history
+    from leaking into the next.
+
+    This is ``ari_reduction`` evaluated at every prefix, but summed over
+    the *window offset* rather than over the failures. The offset only
+    ever runs to ``min(m, longest item)``, so the loop is a handful of
+    whole-array passes -- for ARI1 exactly one -- in place of one Python
+    step per failure. The offset ``i`` contributes only where the item
+    actually has ``i`` earlier failures, which is the ``position >= i``
+    mask and reproduces ``upper = min(m, n)`` above.
+    """
+    lam = np.asarray(failure_intensities, dtype=float)
+    if lam.size == 0:
+        return lam
+    pos = np.asarray(position)
+    longest = int(pos.max()) + 1
+    span = longest if np.isinf(m) else min(int(m), longest)
+
+    q = 1.0 - rho
+    total = np.array(lam, copy=True)
+    for i in range(1, span):
+        shifted = np.concatenate([np.zeros(i), lam[:-i]])
+        total += (q**i) * np.where(pos >= i, shifted, 0.0)
+    return rho * total
+
+
+def _event_layout(data):
+    """Per-row bookkeeping shared by the likelihood and the residuals.
+
+    ``prev`` is the previous event time, restarting at 0 for each item.
+    ``observed`` marks the failures. ``failure_pos`` gives each failure's
+    ordinal within its own item, which bounds the reduction window.
+    ``in_force`` indexes the reduction sequence at the reduction acting
+    over each row's interval, or ``-1`` where the item has not failed
+    yet and the intensity is still the unreduced baseline.
+
+    Rows are assumed grouped by item, as ``handle_xicn`` leaves them.
+    """
+    x = np.asarray(data.x, dtype=float)
+    item = np.asarray(data.i)
+    observed = np.asarray(data.c) == 0
+
+    starts = np.empty(x.size, dtype=bool)
+    starts[0] = True
+    starts[1:] = item[1:] != item[:-1]
+
+    prev = np.empty_like(x)
+    prev[0] = 0.0
+    prev[1:] = x[:-1]
+    prev[starts] = 0.0
+
+    # Failures strictly before each row, globally then per item.
+    before = np.cumsum(observed) - observed
+    first_rows = np.flatnonzero(starts)
+    lengths = np.diff(np.append(first_rows, x.size))
+    before_item = before - np.repeat(before[first_rows], lengths)
+
+    # Within an item the most recent earlier failure is also the most
+    # recent one globally, so the global running count indexes it -- the
+    # per-item count only decides whether one exists at all.
+    in_force = np.where(before_item > 0, before - 1, -1)
+    failure_pos = before_item[observed]
+    return prev, observed, failure_pos, in_force
+
+
 @singleton_fitter
 class ARI(RenewalFitMixin):
     """
@@ -132,23 +202,15 @@ class ARI(RenewalFitMixin):
         """
         rho, m = model.rho, model.m
         dist = model.model
-        _, idx = np.unique(data.i, return_index=True)
-        x_by_item = np.split(data.x, idx)[1:]
-        c_by_item = np.split(data.c, idx)[1:]
+        x = np.asarray(data.x, dtype=float)
+        prev, observed, failure_pos, in_force = _event_layout(data)
 
-        increments = []
-        for x_item, c_item in zip(x_by_item, c_by_item):
-            prev = 0.0
-            reduction = 0.0
-            history_iif = []
-            for t, censor in zip(x_item, c_item):
-                delta_cif = float(dist.cif(t) - dist.cif(prev))
-                increments.append(delta_cif - reduction * (t - prev))
-                if censor == 0:
-                    history_iif.append(float(dist.iif(t)))
-                    reduction = ari_reduction(history_iif, rho, m)
-                prev = t
-        return np.asarray(increments, dtype=float)
+        lam = np.asarray(dist.iif(x[observed]), dtype=float)
+        reductions = _reduction_sequence(lam, failure_pos, rho, m)
+        active = np.where(in_force >= 0, reductions[in_force], 0.0)
+
+        delta_cif = np.asarray(dist.cif(x) - dist.cif(prev), dtype=float)
+        return delta_cif - active * (x - prev)
 
     def _refit(self, model, data):
         """Refit this model family on ``data`` with the same baseline
@@ -158,35 +220,35 @@ class ARI(RenewalFitMixin):
         )
 
     def create_negll_func(self, data, dist, m):
-        _, idx = np.unique(data.i, return_index=True)
-        x_by_item = np.split(data.x, idx)[1:]
-        c_by_item = np.split(data.c, idx)[1:]
+        x = np.asarray(data.x, dtype=float)
+        prev, observed, failure_pos, in_force = _event_layout(data)
+        gap = x - prev
+        x_failures = x[observed]
 
         def negll_func(params):
             rho = params[0]
             dist_params = params[1:]
 
-            ll = 0.0
-            for x_item, c_item in zip(x_by_item, c_by_item):
-                prev = 0.0
-                reduction = 0.0
-                history_iif = []
-                for t, censor in zip(x_item, c_item):
-                    # Integral of the (reduced) intensity over (prev, t]; the
-                    # reduction is constant across the interval.
-                    delta_cif = dist.cif(t, *dist_params) - dist.cif(
-                        prev, *dist_params
-                    )
-                    ll -= delta_cif - reduction * (t - prev)
+            # lambda_0 at the failures drives the reductions; every row
+            # then picks up whichever reduction was in force over its own
+            # interval (`in_force` is -1 before the item's first failure,
+            # where the baseline is unreduced).
+            lam = dist.iif(x_failures, *dist_params)
+            reductions = _reduction_sequence(lam, failure_pos, rho, m)
+            active = np.where(in_force >= 0, reductions[in_force], 0.0)
 
-                    if censor == 0:
-                        intensity = dist.iif(t, *dist_params) - reduction
-                        if intensity <= 0:
-                            return np.inf
-                        ll += np.log(intensity)
-                        history_iif.append(dist.iif(t, *dist_params))
-                        reduction = ari_reduction(history_iif, rho, m)
-                    prev = t
+            # A non-positive intensity is outside the model's support.
+            # Checked before the log so it returns inf rather than
+            # warning its way to a nan, as the scalar loop did by
+            # returning early.
+            intensity = lam - active[observed]
+            if not np.all(intensity > 0):
+                return np.inf
+
+            delta_cif = dist.cif(x, *dist_params) - dist.cif(
+                prev, *dist_params
+            )
+            ll = -np.sum(delta_cif - active * gap) + np.sum(np.log(intensity))
             return -ll
 
         return negll_func

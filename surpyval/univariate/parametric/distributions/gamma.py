@@ -36,18 +36,38 @@ class Gamma_(ParametricFitter):
             plot_x_scale="linear",
         )
 
+    @staticmethod
+    def _moment_estimate(x):
+        """Closed-form approximation to the Gamma MLE.
+
+        The shape solves ``log(alpha) - digamma(alpha) = s`` with
+        ``s = log(mean x) - mean(log x)``; this is the standard
+        approximation to that root (Minka 2002, after Thom 1958), good
+        to about 1.5% and used only as a starting point.
+        """
+        s = np.log(x.sum() / len(x)) - np.log(x).sum() / len(x)
+        alpha = (3 - s + np.sqrt((s - 3) ** 2 + 24 * s)) / (12 * s)
+        beta = x.sum() / (len(x) * alpha)
+        return alpha, 1.0 / beta
+
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        # These equations are truly magical
         if offset:
-            s = np.log(x.sum() / len(x)) - np.log(x).sum() / len(x)
-            alpha = (3 - s + np.sqrt((s - 3) ** 2 + 24 * s)) / (12 * s)
-            beta = x.sum() / (len(x) * alpha)
-            return alpha, 1.0 / beta, np.min(x) - 1
-        else:
-            s = np.log(x.sum() / len(x)) - np.log(x).sum() / len(x)
-            alpha = (3 - s + np.sqrt((s - 3) ** 2 + 24 * s)) / (12 * s)
-            beta = x.sum() / (len(x) * alpha)
-            return alpha, 1.0 / beta
+            # ``gamma`` leads the vector, as it does for every other
+            # offset-capable distribution. Returning it last put the
+            # shape in slot 0, where ``_initial_guess`` overwrites that
+            # slot with the offset seed -- so the shape estimate was
+            # destroyed and the offset written into the scale as well.
+            #
+            # The moments must also be taken *after* the shift. On
+            # offset data ``s = log(mean x) - mean(log x)`` is squashed
+            # towards zero by the constant, and since alpha grows like
+            # ``1 / 12s`` the estimate explodes: 649 for a true shape of
+            # 3. Together these made MSE and MOM offset fits return
+            # silent nonsense.
+            gamma_init = np.min(x) - 1.0
+            alpha, beta = self._moment_estimate(x - gamma_init)
+            return gamma_init, alpha, beta
+        return self._moment_estimate(x)
 
     def sf(self, x, alpha, beta):
         r"""

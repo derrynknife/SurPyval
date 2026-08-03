@@ -1,6 +1,413 @@
 Changelog
 =========
 
+v0.18.0 (2 August 2026)
+-----------------------
+
+- **Documentation caught up with the estimator changes below.** The
+  most consequential correction is in :doc:`Parametric SurPyval
+  Modelling`, whose section on offset unidentifiability demonstrated the
+  hazard of threshold parameters by fitting ``Gamma(3, 2) + 10`` and
+  reporting that ``MPP`` returned a negative ``gamma`` with a shape
+  parameter inflated by two orders of magnitude. That has not been true
+  since #257 and #313: every fit method now recovers the offset to three
+  decimal places, at offsets from 10 to 1000 and at both small and large
+  samples. The page had also drifted from the test file it cites --
+  ``test_offset_divergence.py`` was tightened by #257 and #275 to assert
+  parameter *recovery*, the opposite of what the prose claimed.
+
+  The underlying theory is kept, since it is exactly what made a poor
+  starting point so damaging: ``gamma`` trades off against the shape and
+  scale, and the likelihood is flat along that ridge. It now reads as a
+  caution for your own data rather than a demonstration of broken
+  output, and names both causes of the old behaviour separately -- the
+  probability-plotting search stranded by a single starting shape, and
+  the moment-based initialisers taking their moments before the shift.
+
+  The maximum likelihood notes in :doc:`Parametric Estimation` now cover the
+  observation that is *both* censored and truncated -- the contribution
+  it makes, why the numerator has to be capped by the truncation bound,
+  and the fact that surpyval recasts such a point as interval censored
+  in its internal representation rather than special-casing the
+  likelihood. The user's own ``x``, ``c``, ``n`` and ``t`` are untouched,
+  which is now said explicitly.
+
+  The method of moments section explains that the optimisation matches
+  scaled *central* moments rather than raw ones, and why that matters for
+  offset data, where every raw moment is dominated by the offset.
+
+  :doc:`Parametric SurPyval Modelling` gains a worked comparison of
+  ``neg_ll``, ``aic`` and ``bic`` across all five fit methods, showing
+  both that the criteria are available whatever the method and that MLE
+  attains the lowest negative log-likelihood -- a check that could not be
+  run before.
+
+- **An offset ``ExpoWeibull`` fit now seeds itself from the shifted
+  data.** ``ExpoWeibull`` starts from a Gumbel fit to ``log(x)``, since
+  a Weibull's logs are Gumbel distributed. With ``offset=True`` it took
+  those logs *before* removing the shift, so it read ``log(x)`` where
+  the model wants ``log(x - gamma)``. A large offset compresses those
+  logs into a narrow band, the Gumbel ``sigma`` collapses, and
+  ``beta = 1 / sigma`` explodes: on 500 points from ``ExpoWeibull(10,
+  2, 1) + 100`` the seed came back as ``alpha = 111, beta = 23.5``
+  against a true 10 and 2. The maximum likelihood fit then failed
+  outright, returning ``nan`` and warning its way back to the MPP
+  estimate.
+
+  This was not an edge case. Over 120 offset fits -- four offsets, five
+  parameter sets, six replicates each -- **54 returned nan**, which is
+  every configuration at an offset of 100 or 1000. All 54 now converge,
+  none of the 66 that already worked changed for the worse, and the
+  whole sweep takes 25.5 seconds against 188.3, since a hopeless
+  starting point is expensive to fail from.
+
+  The offset is now estimated first and the shape parameters read off
+  ``x - gamma``. It is estimated as ``min(x) - 1``, which is what the
+  fitter installs regardless of what the initialiser returns -- seeding
+  against a different shift than the one being optimised under defeats
+  the point.
+
+  The nested Gumbel MLE that refines the offset seed is kept. Removing
+  it was tried, on the reasoning that shifting the data correctly makes
+  the probability plot alone good enough; it is not, and five of 48
+  offset fits landed on a worse optimum without it.
+
+- **``aic``, ``bic``, ``aic_c`` and ``neg_ll`` now work for every fit
+  method.** They were available only after a maximum-likelihood or
+  closed-form fit, because only those compute a log-likelihood on the
+  way to the answer. A model fitted with ``how='MPS'``, ``'MSE'``,
+  ``'MOM'`` or ``'MPP'`` raised ``AttributeError`` from all four --
+  which meant the usual way of choosing between distributions was
+  unavailable for four of the five methods, and failed with a message
+  that did not say why.
+
+  The log-likelihood is a property of the parameters and the data, not
+  of the search that found them, so it is now evaluated after any fit.
+  Methods that already reported one keep it exactly: maximum
+  likelihood's is the optimiser's own final objective, which on its
+  fallback path is deliberately taken at the initial guess rather than
+  at the failed result (#261).
+
+  A worked consequence, on 500 Weibull(10, 2) points -- the maximum
+  likelihood estimator attaining the maximum likelihood, which was not
+  checkable before:
+
+  ===========  ==========
+  method       ``neg_ll``
+  ===========  ==========
+  MLE          1466.3254
+  MPS          1466.3865
+  MOM          1466.3979
+  MSE          1466.6759
+  MPP          1470.7119
+  ===========  ==========
+
+- **MSE and MPS fits try BFGS before Newton-CG, and are several times
+  faster for it.** Both go through a shared fallback that reached for
+  Newton-CG first, which needs a hessian. Building one is
+  disproportionately expensive for the distributions whose derivatives
+  autograd cannot take analytically -- the incomplete gamma is
+  central-differenced, so every second-order entry costs a difference of
+  differences. An offset Gamma MSE fit at n=5000 spent 8.2 of its 8.3
+  seconds there, and BFGS reached a marginally *better* optimum in half
+  a second.
+
+  Reversing the order was checked over 132 fits: MSE and MPS, nine
+  distributions, at two sample sizes, on plain, right-censored,
+  left-censored and offset data. 129 objectives came back identical,
+  three improved, none got worse, for 3.9x less time overall. Newton-CG
+  is still there, escalated to when BFGS fails, and Nelder-Mead behind
+  it; the zero-hessian guard is kept, since a hessian of zeros makes
+  Newton-CG stop at the initial guess while reporting success, so there
+  is nothing to escalate to and Nelder-Mead should take over.
+
+  ``scipy.optimize.least_squares`` was tried first, on the reasoning
+  that the MSE objective is a sum of squares and Gauss-Newton should
+  exploit it. It is far worse: it needs the full residual jacobian, so
+  n=5000 means 5000 rows each paying that central-differenced
+  derivative, and the same fit took 239 seconds against the scalar
+  gradient's three numbers.
+
+- **ExpoWeibull no longer runs a nested optimiser ladder to build its
+  initial guess.** It seeds itself from a Gumbel fit to ``log(x)``, and
+  that inner fit was a full maximum likelihood run -- an optimiser
+  ladder, to produce a *starting point* for another optimiser. It cost
+  15-30% of the fit (20 ms at n=200, 41 ms at n=5000) and the
+  probability plot alone turned out to be just as good a seed: across 54
+  parameter combinations, plus right-censored, left-censored and heavily
+  tied data, every fit reached the same optimum to the optimiser's own
+  tolerance. Ordinary fits are about 20% faster.
+
+  The offset path keeps the refinement. There the seed reads ``log(x)``
+  of the *unshifted* data, so a large shift compresses the logs into a
+  narrow band and the probability plot is a poor starting point --
+  dropping it moved one fit in twelve to a worse optimum (861.898 to
+  861.962) and made that fit seven times slower.
+
+- **The ARI likelihood is evaluated for the whole sample at once, making
+  imperfect-repair fits 30-160x faster.** It used to walk every event in
+  Python, calling the baseline ``cif`` and ``iif`` and rebuilding the
+  intensity reduction from the failure history at each step -- around
+  ten milliseconds per event, repeated for every one of the optimiser's
+  several hundred objective evaluations. Fitting 250 items took 19
+  seconds and 1000 items was impractical.
+
+  The apparent obstacle is that the reduction depends on the failure
+  history, which looks inherently sequential. It is not: summing over
+  the reduction's *window offset* rather than over the failures turns it
+  into a handful of whole-array passes, and the offset only ever runs to
+  ``min(m, longest item)`` -- exactly one pass for ARI1. Each failure's
+  ordinal within its own item bounds the window, which is what stops one
+  item's history leaking into the next.
+
+  =========================  ==========  ==========
+  fit                        before      after
+  =========================  ==========  ==========
+  35 items x 6 events        2.11 s      0.07 s
+  250 items x 8 events       19.02 s     0.12 s
+  Cramer-von Mises, 10 boot  24.16 s     1.71 s
+  1000 items x 10 events     ~80 s       0.53 s
+  =========================  ==========  ==========
+
+  Results are unchanged to floating point: over 312 captured values --
+  the reduction helper across memory regimes, the objective on a fixed
+  parameter grid, fitted parameters and the rescaled-increment
+  residuals -- the largest relative difference is 1.1e-14, from
+  summation order. The original per-event implementation is kept in the
+  test suite as an oracle so the two cannot drift.
+
+  One behavioural nicety: a non-positive reduced intensity is outside
+  the model's support, and the scalar loop returned ``inf`` early on
+  reaching one. The vectorised form tests the whole array before taking
+  logs, so it returns ``inf`` rather than warning its way to a ``nan``.
+
+- **Method of moments now matches central moments rather than raw
+  ones.** The two describe the same estimator -- the binomial transform
+  between them is exact and bijective, so matching the first ``k``
+  central moments is matching the first ``k`` raw moments -- but raw
+  moments hide the answer from the optimiser once a distribution is
+  offset. ``E[X^k]`` is then dominated by ``gamma^k`` and the shape
+  contributes only a fractional correction: 0.5% of ``E[X^3]`` for a
+  Gamma(3, 4) shifted by 10. Fitting three parameters off the third
+  decimal place of a large number degenerates, and offset fits settled
+  on parameters that matched the sample moments *better than the true
+  parameters did* while being nowhere near them -- a shape of 17.7
+  against a true 3.0, unchanged at any sample size.
+
+  Central moments remove the offset by construction, so the shape is
+  the whole of the third moment rather than a rounding error in it. An
+  offset Gamma at n=5000 goes from ``gamma=49.01, alpha=15.74,
+  beta=9.07`` to ``gamma=50.01, alpha=2.74, beta=3.75`` against a true
+  ``(50, 3, 4)``, and the fit drops from up to 25 s to under a second.
+  Unshifted fits are unaffected -- Weibull, Gamma, Normal, LogNormal,
+  Logistic, Gumbel and Exponential all agree with the previous results
+  to at least four decimal places, because there the conditioning was
+  never the problem.
+
+  The terms are scaled by the sample's own ``sigma^k``, so each is
+  dimensionless: the mean in units of sigma, the relative variance
+  error, then the skewness difference. The mismatch warning's threshold
+  moves from 1e-4 to 1e-2 to suit those units. Healthy fits land near
+  1e-12 when the moment equations have an exact solution and near 1e-3
+  when sampling noise means none exists and the optimiser returns the
+  closest match; a fit that has actually failed sits near 0.5.
+
+- **Offset Gamma fits no longer start from a corrupted initial guess.**
+  Every offset-capable distribution returns the shift first in its
+  parameter vector, because ``_initial_guess`` overwrites that slot
+  with its own estimate of the shift. ``Gamma`` returned it *last*, so
+  the overwrite landed on the shape parameter and destroyed it, while
+  the initialiser's own copy of the shift stayed behind in the scale
+  slot: the seed came back as ``(offset, shape-ish, offset)``.
+
+  Compounding it, the shape approximation was computed on the raw
+  ``x``. On offset data the constant squashes
+  ``s = log(mean x) - mean(log x)`` towards zero, and since the shape
+  grows like ``1 / 12s`` the estimate exploded -- 649 for a true shape
+  of 3. The moments are now taken after the shift is removed.
+
+  The consequences were silent wrong answers, not just slow ones. A
+  600-point sample from ``Gamma(3, 4)`` shifted up by 10 fitted by MSE
+  returned a *negative* shift of -1.35 with a shape of 63.8; another
+  sample stopped after 0.03 s at the seed itself, reporting a scale
+  equal to the offset. Both now recover the shift, and the fit is also
+  4x faster (6.2 s to 1.6 s) because the optimiser no longer has to
+  travel back from a nonsense starting point. MLE was unaffected -- it
+  found its way regardless -- and non-offset fits are untouched.
+
+  Method of moments still disagrees on offset Gamma, but that is not a
+  defect: its solution matches the sample moments *better than the true
+  parameters do* (first three moments 10.76 / 116 / 1253 against the
+  truth's 10.75 / 115.7 / 1248). The three-parameter moment system with
+  a threshold is close to non-identifiable, which is why ``MOM`` is not
+  among the offset methods exercised in the test suite.
+
+- **Fitted parameters change for censored *and* truncated data: the
+  likelihood was unbounded there (#310).** A censored observation is
+  only ever known to lie inside its own truncation window -- it could
+  not have been observed otherwise -- so its likelihood numerator has to
+  be the probability of that intersection. Every likelihood in the
+  package instead used the unconditional form, ``F(x)`` for left
+  censoring and ``S(x)`` for right, and divided by a separately
+  accumulated window probability. That counts territory the truncation
+  has already ruled out, so the contribution exceeds one, and the excess
+  grows without limit as the fitted distribution's mass slides out of
+  the window.
+
+  The consequence was a silent wrong answer. On 200 left-censored
+  LogNormal points with a true ``mu`` of 0 and mild left truncation, the
+  fit returned ``mu = -7.81`` with ``neg_ll`` of ``-inf`` and
+  ``res.success`` set to ``True``. Across eight distributions, 21 of 48
+  censoring/truncation combinations returned a non-finite likelihood,
+  reporting parameters such as a Weibull ``alpha`` of 1.3e81 or a Normal
+  ``mu`` of -1.77e4. Regression was affected too, and failed more
+  quietly: adding left truncation to a working ``WeibullAFT`` fit
+  returned an entirely plausible-looking parameter vector whose
+  covariate coefficient had collapsed from a true 0.5 to 0.0018.
+
+  Rather than teach each likelihood about truncation, such rows are now
+  handed over as *intervals*: a left-censored row truncated at ``tl``
+  becomes ``[tl, x]``, a right-censored row truncated at ``tr`` becomes
+  ``[x, tr]``. The interval term is already a difference of CDFs, so it
+  computes the correct numerator with no change to any likelihood
+  function -- which is also why interval-censored data never had the
+  bug. One change in ``SurpyvalData`` therefore fixes the parametric,
+  regression, Royston-Parmar and mixture likelihoods together.
+
+  Only rows with a *finite* bound on the relevant side are recast, which
+  is exactly where the defect lived. Untruncated fits are bit-identical:
+  verified over 292 cases spanning ten distributions, seven censoring
+  regimes, two sample sizes, weighted and unweighted, and three
+  regression fitters, compared as exact float bit patterns. The
+  restriction also keeps right censoring on the exact ``log_sf`` path,
+  since expressing it as ``1 - F(x)`` loses all precision once ``F(x)``
+  rounds to one -- a ``log_sf`` of -49 comes back as ``-inf``, and the
+  optimiser does evaluate the likelihood that far from the data.
+
+  The LogNormal case above now fits ``mu = -0.56``, matching the
+  maximum of the correctly conditioned likelihood, and all 48
+  combinations return finite results. Right censoring combined with
+  finite right truncation remains contradictory data and keeps its
+  existing warning; what changes is that it now yields the coherent
+  conditional ``P(x < X <= tr)`` rather than an unbounded direction.
+
+- **``group_xcnt`` no longer walks every observation in Python.** The
+  step that collapses duplicate ``(x, c, t)`` rows accumulated into a
+  triple-nested ``defaultdict``, one iteration per observation. That is
+  linear but with a very large constant -- around 13 microseconds an
+  observation -- which made it the single dominant cost of fitting once
+  samples grew: 94% of a 50,000-point Normal fit, and two seconds at
+  100,000 points. It is now a sort plus ``np.bincount``. Fitted values
+  are bit-identical.
+
+  Group *ordering* is preserved exactly, which matters more than it
+  appears: ``xcnt_sort`` runs immediately afterwards and is a *stable*
+  sort keyed on ``c``, ``t.min(axis=1)`` and ``x``, so any rows tying on
+  all three keep whatever order grouping produced. Rows sharing an ``x``
+  and ``c`` with different ``tr`` but equal ``t.min()`` are exactly such
+  a tie, and a plain sorted ``np.unique`` would silently reorder them,
+  so the original x-major nesting is reproduced instead. Integer counts
+  also stay integer (``np.bincount`` returns float64), and ``nan``
+  entries keep their own groups as they did under dictionary keying.
+
+  Measured end to end: a Normal fit at n=100,000 goes from 1137 ms to
+  125 ms (9.1x), Weibull at n=100,000 from 3890 ms to 926 ms (4.2x),
+  and small fits improve too -- Exponential at n=1000 from 5.9 ms to
+  2.4 ms. Kaplan-Meier at n=100,000 now takes 140 ms.
+
+  On top of that, grouping is now skipped entirely when there is
+  nothing to group. Continuous measurements have distinct values, so
+  every row is already its own group in input order and the operation
+  is the identity -- but the data handler runs it several times per
+  fit regardless. Distinct values in the leading column of ``x`` are
+  enough to establish this (they make whole rows distinct whatever
+  ``c`` and ``t`` hold), which costs one sort of one column against
+  three sorts of the full key. Only tied data -- rounded, discrete, or
+  heavily weighted -- takes the grouping path now. Grouping 100,000
+  distinct points falls from 74 ms to 1.2 ms, taking the Normal fit
+  above to 64 ms, Weibull to 505 ms, and Kaplan-Meier to 63 ms. Repeated
+  ``nan`` values deliberately fail the check and fall through to
+  grouping, since ``nan != nan`` means they must stay separate.
+
+- **Exact closed-form maximum likelihood for the Exponential, Normal and
+  LogNormal, where one exists.** These have analytic MLEs -- the
+  Exponential's events-over-exposure ratio, the Normal's mean and
+  standard deviation -- so the fit no longer builds an initial guess or
+  runs the five-optimiser ladder. Because the closed form is *exact*,
+  the result is not merely faster but at least as good: verified that
+  its log-likelihood is never worse than the optimiser's, and its
+  parameters agree to within the optimiser's own convergence tolerance
+  (~1e-8), as do its confidence bounds. At n=1000 a LogNormal fit goes
+  from 135 ms to 10 ms, a Normal from 42 ms to 5 ms, and an Exponential
+  from 11 ms to 5 ms; Weibull and the rest are untouched.
+
+  The applicability conditions are exact. The Exponential admits right
+  censoring and left truncation (which only moves each unit's exposure
+  from ``x`` to ``x - tl``), but falls back to the optimiser for left or
+  interval censoring and for right truncation, each of which makes the
+  score transcendental. The Normal and LogNormal need complete,
+  untruncated data: any censoring makes them the Tobit model and any
+  truncation introduces a normal-CDF normaliser.
+- **Fixed: closed-form fits silently ignored ``lfp``, ``zi``, ``offset``
+  and fixed parameters.** The hook that short-circuited to a
+  distribution's analytic MLE fired before any of these were checked, so
+  ``Uniform.fit(x, lfp=True)`` returned ``p = 1.0`` and
+  ``Uniform.fit(x, fixed={"a": 0.0})`` ignored the held value -- in both
+  cases without warning. Requests carrying that structure now go to the
+  optimiser, which estimates them.
+- **Fixed: ``Uniform`` fits had no usable log-likelihood.**
+  ``Uniform.fit(x).aic()`` raised ``AttributeError`` and ``cb()`` raised
+  for want of a covariance. The log density is now defined directly
+  rather than through the generic ``log(hf) - Hf`` identity, which is
+  ``nan`` at the upper support edge (where ``sf`` is 0) -- exactly where
+  the MLE puts ``b``. ``neg_ll``, ``aic``, ``bic`` and ``aic_c`` are now
+  correct. No parameter covariance is offered, deliberately: the Uniform
+  MLE is an order statistic sitting on the support edge rather than an
+  interior stationary point, so the observed information is not positive
+  definite and its inverse carries negative variances; ``cb`` refuses
+  rather than returning silent ``nan`` bounds.
+
+- **Tests: a breadth sweep over Turnbull's supported inputs.** Every
+  combination of censoring type (observed, left, right, interval, and all
+  four mixed), truncation form (none, left, right, both) and hazard
+  estimator (Nelson-Aalen, Kaplan-Meier, Fleming-Harrington) is now fitted
+  and checked for a converged, valid, monotone survival curve with a
+  coherent risk-set ladder, complementing the existing tests that each pin
+  one regime. The sweep also pins that the estimator choice is honoured,
+  and that Fleming-Harrington coincides with Nelson-Aalen exactly when
+  event times are distinct (its tied-event correction being the only
+  difference). Building it surfaced #308.
+- **Known issue: left censoring combined with left truncation** (#308).
+  Turnbull either raises "censoring interval does not intersect its own
+  truncation window" on data where the intersection is plainly non-empty,
+  or fails to converge and returns a degenerate estimate. A left-censored
+  row lives on the ``(-inf, x]`` bound, and the support-window
+  intersection added for #273 drops that bound whenever an entry time
+  sits above its lower edge, even though the event interval ``(tl, x]``
+  is non-empty. Only fits with *both* left-censored observations and
+  left truncation are affected. The sweep marks this regime ``xfail``
+  (strict), so it will report as soon as it is fixed.
+
+- **Fixed: ``xcnt_to_xrd`` was quadratic in time and memory, and raised
+  ``MemoryError`` past roughly 50,000 observations** (#306). The at-risk
+  entry count was built as an ``N x K`` comparison matrix
+  (observations × distinct times): 20,000 observations needed a 3.2 GB
+  intermediate and ~15 s, and 50,000 attempted an 18.6 GiB allocation and
+  failed. Because this conversion feeds every nonparametric estimator —
+  and the MLE initial guess, which comes from probability plotting — the
+  ceiling applied to most of the package: ``Weibull.fit`` on 50,000
+  points raised ``MemoryError`` even though the likelihood itself was
+  fine. The entry count is now computed in two linear branches: a
+  constant when nothing is left truncated (the common case, where the
+  matrix was entirely ``True`` and merely recomputed ``n.sum()``), and a
+  sorted ``searchsorted`` lookup otherwise. ``side="left"`` counts
+  strictly-less-than exactly as the previous ``<`` did, so the
+  ``(entry, exit]`` convention from #260 is unchanged, and integer counts
+  make the cumulative sum exact — values are bit-identical. A
+  ``Weibull.fit`` at n=10,000 goes from 1,836 ms to 182 ms; 200,000
+  points now fit in 5.6 s and a 500,000-point Kaplan-Meier in 8.1 s,
+  where both previously failed.
+
 v0.17.0 (1 August 2026)
 -----------------------
 

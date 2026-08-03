@@ -3,6 +3,9 @@ import warnings
 from scipy.special import factorial
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
+from surpyval.univariate.parametric.fitters.closed_form import (
+    entry_times,
+)
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
 
@@ -39,6 +42,45 @@ class Exponential_(ParametricFitter):
                 0.9999,
             ],
         )
+
+    def _closed_form_mle(self, data):
+        r"""Exact MLE: total events over total exposure.
+
+        With only exact and right-censored observations the
+        log-likelihood is
+        :math:`d\log\lambda - \lambda\sum n_i (x_i - tl_i)`, whose
+        score is linear in :math:`1/\lambda`, giving
+
+        .. math::
+            \hat{\lambda} = \frac{\sum_i n_i 1[c_i = 0]}
+                                   {\sum_i n_i (x_i - tl_i)} .
+
+        Left truncation is admissible because it only moves each unit's
+        exposure from :math:`x` to :math:`x - tl`. Left censoring,
+        interval censoring and right truncation each introduce a
+        :math:`\log(1 - e^{-\lambda t})` term and make the score
+        transcendental, so those fall back to the optimiser.
+        """
+        c = np.asarray(data.c)
+        if not np.isin(c, (0, 1)).all():
+            # Left (-1) or interval (2) censoring: no closed form.
+            return None
+        if np.isfinite(np.asarray(data.t[:, 1])).any():
+            # Right truncation: no closed form.
+            return None
+
+        x = np.asarray(data.x, dtype=float)
+        if x.ndim != 1:
+            return None
+        n = np.asarray(data.n, dtype=float)
+
+        events = n[c == 0].sum()
+        exposure = (n * (x - entry_times(data))).sum()
+        if not (events > 0 and exposure > 0):
+            # A boundary estimate (no events, or no exposure) sits outside
+            # the open bound on the rate; let the optimiser report it.
+            return None
+        return np.array([events / exposure])
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         rate = 1.0 / x[np.isfinite(x)].mean()

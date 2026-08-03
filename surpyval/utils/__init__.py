@@ -63,28 +63,91 @@ def validate_float_array(arr, name):
         )
 
 
+def _group_ids(key):
+    """Group id per row, plus the row at which each group first appears.
+
+    ``np.lexsort`` rather than ``np.unique(axis=0)``: the latter takes a
+    structured-void view of the array, which is several times slower.
+    Because lexsort is stable, the first row of each run in sorted order
+    is also the group's earliest row in the original ordering, which is
+    what the caller needs. Rows containing ``nan`` never compare equal
+    and so stay in their own groups -- matching the dictionary keying
+    this replaced, where a ``nan`` key never matched another.
+    """
+    order = np.lexsort(key.T[::-1])
+    ordered = key[order]
+    starts = np.empty(len(ordered), dtype=bool)
+    if len(ordered) > 0:
+        starts[0] = True
+    if len(ordered) > 1:
+        starts[1:] = (ordered[1:] != ordered[:-1]).any(axis=1)
+    group = np.empty(len(ordered), dtype=np.intp)
+    group[order] = np.cumsum(starts) - 1
+    return group, order[starts]
+
+
 def group_xcnt(x, c, n, t):
-    grouped = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-    if x.ndim == 2:
-        for vx, vc, vn, vt in zip(x, c, n, t):
-            grouped[tuple(vx)][vc][tuple(vt)] += vn
-    else:
-        for vx, vc, vn, vt in zip(x, c, n, t):
-            grouped[vx][vc][tuple(vt)] += vn
+    """Collapse identical ``(x, c, t)`` rows, summing their counts.
 
-    x_out = []
-    c_out = []
-    n_out = []
-    t_out = []
+    This used to walk every observation in Python, accumulating into a
+    triple-nested ``defaultdict``. That is O(N) but with a very large
+    constant -- roughly 13 microseconds per observation -- which made it
+    the dominant cost of fitting: 94% of a 50,000-point Normal fit, and
+    two seconds at 100,000 points. It is now done by sorting and
+    ``np.bincount``.
 
-    for xv, level2 in grouped.items():
-        for cv, level3 in level2.items():
-            for tv, nv in level3.items():
-                x_out.append(xv)
-                c_out.append(cv)
-                n_out.append(nv)
-                t_out.append(tv)
-    return np.array(x_out), np.array(c_out), np.array(n_out), np.array(t_out)
+    The group *order* is preserved exactly, which is subtler than it
+    looks. The nested dictionary iterated x-major: outer by first
+    appearance of ``x``, then of ``(x, c)`` within it, then of the full
+    key. ``xcnt_sort`` runs immediately after this and re-sorts on
+    ``c``, ``t.min(axis=1)`` and ``x`` -- but it is a *stable* sort, so
+    rows tying on all three of those keep whatever order arrived. Rows
+    sharing an ``x`` and ``c`` with different ``tr`` but an equal
+    ``t.min()`` are exactly such a tie, so a plain sorted ``np.unique``
+    would silently reorder them. The lexsort below reproduces the
+    original nesting instead.
+
+    When nothing needs grouping the inputs are returned as they are,
+    rather than copied. Callers inside the package sort immediately
+    afterwards, which copies, so nothing aliases in practice.
+    """
+    # Continuous data has nothing to group: every row is already its own
+    # group, and since the ordering is x-major and each x occurs once,
+    # that order *is* the input order. So the answer is the input,
+    # untouched. Establishing this costs one sort of a single column,
+    # against three sorts of the full key -- and it is the common case,
+    # since only tied (rounded, discrete, or heavily weighted) data
+    # groups at all. Distinct values in the first column are enough:
+    # they make whole rows distinct whatever c and t hold. Empty input
+    # trivially satisfies this and is likewise handed straight back.
+    leading = x if x.ndim == 1 else x[:, 0]
+    if np.unique(leading).size == leading.size:
+        return x, c, n, t
+
+    x_columns = x.reshape(-1, 1) if x.ndim == 1 else x
+    group, first_full = _group_ids(np.column_stack([x_columns, c, t]))
+    by_x, first_x = _group_ids(x_columns)
+    by_xc, first_xc = _group_ids(np.column_stack([x_columns, c]))
+
+    # One representative row per group: the row it first appeared at.
+    representative = first_full
+    # np.lexsort takes its *last* key as primary, so this orders by first
+    # appearance of x, then of (x, c), then of the whole key.
+    order = np.lexsort(
+        (
+            first_full,
+            first_xc[by_xc[representative]],
+            first_x[by_x[representative]],
+        )
+    )
+    representative = representative[order]
+
+    totals = np.bincount(group, weights=n, minlength=first_full.size)[order]
+    # ``bincount`` always returns float64; the counts were integers going
+    # in and callers rely on that (an integer ``n`` must stay integer).
+    totals = totals.astype(n.dtype)
+
+    return x[representative], c[representative], totals, t[representative]
 
 
 def xcnt_sort(x, c, n, t):
@@ -649,22 +712,20 @@ def xcnt_handler(
     n = n.astype(int)
     t = t.astype(float)
 
-    # A right-censored observation cannot carry finite right truncation:
-    # right-truncation sampling only admits units whose event occurred
-    # before ``tr``, while right censoring says the event is after the
-    # censoring time -- possibly beyond ``tr``. Such rows can make
-    # truncation-adjusted likelihoods unbounded (the fitted rate is
-    # driven towards zero), so flag them loudly.
-    if ((c == 1) & np.isfinite(t[:, 1])).any():
-        warnings.warn(
-            "Some right-censored observations have a finite right "
-            "truncation time. This is contradictory: right truncation "
-            "means the unit was only observable because its event "
-            "occurred before `tr`, while right censoring says the event "
-            "is after the censoring time. Such rows can make "
-            "truncation-adjusted likelihoods unbounded; check the data.",
-            stacklevel=2,
-        )
+    # Right censoring with a finite right truncation used to warn here
+    # as contradictory data (#195). It is not: the unit was detected, so
+    # its event is at or before ``tr``, and it was censored, so the
+    # event is after ``x``. Together that is simply ``x < X <= tr`` --
+    # the ordinary setup of a flux-limited or reporting-delay sample,
+    # e.g. a detector that registers an event but cannot resolve where
+    # in the remaining window it fell.
+    #
+    # The unbounded likelihoods that motivated the warning were not
+    # caused by the data. Right-censored rows were being given the
+    # unconditional ``S(x)``, which includes the ``X > tr`` region the
+    # truncation excludes, and that is what had no maximum (#310). With
+    # the conditional ``F(tr) - F(x)`` the fit is well posed and
+    # consistent, so the warning has been withdrawn.
 
     if group_and_sort:
         x, c, n, t = group_xcnt(x, c, n, t)
@@ -686,6 +747,47 @@ def xcn_to_fs(x, c=None, n=None):
     f = np.repeat(x[c == 0], n[c == 0])
     s = np.repeat(x[c == 1], n[c == 1])
     return f, s
+
+
+def _entered_before(tl, x, n):
+    """Weighted count of observations that entered strictly before each ``x``.
+
+    ``e[j] = sum_i n_i * 1[tl_i < x_j]`` -- the ``(entry, exit]``
+    risk-interval convention (#260): a subject entering exactly at an event
+    time is not at risk for that event.
+
+    Written directly this is
+    ``((tl[:, None] < x[None, :]) * n[:, None]).sum(0)``, which materialises
+    an ``N x K`` matrix and so costs quadratic time *and* memory: at 20,000
+    observations that is a 3.2 GB intermediate taking ~15 s, and past ~50,000
+    it raised ``MemoryError`` outright. Two cheap branches give identical
+    counts:
+
+    * **nothing is left truncated** -- the default and by far the common
+      case. Every observation has entered before every event time, so the
+      whole matrix is ``True`` and ``e`` collapses to the constant
+      ``n.sum()``. The matrix was being built to recompute a scalar.
+    * **otherwise** -- sort the entry times once and read off the cumulative
+      weight below each ``x`` with ``searchsorted``. ``side="left"`` counts
+      entries *strictly* less than ``x``, matching the ``<`` above exactly,
+      so the ``(entry, exit]`` convention is preserved unchanged.
+
+    Counts are integers (``xcnt_handler`` rejects non-integer ``n``), so the
+    cumulative sum is exact and equals the summation it replaces bit for
+    bit. ``np.sort`` orders ``nan`` last and ``searchsorted`` treats it as
+    larger than every value, which reproduces ``nan < x == False`` -- the
+    behaviour of the form this replaces.
+    """
+    if np.isneginf(tl).all():
+        # No left truncation: everything is at risk from the outset.
+        return np.full(x.shape, n.sum(), dtype=n.dtype)
+
+    order = np.argsort(tl, kind="stable")
+    tl_sorted = tl[order]
+    cumulative = np.concatenate(
+        [np.zeros(1, dtype=n.dtype), np.cumsum(n[order])]
+    )
+    return cumulative[np.searchsorted(tl_sorted, x, side="left")]
 
 
 def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
@@ -768,7 +870,7 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     # risk for that event. The previous inclusive comparison put surpyval's
     # KM on the nonstandard side and made it disagree with Turnbull's NPMLE
     # at exact entry/event ties (#260).
-    e = ((tl[:, np.newaxis] < x[np.newaxis, :]) * n[:, np.newaxis]).sum(0)
+    e = _entered_before(tl, x, n)
     # r is the number of people at risk at each x
     r = e + d - d.cumsum() + do - do.cumsum()
     # change to correct data types

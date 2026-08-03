@@ -143,19 +143,31 @@ def _exp_theta0(data: SurpyvalData) -> "float | None":
     event-weight over exposure, or ``None`` when the data carries no
     event information.
     """
-    exposure = 0.0
-    events = 0.0
-    if data.x_o.size:
-        exposure += float(np.sum(data.n_o * data.x_o))
-        events += float(np.sum(data.n_o))
-    if data.x_r.size:
-        exposure += float(np.sum(data.n_r * data.x_r))
-    if data.x_l.size:
-        exposure += float(np.sum(data.n_l * data.x_l)) / 2.0
-        events += float(np.sum(data.n_l))
-    if data.x_il.size:
-        exposure += float(np.sum(data.n_i * (data.x_il + data.x_ir))) / 2.0
-        events += float(np.sum(data.n_i))
+    # Read the censoring codes directly rather than the likelihood
+    # buckets. Those buckets hand censored rows with a finite truncation
+    # bound to the likelihood as intervals (#310), which is right for a
+    # likelihood but wrong here: a right-censored row would arrive in
+    # the interval branch and be counted as an event.
+    c, x, n = data.c, data.x, data.n
+    lead = x if x.ndim == 1 else x[:, 0]
+    trail = x if x.ndim == 1 else x[:, -1]
+
+    observed = c == 0
+    right = c == 1
+    left = c == -1
+    interval = c == 2
+
+    exposure = (
+        float(np.sum(n[observed] * lead[observed]))
+        + float(np.sum(n[right] * lead[right]))
+        + float(np.sum(n[left] * lead[left])) / 2.0
+        + float(np.sum(n[interval] * (lead[interval] + trail[interval]))) / 2.0
+    )
+    events = (
+        float(np.sum(n[observed]))
+        + float(np.sum(n[left]))
+        + float(np.sum(n[interval]))
+    )
     if exposure <= 0 or events <= 0:
         return None
     return float(np.log(events / exposure))

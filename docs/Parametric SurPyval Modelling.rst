@@ -380,9 +380,9 @@ Offsets only make sense for distributions supported on the half real line ``[0, 
 A caution: offset parameters can be unidentifiable
 --------------------------------------------------
 
-The offset ``gamma`` is a *threshold* parameter, and threshold parameters are statistically awkward. ``gamma`` trades off against the shape and scale parameters, so two very different parameter tuples can describe almost the same distribution. This means a fit can report parameters that are badly wrong while the distribution it implies is still an excellent fit to your data. It is important to understand this so you are not alarmed by - or misled by - the printed parameters.
+The offset ``gamma`` is a *threshold* parameter, and threshold parameters are statistically awkward. ``gamma`` trades off against the shape and scale parameters, so two very different parameter tuples can describe almost the same distribution. A high-shape Gamma sitting near the origin is, by the central limit theorem, nearly the same bell-shaped curve as a moderate Gamma shifted out to 10. The likelihood surface is correspondingly flat along that trade-off, which makes a threshold fit far more sensitive to its starting point than an ordinary two-parameter fit.
 
-The clearest way to see this is to fit the same offset data with different estimation methods. Below we generate Gamma data shifted by ``gamma = 10`` and fit it both with the probability-plotting method (``MPP``) and maximum likelihood (``MLE``):
+In practice that sensitivity is the estimator's problem to solve, not yours. Shifted Gamma data is recovered by every fit method:
 
 .. jupyter-execute::
 
@@ -392,26 +392,20 @@ The clearest way to see this is to fit the same offset data with different estim
     np.random.seed(0)
     x = surv.Gamma.random(10_000, 3.0, 2.0) + 10.0
 
-    mpp = surv.Gamma.fit(x, offset=True, how='MPP')
-    mle = surv.Gamma.fit(x, offset=True, how='MLE')
-
     print('Truth : gamma=10.000, alpha=3.000, beta=2.000')
-    print('MPP   : gamma={:.3f}, alpha={:.3f}, beta={:.3f}'.format(mpp.gamma, *mpp.params))
-    print('MLE   : gamma={:.3f}, alpha={:.3f}, beta={:.3f}'.format(mle.gamma, *mle.params))
+    for how in ['MPP', 'MOM', 'MSE', 'MPS', 'MLE']:
+        m = surv.Gamma.fit(x, offset=True, how=how)
+        print('{:6s}: gamma={:.3f}, alpha={:.3f}, beta={:.3f}'.format(
+            how, m.gamma, *m.params))
 
-The ``MPP`` parameters look like nonsense: a negative ``gamma`` and a shape parameter inflated by two orders of magnitude. But a high-shape Gamma sitting near the origin is, by the central limit theorem, almost the same bell-shaped curve as a moderate Gamma shifted out to 10. If we compare what the models actually *predict*, the two fits are nearly indistinguishable - and both are close to the truth:
+This was not always so. Earlier versions could land on an absurd tuple - a negative ``gamma`` with a shape parameter inflated by two orders of magnitude - which was nonetheless an acceptable *distribution*, precisely because of the flat trade-off described above. Two separate causes were at work, and both are now fixed. The probability-plotting search was stranded at a poor local optimum by a single starting shape, so it now tries several and keeps the best correlation. The moment-based initialisers took their moments from the *unshifted* data, where the offset dominates every moment and the shape estimate explodes - 649 for a true shape of 3 - so they now estimate the threshold first and read the remaining parameters off ``x - gamma``.
 
-.. jupyter-execute::
+The underlying caution still stands, though, and it is worth keeping in mind for your own data:
 
-    truth = surv.Gamma.from_params([3.0, 2.0], gamma=10.0)
+- **Judge an offset fit by what it predicts, not only by the printed parameters.** Plot it against the non-parametric estimate, or compare the survival function, quantiles, mean and variance. Two parameter tuples that look very different can imply nearly the same distribution.
+- **If you need ``gamma`` itself to be meaningful** - you are interpreting it as a guaranteed minimum life, say - prefer ``MLE``, which remains the most accurate on the parameters, and treat a single point estimate of a threshold with care regardless of method.
 
-    for name, m in [('Truth', truth), ('MPP', mpp), ('MLE', mle)]:
-        print('{:5s} mean={:.3f}  median={:.3f}  90th percentile={:.3f}'.format(
-            name, float(m.mean()), float(m.qf(0.5)), float(m.qf(0.9))))
-
-Despite the ``MPP`` parameters being off by thousands of percent, its mean, median and upper percentile all agree with the truth to better than 2%. The lesson is that when you use an offset, **judge the fit by what it predicts, not by the printed parameters**. Plot it against the non-parametric estimate, or compare the survival function, quantiles, mean and variance, rather than reading meaning into ``gamma`` and the shape parameters individually.
-
-This unidentifiability is also why the estimation method matters more than usual for offset fits. ``MLE`` is the most reliable for recovering the parameters themselves; the method-of-moments (``MOM``) and probability-plotting (``MPP``) initialisers can be badly biased on the parameters even when the resulting distribution is acceptable. If you need the threshold ``gamma`` to be meaningful - for example you are interpreting it as a guaranteed minimum life - prefer ``MLE`` and treat any single parameter estimate with care. The library's test suite pins this behaviour down with measured KL and Wasserstein distances in ``test_offset_divergence.py``.
+``test_offset_divergence.py`` in the test suite pins this down with measured KL and Wasserstein distances alongside parameter tolerances: ``MLE`` is held to 5% on every parameter, ``MOM`` to 10% and ``MPP`` to 20%, with the implied distributions essentially identical in all three cases.
 
 Fixing parameters
 -----------------
@@ -528,6 +522,29 @@ This shows, that the Maximum Likelihood Estimation may have failed for this data
 Our estimation has worked! Even though we used the MPS estimate for the parameters, we can still call all the same functions with the created variable to find the density :code:`df()`, hazard :code:`hf()`, CDF :code:`ff()`, SF :code:`sf()` etc. So regardless of the estimation method, we can still use the model.
 
 This shows the power of the flexible API that surpyval offers, because if your modelling fails using one estimation method, you can use another. In this case, the MPS method is quite good at handling offset distributions. It is therefore a good approach to use when using offset distributions.
+
+That extends to the information criteria. A log-likelihood is a property of the
+parameters and the data, not of the search that found them, so ``neg_ll()``,
+``aic()``, ``bic()`` and ``aic_c()`` are available after *any* fit — not only
+after MLE:
+
+.. jupyter-execute::
+
+    np.random.seed(1)
+    x = surv.Weibull.random(500, 10., 2.)
+
+    print(f"{'how':<6}{'neg_ll':>12}{'AIC':>12}{'BIC':>12}")
+    for how in ["MLE", "MPS", "MSE", "MOM", "MPP"]:
+        m = surv.Weibull.fit(x, how=how)
+        print(f"{how:<6}{m.neg_ll():12.3f}{m.aic():12.3f}{m.bic():12.3f}")
+
+Two things are worth noticing. The first is that you can compare distributions
+by AIC or BIC regardless of how you fitted them, which is the usual way of
+choosing between candidate models. The second is a sanity check on the
+estimators themselves: MLE attains the lowest negative log-likelihood, because
+that is precisely the quantity it minimises. The others land close behind, each
+optimising something else — MPS the spacings, MSE the distance to the plotting
+positions, MOM the moments.
 
 As stated in the Non-Parametric section, there is a risk that using the Turnbull estimator when all
 values are trunctated by the same values. We will now show what happens. First, some example data:

@@ -343,6 +343,61 @@ OFFSET_CASES = [
 ]
 
 
+@pytest.mark.parametrize(
+    "dist,dist_params", OFFSET_CASES, ids=[d.name for d, _ in OFFSET_CASES]
+)
+def test_offset_initialiser_puts_the_offset_first(dist, dist_params):
+    # `_initial_guess` overwrites slot 0 with the offset seed, so every
+    # offset initialiser must return gamma first. Gamma returned it last,
+    # which meant the overwrite landed on the shape and destroyed it --
+    # the seed came back as (offset, shape-estimate, offset) and MSE fits
+    # converged to nonsense.
+    shift = 10.0
+    x = dist.random(2000, *dist_params) + shift
+    c = np.zeros(x.size, dtype=int)
+    n = np.ones(x.size, dtype=np.int64)
+
+    init = np.asarray(
+        dist._initial_guess(x, c, n, True, False, False, "Nelson-Aalen"),
+        dtype=float,
+    )
+    assert len(init) == len(dist_params) + 1
+
+    # Slot 0 is the offset: just below the smallest observation.
+    assert init[0] == pytest.approx(x.min() - 1.0)
+    assert np.isfinite(init[1:]).all()
+    assert (init[1:] > 0).all()
+
+    # The tell-tale of an initialiser that returns the offset in the
+    # wrong position: `_initial_guess` writes the offset into slot 0
+    # while the initialiser's own copy of it is still sitting in a
+    # parameter slot, so the value appears twice and one real parameter
+    # estimate has been thrown away. Gamma returned
+    # ``(alpha, 1/beta, offset)`` and seeded (9.07, 14.88, 9.07) where
+    # the parameters are (3.0, 2.0).
+    assert not np.isclose(init[1:], init[0]).any(), (
+        f"{dist.name} seeded {init}: the offset {init[0]:.4g} also "
+        f"appears in a parameter slot, so its initialiser is returning "
+        f"the offset somewhere other than first"
+    )
+
+
+def test_offset_gamma_mse_recovers_the_shift():
+    # The user-visible consequence of the seeding bug above. With the
+    # offset written over the shape estimate, MSE returned a *negative*
+    # shift for data shifted up by 10, with a shape of 63 against a true
+    # 3 -- and on other samples it stopped after 0.03s at the seed
+    # itself, reporting beta equal to the offset. Neither raised.
+    np.random.seed(3)
+    shift = 10.0
+    x = Gamma.random(600, 3.0, 4.0) + shift
+
+    model = Gamma.fit(x, offset=True, how="MSE")
+    assert model.gamma == pytest.approx(shift, abs=0.5)
+    assert model.params[0] == pytest.approx(3.0, rel=0.4)
+    assert model.params[1] == pytest.approx(4.0, rel=0.4)
+
+
 @pytest.mark.parametrize("how", ["MLE", "MPS", "MSE", "MPP"])
 @pytest.mark.parametrize(
     "dist,dist_params", OFFSET_CASES, ids=[d.name for d, _ in OFFSET_CASES]
@@ -432,3 +487,139 @@ def test_mse(dist, random_parameters):
             break
     else:
         raise AssertionError("MPS fit not very good in %s\n" % dist.name)
+
+
+def test_raw_to_central_moment_transform():
+    # mu_k = sum_j C(k, j) (-1)^(k-j) E[X^j] mean^(k-j), with the mean
+    # kept in the leading slot. Checked against a shifted Gamma, whose
+    # central moments are known exactly: a/b^2 and 2a/b^3.
+    from math import comb
+
+    from surpyval.univariate.parametric.fitters.mom import raw_to_central
+
+    g, a, b = 10.0, 3.0, 4.0
+    raw = []
+    for k in (1, 2, 3):
+        total = 0.0
+        for j in range(k + 1):
+            rising = 1.0
+            for i in range(j):
+                rising *= a + i
+            total += comb(k, j) * g ** (k - j) * rising / b**j
+        raw.append(total)
+
+    mean, var, mu3 = raw_to_central(np.array(raw))
+    assert mean == pytest.approx(g + a / b)
+    assert var == pytest.approx(a / b**2)
+    assert mu3 == pytest.approx(2 * a / b**3)
+
+
+def test_offset_gamma_mom_recovers_the_shape():
+    # MOM compares central moments, not raw ones. On an offset fit
+    # E[X^k] is dominated by gamma^k -- the shape is a 0.5% correction
+    # to E[X^3] -- so the raw-moment objective was nearly blind to it
+    # and settled on a shape of 17.7 against a true 3.0, matching the
+    # sample moments *better than the true parameters did*. MOM is not
+    # in the offset parametrisation above, so nothing caught this.
+    np.random.seed(11)
+    x = Gamma.random(10_000, 3.0, 4.0) + 10.0
+
+    model = Gamma.fit(x, offset=True, how="MOM")
+    assert model.gamma == pytest.approx(10.0, abs=0.5)
+    # Generous on the shape: the three-parameter moment estimator is
+    # biased upward at finite n because alpha goes like 1 / skewness^2.
+    # The point is that it is near 3 rather than near 17.
+    assert model.params[0] == pytest.approx(3.0, rel=0.35)
+    assert model.params[1] == pytest.approx(4.0, rel=0.35)
+
+
+def test_expoweibull_offset_keeps_the_refined_seed():
+    # ExpoWeibull seeds itself from a Gumbel fit to log(x). Without an
+    # offset the probability plot alone is enough -- 54 parameter
+    # combinations, plus right, left and heavily tied data, all reach the
+    # same optimum -- so the nested optimiser ladder there was 15-30% of
+    # the fit for nothing.
+    #
+    # With an offset it is not enough: five of 48 offset fits seeded from
+    # the plot alone landed on a worse optimum, one of them at 685.85
+    # against 622.26. So the offset path still refines -- on the shifted
+    # data, see test_expoweibull_offset_seeds_from_shifted_data.
+    np.random.seed(8)
+    x = ExpoWeibull.random(300, 10.0, 2.0, 1.5) + 25.0
+    model = ExpoWeibull.fit(x, offset=True)
+    assert model.neg_ll() < 861.93
+
+
+def test_expoweibull_offset_seeds_from_shifted_data():
+    # The offset initialiser used to take log(x) before removing the
+    # shift. A large offset compresses those logs into a narrow band, so
+    # the Gumbel sigma collapses and beta = 1 / sigma explodes: with a
+    # true beta of 2 the seed came back at 23.5, and the MLE then failed
+    # outright, returning nan and silently falling back to MPP.
+    #
+    # 54 of 120 offset fits returned nan that way -- every configuration
+    # at an offset of 100 or 1000. The offset is now estimated first and
+    # the seed read off x - gamma.
+    np.random.seed(11)
+    x = 100.0 + ExpoWeibull.random(500, 10.0, 2.0, 1.0)
+
+    gamma, alpha, beta, mu = ExpoWeibull._parameter_initialiser(x, offset=True)
+    # Seeded from x - gamma these sit near the truth; seeded from x they
+    # came back as alpha = 111, beta = 23.5.
+    assert beta == pytest.approx(2.0, rel=0.5)
+    assert alpha == pytest.approx(10.0, rel=0.5)
+
+    # ...and the fit that seed feeds now converges rather than returning
+    # nan and warning its way back to MPP.
+    model = ExpoWeibull.fit(x, offset=True)
+    assert np.isfinite(model.neg_ll())
+    assert model.gamma == pytest.approx(100.0, abs=1.0)
+
+    # The offset the fitter will actually install, so that the seed is
+    # taken against the same shift it will be optimised under.
+    assert gamma < x.min()
+    assert gamma == pytest.approx(x.min() - 1.0)
+
+
+# -- information criteria for every fit method --------------------------
+#
+# Only MLE and the closed forms used to report a log-likelihood, because
+# only they compute one on the way to the answer. neg_ll, aic, bic and
+# aic_c therefore raised AttributeError for MPS, MSE, MOM and MPP -- the
+# usual way of choosing between distributions was unavailable for four
+# of the five methods. The log-likelihood belongs to the parameters and
+# the data, not to the search that found them.
+
+ALL_HOWS = ["MLE", "MPS", "MSE", "MOM", "MPP"]
+
+
+@pytest.mark.parametrize("how", ALL_HOWS)
+def test_information_criteria_available_for_every_method(how):
+    np.random.seed(1)
+    x = Weibull.random(500, 10.0, 2.0)
+    model = Weibull.fit(x, how=how)
+    for name in ("neg_ll", "aic", "bic", "aic_c"):
+        assert np.isfinite(getattr(model, name)()), f"{how}.{name}()"
+
+
+@pytest.mark.parametrize("how", ALL_HOWS)
+def test_reported_log_likelihood_is_the_one_at_the_fitted_parameters(how):
+    # Computed independently of the fitter, so a method that reported
+    # its own objective by mistake -- MPS's mean log-spacing, say, or
+    # MSE's sum of squares -- would be caught.
+    np.random.seed(1)
+    x = Weibull.random(500, 10.0, 2.0)
+    model = Weibull.fit(x, how=how)
+    direct = -np.sum(np.log(Weibull.from_params(list(model.params)).df(x)))
+    assert model.neg_ll() == pytest.approx(direct, rel=1e-10)
+
+
+def test_maximum_likelihood_attains_the_largest_likelihood():
+    # The defining property, and only checkable now that the other
+    # methods report one: no other estimator on the same data can beat
+    # MLE's log-likelihood.
+    np.random.seed(1)
+    x = Weibull.random(500, 10.0, 2.0)
+    best = Weibull.fit(x, how="MLE").neg_ll()
+    for how in ("MPS", "MSE", "MOM", "MPP"):
+        assert Weibull.fit(x, how=how).neg_ll() >= best - 1e-9, how
