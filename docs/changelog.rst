@@ -65,17 +65,32 @@ v0.18.1 (unreleased)
   recorded from.
 
   ``gtol`` is now scaled by the gradient at the point the search starts,
-  which asks that the gradient fall by a fixed number of orders of
-  magnitude -- the same requirement at every scale. A fixed tighter
-  constant is not equivalent and does not work: 1e-8 fixes the large
-  fits but is unreachable for small samples, dropping an n=8 Weibull out
-  of BFGS and into TNC. At 1e-7 relative both ends converge on BFGS, the
-  large fits to 2e-8 and the small one to 4e-9.
+  at 1e-7 relative. A fixed tighter constant does not work: 1e-8 fixes
+  the large fits but is unreachable for small samples, dropping an n=8
+  Weibull out of BFGS and into TNC, where it lands 5e-5 away. At 1e-7
+  relative both ends converge on BFGS, the large fits to 2e-8 and the
+  small one to 4e-9.
 
   With both in place the restored standard errors satisfy the
-  scale-equivariance law ``se(theta * c) = c * se(theta)`` to 1e-5 or
-  better across every distribution and scale tested, most to 1e-8, and
-  to machine precision for the Rayleigh and Normal.
+  scale-equivariance law ``se(theta * c) = c * se(theta)`` to 1e-9 or
+  better up to data scale 1e4, and to machine precision for the Rayleigh
+  and Normal. At 1e6 most distributions hold to 1e-6 or better; the
+  Weibull is an outlier at around 1e-3.
+
+  That outlier is worth stating plainly, because it marks the limit of
+  what a tolerance constant can do. Scaling ``gtol`` by the gradient at
+  the initial guess does *not* make the criterion scale free the way it
+  first appears to: the initialiser scales with the data too, so the
+  gradient at the starting point is itself roughly scale invariant and
+  the resulting threshold barely moves. There is no constant that serves
+  every case -- 1e-8 relative fixes the Weibull at 1e6 but breaks the
+  n=8 fit, and 1e-9 breaks both small fits by pushing them to TNC. 1e-7
+  is the setting where everything the test suite covers passes.
+
+  So this is a better tolerance, not a scale-free one. Solving a
+  well-scaled problem, where a single absolute tolerance means the same
+  thing everywhere, is the actual fix; the measurements above are
+  recorded in #323 as the case for it.
 
   Two consequences worth noting. Fits now converge slightly further than
   before wherever BFGS wins, so a handful of pinned numbers moved in
@@ -92,7 +107,10 @@ v0.18.1 (unreleased)
   gradient working, rescaling is between 4.2x faster and 6x *slower*
   depending on the distribution, so the twelve per-distribution
   back-transforms it would require are no longer obviously worth their
-  risk.
+  risk. What remains there is the convergence criterion, and the
+  cheapest form of it is preconditioning the optimiser's search alone --
+  no back-transforms, because nothing outside the optimiser ever sees
+  scaled units.
 
 - **A truncated fit is around 60x faster, and the truncation term is
   evaluated once per distinct window rather than once per row.** Any fit
