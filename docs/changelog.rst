@@ -51,10 +51,14 @@ v0.18.1 (unreleased)
 
   Fitted results are unchanged: all 330 reference fits across thirteen
   distributions and five methods are bit-identical, and BFGS now wins
-  every truncated fit where Nelder-Mead used to. Note that truncated
-  fits have had no working gradient until now, so the covariance matrix
-  and confidence bounds on truncated data came from a nan-poisoned
-  hessian path; whether those were degraded is not yet established.
+  every truncated fit where Nelder-Mead used to.
+
+  Confidence bounds were never affected. The covariance step already
+  recomputes a numerical hessian whenever the autograd one comes back
+  nan or asymmetric (#270), so it caught this on every truncated fit and
+  produced correct bounds by the slow route -- checked against
+  ``906f0cb~1``, where the standard errors are identical to eight
+  figures. That fallback was part of what made these fits slow.
 
 - **The slow parts of the test suite are opt in, and there is a new
   invariant sweep behind the same mechanism.** ``pytest`` alone now runs

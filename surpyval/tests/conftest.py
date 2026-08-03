@@ -13,8 +13,12 @@ neither guards a regression that the default run would miss quickly:
     a targeted regression test, so it belongs in a deliberate run rather
     than in every edit-test cycle.
 
-Continuous integration passes both flags; see ``.github/workflows``. The
-default local run stays fast, which is the point.
+Continuous integration passes ``--run-ml`` only, so its coverage is
+unchanged. The invariant sweep is deliberately *not* run there: it is a
+net for exploring, cast deliberately when the fitting paths are being
+worked on, and three and a half minutes on every pull request across
+three Python versions buys little when its assertions hold. Run it
+locally after touching a likelihood, an initialiser or an optimiser.
 
 Marks are applied by path so the test modules themselves stay free of
 suite-management boilerplate.
