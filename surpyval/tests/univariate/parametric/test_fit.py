@@ -623,3 +623,68 @@ def test_maximum_likelihood_attains_the_largest_likelihood():
     best = Weibull.fit(x, how="MLE").neg_ll()
     for how in ("MPS", "MSE", "MOM", "MPP"):
         assert Weibull.fit(x, how=how).neg_ll() >= best - 1e-9, how
+
+
+# -- degenerate data ----------------------------------------------------
+#
+# Fitting three tied observations used to die with an IndexError raised
+# from inside numdifftools, four steps removed from the cause. The
+# probability plot has no slope through a single distinct abscissa, so
+# polyfit returned a nan; that nan seeded the MLE, which started at nan,
+# produced a nan hessian, and finally asked numdifftools for a numerical
+# one, whose list of finite-difference steps came back empty.
+#
+# Gamma and Beta failed the same way but silently: their moment-based
+# initialisers divide by a variance that is zero for tied data, and a
+# failed optimiser returns its initial guess (#261), so (inf, inf) was
+# handed back as a fitted model.
+
+
+def test_degenerate_data_is_rejected_with_a_clear_error():
+    for dist in (Weibull, Gamma):
+        with pytest.raises(ValueError, match="free parameter"):
+            dist.fit(np.array([10.0, 10.0, 10.0]))
+    with pytest.raises(ValueError, match="free parameter"):
+        Beta.fit(np.array([0.2, 0.2, 0.2]))
+
+
+def test_fixing_a_parameter_buys_back_a_degree_of_freedom():
+    # The count is of *free* parameters, not of the distribution's, so a
+    # single observation is enough once beta is fixed. The MLE of alpha
+    # with beta known is (sum x**beta / n) ** (1 / beta) = 10.
+    model = Weibull.fit(np.array([10.0]), fixed={"beta": 2.0})
+    assert model.params[0] == pytest.approx(10.0, rel=1e-6)
+    assert model.params[1] == pytest.approx(2.0)
+
+    tied = Weibull.fit(np.array([10.0, 10.0, 10.0]), fixed={"beta": 2.0})
+    assert tied.params[0] == pytest.approx(10.0, rel=1e-6)
+
+
+def test_one_parameter_distributions_fit_tied_data():
+    # A tied sample identifies a single parameter perfectly well, so
+    # these must not be caught by the degeneracy check.
+    assert Exponential.fit(np.array([10.0] * 3)).params[0] == pytest.approx(
+        0.1
+    )
+    assert Rayleigh.fit(np.array([10.0] * 3)).params[0] == pytest.approx(
+        np.sqrt(50.0)
+    )
+
+
+def test_probability_plotting_survives_a_degenerate_regression():
+    # MPP is exempt from the degeneracy check: it is a regression, not a
+    # likelihood maximisation, and it is how several distributions seed
+    # themselves. It must return finite parameters rather than nan.
+    model = Weibull.fit(np.array([10.0, 10.0, 10.0]), how="MPP")
+    assert np.isfinite(np.asarray(model.params, dtype=float)).all()
+
+
+def test_a_fit_never_returns_non_finite_parameters():
+    # The backstop: whatever the cause, non-finite parameters are not a
+    # valid answer. Gamma used to return (inf, inf) here in silence.
+    for dist, x in (
+        (Weibull, np.array([10.0, 10.0, 10.0])),
+        (Gamma, np.array([10.0, 10.0, 10.0])),
+    ):
+        with pytest.raises(ValueError):
+            dist.fit(x)
