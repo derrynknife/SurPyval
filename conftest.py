@@ -22,6 +22,13 @@ locally after touching a likelihood, an initialiser or an optimiser.
 
 Marks are applied by path so the test modules themselves stay free of
 suite-management boilerplate.
+
+This lives at the repository root rather than beside the tests because
+``pytest_addoption`` is only honoured in *initial* conftest files -- the
+rootdir's, and those in directories named as arguments. The CI
+invocation selects with ``--ignore`` and passes no path, so a conftest
+under ``surpyval/tests`` is loaded too late to register the flags and
+the run dies on "unrecognized arguments".
 """
 
 import pytest

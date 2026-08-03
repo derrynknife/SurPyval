@@ -56,16 +56,34 @@ def fallback_minimize(fun, init, args, jac, hess, newton_tol=None):
     return res
 
 
+def _dead_branch_safe_exp(x):
+    """``exp(x)`` for the ``x < 0`` half, with the other half clamped.
+
+    ``np.where`` picks the right value but autograd evaluates *both*
+    branches, so ``exp(x)`` is taped even where ``x + 1`` is the one
+    selected. Above x = 709.78 that overflows to inf, and the inf then
+    poisons the derivative of the branch that *was* selected, turning
+    the parameter transform's jacobian -- and with it every confidence
+    bound -- into nan.
+
+    Clamping the argument to the half this branch is responsible for
+    leaves it untouched where it is used and bounded where it is not.
+    """
+    return np.exp(np.minimum(x, 0.0))
+
+
 def adj_relu(x):
-    return np.where(x >= 0, x + 1, np.exp(x))
+    return np.where(x >= 0, x + 1, _dead_branch_safe_exp(x))
 
 
 def inv_adj_relu(x):
+    # No clamp needed here, unlike ``adj_relu``: this dead branch is
+    # ``x >= 1``, which is precisely where ``log`` is best behaved.
     return np.where(x >= 1, x - 1, np.log(x))
 
 
 def rev_adj_relu(x):
-    return -np.where(x >= 0, x + 1, np.exp(x))
+    return -np.where(x >= 0, x + 1, _dead_branch_safe_exp(x))
 
 
 def inv_rev_adj_relu(x):

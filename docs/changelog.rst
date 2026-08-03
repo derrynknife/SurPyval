@@ -4,6 +4,96 @@ Changelog
 v0.18.1 (unreleased)
 --------------------
 
+- **Confidence bounds no longer turn silently to nan on data measured
+  in large units, and those fits are around 17x faster.** A Weibull fit
+  to the same lifetimes expressed in hours had standard errors; in
+  seconds it returned ``nan`` for every one of them, with no warning and
+  a perfectly good set of parameters alongside.
+
+  The cause is the ``np.where`` trap again, this time in the parameter
+  transform rather than a likelihood. Every parameter bounded on
+  ``(0, inf)`` is mapped to the unbounded space the optimiser searches
+  by ``adj_relu``, which chose between ``x + 1`` and ``exp(x)`` with
+  ``np.where``. Autograd evaluates both branches, so ``exp(x)`` was
+  taped even where ``x + 1`` was selected, and above ``x = 709.78`` it
+  overflows to inf. The inf then poisoned the derivative of the branch
+  that *was* chosen, so the jacobian of the transform came back nan --
+  and with it ``cov_matrix``, which is that jacobian either side of the
+  inverse hessian.
+
+  The threshold is a property of the fitted parameter, not of the sample
+  size or the conditioning, which is why it looked so arbitrary: a fit
+  died as soon as any ``(0, inf)`` parameter exceeded about 710. A
+  Weibull with ``alpha = 10`` lost its bounds once the data was scaled
+  past about 70x, while a Gumbel, whose location is unbounded and so
+  untransformed, survived to 350x on the same data. The Gamma failed at
+  the *small* end instead, its rate parameter growing as the data
+  shrinks. The Normal, LogNormal and Exponential were immune throughout
+  because they have closed-form estimators and never touch the
+  transform; the Uniform reports no covariance at any scale by design,
+  its MLE being an order statistic rather than a stationary point.
+
+  Clamping the dead branch's argument fixes it: the branch is
+  responsible only for ``x < 0``, so restricting what it may be handed
+  leaves its value and derivative untouched where it is used, and
+  bounded where it is not.
+
+  The hessian was never the problem -- the numerical fallback (#270)
+  produced a finite, well conditioned matrix at every scale -- which is
+  why this presented as nan bounds rather than as a warning or a
+  failure. It also explains the speed: the same nan reached the
+  objective's gradient, so BFGS, TNC and Newton-CG each gave up and
+  Nelder-Mead finished the fit derivative free. Across twelve
+  distributions at seven scales the sweep goes from 19.59s to 1.18s, and
+  every fit that used to end on Nelder-Mead now ends on BFGS.
+
+  Results that already worked are unchanged: 65 of 96 reference fits are
+  bit-identical, and the other 31 are the restorations, where the
+  objective agrees to fifteen significant figures and the parameters to
+  nine.
+
+  Restoring the gradient exposed a second, smaller scale problem
+  underneath, now fixed with it. scipy stops BFGS when
+  ``max|grad| < gtol``, and its default of 1e-5 is an absolute threshold
+  on a quantity that is not scale free: a log-likelihood's gradient
+  shrinks like ``1/theta``, so on data measured in tens of thousands the
+  test is met well short of the optimum and BFGS reports success on its
+  first check. This had been invisible because those fits used to end on
+  Nelder-Mead, which is derivative free and so kept going. Three
+  reference fits on real data of that magnitude landed 1e-2 away in
+  relative terms, at a likelihood 2e-3 below the answer they had been
+  recorded from.
+
+  ``gtol`` is now scaled by the gradient at the point the search starts,
+  which asks that the gradient fall by a fixed number of orders of
+  magnitude -- the same requirement at every scale. A fixed tighter
+  constant is not equivalent and does not work: 1e-8 fixes the large
+  fits but is unreachable for small samples, dropping an n=8 Weibull out
+  of BFGS and into TNC. At 1e-7 relative both ends converge on BFGS, the
+  large fits to 2e-8 and the small one to 4e-9.
+
+  With both in place the restored standard errors satisfy the
+  scale-equivariance law ``se(theta * c) = c * se(theta)`` to 1e-5 or
+  better across every distribution and scale tested, most to 1e-8, and
+  to machine precision for the Rayleigh and Normal.
+
+  Two consequences worth noting. Fits now converge slightly further than
+  before wherever BFGS wins, so a handful of pinned numbers moved in
+  their last few digits -- always towards a better likelihood. The two
+  Monte Carlo simulation tests in ``test_counting.py`` also had their
+  tolerance loosened from ``allclose``'s 1e-5 to 1e-3: they drive a
+  5000-run simulation from an optimiser's output, where a change in the
+  seventh significant figure of a parameter moves the simulated MCF in
+  the fourth. That is convergence noise, and what those tests exist to
+  catch would break far more loudly.
+
+  #323 is now rescoped. It had proposed internal rescaling to fix both
+  the bounds and the speed; neither needs it. Re-measured with the
+  gradient working, rescaling is between 4.2x faster and 6x *slower*
+  depending on the distribution, so the twelve per-distribution
+  back-transforms it would require are no longer obviously worth their
+  risk.
+
 - **A truncated fit is around 60x faster, and the truncation term is
   evaluated once per distinct window rather than once per row.** Any fit
   with a truncation bound on one side only had no usable gradient. The
@@ -65,7 +155,11 @@ v0.18.1 (unreleased)
   in about two minutes rather than three: the beta survival tree and
   forest tests were 97 of the suite's 180 seconds for 85 of its 2000-odd
   tests. They run with ``--run-ml``, and continuous integration passes
-  the flag, so coverage is unchanged.
+  the flag, so coverage is unchanged. The ``conftest.py`` that defines
+  the flags lives at the repository root: ``pytest_addoption`` is only
+  honoured in *initial* conftest files, and the CI invocation selects
+  with ``--ignore`` and names no path, so one under ``surpyval/tests``
+  would be loaded too late to register them.
 
   ``--run-invariants`` adds ``test_fit_invariants.py``, a wide net over
   the fitting API. Every defect found in this release cycle slipped past
