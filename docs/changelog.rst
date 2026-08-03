@@ -147,20 +147,8 @@ v0.18.1 (unreleased)
   fourth. That is convergence noise, and what those tests exist to catch
   would break far more loudly.
 
-  The second consequence is a known wrong answer, and it is worth being
-  plain about. ``WeibullPH.fit_tvc`` now returns a degenerate fit on the
-  fixture in ``test_episode_split_is_an_identity``, which is marked
-  ``xfail(strict=True)`` against #326. The parametric regression path
-  has its own optimiser, so nothing here touched it; the seed it gets
-  moved by six parts in ten million, and that was enough to tip it. Its
-  first stage still finds the right answer (``neg_ll`` 927.83) and TNC
-  then walks into the region where a left-truncated likelihood is
-  unbounded, returning -21311.40 and reporting success -- which
-  ``optimise_ph`` keeps unconditionally. Neither a success check nor a
-  comparison of objectives would catch it, since the divergent answer
-  has the lower one. That fit has been sitting beside this basin all
-  along with only its starting point keeping it out; #326 carries the
-  diagnosis and the two candidate defences.
+  The second is that it flushed out a separate defect, which is fixed
+  alongside it and described next.
 
   #323 is now rescoped. It had proposed rescaling the *model* -- fit on
   transformed data, then map the parameters and the covariance back --
@@ -170,6 +158,55 @@ v0.18.1 (unreleased)
   *slower* depending on the distribution. What was left, the convergence
   criterion, is what preconditioning the search addresses, so the twelve
   per-distribution back-transforms are not needed for any of it.
+
+- **Truncated parametric regression fits could report a log-likelihood
+  tens of thousands higher than their parameters earn, and be optimised
+  towards it.** ``truncation_correction`` computed the mass in each
+  observation's truncation window as a difference of CDFs, floored at
+  the smallest positive float:
+
+  .. code-block:: python
+
+      np.log(np.maximum(right - left, _TINY))
+
+  Under left truncation that difference is ``1 - F(tl)``, the survival
+  probability at the truncation bound, which underflows to exactly zero
+  as the fitted scale shrinks. The floor then capped the correction at
+  ``log(tiny) = -708`` rather than letting it grow without bound -- and
+  since the correction is *subtracted*, every truncated row appeared to
+  contribute +708 to the log-likelihood. A region the data rules out
+  entirely became the best fit on offer, and the optimiser walked
+  straight into it.
+
+  A ``WeibullPH`` fit to left-truncated data reported ``neg_ll``
+  -21311.40 at parameters whose true value is +17118.30, against 927.83
+  at the correct answer: wrong by 38,000, and pointing the wrong way.
+  Recomputing the likelihood by hand from the model definition is what
+  settled it -- at the correct parameters surpyval agrees to the digit,
+  so the objective is right everywhere except where the floor engages.
+
+  One-sided windows are now evaluated in log space through ``log_sf``
+  and ``log_ff``, which stay finite where the difference cannot, so
+  there is nothing to floor. Only a genuinely two-sided window still
+  takes a difference, and there both bounds are finite and the mass is
+  not driven to zero by the scale alone. As elsewhere, the ``np.where``
+  branches are evaluated at substituted-finite arguments so that an
+  infinity in an unselected branch cannot poison the gradient of the
+  selected one.
+
+  This is in ``_likelihood.py``, which serves proportional hazards,
+  proportional odds, accelerated failure time and accelerated life
+  alike, so any left- or right-truncated parametric regression fit was
+  exposed -- it needed only the optimiser to wander far enough for the
+  underflow to bite. Nothing warned when it did.
+
+  Found by the rescaling change above, which perturbed an initial guess
+  by six parts in ten million and was enough to tip one fit over. The
+  first diagnosis was wrong: it looked like a genuinely unbounded
+  truncated likelihood being followed legitimately, and the arithmetic
+  disproved that. #326 records both. The regression test asserts the
+  reported objective equals an independently computed one and that
+  shrinking the scale below the truncation bounds always scores worse.
 
 - **A truncated fit is around 60x faster, and the truncation term is
   evaluated once per distinct window rather than once per row.** Any fit
