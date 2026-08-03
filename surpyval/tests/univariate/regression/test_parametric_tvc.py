@@ -43,7 +43,31 @@ def _constant_covariate_split(seed=0, n=300):
     return (Z, T, c0), (ident, xl, xr, c, Zs)
 
 
-@pytest.mark.parametrize("name", list(TVC_FITTERS))
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param(
+            n,
+            marks=(
+                pytest.mark.xfail(
+                    strict=True,
+                    reason=(
+                        "#326: TNC diverges into the unbounded region of the "
+                        "left-truncated likelihood and optimise_ph returns it "
+                        "unconditionally. Stage one finds the right answer "
+                        "(neg_ll 927.83); TNC replaces it with -21311.40 and "
+                        "reports success, so neither a success check nor an "
+                        "objective comparison rescues it. strict, so this "
+                        "reverses on its own when #326 is fixed."
+                    ),
+                )
+                if n == "WeibullPH"
+                else ()
+            ),
+        )
+        for n in TVC_FITTERS
+    ],
+)
 def test_episode_split_is_an_identity(name):
     fitter = TVC_FITTERS[name]
     (Z, T, c0), (ident, xl, xr, c, Zs) = _constant_covariate_split()

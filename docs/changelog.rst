@@ -64,53 +64,112 @@ v0.18.1 (unreleased)
   relative terms, at a likelihood 2e-3 below the answer they had been
   recorded from.
 
-  ``gtol`` is now scaled by the gradient at the point the search starts,
-  at 1e-7 relative. A fixed tighter constant does not work: 1e-8 fixes
-  the large fits but is unreachable for small samples, dropping an n=8
-  Weibull out of BFGS and into TNC, where it lands 5e-5 away. At 1e-7
-  relative both ends converge on BFGS, the large fits to 2e-8 and the
-  small one to 4e-9.
+  There is a second dimension to the same problem, in the opposite
+  direction. A log-likelihood is a *sum* over observations, so its
+  gradient grows like ``n`` as well as shrinking like ``1/theta``. At
+  n = 1e5 it is five orders of magnitude larger, the same absolute
+  threshold is correspondingly unreachable, and BFGS gives up on
+  censored samples it should handle easily -- found by benchmarking
+  against lifelines with censoring, where it was the one configuration
+  in 64 where surpyval was slower.
 
-  With both in place the restored standard errors satisfy the
-  scale-equivariance law ``se(theta * c) = c * se(theta)`` to 1e-9 or
-  better up to data scale 1e4, and to machine precision for the Rayleigh
-  and Normal. At 1e6 most distributions hold to 1e-6 or better; the
-  Weibull is an outlier at around 1e-3.
+  So the problem is rescaled in both of its dimensions, and a single
+  constant then means the same thing for every fit:
 
-  That outlier is worth stating plainly, because it marks the limit of
-  what a tolerance constant can do. Scaling ``gtol`` by the gradient at
-  the initial guess does *not* make the criterion scale free the way it
-  first appears to: the initialiser scales with the data too, so the
-  gradient at the starting point is itself roughly scale invariant and
-  the resulting threshold barely moves. There is no constant that serves
-  every case -- 1e-8 relative fixes the Weibull at 1e6 but breaks the
-  n=8 fit, and 1e-9 breaks both small fits by pushing them to TNC. 1e-7
-  is the setting where everything the test suite covers passes.
+      s = max(|u0|, 1)        f0 = max(|f(u0)|, 1)
+      v = u / s               g(v) = f(s v) / f0
 
-  So this is a better tolerance, not a scale-free one. Solving a
-  well-scaled problem, where a single absolute tolerance means the same
-  thing everywhere, is the actual fix; the measurements above are
-  recorded in #323 as the case for it.
+  The starting point is order 1 in every component and so is the
+  objective, whatever the units and whatever the sample size. Since
+  ``dg/dv = s * df/du / f0``, with ``s`` growing exactly as ``df/du``
+  shrinks and ``f0`` growing like ``n``, so is the gradient. The
+  ``gtol`` of 1e-6 applied there is a genuine relative tolerance rather
+  than the dimensioned constant scipy's default is.
 
-  Two consequences worth noting. Fits now converge slightly further than
-  before wherever BFGS wins, so a handful of pinned numbers moved in
-  their last few digits -- always towards a better likelihood. The two
-  Monte Carlo simulation tests in ``test_counting.py`` also had their
-  tolerance loosened from ``allclose``'s 1e-5 to 1e-3: they drive a
-  5000-run simulation from an optimiser's output, where a change in the
-  seventh significant figure of a parameter moves the simulated MCF in
-  the fourth. That is convergence noise, and what those tests exist to
-  catch would break far more loudly.
+  Tuning the threshold was tried first and does not work. Three
+  criteria were measured against the same reference set: an absolute
+  ``gtol``, a ``gtol`` scaled by the gradient at the initial guess, and
+  BFGS's step-size test ``xrtol``. Swapping the whole method for
+  L-BFGS-B to reach its relative ``ftol`` was measured too. None is
+  scale free in practice.
 
-  #323 is now rescoped. It had proposed internal rescaling to fix both
-  the bounds and the speed; neither needs it. Re-measured with the
-  gradient working, rescaling is between 4.2x faster and 6x *slower*
-  depending on the distribution, so the twelve per-distribution
-  back-transforms it would require are no longer obviously worth their
-  risk. What remains there is the convergence criterion, and the
-  cheapest form of it is preconditioning the optimiser's search alone --
-  no back-transforms, because nothing outside the optimiser ever sees
-  scaled units.
+  Scaling ``gtol`` by the initial gradient in particular *looks* scale
+  free and is not: the initialiser scales with the data too, so that
+  gradient is itself roughly scale invariant -- a Weibull at scale 1,
+  1e4 and 1e6 all came out with ``gtol = 1.86e-6``. Nor is there a
+  constant that serves every case: tight enough for a Weibull at 1e6 is
+  unreachable for an n=8 sample, which then drops out of BFGS into TNC.
+  ``xrtol`` and ``ftol`` fail differently -- both stop on how the
+  optimiser is behaving rather than on the quantity that is zero at the
+  answer, so they quit early along flat directions, which is precisely
+  where the standard error is largest and most needs to be right. The
+  ExpoWeibull, three parameters and a flat surface, was 17% out under
+  both. The full measurements are in #323.
+
+  Rescaling beats every one of them, and is faster than the tolerance it
+  replaces:
+
+  ==============================================  ==========  ==========
+  scale-equivariance of ``se`` (8 distributions)  relative    rescaled
+                                                  ``gtol``    problem
+  ==============================================  ==========  ==========
+  worst deviation                                 1.6e-3      2.0e-5
+  cases above 1e-5                                1 of 16     1 of 16
+  Weibull n=1e5, 30% censored, scale 1            0.163s      0.153s
+  Weibull n=1e5, 60% censored, scale 1e6          0.250s      0.119s
+  ==============================================  ==========  ==========
+
+  Rescaling the parameters alone reaches 2.8e-8 on the first row, better
+  than the 2.0e-5 above, but is the version that leaves BFGS failing at
+  large ``n``: those two censored fits take 0.370s and 0.590s under it.
+  Normalising the objective as well trades a little of that accuracy for
+  a criterion that holds across sample sizes too, which is the point.
+
+  Both mappings are fixed before the search begins and neither can move
+  the optimum: a diagonal linear change of variable relocates a minimum
+  no more than dividing the objective by a positive constant does. They
+  change the route taken and the units of the convergence test, nothing
+  else. ``res.x`` and ``res.fun`` are both mapped back inside the
+  helper, so no scaled quantity exists anywhere else in the package, not
+  even transiently: the covariance step, ``cb`` and serialisation all
+  receive exactly what they received before. Nothing needs to know which
+  parameter is a scale and which a shape, which is what made the
+  internal-rescaling proposal in #323 risky; preconditioning needs none
+  of it.
+
+  Two consequences worth noting. Fits now converge further than before
+  wherever BFGS wins, so a handful of pinned numbers moved in their last
+  few digits -- always towards a better likelihood. The two Monte Carlo
+  simulation tests in ``test_counting.py`` also had their tolerance
+  loosened from ``allclose``'s 1e-5 to 1e-3: they drive a 5000-run
+  simulation from an optimiser's output, where a change in the seventh
+  significant figure of a parameter moves the simulated MCF in the
+  fourth. That is convergence noise, and what those tests exist to catch
+  would break far more loudly.
+
+  The second consequence is a known wrong answer, and it is worth being
+  plain about. ``WeibullPH.fit_tvc`` now returns a degenerate fit on the
+  fixture in ``test_episode_split_is_an_identity``, which is marked
+  ``xfail(strict=True)`` against #326. The parametric regression path
+  has its own optimiser, so nothing here touched it; the seed it gets
+  moved by six parts in ten million, and that was enough to tip it. Its
+  first stage still finds the right answer (``neg_ll`` 927.83) and TNC
+  then walks into the region where a left-truncated likelihood is
+  unbounded, returning -21311.40 and reporting success -- which
+  ``optimise_ph`` keeps unconditionally. Neither a success check nor a
+  comparison of objectives would catch it, since the divergent answer
+  has the lower one. That fit has been sitting beside this basin all
+  along with only its starting point keeping it out; #326 carries the
+  diagnosis and the two candidate defences.
+
+  #323 is now rescoped. It had proposed rescaling the *model* -- fit on
+  transformed data, then map the parameters and the covariance back --
+  to fix both the bounds and the speed. Neither needs it. The bounds
+  were the ``np.where`` overflow above, and re-measured with the
+  gradient working, rescaling the data is between 4.2x faster and 6x
+  *slower* depending on the distribution. What was left, the convergence
+  criterion, is what preconditioning the search addresses, so the twelve
+  per-distribution back-transforms are not needed for any of it.
 
 - **A truncated fit is around 60x faster, and the truncation term is
   evaluated once per distinct window rather than once per row.** Any fit

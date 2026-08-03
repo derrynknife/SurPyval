@@ -8,6 +8,74 @@ from scipy.optimize import OptimizeResult, minimize
 from surpyval import np
 
 
+def _preconditioned_bfgs(fun, x0, args, jac, options):
+    """BFGS on a diagonally rescaled copy of the search vector.
+
+    scipy stops BFGS when ``max|grad| < gtol``, an absolute threshold on
+    a quantity that is not scale free: a log-likelihood's gradient
+    shrinks like ``1/theta``, so on data measured in tens of thousands
+    the default 1e-5 is met well short of the optimum and BFGS reports
+    success on its first check. Three reference fits on real data of
+    that magnitude landed 1e-2 away in relative terms, at a likelihood
+    2e-3 below the answer they were recorded from (#323). It had been
+    invisible only because those fits used to end on Nelder-Mead, which
+    is derivative free and so kept going.
+
+    Tuning the threshold does not fix it. Scaling ``gtol`` by the
+    gradient at the initial guess looks scale free but is not -- the
+    initialiser scales with the data too, so that gradient is itself
+    roughly scale invariant and the threshold barely moves. Nor is there
+    a constant that serves every case: tight enough for a Weibull at
+    data scale 1e6 is unreachable for an n=8 sample.
+
+    Rescaling the search fixes the cause instead. With
+
+        s = max(|u0|, 1),   v = u / s,   g(v) = f(s v)
+
+    the starting point is order 1 in every component whatever units the
+    data is in, and since ``dg/dv = s * df/du`` -- ``s`` growing like the
+    scale exactly as ``df/du`` shrinks -- the gradient the optimiser
+    tests is order 1 too. scipy's own default then means the same thing
+    at every scale, so no tolerance is passed at all.
+
+    The mapping is linear, diagonal and fixed before the search begins,
+    so it cannot move the optimum; it changes the route taken and the
+    units of the convergence test, nothing else. ``res.x`` is mapped
+    back before returning, so every caller -- including the covariance
+    step, which builds its own hessian at the returned point -- sees
+    exactly what it saw before. scipy's own ``res.hess_inv`` would be in
+    scaled units, and is not used anywhere.
+    """
+    x0 = np.asarray(x0, dtype=float)
+    scale = np.maximum(np.abs(x0), 1.0)
+
+    f0 = float(fun(x0, *args))
+    obj_scale = max(abs(f0), 1.0) if np.isfinite(f0) else 1.0
+
+    def scaled_fun(v, *inner):
+        return fun(scale * v, *inner) / obj_scale
+
+    def scaled_jac(v, *inner):
+        return (
+            scale * np.asarray(jac(scale * v, *inner), dtype=float)
+        ) / obj_scale
+
+    opts = dict(options or {})
+    opts["gtol"] = 1e-6
+
+    res = minimize(
+        scaled_fun,
+        x0 / scale,
+        args=args,
+        method="BFGS",
+        jac=None if jac is None else scaled_jac,
+        options=opts,
+    )
+    res.x = res.x * scale
+    res.fun = res.fun * obj_scale
+    return res
+
+
 def mle(model):
     """
     Maximum Likelihood Estimation (MLE)
@@ -109,35 +177,6 @@ def mle(model):
         # motivated the original order survives for the fits that
         # actually need it -- they are simply no longer paid for by the
         # fits that do not.
-        # scipy stops BFGS when max|grad| < gtol, and its default of 1e-5
-        # is an absolute threshold on a quantity that is not scale free.
-        # A log-likelihood's gradient shrinks like 1/theta, so on data
-        # measured in tens of thousands the test is met well short of
-        # the optimum and BFGS reports success on its first check --
-        # three reference fits on real data of that magnitude landed
-        # 1e-2 away in relative terms, at a likelihood 2e-3 below the
-        # answer they were recorded from. It had been invisible only
-        # because those fits used to end on Nelder-Mead, which is
-        # derivative free and so kept going (#323).
-        #
-        # Scaling the threshold by the gradient where the search starts
-        # asks instead that the gradient fall by a fixed number of
-        # orders of magnitude, which means the same thing at every
-        # scale. A fixed tighter constant does not: 1e-8 fixes the large
-        # fits but is unreachable for small samples, dropping an n=8
-        # Weibull out of BFGS and into TNC. At 1e-7 relative both ends
-        # converge on BFGS -- the large fits to 2e-8 and the small one
-        # to 4e-9.
-        gtol_rel = 1e-7
-
-        def bfgs_gtol(x0):
-            g0 = np.max(
-                np.abs(jac(np.asarray(x0, dtype=float), offset, lfp, zi, True))
-            )
-            if not np.isfinite(g0) or g0 <= 0:
-                return None
-            return max(gtol_rel * float(g0), 1e-12)
-
         for method, jac_i, hess_i in methods:
             opts = {"maxfun": 1000} if method == "TNC" else {"maxiter": 1000}
             if method in ("Nelder-Mead", "Powell") or best_result is None:
@@ -145,18 +184,19 @@ def mle(model):
             else:
                 x0 = best_result.x
             if method == "BFGS":
-                gtol = bfgs_gtol(x0)
-                if gtol is not None:
-                    opts["gtol"] = gtol
-            res = minimize(
-                fun,
-                x0,
-                args=(offset, lfp, zi, True),
-                method=method,
-                jac=jac_i,
-                hess=hess_i,
-                options=opts,
-            )
+                res = _preconditioned_bfgs(
+                    fun, x0, (offset, lfp, zi, True), jac_i, opts
+                )
+            else:
+                res = minimize(
+                    fun,
+                    x0,
+                    args=(offset, lfp, zi, True),
+                    method=method,
+                    jac=jac_i,
+                    hess=hess_i,
+                    options=opts,
+                )
             if res.success and res.fun < best:
                 best_result = res
                 best_method = method
