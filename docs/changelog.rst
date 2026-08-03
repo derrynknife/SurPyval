@@ -4,6 +4,58 @@ Changelog
 v0.18.1 (unreleased)
 --------------------
 
+- **A truncated fit is around 60x faster, and the truncation term is
+  evaluated once per distinct window rather than once per row.** Any fit
+  with a truncation bound on one side only had no usable gradient. The
+  window probability chose between the CDF and an analytic limit with
+  ``np.where``, which picks the right *value* but evaluates both
+  branches -- so ``ff(inf)`` was still recorded by autograd, and its nan
+  derivative propagated through the selection whichever side won.
+
+  Nothing warned. The objective was correct throughout; only the
+  gradient was nan. So BFGS and Newton-CG each gave up after a single
+  evaluation, TNC spent its whole 1000-evaluation budget discovering the
+  same thing, and Nelder-Mead finished the job derivative free. A
+  Weibull that fits in 0.014s took 1.36s, and a ``tl`` of 0 -- a no-op,
+  since ``F(0) = 0`` -- cost exactly as much as a real truncation, which
+  is what gives the cause away. Windows with *both* bounds finite were
+  always fast, because no infinity ever reached the tape.
+
+  The infinity is now substituted out of the *argument* before the CDF
+  sees it, so a single vectorised call covers every row whatever its
+  pattern of bounds, and the surviving ``np.where`` only ever chooses
+  between two values that are already finite. The stand-in cannot be an
+  arbitrary constant: zero looks natural and is wrong, because a Weibull
+  with ``beta < 1`` has an unbounded density derivative at the origin,
+  which would swap one nan gradient for another. Reusing a bound that is
+  genuinely present keeps it inside the support and at the data's own
+  magnitude; its value never reaches the result, only its derivative has
+  to be finite.
+
+  Separately, the truncation correction depends only on the observation
+  *window*, not on where in it the observation fell, so it is now
+  evaluated once per distinct window. Truncation is nearly always common
+  to a whole sample -- one burn-in time, one study entry date -- which
+  collapsed 360 CDF evaluations per likelihood call to one in the test
+  case, and the likelihood is called hundreds of times per fit.
+
+  ==============================  ==========  =========
+  fit                             before      after
+  ==============================  ==========  =========
+  plain                           0.014s      0.015s
+  left truncated                  1.398s      0.022s
+  ``tl = 0`` (a no-op)            1.362s      0.041s
+  right truncated                 1.344s      0.024s
+  both bounds finite              0.019s      0.025s
+  ==============================  ==========  =========
+
+  Fitted results are unchanged: all 330 reference fits across thirteen
+  distributions and five methods are bit-identical, and BFGS now wins
+  every truncated fit where Nelder-Mead used to. Note that truncated
+  fits have had no working gradient until now, so the covariance matrix
+  and confidence bounds on truncated data came from a nan-poisoned
+  hessian path; whether those were degraded is not yet established.
+
 - **The slow parts of the test suite are opt in, and there is a new
   invariant sweep behind the same mechanism.** ``pytest`` alone now runs
   in about two minutes rather than three: the beta survival tree and
