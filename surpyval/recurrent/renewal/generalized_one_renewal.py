@@ -60,16 +60,16 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     =========================
     Distribution        : Weibull
     Fitted by           : MLE
-    Restoration Factor  : -0.1730184624683848
+    Restoration Factor  : -0.1730179893443181
     Parameters          :
-        alpha: 1.3919045967886952
-         beta: 5.0088611892336115
+        alpha: 1.3919016662855024
+         beta: 5.008872636271443
     >>>
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
     >>> np_model.mcf(np.array([1, 2, 3, 4, 5, 6]))
-    array([0.1696    , 1.181     , 2.287     , 3.6694    , 5.58237925,
-           8.54474531])
+    array([0.1696    , 1.181     , 2.287     , 3.6696    , 5.58237921,
+           8.54474127])
     """
 
     @staticmethod

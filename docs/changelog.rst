@@ -4,6 +4,42 @@ Changelog
 v0.18.1 (unreleased)
 --------------------
 
+- **Maximum likelihood fits are about 2.2x faster.** Every MLE fit ran
+  five optimisers -- Nelder-Mead, Powell, BFGS, TNC and Newton-CG -- and
+  kept the best result. Over 102 fits across eleven distributions, five
+  data shapes and two sample sizes, all five agreed on the objective to
+  1e-10. The last four were confirming what an earlier one had already
+  found.
+
+  That confirmation was not cheap. Nelder-Mead and Powell are derivative
+  free, so they pay for robustness in function evaluations -- 50 and 22
+  against BFGS's 21 -- and every evaluation costs O(n). On a million
+  observations those two alone were 42% of the fit.
+
+  The gradient methods now run first and the search stops at the first
+  that converges, with the derivative-free pair kept as the fallback.
+  Order and early exit had to change together: stopping early without
+  reordering halts at Nelder-Mead, which is both the most expensive rung
+  and the one with the worst objective, while reordering without
+  stopping early saves nothing. Cold-start BFGS now wins 83 of 102 fits,
+  TNC takes 10 and Newton-CG one; the eight that Nelder-Mead or Powell
+  used to win now land on a gradient method at the same objective, so
+  they were winning ties on ordering rather than finding better optima.
+  The derivative-free methods still start from the cold initial guess
+  when they are reached, so the multi-start behaviour survives for the
+  fits that need it.
+
+  **Fitted parameters can move in about the seventh significant digit.**
+  All 102 objectives are identical to 1e-10 and one improved, so this is
+  optimiser tolerance rather than a change of answer, but it is not
+  bit-identical: the median shift is 3e-8 and the 90th percentile 8e-7.
+  The documented ``GeneralizedOneRenewal`` example and the two tests
+  that pin it have been regenerated. Those numbers were always a
+  snapshot of the library's own output rather than an external
+  reference, and their tolerance has deliberately been left tight, so
+  that any future change to the optimiser surfaces as a decision rather
+  than passing unnoticed.
+
 - **Degenerate data is rejected with an explanation instead of an
   ``IndexError`` from inside numdifftools.** ``Weibull.fit`` on three
   tied observations died four steps from the cause: a probability plot
