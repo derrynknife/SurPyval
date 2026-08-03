@@ -4,6 +4,33 @@ Changelog
 v0.18.1 (unreleased)
 --------------------
 
+- **The slow parts of the test suite are opt in, and there is a new
+  invariant sweep behind the same mechanism.** ``pytest`` alone now runs
+  in about two minutes rather than three: the beta survival tree and
+  forest tests were 97 of the suite's 180 seconds for 85 of its 2000-odd
+  tests. They run with ``--run-ml``, and continuous integration passes
+  the flag, so coverage is unchanged.
+
+  ``--run-invariants`` adds ``test_fit_invariants.py``, a wide net over
+  the fitting API. Every defect found in this release cycle slipped past
+  the whole suite, and each lived at an *intersection* of dimensions the
+  suite tests one at a time -- a censored observation that was also
+  truncated, an offset combined with a particular method, an offset
+  combined with a large shift magnitude, a sample below the 1000 floor
+  of ``FIT_SIZES``. The full cross of distributions, methods, censoring,
+  truncation, structural flags, sizes and scales is around 600,000
+  cells, so the sweep does not attempt it. It asserts cheap invariants
+  instead -- finite parameters, finite ``neg_ll``, a survival function
+  that stays in [0, 1] and never increases, and maximum likelihood
+  attaining the lowest negative log-likelihood of the five methods --
+  over a seeded sample of that space. Four of the five defects would
+  have failed the first two assertions.
+
+  Data *scale* is included as an axis because it was previously untested
+  anywhere, despite the maximum likelihood failure warning itself
+  advising users to rescale towards 1. 270 cases, three and a half
+  minutes.
+
 - **Maximum likelihood fits are about 2.2x faster.** Every MLE fit ran
   five optimisers -- Nelder-Mead, Powell, BFGS, TNC and Newton-CG -- and
   kept the best result. Over 102 fits across eleven distributions, five
