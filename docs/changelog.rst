@@ -159,6 +159,51 @@ v0.18.1 (unreleased)
   criterion, is what preconditioning the search addresses, so the twelve
   per-distribution back-transforms are not needed for any of it.
 
+- **Turnbull no longer rejects left-censored observations under left
+  truncation.** An entry time below every observation excludes nobody,
+  so it should leave a fit untouched. With any left-censored row present
+  it raised instead:
+
+  .. code-block:: text
+
+      ValueError: An observation's censoring interval does not intersect
+      its own truncation window ...
+
+  A support index ``j`` stands for the half-open interval
+  ``(bounds[j], bounds[j+1]]``, so an event placed there is already
+  strictly after ``bounds[j]``. The first index a row entering at ``tl``
+  may use is therefore the *last* bound equal to ``tl`` -- that interval
+  is ``(tl, next]``. The window construction took one index further on,
+  discarding it.
+
+  It mattered most for left censoring because such an event lies in
+  ``(-inf, xr]``, which under an entry at ``tl`` is the single interval
+  ``(tl, xr]`` -- frequently the only one the row has. Dropping it left
+  the row with an empty support, hence the rejection.
+
+  Neither endpoint of the search alone is correct, which is what made
+  this awkward. ``side="left"`` keeps the zero-width ``(tl, tl]``
+  interval that a duplicated exact event time creates, readmitting an
+  event at exactly the entry time and breaking the strict
+  ``(entry, exit]`` convention (#260); ``side="right"`` discards
+  ``(tl, next]`` as well, one too many. ``side="right" - 1`` lands
+  between them, and does so exactly, because every finite truncation
+  time is itself in ``bounds``.
+
+  Half of #308 is still open. Convergence on data mixing all four
+  censoring types with left truncation is unaffected by this, and the
+  cause is not the one the issue supposed: the expected event counts
+  come back inflated -- about 3.1 events at every observation time for
+  thirty observations -- so the estimator ladder exhausts its risk set
+  within a handful of steps and the survival curve collapses. That is
+  the ghost/normalisation step rather than the index arithmetic.
+
+  What is new is the trigger. A *common* entry time round-trips exactly;
+  entry times that *differ* are what activate it, since only then does a
+  later-entering row have unseen deaths imputed below its own window.
+  That narrows the reproducer from thirty points to six, which is in the
+  suite as a strict ``xfail`` alongside the diagnosis.
+
 - **Truncated parametric regression fits could report a log-likelihood
   tens of thousands higher than their parameters earn, and be optimised
   towards it.** ``truncation_correction`` computed the mass in each

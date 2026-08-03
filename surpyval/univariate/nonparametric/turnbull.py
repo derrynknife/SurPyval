@@ -109,9 +109,34 @@ def turnbull(
     # range [w_lo, w_hi]: the bound points at which an event was observable
     # -- strictly after its left truncation time and at or before its right
     # truncation time.
+    #
+    # Index j stands for the half-open interval ``(bounds[j], bounds[j+1]]``,
+    # so an event placed there is already strictly after ``bounds[j]``. The
+    # first admissible index is thus the *last* bound equal to ``tl``: that
+    # interval is ``(tl, next]``, which respects the strict (entry, exit]
+    # convention, while the interval starting one index earlier is the
+    # zero-width ``(tl, tl]`` that an exact event time duplicated into
+    # ``bounds`` creates -- an event at exactly the entry time, which the
+    # convention excludes (#260).
+    #
+    # ``side="right" - 1`` lands there exactly, because every finite
+    # truncation time is itself in ``bounds``. Neither endpoint of the
+    # search alone will do: ``side="left"`` keeps the zero-width interval
+    # and readmits an event at the entry time, while ``side="right"``
+    # discards ``(tl, next]`` as well, one interval too many.
+    #
+    # That over-exclusion is what made left censoring under truncation
+    # fail. A left-censored event lies in ``(-inf, xr]``, which under an
+    # entry at ``tl`` is the single interval ``(tl, xr]`` -- often the only
+    # one such a row has. Dropping it left the row with an empty support,
+    # so a *vacuous* entry time, one below every observation and excluding
+    # nobody, turned a working fit into a raise or drove the EM to the
+    # degenerate all-zero end of the ladder (#308).
     if any_truncated:
         w_lo_all = np.where(
-            np.isfinite(tl), np.searchsorted(bounds, tl, side="right"), 0
+            np.isfinite(tl),
+            np.maximum(np.searchsorted(bounds, tl, side="right") - 1, 0),
+            0,
         )
         w_hi_all = np.where(
             np.isfinite(tr),
