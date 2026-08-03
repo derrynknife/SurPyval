@@ -7,6 +7,42 @@ from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 
 
+def _rr_fit(a, b):
+    """
+    Least-squares line of ``b`` on ``a``, guarding the degenerate case.
+
+    A probability plot needs at least two distinct abscissae to have a
+    slope. With fewer -- a single observation, or a sample whose values
+    are all tied -- ``polyfit`` is rank deficient and returns a nan
+    slope. That nan is not caught anywhere: it becomes the seed for the
+    maximum likelihood fit, which then starts at nan, produces a nan
+    hessian, and finally dies inside numdifftools with an ``IndexError``
+    from an empty list of finite difference steps. The cause is four
+    steps removed from the symptom.
+
+    The fallback is a unit slope through the centroid. A *zero* slope
+    would be the more literal reading of "no information", but every
+    ``unpack_rr`` divides by the slope to recover a scale -- Weibull
+    takes ``alpha = exp(-intercept / slope)`` -- so zero merely moves the
+    nan one step later. Unit slope keeps each distribution's own
+    ``unpack_rr`` in charge of turning the line into correctly typed
+    parameters, and lands on a usable seed: three tied observations at 10
+    give ``alpha = 11.2, beta = 1`` rather than ``nan``.
+    """
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    finite = np.isfinite(a) & np.isfinite(b)
+    if finite.sum() >= 2 and np.unique(a[finite]).size >= 2:
+        params = np.polyfit(a[finite], b[finite], 1)
+        if np.isfinite(params).all():
+            return params
+    if finite.any():
+        intercept = float(np.mean(b[finite]) - np.mean(a[finite]))
+    else:
+        intercept = 0.0
+    return np.array([1.0, intercept])
+
+
 def mpp_from_ecfd(dist, x, F):
     x_pp = copy(x)
     y_pp = copy(F)
@@ -18,7 +54,7 @@ def mpp_from_ecfd(dist, x, F):
     with np.errstate(all="ignore"):
         y_pp = dist.mpp_y_transform(y_pp)
         x_pp = dist.mpp_x_transform(x_pp)
-        params = np.polyfit(x_pp, y_pp, 1)
+        params = _rr_fit(x_pp, y_pp)
 
     params = np.array(dist.unpack_rr(params, "y"))
 
@@ -108,9 +144,9 @@ def mpp(model):
     x_pp = dist.mpp_x_transform(x_pp)
 
     if rr == "y":
-        params = np.polyfit(x_pp, y_pp, 1)
+        params = _rr_fit(x_pp, y_pp)
     elif rr == "x":
-        params = np.polyfit(y_pp, x_pp, 1)
+        params = _rr_fit(y_pp, x_pp)
 
     params = np.array(dist.unpack_rr(params, rr))
 

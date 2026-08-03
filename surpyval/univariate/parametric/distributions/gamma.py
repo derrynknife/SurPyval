@@ -46,6 +46,15 @@ class Gamma_(ParametricFitter):
         to about 1.5% and used only as a starting point.
         """
         s = np.log(x.sum() / len(x)) - np.log(x).sum() / len(x)
+        # s is exactly zero for a tied sample -- the log of the mean and
+        # the mean of the logs coincide -- and alpha divides by it, so
+        # the seed comes back as (inf, inf). A failed optimiser falls
+        # back to its initial guess (#261), so those infinities are
+        # returned to the caller as the fitted parameters. Seed the
+        # exponential case instead: a tied sample carries no information
+        # about the shape.
+        if not np.isfinite(s) or s <= np.finfo(float).tiny:
+            return 1.0, len(x) / x.sum()
         alpha = (3 - s + np.sqrt((s - 3) ** 2 + 24 * s)) / (12 * s)
         beta = x.sum() / (len(x) * alpha)
         return alpha, 1.0 / beta

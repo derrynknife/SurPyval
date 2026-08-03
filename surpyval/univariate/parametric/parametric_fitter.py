@@ -335,6 +335,58 @@ class ParametricFitter:
             moments[i] = self._moment(n, *params, offset=offset)
         return moments
 
+    def _check_identifiable(self, surv_data, offset, lfp, zi, fixed):
+        """
+        Reject data that cannot pin down the free parameters.
+
+        A right censored observation says only "later than this", so it
+        constrains a fitted curve without locating a point on it. What
+        locates a point is an exact observation, a left censored one, or
+        an interval. Fewer *distinct* such values than there are free
+        parameters and the likelihood has a flat direction: for a
+        Weibull on a tied sample it is unbounded, since a spike of
+        arbitrary height can sit on the repeated value, and the reported
+        answer is wherever the optimiser happened to stop. Three tied
+        observations at 10 returned ``beta = 512`` with ``success=True``
+        and no warning.
+
+        The count is of *free* parameters, not of the distribution's
+        parameters, so fixing one buys back a degree of freedom: a
+        Weibull fit to a single observation with ``beta`` fixed is well
+        posed and recovers ``alpha = (sum x^beta / n) ** (1 / beta)``.
+        That is why this cannot be a per-distribution constant.
+        """
+        n_free = (
+            self.k
+            + int(bool(offset))
+            + int(bool(lfp))
+            + int(bool(zi))
+            - len(fixed or {})
+        )
+        if n_free <= 0:
+            return
+
+        x, c = surv_data.x, surv_data.c
+        informative = np.asarray(c) != 1
+        if not informative.any():
+            return
+        rows = np.asarray(x)[informative]
+        if rows.ndim == 1:
+            distinct = np.unique(rows).size
+        else:
+            distinct = np.unique(rows, axis=0).shape[0]
+
+        if distinct < n_free:
+            raise ValueError(
+                f"{self.name} has {n_free} free parameter(s) but the data "
+                f"contains only {distinct} distinct non-right-censored "
+                f"value(s). The likelihood has a flat (or unbounded) "
+                f"direction, so no unique fit exists. Provide more "
+                f"distinct observations, fix a parameter with "
+                f"`fixed=`, or choose a distribution with fewer "
+                f"parameters."
+            )
+
     def _validate_fit_inputs(
         self,
         surv_data,
@@ -357,6 +409,15 @@ class ParametricFitter:
         if offset and not offsettable:
             detail = f"{self.name} distribution cannot be offset"
             raise ValueError(detail)
+
+        # Probability plotting is exempt. It is a regression through the
+        # plotting positions, not a likelihood maximisation, so it has no
+        # unbounded direction to fall into and now always returns finite
+        # parameters. It is also how several distributions seed
+        # themselves, and that internal call does not carry the caller's
+        # ``fixed``, so checking it would reject well posed fits.
+        if how != "MPP":
+            self._check_identifiable(surv_data, offset, lfp, zi, fixed)
 
         if fixed and how == "MPP":
             detail = (
@@ -1083,6 +1144,25 @@ class ParametricFitter:
 
         for k, v in results.items():
             setattr(model, k, v)
+
+        # A fit must never hand back a non-finite parameter. When the
+        # optimiser fails, the reported parameters are the initial guess
+        # (#261), so any initialiser that produced a nan or an inf had
+        # it laundered into what looked like a fitted model: an offset
+        # Gamma on a tied sample returned ``(inf, inf)`` in silence. The
+        # initialisers that could do that are fixed, but this is the
+        # backstop, since a non-finite parameter is never a valid answer
+        # whatever produced it.
+        _params = np.atleast_1d(np.asarray(model.params, dtype=float))
+        _extra = [getattr(model, name, None) for name in ("gamma", "p", "f0")]
+        _extra = [float(v) for v in _extra if v is not None]
+        if not (np.isfinite(_params).all() and np.isfinite(_extra).all()):
+            raise ValueError(
+                f"{self.name} fit produced non-finite parameters "
+                f"({np.asarray(model.params)}). The optimiser did not "
+                f"reach a valid solution; check the data for degenerate "
+                f"or extreme values."
+            )
 
         # Only maximum likelihood and the closed forms report a
         # log-likelihood, because only they compute one on the way to

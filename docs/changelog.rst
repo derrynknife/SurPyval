@@ -1,6 +1,51 @@
 Changelog
 =========
 
+v0.18.1 (unreleased)
+--------------------
+
+- **Degenerate data is rejected with an explanation instead of an
+  ``IndexError`` from inside numdifftools.** ``Weibull.fit`` on three
+  tied observations died four steps from the cause: a probability plot
+  has no slope through a single distinct abscissa, so ``polyfit``
+  returned a nan; the nan seeded the maximum likelihood fit, which
+  started at nan and produced a nan hessian; the numerical fallback then
+  asked numdifftools for one, and its list of finite-difference steps
+  came back empty. Neither truncation nor censoring was involved,
+  despite where the symptom was first seen.
+
+  ``Gamma`` and ``Beta`` failed the same way but in silence. Their
+  moment-based initialisers divide by a variance that is exactly zero
+  for tied data, giving ``(inf, inf)``, and since a failed optimiser
+  reports its initial guess (#261) those infinities were returned as a
+  fitted model.
+
+  Three changes. The probability-plot regression falls back to a unit
+  slope through the centroid when it is rank deficient -- zero slope
+  would be the more literal reading, but every ``unpack_rr`` divides by
+  the slope to recover a scale, so it only moves the nan one step later.
+  ``Gamma`` and ``Beta`` seed the exponential and uniform cases rather
+  than dividing by zero. And a fit now refuses to return a non-finite
+  parameter whatever produced it.
+
+  The fit is then rejected when the data cannot pin down the free
+  parameters: fewer distinct non-right-censored values than free
+  parameters means a flat -- for a Weibull on tied data, unbounded --
+  direction in the likelihood, and the answer would be wherever the
+  optimiser stopped. Three tied observations returned ``beta = 512``
+  with ``success=True`` and no warning once the nan was fixed.
+
+  The count is of *free* parameters, so fixing one buys back a degree
+  of freedom: ``Weibull.fit([10.], fixed={'beta': 2})`` is well posed
+  and now returns ``alpha = 10``, where before it raised. One-parameter
+  distributions are unaffected -- ``Exponential`` and ``Rayleigh`` fit
+  tied data exactly as they should. Probability plotting is exempt,
+  being a regression rather than a likelihood maximisation, and is how
+  several distributions seed themselves.
+
+  All 330 reference fits across thirteen distributions, five methods and
+  plain, right-censored and offset data are bit-identical.
+
 v0.18.0 (2 August 2026)
 -----------------------
 
