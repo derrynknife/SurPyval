@@ -333,7 +333,7 @@ class Beta_(ParametricFitter):
         --------
         >>> from surpyval import Beta
         >>> Beta.moment(2, 3, 4)
-        0.21428571428571427
+        np.float64(0.2142857142857143)
         """
         return np.exp(abetaln(n + alpha, beta) - abetaln(alpha, beta))
 
@@ -369,7 +369,7 @@ class Beta_(ParametricFitter):
         --------
         >>> from surpyval import Beta
         >>> Beta.entropy(3, 4)
-        -0.3443445622221013
+        np.float64(-0.3443445622221013)
         """
         return (
             abetaln(alpha, beta)

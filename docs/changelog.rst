@@ -4,6 +4,179 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **CI now runs the docstring examples.** ``pytest --doctest-modules``
+  over the package is a new step in the deployment workflow, and every
+  one of the 229 docstring examples passes. It was 59 failing tests
+  when the flag was first turned on.
+
+  A docstring example is a promise about what the library prints, and
+  it is the one users and coding agents reach for first --
+  ``help(Weibull.fit)`` is faster than opening the docs. Nothing was
+  checking it, so it drifted: examples recorded the output of an
+  optimiser two rewrites ago, of numpy 1's scalar repr, of a module
+  that has since moved.
+
+  What the run found, beyond the cosmetic drift:
+
+  - Twelve examples could not run at all. Six regression docstrings
+    (``PH``, ``AH``, ``PO``, ``AFT``, ``AcceleratedLife``, ``Frailty``)
+    were sketches -- ``model = PH(Weibull).fit(x, Z=covariates, c=c)``
+    with ``x``, ``covariates`` and ``c`` never defined. Four more used
+    ``>>>`` on the continuation lines of a multi-line call, so pasting
+    them raised ``SyntaxError``. ``plotting_positions`` imported from
+    ``surpyval.nonparametric``, which moved to
+    ``surpyval.univariate.nonparametric`` several releases ago.
+    ``ParametricFitter.fit`` demonstrated ``how='MPP'`` on
+    interval-censored input, which now (correctly) requires the Turnbull
+    heuristic and raises without it. All are now runnable, with data.
+
+  - The five ``ParametricRegressionModel`` prediction examples
+    (``sf``, ``ff``, ``df``, ``hf``, ``Hf``) had been copied from the
+    univariate ``Parametric`` class and never adapted: they built a
+    ``Weibull.from_params([10, 3])`` and called it with no covariates at
+    all, documenting a signature the method does not have. They now fit
+    a ``WeibullPH`` and pass ``Z``.
+
+  - ``Parametric.var()`` claimed 11.229 for a Weibull(10, 3). The
+    variance is 10.533 (``100 Gamma(5/3) - (10 Gamma(4/3))^2``); the
+    code was right.
+
+  - Several examples fitted unseeded random data and then recorded
+    specific digits, which cannot be reproducible. They now seed.
+
+  ``Parametric.hf`` and ``Parametric.Hf`` returned a 0-d array
+  (``array(0.012)``) for scalar input where ``sf``, ``ff``, ``df`` and
+  ``qf`` all returned a numpy scalar, and ``cs`` did the same; their
+  own ``Returns`` sections promised "the scalar value ... if a scalar
+  was passed". That is now true. The 0-d array came from ``np.where``,
+  which does not collapse.
+
+  **The numbers in the examples are compared as numbers.** doctest
+  compares printed output as text, which is the wrong test for a library
+  whose examples end in an optimiser: the same ``Duane`` fit lands on
+  ``b = 4.1995e-05`` under Python 3.11 and ``4.2032e-05`` under 3.12,
+  and numpy prints eight significant digits either way. Sixteen of the
+  229 examples disagree between those two Pythons somewhere in their
+  digits.
+
+  The obvious workaround -- trimming each documented number back to the
+  digits that agree everywhere -- makes the docstring show something the
+  reader's own session will not produce, which is precisely what these
+  examples exist to avoid. So the examples record the real output, in
+  full, and ``conftest.py`` installs a fallback comparison that runs
+  only after the ordinary text comparison has failed. It fires when the
+  two outputs are identical apart from their numeric literals -- same
+  words, same brackets, same integer-versus-float shape, so ``1`` never
+  matches ``1.`` and a dtype change is still a failure -- and then
+  compares the numbers with ``rel_tol=1e-3``, set by the loosest genuine
+  disagreement between supported Pythons with no margin beyond it, and
+  ``abs_tol=1e-12`` for a restoration factor whose true value is zero
+  and which surfaces as ``1e-16`` with whatever mantissa the optimiser
+  stopped on.
+
+  What that forgives is a value drifting inside the tolerance. What it
+  still catches is every defect listed above: a stale value from another
+  parameterisation, the wrong function being called, the wrong shape, an
+  exception, a missing import. ``surpyval/tests/test_doctest_checker.py``
+  pins both halves of that, using the real output pairs observed on
+  different Pythons.
+
+  The fallback only runs when an example has actually drifted, which on
+  any one machine is a handful of them -- and a different handful on
+  each. A gap in it is therefore invisible locally and surfaces in CI,
+  on whichever Python computed a different last digit. So the doctest
+  step runs twice: once normally, and once under
+  ``--doctest-force-numeric``, which routes every example whose output
+  contains a number through the numeric comparison. Fifteen seconds, and
+  the fallback is exercised against all 229 examples rather than
+  today's accidental few.
+
+  ``NORMALIZE_WHITESPACE`` is set in ``pyproject.toml`` for the same
+  reason: numpy picks its own line breaks and column padding for an
+  array and both move with the width of the widest element.
+
+  This closes #158.
+
+- **The distribution docstring examples now show what you actually see.**
+  ``pytest --doctest-modules`` over ``distributions/`` is green: 139
+  examples, no failures. Previously 39 failed.
+
+  Most were the numpy 2 scalar repr. ``Weibull.mean(3, 4)`` prints
+  ``np.float64(2.7192074311664314)``, where the docstring recorded the
+  bare ``2.7192074311664314`` that numpy 1 used to print. The examples
+  now record the wrapper, because that is what appears at a prompt --
+  the alternative was ``np.set_printoptions(legacy="1.25")`` in a test
+  fixture, which would have kept the docstrings prettier by showing
+  readers something their own session will not produce.
+
+  Four ``qf`` examples printed wider than the 79-column limit once the
+  real output was recorded, numpy having rewrapped the arrays. Rather
+  than hand-wrap them into something numpy would not emit, those
+  examples take fewer probabilities: what is shown is exactly what that
+  input produces.
+
+  Two scalar examples had drifted in the last digit, and are re-recorded.
+
+  With the examples now true, ``--doctest-modules`` is worth running in
+  CI, which is what stops this recurring; it is turned on above.
+
+- **``Gamma`` no longer offers probability plotting as a fit method.**
+  ``Gamma.fit(x, how="MPP")`` now raises, joining ``Beta`` and
+  ``ExpoWeibull``, which already declined for the same reason.
+
+  A probability plot works by rearranging the survival function so some
+  transform of the data falls on a straight line. For a Weibull,
+  ``log(-log S) = beta log x - beta log alpha`` — the axes do not depend
+  on the answer, so you can draw them before knowing anything. The
+  Gamma has no such rearrangement: its CDF is the regularised incomplete
+  gamma function and the shape sits *inside* that special function
+  rather than outside as an exponent. The only straight-line y-axis is
+  the inverse incomplete gamma, which needs the shape. To draw the axis
+  you need the answer; to get the answer you need the axis.
+
+  The code broke the circle by guessing the shape from moments, drawing
+  the plot on that guess, and regressing. When the guess was off, the
+  axis was the wrong axis, the points were no longer straight on it, and
+  the regression fitted a line through a curve — returning a confident
+  wrong estimate rather than an error. An offset made it worse: the
+  shift distorts the low-``x`` end hardest, which is exactly where the
+  shape information lives.
+
+  ``plot()`` is unaffected. It transforms with the *fitted* parameters,
+  so by the time the plot is drawn the axis is the right one — the
+  probability plot of an MLE-fitted Gamma remains a valid diagnostic.
+  Fitting is unchanged for MLE (the default), MSE and MOM.
+
+  The 118-line ``Gamma.mpp`` override is deleted with it, which removes
+  the ``rr="x"`` mis-inversion and the censored-data ``LinAlgError`` from
+  #257 by making both paths unreachable. The MPP sweep in ``test_fit.py``
+  now gates on each distribution's ``supports_mpp`` flag instead of a
+  hardcoded exclusion list, so it stays correct without editing.
+
+- **Nine wrong examples in the distribution docstrings.** Running
+  ``pytest --doctest-modules`` over ``distributions/`` gives 39 failures.
+  Thirty are the numpy-2 scalar repr (``np.float64(2.719...)`` against a
+  recorded ``2.719...``) and are cosmetic. Nine were not.
+
+  Five documented outputs were simply wrong. ``Uniform.ff``'s example
+  called ``Uniform.sf``, and ``ExpoWeibull.cs``'s called
+  ``ExpoWeibull.sf`` -- in both the printed values were right for the
+  function being documented and wrong for the one being called, so the
+  example read as if the two were the same. ``LogLogistic.sf`` carried
+  values from some other parameterisation entirely (0.622 where the
+  answer is 0.988), ``LogLogistic.mean(3, 4)`` claimed ``3`` against
+  ``3.3322`` (the closed form is ``alpha (pi/beta) / sin(pi/beta)``), and
+  ``Exponential.qf`` had stale digits.
+
+  The other four were the ``CustomDistribution`` example -- the Gompertz
+  walkthrough -- whose multi-line ``def`` used ``>>>`` where doctest
+  needs ``...``, so pasting it raised ``IndentationError``.
+
+  In every case the code was right and the documentation was wrong, which
+  is the reassuring direction, but a reader checking their understanding
+  against these would have been misled. They accumulated precisely
+  because the doctests were not run, which is addressed above.
+
 - **Documented why a Turnbull fit does not equal a Kaplan-Meier fit.**
   ``Turnbull.fit`` defaults to ``turnbull_estimator="Fleming-Harrington"``
   while ``KaplanMeier.fit`` is, unsurprisingly, KM. The Turnbull EM

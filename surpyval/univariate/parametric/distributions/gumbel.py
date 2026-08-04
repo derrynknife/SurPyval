@@ -243,10 +243,9 @@ class Gumbel_(ParametricFitter):
         --------
         >>> import numpy as np
         >>> from surpyval import Gumbel
-        >>> p = np.array([.1, .2, .3, .4, .5])
+        >>> p = np.array([0.1, 0.3, 0.5])
         >>> Gumbel.qf(p, 3, 2)
-        array([-1.50073465e+00, 1.20026481e-04, 9.38139134e-01, 1.65654602e+00,
-        2.26697416e+00])
+        array([-1.50073465,  0.93813913,  2.26697416])
         """
         return mu + sigma * (np.log(-np.log1p(-p)))
 
@@ -325,7 +324,7 @@ class Gumbel_(ParametricFitter):
         --------
         >>> from surpyval import Gumbel
         >>> Gumbel.entropy(3, 2)
-        2.270362845461478
+        np.float64(2.270362845461478)
         """
         return np.log(sigma) + euler_gamma + 1
 

@@ -60,16 +60,16 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     =========================
     Distribution        : Weibull
     Fitted by           : MLE
-    Restoration Factor  : -0.1730179893443181
+    Restoration Factor  : -0.1730184624683848
     Parameters          :
-        alpha: 1.3919016662855024
-         beta: 5.008872636271443
+         alpha: 1.3919045968817332
+          beta: 5.008861189641614
     >>>
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
     >>> np_model.mcf(np.array([1, 2, 3, 4, 5, 6]))
-    array([0.1696    , 1.181     , 2.287     , 3.6696    , 5.58237921,
-           8.54474127])
+    array([0.1696    , 1.181     , 2.287     , 3.6694    , 5.58237925,
+           8.54474531])
     """
 
     @staticmethod
@@ -208,10 +208,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Restoration Factor  : 0.4270960618530103
+        Restoration Factor  : 0.3402789091696592
         Parameters          :
-            alpha: 1.3494830373118245
-             beta: 2.7838386997223212
+             alpha: 1.4115217370254167
+              beta: 3.5499343659245564
         """
         self._check_dist_eligible(dist)
         validate_renewal_censoring(data.c, type(self).__name__)
@@ -290,10 +290,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Restoration Factor  : 0.4270960618530103
+        Restoration Factor  : 0.3402789091696592
         Parameters          :
-            alpha: 1.3494830373118245
-             beta: 2.7838386997223212
+             alpha: 1.4115217370254167
+              beta: 3.5499343659245564
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist=dist, init=init)
@@ -325,10 +325,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         >>> from surpyval.recurrent import GeneralizedOneRenewal
         >>>
         >>> model = GeneralizedOneRenewal.fit_from_parameters(
-            [10, 2],
-            0.2,
-            dist=Weibull
-        )
+        ...     [10, 2],
+        ...     0.2,
+        ...     dist=Weibull
+        ... )
         >>> model
         G1 Renewal SurPyval Model
         =========================

@@ -82,6 +82,36 @@ jobs:
           python -m pytest -n auto --cov=surpyval --cov-report=
           --ignore=surpyval/tests/alpha --run-ml
 
+      # Execute the ``>>>`` examples in the docstrings and compare their
+      # printed output. This is what a user (or an agent) sees from
+      # ``help(Weibull.fit)``, so it is a documented promise like any
+      # other, and it went stale silently until it was checked. Kept as
+      # its own step -- separate from the suite above -- so a failure
+      # reads as "the docs drifted", not "a test broke", and so the
+      # doctest collection does not disturb coverage or xdist.
+      #
+      # ``surpyval/tests`` is excluded because the test modules have no
+      # user-facing examples, and ``surpyval/alpha`` because it is not
+      # part of the release contract (same reason the suite skips it).
+      # Option flags are set in pyproject.toml; conftest.py adds the
+      # numeric comparison that lets the examples record real output.
+      - name: doctests
+        run:
+          python -m pytest --doctest-modules surpyval
+          --ignore=surpyval/tests --ignore=surpyval/alpha
+
+      # The numeric comparison above only runs for an example whose
+      # output has actually drifted -- a handful on any one machine, and
+      # a different handful on each. That leaves a gap in it invisible
+      # until CI hits the one example that needed it. This second pass
+      # routes every example through it, so the fallback is checked
+      # against all of them. Fifteen seconds.
+      - name: doctests (numeric comparison forced)
+        run:
+          python -m pytest --doctest-modules surpyval
+          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --doctest-force-numeric
+
       - name: coverage
         run: |
           coverage report

@@ -38,9 +38,15 @@ def AcceleratedLife(distribution, life_model):
 
     Examples
     --------
+    >>> import numpy as np
     >>> from surpyval import Weibull
     >>> from surpyval import AcceleratedLife, Power
-    >>> model = AcceleratedLife(Weibull, Power).fit(x, c=c, Z=stress)
+    >>> np.random.seed(1)
+    >>> stress = np.repeat([20.0, 30.0, 40.0], 40).reshape(-1, 1)
+    >>> x = Weibull.random(120, 10, 3) * (100.0 / stress[:, 0])
+    >>> model = AcceleratedLife(Weibull, Power).fit(x, Z=stress)
+    >>> model.params.round(3)
+    array([  1.   ,   2.831, 558.686,  -0.828])
     """
     if distribution.name not in _LIFE_PARAM_MAP:
         supported = list(_LIFE_PARAM_MAP.keys())

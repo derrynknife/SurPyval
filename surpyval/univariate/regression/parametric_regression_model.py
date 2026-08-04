@@ -430,12 +430,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         Examples
         --------
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
-        >>> model.sf(2)
-        0.9920319148370607
-        >>> model.sf([1, 2, 3, 4, 5])
-        array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.sf([1, 2, 3], [[0], [0], [1]]).round(4)
+        array([0.9812, 0.9382, 0.7429])
         """
         if isinstance(x, list):
             x = np.array(x)
@@ -669,12 +671,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Examples
         --------
 
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
-        >>> model.ff(2)
-        0.007968085162939342
-        >>> model.ff([1, 2, 3, 4, 5])
-        array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.ff([1, 2, 3], [[0], [0], [1]]).round(4)
+        array([0.0188, 0.0618, 0.2571])
         """
         if isinstance(x, list):
             x = np.array(x)
@@ -708,12 +712,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Examples
         --------
 
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
-        >>> model.df(2)
-        0.01190438297804473
-        >>> model.df([1, 2, 3, 4, 5])
-        array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.df([1, 2, 3], [[0], [0], [1]]).round(4)
+        array([0.0326, 0.0524, 0.1289])
         """
         if isinstance(x, list):
             x = np.array(x)
@@ -748,12 +754,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Examples
         --------
 
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
-        >>> model.hf(2)
-        0.012000000000000002
-        >>> model.hf([1, 2, 3, 4, 5])
-        array([0.003, 0.012, 0.027, 0.048, 0.075])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.hf([1, 2, 3], [[0], [0], [1]]).round(4)
+        array([0.0332, 0.0559, 0.1735])
         """
         if isinstance(x, list):
             x = np.array(x)
@@ -789,12 +797,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Examples
         --------
 
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
-        >>> model.Hf(2)
-        0.008000000000000002
-        >>> model.Hf([1, 2, 3, 4, 5])
-        array([0.001, 0.008, 0.027, 0.064, 0.125])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.Hf([1, 2, 3], [[0], [0], [1]]).round(4)
+        array([0.0189, 0.0638, 0.2972])
         """
         if isinstance(x, list):
             x = np.array(x)
@@ -826,15 +836,22 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         Examples
         --------
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
         >>> np.random.seed(1)
-        >>> model.random(1)
-        array([8.14127103])
-        >>> from surpyval import WeibullPH
-        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
         >>> model = WeibullPH.fit(x, Z)
-        >>> x_rand, Z_rand = model.random(10, Z[:1])
+        >>> np.random.seed(1)
+        >>> x_rand, Z_rand = model.random(5, Z[:1])
+        >>> x_rand.round(3)
+        array([ 8.919,  5.095, 33.929, 10.666, 13.97 ])
+        >>> Z_rand
+        array([[0.],
+               [0.],
+               [0.],
+               [0.],
+               [0.]])
         """
         # Dispatch to the regression fitter's own covariate-aware sampler
         # (#261): the previous implementation ignored ``Z`` entirely and

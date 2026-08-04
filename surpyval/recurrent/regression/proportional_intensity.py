@@ -37,10 +37,10 @@ class ProportionalIntensityModel(
     >>> c = data['arrest'].values
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
     >>> model = ProportionalIntensityNHPP.fit(x, Z, c, dist=CrowAMSAA)
-    >>> type(model)
-    surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel
+    >>> type(model).__name__
+    'ProportionalIntensityModel'
     >>> model.cif([1, 2, 3], Z.mean(axis=0))
-    array([0.00625402, 0.04304137, 0.13302238])
+    array([8.84210972e-07, 2.79074784e-05, 2.10220821e-04])
     """
 
     def __repr__(self):

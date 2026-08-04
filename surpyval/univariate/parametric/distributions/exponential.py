@@ -327,7 +327,7 @@ class Exponential_(ParametricFitter):
         >>> from surpyval import Exponential
         >>> p = np.array([.1, .2, .3, .4, .5])
         >>> Exponential.qf(p, 3)
-        array([0.03512219, 0.07438118, 0.11889152, 0.17027853, 0.23104906])
+        array([0.03512017, 0.07438118, 0.11889165, 0.17027521, 0.23104906])
         """
         return -np.log1p(-p) / failure_rate
 
@@ -386,7 +386,7 @@ class Exponential_(ParametricFitter):
         --------
         >>> from surpyval import Exponential
         >>> Exponential.moment(2, 3)
-        0.2222222222222222
+        np.float64(0.2222222222222222)
         """
         return factorial(n) / (failure_rate**n)
 
@@ -414,7 +414,7 @@ class Exponential_(ParametricFitter):
         --------
         >>> from surpyval import Exponential
         >>> Exponential.entropy(3)
-        -0.09861228866810978
+        np.float64(-0.09861228866810978)
         """
         return 1 - np.log(failure_rate)
 

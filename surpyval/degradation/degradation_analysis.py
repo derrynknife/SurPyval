@@ -1193,8 +1193,8 @@ class DegradationAnalysis_:
     Censored Units      : 0
     Life Distribution   : Weibull
     Parameters          :
-         alpha: 441.4780882117898
-          beta: 6.987078993008337
+         alpha: 441.47809611105606
+          beta: 6.987078889297555
     >>> model.pseudo_failure_times
     array([451.61290323, 500.        , 318.18181818, 378.37837838])
     """

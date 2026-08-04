@@ -448,7 +448,9 @@ class StepSchedule:
         Examples
         --------
         >>> StepSchedule.from_expression("0.9 if t % 24 < 8 else 0.3", 96)
+        StepSchedule(step, 9 segment(s), p=1)
         >>> StepSchedule.from_expression("0.3 * 2 ** floor(t / 1000)", 5000)
+        StepSchedule(step, 6 segment(s), p=1)
         """
         exprs = [expr] if isinstance(expr, str) else list(expr)
         if len(exprs) == 0:

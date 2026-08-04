@@ -1,13 +1,8 @@
-import warnings
-
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
-from scipy.optimize import minimize
 from scipy.special import digamma, gammaincinv
-from scipy.stats import pearsonr
 
 from surpyval import np
-from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 from surpyval.utils.autograd_gamma_compat import gammainc as agammainc
 from surpyval.utils.autograd_gamma_compat import gammainccln as agammainccln
@@ -35,6 +30,26 @@ class Gamma_(ParametricFitter):
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="linear",
         )
+        # The Gamma has no linearising probability plot, for the same
+        # reason as the Beta above it: the CDF is the regularised
+        # incomplete gamma function, and the shape sits *inside* that
+        # special function rather than outside it as an exponent. The
+        # only straight-line y-axis is the inverse incomplete gamma,
+        # which needs the shape -- so to draw the axis you need the
+        # answer, and to get the answer you need the axis.
+        #
+        # MPP broke the circle by guessing the shape from moments,
+        # drawing the plot on that guess and regressing. When the guess
+        # is off the axis is the wrong axis, the points are no longer
+        # straight on it, and the regression fits a line through a
+        # curve -- returning a confident, wrong estimate rather than an
+        # error. An offset makes it worse: the shift distorts the low-x
+        # end hardest, which is exactly where the shape information is.
+        #
+        # Fit by MLE (the default), MSE or MOM instead. ``plot()`` still
+        # works, because it transforms with the *fitted* parameters, so
+        # the axis is the right one by the time it is drawn.
+        self.supports_mpp = False
 
     @staticmethod
     def _moment_estimate(x):
@@ -396,7 +411,7 @@ class Gamma_(ParametricFitter):
         --------
         >>> from surpyval import Gamma
         >>> Gamma.moment(3, 3, 4)
-        0.9375
+        np.float64(0.9375)
         """
         return agamma(n + alpha) / (beta**n * agamma(alpha))
 
@@ -430,7 +445,7 @@ class Gamma_(ParametricFitter):
         --------
         >>> from surpyval import Gamma
         >>> Gamma.entropy(3, 4)
-        0.46128414924312033
+        np.float64(0.46128414924312033)
         """
         return (
             alpha
@@ -489,122 +504,6 @@ class Gamma_(ParametricFitter):
 
     def mpp_x_transform(self, x, gamma=0):
         return x - gamma
-
-    def mpp(
-        self,
-        x,
-        c=None,
-        n=None,
-        t=None,
-        heuristic="Nelson-Aalen",
-        rr="y",
-        on_d_is_0=False,
-        offset=False,
-    ):
-        # Forward the truncation windows (previously dropped, #280).
-        x_pp, r, d, F = plotting_positions(
-            x, c=c, n=n, t=t, heuristic=heuristic
-        )
-
-        results = {}
-
-        if on_d_is_0:
-            pass
-        else:
-            F = F[d > 0]
-            x_pp = x_pp[d > 0]
-
-        if (F == 1).any():
-            mask = F != 1
-            warnings.warn(
-                "Some heuristic values for CDF = 1 have been "
-                "encountered in plotting points and have been "
-                "ignored.",
-                stacklevel=2,
-            )
-            F = F[mask]
-            x_pp = x_pp[mask]
-
-        init = self._parameter_initialiser(x_pp, c, n)
-
-        mask = np.isfinite(F)
-        if not mask.all():
-            warnings.warn(
-                "Some Infinite values encountered in plotting "
-                "points and have been ignored.",
-                stacklevel=2,
-            )
-            F = F[mask]
-            x_pp = x_pp[mask]
-
-        if offset:
-
-            def fun(a):
-                return -pearsonr(x_pp, self.mpp_y_transform(F, a, 1.0))[0]
-
-            # The moment-based init is computed from the *unshifted* data,
-            # which diverges for strongly offset data (tiny relative spread
-            # -> huge alpha) and strands the correlation search at a bad
-            # local optimum. Try several starts and keep the best (#257).
-            starts = {float(init[0]), 0.5, 1.0, 2.0, 5.0}
-            best = None
-            for a0 in starts:
-                res = minimize(fun, [a0], bounds=((1e-8, None),))
-                if best is None or res.fun < best.fun:
-                    best = res
-            alpha = best.x[0]
-
-            y_pp = self.mpp_y_transform(F, alpha)
-
-            if rr == "y":
-                # y = beta * (x - gamma): slope is beta, intercept is
-                # -beta * gamma.
-                params = np.polyfit(x_pp, y_pp, 1)
-                beta = params[0]
-                gamma = -params[1] / beta
-            elif rr == "x":
-                # x = y / beta + gamma: slope is 1/beta and the intercept
-                # IS gamma (#257).
-                params = np.polyfit(y_pp, x_pp, 1)
-                beta = 1.0 / params[0]
-                gamma = params[1]
-
-            results["gamma"] = gamma
-            results["params"] = np.array([alpha, beta])
-
-            return results
-        else:
-            if rr == "y":
-                x_pp = x_pp[:, np.newaxis]
-
-                def fun(alpha):
-                    y_pp = self.mpp_y_transform(F, alpha, 1.0)
-                    return np.linalg.lstsq(x_pp, y_pp)[1]
-
-                res = minimize(fun, init[0], bounds=((0, None),))
-                alpha = res.x[0]
-                y_pp = self.mpp_y_transform(F, alpha, 1.0)
-                beta, residuals, _, _ = np.linalg.lstsq(x_pp, y_pp)
-                beta = beta[0]
-            else:
-                # Regress against the same filtered plotting positions used
-                # everywhere else — the raw ``x`` argument has a different
-                # length whenever any point was filtered (#257).
-
-                def fun(a):
-                    y = self.mpp_y_transform(F, a, 1.0)[:, np.newaxis]
-                    return np.linalg.lstsq(y, x_pp)[1]
-
-                res = minimize(fun, init[0], bounds=((0, None),))
-                alpha = res.x[0]
-                beta = np.linalg.lstsq(
-                    self.mpp_y_transform(F, alpha, 1.0)[:, np.newaxis], x_pp
-                )[0][0]
-                beta = 1.0 / beta
-
-            results["params"] = np.array([alpha, beta])
-
-            return results
 
 
 Gamma: ParametricFitter = Gamma_("Gamma")

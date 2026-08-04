@@ -49,6 +49,22 @@ where = ["."]
 [tool.setuptools.package-data]
 "*" = ["datasets/*.csv", "py.typed"]
 
+# pytest
+[tool.pytest.ini_options]
+# Applied to the ``--doctest-modules`` run (see .github/workflows/actions.yml),
+# which executes the ``>>>`` examples in the docstrings and compares their
+# printed output.
+#
+# numpy chooses its own line breaks and column padding when it reprs an
+# array, and both change with the width of the widest element. Without
+# this an example is only correct for the exact terminal wrapping it was
+# captured at, and a docstring wrapped to 79 columns by hand -- as most
+# of these are -- can never match.
+#
+# The other half of the comparison is in conftest.py, which compares the
+# numbers in the output as numbers rather than as text.
+doctest_optionflags = "NORMALIZE_WHITESPACE"
+
 # For Black pre-commit hook
 [tool.black]
 line-length = 79

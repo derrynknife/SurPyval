@@ -32,7 +32,7 @@ def success_run(n, confidence=None, alpha=None):
 
         >>> from surpyval import success_run
         >>> success_run(10)
-        0.7411344491069477
+        np.float64(0.7411344491069477)
     """
     if confidence and alpha:
         raise ValueError("Only one of confidence or alpha can be specified")

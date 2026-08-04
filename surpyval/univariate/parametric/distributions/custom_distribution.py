@@ -43,16 +43,16 @@ class CustomDistribution(ParametricFitter):
     >>> name = 'Gompertz'
     >>>
     >>> def Hf(x, *params):
-    >>>     return params[0] * np.exp(params[1] * x - 1)
-    >>>
+    ...     return params[0] * np.exp(params[1] * x - 1)
+    ...
     >>> param_names = ['nu', 'b']
     >>> bounds = ((0, None), (0, None))
     >>> support = (-np.inf, np.inf)
     >>> Gompertz = surv.CustomDistribution(
-        name, Hf, param_names, bounds, support
-    )
+    ...     name, Hf, param_names, bounds, support
+    ... )
     >>> x = np.array([1, 2, 3, 4, 5])
-    >>> Gompertz.fit(x)
+    >>> model = Gompertz.fit(x)
     """
 
     def __init__(self, name, fun, param_names, bounds, support):

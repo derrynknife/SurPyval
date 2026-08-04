@@ -411,7 +411,7 @@ class Beta4_(ParametricFitter):
         --------
         >>> from surpyval import Beta4
         >>> Beta4.moment(1, 3, 4, 2, 3)
-        2.4285714285714284
+        np.float64(2.428571428571429)
         """
         scale = b - a
         total = 0.0

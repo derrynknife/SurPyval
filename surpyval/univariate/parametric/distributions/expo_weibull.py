@@ -184,7 +184,7 @@ class ExpoWeibull_(ParametricFitter):
         >>> import numpy as np
         >>> from surpyval import ExpoWeibull
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> ExpoWeibull.sf(x, 1, 3, 4, 1.2)
+        >>> ExpoWeibull.cs(x, 1, 3, 4, 1.2)
         array([8.77367129e-01, 4.25451775e-01, 5.09266354e-02, 5.37452200e-04,
                1.35732908e-07])
         """

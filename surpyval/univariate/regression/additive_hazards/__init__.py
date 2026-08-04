@@ -32,8 +32,14 @@ def AH(distribution):
 
     Examples
     --------
+    >>> import numpy as np
     >>> from surpyval import Weibull, AH
-    >>> model = AH(Weibull).fit(x, Z=covariates, c=c)
+    >>> np.random.seed(1)
+    >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+    >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    >>> model = AH(Weibull).fit(x, Z=Z)
+    >>> model.params.round(3)
+    array([9.332, 1.851, 0.086])
     """
     return AdditiveHazardsFitter.create(distribution)
 

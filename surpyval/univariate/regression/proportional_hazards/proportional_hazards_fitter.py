@@ -188,17 +188,13 @@ class ProportionalHazardsFitter(
 
         >>> from surpyval import WeibullPH
         >>> from surpyval.datasets import load_tires_data
-        >>> from autograd import numpy as anp
-        >>> import numpy as np
-        >>>
         >>> data = load_tires_data()
-        >>>
         >>> x = data['Survival'].values
         >>> c = data['Censoring'].values
         >>> Z = data[[
-            'Wedge gauge', 'Interbelt gauge', 'Peel force',
-            'Wedge gauge×peel force'
-        ]].values
+        ...     'Wedge gauge', 'Interbelt gauge', 'Peel force',
+        ...     'Wedge gauge×peel force'
+        ... ]].values
         >>> model = WeibullPH.fit(x=x, Z=Z, c=c)
         >>> model
         Parametric Regression SurPyval Model
@@ -208,13 +204,13 @@ class ProportionalHazardsFitter(
         Regression Model    : Log Linear [e^(beta'Z)]
         Fitted by           : MLE
         Distribution        :
-            alpha: 0.24255054642143947
-            beta: 16.057791674515805
+             alpha: 0.2425513627560218
+              beta: 16.057785182711932
         Regression Model    :
-            beta_0: -9.165062641226692
-            beta_1: -7.998599877425742
-            beta_2: -27.503283340963034
-            beta_3: 18.38550143851751
+            beta_0: -9.165062726518311
+            beta_1: -7.998573055929788
+            beta_2: -27.50318580568538
+            beta_3: 18.385445332039488
         >>> model = WeibullPH.fit(x=x, Z=Z, c=c, fixed={"beta": 15})
         >>> model
         Parametric Regression SurPyval Model
@@ -224,13 +220,13 @@ class ProportionalHazardsFitter(
         Regression Model    : Log Linear [e^(beta'Z)]
         Fitted by           : MLE
         Distribution        :
-            alpha: 0.23772915681951018
-            beta: 15.0
+             alpha: 0.237729668424067
+              beta: 15.0
         Regression Model    :
-            beta_0: -8.628333861229965
-            beta_1: -7.617541980158942
-            beta_2: -25.952407717383302
-            beta_3: 17.270173771235655
+            beta_0: -8.62832691738283
+            beta_1: -7.617529362323243
+            beta_2: -25.952367249502934
+            beta_3: 17.270148387391387
         """
         data, prep = prepare_regression_fit(
             self,

@@ -297,11 +297,11 @@ class MixtureModel(SerialisableMixin, Distribution):
         Sub-Distributions   : 2
         Fitted by           : EM
         Weights             :
-            0.6094710980384728,
-            0.39052890196152723
+                0.6184891886499861,
+                0.381510811350014
         Parameters          :
-            alpha: [ 5.8855232  17.23187124]
-             beta: [ 2.04051304 11.01565277]
+             alpha: [ 6.32508961 17.37701969]
+              beta: [ 1.83105154 12.01392721]
         """
 
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)

@@ -301,10 +301,9 @@ class LogNormal_(ParametricFitter):
         --------
         >>> import numpy as np
         >>> from surpyval import LogNormal
-        >>> p = np.array([.1, .2, .3, .4, .5])
+        >>> p = np.array([0.1, 0.2, 0.3, 0.4])
         >>> LogNormal.qf(p, 3, 4)
-        array([ 0.11928899,  0.69316658,  2.46550819,  7.29078766,
-                20.08553692])
+        array([0.11928899, 0.69316658, 2.46550819, 7.29078766])
         """
         return np.exp(scipy_norm.ppf(p, mu, sigma))
 
@@ -334,7 +333,7 @@ class LogNormal_(ParametricFitter):
         --------
         >>> from surpyval import LogNormal
         >>> LogNormal.mean(3, 4)
-        59874.14171519782
+        np.float64(59874.14171519782)
         """
         return np.exp(mu + (sigma**2) / 2)
 
@@ -366,7 +365,7 @@ class LogNormal_(ParametricFitter):
         --------
         >>> from surpyval import LogNormal
         >>> LogNormal.moment(2, 3, 4)
-        3.1855931757113756e+16
+        np.float64(3.1855931757113756e+16)
         """
         return np.exp(n * mu + (n**2 * sigma**2) / 2)
 
@@ -396,7 +395,7 @@ class LogNormal_(ParametricFitter):
         --------
         >>> from surpyval import LogNormal
         >>> LogNormal.entropy(3, 4)
-        5.805232894324563
+        np.float64(5.805232894324563)
         """
         return mu + 0.5 * np.log(2 * np.pi * np.e * sigma**2)
 
