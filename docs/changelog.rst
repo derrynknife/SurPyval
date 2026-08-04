@@ -1,6 +1,33 @@
 Changelog
 =========
 
+v0.19.1 (unreleased)
+--------------------
+
+- **Documented why a Turnbull fit does not equal a Kaplan-Meier fit.**
+  ``Turnbull.fit`` defaults to ``turnbull_estimator="Fleming-Harrington"``
+  while ``KaplanMeier.fit`` is, unsurprisingly, KM. The Turnbull EM
+  recovers the same ``r`` and ``d`` either way; the three estimator
+  options then differ in how those become a survival curve. Comparing the
+  default against ``KaplanMeier`` and reading the gap as a defect is an
+  easy mistake — it is the one #260 was filed on, and the one made again
+  while checking whether #260 was still open.
+
+  On ``x=[2,3,3,4,5,6], tl=[0,0,1,1,2,2]`` the survival at 2 is 0.750
+  under KM, 0.765 under FH and 0.779 under NA. With the estimator matched,
+  Turnbull agrees with ``KaplanMeier`` to around 1e-9 on both ``sf`` and
+  ``cb``, across right-censored and left-truncated data.
+
+  Only the KM option is the non-parametric MLE. Maximising the truncated
+  likelihood directly over the mass vector gives 0.750; FH's 0.765 scores
+  worse on that same likelihood, as an ``exp(-H)`` construction should.
+  FH is the default because it behaves better in the far tails and on
+  zero-inflated data (v0.8.0), not because it maximises anything. The
+  docstring now says all of this, and a test pins the three figures and
+  the NPMLE identity against a brute-force maximisation.
+
+  No behaviour change.
+
 v0.19.0 (4 August 2026)
 -----------------------
 
