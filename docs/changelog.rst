@@ -1,8 +1,8 @@
 Changelog
 =========
 
-v0.19.0 (unreleased)
---------------------
+v0.19.0 (4 August 2026)
+-----------------------
 
 - **Confidence bounds no longer turn silently to nan on data measured
   in large units, and those fits are around 17x faster.** A Weibull fit
