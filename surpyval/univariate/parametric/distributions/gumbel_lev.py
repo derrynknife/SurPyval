@@ -335,7 +335,7 @@ class GumbelLEV_(ParametricFitter):
         --------
         >>> from surpyval import GumbelLEV
         >>> GumbelLEV.entropy(3, 2)
-        2.270362845461478
+        np.float64(2.270362845461478)
         """
         return np.log(sigma) + euler_gamma + 1
 

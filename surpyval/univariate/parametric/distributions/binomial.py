@@ -64,7 +64,7 @@ class Binomial_(DiscreteParametricFitter):
         --------
         >>> from surpyval import Binomial
         >>> Binomial.df(2, 5, 0.3)
-        0.3086999999999998
+        np.float64(0.3086999999999998)
         """
         return binom.pmf(x, n, p)
 
@@ -97,7 +97,7 @@ class Binomial_(DiscreteParametricFitter):
         --------
         >>> from surpyval import Binomial
         >>> Binomial.ff(2, 5, 0.3)
-        0.83692
+        np.float64(0.83692)
         """
         return binom.cdf(x, n, p)
 
@@ -129,7 +129,7 @@ class Binomial_(DiscreteParametricFitter):
         --------
         >>> from surpyval import Binomial
         >>> Binomial.sf(2, 5, 0.3)
-        0.16308
+        np.float64(0.16308)
         """
         return binom.sf(x, n, p)
 
@@ -215,7 +215,7 @@ class Binomial_(DiscreteParametricFitter):
         --------
         >>> from surpyval import Binomial
         >>> Binomial.qf(0.5, 5, 0.3)
-        1.0
+        np.float64(1.0)
         """
         return binom.ppf(q, n, p)
 
@@ -289,7 +289,7 @@ class Binomial_(DiscreteParametricFitter):
         --------
         >>> from surpyval import Binomial
         >>> Binomial.moment(1, 5, 0.3)
-        1.5
+        np.float64(1.5)
         """
         return binom.moment(m, n, p)
 
@@ -302,7 +302,7 @@ class Binomial_(DiscreteParametricFitter):
         --------
         >>> from surpyval import Binomial
         >>> Binomial.entropy(5, 0.3)
-        1.413614855283445
+        np.float64(1.413614855283445)
         """
         return binom.entropy(n, p)
 
@@ -414,7 +414,7 @@ class Binomial_(DiscreteParametricFitter):
         >>> from surpyval import Binomial
         >>> model = Binomial.from_params([5, 0.3])
         >>> model.mean()
-        1.5
+        np.float64(1.5)
         """
         params = np.atleast_1d(np.asarray(params, dtype=float))
 

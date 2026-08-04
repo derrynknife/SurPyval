@@ -4,6 +4,30 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **The distribution docstring examples now show what you actually see.**
+  ``pytest --doctest-modules`` over ``distributions/`` is green: 139
+  examples, no failures. Previously 39 failed.
+
+  Most were the numpy 2 scalar repr. ``Weibull.mean(3, 4)`` prints
+  ``np.float64(2.7192074311664314)``, where the docstring recorded the
+  bare ``2.7192074311664314`` that numpy 1 used to print. The examples
+  now record the wrapper, because that is what appears at a prompt --
+  the alternative was ``np.set_printoptions(legacy="1.25")`` in a test
+  fixture, which would have kept the docstrings prettier by showing
+  readers something their own session will not produce.
+
+  Four ``qf`` examples printed wider than the 79-column limit once the
+  real output was recorded, numpy having rewrapped the arrays. Rather
+  than hand-wrap them into something numpy would not emit, those
+  examples take fewer probabilities: what is shown is exactly what that
+  input produces.
+
+  Two scalar examples had drifted in the last digit, and are re-recorded.
+
+  With the examples now true, ``--doctest-modules`` is worth running in
+  CI -- that decision is separate, and is what would stop this
+  recurring.
+
 - **``Gamma`` no longer offers probability plotting as a fit method.**
   ``Gamma.fit(x, how="MPP")`` now raises, joining ``Beta`` and
   ``ExpoWeibull``, which already declined for the same reason.

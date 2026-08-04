@@ -308,9 +308,9 @@ class Normal_(ParametricFitter):
         --------
         >>> import numpy as np
         >>> from surpyval import Normal
-        >>> p = np.array([.1, .2, .3, .4, .5])
+        >>> p = np.array([0.1, 0.2, 0.3, 0.4])
         >>> Normal.qf(p, 3, 4)
-        array([-2.12620626, -0.36648493,  0.90239795,  1.98661159,  3.       ])
+        array([-2.12620626, -0.36648493,  0.90239795,  1.98661159])
         """
         return scipy_norm.ppf(p, mu, sigma)
 
@@ -372,7 +372,7 @@ class Normal_(ParametricFitter):
         --------
         >>> from surpyval import Normal
         >>> Normal.moment(2, 3, 4)
-        25.0
+        np.float64(25.0)
         """
         return scipy_norm.moment(n, mu, sigma)
 
@@ -402,7 +402,7 @@ class Normal_(ParametricFitter):
         --------
         >>> from surpyval import Normal
         >>> Normal.entropy(3, 4)
-        2.8052328943245635
+        np.float64(2.8052328943245635)
         """
         return 0.5 * np.log(2 * np.pi * np.e * sigma**2)
 

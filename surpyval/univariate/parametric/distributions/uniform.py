@@ -341,7 +341,7 @@ class Uniform_(ParametricFitter):
         --------
         >>> from surpyval import Uniform
         >>> Uniform.moment(2, 0, 6)
-        12.0
+        np.float64(12.0)
         """
         if n == 0:
             return 1
@@ -377,7 +377,7 @@ class Uniform_(ParametricFitter):
         --------
         >>> from surpyval import Uniform
         >>> Uniform.entropy(0, 6)
-        1.791759469228055
+        np.float64(1.791759469228055)
         """
         return np.log(b - a)
 

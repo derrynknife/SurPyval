@@ -304,7 +304,7 @@ class LogLogistic_(ParametricFitter):
         --------
         >>> from surpyval import LogLogistic
         >>> LogLogistic.mean(3, 4)
-        3.332162203618775
+        np.float64(3.332162203618775)
         """
         if beta > 1:
             return (alpha * np.pi / beta) / (np.sin(np.pi / beta))
@@ -382,7 +382,7 @@ class LogLogistic_(ParametricFitter):
         --------
         >>> from surpyval import LogLogistic
         >>> LogLogistic.entropy(3, 4)
-        1.7123179275482192
+        np.float64(1.7123179275482192)
         """
         return np.log(alpha / beta) + 2
 

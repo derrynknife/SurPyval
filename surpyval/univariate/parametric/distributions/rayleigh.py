@@ -299,7 +299,7 @@ class Rayleigh_(ParametricFitter):
         --------
         >>> from surpyval import Rayleigh
         >>> Rayleigh.mean(3)
-        3.7599424119465006
+        np.float64(3.7599424119465006)
         """
         return sigma * np.sqrt(np.pi / 2)
 
@@ -329,7 +329,7 @@ class Rayleigh_(ParametricFitter):
         --------
         >>> from surpyval import Rayleigh
         >>> Rayleigh.moment(2, 3)
-        18.0
+        np.float64(18.0)
         """
         return (sigma**n) * (2 ** (n / 2)) * gamma_func(1 + n / 2)
 

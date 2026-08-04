@@ -226,9 +226,9 @@ class Logistic_(ParametricFitter):
         --------
         >>> import numpy as np
         >>> from surpyval import Logistic
-        >>> p = np.array([.1, .2, .3, .4, .5])
+        >>> p = np.array([0.1, 0.2, 0.3, 0.4])
         >>> Logistic.qf(p, 3, 4)
-        array([-5.78889831, -2.54517744, -0.38919144,  1.37813957,  3.       ])
+        array([-5.78889831, -2.54517744, -0.38919144,  1.37813957])
         """
         return mu + sigma * (np.log(p) - np.log1p(-p))
 
@@ -311,7 +311,7 @@ class Logistic_(ParametricFitter):
         --------
         >>> from surpyval import Logistic
         >>> Logistic.entropy(3, 4)
-        3.386294361119891
+        np.float64(3.386294361119891)
         """
         return np.log(sigma) + 2
 

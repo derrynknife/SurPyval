@@ -411,7 +411,7 @@ class Gamma_(ParametricFitter):
         --------
         >>> from surpyval import Gamma
         >>> Gamma.moment(3, 3, 4)
-        0.9375
+        np.float64(0.9375)
         """
         return agamma(n + alpha) / (beta**n * agamma(alpha))
 
@@ -445,7 +445,7 @@ class Gamma_(ParametricFitter):
         --------
         >>> from surpyval import Gamma
         >>> Gamma.entropy(3, 4)
-        0.46128414924312033
+        np.float64(0.46128414924312033)
         """
         return (
             alpha

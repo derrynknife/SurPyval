@@ -302,7 +302,7 @@ class Weibull_(ParametricFitter):
         --------
         >>> from surpyval import Weibull
         >>> Weibull.mean(3, 4)
-        2.7192074311664314
+        np.float64(2.7192074311664314)
         """
         return alpha * gamma_func(1 + 1.0 / beta)
 
@@ -334,7 +334,7 @@ class Weibull_(ParametricFitter):
         --------
         >>> from surpyval import Weibull
         >>> Weibull.moment(2, 3, 4)
-        7.976042329074821
+        np.float64(7.976042329074821)
         """
         return alpha**n * gamma_func(1 + n / beta)
 
