@@ -64,53 +64,347 @@ v0.18.1 (unreleased)
   relative terms, at a likelihood 2e-3 below the answer they had been
   recorded from.
 
-  ``gtol`` is now scaled by the gradient at the point the search starts,
-  at 1e-7 relative. A fixed tighter constant does not work: 1e-8 fixes
-  the large fits but is unreachable for small samples, dropping an n=8
-  Weibull out of BFGS and into TNC, where it lands 5e-5 away. At 1e-7
-  relative both ends converge on BFGS, the large fits to 2e-8 and the
-  small one to 4e-9.
+  There is a second dimension to the same problem, in the opposite
+  direction. A log-likelihood is a *sum* over observations, so its
+  gradient grows like ``n`` as well as shrinking like ``1/theta``. At
+  n = 1e5 it is five orders of magnitude larger, the same absolute
+  threshold is correspondingly unreachable, and BFGS gives up on
+  censored samples it should handle easily -- found by benchmarking
+  against lifelines with censoring, where it was the one configuration
+  in 64 where surpyval was slower.
 
-  With both in place the restored standard errors satisfy the
-  scale-equivariance law ``se(theta * c) = c * se(theta)`` to 1e-9 or
-  better up to data scale 1e4, and to machine precision for the Rayleigh
-  and Normal. At 1e6 most distributions hold to 1e-6 or better; the
-  Weibull is an outlier at around 1e-3.
+  So the problem is rescaled in both of its dimensions, and a single
+  constant then means the same thing for every fit::
 
-  That outlier is worth stating plainly, because it marks the limit of
-  what a tolerance constant can do. Scaling ``gtol`` by the gradient at
-  the initial guess does *not* make the criterion scale free the way it
-  first appears to: the initialiser scales with the data too, so the
-  gradient at the starting point is itself roughly scale invariant and
-  the resulting threshold barely moves. There is no constant that serves
-  every case -- 1e-8 relative fixes the Weibull at 1e6 but breaks the
-  n=8 fit, and 1e-9 breaks both small fits by pushing them to TNC. 1e-7
-  is the setting where everything the test suite covers passes.
+      s = max(|u0|, 1)        f0 = max(|f(u0)|, 1)
+      v = u / s               g(v) = f(s v) / f0
 
-  So this is a better tolerance, not a scale-free one. Solving a
-  well-scaled problem, where a single absolute tolerance means the same
-  thing everywhere, is the actual fix; the measurements above are
-  recorded in #323 as the case for it.
+  The starting point is order 1 in every component and so is the
+  objective, whatever the units and whatever the sample size. Since
+  ``dg/dv = s * df/du / f0``, with ``s`` growing exactly as ``df/du``
+  shrinks and ``f0`` growing like ``n``, so is the gradient. The
+  ``gtol`` of 1e-6 applied there is a genuine relative tolerance rather
+  than the dimensioned constant scipy's default is.
 
-  Two consequences worth noting. Fits now converge slightly further than
-  before wherever BFGS wins, so a handful of pinned numbers moved in
-  their last few digits -- always towards a better likelihood. The two
-  Monte Carlo simulation tests in ``test_counting.py`` also had their
-  tolerance loosened from ``allclose``'s 1e-5 to 1e-3: they drive a
-  5000-run simulation from an optimiser's output, where a change in the
-  seventh significant figure of a parameter moves the simulated MCF in
-  the fourth. That is convergence noise, and what those tests exist to
-  catch would break far more loudly.
+  Tuning the threshold was tried first and does not work. Three
+  criteria were measured against the same reference set: an absolute
+  ``gtol``, a ``gtol`` scaled by the gradient at the initial guess, and
+  BFGS's step-size test ``xrtol``. Swapping the whole method for
+  L-BFGS-B to reach its relative ``ftol`` was measured too. None is
+  scale free in practice.
 
-  #323 is now rescoped. It had proposed internal rescaling to fix both
-  the bounds and the speed; neither needs it. Re-measured with the
-  gradient working, rescaling is between 4.2x faster and 6x *slower*
-  depending on the distribution, so the twelve per-distribution
-  back-transforms it would require are no longer obviously worth their
-  risk. What remains there is the convergence criterion, and the
-  cheapest form of it is preconditioning the optimiser's search alone --
-  no back-transforms, because nothing outside the optimiser ever sees
-  scaled units.
+  Scaling ``gtol`` by the initial gradient in particular *looks* scale
+  free and is not: the initialiser scales with the data too, so that
+  gradient is itself roughly scale invariant -- a Weibull at scale 1,
+  1e4 and 1e6 all came out with ``gtol = 1.86e-6``. Nor is there a
+  constant that serves every case: tight enough for a Weibull at 1e6 is
+  unreachable for an n=8 sample, which then drops out of BFGS into TNC.
+  ``xrtol`` and ``ftol`` fail differently -- both stop on how the
+  optimiser is behaving rather than on the quantity that is zero at the
+  answer, so they quit early along flat directions, which is precisely
+  where the standard error is largest and most needs to be right. The
+  ExpoWeibull, three parameters and a flat surface, was 17% out under
+  both. The full measurements are in #323.
+
+  Rescaling beats every one of them, and is faster than the tolerance it
+  replaces:
+
+  ==============================================  ==========  ==========
+  scale-equivariance of ``se`` (8 distributions)  relative    rescaled
+                                                  ``gtol``    problem
+  ==============================================  ==========  ==========
+  worst deviation                                 1.6e-3      2.0e-5
+  cases above 1e-5                                1 of 16     1 of 16
+  Weibull n=1e5, 30% censored, scale 1            0.163s      0.153s
+  Weibull n=1e5, 60% censored, scale 1e6          0.250s      0.119s
+  ==============================================  ==========  ==========
+
+  Rescaling the parameters alone reaches 2.8e-8 on the first row, better
+  than the 2.0e-5 above, but is the version that leaves BFGS failing at
+  large ``n``: those two censored fits take 0.370s and 0.590s under it.
+  Normalising the objective as well trades a little of that accuracy for
+  a criterion that holds across sample sizes too, which is the point.
+
+  Both mappings are fixed before the search begins and neither can move
+  the optimum: a diagonal linear change of variable relocates a minimum
+  no more than dividing the objective by a positive constant does. They
+  change the route taken and the units of the convergence test, nothing
+  else. ``res.x`` and ``res.fun`` are both mapped back inside the
+  helper, so no scaled quantity exists anywhere else in the package, not
+  even transiently: the covariance step, ``cb`` and serialisation all
+  receive exactly what they received before. Nothing needs to know which
+  parameter is a scale and which a shape, which is what made the
+  internal-rescaling proposal in #323 risky; preconditioning needs none
+  of it.
+
+  Two consequences worth noting. Fits now converge further than before
+  wherever BFGS wins, so a handful of pinned numbers moved in their last
+  few digits -- always towards a better likelihood. The two Monte Carlo
+  simulation tests in ``test_counting.py`` also had their tolerance
+  loosened from ``allclose``'s 1e-5 to 1e-3: they drive a 5000-run
+  simulation from an optimiser's output, where a change in the seventh
+  significant figure of a parameter moves the simulated MCF in the
+  fourth. That is convergence noise, and what those tests exist to catch
+  would break far more loudly.
+
+  The second is that it flushed out a separate defect, which is fixed
+  alongside it and described next.
+
+  #323 is now rescoped. It had proposed rescaling the *model* -- fit on
+  transformed data, then map the parameters and the covariance back --
+  to fix both the bounds and the speed. Neither needs it. The bounds
+  were the ``np.where`` overflow above, and re-measured with the
+  gradient working, rescaling the data is between 4.2x faster and 6x
+  *slower* depending on the distribution. What was left, the convergence
+  criterion, is what preconditioning the search addresses, so the twelve
+  per-distribution back-transforms are not needed for any of it.
+
+- **Cox fits are 3x to 10x faster, with the answers unchanged to every
+  digit.** None of this is a change to the maths; the coefficients still
+  match ``lifelines`` to between 1e-06 and 1e-12, exactly as before.
+
+  Four things were costing the time (#329).
+
+  ``_GroupBy.sum`` used ``np.add.at`` for its multi-dimensional case, an
+  unbuffered scatter with no fast path, called about ten times per
+  ``jac_hess`` on arrays of shape ``(n, p, p)``. It is now a sorted
+  ``np.add.reduceat``, with two shortcuts: nothing to permute when the
+  keys already arrive grouped, and nothing to *add* when every key is
+  distinct — one-element groups in order are the input array, which is
+  what continuous event times give you.
+
+  The hessian was a Python double loop over event times and tied deaths,
+  with an ``np.outer`` inside it. The sum over tied deaths turns out to
+  factor out of the ``p x p`` part entirely: only ``c = j / d`` depends
+  on ``j``, so five scalar sums per event time carry the whole ragged
+  axis and the covariate blocks are formed once. That drops the cost from
+  ``O(times x ties x p^2)`` to ``O(times x ties + times x p^2)``, and it
+  removes the separate no-ties case rather than special-casing it — an
+  untied time is a single ``j = 0`` term with ``c = 0``.
+
+  ``np.einsum("ij,ik->ijk", Z, Z)`` was rebuilt inside ``jac_hess`` on
+  every root-finding iteration, though ``Z`` is fixed for the life of the
+  fit. It is hoisted, and the two remaining weighted-outer einsums are
+  plain broadcasts.
+
+  Finally the rows are put in event-time order once when the closures are
+  built, so ``_GroupBy`` never has to permute an ``(n, p, p)`` array
+  again. Nothing downstream depends on row order — every quantity is
+  aggregated to unique event times first — and the model still stores the
+  caller's unsorted arrays for the residual and diagnostic code.
+
+  Wall clock, Efron ties, 40% censored, against ``lifelines``:
+
+  ===========  ======  =========  ========  ===========
+  n            p       before     after     lifelines
+  ===========  ======  =========  ========  ===========
+  500          2       0.038s     0.012s    0.060s
+  2 000        2       0.146s     0.024s    0.146s
+  10 000       2       0.890s     0.105s    0.619s
+  50 000       2       5.71s      0.663s    3.13s
+  10 000       5       1.379s     0.339s    0.656s
+  50 000       5       7.57s      2.01s     3.18s
+  2 000        10      0.378s     0.107s    0.164s
+  50 000       10      15.39s     8.31s     4.03s
+  ===========  ======  =========  ========  ===========
+
+  Heavily tied event times — dates, rounded durations — gain the most:
+  n=20 000 with five covariates goes from 1.91s to 0.33s. Breslow, which
+  shares ``_GroupBy`` and the einsum hoist, improves alongside it. The
+  delayed-entry and time-varying-covariate paths, already well ahead,
+  roughly halve again: 43 384 rows with delayed entry from 6.86s to
+  2.62s, and 20 000 start-stop rows from 1.07s to 0.44s.
+
+  Two cases remain slower than ``lifelines``: fifty thousand rows with
+  ten covariates (8.3s against 4.0s), and heavy ties (0.33s against
+  0.08s). Both are now dominated by materialising ``(n, p, p)`` arrays —
+  40MB apiece at that size, several per iteration. Getting past that
+  means accumulating the ``p x p`` information incrementally per event
+  time instead of building per-observation outer products, which is a
+  change of algorithm rather than of implementation, and is left for
+  its own piece of work.
+
+  Timings are single runs and drift by 10–20% between them; the
+  ``lifelines`` column moves about as much as the surpyval one does.
+
+- **Parametric proportional hazards fits are up to 6x faster and no
+  longer degrade on data measured in large units.** A ``WeibullPH`` fit
+  at data scale 1e6 settled 1.5 nats of log-likelihood short of the
+  optimum, and 1e-2 away in the covariate coefficients -- a different
+  fitted model, not a tolerance artefact. The same data in unit scale
+  fitted correctly, so nothing about it looked wrong.
+
+  The PH ladder was ``minimize(fun, init_t)`` followed by TNC, and three
+  things were the matter with it. The objective closes over
+  ``regression_neg_ll``, which is written in ``autograd.numpy`` and is
+  therefore differentiable, but no ``jac`` was passed -- so scipy fell
+  back to a two-point finite difference and paid ``p + 1`` extra
+  objective evaluations per gradient, which is what made the fit slow
+  down as the covariate count rose. The search was not preconditioned,
+  so PH inherited the scale sensitivity fixed for univariate MLE
+  elsewhere in this release: scipy stops BFGS on an absolute threshold
+  applied to a gradient that shrinks with the data magnitude and grows
+  with the sample size. And TNC's answer was returned whether or not it
+  had converged, so a rung that can only ever be an improvement was free
+  to be a regression -- the AFT and PO ladder, defined immediately
+  below it, already guarded against exactly that.
+
+  The ladder is now preconditioned BFGS on the analytic gradient, then
+  TNC, then Nelder-Mead, stopping at the first rung that converges and
+  never returning a worse point than it started from. The
+  derivative-free rung stays for fits where the gradient is unusable.
+
+  Measured against ``lifelines``, scoring both packages' answers on an
+  independently written Weibull PH log-likelihood: the scale-1e6
+  shortfall goes from 1.468 nats to 1.1e-08, and a 50 000 x 10 fit drops
+  from 1.53s to 0.40s against ``lifelines``' 2.38s. ``ExponentialPH`` at
+  the same size goes from 1.21s to 0.14s. Coefficients continue to agree
+  with ``lifelines`` to around 1e-06.
+
+  ``preconditioned_bfgs`` moved from ``fitters/mle.py`` up to
+  ``fitters/__init__.py``, alongside ``bounds_convert`` and
+  ``fallback_minimize``, so the univariate and regression ladders share
+  one copy rather than two. Behaviour of the univariate ladder is
+  unchanged.
+
+  ``optimise_nm_tnc``, which serves AFT and PO, has the same missing
+  gradient and missing preconditioning. Its Nelder-Mead first rung means
+  the failure mode may differ, so it is being measured before it is
+  changed.
+
+- **Turnbull no longer rejects left-censored observations under left
+  truncation.** An entry time below every observation excludes nobody,
+  so it should leave a fit untouched. With any left-censored row present
+  it raised instead:
+
+  .. code-block:: text
+
+      ValueError: An observation's censoring interval does not intersect
+      its own truncation window ...
+
+  A support index ``j`` stands for the half-open interval
+  ``(bounds[j], bounds[j+1]]``, so an event placed there is already
+  strictly after ``bounds[j]``. The first index a row entering at ``tl``
+  may use is therefore the *last* bound equal to ``tl`` -- that interval
+  is ``(tl, next]``. The window construction took one index further on,
+  discarding it.
+
+  It mattered most for left censoring because such an event lies in
+  ``(-inf, xr]``, which under an entry at ``tl`` is the single interval
+  ``(tl, xr]`` -- frequently the only one the row has. Dropping it left
+  the row with an empty support, hence the rejection.
+
+  Neither endpoint of the search alone is correct, which is what made
+  this awkward. ``side="left"`` keeps the zero-width ``(tl, tl]``
+  interval that a duplicated exact event time creates, readmitting an
+  event at exactly the entry time and breaking the strict
+  ``(entry, exit]`` convention (#260); ``side="right"`` discards
+  ``(tl, next]`` as well, one too many. ``side="right" - 1`` lands
+  between them, and does so exactly, because every finite truncation
+  time is itself in ``bounds``.
+
+- **A Turnbull fit that is not identifiable now says so instead of
+  returning a collapsed curve quietly.** Left-censored observations
+  combined with two or more distinct entry times admit a flat direction
+  in the likelihood, and where the data leans on it the estimate is
+  worthless while looking ordinary.
+
+  An interval that one observation could have failed in, but that
+  precedes another observation's entry, is worth mass to the first and
+  costs the second nothing. The second's contribution is conditional on
+  its own entry, so mass it never had the chance to see divides out of
+  both its numerator and its denominator exactly. On a six-point example
+  the estimator drives 99.995% of the mass into a single such interval,
+  reaching a log-likelihood of -6.14 against -9.36 for the sensible
+  answer.
+
+  So the estimator is not misbehaving. It is maximising correctly, and
+  the likelihood has no interior maximum to find -- it climbs towards
+  the boundary, which is why raising ``max_iter`` never helps. Both
+  ingredients are needed: left censoring, the only kind whose support
+  reaches back into the entry region, and two distinct entry times, so
+  that such an interval exists at all. Six distinct entry times with no
+  left censoring fit flawlessly; one common entry time with left
+  censoring round-trips exactly.
+
+  The fit is still returned, because meeting the condition does not mean
+  the data is spoilt. Across 240 simulated samples that all met it, the
+  proportion actually degenerating ran from 8% to 72%, rising with the
+  share left censored -- rejecting on structure would refuse far more
+  good data than bad. What separates the two is how much mass ends up on
+  the flat direction: healthy fits reached at most 0.836 of it, spoilt
+  ones a median of 0.994. Warning above 0.9 caught them without a single
+  false alarm across those samples; 0.7 would have cost 9% and 0.5
+  40%.
+
+  The share is reported as ``model.exploitable_mass`` so a borderline
+  fit can be judged rather than guessed at. Note that the structural
+  condition is *not* used as a trigger on its own: ordinary
+  staggered-entry data meets it routinely and estimates perfectly well,
+  and pairing it with non-convergence would have mis-advised the #203
+  case, which is structurally exploitable but converges given the
+  iterations.
+
+  This is the second half of #308, which closes with it; the first half,
+  an off-by-one that made these same inputs raise, is above. The
+  threshold is a measured cut-off standing in for a property that is
+  actually decidable: Vardi (1985) and Wang (1991) give a graphical
+  condition on the data that settles whether the NPMLE exists, exists
+  but is not unique, or does not exist at all, with nothing to tune.
+  Adopting it, and the question of what a non-identifiable fit should
+  *return* rather than merely report, are #327. Worth noting alongside
+  that left truncation with interval censoring is documented as yielding
+  an inconsistent NPMLE, so this is a known limit of the estimator for
+  this data shape rather than something particular to surpyval.
+
+- **Truncated parametric regression fits could report a log-likelihood
+  tens of thousands higher than their parameters earn, and be optimised
+  towards it.** ``truncation_correction`` computed the mass in each
+  observation's truncation window as a difference of CDFs, floored at
+  the smallest positive float:
+
+  .. code-block:: python
+
+      np.log(np.maximum(right - left, _TINY))
+
+  Under left truncation that difference is ``1 - F(tl)``, the survival
+  probability at the truncation bound, which underflows to exactly zero
+  as the fitted scale shrinks. The floor then capped the correction at
+  ``log(tiny) = -708`` rather than letting it grow without bound -- and
+  since the correction is *subtracted*, every truncated row appeared to
+  contribute +708 to the log-likelihood. A region the data rules out
+  entirely became the best fit on offer, and the optimiser walked
+  straight into it.
+
+  A ``WeibullPH`` fit to left-truncated data reported ``neg_ll``
+  -21311.40 at parameters whose true value is +17118.30, against 927.83
+  at the correct answer: wrong by 38,000, and pointing the wrong way.
+  Recomputing the likelihood by hand from the model definition is what
+  settled it -- at the correct parameters surpyval agrees to the digit,
+  so the objective is right everywhere except where the floor engages.
+
+  One-sided windows are now evaluated in log space through ``log_sf``
+  and ``log_ff``, which stay finite where the difference cannot, so
+  there is nothing to floor. Only a genuinely two-sided window still
+  takes a difference, and there both bounds are finite and the mass is
+  not driven to zero by the scale alone. As elsewhere, the ``np.where``
+  branches are evaluated at substituted-finite arguments so that an
+  infinity in an unselected branch cannot poison the gradient of the
+  selected one.
+
+  This is in ``_likelihood.py``, which serves proportional hazards,
+  proportional odds, accelerated failure time and accelerated life
+  alike, so any left- or right-truncated parametric regression fit was
+  exposed -- it needed only the optimiser to wander far enough for the
+  underflow to bite. Nothing warned when it did.
+
+  Found by the rescaling change above, which perturbed an initial guess
+  by six parts in ten million and was enough to tip one fit over. The
+  first diagnosis was wrong: it looked like a genuinely unbounded
+  truncated likelihood being followed legitimately, and the arithmetic
+  disproved that. #326 records both. The regression test asserts the
+  reported objective equals an independently computed one and that
+  shrinking the scale below the truncation bounds always scores worse.
 
 - **A truncated fit is around 60x faster, and the truncation term is
   evaluated once per distinct window rather than once per row.** Any fit

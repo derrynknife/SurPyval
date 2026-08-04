@@ -540,3 +540,202 @@ def test_ph_fixed_covariate_coefficient_pins_correct_parameter():
     # Fixing a distribution parameter by name still works.
     fixed_shape = WeibullPH.fit(x, Z=Z, fixed={"beta": 3.0})
     assert fixed_shape.params[1] == pytest.approx(3.0, abs=1e-12)
+
+
+def _weibull_ph_ll(x, Z, c, alpha, shape, gamma):
+    """Weibull PH log-likelihood, written out independently of the fitter
+    so a test can score two candidate answers against each other."""
+    lin = Z @ np.asarray(gamma)
+    log_h = np.log(shape / alpha) + (shape - 1) * np.log(x / alpha) + lin
+    log_sf = -((x / alpha) ** shape) * np.exp(lin)
+    return log_h[np.asarray(c) == 0].sum() + log_sf.sum()
+
+
+@pytest.mark.parametrize("scale", [1e-3, 1e0, 1e3, 1e6, 1e9])
+def test_weibull_ph_fit_is_invariant_to_the_units_of_x(scale):
+    # Multiplying every event time by k must move alpha by exactly k and
+    # leave the shape and the covariate coefficients alone -- the model is
+    # closed under a change of time units.
+    #
+    # It was not. The PH ladder ran BFGS on a finite-difference gradient
+    # with no preconditioning, so scipy's absolute ``gtol`` was met well
+    # short of the optimum once the data grew: at scale 1e6 the fit gave up
+    # 1.5 nats of log-likelihood and landed ~1e-2 away in the coefficients
+    # (#328).
+    rng = np.random.default_rng(17)
+    n, p = 800, 3
+    Z = rng.normal(size=(n, p))
+    beta = np.array([0.6, 0.1, -0.4])
+    t = 4.0 * (-np.log(rng.random(n)) / np.exp(Z @ beta)) ** (1 / 1.5)
+    cens = rng.exponential(np.quantile(t, 0.6), n)
+    x, c = np.minimum(t, cens), (t > cens).astype(int)
+
+    base = WeibullPH.fit(x=x, Z=Z, c=c)
+    scaled = WeibullPH.fit(x=x * scale, Z=Z, c=c)
+
+    assert scaled.params[0] == pytest.approx(base.params[0] * scale, rel=1e-4)
+    assert scaled.params[1] == pytest.approx(base.params[1], rel=1e-4)
+    assert scaled.params[2:] == pytest.approx(base.params[2:], abs=1e-4)
+
+
+def test_weibull_ph_at_large_scale_reaches_the_optimum():
+    # The invariance test above would also pass if the fit were equally
+    # wrong at both scales, so anchor one end of it. Fit at unit scale,
+    # where the old ladder was fine, then carry that answer over to the
+    # large-scale data by the exact change of units. The large-scale fit
+    # must score at least as well on the large-scale likelihood as the
+    # transported one does -- it had the same optimum available to it.
+    #
+    # Under the old ladder it gave up 1.5 nats here.
+    rng = np.random.default_rng(23)
+    n, p = 800, 3
+    Z = rng.normal(size=(n, p))
+    beta = np.array([0.6, 0.1, -0.4])
+    t = 4.0 * (-np.log(rng.random(n)) / np.exp(Z @ beta)) ** (1 / 1.5)
+    cens = rng.exponential(np.quantile(t, 0.6), n)
+    x, c = np.minimum(t, cens), (t > cens).astype(int)
+
+    scale = 1e6
+    small = np.asarray(WeibullPH.fit(x=x, Z=Z, c=c).params, dtype=float)
+    large = np.asarray(
+        WeibullPH.fit(x=x * scale, Z=Z, c=c).params, dtype=float
+    )
+
+    transported = _weibull_ph_ll(
+        x * scale, Z, c, small[0] * scale, small[1], small[2:]
+    )
+    at_fit = _weibull_ph_ll(x * scale, Z, c, large[0], large[1], large[2:])
+
+    assert at_fit >= transported - 1e-6
+
+
+def test_optimise_ph_never_returns_a_worse_point_than_it_started_from():
+    # A contract guard rather than a reproducer: the old ladder returned
+    # TNC unconditionally, so a rung that could only ever be an improvement
+    # was free to be a regression (#328). On these smooth objectives it
+    # happened not to be, and this test passes either way -- it is here so
+    # that a future rung added to the ladder cannot reintroduce the hazard
+    # unnoticed. Whatever the rungs do individually, the ladder as a whole
+    # must not hand back a point worse than its starting guess.
+    from surpyval.univariate.regression._fit_skeleton import optimise_ph
+
+    def rosenbrock(v):
+        return (1 - v[0]) ** 2 + 100 * (v[1] - v[0] ** 2) ** 2
+
+    for start in ([-1.2, 1.0], [3.0, -4.0], [0.0, 0.0]):
+        x0 = np.array(start)
+        res = optimise_ph(rosenbrock, x0)
+        assert res.fun <= rosenbrock(x0)
+        assert res.fun == pytest.approx(rosenbrock(res.x), rel=1e-8, abs=1e-12)
+
+
+def _efron_hess_reference(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di):
+    """The literal double loop ``efron_hess`` replaced, kept as an oracle.
+
+    ``efron_hess`` now factors the sum over tied deaths out of the p x p
+    part, which is a real algebraic rearrangement rather than a
+    reorganisation of the same arithmetic (#329). This pins it.
+    """
+    out = np.zeros((len(n_d),) + Z2Ri.shape[1:])
+    for i in range(len(n_d)):
+        val = np.zeros(out.shape[1:])
+        if n_d[i] == 0:
+            continue
+        for j in range(int(n_d[i])):
+            k = j / n_d[i]
+            dRD = Ri[i] - k * Di[i]
+            a = ZRi[i] - k * ZDi[i]
+            val += (dRD * (Z2Ri[i] - k * Z2Di[i]) - np.outer(a, a)) / dRD**2
+        out[i] = val
+    return out
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [
+        [1.0, 1.0, 1.0, 1.0],  # no ties at all -- the continuous case
+        [1.0, 0.0, 3.0, 1.0],  # a time with no deaths mixed in
+        [7.0, 12.0, 1.0, 4.0],  # heavy ties
+        [2.5, 1.0, 3.5, 0.0],  # fractional weights: range(int(d)), c = j/d
+    ],
+)
+def test_efron_hessian_matches_the_loop_it_replaced(counts):
+    from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+        efron_hess,
+    )
+
+    rng = np.random.default_rng(31)
+    m, p = len(counts), 4
+    n_d = np.array(counts)
+
+    # Risk-set sums must dominate the death sums for R - cD to stay
+    # positive, which is what the real aggregation guarantees.
+    Ri = rng.uniform(50, 100, (m, 1))
+    Di = rng.uniform(0, 10, (m, 1))
+    ZRi = rng.normal(size=(m, p))
+    ZDi = rng.normal(size=(m, p))
+    Z2Ri = rng.normal(size=(m, p, p))
+    Z2Di = rng.normal(size=(m, p, p))
+
+    got = efron_hess(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di)
+    want = _efron_hess_reference(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di)
+
+    assert got.shape == want.shape
+    np.testing.assert_allclose(got, want, rtol=1e-11, atol=1e-11)
+
+
+@pytest.mark.parametrize(
+    "counts", [[1.0, 1.0, 1.0], [5.0, 1.0, 2.0], [2.5, 0.0, 3.5]]
+)
+def test_efron_log_denominator_matches_the_loop_it_replaced(counts):
+    from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+        efron_log_denominator,
+    )
+
+    rng = np.random.default_rng(37)
+    m = len(counts)
+    n_d = np.array(counts)
+    Ri = rng.uniform(50, 100, (m, 1))
+    Di = rng.uniform(0, 10, (m, 1))
+
+    want = np.zeros(m)
+    for i in range(m):
+        if n_d[i] == 0:
+            continue
+        c_vals = np.arange(int(n_d[i])) / n_d[i]
+        want[i] = np.log(Ri[i] - c_vals[:, None] * Di[i]).sum()
+
+    got = efron_log_denominator(n_d, Ri, Di)
+    np.testing.assert_allclose(got, want, rtol=1e-12, atol=1e-12)
+
+
+def test_cox_fit_is_unaffected_by_the_order_of_the_rows():
+    # ``create_*_ll_jac_hess`` now sorts by event time so ``_GroupBy`` can
+    # skip its permutation (#329). Nothing downstream may depend on that,
+    # so a shuffled copy of the same data must fit identically.
+    rng = np.random.default_rng(41)
+    n, p = 400, 3
+    Z = rng.normal(size=(n, p))
+    t = 10 * (-np.log(rng.random(n)) / np.exp(Z @ [0.6, 0.1, -0.4])) ** (
+        1 / 1.5
+    )
+    cens = rng.exponential(np.quantile(t, 0.6), n)
+    x, c = np.minimum(t, cens), (t > cens).astype(int)
+    tl = rng.uniform(0, 0.4 * np.median(x), n)
+    keep = x > tl
+    x, Z, c, tl = x[keep], Z[keep], c[keep], tl[keep]
+
+    shuffle = rng.permutation(len(x))
+    for method in ("efron", "breslow"):
+        a = CoxPH.fit(x=x, Z=Z, c=c, tl=tl, method=method)
+        b = CoxPH.fit(
+            x=x[shuffle],
+            Z=Z[shuffle],
+            c=c[shuffle],
+            tl=tl[shuffle],
+            method=method,
+        )
+        np.testing.assert_allclose(a.beta, b.beta, rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(
+            a.jac(a.beta)[1], b.jac(b.beta)[1], rtol=1e-9, atol=1e-10
+        )
