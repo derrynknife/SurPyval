@@ -214,23 +214,69 @@ class ParametricFitter:
 
     @_check_x_not_empty
     def ll_interval_or_truncated(self, xl, xr, n, *params):
+        """
+        Log probability of falling inside each window ``(xl, xr]``.
+
+        An infinite bound is replaced by its analytic limit rather than
+        handed to the CDF. ``np.where`` selects the *value* correctly but
+        evaluates both branches, so ``ff(inf)`` was still taped by
+        autograd, and its nan derivative then propagated through the
+        selection regardless of which side was chosen. The objective was
+        right and the gradient was nan.
+
+        The consequence was not subtle. Every singly-truncated fit lost
+        all three gradient optimisers -- BFGS and Newton-CG each failed
+        after a single evaluation and TNC burned its whole 1000
+        evaluation budget -- leaving Nelder-Mead to finish derivative
+        free. A Weibull that fits in 0.014s took 1.36s, and a ``tl`` of 0
+        (a no-op, since ``F(0) = 0``) cost exactly the same as a real
+        truncation, which is what gives the cause away. Windows with
+        *both* bounds finite were always fast, because no infinity ever
+        reached the tape.
+
+        The infinity is substituted out of the *argument* before the CDF
+        sees it, so a single vectorised call covers every row whatever
+        its pattern of bounds. The outer ``np.where`` then selects
+        between two values that are both already finite, which is safe.
+
+        The stand-in cannot be an arbitrary constant. Zero looks natural
+        and is wrong: a Weibull with ``beta < 1`` has an unbounded
+        density derivative at the origin, so ``ff(0)`` would swap one nan
+        gradient for another. Reusing a bound that is genuinely present
+        keeps the stand-in inside the support and at the data's own
+        magnitude. Its value never reaches the result -- ``np.where``
+        discards it -- only its derivative has to be finite.
+
+        Probabilities come from the mixture CDF
+        ``F_mix(t) = f0 + (p - f0) * F0(t)``: with no right bound the
+        window probability is the mixture survival ``1 - F_mix(tl)``,
+        which includes the never-failing mass ``1 - p``. The old
+        ``(p - f0) * (1 - F0(tl))`` form made the LFP plus
+        left-truncation likelihood unbounded (#269). For finite-bound
+        intervals the ``f0`` terms cancel, so plain fits are unchanged.
+        """
         *params, gamma, f0, p = params
-        xr = xr - gamma
-        xl = xl - gamma
-        # Probabilities must come from the mixture CDF
-        # F_mix(t) = f0 + (p - f0) * F0(t), not (p - f0) * F0(t): with no
-        # right bound (tr = inf) the window probability is the mixture
-        # survival 1 - F_mix(tl), which includes the never-failing mass
-        # (1 - p). The old (p - f0) * (1 - F0(tl)) form made the LFP +
-        # left-truncation likelihood unbounded (#269). For finite-bound
-        # intervals the f0 terms cancel, so plain fits are unchanged.
-        right = np.where(
-            np.isfinite(xr), f0 + (p - f0) * self.ff(xr, *params), 1.0
+        if len(n) == 0:
+            return 0.0
+
+        lo_finite = np.isfinite(xl)
+        hi_finite = np.isfinite(xr)
+
+        # ``xl`` and ``xr`` are data, never traced, so this substitution
+        # is invisible to autograd -- it only changes what the CDF is
+        # asked to evaluate.
+        present = np.concatenate([xl[lo_finite], xr[hi_finite]])
+        stand_in = float(present[0]) if present.size else 1.0
+        xl_safe = np.where(lo_finite, xl, stand_in)
+        xr_safe = np.where(hi_finite, xr, stand_in)
+
+        upper = np.where(
+            hi_finite, f0 + (p - f0) * self.ff(xr_safe - gamma, *params), 1.0
         )
-        left = np.where(
-            np.isfinite(xl), f0 + (p - f0) * self.ff(xl, *params), 0.0
+        lower = np.where(
+            lo_finite, f0 + (p - f0) * self.ff(xl_safe - gamma, *params), 0.0
         )
-        return np.sum(n * np.log(np.maximum(right - left, 0.0)))
+        return np.sum(n * np.log(np.maximum(upper - lower, 0.0)))
 
     def _log_likelihood(self, data, *params):
         return (
@@ -241,7 +287,7 @@ class ParametricFitter:
                 data.x_il, data.x_ir, data.n_i, *params
             )
             - self.ll_interval_or_truncated(
-                data.x_tl, data.x_tr, data.n_t, *params
+                data.tl_unique, data.tr_unique, data.n_t_unique, *params
             )
         )
 
@@ -335,6 +381,58 @@ class ParametricFitter:
             moments[i] = self._moment(n, *params, offset=offset)
         return moments
 
+    def _check_identifiable(self, surv_data, offset, lfp, zi, fixed):
+        """
+        Reject data that cannot pin down the free parameters.
+
+        A right censored observation says only "later than this", so it
+        constrains a fitted curve without locating a point on it. What
+        locates a point is an exact observation, a left censored one, or
+        an interval. Fewer *distinct* such values than there are free
+        parameters and the likelihood has a flat direction: for a
+        Weibull on a tied sample it is unbounded, since a spike of
+        arbitrary height can sit on the repeated value, and the reported
+        answer is wherever the optimiser happened to stop. Three tied
+        observations at 10 returned ``beta = 512`` with ``success=True``
+        and no warning.
+
+        The count is of *free* parameters, not of the distribution's
+        parameters, so fixing one buys back a degree of freedom: a
+        Weibull fit to a single observation with ``beta`` fixed is well
+        posed and recovers ``alpha = (sum x^beta / n) ** (1 / beta)``.
+        That is why this cannot be a per-distribution constant.
+        """
+        n_free = (
+            self.k
+            + int(bool(offset))
+            + int(bool(lfp))
+            + int(bool(zi))
+            - len(fixed or {})
+        )
+        if n_free <= 0:
+            return
+
+        x, c = surv_data.x, surv_data.c
+        informative = np.asarray(c) != 1
+        if not informative.any():
+            return
+        rows = np.asarray(x)[informative]
+        if rows.ndim == 1:
+            distinct = np.unique(rows).size
+        else:
+            distinct = np.unique(rows, axis=0).shape[0]
+
+        if distinct < n_free:
+            raise ValueError(
+                f"{self.name} has {n_free} free parameter(s) but the data "
+                f"contains only {distinct} distinct non-right-censored "
+                f"value(s). The likelihood has a flat (or unbounded) "
+                f"direction, so no unique fit exists. Provide more "
+                f"distinct observations, fix a parameter with "
+                f"`fixed=`, or choose a distribution with fewer "
+                f"parameters."
+            )
+
     def _validate_fit_inputs(
         self,
         surv_data,
@@ -357,6 +455,15 @@ class ParametricFitter:
         if offset and not offsettable:
             detail = f"{self.name} distribution cannot be offset"
             raise ValueError(detail)
+
+        # Probability plotting is exempt. It is a regression through the
+        # plotting positions, not a likelihood maximisation, so it has no
+        # unbounded direction to fall into and now always returns finite
+        # parameters. It is also how several distributions seed
+        # themselves, and that internal call does not carry the caller's
+        # ``fixed``, so checking it would reject well posed fits.
+        if how != "MPP":
+            self._check_identifiable(surv_data, offset, lfp, zi, fixed)
 
         if fixed and how == "MPP":
             detail = (
@@ -1083,6 +1190,25 @@ class ParametricFitter:
 
         for k, v in results.items():
             setattr(model, k, v)
+
+        # A fit must never hand back a non-finite parameter. When the
+        # optimiser fails, the reported parameters are the initial guess
+        # (#261), so any initialiser that produced a nan or an inf had
+        # it laundered into what looked like a fitted model: an offset
+        # Gamma on a tied sample returned ``(inf, inf)`` in silence. The
+        # initialisers that could do that are fixed, but this is the
+        # backstop, since a non-finite parameter is never a valid answer
+        # whatever produced it.
+        _params = np.atleast_1d(np.asarray(model.params, dtype=float))
+        _extra = [getattr(model, name, None) for name in ("gamma", "p", "f0")]
+        _extra = [float(v) for v in _extra if v is not None]
+        if not (np.isfinite(_params).all() and np.isfinite(_extra).all()):
+            raise ValueError(
+                f"{self.name} fit produced non-finite parameters "
+                f"({np.asarray(model.params)}). The optimiser did not "
+                f"reach a valid solution; check the data for degenerate "
+                f"or extreme values."
+            )
 
         # Only maximum likelihood and the closed forms report a
         # log-likelihood, because only they compute one on the way to

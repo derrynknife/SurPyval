@@ -525,3 +525,82 @@ def test_lr_bounds_respect_user_fixed_parameters():
     point = m.sf(t)
     assert np.all(band[:, 0] <= point + 1e-9)
     assert np.all(point <= band[:, 1] + 1e-9)
+
+
+# The unit a measurement happens to be recorded in must not decide
+# whether a fit has confidence bounds at all.
+#
+# Every parameter bounded on (0, inf) is mapped to the unbounded space
+# the optimiser searches by ``adj_relu``, which chose between ``x + 1``
+# and ``exp(x)`` with ``np.where``. Autograd evaluates both branches, so
+# ``exp(x)`` was taped even where ``x + 1`` was selected, and above
+# x = 709.78 it overflowed to inf -- poisoning the derivative of the
+# branch that *was* chosen. The transform's jacobian came back nan, and
+# ``cov_matrix`` is that jacobian either side of the inverse hessian.
+#
+# The threshold is a property of the fitted parameter, not the sample
+# size, so a Weibull with alpha = 10 lost its bounds once the data was
+# scaled past about 70x while a Gumbel, whose location is unbounded and
+# therefore untransformed, survived to 350x on the same sample.
+SCALE_SENSITIVE = [
+    ("Weibull", (10.0, 2.0)),
+    ("LogLogistic", (10.0, 3.0)),
+    ("ExpoWeibull", (10.0, 2.0, 1.5)),
+    ("Logistic", (10.0, 2.0)),
+    ("Gumbel", (10.0, 2.0)),
+    ("GumbelLEV", (10.0, 2.0)),
+    ("Rayleigh", (5.0,)),
+    ("Gamma", (3.0, 2.0)),
+]
+
+
+@pytest.mark.parametrize("name,params", SCALE_SENSITIVE)
+@pytest.mark.parametrize("scale", [1e-3, 1.0, 1e2, 1e4, 1e6])
+def test_standard_errors_survive_the_units_of_the_data(name, params, scale):
+    dist = getattr(surv, name)
+    np.random.seed(5)
+    x = np.asarray(dist.random(200, *params), dtype=float) * scale
+
+    model = dist.fit(x)
+    cov = model.cov_matrix
+
+    assert cov is not None, f"{name} at scale {scale:g} reported no covariance"
+    se = np.sqrt(np.diag(np.atleast_2d(np.asarray(cov, dtype=float))))
+    assert np.isfinite(se).all(), f"{name} at scale {scale:g} gave se {se}"
+    assert (se > 0).all(), f"{name} at scale {scale:g} gave se {se}"
+
+
+@pytest.mark.parametrize("name,params", SCALE_SENSITIVE)
+def test_standard_errors_are_scale_equivariant(name, params):
+    # A parameter that rescaling carries by a factor f has its standard
+    # error carried by the same f, whatever f happens to be: the data's
+    # units for a scale parameter, their reciprocal for a rate like the
+    # Gamma's, and 1 for a shape. That the restored numbers obey this is
+    # what distinguishes a real covariance from a merely finite one.
+    dist = getattr(surv, name)
+    scale = 1e4
+
+    np.random.seed(5)
+    sample = np.asarray(dist.random(200, *params), dtype=float)
+
+    base = dist.fit(sample)
+    scaled = dist.fit(sample * scale)
+
+    def se_of(model):
+        cov = np.atleast_2d(np.asarray(model.cov_matrix, dtype=float))
+        return np.sqrt(np.diag(cov))
+
+    se_base, se_scaled = se_of(base), se_of(scaled)
+    p_base = np.asarray(base.params, dtype=float)
+    p_scaled = np.asarray(scaled.params, dtype=float)
+
+    factor = np.abs(p_scaled / p_base)
+
+    # Whatever each parameter did under rescaling, it can only have been
+    # carried by the scale, by its reciprocal, or not at all.
+    allowed = np.array([scale, 1.0 / scale, 1.0])
+    assert (
+        np.isclose(factor[:, None], allowed, rtol=1e-3).any(axis=1).all()
+    ), f"{name} parameters moved by {factor}, which is none of {allowed}"
+
+    assert se_scaled == pytest.approx(se_base * factor, rel=1e-3)

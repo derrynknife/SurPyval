@@ -13,9 +13,13 @@ separate: its life-model parameter juggling does not fit this shape.
 from typing import Any, Callable
 
 import autograd.numpy as np
+from autograd import jacobian
 from scipy.optimize import minimize
 
-from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.univariate.parametric.fitters import (
+    bounds_convert,
+    preconditioned_bfgs,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .parametric_regression_model import ParametricRegressionModel
@@ -171,9 +175,63 @@ def assemble_regression_model(
 
 
 def optimise_ph(fun: Callable, init_t):
-    """PH's historical ladder: default method, then TNC unconditionally."""
-    res = minimize(fun, init_t)
-    return minimize(fun, res.x, method="TNC")
+    """Preconditioned BFGS on the analytic gradient, TNC as the fallback.
+
+    The historical ladder was ``minimize(fun, init_t)`` followed by TNC
+    kept unconditionally. Three things were wrong with it (#328).
+
+    ``fun`` closes over ``regression_neg_ll``, which is written in
+    ``autograd.numpy`` and is therefore differentiable -- but no ``jac``
+    was passed, so scipy fell back to a two-point finite difference and
+    paid ``p + 1`` extra objective evaluations per gradient. That is
+    what made the fit slow down as the covariate count rose.
+
+    Nor was the search preconditioned, so PH inherited the scale
+    sensitivity ``preconditioned_bfgs`` was written to cure: on a Weibull
+    PH at data scale 1e6 the old ladder settled 1.5 nats of
+    log-likelihood short of the optimum, which is a different fitted
+    model, not a tolerance artefact.
+
+    Finally TNC's answer was returned whether or not it had succeeded --
+    a rung of the ladder that could only ever be an improvement was
+    allowed to be a regression. ``optimise_nm_tnc``, immediately below,
+    already guarded against that.
+
+    The rungs now stop at the first success, matching the univariate MLE
+    ladder, and the derivative-free rung remains for the fits where the
+    gradient is unusable (a distribution whose autograd derivative goes
+    nan on the way, most often).
+    """
+    jac = jacobian(fun)
+
+    best = None
+    for method in ("BFGS", "TNC", "Nelder-Mead"):
+        x0 = init_t if best is None else best.x
+        if method == "BFGS":
+            res = preconditioned_bfgs(
+                fun, x0, jac=jac, options={"maxiter": 1000}
+            )
+        elif method == "TNC":
+            res = minimize(
+                fun, x0, method="TNC", jac=jac, options={"maxfun": 1000}
+            )
+        else:
+            res = minimize(
+                fun, init_t, method="Nelder-Mead", options={"maxiter": 1000}
+            )
+
+        if not np.isfinite(res.fun) or np.isnan(res.x).any():
+            continue
+        if best is None or res.fun < best.fun:
+            best = res
+        if res.success:
+            break
+
+    if best is None:
+        # Every rung produced a nan; hand back the last one so the caller
+        # sees a failed OptimizeResult rather than a None.
+        return res
+    return best
 
 
 def optimise_nm_tnc(fun: Callable, init_t):

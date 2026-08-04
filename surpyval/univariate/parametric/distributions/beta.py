@@ -419,9 +419,21 @@ class Beta_(ParametricFitter):
         """
         mean = x.mean()
         var = x.var()
+        # Zero (or near zero) variance divides through to a shape pair of
+        # order 1e31 rather than an error, and since a failed optimiser
+        # falls back to its initial guess (#261) that pair is what gets
+        # returned to the caller. A tied sample says nothing about the
+        # shapes, so seed the uniform Beta and let the optimiser move if
+        # the data can move it.
+        if not np.isfinite(var) or var <= np.finfo(float).tiny:
+            return 1.0, 1.0
         term1 = (mean * (1 - mean) / var) - 1
         alpha = term1 * mean
         beta = term1 * (1 - mean)
+        if not (np.isfinite(alpha) and np.isfinite(beta)) or (
+            alpha <= 0 or beta <= 0
+        ):
+            return 1.0, 1.0
 
         return alpha, beta
 

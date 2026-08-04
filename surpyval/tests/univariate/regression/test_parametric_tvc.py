@@ -167,3 +167,43 @@ def test_po_does_not_expose_tvc():
     # accumulated-age likelihood -- see test_aft_tvc_fit.py.)
     assert not hasattr(PO(Weibull), "fit_tvc")
     assert hasattr(AFT(Weibull), "fit_tvc")
+
+
+def test_left_truncated_likelihood_does_not_reward_a_vanishing_scale():
+    """A region the data rules out must not report a better likelihood.
+
+    The truncation correction used to be a difference of CDFs floored at
+    the smallest positive float. Under left truncation that difference is
+    ``1 - F(tl)``, which underflows to zero as the fitted scale shrinks;
+    the floor then capped the correction at ``log(tiny) = -708`` rather
+    than letting it grow without bound. Since the correction is
+    *subtracted*, every truncated row appeared to contribute +708, and
+    the optimiser walked into a region the data excludes -- reporting a
+    log-likelihood some 38,000 higher than its parameters earn (#326).
+
+    The check is that the reported objective is the real one: a scale far
+    below the truncation bounds must score worse than the fitted answer,
+    not better.
+    """
+    (Z, T, c0), (ident, xl, xr, c, Zs) = _constant_covariate_split()
+    fitter = TVC_FITTERS["WeibullPH"]
+
+    model = fitter.fit_tvc(i=ident, xl=xl, xr=xr, c=c, Z=Zs)
+    fitted = np.asarray(model.params, dtype=float)
+
+    # Same objective the fit minimised, evaluated directly.
+    def neg_ll(params):
+        return float(fitter.neg_ll(model.data, *params))
+
+    assert neg_ll(fitted) == pytest.approx(model._neg_ll, rel=1e-9)
+
+    # Shrinking the scale far below the truncation bounds is where the
+    # floor used to manufacture likelihood. Every such point must be
+    # worse than the fit.
+    for shrink in (10.0, 100.0, 1000.0):
+        degenerate = fitted.copy()
+        degenerate[0] = fitted[0] / shrink
+        assert neg_ll(degenerate) > neg_ll(fitted), (
+            f"scale/{shrink:g} scores better than the fit, so the "
+            f"truncation correction is still being floored"
+        )
