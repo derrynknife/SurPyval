@@ -221,8 +221,8 @@ v0.18.1 (unreleased)
   40MB apiece at that size, several per iteration. Getting past that
   means accumulating the ``p x p`` information incrementally per event
   time instead of building per-observation outer products, which is a
-  change of algorithm rather than of implementation, and is left for
-  its own piece of work.
+  change of algorithm rather than of implementation, and is tracked
+  separately as #332.
 
   Timings are single runs and drift by 10–20% between them; the
   ``lifelines`` column moves about as much as the surpyval one does.
@@ -268,9 +268,10 @@ v0.18.1 (unreleased)
   unchanged.
 
   ``optimise_nm_tnc``, which serves AFT and PO, has the same missing
-  gradient and missing preconditioning. Its Nelder-Mead first rung means
-  the failure mode may differ, so it is being measured before it is
-  changed.
+  gradient and missing preconditioning. Its first rung is Nelder-Mead,
+  which is derivative free and so cannot fail the way BFGS did here, so
+  it is being measured before it is changed rather than assumed to need
+  the same fix — #331.
 
 - **Turnbull no longer rejects left-censored observations under left
   truncation.** An entry time below every observation excludes nobody,
