@@ -97,7 +97,7 @@ def plotting_positions(
     Examples
     --------
 
-    >>> from surpyval.nonparametric import plotting_positions
+    >>> from surpyval.univariate.nonparametric import plotting_positions
     >>> import numpy as np
     >>> x = np.array([1, 2, 3, 4, 5, 6, 7, 8])
     >>> x, r, d, F = plotting_positions(x, heuristic="Filliben")

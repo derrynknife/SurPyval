@@ -549,7 +549,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.sf(2)
-        0.9920319148370607
+        np.float64(0.9920319148370607)
         >>> model.sf([1, 2, 3, 4, 5])
         array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
         """
@@ -591,7 +591,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.ff(2)
-        0.007968085162939342
+        np.float64(0.007968085162939372)
         >>> model.ff([1, 2, 3, 4, 5])
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
@@ -632,7 +632,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.df(2)
-        0.01190438297804473
+        np.float64(0.01190438297804473)
         >>> model.df([1, 2, 3, 4, 5])
         array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
         """
@@ -679,7 +679,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.hf(2)
-        0.012000000000000002
+        np.float64(0.012000000000000002)
         >>> model.hf([1, 2, 3, 4, 5])
         array([0.003, 0.012, 0.027, 0.048, 0.075])
         """
@@ -687,7 +687,12 @@ class Parametric(
         if (self.p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
-            return np.where(xg < s0, 0.0, self.dist.hf(xg, *self.params))
+            out = np.where(xg < s0, 0.0, self.dist.hf(xg, *self.params))
+            # ``np.where`` hands back a 0-d array for scalar input, so a
+            # scalar argument used to come out as ``array(0.012)`` while
+            # every sibling method returned a numpy scalar. ``[()]`` is a
+            # no-op on a real array and unwraps the 0-d case.
+            return out[()]
         else:
             return self.df(x) / self.sf(x)
 
@@ -719,7 +724,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.Hf(2)
-        0.008000000000000002
+        np.float64(0.008000000000000002)
         >>> model.Hf([1, 2, 3, 4, 5])
         array([0.001, 0.008, 0.027, 0.064, 0.125])
         """
@@ -728,7 +733,8 @@ class Parametric(
         if (self.p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
-            return np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
+            out = np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
+            return out[()]
         else:
             return -np.log(self.sf(x))
 
@@ -757,7 +763,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.qf(0.2)
-        6.06542793124108
+        np.float64(6.06542793124108)
         >>> model.qf([.1, .2, .3, .4, .5])
         array([4.72308719, 6.06542793, 7.09181722, 7.99387877, 8.84997045])
 
@@ -823,14 +829,14 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.cs(11, 10)
-        0.00025840046151723767
+        np.float64(0.00025840046151723767)
         """
         x = np.asarray(x)
         X = np.asarray(X)
         Xg = X - self.gamma  # type: ignore[operator]
         cs = np.array(self.dist.cs(x, Xg, *self.params))
         cs[cs > 1.0] = 1
-        return cs
+        return cs[()]
 
     def random(
         self,
@@ -972,7 +978,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.mean()
-        8.929795115692489
+        np.float64(8.929795115692489)
         """
         if not hasattr(self, "_mean"):
             # Defective mean: the zero-inflated mass f0 sits at 0 and
@@ -998,7 +1004,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.var()
-        11.229...
+        np.float64(10.533288486847923)
         """
         m1 = self.dist._moment(1, *self.params)
         m2 = self.dist._moment(2, *self.params)
@@ -1071,7 +1077,7 @@ class Parametric(
         >>> from surpyval import Normal
         >>> model = Normal.from_params([10, 3])
         >>> model.entropy()
-        2.5175508218727822
+        np.float64(2.5175508218727822)
 
         Notes
         -----
@@ -1556,16 +1562,19 @@ class Parametric(
         Returns
         -------
 
-        plot : list
-            list of a matplotlib plot object
+        plot : matplotlib.axes.Axes
+            the axes the probability plot was drawn onto
 
         Examples
         --------
 
+        >>> import numpy as np
         >>> from surpyval import Weibull
+        >>> np.random.seed(1)
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)
         >>> model.plot()
+        <Axes: title={'center': 'Weibull Probability Plot'}, ylabel='CDF'>
         """
         if ax is None:
             ax = plt.gcf().gca()

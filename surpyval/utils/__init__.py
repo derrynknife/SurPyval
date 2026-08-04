@@ -302,7 +302,7 @@ def xrd_handler(x, r, d):
     >>> r
     array([5, 4, 3, 2, 1])
     >>> d
-    array([1, 1, 1, 1, 1]))
+    array([1, 1, 1, 1, 1])
     """
 
     try:
@@ -824,7 +824,7 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     >>> n = np.array([1, 1, 1, 1, 1])
     >>> x, r, d = xcnt_to_xrd(x, c, n)
     >>> x
-    array([1, 2, 3, 4, 5])
+    array([1., 2., 3., 4., 5.])
     >>> r
     array([5, 4, 3, 2, 1])
     >>> d
@@ -917,8 +917,8 @@ def xrd_to_xcnt(x, r, d):
     >>> r = np.array([5, 4, 3, 2, 1])
     >>> d = np.array([1, 0, 0, 1, 1])
     >>> x, c, n, t = xrd_to_xcnt(x, r, d)
-    >>> x, c, n, t
-    array([1, 2, 3, 4, 5])
+    >>> x
+    array([1., 2., 3., 4., 5.])
     >>> c
     array([0, 1, 1, 0, 0])
     >>> n
@@ -928,7 +928,7 @@ def xrd_to_xcnt(x, r, d):
            [-inf,  inf],
            [-inf,  inf],
            [-inf,  inf],
-           [-inf,  inf]]))
+           [-inf,  inf]])
     """
     n_f = np.copy(d)
     x_f = np.copy(x)
@@ -1001,7 +1001,7 @@ def fsli_to_xcnt(f=None, s=None, l=None, i=None):
     >>> i = []
     >>> x, c, n, t = fsli_to_xcnt(f, s, l, i)
     >>> x
-    array([1, 2, 3, 4, 5])
+    array([1., 2., 3., 4., 5.])
     >>> c
     array([0, 1, 1, 0, 0])
     >>> n
@@ -1476,8 +1476,12 @@ def fs_to_xrd(f, s):
     >>> f = [1, 4, 5]
     >>> s = [2, 3]
     >>> x, r, d = fs_to_xrd(f, s)
-    >>> x, r, d
-    (array([1, 2, 3, 4, 5]), array([5, 4, 3, 2, 1]), array([1, 0, 0, 1, 1]))
+    >>> x
+    array([1., 2., 3., 4., 5.])
+    >>> r
+    array([5, 4, 3, 2, 1])
+    >>> d
+    array([1, 0, 0, 1, 1])
     """
     x, c, n, _ = fs_to_xcnt(f, s)
     return xcnt_to_xrd(x, c, n)

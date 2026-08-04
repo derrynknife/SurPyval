@@ -49,6 +49,25 @@ where = ["."]
 [tool.setuptools.package-data]
 "*" = ["datasets/*.csv", "py.typed"]
 
+# pytest
+[tool.pytest.ini_options]
+# Applied to the ``--doctest-modules`` run (see .github/workflows/actions.yml),
+# which executes the ``>>>`` examples in the docstrings and compares their
+# printed output exactly.
+#
+# NORMALIZE_WHITESPACE: numpy chooses its own line breaks and column
+# padding when it reprs an array, and both change with the width of the
+# widest element. Without this an example is only correct for the exact
+# terminal wrapping it was captured at, and a docstring wrapped to 79
+# columns by hand -- as most of these are -- can never match.
+#
+# ELLIPSIS: lets an example that ends in a fit write ``529.05...``
+# instead of all seventeen digits. The last few digits of an optimiser's
+# output are not part of the promise the docstring is making, and they
+# move with the BLAS, the platform and any change to the fitting
+# ladder.
+doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS"
+
 # For Black pre-commit hook
 [tool.black]
 line-length = 79

@@ -686,7 +686,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> model = KaplanMeier.fit(x)
         >>> model.mean()
-        3.0
+        3.0000000000000004
         """
         if np.min(self.x) < 0:
             raise ValueError(

@@ -200,8 +200,14 @@ def PO(distribution):
 
     Examples
     --------
+    >>> import numpy as np
     >>> from surpyval import Logistic
     >>> from surpyval import PO
-    >>> model = PO(Logistic).fit(x, Z=covariates, c=c)
+    >>> np.random.seed(1)
+    >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+    >>> x = Logistic.random(100, 10, 2) + 2.0 * Z[:, 0]
+    >>> model = PO(Logistic).fit(x, Z=Z)
+    >>> model.params.round(3)
+    array([9.708, 2.337, 0.918])
     """
     return ProportionalOddsFitter(distribution)

@@ -307,11 +307,26 @@ class DataFrameRegressionMixin:
 
         Examples
         --------
-        >>> from surpyval import WeibullPH
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> age = np.random.uniform(20, 60, 100)
+        >>> weight = np.random.uniform(50, 100, 100)
+        >>> time = Weibull.random(100, 10, 2) * np.exp(-0.02 * (age - 40))
+        >>> df = pd.DataFrame({
+        ...     "time": time,
+        ...     "age": age,
+        ...     "weight": weight,
+        ...     "censored": np.zeros(100, dtype=int),
+        ... })
         >>> model = WeibullPH.fit_from_df(
         ...     df, x_col="time", Z_cols=["age", "weight"], c_col="censored"
         ... )
-        >>> model.sf([10, 20], df[["age", "weight"]])
+        >>> model.feature_names
+        ['age', 'weight']
+        >>> model.sf([10, 20], df[["age", "weight"]].head(2)).round(4)
+        array([0.4757, 0.0024])
         """
         Z, feature_names, model_spec = design_matrix_from_df(
             df, Z_cols, formula

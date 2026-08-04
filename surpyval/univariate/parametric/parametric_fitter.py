@@ -753,6 +753,7 @@ class ParametricFitter:
         --------
         >>> from surpyval import Weibull
         >>> import numpy as np
+        >>> np.random.seed(1)
         >>> x = Weibull.random(100, 10, 4)
         >>> model = Weibull.fit(x)
         >>> print(model)
@@ -761,8 +762,8 @@ class ParametricFitter:
         Distribution        : Weibull
         Fitted by           : MLE
         Parameters          :
-             alpha: 10.551521182640098
-              beta: 3.792549834495306
+             alpha: 9.8150187...
+              beta: 3.7987404...
         >>> Weibull.fit(x, how='MPS', fixed={'alpha' : 10})
         Parametric SurPyval Model
         =========================
@@ -770,15 +771,16 @@ class ParametricFitter:
         Fitted by           : MPS
         Parameters          :
              alpha: 10.0
-              beta: 3.4314657446866836
-        >>> Weibull.fit(xl=x-1, xr=x+1, how='MPP')
+              beta: 3.6707965...
+        >>> Weibull.fit(xl=np.floor(x), xr=np.ceil(x), how='MPP',
+        ...             heuristic='Turnbull')
         Parametric SurPyval Model
         =========================
         Distribution        : Weibull
         Fitted by           : MPP
         Parameters          :
-             alpha: 9.943092756713078
-              beta: 8.613016934518258
+             alpha: 9.9501683...
+              beta: 3.2119714...
         >>> c = np.zeros_like(x)
         >>> c[x > 13] = 1
         >>> x[x > 13] = 13
@@ -790,8 +792,8 @@ class ParametricFitter:
         Distribution        : Weibull
         Fitted by           : MLE
         Parameters          :
-             alpha: 10.363725328793413
-              beta: 4.9886821457305865
+             alpha: 9.8935844...
+              beta: 3.7868860...
         """
 
         surv_data = SurpyvalData(
@@ -892,10 +894,10 @@ class ParametricFitter:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Offset (gamma)      : 39.76562962867477
+        Offset (gamma)      : 39.765577...
         Parameters          :
-             alpha: 7.141925216146524
-              beta: 2.6204524040137844
+             alpha: 7.1419836...
+              beta: 2.6204759...
         """
 
         if not isinstance(df, pd.DataFrame):

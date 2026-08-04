@@ -4,6 +4,66 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **CI now runs the docstring examples.** ``pytest --doctest-modules``
+  over the package is a new step in the deployment workflow, and every
+  one of the 229 docstring examples passes. It was 59 failing tests
+  when the flag was first turned on.
+
+  A docstring example is a promise about what the library prints, and
+  it is the one users and coding agents reach for first --
+  ``help(Weibull.fit)`` is faster than opening the docs. Nothing was
+  checking it, so it drifted: examples recorded the output of an
+  optimiser two rewrites ago, of numpy 1's scalar repr, of a module
+  that has since moved.
+
+  What the run found, beyond the cosmetic drift:
+
+  - Twelve examples could not run at all. Six regression docstrings
+    (``PH``, ``AH``, ``PO``, ``AFT``, ``AcceleratedLife``, ``Frailty``)
+    were sketches -- ``model = PH(Weibull).fit(x, Z=covariates, c=c)``
+    with ``x``, ``covariates`` and ``c`` never defined. Four more used
+    ``>>>`` on the continuation lines of a multi-line call, so pasting
+    them raised ``SyntaxError``. ``plotting_positions`` imported from
+    ``surpyval.nonparametric``, which moved to
+    ``surpyval.univariate.nonparametric`` several releases ago.
+    ``ParametricFitter.fit`` demonstrated ``how='MPP'`` on
+    interval-censored input, which now (correctly) requires the Turnbull
+    heuristic and raises without it. All are now runnable, with data.
+
+  - The five ``ParametricRegressionModel`` prediction examples
+    (``sf``, ``ff``, ``df``, ``hf``, ``Hf``) had been copied from the
+    univariate ``Parametric`` class and never adapted: they built a
+    ``Weibull.from_params([10, 3])`` and called it with no covariates at
+    all, documenting a signature the method does not have. They now fit
+    a ``WeibullPH`` and pass ``Z``.
+
+  - ``Parametric.var()`` claimed 11.229 for a Weibull(10, 3). The
+    variance is 10.533 (``100 Gamma(5/3) - (10 Gamma(4/3))^2``); the
+    code was right.
+
+  - Several examples fitted unseeded random data and then recorded
+    specific digits, which cannot be reproducible. They now seed.
+
+  ``Parametric.hf`` and ``Parametric.Hf`` returned a 0-d array
+  (``array(0.012)``) for scalar input where ``sf``, ``ff``, ``df`` and
+  ``qf`` all returned a numpy scalar, and ``cs`` did the same; their
+  own ``Returns`` sections promised "the scalar value ... if a scalar
+  was passed". That is now true. The 0-d array came from ``np.where``,
+  which does not collapse.
+
+  Two doctest option flags are set in ``pyproject.toml``.
+  ``NORMALIZE_WHITESPACE``, because numpy picks its own line breaks and
+  column padding for an array and both move with the widest element --
+  without it an example is only correct at the exact wrapping it was
+  captured at. ``ELLIPSIS``, so an example that ends in a fit can write
+  ``529.05371...`` rather than all seventeen digits: the trailing digits
+  of an optimiser's output are not part of what the docstring is
+  promising, and they move with the BLAS and the platform. Array reprs
+  are left exact -- numpy already prints only eight significant digits
+  there.
+
+  This closes #158.
+
 - **The distribution docstring examples now show what you actually see.**
   ``pytest --doctest-modules`` over ``distributions/`` is green: 139
   examples, no failures. Previously 39 failed.
@@ -25,8 +85,7 @@ v0.19.1 (unreleased)
   Two scalar examples had drifted in the last digit, and are re-recorded.
 
   With the examples now true, ``--doctest-modules`` is worth running in
-  CI -- that decision is separate, and is what would stop this
-  recurring.
+  CI, which is what stops this recurring; it is turned on above.
 
 - **``Gamma`` no longer offers probability plotting as a fit method.**
   ``Gamma.fit(x, how="MPP")`` now raises, joining ``Beta`` and
@@ -83,11 +142,7 @@ v0.19.1 (unreleased)
   In every case the code was right and the documentation was wrong, which
   is the reassuring direction, but a reader checking their understanding
   against these would have been misled. They accumulated precisely
-  because the doctests are not run.
-
-  Whether to run doctests in CI, and what to do about the 30 cosmetic
-  repr differences, is tracked separately -- it is a style decision, not
-  a correctness one.
+  because the doctests were not run, which is addressed above.
 
 - **Documented why a Turnbull fit does not equal a Kaplan-Meier fit.**
   ``Turnbull.fit`` defaults to ``turnbull_estimator="Fleming-Harrington"``

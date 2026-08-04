@@ -59,7 +59,7 @@ class InformationCriteriaMixin:
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)
         >>> model.neg_ll()
-        262.52685642385734
+        262.52685...
         """
         if getattr(self, "data", None) is None:
             raise ValueError("Must have been fit with data")
@@ -88,7 +88,7 @@ class InformationCriteriaMixin:
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)
         >>> model.bic()
-        534.2640532196908
+        np.float64(534.26405...)
 
         References
         ----------
@@ -124,7 +124,7 @@ class InformationCriteriaMixin:
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)
         >>> model.aic()
-        529.0537128477147
+        529.05371...
         """
         if hasattr(self, "_aic"):
             return self._aic
@@ -152,7 +152,7 @@ class InformationCriteriaMixin:
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)
         >>> model.aic_c()
-        529.1774241879209
+        np.float64(529.17742...)
         """
         if hasattr(self, "_aic_c"):
             return self._aic_c
