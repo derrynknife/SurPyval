@@ -159,6 +159,51 @@ v0.18.1 (unreleased)
   criterion, is what preconditioning the search addresses, so the twelve
   per-distribution back-transforms are not needed for any of it.
 
+- **Parametric proportional hazards fits are up to 6x faster and no
+  longer degrade on data measured in large units.** A ``WeibullPH`` fit
+  at data scale 1e6 settled 1.5 nats of log-likelihood short of the
+  optimum, and 1e-2 away in the covariate coefficients -- a different
+  fitted model, not a tolerance artefact. The same data in unit scale
+  fitted correctly, so nothing about it looked wrong.
+
+  The PH ladder was ``minimize(fun, init_t)`` followed by TNC, and three
+  things were the matter with it. The objective closes over
+  ``regression_neg_ll``, which is written in ``autograd.numpy`` and is
+  therefore differentiable, but no ``jac`` was passed -- so scipy fell
+  back to a two-point finite difference and paid ``p + 1`` extra
+  objective evaluations per gradient, which is what made the fit slow
+  down as the covariate count rose. The search was not preconditioned,
+  so PH inherited the scale sensitivity fixed for univariate MLE
+  elsewhere in this release: scipy stops BFGS on an absolute threshold
+  applied to a gradient that shrinks with the data magnitude and grows
+  with the sample size. And TNC's answer was returned whether or not it
+  had converged, so a rung that can only ever be an improvement was free
+  to be a regression -- the AFT and PO ladder, defined immediately
+  below it, already guarded against exactly that.
+
+  The ladder is now preconditioned BFGS on the analytic gradient, then
+  TNC, then Nelder-Mead, stopping at the first rung that converges and
+  never returning a worse point than it started from. The
+  derivative-free rung stays for fits where the gradient is unusable.
+
+  Measured against ``lifelines``, scoring both packages' answers on an
+  independently written Weibull PH log-likelihood: the scale-1e6
+  shortfall goes from 1.468 nats to 1.1e-08, and a 50 000 x 10 fit drops
+  from 1.53s to 0.40s against ``lifelines``' 2.38s. ``ExponentialPH`` at
+  the same size goes from 1.21s to 0.14s. Coefficients continue to agree
+  with ``lifelines`` to around 1e-06.
+
+  ``preconditioned_bfgs`` moved from ``fitters/mle.py`` up to
+  ``fitters/__init__.py``, alongside ``bounds_convert`` and
+  ``fallback_minimize``, so the univariate and regression ladders share
+  one copy rather than two. Behaviour of the univariate ladder is
+  unchanged.
+
+  ``optimise_nm_tnc``, which serves AFT and PO, has the same missing
+  gradient and missing preconditioning. Its Nelder-Mead first rung means
+  the failure mode may differ, so it is being measured before it is
+  changed.
+
 - **Turnbull no longer rejects left-censored observations under left
   truncation.** An entry time below every observation excludes nobody,
   so it should leave a fit untouched. With any left-censored row present

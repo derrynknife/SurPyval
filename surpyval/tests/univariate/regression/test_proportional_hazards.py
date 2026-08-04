@@ -540,3 +540,90 @@ def test_ph_fixed_covariate_coefficient_pins_correct_parameter():
     # Fixing a distribution parameter by name still works.
     fixed_shape = WeibullPH.fit(x, Z=Z, fixed={"beta": 3.0})
     assert fixed_shape.params[1] == pytest.approx(3.0, abs=1e-12)
+
+
+def _weibull_ph_ll(x, Z, c, alpha, shape, gamma):
+    """Weibull PH log-likelihood, written out independently of the fitter
+    so a test can score two candidate answers against each other."""
+    lin = Z @ np.asarray(gamma)
+    log_h = np.log(shape / alpha) + (shape - 1) * np.log(x / alpha) + lin
+    log_sf = -((x / alpha) ** shape) * np.exp(lin)
+    return log_h[np.asarray(c) == 0].sum() + log_sf.sum()
+
+
+@pytest.mark.parametrize("scale", [1e-3, 1e0, 1e3, 1e6, 1e9])
+def test_weibull_ph_fit_is_invariant_to_the_units_of_x(scale):
+    # Multiplying every event time by k must move alpha by exactly k and
+    # leave the shape and the covariate coefficients alone -- the model is
+    # closed under a change of time units.
+    #
+    # It was not. The PH ladder ran BFGS on a finite-difference gradient
+    # with no preconditioning, so scipy's absolute ``gtol`` was met well
+    # short of the optimum once the data grew: at scale 1e6 the fit gave up
+    # 1.5 nats of log-likelihood and landed ~1e-2 away in the coefficients
+    # (#328).
+    rng = np.random.default_rng(17)
+    n, p = 800, 3
+    Z = rng.normal(size=(n, p))
+    beta = np.array([0.6, 0.1, -0.4])
+    t = 4.0 * (-np.log(rng.random(n)) / np.exp(Z @ beta)) ** (1 / 1.5)
+    cens = rng.exponential(np.quantile(t, 0.6), n)
+    x, c = np.minimum(t, cens), (t > cens).astype(int)
+
+    base = WeibullPH.fit(x=x, Z=Z, c=c)
+    scaled = WeibullPH.fit(x=x * scale, Z=Z, c=c)
+
+    assert scaled.params[0] == pytest.approx(base.params[0] * scale, rel=1e-4)
+    assert scaled.params[1] == pytest.approx(base.params[1], rel=1e-4)
+    assert scaled.params[2:] == pytest.approx(base.params[2:], abs=1e-4)
+
+
+def test_weibull_ph_at_large_scale_reaches_the_optimum():
+    # The invariance test above would also pass if the fit were equally
+    # wrong at both scales, so anchor one end of it. Fit at unit scale,
+    # where the old ladder was fine, then carry that answer over to the
+    # large-scale data by the exact change of units. The large-scale fit
+    # must score at least as well on the large-scale likelihood as the
+    # transported one does -- it had the same optimum available to it.
+    #
+    # Under the old ladder it gave up 1.5 nats here.
+    rng = np.random.default_rng(23)
+    n, p = 800, 3
+    Z = rng.normal(size=(n, p))
+    beta = np.array([0.6, 0.1, -0.4])
+    t = 4.0 * (-np.log(rng.random(n)) / np.exp(Z @ beta)) ** (1 / 1.5)
+    cens = rng.exponential(np.quantile(t, 0.6), n)
+    x, c = np.minimum(t, cens), (t > cens).astype(int)
+
+    scale = 1e6
+    small = np.asarray(WeibullPH.fit(x=x, Z=Z, c=c).params, dtype=float)
+    large = np.asarray(
+        WeibullPH.fit(x=x * scale, Z=Z, c=c).params, dtype=float
+    )
+
+    transported = _weibull_ph_ll(
+        x * scale, Z, c, small[0] * scale, small[1], small[2:]
+    )
+    at_fit = _weibull_ph_ll(x * scale, Z, c, large[0], large[1], large[2:])
+
+    assert at_fit >= transported - 1e-6
+
+
+def test_optimise_ph_never_returns_a_worse_point_than_it_started_from():
+    # A contract guard rather than a reproducer: the old ladder returned
+    # TNC unconditionally, so a rung that could only ever be an improvement
+    # was free to be a regression (#328). On these smooth objectives it
+    # happened not to be, and this test passes either way -- it is here so
+    # that a future rung added to the ladder cannot reintroduce the hazard
+    # unnoticed. Whatever the rungs do individually, the ladder as a whole
+    # must not hand back a point worse than its starting guess.
+    from surpyval.univariate.regression._fit_skeleton import optimise_ph
+
+    def rosenbrock(v):
+        return (1 - v[0]) ** 2 + 100 * (v[1] - v[0] ** 2) ** 2
+
+    for start in ([-1.2, 1.0], [3.0, -4.0], [0.0, 0.0]):
+        x0 = np.array(start)
+        res = optimise_ph(rosenbrock, x0)
+        assert res.fun <= rosenbrock(x0)
+        assert res.fun == pytest.approx(rosenbrock(res.x), rel=1e-8, abs=1e-12)
