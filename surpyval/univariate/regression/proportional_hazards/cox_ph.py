@@ -41,21 +41,61 @@ nonparametric_dists = {
 
 
 class _GroupBy:
-    """Pure-NumPy grouped aggregation, replacing numpy_indexed.group_by."""
+    """Pure-NumPy grouped aggregation, replacing numpy_indexed.group_by.
+
+    The multi-dimensional sum used to be ``np.add.at``, which is an
+    unbuffered scatter with no fast path: at n=50 000 with ten covariates
+    it was 6.3s of a 16.9s Efron fit, called about ten times per
+    ``jac_hess`` on arrays of shape ``(n, p, p)`` (#329).
+
+    Sorting once here turns each of those into ``np.add.reduceat``, a
+    C-level segmented reduction. Every unique key has at least one member
+    by construction, so the group starts strictly increase and
+    ``reduceat`` is well defined.
+
+    Two cases skip work entirely. When the keys already arrive grouped --
+    the common case for start-stop (time-varying covariate) data -- there
+    is nothing to permute. And when every key is distinct there is nothing
+    to *add*: the sum is the permutation and no reduction is needed at
+    all. That second case is continuous event times, where ``reduceat``
+    would otherwise be asked for fifty thousand one-element segments and
+    pay the per-segment overhead on every one of them.
+
+    One consequence to know about: when both shortcuts apply at once --
+    keys already grouped *and* all distinct -- ``sum`` returns the input
+    array itself rather than a copy, because the sum of one-element groups
+    in their existing order is the input. Treat the result as read-only.
+    Every caller in this module builds its argument as a fresh temporary
+    and only ever rebinds the result, never mutates it in place.
+    """
 
     def __init__(self, keys):
         self.unique, self._inv = np.unique(keys, return_inverse=True)
+        self._inv = np.asarray(self._inv).ravel()
         self._n = len(self.unique)
 
+        counts = np.bincount(self._inv, minlength=self._n)
+        self._starts = np.concatenate([[0], np.cumsum(counts)[:-1]])
+        self._all_distinct = self._n == len(self._inv)
+
+        already_grouped = bool(np.all(np.diff(self._inv) >= 0))
+        self._order = (
+            None if already_grouped else np.argsort(self._inv, kind="stable")
+        )
+
     def sum(self, values):
-        values = np.asarray(values)
+        # ``asarray`` rather than ``astype``: no copy when the caller
+        # already handed over float64, which it almost always does.
+        values = np.asarray(values, dtype=float)
         if values.ndim == 1:
-            result = np.bincount(
-                self._inv, weights=values.astype(float), minlength=self._n
-            )
+            result = np.bincount(self._inv, weights=values, minlength=self._n)
         else:
-            result = np.zeros((self._n,) + values.shape[1:], dtype=float)
-            np.add.at(result, self._inv, values)
+            ordered = values if self._order is None else values[self._order]
+            result = (
+                ordered
+                if self._all_distinct
+                else np.add.reduceat(ordered, self._starts, axis=0)
+            )
         return self.unique, result
 
     def max(self, values):
@@ -65,14 +105,46 @@ class _GroupBy:
         return self.unique, result
 
 
-def efron_jit(n_d, Ri, Di, out):
-    for i in range(len(n_d)):
-        if n_d[i] == 0:
-            continue
-        j_vals = np.arange(int(n_d[i]))
-        c_vals = j_vals / n_d[i]
-        v = Ri[i] - c_vals[:, np.newaxis] * Di[i]
-        out[i] = np.log(v).sum()
+def _efron_tie_weights(n_d):
+    """``c = j / d`` for every tied death, with a mask marking the entries
+    that only exist to square off the ragged ``j < d`` ranges.
+
+    The count ``d`` can be fractional -- ``n`` is a weight, not necessarily
+    an integer -- and the loop this replaces ran ``range(int(d))`` while
+    dividing by the unrounded ``d``. The mask therefore truncates and the
+    weights do not; getting that backwards would silently change the
+    Efron correction for weighted data.
+
+    Shared by the log-likelihood denominator and the hessian so the two
+    agree on the ragged-edge convention by construction.
+    """
+    counts = n_d.astype(int)
+    j = np.arange(int(counts.max()) if counts.size else 0)
+    valid = j[None, :] < counts[:, None]
+    weights = np.where(valid, j[None, :] / n_d[:, None], 0.0)
+    return weights, valid
+
+
+def efron_log_denominator(n_d, Ri, Di):
+    """Per event time, ``sum_j log(R - (j/d) D)`` over the ``d`` tied deaths.
+
+    Where at most one death occurs, ``j`` only ever takes the value 0, so
+    ``c = 0`` and this collapses to ``log(R)`` — Breslow's denominator. On
+    continuous data that is every event time, which is why the Efron and
+    Breslow fits agree digit for digit there; splitting the two cases out
+    means that agreement no longer costs a Python loop (#329).
+    """
+    out = np.zeros(len(n_d))
+    R = np.asarray(Ri).reshape(len(n_d))
+    D = np.asarray(Di).reshape(len(n_d))
+
+    active = n_d >= 1
+    if not active.any():
+        return out
+
+    weights, valid = _efron_tie_weights(n_d[active])
+    v = R[active][:, None] - weights * D[active][:, None]
+    out[active] = np.where(valid, np.log(v), 0.0).sum(axis=1)
     return out
 
 
@@ -98,8 +170,8 @@ def efron_jac(n_d, Ri, ZRi, Di, ZDi, masked_array):
     return out
 
 
-def efron_hess_jit(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di, out):
-    # Per-tied-time contribution to the observed information (the Hessian of
+def efron_hess(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di):
+    # Per-event-time contribution to the observed information (the Hessian of
     # the negative Efron partial log-likelihood). For each of the ``n_d[i]``
     # tied deaths the Efron correction shrinks the risk set by ``c * D``:
     #
@@ -109,18 +181,80 @@ def efron_hess_jit(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di, out):
     # (a p x p matrix), which is where this previously went wrong -- an inner
     # product collapses it to a scalar and silently corrupts the off-diagonal
     # information for any model with more than one covariate.
-    for i in range(len(n_d)):
-        val = np.zeros(out.shape[1:])
-        if n_d[i] == 0:
-            continue
-        for j in range(int(n_d[i])):
-            c = j / n_d[i]
-            dRD = Ri[i] - c * Di[i]
-            a = ZRi[i] - c * ZDi[i]
-            a2 = np.outer(a, a)
-            val += (dRD * (Z2Ri[i] - c * Z2Di[i]) - a2) / dRD**2
-        out[i] = val
+    #
+    # This used to be a Python double loop, 4.8s of a 16.9s fit at n=50 000
+    # with ten covariates, plus 370 000 calls to ``np.outer`` (#329).
+    #
+    # The sum over ``j`` factors out of the p x p part entirely, which is
+    # what makes the vectorised form cheap rather than merely loop-free.
+    # Only ``c`` depends on ``j``, so with ``u = 1 / (R - c D)``:
+    #
+    #     sum_j (Z2R - c Z2D) u  =  (sum u) Z2R - (sum c u) Z2D
+    #
+    # and, expanding ``a a' = ZR ZR' - c (ZR ZD' + ZD ZR') + c^2 ZD ZD'``,
+    #
+    #     sum_j a a' u^2 = (sum u^2) ZR ZR'
+    #                    - (sum c u^2) (ZR ZD' + ZD ZR')
+    #                    + (sum c^2 u^2) ZD ZD'.
+    #
+    # The five sums are scalars per event time, so the ragged ``j`` axis
+    # never has to carry a p x p payload: it costs O(times x ties) instead
+    # of O(times x ties x p^2). Untied times fall out of the same formula
+    # with a single j = 0 term and c = 0, so there is no separate branch --
+    # on continuous data the ragged axis is one element wide.
+    m = len(n_d)
+    p = ZRi.shape[1]
+    out = np.zeros((m, p, p))
+
+    active = n_d >= 1
+    if not active.any():
+        return out
+
+    weights, valid = _efron_tie_weights(n_d[active])
+    R = np.asarray(Ri).reshape(m)[active][:, None]
+    D = np.asarray(Di).reshape(m)[active][:, None]
+
+    u = np.where(valid, 1.0 / (R - weights * D), 0.0)
+    u2 = u**2
+
+    s_u = u.sum(axis=1)[:, None, None]
+    s_cu = (weights * u).sum(axis=1)[:, None, None]
+    s_u2 = u2.sum(axis=1)[:, None, None]
+    s_cu2 = (weights * u2).sum(axis=1)[:, None, None]
+    s_c2u2 = (weights**2 * u2).sum(axis=1)[:, None, None]
+
+    ZR = ZRi[active]
+    ZD = ZDi[active]
+    RR = ZR[:, :, None] * ZR[:, None, :]
+    RD = ZR[:, :, None] * ZD[:, None, :]
+    DD = ZD[:, :, None] * ZD[:, None, :]
+
+    out[active] = (
+        s_u * Z2Ri[active]
+        - s_cu * Z2Di[active]
+        - s_u2 * RR
+        + s_cu2 * (RD + RD.transpose(0, 2, 1))
+        - s_c2u2 * DD
+    )
     return out
+
+
+def _sort_by_event_time(x, Z, c, n, tl):
+    """Put the rows in event-time order before building the closures.
+
+    Nothing in the partial likelihood depends on the order of the rows --
+    every quantity is aggregated to unique event times first -- but
+    ``_GroupBy`` gets to skip its permutation when the keys already arrive
+    grouped. One reordering of ``Z`` here replaces a gather of an
+    ``(n, p, p)`` array on every ``jac_hess`` call, roughly ten of them per
+    root-finding iteration (#329).
+
+    The caller keeps the unsorted arrays: ``fit`` stores those on the model
+    for the residual and diagnostic code, and the closures only ever hand
+    back beta-shaped or unique-time-shaped results.
+    """
+    order = np.argsort(x, kind="stable")
+    return x[order], Z[order], c[order], n[order], tl[order]
 
 
 def at_risk_beta_Z(arr, n, gb_x):
@@ -352,6 +486,8 @@ class CoxPH_:
         # Left-truncation is handled by subtracting the pre-entry risk set
         # (``Ri - TRi``) below, so delayed-entry data is fitted correctly.
 
+        x, Z, c, n, tl = _sort_by_event_time(x, Z, c, n, tl)
+
         # Groupby object for repeated use
         gb_x = _GroupBy(x)
         gb_tl = _GroupBy(tl)
@@ -383,8 +519,7 @@ class CoxPH_:
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
 
-            efron_denom = np.zeros_like(x_)
-            efron_denom = efron_jit(n_d, Ri, Di, efron_denom)
+            efron_denom = efron_log_denominator(n_d, Ri, Di)
 
             like = S_d.sum() - efron_denom.sum()
             return -like
@@ -396,20 +531,22 @@ class CoxPH_:
 
         masked_array = ma.array(arr, mask=mask)
 
+        # Z is fixed for the life of the fit, so its outer product is too.
+        # It used to be rebuilt inside ``jac_hess`` -- an (n, p, p) einsum
+        # on every root-finding iteration, 1.1s of a 16.9s fit (#329).
+        Z2 = np.einsum("ij, ik -> ijk", Z, Z)
+
         def jac_hess(beta):
             # This line troubled me for longer than I care
             # to admit. I was using n, but it is only the
             # number of deaths at each point, n_d_x
-
-            # Z = Z
-            Z2 = np.einsum("ij, ik -> ijk", Z, Z)
 
             # Only call this once.. Yay.
             beta_z = Z @ beta
 
             e_beta_z = np.exp(beta_z).reshape(-1, 1)
             z_e_beta_z = Z * e_beta_z
-            z2_e_beta_z = np.einsum("ijk, ij -> ijk", Z2, n * e_beta_z)
+            z2_e_beta_z = Z2 * (n * e_beta_z)[:, :, None]
 
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
             ZRi = at_risk_beta_Z(z_e_beta_z, n, gb_x)
@@ -438,15 +575,12 @@ class CoxPH_:
             # accumulated per tied time then summed. Same positive-definite
             # convention as the Breslow branch, so ``inv(hess)`` gives the
             # parameter covariance directly.
-            Z2Di = np.einsum("ijk, ij -> ijk", Z2, n_d_x * e_beta_z)
+            Z2Di = Z2 * (n_d_x * e_beta_z)[:, :, None]
             Z2Di = gb_x.sum(Z2Di)[1]
 
-            n_params = Z.shape[1]
-            hess_matrix = np.zeros((len(n_d), n_params, n_params))
-            hess_matrix = efron_hess_jit(
-                n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di, hess_matrix
+            hess_matrix = efron_hess(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di).sum(
+                axis=0
             )
-            hess_matrix = hess_matrix.sum(axis=0)
 
             return jacobian, hess_matrix
 
@@ -457,6 +591,8 @@ class CoxPH_:
         # was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
         # Left-truncation is handled by subtracting the pre-entry risk set
         # (``Ri - TRi``) below, so delayed-entry data is fitted correctly.
+
+        x, Z, c, n, tl = _sort_by_event_time(x, Z, c, n, tl)
 
         gb_x = _GroupBy(x)
         gb_tl = _GroupBy(tl)
@@ -492,15 +628,16 @@ class CoxPH_:
 
         S_d = gb_x.sum(n_d_x.reshape(-1, 1) * Z)[1]
 
-        def jac_hess(beta):
-            Z2 = np.einsum("ij, ik -> ijk", Z, Z)
+        # Constant for the life of the fit; see the Efron branch (#329).
+        Z2 = np.einsum("ij, ik -> ijk", Z, Z)
 
+        def jac_hess(beta):
             # Only call this once.. Yay.
             beta_z = Z @ beta
 
             e_beta_z = np.exp(beta_z).reshape(-1, 1)
             z_e_beta_z = Z * e_beta_z
-            z2_e_beta_z = np.einsum("ijk, ij -> ijk", Z2, n * e_beta_z)
+            z2_e_beta_z = Z2 * (n * e_beta_z)[:, :, None]
 
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
             ZRi = at_risk_beta_Z(z_e_beta_z, n, gb_x)
@@ -520,7 +657,7 @@ class CoxPH_:
             jacobian = -(S_d - EZ).sum(axis=0)
 
             # calc term 1
-            term_1 = np.einsum("ijk,ij->ijk", Z2Ri, 1.0 / Ri)
+            term_1 = Z2Ri / Ri[:, :, None]
 
             # calc term 2
             term_2 = ZRi / Ri

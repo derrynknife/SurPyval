@@ -627,3 +627,115 @@ def test_optimise_ph_never_returns_a_worse_point_than_it_started_from():
         res = optimise_ph(rosenbrock, x0)
         assert res.fun <= rosenbrock(x0)
         assert res.fun == pytest.approx(rosenbrock(res.x), rel=1e-8, abs=1e-12)
+
+
+def _efron_hess_reference(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di):
+    """The literal double loop ``efron_hess`` replaced, kept as an oracle.
+
+    ``efron_hess`` now factors the sum over tied deaths out of the p x p
+    part, which is a real algebraic rearrangement rather than a
+    reorganisation of the same arithmetic (#329). This pins it.
+    """
+    out = np.zeros((len(n_d),) + Z2Ri.shape[1:])
+    for i in range(len(n_d)):
+        val = np.zeros(out.shape[1:])
+        if n_d[i] == 0:
+            continue
+        for j in range(int(n_d[i])):
+            k = j / n_d[i]
+            dRD = Ri[i] - k * Di[i]
+            a = ZRi[i] - k * ZDi[i]
+            val += (dRD * (Z2Ri[i] - k * Z2Di[i]) - np.outer(a, a)) / dRD**2
+        out[i] = val
+    return out
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [
+        [1.0, 1.0, 1.0, 1.0],  # no ties at all -- the continuous case
+        [1.0, 0.0, 3.0, 1.0],  # a time with no deaths mixed in
+        [7.0, 12.0, 1.0, 4.0],  # heavy ties
+        [2.5, 1.0, 3.5, 0.0],  # fractional weights: range(int(d)), c = j/d
+    ],
+)
+def test_efron_hessian_matches_the_loop_it_replaced(counts):
+    from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+        efron_hess,
+    )
+
+    rng = np.random.default_rng(31)
+    m, p = len(counts), 4
+    n_d = np.array(counts)
+
+    # Risk-set sums must dominate the death sums for R - cD to stay
+    # positive, which is what the real aggregation guarantees.
+    Ri = rng.uniform(50, 100, (m, 1))
+    Di = rng.uniform(0, 10, (m, 1))
+    ZRi = rng.normal(size=(m, p))
+    ZDi = rng.normal(size=(m, p))
+    Z2Ri = rng.normal(size=(m, p, p))
+    Z2Di = rng.normal(size=(m, p, p))
+
+    got = efron_hess(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di)
+    want = _efron_hess_reference(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di)
+
+    assert got.shape == want.shape
+    np.testing.assert_allclose(got, want, rtol=1e-11, atol=1e-11)
+
+
+@pytest.mark.parametrize(
+    "counts", [[1.0, 1.0, 1.0], [5.0, 1.0, 2.0], [2.5, 0.0, 3.5]]
+)
+def test_efron_log_denominator_matches_the_loop_it_replaced(counts):
+    from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+        efron_log_denominator,
+    )
+
+    rng = np.random.default_rng(37)
+    m = len(counts)
+    n_d = np.array(counts)
+    Ri = rng.uniform(50, 100, (m, 1))
+    Di = rng.uniform(0, 10, (m, 1))
+
+    want = np.zeros(m)
+    for i in range(m):
+        if n_d[i] == 0:
+            continue
+        c_vals = np.arange(int(n_d[i])) / n_d[i]
+        want[i] = np.log(Ri[i] - c_vals[:, None] * Di[i]).sum()
+
+    got = efron_log_denominator(n_d, Ri, Di)
+    np.testing.assert_allclose(got, want, rtol=1e-12, atol=1e-12)
+
+
+def test_cox_fit_is_unaffected_by_the_order_of_the_rows():
+    # ``create_*_ll_jac_hess`` now sorts by event time so ``_GroupBy`` can
+    # skip its permutation (#329). Nothing downstream may depend on that,
+    # so a shuffled copy of the same data must fit identically.
+    rng = np.random.default_rng(41)
+    n, p = 400, 3
+    Z = rng.normal(size=(n, p))
+    t = 10 * (-np.log(rng.random(n)) / np.exp(Z @ [0.6, 0.1, -0.4])) ** (
+        1 / 1.5
+    )
+    cens = rng.exponential(np.quantile(t, 0.6), n)
+    x, c = np.minimum(t, cens), (t > cens).astype(int)
+    tl = rng.uniform(0, 0.4 * np.median(x), n)
+    keep = x > tl
+    x, Z, c, tl = x[keep], Z[keep], c[keep], tl[keep]
+
+    shuffle = rng.permutation(len(x))
+    for method in ("efron", "breslow"):
+        a = CoxPH.fit(x=x, Z=Z, c=c, tl=tl, method=method)
+        b = CoxPH.fit(
+            x=x[shuffle],
+            Z=Z[shuffle],
+            c=c[shuffle],
+            tl=tl[shuffle],
+            method=method,
+        )
+        np.testing.assert_allclose(a.beta, b.beta, rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(
+            a.jac(a.beta)[1], b.jac(b.beta)[1], rtol=1e-9, atol=1e-10
+        )
