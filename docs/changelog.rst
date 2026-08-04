@@ -1,7 +1,7 @@
 Changelog
 =========
 
-v0.18.1 (unreleased)
+v0.19.0 (unreleased)
 --------------------
 
 - **Confidence bounds no longer turn silently to nan on data measured
