@@ -429,7 +429,5 @@ def test_only_the_km_option_is_the_npmle():
     assert got["Fleming-Harrington"] == pytest.approx(0.7652, abs=1e-3)
     assert got["Nelson-Aalen"] == pytest.approx(0.7788, abs=1e-3)
     assert (
-        got["Kaplan-Meier"]
-        < got["Fleming-Harrington"]
-        < got["Nelson-Aalen"]
+        got["Kaplan-Meier"] < got["Fleming-Harrington"] < got["Nelson-Aalen"]
     )
