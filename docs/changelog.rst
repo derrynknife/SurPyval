@@ -81,6 +81,16 @@ v0.19.1 (unreleased)
   pins both halves of that, using the real output pairs observed on
   different Pythons.
 
+  The fallback only runs when an example has actually drifted, which on
+  any one machine is a handful of them -- and a different handful on
+  each. A gap in it is therefore invisible locally and surfaces in CI,
+  on whichever Python computed a different last digit. So the doctest
+  step runs twice: once normally, and once under
+  ``--doctest-force-numeric``, which routes every example whose output
+  contains a number through the numeric comparison. Fifteen seconds, and
+  the fallback is exercised against all 229 examples rather than
+  today's accidental few.
+
   ``NORMALIZE_WHITESPACE`` is set in ``pyproject.toml`` for the same
   reason: numpy picks its own line breaks and column padding for an
   array and both move with the width of the widest element.

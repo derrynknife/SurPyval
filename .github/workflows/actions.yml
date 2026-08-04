@@ -100,6 +100,18 @@ jobs:
           python -m pytest --doctest-modules surpyval
           --ignore=surpyval/tests --ignore=surpyval/alpha
 
+      # The numeric comparison above only runs for an example whose
+      # output has actually drifted -- a handful on any one machine, and
+      # a different handful on each. That leaves a gap in it invisible
+      # until CI hits the one example that needed it. This second pass
+      # routes every example through it, so the fallback is checked
+      # against all of them. Fifteen seconds.
+      - name: doctests (numeric comparison forced)
+        run:
+          python -m pytest --doctest-modules surpyval
+          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --doctest-force-numeric
+
       - name: coverage
         run: |
           coverage report

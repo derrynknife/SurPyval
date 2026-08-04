@@ -1,4 +1,8 @@
-"""Opt-in gating for the slow parts of the test suite.
+"""Suite-wide fixtures: doctest number comparison, and opt-in gating.
+
+The first half of this file makes the ``--doctest-modules`` run compare
+the numbers in an example's output as numbers rather than as text; see
+the comment above ``RTOL``. The rest is the opt-in gating below.
 
 Two groups are skipped unless asked for, because both are expensive and
 neither guards a regression that the default run would miss quickly:
@@ -72,6 +76,7 @@ RTOL = 1e-3
 ATOL = 1e-12
 
 _NUMBER = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?")
+_BLANKLINE = re.compile(r"(?m)^%s\s*?$" % re.escape(doctest.BLANKLINE_MARKER))
 
 
 def _skeleton(text: str) -> str:
@@ -96,6 +101,12 @@ def _skeleton(text: str) -> str:
 
 
 def _numerically_equal(want: str, got: str) -> bool:
+    # ``<BLANKLINE>`` stands for an empty line in the expected output.
+    # The text comparison substitutes it before matching, so this one has
+    # to as well, or a model repr with a blank line in it can never reach
+    # the numeric comparison at all.
+    want = _BLANKLINE.sub("", want)
+
     if _skeleton(want) != _skeleton(got):
         return False
     wants = _NUMBER.findall(want)
@@ -125,6 +136,26 @@ _patched = _check_output  # type: ignore[assignment]
 doctest.OutputChecker.check_output = _patched  # type: ignore[method-assign]
 
 
+def _forced_check_output(self, want, got, optionflags):
+    """As above, but the numeric path is the *only* path.
+
+    The fallback normally runs only when an example's output has
+    actually drifted, which on any one machine is a handful of them. A
+    gap in it -- the ``<BLANKLINE>`` markers it did not strip, say --
+    therefore stays invisible locally and surfaces in CI, on whichever
+    Python happens to compute a different last digit.
+
+    Under ``--doctest-force-numeric`` every example whose output
+    contains a number is compared numerically instead, so the fallback
+    is exercised against all 229 of them rather than against today's
+    accidental few. Outputs with no numbers keep the text comparison;
+    there is nothing in them for this to compare.
+    """
+    if not _NUMBER.search(want):
+        return _text_check_output(self, want, got, optionflags)
+    return _numerically_equal(want, got)
+
+
 OPT_IN = {
     "ml": (
         "--run-ml",
@@ -147,12 +178,26 @@ def pytest_addoption(parser):
             default=False,
             help=f"run the {description} (skipped by default)",
         )
+    parser.addoption(
+        "--doctest-force-numeric",
+        action="store_true",
+        default=False,
+        help=(
+            "compare every doctest example's numbers numerically, not "
+            "only those whose text has drifted; exercises the fallback "
+            "against all of them"
+        ),
+    )
 
 
 def pytest_configure(config):
     for mark, (flag, description, _path) in OPT_IN.items():
         config.addinivalue_line(
             "markers", f"{mark}: {description}; opt in with {flag}"
+        )
+    if config.getoption("--doctest-force-numeric"):
+        doctest.OutputChecker.check_output = (  # type: ignore[method-assign]
+            _forced_check_output  # type: ignore[assignment]
         )
 
 
