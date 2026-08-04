@@ -51,16 +51,39 @@ v0.19.1 (unreleased)
   was passed". That is now true. The 0-d array came from ``np.where``,
   which does not collapse.
 
-  Two doctest option flags are set in ``pyproject.toml``.
-  ``NORMALIZE_WHITESPACE``, because numpy picks its own line breaks and
-  column padding for an array and both move with the widest element --
-  without it an example is only correct at the exact wrapping it was
-  captured at. ``ELLIPSIS``, so an example that ends in a fit can write
-  ``529.05371...`` rather than all seventeen digits: the trailing digits
-  of an optimiser's output are not part of what the docstring is
-  promising, and they move with the BLAS and the platform. Array reprs
-  are left exact -- numpy already prints only eight significant digits
-  there.
+  **The numbers in the examples are compared as numbers.** doctest
+  compares printed output as text, which is the wrong test for a library
+  whose examples end in an optimiser: the same ``Duane`` fit lands on
+  ``b = 4.1995e-05`` under Python 3.11 and ``4.2032e-05`` under 3.12,
+  and numpy prints eight significant digits either way. Sixteen of the
+  229 examples disagree between those two Pythons somewhere in their
+  digits.
+
+  The obvious workaround -- trimming each documented number back to the
+  digits that agree everywhere -- makes the docstring show something the
+  reader's own session will not produce, which is precisely what these
+  examples exist to avoid. So the examples record the real output, in
+  full, and ``conftest.py`` installs a fallback comparison that runs
+  only after the ordinary text comparison has failed. It fires when the
+  two outputs are identical apart from their numeric literals -- same
+  words, same brackets, same integer-versus-float shape, so ``1`` never
+  matches ``1.`` and a dtype change is still a failure -- and then
+  compares the numbers with ``rel_tol=1e-3``, set by the loosest genuine
+  disagreement between supported Pythons with no margin beyond it, and
+  ``abs_tol=1e-12`` for a restoration factor whose true value is zero
+  and which surfaces as ``1e-16`` with whatever mantissa the optimiser
+  stopped on.
+
+  What that forgives is a value drifting inside the tolerance. What it
+  still catches is every defect listed above: a stale value from another
+  parameterisation, the wrong function being called, the wrong shape, an
+  exception, a missing import. ``surpyval/tests/test_doctest_checker.py``
+  pins both halves of that, using the real output pairs observed on
+  different Pythons.
+
+  ``NORMALIZE_WHITESPACE`` is set in ``pyproject.toml`` for the same
+  reason: numpy picks its own line breaks and column padding for an
+  array and both move with the width of the widest element.
 
   This closes #158.
 

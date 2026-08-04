@@ -27,8 +27,8 @@ class CoxLewis(NHPPFitter):
     Process             : Cox-Lewis
     Fitted by           : MLE
     Parameters          :
-         alpha: 0.38481273...
-          beta: 0.19396672...
+         alpha: 0.384812737762836
+          beta: 0.19396672109211047
     >>> model.cif([1, 2, 3, 4, 5, 6])
     array([ 1.62151879,  3.59013322,  5.98014113,  8.88174429, 12.40445268,
            16.6812175 ])

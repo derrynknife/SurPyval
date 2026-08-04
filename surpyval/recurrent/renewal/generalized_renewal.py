@@ -60,10 +60,10 @@ class GeneralizedRenewal(RenewalFitMixin):
     Distribution        : Weibull
     Fitted by           : MLE
     Kijima Type         : i
-    Restoration Factor  : 0.15732122...
+    Restoration Factor  : 0.15732122999163628
     Parameters          :
-         alpha: 1.2613379...
-          beta: 8.9390232...
+         alpha: 1.261337933121844
+          beta: 8.93902321971521
     >>>
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
@@ -261,8 +261,8 @@ class GeneralizedRenewal(RenewalFitMixin):
         Kijima Type         : i
         Restoration Factor  : 1.3316262291443964e-16
         Parameters          :
-             alpha: 2.3990296...
-              beta: 2.7539200...
+             alpha: 2.399029668688425
+              beta: 2.753920042066547
         """
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
@@ -346,8 +346,8 @@ class GeneralizedRenewal(RenewalFitMixin):
         Kijima Type         : i
         Restoration Factor  : 1.3316262291443964e-16
         Parameters          :
-             alpha: 2.3990296...
-              beta: 2.7539200...
+             alpha: 2.399029668688425
+              beta: 2.753920042066547
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, kijima, init=init)

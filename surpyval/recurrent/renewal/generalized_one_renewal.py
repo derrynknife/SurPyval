@@ -60,10 +60,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     =========================
     Distribution        : Weibull
     Fitted by           : MLE
-    Restoration Factor  : -0.17301846...
+    Restoration Factor  : -0.1730184624683848
     Parameters          :
-         alpha: 1.3919045...
-          beta: 5.0088611...
+         alpha: 1.3919045968817332
+          beta: 5.008861189641614
     >>>
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
@@ -208,10 +208,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Restoration Factor  : 0.34027890...
+        Restoration Factor  : 0.3402789091696592
         Parameters          :
-             alpha: 1.4115217...
-              beta: 3.5499343...
+             alpha: 1.4115217370254167
+              beta: 3.5499343659245564
         """
         self._check_dist_eligible(dist)
         validate_renewal_censoring(data.c, type(self).__name__)
@@ -290,10 +290,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Restoration Factor  : 0.34027890...
+        Restoration Factor  : 0.3402789091696592
         Parameters          :
-             alpha: 1.4115217...
-              beta: 3.5499343...
+             alpha: 1.4115217370254167
+              beta: 3.5499343659245564
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist=dist, init=init)

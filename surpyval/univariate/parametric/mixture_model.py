@@ -297,8 +297,8 @@ class MixtureModel(SerialisableMixin, Distribution):
         Sub-Distributions   : 2
         Fitted by           : EM
         Weights             :
-            0.61848918...,
-            0.38151081...
+                0.6184891886499861,
+                0.381510811350014
         Parameters          :
              alpha: [ 6.32508961 17.37701969]
               beta: [ 1.83105154 12.01392721]

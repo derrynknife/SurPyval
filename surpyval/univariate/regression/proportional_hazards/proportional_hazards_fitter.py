@@ -204,13 +204,13 @@ class ProportionalHazardsFitter(
         Regression Model    : Log Linear [e^(beta'Z)]
         Fitted by           : MLE
         Distribution        :
-            alpha: 0.24255136...
-            beta: 16.057785...
+             alpha: 0.2425513627560218
+              beta: 16.057785182711932
         Regression Model    :
-            beta_0: -9.1650627...
-            beta_1: -7.9985730...
-            beta_2: -27.503185...
-            beta_3: 18.385445...
+            beta_0: -9.165062726518311
+            beta_1: -7.998573055929788
+            beta_2: -27.50318580568538
+            beta_3: 18.385445332039488
         >>> model = WeibullPH.fit(x=x, Z=Z, c=c, fixed={"beta": 15})
         >>> model
         Parametric Regression SurPyval Model
@@ -220,13 +220,13 @@ class ProportionalHazardsFitter(
         Regression Model    : Log Linear [e^(beta'Z)]
         Fitted by           : MLE
         Distribution        :
-            alpha: 0.23772966...
-            beta: 15.0
+             alpha: 0.237729668424067
+              beta: 15.0
         Regression Model    :
-            beta_0: -8.6283269...
-            beta_1: -7.6175293...
-            beta_2: -25.952367...
-            beta_3: 17.270148...
+            beta_0: -8.62832691738283
+            beta_1: -7.617529362323243
+            beta_2: -25.952367249502934
+            beta_3: 17.270148387391387
         """
         data, prep = prepare_regression_fit(
             self,

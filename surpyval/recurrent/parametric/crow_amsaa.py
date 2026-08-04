@@ -27,8 +27,8 @@ class CrowAMSAA(NHPPFitter):
     Process             : Crow-AMSAA
     Fitted by           : MLE
     Parameters          :
-         alpha: 913.84662...
-          beta: 1.4781707...
+         alpha: 913.8466210685444
+          beta: 1.4781707110680866
     >>> model.cif([1, 2, 3, 4, 5, 6])
     array([4.20072057e-05, 1.17030084e-04, 2.13103439e-04, 3.26040266e-04,
            4.53440995e-04, 5.93696079e-04])

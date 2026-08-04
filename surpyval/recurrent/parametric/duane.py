@@ -27,7 +27,7 @@ class Duane(NHPPFitter):
     Process             : Duane
     Fitted by           : MLE
     Parameters          :
-         alpha: 1.4782020...
+         alpha: 1.478202089169939
              b: 4.199455086392048e-05
     >>> model.cif([1, 2, 3, 4, 5, 6])
     array([4.19945509e-05, 1.16997373e-04, 2.13046585e-04, 3.25956224e-04,

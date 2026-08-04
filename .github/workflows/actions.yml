@@ -93,7 +93,8 @@ jobs:
       # ``surpyval/tests`` is excluded because the test modules have no
       # user-facing examples, and ``surpyval/alpha`` because it is not
       # part of the release contract (same reason the suite skips it).
-      # Option flags are set in pyproject.toml.
+      # Option flags are set in pyproject.toml; conftest.py adds the
+      # numeric comparison that lets the examples record real output.
       - name: doctests
         run:
           python -m pytest --doctest-modules surpyval

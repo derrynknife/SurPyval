@@ -34,7 +34,7 @@ class HPP(CountingProcess):
     Process             : Homogeneous Poisson Process
     Fitted by           : MLE
     Parameters          :
-        lambda: 0.0023047023...
+        lambda: 0.0023047023327236213
     >>> model.cif([1, 2, 3, 4, 5, 6])
     array([0.0023047 , 0.0046094 , 0.00691411, 0.00921881, 0.01152351,
            0.01382821])

@@ -762,8 +762,8 @@ class ParametricFitter:
         Distribution        : Weibull
         Fitted by           : MLE
         Parameters          :
-             alpha: 9.8150187...
-              beta: 3.7987404...
+             alpha: 9.815018791049368
+              beta: 3.798740470368033
         >>> Weibull.fit(x, how='MPS', fixed={'alpha' : 10})
         Parametric SurPyval Model
         =========================
@@ -771,7 +771,7 @@ class ParametricFitter:
         Fitted by           : MPS
         Parameters          :
              alpha: 10.0
-              beta: 3.6707965...
+              beta: 3.670796510564323
         >>> Weibull.fit(xl=np.floor(x), xr=np.ceil(x), how='MPP',
         ...             heuristic='Turnbull')
         Parametric SurPyval Model
@@ -779,8 +779,8 @@ class ParametricFitter:
         Distribution        : Weibull
         Fitted by           : MPP
         Parameters          :
-             alpha: 9.9501683...
-              beta: 3.2119714...
+             alpha: 9.950168329892755
+              beta: 3.211971411540382
         >>> c = np.zeros_like(x)
         >>> c[x > 13] = 1
         >>> x[x > 13] = 13
@@ -792,8 +792,8 @@ class ParametricFitter:
         Distribution        : Weibull
         Fitted by           : MLE
         Parameters          :
-             alpha: 9.8935844...
-              beta: 3.7868860...
+             alpha: 9.893584496413128
+              beta: 3.78688602908912
         """
 
         surv_data = SurpyvalData(
@@ -894,10 +894,10 @@ class ParametricFitter:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Offset (gamma)      : 39.765577...
+        Offset (gamma)      : 39.76557772434183
         Parameters          :
-             alpha: 7.1419836...
-              beta: 2.6204759...
+             alpha: 7.141983615103902
+              beta: 2.62047590823775
         """
 
         if not isinstance(df, pd.DataFrame):
