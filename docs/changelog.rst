@@ -232,8 +232,17 @@ v0.18.1 (unreleased)
   case, which is structurally exploitable but converges given the
   iterations.
 
-  This is the second half of #308. The first half, an off-time-index
-  error that made these same inputs raise, is above.
+  This is the second half of #308, which closes with it; the first half,
+  an off-by-one that made these same inputs raise, is above. The
+  threshold is a measured cut-off standing in for a property that is
+  actually decidable: Vardi (1985) and Wang (1991) give a graphical
+  condition on the data that settles whether the NPMLE exists, exists
+  but is not unique, or does not exist at all, with nothing to tune.
+  Adopting it, and the question of what a non-identifiable fit should
+  *return* rather than merely report, are #327. Worth noting alongside
+  that left truncation with interval censoring is documented as yielding
+  an inconsistent NPMLE, so this is a known limit of the estimator for
+  this data shape rather than something particular to surpyval.
 
 - **Truncated parametric regression fits could report a log-likelihood
   tens of thousands higher than their parameters earn, and be optimised

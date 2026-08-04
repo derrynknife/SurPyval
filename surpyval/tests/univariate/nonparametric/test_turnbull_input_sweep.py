@@ -94,21 +94,19 @@ KINDS = [
     "right_truncated",
     "both_truncated",
     "interval_left_truncated",
-    # Left censoring together with left truncation still does not
-    # converge (#308, second half). The support-window off-by-one that
-    # made these inputs *raise* is fixed, and a vacuous entry time is now
-    # an exact no-op; what remains is the EM inflating its expected event
-    # counts. On this case every observation time comes back carrying
-    # ~3.1 expected events for 30 observations, so the estimator ladder
-    # exhausts the risk set within a handful of steps and the survival
-    # curve collapses. That is the ghost/normalisation step, not the
-    # index arithmetic. Marked xfail rather than dropped so this sweep
-    # reports the day it starts working.
+    # Left censoring together with two or more distinct entry times is
+    # not identifiable: the likelihood has a flat direction with its
+    # supremum on the boundary, so the NPMLE is not attained and the EM
+    # cannot settle. The fit now warns and reports the share of mass
+    # resting there (#308), but the estimate it returns is still the
+    # boundary one, so this sweep's assertions still fail. Deciding the
+    # case exactly, rather than by a mass threshold, is #327. Marked
+    # xfail rather than dropped so the sweep reports the day it changes.
     pytest.param(
         "all_censoring_types_truncated",
         marks=pytest.mark.xfail(
-            reason="left censoring + left truncation, EM does not "
-            "converge; see #308",
+            reason="left censoring + distinct entry times is not "
+            "identifiable; see #327",
             strict=True,
         ),
     ),
@@ -257,7 +255,7 @@ def test_left_censored_row_keeps_the_interval_starting_at_its_entry_time():
 @pytest.mark.xfail(
     reason="left censoring + distinct entry times is not identifiable; the "
     "fit now warns, but the estimate itself is still the boundary one. "
-    "See #308",
+    "See #327",
     strict=True,
 )
 def test_distinct_entry_times_with_left_censoring_round_trip():
