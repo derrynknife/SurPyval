@@ -393,19 +393,29 @@ In practice that sensitivity is the estimator's problem to solve, not yours. Shi
     x = surv.Gamma.random(10_000, 3.0, 2.0) + 10.0
 
     print('Truth : gamma=10.000, alpha=3.000, beta=2.000')
-    for how in ['MPP', 'MOM', 'MSE', 'MPS', 'MLE']:
+    for how in ['MOM', 'MSE', 'MPS', 'MLE']:
         m = surv.Gamma.fit(x, offset=True, how=how)
         print('{:6s}: gamma={:.3f}, alpha={:.3f}, beta={:.3f}'.format(
             how, m.gamma, *m.params))
 
-This was not always so. Earlier versions could land on an absurd tuple - a negative ``gamma`` with a shape parameter inflated by two orders of magnitude - which was nonetheless an acceptable *distribution*, precisely because of the flat trade-off described above. Two separate causes were at work, and both are now fixed. The probability-plotting search was stranded at a poor local optimum by a single starting shape, so it now tries several and keeps the best correlation. The moment-based initialisers took their moments from the *unshifted* data, where the offset dominates every moment and the shape estimate explodes - 649 for a true shape of 3 - so they now estimate the threshold first and read the remaining parameters off ``x - gamma``.
+``MPP`` is absent from that list because the Gamma does not offer it. A
+probability plot needs a straight-line y-axis that can be drawn *before*
+the parameters are known; the Gamma's CDF is the regularised incomplete
+gamma function, with the shape inside the special function rather than
+outside as an exponent, so the only such axis is the inverse incomplete
+gamma — which needs the shape. To draw the axis you need the answer.
+``Gamma.fit(x, how="MPP")`` raises rather than guessing a shape to draw
+the axis with; ``Gamma.plot()`` is unaffected, since by then the fitted
+parameters are in hand.
+
+This was not always so. Earlier versions could land on an absurd tuple - a negative ``gamma`` with a shape parameter inflated by two orders of magnitude - which was nonetheless an acceptable *distribution*, precisely because of the flat trade-off described above. The moment-based initialisers took their moments from the *unshifted* data, where the offset dominates every moment and the shape estimate explodes - 649 for a true shape of 3 - so they now estimate the threshold first and read the remaining parameters off ``x - gamma``.
 
 The underlying caution still stands, though, and it is worth keeping in mind for your own data:
 
 - **Judge an offset fit by what it predicts, not only by the printed parameters.** Plot it against the non-parametric estimate, or compare the survival function, quantiles, mean and variance. Two parameter tuples that look very different can imply nearly the same distribution.
 - **If you need ``gamma`` itself to be meaningful** - you are interpreting it as a guaranteed minimum life, say - prefer ``MLE``, which remains the most accurate on the parameters, and treat a single point estimate of a threshold with care regardless of method.
 
-``test_offset_divergence.py`` in the test suite pins this down with measured KL and Wasserstein distances alongside parameter tolerances: ``MLE`` is held to 5% on every parameter, ``MOM`` to 10% and ``MPP`` to 20%, with the implied distributions essentially identical in all three cases.
+``test_offset_divergence.py`` in the test suite pins this down with measured KL and Wasserstein distances alongside parameter tolerances: ``MLE`` is held to 5% on every parameter across the offsettable distributions, and ``MOM`` to 10%, with the implied distributions essentially identical either way.
 
 Fixing parameters
 -----------------

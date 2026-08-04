@@ -4,6 +4,30 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **Fixed a documentation build broken by the Gamma MPP removal.** The
+  offset-threshold section of *Parametric SurPyval Modelling* ran a
+  ``jupyter-execute`` cell looping over
+  ``['MPP', 'MOM', 'MSE', 'MPS', 'MLE']`` for a shifted Gamma. Since
+  ``Gamma.fit(how="MPP")`` now raises, that cell raised, and because
+  documentation cells are executed during the build the whole build
+  failed.
+
+  Nothing caught it: continuous integration does not build the
+  documentation, and Read the Docs builds only ``master`` and tags, so
+  it would have surfaced as a failed hosted build at the next release
+  rather than on the change that caused it. It was found by running a
+  build to validate the ``docs`` extra below.
+
+  The prose around the cell had gone stale the same way -- it described
+  the multi-start probability-plotting search that the removal deleted,
+  and quoted an ``MPP`` tolerance from ``test_offset_divergence.py``
+  that no longer exists. It now explains why the Gamma has no
+  probability plot at all: the shape sits inside the regularised
+  incomplete gamma rather than outside as an exponent, so the only
+  straight-line axis is the inverse incomplete gamma, which needs the
+  very shape being estimated. ``Gamma.plot()`` is unaffected, since by
+  then the parameters are known.
+
 - **The documentation toolchain is a ``docs`` extra.**
   ``pip install -e ".[docs]"`` now installs everything needed to build
   the documentation, alongside the ``tests`` extra that was already
