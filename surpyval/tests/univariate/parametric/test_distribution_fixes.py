@@ -44,18 +44,31 @@ def test_exponential_offset_mpp_rr_x_inversion():
 
 
 def test_gamma_censored_mpp_rr_x_does_not_crash():
+    # Was a LinAlgError: rr="x" regressed the filtered y against the raw
+    # x whenever censoring filtered any point (#257). Gamma declines MPP
+    # entirely now (#158), so the crashing path is unreachable -- the
+    # refusal arrives before any regression is attempted.
     np.random.seed(1)
     x = Gamma.random(300, 3, 2)
     c = (x > 2.5).astype(int)
-    m = Gamma.fit(np.minimum(x, 2.5), c=c, how="MPP", rr="x")
-    assert np.all(np.isfinite(m.params))
+    with pytest.raises(ValueError, match="does not work with probability"):
+        Gamma.fit(np.minimum(x, 2.5), c=c, how="MPP", rr="x")
 
 
 @pytest.mark.parametrize("rr", ["x", "y"])
 def test_gamma_offset_mpp_recovers_offset(rr):
+    # Gamma no longer offers MPP at all (#158): the probability plot's
+    # own y-axis is the inverse incomplete gamma, which needs the shape
+    # being estimated, so the fit regressed against an axis built from a
+    # guess and returned a confident wrong answer. It now refuses.
     np.random.seed(2)
     x = Gamma.random(300, 3, 2) + 10
-    m = Gamma.fit(x, how="MPP", rr=rr, offset=True)
+    with pytest.raises(ValueError, match="does not work with probability"):
+        Gamma.fit(x, how="MPP", rr=rr, offset=True)
+
+    # The offset recovery this test existed to protect still holds under
+    # the estimators Gamma does support.
+    m = Gamma.fit(x, offset=True)
     assert m.gamma == pytest.approx(10.0, abs=1.5)
     assert m.params[0] == pytest.approx(3.0, rel=0.5)
 

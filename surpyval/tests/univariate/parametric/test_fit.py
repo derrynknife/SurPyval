@@ -246,7 +246,10 @@ def test_mle_convergence_small(dist, random_parameters, kind):
     "dist,random_parameters,rr", generate_mpp_test_cases(), ids=idfunc
 )
 def test_mpp(dist, random_parameters, rr):
-    if dist not in [Beta, ExpoWeibull]:
+    # Gate on the distribution's own flag rather than a hardcoded
+    # list: Beta, ExpoWeibull and Gamma all lack a linearising
+    # probability plot, and a new one should not need this edited.
+    if dist.supports_mpp:
         for n in FIT_SIZES:
             test_params = []
             tol = 0.025

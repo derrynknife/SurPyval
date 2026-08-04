@@ -4,6 +4,39 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **``Gamma`` no longer offers probability plotting as a fit method.**
+  ``Gamma.fit(x, how="MPP")`` now raises, joining ``Beta`` and
+  ``ExpoWeibull``, which already declined for the same reason.
+
+  A probability plot works by rearranging the survival function so some
+  transform of the data falls on a straight line. For a Weibull,
+  ``log(-log S) = beta log x - beta log alpha`` — the axes do not depend
+  on the answer, so you can draw them before knowing anything. The
+  Gamma has no such rearrangement: its CDF is the regularised incomplete
+  gamma function and the shape sits *inside* that special function
+  rather than outside as an exponent. The only straight-line y-axis is
+  the inverse incomplete gamma, which needs the shape. To draw the axis
+  you need the answer; to get the answer you need the axis.
+
+  The code broke the circle by guessing the shape from moments, drawing
+  the plot on that guess, and regressing. When the guess was off, the
+  axis was the wrong axis, the points were no longer straight on it, and
+  the regression fitted a line through a curve — returning a confident
+  wrong estimate rather than an error. An offset made it worse: the
+  shift distorts the low-``x`` end hardest, which is exactly where the
+  shape information lives.
+
+  ``plot()`` is unaffected. It transforms with the *fitted* parameters,
+  so by the time the plot is drawn the axis is the right one — the
+  probability plot of an MLE-fitted Gamma remains a valid diagnostic.
+  Fitting is unchanged for MLE (the default), MSE and MOM.
+
+  The 118-line ``Gamma.mpp`` override is deleted with it, which removes
+  the ``rr="x"`` mis-inversion and the censored-data ``LinAlgError`` from
+  #257 by making both paths unreachable. The MPP sweep in ``test_fit.py``
+  now gates on each distribution's ``supports_mpp`` flag instead of a
+  hardcoded exclusion list, so it stays correct without editing.
+
 - **Nine wrong examples in the distribution docstrings.** Running
   ``pytest --doctest-modules`` over ``distributions/`` gives 39 failures.
   Thirty are the numpy-2 scalar repr (``np.float64(2.719...)`` against a
