@@ -41,8 +41,7 @@ To build the documentation locally:
 
 .. code-block:: bash
 
-    pip install -e .
-    pip install -r docs/requirements.txt
+    pip install -e ".[docs]"
     sphinx-build -b html docs docs/_build/html
 
 When writing documentation, prefer ``.. jupyter-execute::`` over static

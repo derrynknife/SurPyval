@@ -39,6 +39,29 @@ tests = [
     # (MongoDB compatibility); pymongo provides the bson package.
     "pymongo>=4",
 ]
+docs = [
+    # The documentation build toolchain, used by Read the Docs and by a
+    # local ``sphinx-build``. Fully pinned rather than bounded: the docs
+    # execute every ``.. jupyter-execute::`` cell during the build, so a
+    # toolchain change can break the build in ways a version range would
+    # let through silently. Bump these together and re-validate with a
+    # complete build:
+    #
+    #     pip install -e ".[docs]"
+    #     python -m sphinx -b html docs docs/_build/html
+    #
+    # matplotlib is not repeated here -- it is a runtime dependency of
+    # the package itself, which the docs install alongside these.
+    "sphinx==8.2.3",
+    "sphinx_rtd_theme==3.1.0",
+    "sphinx-copybutton==0.5.2",
+    "sphinx-notfound-page==1.1.0",
+    "jupyter-sphinx==0.5.3",
+    # Capped below 7: jupyter-sphinx notebook execution hangs or dies
+    # with a zmq "Socket operation on non-socket" against the ipykernel
+    # 7 line.
+    "ipykernel==6.31.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/derrynknife/SurPyval"

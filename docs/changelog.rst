@@ -4,6 +4,22 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **The documentation toolchain is a ``docs`` extra.**
+  ``pip install -e ".[docs]"`` now installs everything needed to build
+  the documentation, alongside the ``tests`` extra that was already
+  there. ``docs/requirements.txt`` is gone: its pins moved into
+  ``pyproject.toml`` verbatim, and Read the Docs installs the extra
+  directly via ``extra_requirements``. Keeping both would have meant two
+  copies of the same pinned toolchain, which is the arrangement that
+  drifts.
+
+  The pins are unchanged, including the ``ipykernel==6.31.0`` cap and
+  the reason for it -- jupyter-sphinx notebook execution dies against
+  the ipykernel 7 line. ``matplotlib`` is not repeated in the extra; it
+  is a runtime dependency of the package, which is installed alongside.
+
+  Part of #141.
+
 - **CI now runs the docstring examples.** ``pytest --doctest-modules``
   over the package is a new step in the deployment workflow, and every
   one of the 229 docstring examples passes. It was 59 failing tests
