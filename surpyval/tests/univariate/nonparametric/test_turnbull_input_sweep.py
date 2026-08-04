@@ -11,6 +11,8 @@ break one corner of the input space while the targeted tests keep
 passing.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -253,8 +255,9 @@ def test_left_censored_row_keeps_the_interval_starting_at_its_entry_time():
 
 
 @pytest.mark.xfail(
-    reason="left censoring + distinct entry times, EM does not converge; "
-    "see #308",
+    reason="left censoring + distinct entry times is not identifiable; the "
+    "fit now warns, but the estimate itself is still the boundary one. "
+    "See #308",
     strict=True,
 )
 def test_distinct_entry_times_with_left_censoring_round_trip():
@@ -311,3 +314,86 @@ def test_entry_exactly_at_an_event_time_stays_strict():
     # Two subjects enter at 2.0 and so are not at risk for the event at
     # 2.0: four at risk, one event, 1 - 1/4.
     assert float(np.ravel(model.sf(2.0))[0]) == pytest.approx(0.75, abs=1e-6)
+
+
+def test_non_identifiable_entry_windows_are_reported():
+    """A fit resting on the flat direction must say so.
+
+    Left censoring together with two or more distinct entry times creates
+    intervals that one observation could have failed in but that precede
+    another's entry. Mass there raises the first's likelihood and costs
+    the others nothing, because their contributions are conditional on
+    their own entry. The likelihood has no interior maximum, so the
+    estimate is not identifiable and the EM cannot settle (#308).
+
+    Rejecting the data would be wrong -- over 240 simulated samples that
+    all met the structural condition, most fitted perfectly well -- so
+    the fit is returned with a warning and a reported share.
+    """
+    x = np.array([2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+    c = np.array([-1, 0, 0, -1, 0, 0])
+
+    with pytest.warns(UserWarning, match="not identifiable"):
+        model = Turnbull.fit(
+            x=x,
+            c=c,
+            tl=np.linspace(0.1, 1.0, 6),
+            turnbull_estimator="Kaplan-Meier",
+            max_iter=MAX_ITER,
+        )
+    assert model.exploitable_mass > 0.9
+
+
+@pytest.mark.parametrize(
+    "tl",
+    [
+        pytest.param(np.zeros(6), id="common_entry_at_zero"),
+        pytest.param(np.full(6, 0.5), id="common_entry_below_data"),
+        pytest.param(None, id="no_truncation"),
+    ],
+)
+def test_identifiable_fits_are_not_warned_about(tl):
+    """The warning must not fire on data that is perfectly estimable.
+
+    One common entry time gives every observation the same window, so no
+    interval is inside one and outside another and the flat direction
+    does not exist.
+    """
+    x = np.array([2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+    c = np.array([-1, 0, 0, -1, 0, 0])
+    kwargs = {} if tl is None else {"tl": tl}
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = Turnbull.fit(
+            x=x, c=c, turnbull_estimator="Kaplan-Meier", **kwargs
+        )
+    assert model.exploitable_mass == 0.0
+
+
+def test_distinct_entry_times_alone_are_identifiable():
+    """Distinct entry times are not themselves the problem.
+
+    Without a left-censored row nothing reaches down into the entry
+    region, so six distinct entry times estimate cleanly.
+    """
+    x = np.array([2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+    c = np.zeros(6, dtype=int)
+
+    untruncated = np.ravel(
+        Turnbull.fit(x=x, c=c, turnbull_estimator="Kaplan-Meier").sf(
+            [2.5, 4.5]
+        )
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = Turnbull.fit(
+            x=x,
+            c=c,
+            tl=np.linspace(0.1, 1.0, 6),
+            turnbull_estimator="Kaplan-Meier",
+        )
+    assert model.exploitable_mass == 0.0
+    np.testing.assert_allclose(
+        np.ravel(model.sf([2.5, 4.5])), untruncated, rtol=1e-9, atol=1e-9
+    )

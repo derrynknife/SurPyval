@@ -190,19 +190,50 @@ v0.18.1 (unreleased)
   between them, and does so exactly, because every finite truncation
   time is itself in ``bounds``.
 
-  Half of #308 is still open. Convergence on data mixing all four
-  censoring types with left truncation is unaffected by this, and the
-  cause is not the one the issue supposed: the expected event counts
-  come back inflated -- about 3.1 events at every observation time for
-  thirty observations -- so the estimator ladder exhausts its risk set
-  within a handful of steps and the survival curve collapses. That is
-  the ghost/normalisation step rather than the index arithmetic.
+- **A Turnbull fit that is not identifiable now says so instead of
+  returning a collapsed curve quietly.** Left-censored observations
+  combined with two or more distinct entry times admit a flat direction
+  in the likelihood, and where the data leans on it the estimate is
+  worthless while looking ordinary.
 
-  What is new is the trigger. A *common* entry time round-trips exactly;
-  entry times that *differ* are what activate it, since only then does a
-  later-entering row have unseen deaths imputed below its own window.
-  That narrows the reproducer from thirty points to six, which is in the
-  suite as a strict ``xfail`` alongside the diagnosis.
+  An interval that one observation could have failed in, but that
+  precedes another observation's entry, is worth mass to the first and
+  costs the second nothing. The second's contribution is conditional on
+  its own entry, so mass it never had the chance to see divides out of
+  both its numerator and its denominator exactly. On a six-point example
+  the estimator drives 99.995% of the mass into a single such interval,
+  reaching a log-likelihood of -6.14 against -9.36 for the sensible
+  answer.
+
+  So the estimator is not misbehaving. It is maximising correctly, and
+  the likelihood has no interior maximum to find -- it climbs towards
+  the boundary, which is why raising ``max_iter`` never helps. Both
+  ingredients are needed: left censoring, the only kind whose support
+  reaches back into the entry region, and two distinct entry times, so
+  that such an interval exists at all. Six distinct entry times with no
+  left censoring fit flawlessly; one common entry time with left
+  censoring round-trips exactly.
+
+  The fit is still returned, because meeting the condition does not mean
+  the data is spoilt. Across 240 simulated samples that all met it, the
+  proportion actually degenerating ran from 8% to 72%, rising with the
+  share left censored -- rejecting on structure would refuse far more
+  good data than bad. What separates the two is how much mass ends up on
+  the flat direction: healthy fits reached at most 0.836 of it, spoilt
+  ones a median of 0.994. Warning above 0.9 caught them without a single
+  false alarm across those samples; 0.7 would have cost 9% and 0.5
+  40%.
+
+  The share is reported as ``model.exploitable_mass`` so a borderline
+  fit can be judged rather than guessed at. Note that the structural
+  condition is *not* used as a trigger on its own: ordinary
+  staggered-entry data meets it routinely and estimates perfectly well,
+  and pairing it with non-convergence would have mis-advised the #203
+  case, which is structurally exploitable but converges given the
+  iterations.
+
+  This is the second half of #308. The first half, an off-time-index
+  error that made these same inputs raise, is above.
 
 - **Truncated parametric regression fits could report a log-likelihood
   tens of thousands higher than their parameters earn, and be optimised
