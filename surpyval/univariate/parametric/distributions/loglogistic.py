@@ -57,7 +57,7 @@ class LogLogistic_(ParametricFitter):
         >>> from surpyval import LogLogistic
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> LogLogistic.sf(x, 3, 4)
-        array([0.62245933, 0.5621765 , 0.5       , 0.4378235 , 0.37754067])
+        array([0.98780488, 0.83505155, 0.5       , 0.24035608, 0.11473088])
         """
         # 1 / (1 + (x/alpha)^beta): algebraically identical to the
         # (x/alpha)^-beta form but defined at x = 0 (sf(0) = 1) instead
@@ -304,7 +304,7 @@ class LogLogistic_(ParametricFitter):
         --------
         >>> from surpyval import LogLogistic
         >>> LogLogistic.mean(3, 4)
-        3
+        3.332162203618775
         """
         if beta > 1:
             return (alpha * np.pi / beta) / (np.sin(np.pi / beta))

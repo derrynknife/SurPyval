@@ -119,7 +119,7 @@ class Uniform_(ParametricFitter):
         >>> import numpy as np
         >>> from surpyval import Uniform
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Uniform.sf(x, 0, 6)
+        >>> Uniform.ff(x, 0, 6)
         array([0.16666667, 0.33333333, 0.5       , 0.66666667, 0.83333333])
         """
         f = np.zeros_like(x)

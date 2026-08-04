@@ -4,6 +4,34 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **Nine wrong examples in the distribution docstrings.** Running
+  ``pytest --doctest-modules`` over ``distributions/`` gives 39 failures.
+  Thirty are the numpy-2 scalar repr (``np.float64(2.719...)`` against a
+  recorded ``2.719...``) and are cosmetic. Nine were not.
+
+  Five documented outputs were simply wrong. ``Uniform.ff``'s example
+  called ``Uniform.sf``, and ``ExpoWeibull.cs``'s called
+  ``ExpoWeibull.sf`` -- in both the printed values were right for the
+  function being documented and wrong for the one being called, so the
+  example read as if the two were the same. ``LogLogistic.sf`` carried
+  values from some other parameterisation entirely (0.622 where the
+  answer is 0.988), ``LogLogistic.mean(3, 4)`` claimed ``3`` against
+  ``3.3322`` (the closed form is ``alpha (pi/beta) / sin(pi/beta)``), and
+  ``Exponential.qf`` had stale digits.
+
+  The other four were the ``CustomDistribution`` example -- the Gompertz
+  walkthrough -- whose multi-line ``def`` used ``>>>`` where doctest
+  needs ``...``, so pasting it raised ``IndentationError``.
+
+  In every case the code was right and the documentation was wrong, which
+  is the reassuring direction, but a reader checking their understanding
+  against these would have been misled. They accumulated precisely
+  because the doctests are not run.
+
+  Whether to run doctests in CI, and what to do about the 30 cosmetic
+  repr differences, is tracked separately -- it is a style decision, not
+  a correctness one.
+
 - **Documented why a Turnbull fit does not equal a Kaplan-Meier fit.**
   ``Turnbull.fit`` defaults to ``turnbull_estimator="Fleming-Harrington"``
   while ``KaplanMeier.fit`` is, unsurprisingly, KM. The Turnbull EM
