@@ -87,7 +87,14 @@ To build the documentation locally:
 .. code-block:: bash
 
     pip install -e ".[docs]"
-    sphinx-build -b html docs docs/_build/html
+    sphinx-build -b html -W --keep-going docs docs/_build/html
+
+``-W`` turns warnings into errors, which is how continuous integration and
+Read the Docs both build. A Sphinx warning is rarely cosmetic -- a broken
+cross-reference silently renders as plain text, a mistyped ``autoclass`` path
+drops the class from the page entirely -- so the build is kept at zero
+warnings rather than at "succeeded, N warnings". ``--keep-going`` reports all
+of them instead of stopping at the first.
 
 When writing documentation, prefer ``.. jupyter-execute::`` over static
 ``.. code-block:: python`` blocks with pasted outputs or screenshots. All

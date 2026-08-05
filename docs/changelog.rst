@@ -32,6 +32,40 @@ v0.19.1 (unreleased)
   the 18 warnings standing between the build and ``-W``. All 138
   autodoc targets across the documentation now resolve.
 
+- **The documentation build fails on any warning.** ``-W --keep-going``
+  in the CI docs job, and ``fail_on_warning`` in ``.readthedocs.yaml``.
+  They are set together deliberately: if only one has it, that one goes
+  green while the other publishes a broken page.
+
+  A Sphinx warning is rarely cosmetic. A broken cross-reference renders
+  as plain text, a mistyped ``autoclass`` path drops the class from the
+  page altogether, a page missing from every toctree is published and
+  unreachable. In each case the build reports success and ships
+  something wrong, and the only evidence is a line in a log nobody
+  reads. That is precisely how the three broken ``ProportionalIntensityNHPP``
+  autodoc targets survived -- three methods absent from the rendered
+  documentation, behind a "build succeeded, 18 warnings".
+
+  Warnings-as-errors only works from zero, so the sixteen were cleared
+  first:
+
+  - Twelve duplicate labels, from ``autosectionlabel`` minting a
+    cross-reference target for every heading while the changelog
+    necessarily repeats "Serialisation", "Degradation" and so on once
+    per release. ``autosectionlabel_maxdepth = 1`` keeps the labels a
+    ``:ref:`` between pages actually wants and stops minting the rest.
+  - The ``sphinx_rtd_theme`` ``get_html_theme_path`` deprecation, whose
+    own message said the call was safe to remove.
+  - A title-level inconsistency in the non-parametric page, reported by
+    docutils as ``CRITICAL`` rather than a warning.
+  - ``RandomSurvivalForest``'s docstring, which was not valid
+    reStructuredText -- and which nothing surfaced until the new API
+    page began rendering it.
+  - The interval-censored Turnbull example, whose EM ran out of
+    iterations. It converges at ``max_iter=10000``; the example now
+    passes it and the prose explains why, rather than marking the
+    warning expected and hiding a usable answer.
+
 - **``scripts/check_all_pythons.py`` runs the CI checks locally on every
   supported interpreter.** With the suite no longer running on pull
   requests into ``develop`` (below), this is the other half of the

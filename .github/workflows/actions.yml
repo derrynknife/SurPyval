@@ -185,13 +185,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install ".[docs]"
 
-      # Not -W: there are pre-existing warnings (duplicate changelog
-      # labels from autosectionlabel, an rtd-theme deprecation, three
-      # autodoc imports). Clearing those is worth doing, and then
-      # failing on warning here and in .readthedocs.yaml together --
-      # turning it on before then would just fail every release.
+      # -W turns warnings into errors. A sphinx warning is not a style
+      # nag: a broken cross-reference renders as plain text, a bad
+      # autodoc path drops the whole class from the page, a page missing
+      # from every toctree is published but unreachable. The build
+      # "succeeds" and ships something wrong, and the only signal is a
+      # line in a log nobody reads -- which is exactly how three broken
+      # autodoc targets went unnoticed until the API pages were written.
+      #
+      # This only works from a zero baseline, which the commits above
+      # established. --keep-going reports every warning rather than
+      # stopping at the first, so a bad build is fixed in one pass.
+      #
+      # .readthedocs.yaml sets fail_on_warning for the same reason. The
+      # two must move together, or CI passes while the hosted build
+      # fails.
       - name: sphinx build
-        run: python -m sphinx -b html docs docs/_build/html
+        run: python -m sphinx -b html -W --keep-going docs docs/_build/html
 
       - name: Upload documentation artifact
         uses: actions/upload-artifact@v4
