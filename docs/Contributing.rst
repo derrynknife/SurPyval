@@ -22,10 +22,19 @@ documentation build from running on every change:
 
 Continuous integration (``.github/workflows/actions.yml``) therefore runs on
 **pull requests into develop or master** and on **pushes to master**, rather
-than on every push to every branch. Read the Docs is configured to build
-``master`` and tags only. The net effect is that the full test suite and the
-documentation build run once per pull request and once per release, instead of
-once per intermediate commit.
+than on every push to every branch. The lint and test jobs run on both; the
+documentation build runs on the release pull request into ``master`` only,
+where it reproduces the hosted build. Read the Docs itself is configured to
+build ``master`` and tags only.
+
+The documentation build is gated at the release rather than on every pull
+request because it executes every code cell in the documentation, which takes
+around three minutes from cold rather than the seconds a lint job costs. The
+trade-off is that a change which breaks a
+documentation example is caught when the release is prepared rather than when
+it is merged into ``develop`` -- so if you change the behaviour of a public
+function, it is worth building the docs locally before opening the pull
+request.
 
 Documentation
 -------------

@@ -4,6 +4,36 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **The documentation build runs in CI on the release pull request.**
+  The docs execute every ``.. jupyter-execute::`` cell as they build, so
+  they are a second test suite that exercises the public API for real --
+  and one that a change touching no documentation file at all can break,
+  as the Gamma entry below did. Read the Docs builds only ``master`` and
+  tags, so until now that break would have surfaced as a failed hosted
+  build *after* a release.
+
+  The new job is conditioned on ``github.base_ref == 'master'``, which
+  is set only for pull requests, so it runs on the ``develop`` ->
+  ``master`` release pull request and nowhere else. It is not run on
+  pushes to ``master`` either: Read the Docs rebuilds there anyway, and
+  by then the gate has nothing left to gate. It matches
+  ``.readthedocs.yaml`` rather than the test jobs -- Python 3.12, the
+  package installed via its own ``docs`` extra -- because its purpose is
+  to reproduce the hosted build, and it uploads the rendered HTML as an
+  artifact.
+
+  It does not build with ``-W``; the build currently emits 18 warnings,
+  mostly duplicate labels from ``autosectionlabel`` meeting the
+  changelog's repeated section headings. Clearing those and then failing
+  on warning here and in ``.readthedocs.yaml`` together is worth doing
+  separately.
+
+  The residual gap is deliberate: a documentation break introduced on a
+  pull request into ``develop`` is caught when the release is prepared,
+  not when it lands. Building on every pull request would cost minutes
+  on each, and a path filter would not have helped here -- the change
+  that broke the build was in ``gamma.py``, not under ``docs/``.
+
 - **Fixed a documentation build broken by the Gamma MPP removal.** The
   offset-threshold section of *Parametric SurPyval Modelling* ran a
   ``jupyter-execute`` cell looping over
