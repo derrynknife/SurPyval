@@ -4,6 +4,34 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **API reference pages for the surfaces that only had narrative docs.**
+  The multivariate copulas and the beta survival tree and forest had no
+  autodoc coverage at all, and the degradation page stopped at the path
+  models. Closes the second half of #141.
+
+  New: ``surpyval.multivariate`` (the ``Copula`` base, the five copula
+  classes, ``CopulaModel`` and ``MultivariateSurpyvalData``) and
+  ``surpyval.beta`` (``RandomSurvivalForest``, ``SurvivalTree`` and the
+  node classes a serialised tree is built from). The degradation page
+  gains the Wiener and gamma stochastic-process models, ``ProcessRUL``
+  and destructive degradation. ``_bounds`` and ``population`` are
+  deliberately left out: neither is exported from the package's
+  ``__init__``, so both are internal rather than API.
+
+  Two surfaces the issue did not name but which fit its description
+  also had no autodoc, and now have pages: shared frailty models and
+  Buckley-James. And ``surpyval.regression`` had two headings --
+  "Accelerated Time Models" and "Accelerated Life Models" -- with
+  nothing underneath them, rendering as empty sections while the
+  content sat in ``regression/parametric``; that page is reorganised
+  into semi-parametric, parametric and correlated-observations.
+
+  Three ``automethod`` directives on the NHPP regression page pointed at
+  ``cif``, ``iif`` and ``inv_cif`` on the *fitter*, where they do not
+  exist -- they are on the model the fit returns. Those were three of
+  the 18 warnings standing between the build and ``-W``. All 138
+  autodoc targets across the documentation now resolve.
+
 - **``scripts/check_all_pythons.py`` runs the CI checks locally on every
   supported interpreter.** With the suite no longer running on pull
   requests into ``develop`` (below), this is the other half of the
