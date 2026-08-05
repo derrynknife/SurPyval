@@ -21,9 +21,10 @@ module
 maximises its own marginal likelihood on a fresh optimiser.
 """
 
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import gammaln
@@ -32,7 +33,10 @@ from ..regression_data import design_matrix_from_df
 from .frailty_model import FrailtyModel
 
 
-def _make_transforms(dist, k_dist):
+def _make_transforms(dist: Any, k_dist: int) -> tuple[
+    Callable[[npt.NDArray, int], npt.NDArray],
+    Callable[[npt.NDArray, int], npt.NDArray],
+]:
     """Per-parameter (natural <-> unconstrained) maps for the optimiser.
 
     Baseline parameters follow the distribution's bounds (log for a positive
@@ -48,7 +52,7 @@ def _make_transforms(dist, k_dist):
         else:
             forms.append("id")
 
-    def to_unc(nat, n_beta):
+    def to_unc(nat: npt.NDArray, n_beta: int) -> npt.NDArray:
         out = []
         for i, f in enumerate(forms):
             v = nat[i]
@@ -62,7 +66,7 @@ def _make_transforms(dist, k_dist):
         out.append(np.log(nat[-1]))  # theta: log
         return np.array(out, dtype=float)
 
-    def to_nat(unc, n_beta):
+    def to_nat(unc: npt.NDArray, n_beta: int) -> npt.NDArray:
         out = []
         for i, f in enumerate(forms):
             v = unc[i]
@@ -79,7 +83,11 @@ def _make_transforms(dist, k_dist):
     return to_unc, to_nat
 
 
-def _numerical_hessian(f, x, eps=1e-5):
+def _numerical_hessian(
+    f: Callable[[npt.NDArray], float],
+    x: npt.NDArray,
+    eps: float = 1e-5,
+) -> npt.NDArray:
     """Finite-difference Hessian of scalar ``f`` at ``x``."""
     n = len(x)
     H = np.zeros((n, n))
@@ -130,7 +138,16 @@ class FrailtyFitter:
 
     # -- likelihood --------------------------------------------------------
 
-    def _neg_ll_natural(self, nat, x, c, w, eta_Z, inv, n_beta):
+    def _neg_ll_natural(
+        self,
+        nat: npt.NDArray,
+        x: npt.NDArray,
+        c: npt.NDArray,
+        w: npt.NDArray,
+        eta_Z: npt.NDArray,
+        inv: npt.NDArray,
+        n_beta: int,
+    ) -> float:
         """Marginal negative log-likelihood in natural parameters.
 
         ``eta_Z`` is the covariate matrix (n_obs x n_beta); ``inv`` maps each
@@ -238,7 +255,7 @@ class FrailtyFitter:
         else:
             init_nat = np.asarray(init, dtype=float)
 
-        def obj_unc(u):
+        def obj_unc(u: npt.NDArray) -> float:
             nat = to_nat(u, n_beta)
             return self._neg_ll_natural(nat, x, c, w, Zc, inv, n_beta)
 
@@ -270,7 +287,7 @@ class FrailtyFitter:
         param_names += [f"beta_{i}" for i in range(n_beta)]
         param_names += ["theta"]
 
-        def nll_nat(v):
+        def nll_nat(v: npt.NDArray) -> float:
             return self._neg_ll_natural(v, x, c, w, Zc, inv, n_beta)
 
         covariance = None
