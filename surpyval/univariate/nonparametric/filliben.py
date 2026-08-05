@@ -1,10 +1,16 @@
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.univariate.nonparametric.rank_adjust import rank_adjust
 from surpyval.utils import xcnt_handler
 
 
-def filliben(x, c, n, t):
+def filliben(
+    x: npt.ArrayLike,
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+    t: npt.ArrayLike | None,
+) -> dict:
     """
     Method From:
     Filliben, J. J. (February 1975),

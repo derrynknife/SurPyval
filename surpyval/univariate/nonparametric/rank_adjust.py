@@ -1,7 +1,10 @@
 import numpy as np
+import numpy.typing as npt
 
 
-def rank_adjust(t, c=None):
+def rank_adjust(
+    t: npt.ArrayLike, c: npt.ArrayLike | None = None
+) -> npt.NDArray:
     """
     Currently limited to only Mean Order Number
     Room to expand to:

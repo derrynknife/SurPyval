@@ -464,7 +464,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         # point on the curve has a finite bound (e.g. a single
         # observation), fall back to the point estimate rather than
         # propagating an all-NaN nanmin (#282).
-        def _fill_upper(row):
+        def _fill_upper(row: npt.NDArray) -> npt.NDArray:
             finite = np.isfinite(row)
             if finite.any():
                 return np.where(finite, row, row[finite].min())
@@ -1168,7 +1168,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         # Renormalise by the kernel mass that lies within the observed
         # range, correcting the downward bias near the boundaries. The
         # Epanechnikov CDF is (2 + 3v - v^3) / 4 on [-1, 1].
-        def epa_cdf(v):
+        def epa_cdf(v: npt.NDArray) -> npt.NDArray:
             v = np.clip(v, -1, 1)
             return (2 + 3 * v - v**3) / 4
 
@@ -1181,7 +1181,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         h = np.where((x < x_min) | (x > x_max), np.nan, h)
         return h
 
-    def get_plot_data(self, **kwargs) -> dict:
+    def get_plot_data(self, **kwargs: Any) -> dict:
         y_scale_min = 0
         y_scale_max = 1
 
@@ -1206,7 +1206,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             "F": self.F,
         }
 
-    def plot(self, ax: "Axes | None" = None, **kwargs) -> Any:
+    def plot(self, ax: "Axes | None" = None, **kwargs: Any) -> Any:
         r"""
         Creates a plot of the survival function.
 

@@ -1,7 +1,11 @@
 import numpy as np
 
 
-def success_run(n, confidence=None, alpha=None):
+def success_run(
+    n: int,
+    confidence: float | None = None,
+    alpha: float | None = None,
+) -> float:
     """
     Calculate the minimum success probability of a run of 'n' independent
     events for a given confidence level. Useful when you want to know, with a

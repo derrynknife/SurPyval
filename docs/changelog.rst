@@ -32,11 +32,14 @@ v0.19.1 (unreleased)
   the 18 warnings standing between the build and ``-W``. All 138
   autodoc targets across the documentation now resolve.
 
-- **Type-hint coverage is now enforced, for three modules (#143).**
-  ``surpyval.serialisation``, ``surpyval.metrics`` and
-  ``surpyval.univariate.information_criteria`` have
-  ``disallow_untyped_defs`` set in ``pyproject.toml``, so an
-  unannotated function in any of them is a mypy error.
+- **Type-hint coverage is now enforced, for four modules (#143).**
+  ``surpyval.serialisation``, ``surpyval.metrics``,
+  ``surpyval.univariate.information_criteria`` and all of
+  ``surpyval.univariate.nonparametric`` have ``disallow_untyped_defs``
+  set in ``pyproject.toml``, so an unannotated function in any of them
+  is a mypy error. That covers the Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington and Turnbull estimators, the log-rank test and the
+  plotting positions.
 
   The package ships ``py.typed``, which tells a user's type checker
   that the annotations are there to be trusted, and mypy already ran in
@@ -59,6 +62,19 @@ v0.19.1 (unreleased)
   and ``copula_model`` decides whether a margin is serialisable with
   ``hasattr(m, "to_dict")`` -- which an inherited stub would answer
   True for every time.
+
+  The non-parametric package turned up a second one. Its
+  ``ESTIMATOR_FUNCS`` table was built from ``nonp.nelson_aalen`` and its
+  two siblings, each of which shares its name with the submodule that
+  defines it -- so the attribute is the function only after the package
+  ``__init__`` has bound it over the submodule, and that table is built
+  while the ``__init__`` is still running. It worked because the
+  ``__init__`` happens to import the estimators first, which is a load
+  order rather than a guarantee. mypy resolved the names to the modules
+  and reported the table as not callable. The three are now imported
+  from the modules that define them; the other uses of the package
+  namespace in that file are inside functions, so they resolve after
+  initialisation and are left alone.
 
 - **The survival tree's log-rank split statistic was wrong (#287).**
   ``kind="non-parametric"`` trees, and any ``RandomSurvivalForest``

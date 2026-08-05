@@ -1,11 +1,12 @@
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
 )
 
 
-def greenwood_variance(r, d):
+def greenwood_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     """
     Greenwood's formula for the variance of the cumulative hazard
     (equivalently, of -log(R)) of the Kaplan-Meier estimator:
@@ -21,7 +22,7 @@ def greenwood_variance(r, d):
         return np.cumsum(var)
 
 
-def kaplan_meier(r, d):
+def kaplan_meier(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     R = 1 - (d / r)
     R[np.isnan(R)] = 0
     old_err_state = np.seterr(under="raise")
@@ -62,7 +63,7 @@ class KaplanMeier_(NonParametricFitter):
     array([0.8, 0.6, 0.4, 0.2, 0. ])
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.how = "Kaplan-Meier"
 
 

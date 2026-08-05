@@ -38,7 +38,9 @@ class NonParametricFitter:
         out.greenwood = self._compute_var(estimator, r, d)
         return out
 
-    def _compute_var(self, estimator, r, d):
+    def _compute_var(
+        self, estimator: str, r: npt.ArrayLike, d: npt.ArrayLike
+    ) -> npt.NDArray:
         # Variance of the cumulative hazard estimate using the formula
         # appropriate to the estimator, e.g. Greenwood's formula for
         # Kaplan-Meier. See VAR_FUNCS for each.

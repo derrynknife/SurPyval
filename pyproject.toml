@@ -118,6 +118,7 @@ module = [
     'surpyval.serialisation',
     'surpyval.metrics.*',
     'surpyval.univariate.information_criteria',
+    'surpyval.univariate.nonparametric.*',
 ]
 disallow_untyped_defs = true
 

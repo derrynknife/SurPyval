@@ -1,6 +1,7 @@
 import warnings
 
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
@@ -12,8 +13,14 @@ from .nelson_aalen import nelson_aalen as na
 
 
 def turnbull(
-    x, c, n, t, estimator="Fleming-Harrington", tol=1e-10, max_iter=1000
-):
+    x: npt.ArrayLike,
+    c: npt.ArrayLike,
+    n: npt.ArrayLike,
+    t: npt.ArrayLike,
+    estimator: str = "Fleming-Harrington",
+    tol: float = 1e-10,
+    max_iter: int = 1000,
+) -> dict:
     """
     Turnbull NPMLE via the EM (self-consistency) algorithm.
 
@@ -518,10 +525,19 @@ class Turnbull_(NonParametricFitter):
            0.2631432 , 0.2631432 , 0.09680497])
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.how = "Turnbull"
 
-    def _fit(self, x, c, n, t, turnbull_estimator, tol, max_iter):
+    def _fit(
+        self,
+        x: npt.ArrayLike,
+        c: npt.ArrayLike,
+        n: npt.ArrayLike,
+        t: npt.ArrayLike,
+        turnbull_estimator: str,
+        tol: float,
+        max_iter: int,
+    ) -> dict:
         return turnbull(
             x, c, n, t, turnbull_estimator, tol=tol, max_iter=max_iter
         )
