@@ -33,8 +33,28 @@ from .parametric import Parametric
 # functions, and autograd substitutes its own ``ArrayBox`` for the
 # parameters to carry the derivative through. A box is neither a float
 # nor an ndarray, so the usual "ArrayLike in, NDArray out" convention
-# does not apply here -- and passing one through ``np.asarray`` would
-# silently drop the gradient rather than fail.
+# does not apply here.
+#
+# Do not "improve" this to a narrower type. mypy cannot check the claim
+# either way, and both obvious narrowings are wrong:
+#
+#   alpha: npt.ArrayLike        25 errors on ``(x / alpha) ** beta``,
+#                               because array-like covers str and bytes.
+#                               The fix that clears them, np.asarray,
+#                               wraps the box in an object array: the
+#                               value stays right and the derivative
+#                               does not. A plain product then returns a
+#                               zero gradient with no exception, which
+#                               an optimiser reads as "this parameter
+#                               does not affect the likelihood".
+#
+#   alpha: npt.NDArray | float  No errors at all, and false. Nothing in
+#                               the toolchain will ever say so, and
+#                               py.typed publishes it to every caller.
+#
+# The runtime types were established by instrumenting a real fit, which
+# is the only way to see them; a fit passes float64 while evaluating the
+# likelihood and ArrayBox while differentiating it.
 Numeric = npt.NDArray | float
 Boxable = Any
 
