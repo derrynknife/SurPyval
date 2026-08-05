@@ -123,6 +123,7 @@ module = [
     'surpyval.recurrent.nonparametric.*',
     'surpyval.univariate.regression.frailty.*',
     'surpyval.datasets',
+    'surpyval.univariate.parametric.distributions.weibull',
 ]
 disallow_untyped_defs = true
 

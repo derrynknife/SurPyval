@@ -1,11 +1,16 @@
+import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+    ParametricFitter,
+)
 
 
 class Weibull_(ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -16,7 +21,14 @@ class Weibull_(ParametricFitter):
             plot_x_scale="log",
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(
+        self,
+        x: Numeric,
+        c: npt.NDArray | None = None,
+        n: npt.NDArray | None = None,
+        t: npt.NDArray | None = None,
+        offset: bool = False,
+    ) -> tuple[float, ...]:
         mpp_model = self.fit(
             x, c, n, offset=offset, how="MPP", heuristic="Nelson-Aalen"
         )
@@ -25,7 +37,7 @@ class Weibull_(ParametricFitter):
         else:
             return tuple(mpp_model.params)
 
-    def sf(self, x, alpha, beta):
+    def sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Survival (or reliability) function for the Weibull Distribution:
@@ -60,7 +72,7 @@ class Weibull_(ParametricFitter):
         """
         return np.exp(-((x / alpha) ** beta))
 
-    def ff(self, x, alpha, beta):
+    def ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the Weibull Distribution:
@@ -96,7 +108,9 @@ class Weibull_(ParametricFitter):
         # same as np.exp for large values
         return -np.expm1(-((x / alpha) ** beta))
 
-    def cs(self, x, X, alpha, beta):
+    def cs(
+        self, x: Numeric, X: Numeric, alpha: Boxable, beta: Boxable
+    ) -> Boxable:
         r"""
 
         Conditional survival function for the Weibull Distribution:
@@ -133,7 +147,7 @@ class Weibull_(ParametricFitter):
         """
         return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
 
-    def df(self, x, alpha, beta):
+    def df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Density function for the Weibull Distribution:
@@ -172,7 +186,7 @@ class Weibull_(ParametricFitter):
             * np.exp(-((x / alpha) ** beta))
         )
 
-    def hf(self, x, alpha, beta):
+    def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Weibull Distribution:
@@ -207,7 +221,7 @@ class Weibull_(ParametricFitter):
         """
         return (beta / alpha) * (x / alpha) ** (beta - 1)
 
-    def Hf(self, x, alpha, beta):
+    def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the Weibull Distribution:
@@ -241,7 +255,7 @@ class Weibull_(ParametricFitter):
         """
         return (x / alpha) ** beta
 
-    def qf(self, p, alpha, beta):
+    def qf(self, p: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Weibull distribution:
@@ -276,7 +290,7 @@ class Weibull_(ParametricFitter):
         """
         return alpha * (-np.log1p(-p)) ** (1 / beta)
 
-    def mean(self, alpha, beta):
+    def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Mean of the Weibull distribution
@@ -306,7 +320,7 @@ class Weibull_(ParametricFitter):
         """
         return alpha * gamma_func(1 + 1.0 / beta)
 
-    def moment(self, n, alpha, beta):
+    def moment(self, n: int, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         n-th moment of the Weibull distribution
@@ -338,10 +352,10 @@ class Weibull_(ParametricFitter):
         """
         return alpha**n * gamma_func(1 + n / beta)
 
-    def entropy(self, alpha, beta):
+    def entropy(self, alpha: Boxable, beta: Boxable) -> Boxable:
         return euler_gamma * (1 - 1 / beta) + np.log(alpha) - np.log(beta) + 1
 
-    def log_df(self, x, alpha, beta):
+    def log_df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         scaled = x / alpha
         return (
             np.log(beta)
@@ -350,23 +364,25 @@ class Weibull_(ParametricFitter):
             - (scaled) ** beta
         )
 
-    def log_sf(self, x, alpha, beta):
+    def log_sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return -((x / alpha) ** beta)
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: Numeric) -> npt.NDArray:
         return np.log(x)
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> npt.NDArray:
         mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
         out[~mask] = np.log(-np.log(1 - y[~mask]))
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         return 1 - np.exp(-np.exp(y))
 
-    def unpack_rr(self, params, rr):
+    def unpack_rr(
+        self, params: npt.NDArray, rr: str
+    ) -> tuple[Boxable, Boxable]:
         if rr == "y":
             beta = params[0]
             alpha = np.exp(params[1] / -beta)

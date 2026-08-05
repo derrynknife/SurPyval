@@ -1,4 +1,5 @@
 from numbers import Number
+from typing import Any
 
 import numpy.typing as npt
 import pandas as pd
@@ -19,6 +20,23 @@ from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mse import mse
 from .parametric import Parametric
+
+# The two types a distribution function deals in. They are separate
+# because only one of them can be an autograd box.
+#
+# ``Numeric`` is what the function is evaluated *at* -- an array of
+# times, or of probabilities for ``qf``, or a single one. It is always
+# real data.
+#
+# ``Boxable`` is a parameter, or a value computed from one. Deliberately
+# not narrowed to a numpy type: maximum likelihood differentiates these
+# functions, and autograd substitutes its own ``ArrayBox`` for the
+# parameters to carry the derivative through. A box is neither a float
+# nor an ndarray, so the usual "ArrayLike in, NDArray out" convention
+# does not apply here -- and passing one through ``np.asarray`` would
+# silently drop the gradient rather than fail.
+Numeric = npt.NDArray | float
+Boxable = Any
 
 PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}

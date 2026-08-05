@@ -32,10 +32,10 @@ v0.19.1 (unreleased)
   the 18 warnings standing between the build and ``-W``. All 138
   autodoc targets across the documentation now resolve.
 
-- **Type-hint coverage is now enforced, for eight modules (#143).**
+- **Type-hint coverage is now enforced, for nine modules (#143).**
   ``surpyval.distribution``, ``surpyval.serialisation``,
   ``surpyval.metrics``, ``surpyval.univariate.information_criteria``,
-  ``surpyval.datasets`` and all of
+  ``surpyval.datasets``, the Weibull distribution, and all of
   ``surpyval.univariate.nonparametric``,
   ``surpyval.recurrent.nonparametric`` and
   ``surpyval.univariate.regression.frailty`` have
@@ -105,6 +105,23 @@ v0.19.1 (unreleased)
   passing both with either set to zero skipped the "only one of" raise,
   and ``confidence=0`` fell through every branch and left ``alpha``
   unset. Both are now tested against ``None``.
+
+  The distributions needed a vocabulary before any of them could be
+  annotated, and ``parametric_fitter`` now defines it. A distribution
+  function deals in two kinds of value, and only one of them can be an
+  autograd box: ``Numeric`` is what the function is evaluated at (times,
+  or probabilities for ``qf``), always real data; ``Boxable`` is a
+  parameter, or anything computed from one. Maximum likelihood
+  differentiates these functions, so during a fit autograd substitutes
+  an ``ArrayBox`` for each parameter to carry the derivative. A box is
+  neither a float nor an ndarray, which is why ``Boxable`` is not
+  narrowed to a numpy type -- and why the "array-like in, array out"
+  convention used elsewhere in the package must not be applied here.
+  ``np.asarray`` on a box does not fail; it drops the gradient.
+
+  ``Weibull`` is annotated against that vocabulary as the first of the
+  25 distributions, and is on the enforced list. The remaining 24 follow
+  the same shape.
 
 - **The lint job had been failing on a single over-long line.**
   The ``:class:`` cross-reference added to ``RandomSurvivalForest``'s
