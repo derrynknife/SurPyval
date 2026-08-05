@@ -262,6 +262,9 @@ def turnbull(
         # because its event fell inside its window, so for every one seen,
         # unseen "ghost" events fell outside it at rate p_j / P(window).
         # Add n / P(window) everywhere, subtract it back over the window.
+        # A scalar in the untruncated branch, where it broadcasts over
+        # the per-interval counts without allocating an array of zeros.
+        d_ghosts: npt.NDArray | float
         if any_truncated:
             window_p = cumulative[w_hi + 1] - cumulative[w_lo]
             ghost_weight = np.where(window_p > 0, n_truncated / window_p, 0.0)
