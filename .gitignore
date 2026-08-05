@@ -24,3 +24,6 @@ __pycache__/
 
 
 publish.sh
+
+# Local multi-interpreter check environments (scripts/check_all_pythons.py)
+.venvs/

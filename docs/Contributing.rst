@@ -53,7 +53,20 @@ example, is now found when the release pull request is opened -- with a
 release's worth of commits to search through rather than one. So:
 
 * Run the suite locally before pushing, and across more than one interpreter
-  when you have touched anything numerical.
+  when you have touched anything numerical. ``scripts/check_all_pythons.py``
+  does exactly that -- it runs what continuous integration would have run, on
+  3.11, 3.12 and 3.13:
+
+  .. code-block:: bash
+
+      python scripts/check_all_pythons.py                 # all three
+      python scripts/check_all_pythons.py 3.12            # just one
+      python scripts/check_all_pythons.py --skip-install  # reuse as-is
+
+  It keeps its environments in ``.venvs/`` (git-ignored) and reuses them, so
+  only the first run pays for the installs. It uses ``uv`` when that is
+  available and falls back to ``venv`` and ``pip`` when it is not.
+
 * Build the documentation locally when you change the behaviour of a public
   function, since documentation cells call the real API.
 * On a long-running branch, open the release pull request early and let it sit,

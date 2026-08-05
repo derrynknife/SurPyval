@@ -4,6 +4,20 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **``scripts/check_all_pythons.py`` runs the CI checks locally on every
+  supported interpreter.** With the suite no longer running on pull
+  requests into ``develop`` (below), this is the other half of the
+  trade: one command runs the test suite and both doctest passes on
+  3.11, 3.12 and 3.13, and refuses to say "passed" unless all of them
+  did.
+
+  It keeps its environments in a git-ignored ``.venvs/`` and reuses
+  them, so only the first run pays for the installs; it uses ``uv``
+  when available and falls back to ``venv`` and ``pip`` when not, and
+  reports an interpreter that is not installed rather than failing on
+  it. The command list is deliberately a copy of the workflow's, so
+  what it runs is what CI would have run.
+
 - **The test suite runs on the release pull request, not on every one.**
   Pull requests into ``develop`` now run lint only, about a minute
   against the nine the suite takes across three interpreters. The suite
