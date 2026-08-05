@@ -1,8 +1,13 @@
+import numpy.typing as npt
 from scipy.stats import uniform
 
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
+)
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
 )
 
 
@@ -34,7 +39,7 @@ class DiscreteWeibull_(DiscreteParametricFitter):
     IEEE Transactions on Reliability R-24, 300-301.
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -48,55 +53,64 @@ class DiscreteWeibull_(DiscreteParametricFitter):
             plot_x_scale="linear",
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(
+        self,
+        x: npt.NDArray,
+        c: npt.NDArray | None = None,
+        n: npt.NDArray | None = None,
+        t: npt.NDArray | None = None,
+        offset: bool = False,
+    ) -> npt.NDArray:
         # q ~ P(survive the first cycle) from the empirical fraction above 1;
         # start beta at 1 (the geometric special case).
         finite = x[np.isfinite(x)]
         q = (finite > 1).mean() if finite.size else 0.5
         return np.array([min(max(q, 1e-3), 1 - 1e-3), 1.0])
 
-    def sf(self, x, q, beta):
+    def sf(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""Survival function :math:`R(k) = q^{k^{\beta}}`."""
         return q ** (x**beta)
 
-    def ff(self, x, q, beta):
+    def ff(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = 1 - q^{k^{\beta}}`."""
         return 1.0 - q ** (x**beta)
 
-    def df(self, x, q, beta):
+    def df(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""PMF :math:`P(T=k) = q^{(k-1)^{\beta}} - q^{k^{\beta}}`."""
         return q ** ((x - 1.0) ** beta) - q ** (x**beta)
 
-    def hf(self, x, q, beta):
+    def hf(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""Discrete hazard, :math:`1 - q^{k^{\beta} - (k-1)^{\beta}}`."""
         return 1.0 - q ** (x**beta - (x - 1.0) ** beta)
 
-    def Hf(self, x, q, beta):
+    def Hf(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -k^{\beta}\ln q`."""
         return -(x**beta) * np.log(q)
 
-    def qf(self, u, q, beta):
+    def qf(self, u: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
         u = np.asarray(u, dtype=float)
         k = (np.log1p(-u) / np.log(q)) ** (1.0 / beta)
         return np.maximum(np.ceil(k), 1.0)
 
-    def mean(self, q, beta):
+    def mean(self, q: Boxable, beta: Boxable) -> Boxable:
         return self.moment(1, q, beta)
 
-    def moment(self, m, q, beta):
+    def moment(self, m: int, q: Boxable, beta: Boxable) -> Boxable:
         upper = int(self.qf(1.0 - 1e-9, q, beta))
         k = np.arange(1, upper + 1, dtype=float)
         return np.sum(k**m * self.df(k, q, beta))
 
-    def random(self, size, q, beta):
+    def random(
+        self, size: int | tuple[int, ...], q: Boxable, beta: Boxable
+    ) -> Boxable:
         U = uniform.rvs(size=size)
         return self.qf(U, q, beta)
 
-    def log_sf(self, x, q, beta):
+    def log_sf(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         return (x**beta) * np.log(q)
 
-    def log_df(self, x, q, beta):
+    def log_df(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         # PMF = q^{(k-1)^beta} - q^{k^beta}. At k = 1 the first term is
         # q^{0^beta} = 1 with no beta dependence, but 0**beta has a NaN
         # gradient w.r.t. beta under autograd, so guard the base: where

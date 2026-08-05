@@ -128,6 +128,15 @@ module = [
     'surpyval.univariate.regression.frailty.*',
     'surpyval.datasets',
     'surpyval.univariate.parametric.distributions.weibull',
+    # The discrete distributions, plus the Discretize wrapper.
+    'surpyval.univariate.parametric.distributions.bernoulli',
+    'surpyval.univariate.parametric.distributions.beta_geometric',
+    'surpyval.univariate.parametric.distributions.binomial',
+    'surpyval.univariate.parametric.distributions.discrete_weibull',
+    'surpyval.univariate.parametric.distributions.discretize',
+    'surpyval.univariate.parametric.distributions.geometric',
+    'surpyval.univariate.parametric.distributions.negative_binomial',
+    'surpyval.univariate.parametric.distributions.poisson',
 ]
 disallow_untyped_defs = true
 

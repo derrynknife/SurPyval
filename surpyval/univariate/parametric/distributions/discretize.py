@@ -1,6 +1,15 @@
+from typing import Any
+
+import numpy.typing as npt
+
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
+)
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+    ParametricFitter,
 )
 
 
@@ -25,14 +34,20 @@ class DiscretizedFitter(DiscreteParametricFitter):
     Created with the :func:`Discretize` factory rather than directly.
     """
 
-    def __init__(self, distribution):
+    def __init__(self, distribution: ParametricFitter) -> None:
         if distribution.support[0] < 0:
             raise ValueError(
                 "Discretize is defined for distributions supported on the "
                 "non-negative reals (support[0] >= 0); {} is supported on "
                 "{}.".format(distribution.name, distribution.support)
             )
-        self.dist = distribution
+        # Held as Any, not ParametricFitter. The base class declares
+        # none of sf, ff, df, hf, Hf, qf or _parameter_initialiser --
+        # its docstring states the contract but the class does not
+        # express it -- so every delegation below would be an
+        # attr-defined error against the declared type. The parameter
+        # stays annotated, because that is the contract for callers.
+        self.dist: Any = distribution
         super().__init__(
             # e.g. "Discretize(Weibull)"; distinct from the standalone
             # ``DiscreteWeibull`` (Nakagawa-Osaki) distribution.
@@ -47,54 +62,63 @@ class DiscretizedFitter(DiscreteParametricFitter):
             plot_x_scale=distribution.plot_x_scale,
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(
+        self,
+        x: npt.NDArray,
+        c: npt.NDArray | None = None,
+        n: npt.NDArray | None = None,
+        t: npt.NDArray | None = None,
+        offset: bool = False,
+    ) -> npt.NDArray | tuple[float, ...]:
         return self.dist._parameter_initialiser(x, c=c, n=n, t=t)
 
-    def sf(self, x, *params):
+    def sf(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""Survival :math:`R_K(k) = R(k)` (the continuous survival)."""
         return self.dist.sf(x, *params)
 
-    def ff(self, x, *params):
+    def ff(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""CDF :math:`F_K(k) = F(k)`."""
         return self.dist.ff(x, *params)
 
-    def df(self, x, *params):
+    def df(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""PMF :math:`P(K = k) = R(k - 1) - R(k)`."""
         return self.dist.sf(x - 1.0, *params) - self.dist.sf(x, *params)
 
-    def hf(self, x, *params):
+    def hf(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""Discrete hazard :math:`h(k) = P(K = k)/R(k - 1)`."""
         return self.df(x, *params) / self.dist.sf(x - 1.0, *params)
 
-    def Hf(self, x, *params):
+    def Hf(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -\ln R(k)`."""
         return self.dist.Hf(x, *params)
 
-    def qf(self, u, *params):
+    def qf(self, u: Numeric, *params: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
         return np.maximum(np.ceil(self.dist.qf(u, *params)), 1.0)
 
-    def mean(self, *params):
+    def mean(self, *params: Boxable) -> Boxable:
         upper = int(np.ceil(self.dist.qf(1.0 - 1e-9, *params)))
         k = np.arange(1, upper + 1, dtype=float)
         return float(np.sum(k * self.df(k, *params)))
 
-    def moment(self, m, *params):
+    def moment(self, m: int, *params: Boxable) -> Boxable:
         upper = int(np.ceil(self.dist.qf(1.0 - 1e-9, *params)))
         k = np.arange(1, upper + 1, dtype=float)
         return float(np.sum(k**m * self.df(k, *params)))
 
-    def random(self, size, *params):
+    def random(
+        self, size: int | tuple[int, ...], *params: Boxable
+    ) -> npt.NDArray:
         return np.ceil(self.dist.random(size, *params))
 
-    def log_df(self, x, *params):
+    def log_df(self, x: Numeric, *params: Boxable) -> Boxable:
         return np.log(self.df(x, *params))
 
-    def log_sf(self, x, *params):
+    def log_sf(self, x: Numeric, *params: Boxable) -> Boxable:
         return self.dist.log_sf(x, *params)
 
 
-def Discretize(distribution):
+def Discretize(distribution: ParametricFitter) -> DiscretizedFitter:
     r"""
     Discretize a continuous SurPyval distribution onto the positive integers.
 

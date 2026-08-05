@@ -32,11 +32,11 @@ v0.19.1 (unreleased)
   the 18 warnings standing between the build and ``-W``. All 138
   autodoc targets across the documentation now resolve.
 
-- **Type-hint coverage is now enforced, for nine modules (#143).**
+- **Type-hint coverage is now enforced, for seventeen modules (#143).**
   ``surpyval.distribution``, ``surpyval.serialisation``,
   ``surpyval.metrics``, ``surpyval.univariate.information_criteria``,
-  ``surpyval.datasets``, the Weibull distribution, and all of
-  ``surpyval.univariate.nonparametric``,
+  ``surpyval.datasets``, the Weibull and the eight discrete
+  distributions, and all of ``surpyval.univariate.nonparametric``,
   ``surpyval.recurrent.nonparametric`` and
   ``surpyval.univariate.regression.frailty`` have
   ``disallow_untyped_defs`` set in ``pyproject.toml``, so an
@@ -44,7 +44,8 @@ v0.19.1 (unreleased)
   abstract base classes every model inherits from, the Kaplan-Meier,
   Nelson-Aalen, Fleming-Harrington and Turnbull estimators, the
   log-rank test, the plotting positions, the non-parametric MCF, the
-  shared-frailty fitter and the bundled datasets.
+  shared-frailty fitter, the bundled datasets and nine of the 25
+  parametric distributions.
 
   ``handle_xicn`` gained ``@overload`` declarations as part of this.
   Its return shape is decided by ``as_recurrent_data``, but its
@@ -129,9 +130,51 @@ v0.19.1 (unreleased)
   likelihood" -- so the fit leaves the parameter at its initial guess
   and reports success.
 
-  ``Weibull`` is annotated against that vocabulary as the first of the
-  25 distributions, and is on the enforced list. The remaining 24 follow
-  the same shape.
+  ``Boxable`` names ``ArrayBox`` rather than being ``Any``, which is
+  what makes the parameter positions checkable rather than merely
+  annotated: under ``Any``, ``Weibull.Hf(1.0, "not a number", 4.0)`` was
+  accepted in silence. autograd ships no type information, so
+  ``stubs/autograd/numpy/numpy_boxes.pyi`` describes the one type of its
+  that appears in surpyval's own signatures. Supplying any stub for a
+  package makes mypy consider the whole package described, so the
+  ``__getattr__`` stubs beside it keep the rest of autograd as untyped
+  as it was.
+
+  ``Weibull`` and the eight discrete distributions -- ``Bernoulli``,
+  ``BetaGeometric``, ``Binomial``, ``DiscreteWeibull``, ``Geometric``,
+  ``NegativeBinomial``, ``Poisson`` and the ``Discretize`` wrapper --
+  are annotated against that vocabulary and are on the enforced list.
+
+  Checking their bodies turned up three things about the base class.
+
+  ``Weibull`` was exported as ``Weibull: ParametricFitter``, which
+  erases the concrete type; since the base declares none of ``sf``,
+  ``ff``, ``df``, ``hf``, ``Hf``, ``qf`` or ``mean``, and the package
+  ships ``py.typed``, the example in ``sf``'s own docstring did not type
+  check for a user::
+
+      Weibull.sf(x, 3, 4)
+      error: "ParametricFitter" has no attribute "sf"
+
+  It is now exported as ``Weibull_``. Sixteen other distributions carry
+  the same erasure and are corrected as each is annotated.
+  ``Discretize`` hits the same gap from the other side: it must hold the
+  distribution it wraps as ``Any``, because every delegation would
+  otherwise be an error against the declared type.
+
+  ``Bernoulli.fit`` and ``Binomial.fit`` do not honour
+  ``ParametricFitter.fit``, and the divergence is real rather than a
+  typing artefact -- ``Bernoulli.fit(x, c=...)`` and
+  ``Binomial.fit(x, n_trials=k, how=...)`` raise ``TypeError``. Both
+  have closed-form maximum likelihood estimates and support neither
+  censoring nor an alternative estimation method. Generic code written
+  against ``ParametricFitter`` will fail on them. This is recorded at
+  each site rather than changed here.
+
+  ``_parameter_initialiser`` is also inconsistent across the base's
+  implementations: ``Weibull`` returns a tuple, the discrete
+  distributions return an array. Callers coerce either, so nothing is
+  broken, but the signatures now say which is which.
 
 - **The lint job had been failing on a single over-long line.**
   The ``:class:`` cross-reference added to ``RandomSurvivalForest``'s
