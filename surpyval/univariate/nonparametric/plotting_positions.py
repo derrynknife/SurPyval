@@ -157,9 +157,9 @@ def plotting_positions(
     if heuristic == "Filliben":
         out = nonp.filliben(x, c, n, t)
     elif heuristic in ESTIMATOR_FUNCS:
-        x, r, d = xcnt_to_xrd(x, c, n, t)
+        x_e, r, d = xcnt_to_xrd(x, c, n, t)
         R = ESTIMATOR_FUNCS[heuristic](r, d)
-        return x, r, d, 1 - R
+        return x_e, r, d, 1 - R
     elif heuristic == "Turnbull":
         out = nonp.turnbull(x, c, n, t, estimator=turnbull_estimator)
     else:

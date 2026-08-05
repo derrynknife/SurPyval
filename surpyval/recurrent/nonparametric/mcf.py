@@ -220,6 +220,7 @@ class NonParametricCounting(SerialisableMixin):
         from an ``(x, r, d)`` triple; the single home of the estimator
         (cause-specific MCF used to carry a drifted copy)."""
         out = cls()
+        x, r, d = np.asarray(x), np.asarray(r), np.asarray(d)
         out.x, out.r, out.d = x, r, d
         out.mcf_hat = np.cumsum(d / r)
         var = (
@@ -247,7 +248,7 @@ class NonParametricCounting(SerialisableMixin):
         n: npt.ArrayLike | None = None,
         tl: npt.ArrayLike | float | None = None,
         tr: npt.ArrayLike | float | None = None,
-        windows: npt.ArrayLike | None = None,
+        windows: dict | None = None,
     ) -> "NonParametricCounting":
         """
         Fit a nonparametric (Nelson-Aalen) MCF.

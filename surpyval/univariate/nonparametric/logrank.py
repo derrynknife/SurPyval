@@ -58,8 +58,8 @@ class LogRankResult:
 def _logrank_z_v(
     x: npt.NDArray,
     Z: npt.NDArray,
-    c: npt.NDArray,
-    n: npt.NDArray,
+    c: npt.NDArray | None,
+    n: npt.NDArray | None,
     groups: npt.NDArray,
     weighting: str,
     rho: float,

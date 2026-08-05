@@ -16,13 +16,13 @@ def rank_adjust(
     Above reference provides excellent explanation of how this method is
     derived this function currently assumes good input
     """
+    t = np.asarray(t)
     # Total items in test/population
     N = len(t)
     # Preallocate adjusted ranks array
     ranks = np.zeros(N)
 
-    if c is None:
-        c = np.zeros(N)
+    c = np.zeros(N) if c is None else np.asarray(c)
 
     # Rank adjustment for [right] censored data
     # PMON - "Previous Mean Order Number"

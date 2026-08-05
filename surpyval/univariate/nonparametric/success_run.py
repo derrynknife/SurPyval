@@ -38,11 +38,15 @@ def success_run(
         >>> success_run(10)
         np.float64(0.7411344491069477)
     """
-    if confidence and alpha:
+    # Tested against None rather than for truthiness: `confidence=0` and
+    # `alpha=0` are both falsy, so the truthiness form let a caller pass
+    # both without the raise firing and then left `alpha` as None for
+    # `confidence=0`.
+    if confidence is not None and alpha is not None:
         raise ValueError("Only one of confidence or alpha can be specified")
-    if confidence is None and alpha is None:
-        alpha = 0.05
-    if confidence:
+    if confidence is not None:
         alpha = 1 - confidence
+    elif alpha is None:
+        alpha = 0.05
 
     return np.power(alpha, 1.0 / n)

@@ -1,4 +1,5 @@
 import warnings
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -35,6 +36,13 @@ def turnbull(
     """
     if max_iter < 1:
         raise ValueError(f"max_iter must be at least 1; got {max_iter}")
+    # Taken as arrays before anything indexes or slices them. The
+    # signature accepts array-like because callers pass lists, but the
+    # body below is written against arrays throughout.
+    x = np.asarray(x)
+    c = np.asarray(c)
+    n = np.asarray(n)
+    t = np.asarray(t)
     any_truncated = np.isfinite(t).any()
     # Find all unique bounding points
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
@@ -449,7 +457,9 @@ def turnbull(
 
         r_var = np.cumsum(const[:M]) - np.cumsum(coeff[:M]) * cumulative[:M]
 
-    out = {}
+    # Heterogeneous by design: arrays, the estimator name, and the
+    # convergence flags all go out in the one dictionary.
+    out: dict[str, Any] = {}
     out["x"] = bounds[1:-1]
     out["r"] = r[1:-1]
     out["d"] = d[1:-1]

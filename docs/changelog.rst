@@ -86,6 +86,33 @@ v0.19.1 (unreleased)
   namespace in that file are inside functions, so they resolve after
   initialisation and are left alone.
 
+  Annotating a function makes mypy check its body, and that found a
+  real inconsistency the ratchet had been hiding behind an over-wide
+  annotation. ``turnbull``, ``rank_adjust`` and
+  ``NonParametricCounting.from_xrd`` declare array-like parameters and
+  then index, slice and divide them directly -- which array-like does
+  not support, because it also covers ``str``, ``bytes`` and scalars.
+  Each now takes its arguments as arrays before using them as arrays,
+  so the signature and the body agree. ``_logrank_z_v`` likewise
+  declared ``c`` and ``n`` as arrays while handling ``None`` for both
+  internally, and ``NonParametricCounting.fit`` declared ``windows``
+  as array-like when it is the ``{item: [(start, end), ...]}``
+  dictionary its own docstring describes.
+
+  ``success_run`` was the same shape of problem in its argument
+  handling: it tested ``confidence`` and ``alpha`` for truthiness, so
+  passing both with either set to zero skipped the "only one of" raise,
+  and ``confidence=0`` fell through every branch and left ``alpha``
+  unset. Both are now tested against ``None``.
+
+- **The lint job had been failing on a single over-long line.**
+  The ``:class:`` cross-reference added to ``RandomSurvivalForest``'s
+  docstring while clearing the documentation build warnings pushed the
+  line to 80 characters. flake8 runs before mypy in the lint job, so
+  from that commit on mypy was skipped rather than run, and the type
+  errors described above reached CI unchecked. The line is rewrapped
+  and the errors are fixed.
+
 - **The survival tree's log-rank split statistic was wrong (#287).**
   ``kind="non-parametric"`` trees, and any ``RandomSurvivalForest``
   built from them, selected splits on a statistic off by factors of
