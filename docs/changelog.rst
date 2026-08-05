@@ -117,7 +117,17 @@ v0.19.1 (unreleased)
   neither a float nor an ndarray, which is why ``Boxable`` is not
   narrowed to a numpy type -- and why the "array-like in, array out"
   convention used elsewhere in the package must not be applied here.
-  ``np.asarray`` on a box does not fail; it drops the gradient.
+
+  ``np.asarray`` on a box does not reject it. It wraps the box in a
+  0-d object-dtype array, which still computes the right *value*,
+  because object arrays dispatch arithmetic back to the box. Only the
+  derivative is damaged, and how depends on the arithmetic: an
+  operation whose backward pass needs a ufunc the box does not
+  implement raises a ``TypeError``, but a plain product silently
+  returns a zero gradient for that parameter. A zero gradient is not an
+  error to an optimiser -- it means "this parameter does not affect the
+  likelihood" -- so the fit leaves the parameter at its initial guess
+  and reports success.
 
   ``Weibull`` is annotated against that vocabulary as the first of the
   25 distributions, and is on the enforced list. The remaining 24 follow
