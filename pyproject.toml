@@ -115,6 +115,7 @@ skip = ["__init__.py"]
 # point is the annotations, not the green tick.
 [[tool.mypy.overrides]]
 module = [
+    'surpyval.distribution',
     'surpyval.serialisation',
     'surpyval.metrics.*',
     'surpyval.univariate.information_criteria',

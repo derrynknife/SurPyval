@@ -32,14 +32,15 @@ v0.19.1 (unreleased)
   the 18 warnings standing between the build and ``-W``. All 138
   autodoc targets across the documentation now resolve.
 
-- **Type-hint coverage is now enforced, for four modules (#143).**
-  ``surpyval.serialisation``, ``surpyval.metrics``,
-  ``surpyval.univariate.information_criteria`` and all of
-  ``surpyval.univariate.nonparametric`` have ``disallow_untyped_defs``
-  set in ``pyproject.toml``, so an unannotated function in any of them
-  is a mypy error. That covers the Kaplan-Meier, Nelson-Aalen,
-  Fleming-Harrington and Turnbull estimators, the log-rank test and the
-  plotting positions.
+- **Type-hint coverage is now enforced, for five modules (#143).**
+  ``surpyval.distribution``, ``surpyval.serialisation``,
+  ``surpyval.metrics``, ``surpyval.univariate.information_criteria``
+  and all of ``surpyval.univariate.nonparametric`` have
+  ``disallow_untyped_defs`` set in ``pyproject.toml``, so an
+  unannotated function in any of them is a mypy error. That covers the
+  abstract base classes every model inherits from, and the
+  Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull
+  estimators, the log-rank test and the plotting positions.
 
   The package ships ``py.typed``, which tells a user's type checker
   that the annotations are there to be trusted, and mypy already ran in
