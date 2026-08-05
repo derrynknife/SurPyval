@@ -32,6 +32,39 @@ v0.19.1 (unreleased)
   the 18 warnings standing between the build and ``-W``. All 138
   autodoc targets across the documentation now resolve.
 
+- **The survival tree's log-rank split statistic was wrong (#287).**
+  ``kind="non-parametric"`` trees, and any ``RandomSurvivalForest``
+  built from them, selected splits on a statistic off by factors of
+  several -- and not merely inflated, but *reordered*: of the two cases
+  in the issue, the weaker separation scored 1.856 against a true 0.276
+  while the stronger scored 0.276 against a true 1.225. Trees were
+  choosing the wrong split.
+
+  The log-rank statistic sums over the *pooled* event times of both
+  children, so the left child's at-risk count is needed at times where
+  the left child itself has no observation. Those were filled in by
+  carrying its own risk ladder forward, which was wrong twice: the
+  carried value did not subtract the deaths and censorings that occurred
+  *at* the time it was carried from, and the tail past the last
+  observation subtracted only deaths, so a child ending in a censored
+  observation kept someone at risk for ever. Both inflate the count,
+  which biases the numerator and the variance.
+
+  The at-risk count is now computed directly -- at each pooled time
+  :math:`t`, the observations with :math:`t_l < t \leq x`, which is the
+  ``(entry, exit]`` convention ``xcnt_to_xrd`` already uses, so the
+  left child's :math:`Y_L` and the pooled :math:`Y` agree about what
+  "at risk" means. There is nothing to extrapolate, so both the leading
+  and trailing special cases disappear along with the forward fill.
+
+  Tests check the statistic against a deliberately naive implementation
+  of its definition: the two cases from the issue, a censored tail, left
+  truncation, ties shared across children, a child starting after the
+  other's first event, and 200 random partitions. One test pins
+  ``at_risk_on_grid`` against ``xcnt_to_xrd`` directly, since a
+  disagreement between them is what makes :math:`Y_L / Y` stop being a
+  proportion.
+
 - **The documentation build fails on any warning.** ``-W --keep-going``
   in the CI docs job, and ``fail_on_warning`` in ``.readthedocs.yaml``.
   They are set together deliberately: if only one has it, that one goes

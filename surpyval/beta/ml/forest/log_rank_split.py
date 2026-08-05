@@ -7,11 +7,62 @@ from numpy.typing import NDArray
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
-def numpy_fill(arr):
-    mask = np.isnan(arr)
-    idx = np.where(~mask, np.arange(mask.shape[0]), 0)
-    np.maximum.accumulate(idx, out=idx)
-    return arr[idx]
+def _weight_at_or_after(values, weights, grid):
+    """Total weight of ``values >= t``, for every ``t`` in ``grid``.
+
+    ``grid`` is assumed sorted, as ``to_xrd`` returns it.
+    """
+    order = np.argsort(values, kind="stable")
+    ordered = np.asarray(values, dtype=float)[order]
+    w = np.asarray(weights, dtype=float)[order]
+    # suffix[i] is the weight from position i to the end; the trailing
+    # zero covers a grid time past every value.
+    suffix = np.concatenate([np.cumsum(w[::-1])[::-1], [0.0]])
+    return suffix[np.searchsorted(ordered, grid, side="left")]
+
+
+def at_risk_on_grid(data: SurpyvalData, grid: NDArray) -> NDArray:
+    r"""At-risk count of ``data`` at each time in ``grid``.
+
+    An observation is at risk at :math:`t` when it has entered and not
+    yet left -- :math:`t_l < t \leq x` -- which is the ``(entry, exit]``
+    convention ``xcnt_to_xrd`` uses, so that a subject entering exactly
+    at an event time is not at risk for it.
+
+    Counted directly, rather than by carrying a risk ladder forward from
+    the times where this subset happens to have observations. Forward
+    filling is what #287 got wrong: it carried :math:`Y(t_j)` to later
+    grid times without removing the deaths and censorings *at*
+    :math:`t_j`, and it extended the final value past the last
+    observation having subtracted only the deaths, so a subset ending in
+    a censored observation kept a phantom at risk for ever. Both
+    inflated the count, and the split statistic built on it was wrong by
+    factors of several.
+
+    Since ``tl <= x`` always holds, the observations with ``tl >= t`` are
+    a subset of those with ``x >= t``, so the count is the difference of
+    two suffix sums rather than a scan over the grid.
+    """
+    x = np.asarray(data.x, dtype=float)
+    n = np.asarray(data.n, dtype=float)
+    tl = np.asarray(data.t[:, 0], dtype=float)
+    return _weight_at_or_after(x, n, grid) - _weight_at_or_after(tl, n, grid)
+
+
+def deaths_on_grid(data: SurpyvalData, grid: NDArray) -> NDArray:
+    """Observed-death count of ``data`` at each time in ``grid``.
+
+    Every ``x`` in ``data`` is a time in ``grid`` -- the grid comes from
+    the pooled data this is a subset of -- so each death lands exactly.
+    """
+    x = np.asarray(data.x, dtype=float)
+    n = np.asarray(data.n, dtype=float)
+    observed = np.asarray(data.c) == 0
+    return np.bincount(
+        np.searchsorted(grid, x[observed], side="left"),
+        weights=n[observed],
+        minlength=grid.size,
+    )[: grid.size]
 
 
 def log_rank_split(
@@ -117,57 +168,14 @@ def log_rank(
     # Get sample-indices (i) of those that would end up in the left child
     left_child_indices = np.where(Z[:, u] <= v)[0]
     data_left_child = data[left_child_indices]
-    # left_child_x = data.x[left_child_indices]
-    # left_child_c = data.c[left_child_indices]
 
-    # left_child_x, idx = np.unique(left_child_x, return_inverse=True)
-    # d_L = np.bincount(idx, weights=1 - left_child_c)
-    # do_L = np.bincount(idx, weights=left_child_c)
-    x_left, Y_L, d_L = data_left_child.to_xrd()
+    # The statistic is a sum over the *pooled* event times, so the left
+    # child's risk set and deaths are needed at each of them -- including
+    # the times where the left child itself has no observation. Both are
+    # counted directly on that grid; see ``at_risk_on_grid``.
     all_x, Y, d = data.to_xrd()
-
-    # expand d_L to match all_x
-    # idx = np.searchsorted(x_left, all_x, side="right") - 1
-    expanded_d_L = np.zeros_like(all_x)
-    expanded_Y_L = np.empty_like(all_x)
-    expanded_Y_L.fill(np.nan)
-    # expanded_do_L = np.zeros_like(all_x)
-    x_l_indices = np.isin(all_x, data_left_child.x).nonzero()[0]
-    expanded_d_L[x_l_indices] = d_L
-    expanded_Y_L[x_l_indices] = Y_L
-    # expanded_do_L[x_l_indices] = do_L
-
-    (index,) = np.where(~np.isnan(expanded_Y_L))
-    first_non_nan = index[0]
-    last_non_nan = index[-1]
-    expanded_Y_L[first_non_nan:last_non_nan] = numpy_fill(
-        expanded_Y_L[first_non_nan:last_non_nan]
-    )
-    if first_non_nan != 0:
-        expanded_Y_L[:first_non_nan] = expanded_Y_L[first_non_nan]
-        # expanded_Y_L[:first_non_nan] = 0
-
-    if last_non_nan != expanded_Y_L.size - 1:
-        # expanded_Y_L[last_non_nan+1:] = 0
-        expanded_Y_L[last_non_nan + 1 :] = (
-            expanded_Y_L[last_non_nan] - expanded_d_L[last_non_nan]
-        )
-
-    Y_L = expanded_Y_L
-    d_L = expanded_d_L
-
-    # Y_L = expanded_Y_L[first_non_nan:last_non_nan+1:]
-    # d_L = expanded_d_L[first_non_nan:last_non_nan+1:]
-    # Y = Y[first_non_nan:last_non_nan+1:]
-    # d = d[first_non_nan:last_non_nan+1:]
-
-    # do_L = expanded_do_L
-
-    # raise ValueError("STOP")
-    # Find the risk set from the expanded d_L and do_L
-    # These are the event and censored counts at each x
-    # Y_L = (d_L.sum() + do_L.sum()) - d_L.cumsum()
-    # + d_L - do_L.cumsum() + do_L
+    Y_L = at_risk_on_grid(data_left_child, all_x)
+    d_L = deaths_on_grid(data_left_child, all_x)
 
     # Filter to where Y > 1
     mask = Y > 1
