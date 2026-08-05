@@ -11,10 +11,11 @@ from surpyval.utils.surpyval_data import SurpyvalData
 class RandomSurvivalForest(SerialisableMixin):
     """Random survival forest: an ensemble of survival trees.
 
-    ``n_trees`` instances of :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`
-    are fitted, each to an independently bootstrapped sample of the data
-    and each considering a random subset of the features at every split.
-    A prediction evaluates all of them and averages the fitted models
+    ``n_trees`` instances of
+    :class:`~surpyval.beta.ml.forest.tree.SurvivalTree` are fitted, each
+    to an independently bootstrapped sample of the data and each
+    considering a random subset of the features at every split. A
+    prediction evaluates all of them and averages the fitted models
     their leaves return, which trades the variance of one deep tree for
     the bias of an average.
 
