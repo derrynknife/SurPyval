@@ -289,7 +289,7 @@ you want to emphasise early or late differences instead of the equal-weight
 log-rank.
 
 Stratified log-rank
-~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^
 
 When a *nuisance* factor influences survival — a study site, a batch — comparing
 groups while ignoring it can be badly misleading if the groups are unevenly
