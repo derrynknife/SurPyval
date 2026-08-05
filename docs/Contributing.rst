@@ -22,19 +22,42 @@ documentation build from running on every change:
 
 Continuous integration (``.github/workflows/actions.yml``) therefore runs on
 **pull requests into develop or master** and on **pushes to master**, rather
-than on every push to every branch. The lint and test jobs run on both; the
-documentation build runs on the release pull request into ``master`` only,
-where it reproduces the hosted build. Read the Docs itself is configured to
-build ``master`` and tags only.
+than on every push to every branch. Not every job runs on every event:
 
-The documentation build is gated at the release rather than on every pull
-request because it executes every code cell in the documentation, which takes
-around three minutes from cold rather than the seconds a lint job costs. The
-trade-off is that a change which breaks a
-documentation example is caught when the release is prepared rather than when
-it is merged into ``develop`` -- so if you change the behaviour of a public
-function, it is worth building the docs locally before opening the pull
-request.
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Event
+     - Jobs
+   * - Pull request into ``develop``
+     - lint only (about a minute)
+   * - Pull request into ``master`` (the release)
+     - lint, the test suite across three interpreters, and the
+       documentation build (about ten minutes)
+   * - Push to ``master`` / tag
+     - lint and the test suite; Read the Docs rebuilds the hosted
+       documentation
+
+The test suite and the documentation build are both gated at the release
+rather than on every pull request because of what they cost: the suite is
+roughly nine minutes across the three interpreters and the documentation build
+around three from cold, against about one for lint. Paying that on every
+feature pull request made the edit-review loop the slowest part of working on
+the package, and with a single maintainer running the suite locally before
+pushing, the pull-request run was mostly confirming what was already known.
+
+The trade-off is real and worth understanding before you rely on it. A failure
+that appears on only one interpreter, or a change that breaks a documentation
+example, is now found when the release pull request is opened -- with a
+release's worth of commits to search through rather than one. So:
+
+* Run the suite locally before pushing, and across more than one interpreter
+  when you have touched anything numerical.
+* Build the documentation locally when you change the behaviour of a public
+  function, since documentation cells call the real API.
+* On a long-running branch, open the release pull request early and let it sit,
+  so the full run has somewhere to fail before the release itself.
 
 Documentation
 -------------

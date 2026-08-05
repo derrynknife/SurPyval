@@ -4,6 +4,25 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **The test suite runs on the release pull request, not on every one.**
+  Pull requests into ``develop`` now run lint only, about a minute
+  against the nine the suite takes across three interpreters. The suite
+  still runs in full on the release pull request into ``master`` and on
+  pushes to ``master``.
+
+  The reason is the edit-review loop: with a single maintainer running
+  the suite locally before pushing, the pull-request run was mostly
+  confirming what was already known, and it was the slowest part of
+  working on the package.
+
+  What this gives up is stated rather than glossed: a failure that
+  appears on only one interpreter is now found when the release is
+  prepared, with a release's worth of commits to search rather than one.
+  That is not hypothetical -- the doctest numeric comparison two entries
+  below landed green on 3.11 and failed on 3.12 and 3.13, and it was the
+  pull-request run that caught it. ``Contributing.rst`` now says which
+  jobs run on which event, and what to run locally to compensate.
+
 - **The documentation build runs in CI on the release pull request.**
   The docs execute every ``.. jupyter-execute::`` cell as they build, so
   they are a second test suite that exercises the public API for real --

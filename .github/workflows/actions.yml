@@ -6,6 +6,11 @@ run-name: SurPyval CI
 # master (i.e. release merges + tags). Feature work accumulates on `develop`
 # via PRs; day-to-day pushes to feature branches no longer each trigger the
 # full suite. See docs/Contributing.rst for the branching / release flow.
+#
+# The jobs below are not all gated the same way. Lint runs on everything;
+# the test suite and the documentation build run only on the release pull
+# request into `master`, where the time they cost is worth paying. Each
+# job carries the reasoning for its own condition.
 on:
   pull_request:
     branches: [develop, master]
@@ -40,7 +45,26 @@ jobs:
       - name: black
         run: black --check $SRC
 
+  # The test suite runs on the release pull request into `master`, and on
+  # pushes to `master`, but not on pull requests into `develop`.
+  #
+  # It is roughly nine minutes across the three interpreters, against
+  # about one for lint, and paying that on every feature pull request
+  # made the edit-review loop the slowest part of working on the
+  # package. Development is single-maintainer and the suite is run
+  # locally before pushing, so the pull-request run was mostly
+  # confirming what was already known.
+  #
+  # What that gives up is real, and worth naming: a failure that only
+  # appears on one interpreter is now found when the release is
+  # prepared, with a release's worth of commits to search rather than
+  # one. That is not hypothetical -- the doctest comparison landed
+  # green on 3.11 and broke on 3.12 and 3.13, and it was the
+  # pull-request run that caught it. Run the suite locally across more
+  # than one interpreter when touching numerics, or open the release
+  # pull request early and let it sit.
   surpyval_ci:
+    if: github.event_name != 'pull_request' || github.base_ref == 'master'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
