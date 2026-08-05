@@ -32,15 +32,22 @@ v0.19.1 (unreleased)
   the 18 warnings standing between the build and ``-W``. All 138
   autodoc targets across the documentation now resolve.
 
-- **Type-hint coverage is now enforced, for five modules (#143).**
+- **Type-hint coverage is now enforced, for six modules (#143).**
   ``surpyval.distribution``, ``surpyval.serialisation``,
   ``surpyval.metrics``, ``surpyval.univariate.information_criteria``
-  and all of ``surpyval.univariate.nonparametric`` have
-  ``disallow_untyped_defs`` set in ``pyproject.toml``, so an
-  unannotated function in any of them is a mypy error. That covers the
-  abstract base classes every model inherits from, and the
-  Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull
-  estimators, the log-rank test and the plotting positions.
+  and all of ``surpyval.univariate.nonparametric`` and
+  ``surpyval.recurrent.nonparametric`` have ``disallow_untyped_defs``
+  set in ``pyproject.toml``, so an unannotated function in any of them
+  is a mypy error. That covers the abstract base classes every model
+  inherits from, the Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and
+  Turnbull estimators, the log-rank test, the plotting positions and
+  the non-parametric MCF.
+
+  ``handle_xicn`` gained ``@overload`` declarations as part of this.
+  Its return shape is decided by ``as_recurrent_data``, but its
+  signature only said "one or the other", so all nine callers taking
+  the default were handed a union to narrow themselves. The overloads
+  say which argument decides, once, for all seventeen call sites.
 
   The package ships ``py.typed``, which tells a user's type checker
   that the annotations are there to be trusted, and mypy already ran in
