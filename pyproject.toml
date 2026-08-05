@@ -101,6 +101,10 @@ skip = ["__init__.py"]
 # mypy
 [tool.mypy]
 
+# Local stubs for third-party types that appear in surpyval's own
+# signatures. Only autograd's ArrayBox so far -- see the file for why.
+mypy_path = "stubs"
+
 # Modules whose every function is annotated. Listing one here makes an
 # unannotated function in it an error, so the coverage cannot slip back
 # -- a ratchet rather than a target (#143).

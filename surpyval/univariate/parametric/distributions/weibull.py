@@ -392,4 +392,20 @@ class Weibull_(ParametricFitter):
         return alpha, beta
 
 
-Weibull: ParametricFitter = Weibull_("Weibull")
+# Deliberately not annotated ``: ParametricFitter``. That declaration
+# erases the concrete type, and the base class declares none of sf, ff,
+# df, hf, Hf, qf or mean -- so with py.typed shipped, the example in
+# ``sf``'s own docstring did not type check for a user:
+#
+#     Weibull.sf(x, 3, 4)
+#     error: "ParametricFitter" has no attribute "sf"
+#
+# Naming ``Weibull_`` exposes the real signatures, which is what makes
+# the annotations on them worth having. Anywhere a ``ParametricFitter``
+# is wanted this still is one.
+#
+# The annotation cannot simply be dropped and inferred: the regression
+# subpackages and ``fit_best`` import this name, and without an explicit
+# type mypy cannot resolve it through that cycle ("Cannot determine type
+# of Weibull", in six modules).
+Weibull: Weibull_ = Weibull_("Weibull")

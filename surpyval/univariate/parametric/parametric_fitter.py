@@ -1,8 +1,8 @@
 from numbers import Number
-from typing import Any
 
 import numpy.typing as npt
 import pandas as pd
+from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.integrate import quad
 from scipy.stats import uniform
 
@@ -13,9 +13,9 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..nonparametric import plotting_positions as pp
 from .fitters import bounds_convert
+from .fitters.closed_form import closed_form_results
 from .fitters.mle import mle
 from .fitters.mom import mom
-from .fitters.closed_form import closed_form_results
 from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mse import mse
@@ -28,15 +28,19 @@ from .parametric import Parametric
 # times, or of probabilities for ``qf``, or a single one. It is always
 # real data.
 #
-# ``Boxable`` is a parameter, or a value computed from one. Deliberately
-# not narrowed to a numpy type: maximum likelihood differentiates these
+# ``Boxable`` is a parameter, or a value computed from one. The third
+# member is the point of it: maximum likelihood differentiates these
 # functions, and autograd substitutes its own ``ArrayBox`` for the
-# parameters to carry the derivative through. A box is neither a float
-# nor an ndarray, so the usual "ArrayLike in, NDArray out" convention
-# does not apply here.
+# parameters to carry the derivative through, so a parameter really is
+# one of three things and not two. The runtime types were established by
+# instrumenting a real fit, which is the only place they are visible --
+# a fit passes float64 while evaluating the likelihood and ArrayBox
+# while differentiating it.
 #
-# Do not "improve" this to a narrower type. mypy cannot check the claim
-# either way, and both obvious narrowings are wrong:
+# Naming the box rather than writing ``Any`` is what makes the parameter
+# positions checkable at all; under ``Any`` they accept anything, which
+# ``disallow_untyped_defs`` would then certify. It also rules out the
+# two narrowings that look right and are not:
 #
 #   alpha: npt.ArrayLike        25 errors on ``(x / alpha) ** beta``,
 #                               because array-like covers str and bytes.
@@ -46,17 +50,19 @@ from .parametric import Parametric
 #                               does not. A plain product then returns a
 #                               zero gradient with no exception, which
 #                               an optimiser reads as "this parameter
-#                               does not affect the likelihood".
+#                               does not affect the likelihood", so the
+#                               fit leaves it at its initial guess and
+#                               reports success.
 #
 #   alpha: npt.NDArray | float  No errors at all, and false. Nothing in
-#                               the toolchain will ever say so, and
+#                               the toolchain would ever say so, and
 #                               py.typed publishes it to every caller.
 #
-# The runtime types were established by instrumenting a real fit, which
-# is the only way to see them; a fit passes float64 while evaluating the
-# likelihood and ArrayBox while differentiating it.
+# Neither is a reason to reach for ``np.asarray`` here. That convention
+# belongs to the non-parametric packages, where the values are real
+# data; in this one it destroys the thing being computed.
 Numeric = npt.NDArray | float
-Boxable = Any
+Boxable = npt.NDArray | float | ArrayBox
 
 PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
