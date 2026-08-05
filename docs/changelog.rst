@@ -32,6 +32,34 @@ v0.19.1 (unreleased)
   the 18 warnings standing between the build and ``-W``. All 138
   autodoc targets across the documentation now resolve.
 
+- **Type-hint coverage is now enforced, for three modules (#143).**
+  ``surpyval.serialisation``, ``surpyval.metrics`` and
+  ``surpyval.univariate.information_criteria`` have
+  ``disallow_untyped_defs`` set in ``pyproject.toml``, so an
+  unannotated function in any of them is a mypy error.
+
+  The package ships ``py.typed``, which tells a user's type checker
+  that the annotations are there to be trusted, and mypy already ran in
+  CI -- but nothing required an annotation to exist, so mypy checked
+  only the ones that happened to be written. That made ``py.typed`` a
+  promise the package kept unevenly.
+
+  This is deliberately a ratchet rather than a target. A module is
+  added to the list once it is clean, and from then on it cannot
+  regress; the remaining ~1350 unannotated functions do not have to be
+  finished first for the enforced part to start holding.
+
+  Turning it on immediately found something. ``SerialisableMixin.to_json``
+  and ``from_json`` call ``self.to_dict()`` and ``cls.from_dict()``,
+  which the mixin never declares -- every class using it supplies them,
+  but that contract existed only in the docstring, and mypy skips the
+  bodies of unannotated functions, so the calls had never been checked.
+  They are now declared under ``TYPE_CHECKING``: a real stub raising
+  ``NotImplementedError`` would read better, but it would be inherited,
+  and ``copula_model`` decides whether a margin is serialisable with
+  ``hasattr(m, "to_dict")`` -- which an inherited stub would answer
+  True for every time.
+
 - **The survival tree's log-rank split statistic was wrong (#287).**
   ``kind="non-parametric"`` trees, and any ``RandomSurvivalForest``
   built from them, selected splits on a statistic off by factors of

@@ -100,6 +100,27 @@ skip = ["__init__.py"]
 
 # mypy
 [tool.mypy]
+
+# Modules whose every function is annotated. Listing one here makes an
+# unannotated function in it an error, so the coverage cannot slip back
+# -- a ratchet rather than a target (#143).
+#
+# The package ships py.typed, which tells a user's type checker that
+# these annotations are there to be trusted. Without this setting mypy
+# only checks the annotations that happen to exist, so nothing stopped
+# that promise from being half true.
+#
+# Add a module here once `mypy <module> --disallow-untyped-defs` is
+# clean. Do not add one with a `# type: ignore` to make it pass; the
+# point is the annotations, not the green tick.
+[[tool.mypy.overrides]]
+module = [
+    'surpyval.serialisation',
+    'surpyval.metrics.*',
+    'surpyval.univariate.information_criteria',
+]
+disallow_untyped_defs = true
+
 [[tool.mypy.overrides]]
 module = [
     'scipy.*',

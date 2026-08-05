@@ -48,7 +48,9 @@ def _as_1d(a: npt.ArrayLike, name: str) -> npt.NDArray:
     return arr
 
 
-def _censoring_km(x_train: npt.NDArray, c_train: npt.NDArray):
+def _censoring_km(
+    x_train: npt.NDArray, c_train: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray]:
     """Kaplan-Meier estimate of the *censoring* survival ``G(t) = P(C > t)``.
 
     Censoring is treated as the event of interest: an originally right-censored
