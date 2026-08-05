@@ -122,6 +122,7 @@ module = [
     'surpyval.univariate.nonparametric.*',
     'surpyval.recurrent.nonparametric.*',
     'surpyval.univariate.regression.frailty.*',
+    'surpyval.datasets',
 ]
 disallow_untyped_defs = true
 

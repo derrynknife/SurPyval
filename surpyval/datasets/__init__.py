@@ -4,12 +4,11 @@ import numpy as np
 import pandas as pd
 
 from surpyval.utils import fs_to_xcnt
-from surpyval.utils.recurrent_utils import handle_xicn
 
 data_module = importlib.import_module("surpyval.datasets")
 
 
-def load_bearing_failures():
+def load_bearing_failures() -> pd.DataFrame:
     """
     Data on the failure of bearings, from [1]_. "Cycles to Failure (millions)"
     is the number of cycles to failure in millions of cycles.
@@ -49,7 +48,7 @@ def load_bearing_failures():
     return pd.DataFrame({"Cycles to Failure (millions)": x})
 
 
-def load_bofors_steel():
+def load_bofors_steel() -> pd.DataFrame:
     """
     Returns a Pandas DataFrame containing the data of
     the tensile strength of Bofors Steel from [2]_.
@@ -90,7 +89,7 @@ def load_bofors_steel():
     return pd.read_csv(data_path)
 
 
-def load_boston_housing():
+def load_boston_housing() -> pd.DataFrame:
     """
     The Boston house-price data of [3]_.
 
@@ -110,7 +109,7 @@ def load_boston_housing():
     return pd.read_csv(data_path)
 
 
-def load_g1_kaminskiy_krivtsov():
+def load_g1_kaminskiy_krivtsov() -> pd.DataFrame:
     """
     Data on the survival of a repairable system from [4]_.
 
@@ -126,7 +125,7 @@ def load_g1_kaminskiy_krivtsov():
     return pd.DataFrame({"x": x})
 
 
-def load_heart_transplants():
+def load_heart_transplants() -> pd.DataFrame:
     """
     Data on the survival of patients who may or may not have received a
     heart transplant, from [5]_.
@@ -142,7 +141,7 @@ def load_heart_transplants():
     return pd.read_csv(data_path)
 
 
-def load_lung():
+def load_lung() -> pd.DataFrame:
     """
 
     Data on the survival of patients with advanced lung cancer from [6]_.
@@ -161,7 +160,7 @@ def load_lung():
     return pd.read_csv(data_path)
 
 
-def load_mettas_and_zhao():
+def load_mettas_and_zhao() -> pd.DataFrame:
     """
     Data on the survival of a repairable system from [7]_.
 
@@ -227,7 +226,7 @@ def load_mettas_and_zhao():
     return pd.DataFrame({"x": x, "i": i, "c": c})
 
 
-def load_rossi_static():
+def load_rossi_static() -> pd.DataFrame:
     """
     Data on the recidivism of released prisoners from [8]_. Uses only
     static covariates.
@@ -247,7 +246,7 @@ def load_rossi_static():
     return pd.read_csv(data_path)
 
 
-def load_rossi_time_varying():
+def load_rossi_time_varying() -> pd.DataFrame:
     """
     Data on the recidivism of released prisoners from [9]_. Includes time
     varying covariates.
@@ -267,7 +266,7 @@ def load_rossi_time_varying():
     return pd.read_csv(data_path)
 
 
-def load_tires_data():
+def load_tires_data() -> pd.DataFrame:
     """
     Data on the survival of tires from [10]_.
 
@@ -283,7 +282,7 @@ def load_tires_data():
     return pd.read_csv(data_path)
 
 
-def load_sae():
+def load_sae() -> pd.DataFrame:
     """
     Data on failures in automotive industry from [11]_.
 
@@ -327,7 +326,7 @@ def load_sae():
     return pd.DataFrame({"x": x, "c": c})
 
 
-def load_meeker_lfp():
+def load_meeker_lfp() -> pd.DataFrame:
     """
     Data on failures of integrated circuits from [12]_.
 
