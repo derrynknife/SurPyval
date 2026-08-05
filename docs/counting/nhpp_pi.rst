@@ -14,11 +14,14 @@ Fitting
 Prediction
 ----------
 
-Unlike the HPP case, the prediction methods are on the model the fit
-returns rather than on the fitter -- ``cif``, ``iif`` and ``inv_cif``
-take the covariates alongside the time. The full model API is under
+Unlike the HPP case, the prediction methods are not on the fitter: the
+fit returns a
+:class:`~surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel`,
+and it is that object which carries
+:meth:`~surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.cif`,
+:meth:`~surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.iif`
+and
+:meth:`~surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.inv_cif`
+-- each taking the covariates alongside the time. They are documented in
+full, with the rest of the model API, under
 :doc:`proportional_intensity_models`.
-
-.. automethod:: surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.cif
-.. automethod:: surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.iif
-.. automethod:: surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel.inv_cif
