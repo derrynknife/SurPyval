@@ -336,13 +336,7 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.rvs(n, p, size=size)
 
-    # Deliberately narrower than ParametricFitter.fit, which mypy
-    # reports as an incompatible override. The divergence is real, not
-    # a typing artefact -- Binomial.fit(x, n_trials=k, how=...) raises
-    # TypeError -- because it has a closed-form MLE and supports neither
-    # censoring nor an alternative estimation method. Recorded here
-    # rather than silenced package-wide.
-    def fit(  # type: ignore[override]
+    def fit(
         self,
         x: Numeric,
         n_trials: int,
@@ -410,8 +404,13 @@ class Binomial_(DiscreteParametricFitter):
         model.support = np.array([0, n_trials])
         return model
 
-    # Narrower than the base, which also takes gamma, p and f0; a
-    # Binomial has neither an offset nor a limited failure population.
+    # Narrower than ParametricFitter.from_params, which takes
+    # (params, gamma, p, f0). Unlike `fit`, this one is not resolved
+    # by the OptimisedFitMixin split: every distribution has a
+    # from_params. It is a parameter *rename* -- the base's `params`
+    # became `params` -- so positional calls work and keyword calls
+    # raise. Fixing it means renaming
+    # back, with a deprecation alias, and is tracked separately.
     def from_params(  # type: ignore[override]
         self, params: npt.ArrayLike
     ) -> Parametric:

@@ -2,10 +2,13 @@ from numpy import euler_gamma
 from scipy.stats import gumbel_r
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 
 
-class GumbelLEV_(ParametricFitter):
+class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name):
         super().__init__(
             name=name,
@@ -349,4 +352,4 @@ class GumbelLEV_(ParametricFitter):
         return mu, sigma
 
 
-GumbelLEV: ParametricFitter = GumbelLEV_("GumbelLEV")
+GumbelLEV: GumbelLEV_ = GumbelLEV_("GumbelLEV")

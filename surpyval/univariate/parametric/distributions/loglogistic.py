@@ -1,11 +1,14 @@
 from scipy.stats import fisk
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 from surpyval.utils import xcnt_handler
 
 
-class LogLogistic_(ParametricFitter):
+class LogLogistic_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name):
         super().__init__(
             name=name,
@@ -387,4 +390,4 @@ class LogLogistic_(ParametricFitter):
         return np.log(alpha / beta) + 2
 
 
-LogLogistic: ParametricFitter = LogLogistic_("LogLogistic")
+LogLogistic: LogLogistic_ = LogLogistic_("LogLogistic")

@@ -1,11 +1,15 @@
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
+
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 
 
-class Rayleigh_(ParametricFitter):
+class Rayleigh_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name):
         super().__init__(
             name=name,
@@ -417,4 +421,4 @@ class Rayleigh_(ParametricFitter):
         return 1 - np.exp(-(y**2))
 
 
-Rayleigh: ParametricFitter = Rayleigh_("Rayleigh")
+Rayleigh: Rayleigh_ = Rayleigh_("Rayleigh")

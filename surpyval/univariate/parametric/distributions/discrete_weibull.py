@@ -8,10 +8,11 @@ from surpyval.univariate.parametric.discrete_fitter import (
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
+    OptimisedFitMixin,
 )
 
 
-class DiscreteWeibull_(DiscreteParametricFitter):
+class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
     r"""
 
     The (Type I) discrete Weibull distribution of Nakagawa & Osaki (1975):

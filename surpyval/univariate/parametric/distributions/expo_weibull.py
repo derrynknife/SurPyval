@@ -3,10 +3,13 @@ from scipy.special import xlogy
 
 from surpyval import np
 from surpyval.univariate import parametric as para
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 
 
-class ExpoWeibull_(ParametricFitter):
+class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name):
         super().__init__(
             name=name,
@@ -435,4 +438,4 @@ class ExpoWeibull_(ParametricFitter):
         return alpha, beta, 1.0
 
 
-ExpoWeibull: ParametricFitter = ExpoWeibull_("ExpoWeibull")
+ExpoWeibull: ExpoWeibull_ = ExpoWeibull_("ExpoWeibull")

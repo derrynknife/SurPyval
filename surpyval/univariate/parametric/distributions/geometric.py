@@ -8,10 +8,11 @@ from surpyval.univariate.parametric.discrete_fitter import (
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
+    OptimisedFitMixin,
 )
 
 
-class Geometric_(DiscreteParametricFitter):
+class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
     r"""
 
     The Geometric distribution: the discrete analogue of the Exponential.

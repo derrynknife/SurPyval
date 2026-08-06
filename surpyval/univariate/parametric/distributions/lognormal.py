@@ -7,10 +7,13 @@ from surpyval.univariate.parametric.fitters.closed_form import (
     is_uncensored_and_untruncated,
     weighted_mean_and_std,
 )
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 
 
-class LogNormal_(ParametricFitter):
+class LogNormal_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name):
         super().__init__(
             name=name,
@@ -432,7 +435,7 @@ class LogNormal_(ParametricFitter):
         return mu, sigma
 
 
-LogNormal: ParametricFitter = LogNormal_("LogNormal")
+LogNormal: LogNormal_ = LogNormal_("LogNormal")
 
 
-Galton: ParametricFitter = LogNormal_("Galton")
+Galton: LogNormal_ = LogNormal_("Galton")

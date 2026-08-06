@@ -146,15 +146,7 @@ class Bernoulli_(DiscreteParametricFitter):
         U = uniform.rvs(size=size)
         return (U <= p).astype(int)
 
-    # Deliberately narrower than ParametricFitter.fit, which mypy
-    # reports as an incompatible override. The divergence is real, not
-    # a typing artefact -- Bernoulli.fit(x, c=...) raises TypeError -- because
-    # this distribution has a closed-form MLE and supports neither
-    # censoring nor an alternative estimation method. Recorded here
-    # rather than silenced package-wide.
-    def fit(  # type: ignore[override]
-        self, x: Numeric, n: npt.NDArray | None = None
-    ) -> Parametric:
+    def fit(self, x: Numeric, n: npt.NDArray | None = None) -> Parametric:
         x_arr = np.atleast_1d(x)
         # Each observation must be a 0 or a 1 — elementwise, for any length
         # (the previous check broadcast x against the literal [0, 1], so any
@@ -170,8 +162,15 @@ class Bernoulli_(DiscreteParametricFitter):
         model.params = np.array([p])
         return model
 
-    # Narrower than the base, which also takes gamma, p and f0; a
-    # Bernoulli has neither an offset nor a limited failure population.
+    # Narrower than ParametricFitter.from_params, which takes
+    # (params, gamma, p, f0). Unlike `fit`, this one is not resolved
+    # by the OptimisedFitMixin split: every distribution has a
+    # from_params. It is a parameter *rename* -- the base's `params`
+    # became `p` -- so positional calls work and keyword calls
+    # raise. Worse here: the base's `p` means the
+    # limited-failure proportion, so the same keyword means two
+    # unrelated things across sibling classes. Fixing it means renaming
+    # back, with a deprecation alias, and is tracked separately.
     def from_params(self, p: Boxable) -> Parametric:  # type: ignore[override]
         p = float(np.squeeze(np.asarray(p)))
 

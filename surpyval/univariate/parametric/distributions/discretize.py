@@ -9,11 +9,12 @@ from surpyval.univariate.parametric.discrete_fitter import (
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
+    OptimisedFitMixin,
     ParametricFitter,
 )
 
 
-class DiscretizedFitter(DiscreteParametricFitter):
+class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
     r"""
 
     A continuous lifetime distribution discretized to the positive integers

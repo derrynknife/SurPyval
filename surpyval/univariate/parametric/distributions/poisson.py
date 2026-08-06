@@ -9,10 +9,11 @@ from surpyval.univariate.parametric.discrete_fitter import (
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
+    OptimisedFitMixin,
 )
 
 
-class Poisson_(DiscreteParametricFitter):
+class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
     r"""
 
     The Poisson distribution as a discrete count model on the non-negative

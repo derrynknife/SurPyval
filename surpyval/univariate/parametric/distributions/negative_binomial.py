@@ -9,11 +9,12 @@ from surpyval.univariate.parametric.discrete_fitter import (
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
+    OptimisedFitMixin,
 )
 from surpyval.utils.autograd_gamma_compat import betainc, betaincln
 
 
-class NegativeBinomial_(DiscreteParametricFitter):
+class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
     r"""
 
     The Negative Binomial distribution as a discrete lifetime on the

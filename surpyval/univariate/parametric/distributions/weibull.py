@@ -1,15 +1,17 @@
 import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
+
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
+    OptimisedFitMixin,
     ParametricFitter,
 )
 
 
-class Weibull_(ParametricFitter):
+class Weibull_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

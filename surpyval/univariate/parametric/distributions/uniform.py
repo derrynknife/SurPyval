@@ -1,8 +1,11 @@
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 
 
-class Uniform_(ParametricFitter):
+class Uniform_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name):
         super().__init__(
             name=name,
@@ -453,4 +456,4 @@ class Uniform_(ParametricFitter):
         return float(np.min(params)), float(np.max(params))
 
 
-Uniform: ParametricFitter = Uniform_("Uniform")
+Uniform: Uniform_ = Uniform_("Uniform")

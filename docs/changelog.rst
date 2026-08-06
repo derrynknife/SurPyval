@@ -32,6 +32,62 @@ v0.19.1 (unreleased)
   the 18 warnings standing between the build and ``-W``. All 138
   autodoc targets across the documentation now resolve.
 
+- **The estimation machinery moved off the distribution base class.**
+  ``ParametricFitter.fit`` takes 18 named arguments -- ``how``,
+  ``offset``, ``zi``, ``lfp``, ``fixed``, the truncation and interval
+  bounds -- and three distributions cannot honour any of them.
+  ``Bernoulli``, ``Binomial`` and ``ExactEventTime`` estimate their
+  parameters in closed form and accept only ``x`` and at most ``c``,
+  ``n`` and ``t``. They overrode ``fit`` with a narrower signature,
+  which is a real divergence and not a typing nicety::
+
+      Bernoulli.fit([0, 1], c=[0, 0])              TypeError
+      Bernoulli.fit([0, 1], how="MLE")             TypeError
+      Binomial.fit([1, 2], n_trials=3, how="MLE")  TypeError
+
+  Code written against a ``ParametricFitter`` therefore broke on
+  exactly those three, and nothing said so until it ran.
+
+  ``fit`` and the twelve methods it needs now live on a new
+  ``OptimisedFitMixin``, which the 21 distributions that have them
+  inherit alongside ``ParametricFitter``. Nothing was removed and no
+  behaviour changed: every distribution is still a ``ParametricFitter``,
+  which is what the ``isinstance`` checks in the model, mixture,
+  regression, frailty and renewal code test, and what carries the
+  distribution functions, the likelihood and ``from_params``.
+
+  The point of the split is that the wrong thing is now unwriteable
+  rather than merely undocumented. ``fit_best``'s candidate list is
+  typed ``list[OptimisedFitMixin]``, so adding one of the three to it is
+  a type error instead of a runtime one.
+
+  Annotate a parameter ``OptimisedFitMixin`` when it must be fittable by
+  a chosen method, and ``ParametricFitter`` when only the distribution
+  functions are needed.
+
+  ``from_params`` is *not* fixed by this, because every distribution has
+  one. Bernoulli and ExactEventTime renamed the base's ``params``
+  argument to ``p`` and ``T``, so positional calls work and keyword
+  calls raise. Bernoulli's is worse than a rename: the base's ``p``
+  means the limited-failure proportion, so the same keyword means two
+  unrelated things on sibling classes. That needs renaming back with a
+  deprecation alias, and is left for its own change.
+
+- **Every distribution now exports its own type.** The 17 that read
+  ``Weibull: ParametricFitter = Weibull_("Weibull")`` erased the
+  concrete class, and since the base declares none of ``sf``, ``ff``,
+  ``df``, ``hf``, ``Hf``, ``qf`` or ``mean``, the example in each
+  distribution's own docstring did not type check for anyone whose
+  checker honours ``py.typed``::
+
+      Weibull.sf(x, 3, 4)
+      error: "ParametricFitter" has no attribute "sf"
+
+  The annotation cannot simply be dropped: the regression subpackages
+  and ``fit_best`` import these names, and without an explicit type
+  mypy cannot resolve them through that cycle. They name the concrete
+  class instead.
+
 - **Type-hint coverage is now enforced, for seventeen modules (#143).**
   ``surpyval.distribution``, ``surpyval.serialisation``,
   ``surpyval.metrics``, ``surpyval.univariate.information_criteria``,

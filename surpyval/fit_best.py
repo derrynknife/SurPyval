@@ -15,14 +15,18 @@ from surpyval.univariate.parametric import (
     LogLogistic,
     LogNormal,
     Normal,
+    OptimisedFitMixin,
     Parametric,
-    ParametricFitter,
     Rayleigh,
     Uniform,
     Weibull,
 )
 
-distributions: list[ParametricFitter] = [
+# Typed as OptimisedFitMixin, not ParametricFitter: every entry has
+# `.fit(x, c, n, t)` called on it below, and Bernoulli, Binomial and
+# ExactEventTime do not have that signature. Under the old annotation
+# adding one of them here type checked and failed at runtime.
+distributions: list[OptimisedFitMixin] = [
     Beta,
     Beta4,
     Exponential,
