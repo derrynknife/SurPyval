@@ -8,6 +8,7 @@ from surpyval.univariate.parametric.discrete_fitter import (
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
+    reject_structural_params,
 )
 
 from ..parametric import Parametric
@@ -411,8 +412,12 @@ class Binomial_(DiscreteParametricFitter):
     # became `params` -- so positional calls work and keyword calls
     # raise. Fixing it means renaming
     # back, with a deprecation alias, and is tracked separately.
-    def from_params(  # type: ignore[override]
-        self, params: npt.ArrayLike
+    def from_params(
+        self,
+        params: npt.ArrayLike,
+        gamma: Boxable | None = None,
+        p: Boxable | None = None,
+        f0: Boxable | None = None,
     ) -> Parametric:
         r"""
 
@@ -424,6 +429,12 @@ class Binomial_(DiscreteParametricFitter):
         params : array like
             The two parameters ``[n, p]``; ``n`` the (integer) number of
             trials and ``p`` the per-trial event probability.
+        gamma, p, f0 : None
+            Accepted so the signature matches
+            :meth:`ParametricFitter.from_params`, and rejected: a
+            Binomial has no offset, limited failure population or zero
+            inflation. The base's ``p`` is the *never-fails* proportion,
+            not the per-trial probability, which lives in ``params``.
 
         Returns
         -------
@@ -438,12 +449,13 @@ class Binomial_(DiscreteParametricFitter):
         >>> model.mean()
         np.float64(1.5)
         """
+        reject_structural_params(self.name, gamma, p, f0)
         params_arr = np.atleast_1d(np.asarray(params, dtype=float))
 
         if params_arr.shape[0] != 2:
             raise ValueError("Binomial distribution requires '[n, p]' params")
 
-        n, p = params_arr
+        n, prob = params_arr
 
         if np.mod(n, 1) != 0:
             raise ValueError("'n' must be an integer number of trials")
@@ -451,11 +463,11 @@ class Binomial_(DiscreteParametricFitter):
         if n < 1:
             raise ValueError("'n' must be a positive integer")
 
-        if not (0 <= p <= 1):
+        if not (0 <= prob <= 1):
             raise ValueError("'p' must be between 0 and 1")
 
         model = Parametric(self, "given parameters", None, False, False, False)
-        model.params = np.array([float(n), p])
+        model.params = np.array([float(n), prob])
         model.support = np.array([0, n])
         return model
 

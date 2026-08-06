@@ -21,8 +21,8 @@ from scipy.special import xlogy
 from surpyval import (
     Beta,
     Beta4,
-    ExpoWeibull,
     Exponential,
+    ExpoWeibull,
     Gamma,
     Gumbel,
     GumbelLEV,

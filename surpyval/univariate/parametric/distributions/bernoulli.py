@@ -8,6 +8,7 @@ from surpyval.univariate.parametric.discrete_fitter import (
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
+    reject_structural_params,
 )
 
 from ..parametric import Parametric
@@ -171,17 +172,38 @@ class Bernoulli_(DiscreteParametricFitter):
     # limited-failure proportion, so the same keyword means two
     # unrelated things across sibling classes. Fixing it means renaming
     # back, with a deprecation alias, and is tracked separately.
-    def from_params(self, p: Boxable) -> Parametric:  # type: ignore[override]
-        p = float(np.squeeze(np.asarray(p)))
+    def from_params(
+        self,
+        params: Boxable,
+        gamma: Boxable | None = None,
+        p: Boxable | None = None,
+        f0: Boxable | None = None,
+    ) -> Parametric:
+        """Create a Bernoulli model from its event probability.
 
-        if p > 1:
-            raise ValueError("'p' must be less than 1")
+        Parameters
+        ----------
+        params : scalar
+            The event probability, between 0 and 1.
+        gamma, p, f0 : None
+            Accepted so the signature matches
+            :meth:`ParametricFitter.from_params`, and rejected: a
+            Bernoulli has no offset, limited failure population or zero
+            inflation. Note that the base's ``p`` is the *never-fails*
+            proportion, not this distribution's parameter -- which is why
+            the parameter is ``params`` and not ``p``.
+        """
+        reject_structural_params(self.name, gamma, p, f0)
+        prob = float(np.squeeze(np.asarray(params)))
 
-        if p < 0:
-            raise ValueError("'p' must be greater than 0")
+        if prob > 1:
+            raise ValueError("'params' must be less than 1")
+
+        if prob < 0:
+            raise ValueError("'params' must be greater than 0")
 
         model = Parametric(self, "given parameters", None, False, False, False)
-        model.params = np.atleast_1d(p)
+        model.params = np.atleast_1d(prob)
         return model
 
 

@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 
 from surpyval import Distribution, np
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
@@ -11,7 +12,6 @@ from .probability_plotting import (
     draw_probability_plot,
     probability_plot_data,
 )
-from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 
 class MixtureModel(SerialisableMixin, Distribution):

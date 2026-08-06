@@ -65,6 +65,33 @@ from .parametric import Parametric
 Numeric = npt.NDArray | float
 Boxable = npt.NDArray | float | ArrayBox
 
+
+def reject_structural_params(
+    dist_name: str,
+    gamma: Any = None,
+    p: Any = None,
+    f0: Any = None,
+) -> None:
+    """Raise for structural arguments a closed-form distribution has no
+    meaning for.
+
+    ``ParametricFitter.from_params`` takes ``gamma`` (an offset), ``p``
+    (the proportion that never fails) and ``f0`` (the proportion failing
+    at time zero). ``Bernoulli``, ``Binomial`` and ``ExactEventTime``
+    support none of them, but they accept the arguments anyway so their
+    signatures match the base -- a subclass that silently dropped them
+    could not be called through a ``ParametricFitter`` reference, which
+    is what the earlier narrower signatures got wrong.
+    """
+    for name, value in (("gamma", gamma), ("p", p), ("f0", f0)):
+        if value is not None:
+            raise ValueError(
+                f"{dist_name} does not support '{name}'; it has a "
+                f"closed-form estimator with no offset, limited failure "
+                f"population or zero inflation."
+            )
+
+
 PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
 

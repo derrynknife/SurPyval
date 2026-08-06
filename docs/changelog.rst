@@ -65,13 +65,33 @@ v0.19.1 (unreleased)
   a chosen method, and ``ParametricFitter`` when only the distribution
   functions are needed.
 
-  ``from_params`` is *not* fixed by this, because every distribution has
-  one. Bernoulli and ExactEventTime renamed the base's ``params``
-  argument to ``p`` and ``T``, so positional calls work and keyword
-  calls raise. Bernoulli's is worse than a rename: the base's ``p``
-  means the limited-failure proportion, so the same keyword means two
-  unrelated things on sibling classes. That needs renaming back with a
-  deprecation alias, and is left for its own change.
+- **BREAKING:** ``Bernoulli.from_params`` and
+  ``ExactEventTime.from_params`` **renamed their first argument to**
+  ``params``. It was ``p`` and ``T`` respectively, while the base calls
+  it ``params``, so positional calls worked and keyword calls raised::
+
+      Bernoulli.from_params(0.5)          OK
+      Bernoulli.from_params(params=0.5)   TypeError
+
+  That is the shape of bug a test suite never catches, because every
+  internal call and every docstring example passes positionally.
+
+  Bernoulli's was worse than a rename. The base's ``p`` is the
+  proportion that *never fails*, so ``p=0.5`` meant the never-fails
+  fraction on twenty-four distributions and the event probability on
+  Bernoulli -- the same keyword, sibling classes, unrelated meanings,
+  and no error either way.
+
+  ``Bernoulli.from_params(p=...)`` and ``ExactEventTime.from_params(T=...)``
+  now raise ``TypeError``. Positional calls are unaffected, and no call
+  changes meaning silently: ``params`` has no default, so the old
+  keyword forms fail loudly rather than being reinterpreted.
+
+  All three also accept ``gamma``, ``p`` and ``f0`` now, and reject them
+  with a ``ValueError`` naming the distribution. Accepting-and-rejecting
+  rather than omitting is what makes the signatures match the base, so
+  these can be called through a ``ParametricFitter`` reference at all --
+  and it removes the last two ``# type: ignore[override]`` markers.
 
 - **Every distribution now exports its own type.** The 17 that read
   ``Weibull: ParametricFitter = Weibull_("Weibull")`` erased the
