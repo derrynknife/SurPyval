@@ -1,15 +1,19 @@
 import warnings
 
 from scipy.special import factorial
+
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.fitters.closed_form import (
     entry_times,
 )
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 
 
-class Exponential_(ParametricFitter):
+class Exponential_(OptimisedFitMixin, ParametricFitter):
     r"""
 
     Class used to generate the Exponential class.
@@ -498,4 +502,4 @@ class Exponential_(ParametricFitter):
             return {"params": np.array([failure_rate[0]])}
 
 
-Exponential: ParametricFitter = Exponential_("Exponential")
+Exponential: Exponential_ = Exponential_("Exponential")

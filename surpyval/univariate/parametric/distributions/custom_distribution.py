@@ -3,10 +3,13 @@ import inspect
 from autograd import elementwise_grad
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 
 
-class CustomDistribution(ParametricFitter):
+class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     """
     Used to create a custom distribution using only the cumulative hazard
     function. The cumulative hazard function must be a function of x and

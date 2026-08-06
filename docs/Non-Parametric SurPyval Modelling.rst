@@ -172,8 +172,16 @@ estimation example:
                     np.inf, np.inf, np.inf, np.inf, np.inf])
 
     x = np.array([low, upp]).T
-    model = TB.fit(x)
+    model = TB.fit(x, max_iter=10_000)
     model.plot()
+
+``max_iter`` is raised from its default of 1000 here because this data
+needs it. The Turnbull EM converges slowly when many observations are
+right censored to infinity, as more than half of these are, and it warns
+rather than failing silently if it runs out of iterations before
+reaching ``tol``. If you see that warning, raising ``max_iter`` is
+usually the answer; if it persists, the data may not identify a unique
+estimate at all.
 
 And finally, an example with completely arbitrary censoring:
 
@@ -289,7 +297,7 @@ you want to emphasise early or late differences instead of the equal-weight
 log-rank.
 
 Stratified log-rank
-~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^
 
 When a *nuisance* factor influences survival — a study site, a batch — comparing
 groups while ignoring it can be badly misleading if the groups are unevenly

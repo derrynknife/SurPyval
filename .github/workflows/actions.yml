@@ -6,6 +6,11 @@ run-name: SurPyval CI
 # master (i.e. release merges + tags). Feature work accumulates on `develop`
 # via PRs; day-to-day pushes to feature branches no longer each trigger the
 # full suite. See docs/Contributing.rst for the branching / release flow.
+#
+# The jobs below are not all gated the same way. Lint runs on everything;
+# the test suite and the documentation build run only on the release pull
+# request into `master`, where the time they cost is worth paying. Each
+# job carries the reasoning for its own condition.
 on:
   pull_request:
     branches: [develop, master]
@@ -40,7 +45,26 @@ jobs:
       - name: black
         run: black --check $SRC
 
+  # The test suite runs on the release pull request into `master`, and on
+  # pushes to `master`, but not on pull requests into `develop`.
+  #
+  # It is roughly nine minutes across the three interpreters, against
+  # about one for lint, and paying that on every feature pull request
+  # made the edit-review loop the slowest part of working on the
+  # package. Development is single-maintainer and the suite is run
+  # locally before pushing, so the pull-request run was mostly
+  # confirming what was already known.
+  #
+  # What that gives up is real, and worth naming: a failure that only
+  # appears on one interpreter is now found when the release is
+  # prepared, with a release's worth of commits to search rather than
+  # one. That is not hypothetical -- the doctest comparison landed
+  # green on 3.11 and broke on 3.12 and 3.13, and it was the
+  # pull-request run that caught it. Run the suite locally across more
+  # than one interpreter when touching numerics, or open the release
+  # pull request early and let it sit.
   surpyval_ci:
+    if: github.event_name != 'pull_request' || github.base_ref == 'master'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -123,3 +147,64 @@ jobs:
         with:
           name: coverage-html-report
           path: htmlcov/
+
+  # Build the documentation on the release pull request only.
+  #
+  # The docs execute every ``.. jupyter-execute::`` cell during the
+  # build, so they are a second test suite that runs the public API for
+  # real -- and one that can be broken by a change that touches no
+  # documentation file at all. Removing Gamma's probability-plot fitting
+  # did exactly that: a cell looping over the fit methods started
+  # raising, and nothing noticed, because Read the Docs builds only
+  # ``master`` and tags. The failure would have appeared as a broken
+  # hosted build after the release rather than on the change that caused
+  # it.
+  #
+  # ``github.base_ref`` is set only for pull_request events, so this
+  # runs on the develop -> master release pull request and nowhere else.
+  # It is deliberately not run on pushes to master: Read the Docs
+  # rebuilds there anyway, and by that point the gate has nothing left
+  # to gate.
+  #
+  # The point is to reproduce the hosted build, so this matches
+  # .readthedocs.yaml rather than the test jobs above: Python 3.12, and
+  # the package installed with its own ``docs`` extra.
+  docs:
+    if: github.event_name == 'pull_request' && github.base_ref == 'master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[docs]"
+
+      # -W turns warnings into errors. A sphinx warning is not a style
+      # nag: a broken cross-reference renders as plain text, a bad
+      # autodoc path drops the whole class from the page, a page missing
+      # from every toctree is published but unreachable. The build
+      # "succeeds" and ships something wrong, and the only signal is a
+      # line in a log nobody reads -- which is exactly how three broken
+      # autodoc targets went unnoticed until the API pages were written.
+      #
+      # This only works from a zero baseline, which the commits above
+      # established. --keep-going reports every warning rather than
+      # stopping at the first, so a bad build is fixed in one pass.
+      #
+      # .readthedocs.yaml sets fail_on_warning for the same reason. The
+      # two must move together, or CI passes while the hosted build
+      # fails.
+      - name: sphinx build
+        run: python -m sphinx -b html -W --keep-going docs docs/_build/html
+
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-html
+          path: docs/_build/html/

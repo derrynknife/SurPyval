@@ -4,6 +4,432 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **API reference pages for the surfaces that only had narrative docs.**
+  The multivariate copulas and the beta survival tree and forest had no
+  autodoc coverage at all, and the degradation page stopped at the path
+  models. Closes the second half of #141.
+
+  New: ``surpyval.multivariate`` (the ``Copula`` base, the five copula
+  classes, ``CopulaModel`` and ``MultivariateSurpyvalData``) and
+  ``surpyval.beta`` (``RandomSurvivalForest``, ``SurvivalTree`` and the
+  node classes a serialised tree is built from). The degradation page
+  gains the Wiener and gamma stochastic-process models, ``ProcessRUL``
+  and destructive degradation. ``_bounds`` and ``population`` are
+  deliberately left out: neither is exported from the package's
+  ``__init__``, so both are internal rather than API.
+
+  Two surfaces the issue did not name but which fit its description
+  also had no autodoc, and now have pages: shared frailty models and
+  Buckley-James. And ``surpyval.regression`` had two headings --
+  "Accelerated Time Models" and "Accelerated Life Models" -- with
+  nothing underneath them, rendering as empty sections while the
+  content sat in ``regression/parametric``; that page is reorganised
+  into semi-parametric, parametric and correlated-observations.
+
+  Three ``automethod`` directives on the NHPP regression page pointed at
+  ``cif``, ``iif`` and ``inv_cif`` on the *fitter*, where they do not
+  exist -- they are on the model the fit returns. Those were three of
+  the 18 warnings standing between the build and ``-W``. All 138
+  autodoc targets across the documentation now resolve.
+
+- **The estimation machinery moved off the distribution base class.**
+  ``ParametricFitter.fit`` takes 18 named arguments -- ``how``,
+  ``offset``, ``zi``, ``lfp``, ``fixed``, the truncation and interval
+  bounds -- and three distributions cannot honour any of them.
+  ``Bernoulli``, ``Binomial`` and ``ExactEventTime`` estimate their
+  parameters in closed form and accept only ``x`` and at most ``c``,
+  ``n`` and ``t``. They overrode ``fit`` with a narrower signature,
+  which is a real divergence and not a typing nicety::
+
+      Bernoulli.fit([0, 1], c=[0, 0])              TypeError
+      Bernoulli.fit([0, 1], how="MLE")             TypeError
+      Binomial.fit([1, 2], n_trials=3, how="MLE")  TypeError
+
+  Code written against a ``ParametricFitter`` therefore broke on
+  exactly those three, and nothing said so until it ran.
+
+  ``fit`` and the twelve methods it needs now live on a new
+  ``OptimisedFitMixin``, which the 21 distributions that have them
+  inherit alongside ``ParametricFitter``. Nothing was removed and no
+  behaviour changed: every distribution is still a ``ParametricFitter``,
+  which is what the ``isinstance`` checks in the model, mixture,
+  regression, frailty and renewal code test, and what carries the
+  distribution functions, the likelihood and ``from_params``.
+
+  The point of the split is that the wrong thing is now unwriteable
+  rather than merely undocumented. ``fit_best``'s candidate list is
+  typed ``list[OptimisedFitMixin]``, so adding one of the three to it is
+  a type error instead of a runtime one.
+
+  Annotate a parameter ``OptimisedFitMixin`` when it must be fittable by
+  a chosen method, and ``ParametricFitter`` when only the distribution
+  functions are needed.
+
+- **BREAKING:** ``Bernoulli.from_params`` and
+  ``ExactEventTime.from_params`` **renamed their first argument to**
+  ``params``. It was ``p`` and ``T`` respectively, while the base calls
+  it ``params``, so positional calls worked and keyword calls raised::
+
+      Bernoulli.from_params(0.5)          OK
+      Bernoulli.from_params(params=0.5)   TypeError
+
+  That is the shape of bug a test suite never catches, because every
+  internal call and every docstring example passes positionally.
+
+  Bernoulli's was worse than a rename. The base's ``p`` is the
+  proportion that *never fails*, so ``p=0.5`` meant the never-fails
+  fraction on twenty-four distributions and the event probability on
+  Bernoulli -- the same keyword, sibling classes, unrelated meanings,
+  and no error either way.
+
+  ``Bernoulli.from_params(p=...)`` and ``ExactEventTime.from_params(T=...)``
+  now raise ``TypeError``. Positional calls are unaffected, and no call
+  changes meaning silently: ``params`` has no default, so the old
+  keyword forms fail loudly rather than being reinterpreted.
+
+  All three also accept ``gamma``, ``p`` and ``f0`` now, and reject them
+  with a ``ValueError`` naming the distribution. Accepting-and-rejecting
+  rather than omitting is what makes the signatures match the base, so
+  these can be called through a ``ParametricFitter`` reference at all --
+  and it removes the last two ``# type: ignore[override]`` markers.
+
+- **Every distribution now exports its own type.** The 17 that read
+  ``Weibull: ParametricFitter = Weibull_("Weibull")`` erased the
+  concrete class, and since the base declares none of ``sf``, ``ff``,
+  ``df``, ``hf``, ``Hf``, ``qf`` or ``mean``, the example in each
+  distribution's own docstring did not type check for anyone whose
+  checker honours ``py.typed``::
+
+      Weibull.sf(x, 3, 4)
+      error: "ParametricFitter" has no attribute "sf"
+
+  The annotation cannot simply be dropped: the regression subpackages
+  and ``fit_best`` import these names, and without an explicit type
+  mypy cannot resolve them through that cycle. They name the concrete
+  class instead.
+
+- **Type-hint coverage is now enforced, for seventeen modules (#143).**
+  ``surpyval.distribution``, ``surpyval.serialisation``,
+  ``surpyval.metrics``, ``surpyval.univariate.information_criteria``,
+  ``surpyval.datasets``, the Weibull and the eight discrete
+  distributions, and all of ``surpyval.univariate.nonparametric``,
+  ``surpyval.recurrent.nonparametric`` and
+  ``surpyval.univariate.regression.frailty`` have
+  ``disallow_untyped_defs`` set in ``pyproject.toml``, so an
+  unannotated function in any of them is a mypy error. That covers the
+  abstract base classes every model inherits from, the Kaplan-Meier,
+  Nelson-Aalen, Fleming-Harrington and Turnbull estimators, the
+  log-rank test, the plotting positions, the non-parametric MCF, the
+  shared-frailty fitter, the bundled datasets and nine of the 25
+  parametric distributions.
+
+  ``handle_xicn`` gained ``@overload`` declarations as part of this.
+  Its return shape is decided by ``as_recurrent_data``, but its
+  signature only said "one or the other", so all nine callers taking
+  the default were handed a union to narrow themselves. The overloads
+  say which argument decides, once, for all seventeen call sites.
+
+  The package ships ``py.typed``, which tells a user's type checker
+  that the annotations are there to be trusted, and mypy already ran in
+  CI -- but nothing required an annotation to exist, so mypy checked
+  only the ones that happened to be written. That made ``py.typed`` a
+  promise the package kept unevenly.
+
+  This is deliberately a ratchet rather than a target. A module is
+  added to the list once it is clean, and from then on it cannot
+  regress; the remaining ~1350 unannotated functions do not have to be
+  finished first for the enforced part to start holding.
+
+  Turning it on immediately found something. ``SerialisableMixin.to_json``
+  and ``from_json`` call ``self.to_dict()`` and ``cls.from_dict()``,
+  which the mixin never declares -- every class using it supplies them,
+  but that contract existed only in the docstring, and mypy skips the
+  bodies of unannotated functions, so the calls had never been checked.
+  They are now declared under ``TYPE_CHECKING``: a real stub raising
+  ``NotImplementedError`` would read better, but it would be inherited,
+  and ``copula_model`` decides whether a margin is serialisable with
+  ``hasattr(m, "to_dict")`` -- which an inherited stub would answer
+  True for every time.
+
+  The non-parametric package turned up a second one. Its
+  ``ESTIMATOR_FUNCS`` table was built from ``nonp.nelson_aalen`` and its
+  two siblings, each of which shares its name with the submodule that
+  defines it -- so the attribute is the function only after the package
+  ``__init__`` has bound it over the submodule, and that table is built
+  while the ``__init__`` is still running. It worked because the
+  ``__init__`` happens to import the estimators first, which is a load
+  order rather than a guarantee. mypy resolved the names to the modules
+  and reported the table as not callable. The three are now imported
+  from the modules that define them; the other uses of the package
+  namespace in that file are inside functions, so they resolve after
+  initialisation and are left alone.
+
+  Annotating a function makes mypy check its body, and that found a
+  real inconsistency the ratchet had been hiding behind an over-wide
+  annotation. ``turnbull``, ``rank_adjust`` and
+  ``NonParametricCounting.from_xrd`` declare array-like parameters and
+  then index, slice and divide them directly -- which array-like does
+  not support, because it also covers ``str``, ``bytes`` and scalars.
+  Each now takes its arguments as arrays before using them as arrays,
+  so the signature and the body agree. ``_logrank_z_v`` likewise
+  declared ``c`` and ``n`` as arrays while handling ``None`` for both
+  internally, and ``NonParametricCounting.fit`` declared ``windows``
+  as array-like when it is the ``{item: [(start, end), ...]}``
+  dictionary its own docstring describes.
+
+  ``success_run`` was the same shape of problem in its argument
+  handling: it tested ``confidence`` and ``alpha`` for truthiness, so
+  passing both with either set to zero skipped the "only one of" raise,
+  and ``confidence=0`` fell through every branch and left ``alpha``
+  unset. Both are now tested against ``None``.
+
+  The distributions needed a vocabulary before any of them could be
+  annotated, and ``parametric_fitter`` now defines it. A distribution
+  function deals in two kinds of value, and only one of them can be an
+  autograd box: ``Numeric`` is what the function is evaluated at (times,
+  or probabilities for ``qf``), always real data; ``Boxable`` is a
+  parameter, or anything computed from one. Maximum likelihood
+  differentiates these functions, so during a fit autograd substitutes
+  an ``ArrayBox`` for each parameter to carry the derivative. A box is
+  neither a float nor an ndarray, which is why ``Boxable`` is not
+  narrowed to a numpy type -- and why the "array-like in, array out"
+  convention used elsewhere in the package must not be applied here.
+
+  ``np.asarray`` on a box does not reject it. It wraps the box in a
+  0-d object-dtype array, which still computes the right *value*,
+  because object arrays dispatch arithmetic back to the box. Only the
+  derivative is damaged, and how depends on the arithmetic: an
+  operation whose backward pass needs a ufunc the box does not
+  implement raises a ``TypeError``, but a plain product silently
+  returns a zero gradient for that parameter. A zero gradient is not an
+  error to an optimiser -- it means "this parameter does not affect the
+  likelihood" -- so the fit leaves the parameter at its initial guess
+  and reports success.
+
+  ``Boxable`` names ``ArrayBox`` rather than being ``Any``, which is
+  what makes the parameter positions checkable rather than merely
+  annotated: under ``Any``, ``Weibull.Hf(1.0, "not a number", 4.0)`` was
+  accepted in silence. autograd ships no type information, so
+  ``stubs/autograd/numpy/numpy_boxes.pyi`` describes the one type of its
+  that appears in surpyval's own signatures. Supplying any stub for a
+  package makes mypy consider the whole package described, so the
+  ``__getattr__`` stubs beside it keep the rest of autograd as untyped
+  as it was.
+
+  ``Weibull`` and the eight discrete distributions -- ``Bernoulli``,
+  ``BetaGeometric``, ``Binomial``, ``DiscreteWeibull``, ``Geometric``,
+  ``NegativeBinomial``, ``Poisson`` and the ``Discretize`` wrapper --
+  are annotated against that vocabulary and are on the enforced list.
+
+  Checking their bodies turned up three things about the base class.
+
+  ``Weibull`` was exported as ``Weibull: ParametricFitter``, which
+  erases the concrete type; since the base declares none of ``sf``,
+  ``ff``, ``df``, ``hf``, ``Hf``, ``qf`` or ``mean``, and the package
+  ships ``py.typed``, the example in ``sf``'s own docstring did not type
+  check for a user::
+
+      Weibull.sf(x, 3, 4)
+      error: "ParametricFitter" has no attribute "sf"
+
+  It is now exported as ``Weibull_``. Sixteen other distributions carry
+  the same erasure and are corrected as each is annotated.
+  ``Discretize`` hits the same gap from the other side: it must hold the
+  distribution it wraps as ``Any``, because every delegation would
+  otherwise be an error against the declared type.
+
+  ``Bernoulli.fit`` and ``Binomial.fit`` do not honour
+  ``ParametricFitter.fit``, and the divergence is real rather than a
+  typing artefact -- ``Bernoulli.fit(x, c=...)`` and
+  ``Binomial.fit(x, n_trials=k, how=...)`` raise ``TypeError``. Both
+  have closed-form maximum likelihood estimates and support neither
+  censoring nor an alternative estimation method. Generic code written
+  against ``ParametricFitter`` will fail on them. This is recorded at
+  each site rather than changed here.
+
+  ``_parameter_initialiser`` is also inconsistent across the base's
+  implementations: ``Weibull`` returns a tuple, the discrete
+  distributions return an array. Callers coerce either, so nothing is
+  broken, but the signatures now say which is which.
+
+- **The lint job had been failing on a single over-long line.**
+  The ``:class:`` cross-reference added to ``RandomSurvivalForest``'s
+  docstring while clearing the documentation build warnings pushed the
+  line to 80 characters. flake8 runs before mypy in the lint job, so
+  from that commit on mypy was skipped rather than run, and the type
+  errors described above reached CI unchecked. The line is rewrapped
+  and the errors are fixed.
+
+- **The survival tree's log-rank split statistic was wrong (#287).**
+  ``kind="non-parametric"`` trees, and any ``RandomSurvivalForest``
+  built from them, selected splits on a statistic off by factors of
+  several -- and not merely inflated, but *reordered*: of the two cases
+  in the issue, the weaker separation scored 1.856 against a true 0.276
+  while the stronger scored 0.276 against a true 1.225. Trees were
+  choosing the wrong split.
+
+  The log-rank statistic sums over the *pooled* event times of both
+  children, so the left child's at-risk count is needed at times where
+  the left child itself has no observation. Those were filled in by
+  carrying its own risk ladder forward, which was wrong twice: the
+  carried value did not subtract the deaths and censorings that occurred
+  *at* the time it was carried from, and the tail past the last
+  observation subtracted only deaths, so a child ending in a censored
+  observation kept someone at risk for ever. Both inflate the count,
+  which biases the numerator and the variance.
+
+  The at-risk count is now computed directly -- at each pooled time
+  :math:`t`, the observations with :math:`t_l < t \leq x`, which is the
+  ``(entry, exit]`` convention ``xcnt_to_xrd`` already uses, so the
+  left child's :math:`Y_L` and the pooled :math:`Y` agree about what
+  "at risk" means. There is nothing to extrapolate, so both the leading
+  and trailing special cases disappear along with the forward fill.
+
+  Tests check the statistic against a deliberately naive implementation
+  of its definition: the two cases from the issue, a censored tail, left
+  truncation, ties shared across children, a child starting after the
+  other's first event, and 200 random partitions. One test pins
+  ``at_risk_on_grid`` against ``xcnt_to_xrd`` directly, since a
+  disagreement between them is what makes :math:`Y_L / Y` stop being a
+  proportion.
+
+- **The documentation build fails on any warning.** ``-W --keep-going``
+  in the CI docs job, and ``fail_on_warning`` in ``.readthedocs.yaml``.
+  They are set together deliberately: if only one has it, that one goes
+  green while the other publishes a broken page.
+
+  A Sphinx warning is rarely cosmetic. A broken cross-reference renders
+  as plain text, a mistyped ``autoclass`` path drops the class from the
+  page altogether, a page missing from every toctree is published and
+  unreachable. In each case the build reports success and ships
+  something wrong, and the only evidence is a line in a log nobody
+  reads. That is precisely how the three broken ``ProportionalIntensityNHPP``
+  autodoc targets survived -- three methods absent from the rendered
+  documentation, behind a "build succeeded, 18 warnings".
+
+  Warnings-as-errors only works from zero, so the sixteen were cleared
+  first:
+
+  - Twelve duplicate labels, from ``autosectionlabel`` minting a
+    cross-reference target for every heading while the changelog
+    necessarily repeats "Serialisation", "Degradation" and so on once
+    per release. ``autosectionlabel_maxdepth = 1`` keeps the labels a
+    ``:ref:`` between pages actually wants and stops minting the rest.
+  - The ``sphinx_rtd_theme`` ``get_html_theme_path`` deprecation, whose
+    own message said the call was safe to remove.
+  - A title-level inconsistency in the non-parametric page, reported by
+    docutils as ``CRITICAL`` rather than a warning.
+  - ``RandomSurvivalForest``'s docstring, which was not valid
+    reStructuredText -- and which nothing surfaced until the new API
+    page began rendering it.
+  - The interval-censored Turnbull example, whose EM ran out of
+    iterations. It converges at ``max_iter=10000``; the example now
+    passes it and the prose explains why, rather than marking the
+    warning expected and hiding a usable answer.
+
+- **``scripts/check_all_pythons.py`` runs the CI checks locally on every
+  supported interpreter.** With the suite no longer running on pull
+  requests into ``develop`` (below), this is the other half of the
+  trade: one command runs the test suite and both doctest passes on
+  3.11, 3.12 and 3.13, and refuses to say "passed" unless all of them
+  did.
+
+  It keeps its environments in a git-ignored ``.venvs/`` and reuses
+  them, so only the first run pays for the installs; it uses ``uv``
+  when available and falls back to ``venv`` and ``pip`` when not, and
+  reports an interpreter that is not installed rather than failing on
+  it. The command list is deliberately a copy of the workflow's, so
+  what it runs is what CI would have run.
+
+- **The test suite runs on the release pull request, not on every one.**
+  Pull requests into ``develop`` now run lint only, about a minute
+  against the nine the suite takes across three interpreters. The suite
+  still runs in full on the release pull request into ``master`` and on
+  pushes to ``master``.
+
+  The reason is the edit-review loop: with a single maintainer running
+  the suite locally before pushing, the pull-request run was mostly
+  confirming what was already known, and it was the slowest part of
+  working on the package.
+
+  What this gives up is stated rather than glossed: a failure that
+  appears on only one interpreter is now found when the release is
+  prepared, with a release's worth of commits to search rather than one.
+  That is not hypothetical -- the doctest numeric comparison two entries
+  below landed green on 3.11 and failed on 3.12 and 3.13, and it was the
+  pull-request run that caught it. ``Contributing.rst`` now says which
+  jobs run on which event, and what to run locally to compensate.
+
+- **The documentation build runs in CI on the release pull request.**
+  The docs execute every ``.. jupyter-execute::`` cell as they build, so
+  they are a second test suite that exercises the public API for real --
+  and one that a change touching no documentation file at all can break,
+  as the Gamma entry below did. Read the Docs builds only ``master`` and
+  tags, so until now that break would have surfaced as a failed hosted
+  build *after* a release.
+
+  The new job is conditioned on ``github.base_ref == 'master'``, which
+  is set only for pull requests, so it runs on the ``develop`` ->
+  ``master`` release pull request and nowhere else. It is not run on
+  pushes to ``master`` either: Read the Docs rebuilds there anyway, and
+  by then the gate has nothing left to gate. It matches
+  ``.readthedocs.yaml`` rather than the test jobs -- Python 3.12, the
+  package installed via its own ``docs`` extra -- because its purpose is
+  to reproduce the hosted build, and it uploads the rendered HTML as an
+  artifact.
+
+  It does not build with ``-W``; the build currently emits 18 warnings,
+  mostly duplicate labels from ``autosectionlabel`` meeting the
+  changelog's repeated section headings. Clearing those and then failing
+  on warning here and in ``.readthedocs.yaml`` together is worth doing
+  separately.
+
+  The residual gap is deliberate: a documentation break introduced on a
+  pull request into ``develop`` is caught when the release is prepared,
+  not when it lands. Building on every pull request would cost minutes
+  on each, and a path filter would not have helped here -- the change
+  that broke the build was in ``gamma.py``, not under ``docs/``.
+
+- **Fixed a documentation build broken by the Gamma MPP removal.** The
+  offset-threshold section of *Parametric SurPyval Modelling* ran a
+  ``jupyter-execute`` cell looping over
+  ``['MPP', 'MOM', 'MSE', 'MPS', 'MLE']`` for a shifted Gamma. Since
+  ``Gamma.fit(how="MPP")`` now raises, that cell raised, and because
+  documentation cells are executed during the build the whole build
+  failed.
+
+  Nothing caught it: continuous integration does not build the
+  documentation, and Read the Docs builds only ``master`` and tags, so
+  it would have surfaced as a failed hosted build at the next release
+  rather than on the change that caused it. It was found by running a
+  build to validate the ``docs`` extra below.
+
+  The prose around the cell had gone stale the same way -- it described
+  the multi-start probability-plotting search that the removal deleted,
+  and quoted an ``MPP`` tolerance from ``test_offset_divergence.py``
+  that no longer exists. It now explains why the Gamma has no
+  probability plot at all: the shape sits inside the regularised
+  incomplete gamma rather than outside as an exponent, so the only
+  straight-line axis is the inverse incomplete gamma, which needs the
+  very shape being estimated. ``Gamma.plot()`` is unaffected, since by
+  then the parameters are known.
+
+- **The documentation toolchain is a ``docs`` extra.**
+  ``pip install -e ".[docs]"`` now installs everything needed to build
+  the documentation, alongside the ``tests`` extra that was already
+  there. ``docs/requirements.txt`` is gone: its pins moved into
+  ``pyproject.toml`` verbatim, and Read the Docs installs the extra
+  directly via ``extra_requirements``. Keeping both would have meant two
+  copies of the same pinned toolchain, which is the arrangement that
+  drifts.
+
+  The pins are unchanged, including the ``ipykernel==6.31.0`` cap and
+  the reason for it -- jupyter-sphinx notebook execution dies against
+  the ipykernel 7 line. ``matplotlib`` is not repeated in the extra; it
+  is a runtime dependency of the package, which is installed alongside.
+
+  Part of #141.
+
 - **CI now runs the docstring examples.** ``pytest --doctest-modules``
   over the package is a new step in the deployment workflow, and every
   one of the 229 docstring examples passes. It was 59 failing tests

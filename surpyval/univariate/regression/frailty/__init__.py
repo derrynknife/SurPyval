@@ -1,3 +1,5 @@
+from typing import Any
+
 from surpyval.univariate.parametric import (
     Exponential,
     Gamma,
@@ -9,7 +11,7 @@ from .frailty_fitter import FrailtyFitter
 from .frailty_model import FrailtyModel
 
 
-def Frailty(distribution, family="gamma"):
+def Frailty(distribution: Any, family: str = "gamma") -> FrailtyFitter:
     """
     Create a shared-frailty proportional-hazards fitter for a distribution.
 

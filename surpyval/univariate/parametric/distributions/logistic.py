@@ -1,10 +1,14 @@
 from autograd import grad
 from autograd.scipy.special import beta as abeta
+
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 
 
-class Logistic_(ParametricFitter):
+class Logistic_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name):
         super().__init__(
             name=name,
@@ -338,4 +342,4 @@ class Logistic_(ParametricFitter):
         return mu, sigma
 
 
-Logistic: ParametricFitter = Logistic_("Logistic")
+Logistic: Logistic_ = Logistic_("Logistic")

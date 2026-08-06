@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.typing as npt
 from scipy.special import digamma, polygamma
 
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
@@ -15,7 +16,7 @@ from surpyval.univariate.nonparametric.nonparametric_fitter import (
 _MAX_TIE_LOOP = 64
 
 
-def _ladder_steps(r_i, d_i):
+def _ladder_steps(r_i: float, d_i: float) -> int:
     """Number of whole 1/r terms in the tie ladder, or -1 if the
     ladder exhausts the risk set (the hazard diverges)."""
     if np.isnan(d_i) or d_i <= 1:
@@ -28,7 +29,7 @@ def _ladder_steps(r_i, d_i):
     return full
 
 
-def fh_h(r_i, d_i):
+def fh_h(r_i: float, d_i: float) -> float:
     # sum(1 / (r - i) for i in 0 ... ceil(d) - 2) + (d - full) / (r - full):
     # each of the d tied events sees a risk set that shrinks by one,
     # with the fractional remainder of d contributing pro rata.
@@ -45,7 +46,7 @@ def fh_h(r_i, d_i):
     return out + (d_i - full) / (r_i - full)
 
 
-def fh_var_h(r_i, d_i):
+def fh_var_h(r_i: float, d_i: float) -> float:
     # Variance increment with the same tie-splitting as fh_h, i.e.
     # each of the d tied events contributes 1/r**2 with a risk set
     # that shrinks by one for each event.
@@ -62,7 +63,7 @@ def fh_var_h(r_i, d_i):
     return out + (d_i - full) / (r_i - full) ** 2
 
 
-def fleming_harrington_variance(r, d):
+def fleming_harrington_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     """
     Variance of the Fleming-Harrington cumulative hazard estimator
     using the same tie correction as the estimator itself:
@@ -79,7 +80,7 @@ def fleming_harrington_variance(r, d):
         return np.cumsum(var)
 
 
-def fleming_harrington(r, d):
+def fleming_harrington(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     Y = np.array([fh_h(r_i, d_i) for r_i, d_i in zip(r, d)])
     H = Y.cumsum()
     H[np.isnan(H)] = np.inf
@@ -117,7 +118,7 @@ class FlemingHarrington_(NonParametricFitter):
     array([0.81873075, 0.63762815, 0.45688054, 0.27711205, 0.10194383])
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.how = "Fleming-Harrington"
 
 

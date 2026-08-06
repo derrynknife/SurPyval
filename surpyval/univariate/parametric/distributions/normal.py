@@ -1,15 +1,19 @@
 from autograd.scipy.stats import norm
 from scipy.stats import norm as scipy_norm
+
 from surpyval import np
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric.fitters.closed_form import (
     is_uncensored_and_untruncated,
     weighted_mean_and_std,
 )
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 
 
-class Normal_(ParametricFitter):
+class Normal_(OptimisedFitMixin, ParametricFitter):
     r"""
 
     Class used to generate the Normal (Gauss) class.
@@ -434,7 +438,7 @@ class Normal_(ParametricFitter):
         return mu, sigma
 
 
-Normal: ParametricFitter = Normal_("Normal")
+Normal: Normal_ = Normal_("Normal")
 
 
-Gauss: ParametricFitter = Normal_("Gauss")
+Gauss: Normal_ = Normal_("Gauss")

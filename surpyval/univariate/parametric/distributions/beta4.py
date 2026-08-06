@@ -3,12 +3,15 @@ from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, comb, digamma
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
 
 
-class Beta4_(ParametricFitter):
+class Beta4_(OptimisedFitMixin, ParametricFitter):
     r"""
     The four-parameter (generalised) Beta distribution.
 
@@ -484,4 +487,4 @@ class Beta4_(ParametricFitter):
         return float(params[2]), float(params[3])
 
 
-Beta4: ParametricFitter = Beta4_("Beta4")
+Beta4: Beta4_ = Beta4_("Beta4")

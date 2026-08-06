@@ -1,7 +1,9 @@
 from numbers import Number
+from typing import TYPE_CHECKING, Any
 
 import numpy.typing as npt
 import pandas as pd
+from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.integrate import quad
 from scipy.stats import uniform
 
@@ -12,13 +14,83 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..nonparametric import plotting_positions as pp
 from .fitters import bounds_convert
+from .fitters.closed_form import closed_form_results
 from .fitters.mle import mle
 from .fitters.mom import mom
-from .fitters.closed_form import closed_form_results
 from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mse import mse
 from .parametric import Parametric
+
+# The two types a distribution function deals in. They are separate
+# because only one of them can be an autograd box.
+#
+# ``Numeric`` is what the function is evaluated *at* -- an array of
+# times, or of probabilities for ``qf``, or a single one. It is always
+# real data.
+#
+# ``Boxable`` is a parameter, or a value computed from one. The third
+# member is the point of it: maximum likelihood differentiates these
+# functions, and autograd substitutes its own ``ArrayBox`` for the
+# parameters to carry the derivative through, so a parameter really is
+# one of three things and not two. The runtime types were established by
+# instrumenting a real fit, which is the only place they are visible --
+# a fit passes float64 while evaluating the likelihood and ArrayBox
+# while differentiating it.
+#
+# Naming the box rather than writing ``Any`` is what makes the parameter
+# positions checkable at all; under ``Any`` they accept anything, which
+# ``disallow_untyped_defs`` would then certify. It also rules out the
+# two narrowings that look right and are not:
+#
+#   alpha: npt.ArrayLike        25 errors on ``(x / alpha) ** beta``,
+#                               because array-like covers str and bytes.
+#                               The fix that clears them, np.asarray,
+#                               wraps the box in an object array: the
+#                               value stays right and the derivative
+#                               does not. A plain product then returns a
+#                               zero gradient with no exception, which
+#                               an optimiser reads as "this parameter
+#                               does not affect the likelihood", so the
+#                               fit leaves it at its initial guess and
+#                               reports success.
+#
+#   alpha: npt.NDArray | float  No errors at all, and false. Nothing in
+#                               the toolchain would ever say so, and
+#                               py.typed publishes it to every caller.
+#
+# Neither is a reason to reach for ``np.asarray`` here. That convention
+# belongs to the non-parametric packages, where the values are real
+# data; in this one it destroys the thing being computed.
+Numeric = npt.NDArray | float
+Boxable = npt.NDArray | float | ArrayBox
+
+
+def reject_structural_params(
+    dist_name: str,
+    gamma: Any = None,
+    p: Any = None,
+    f0: Any = None,
+) -> None:
+    """Raise for structural arguments a closed-form distribution has no
+    meaning for.
+
+    ``ParametricFitter.from_params`` takes ``gamma`` (an offset), ``p``
+    (the proportion that never fails) and ``f0`` (the proportion failing
+    at time zero). ``Bernoulli``, ``Binomial`` and ``ExactEventTime``
+    support none of them, but they accept the arguments anyway so their
+    signatures match the base -- a subclass that silently dropped them
+    could not be called through a ``ParametricFitter`` reference, which
+    is what the earlier narrower signatures got wrong.
+    """
+    for name, value in (("gamma", gamma), ("p", p), ("f0", f0)):
+        if value is not None:
+            raise ValueError(
+                f"{dist_name} does not support '{name}'; it has a "
+                f"closed-form estimator with no offset, limited failure "
+                f"population or zero inflation."
+            )
+
 
 PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
@@ -294,6 +366,220 @@ class ParametricFitter:
     def _neg_ll_func(self, data, *params):
         return -self._log_likelihood(data, *params)
 
+    def _moment(self, n, *params, offset=False):
+        if offset:
+            gamma = params[0]
+            params = params[1::]
+
+            def fun(x):
+                return x**n * self.df((x - gamma), *params)
+
+            m = quad(fun, gamma, np.inf)[0]
+        else:
+            if hasattr(self, "moment"):
+                m = self.moment(n, *params)
+            else:
+
+                def fun(x):
+                    return x**n * self.df(x, *params)
+
+                m = quad(fun, *self.support)[0]
+        return m
+
+    def _set_support(self, model, offset):
+        """Resolve and assign the fitted model's support interval.
+
+        For an offset model the left edge is the fitted ``gamma``;
+        otherwise each edge comes from the distribution's declared
+        support, except a data-dependent (NaN) edge, which is read from
+        the fitted parameter the distribution nominates via
+        ``support_param_index`` (``a``/``b`` for the uniform and the
+        4-parameter Beta).
+        """
+        if offset:
+            left = model.gamma
+        elif np.isfinite(self.support[0]):
+            left = self.support[0]
+        elif self.support[0] == -np.inf:
+            left = -np.inf
+        elif np.isnan(self.support[0]):
+            left = model.params[self.support_param_index[0]]
+
+        if np.isfinite(self.support[1]):
+            right = self.support[1]
+        elif self.support[1] == np.inf:
+            right = np.inf
+        elif np.isnan(self.support[1]):
+            right = model.params[self.support_param_index[1]]
+
+        model.support = np.array([left, right])
+
+    def from_params(self, params, gamma=None, p=None, f0=None):
+        r"""
+
+        Creating a SurPyval Parametric class with provided parameters.
+
+        Parameters
+        ----------
+
+        params : array like
+            array of the parameters of the distribution.
+
+        gamma : scalar, optional
+            offset value for the distribution. If not provided will fit a
+            regular, unshifted/not offset, distribution.
+
+        p : scalar, optional
+            The proportion of the population that will never die or fail. If
+            used it must be a value between 0 and 1. If None will assume 1,
+            i.e. no proportion of the population will never die or fail.
+
+        f0 : scalar, optional
+            The proportion of the population that will die or fail at time 0.
+            If used it must be a value between 0 and 1. If None will assume 0,
+            i.e. no proportion of the population will die or fail at time 0.
+
+        Returns
+        -------
+
+        Parametric
+            A parametric model with the parameters provided.
+
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([10, 4])
+        >>> print(model)
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : given parameters
+        Parameters          :
+             alpha: 10
+              beta: 4
+        >>> model = Weibull.from_params([10, 4], gamma=2)
+        >>> print(model)
+        Parametric SurPyval Model
+        =========================
+        Distribution        : Weibull
+        Fitted by           : given parameters
+        Offset (gamma)      : 2
+        Parameters          :
+             alpha: 10
+              beta: 4
+        """
+        if self.k != len(params):
+            detail = f"Must have {self.k} params for {self.name} distribution"
+            raise ValueError(detail)
+
+        # Offsetting only makes sense for a half-line support; a fully
+        # unbounded support (Normal) or a data-dependent one whose bounds
+        # are themselves estimated (Uniform/Beta4, declared NaN) cannot be
+        # offset. This mirrors the ``offsettable`` check in ``fit``.
+        if gamma is not None and (
+            np.isinf(self.support).all() or np.isnan(self.support).any()
+        ):
+            detail = f"{self.name} distribution cannot be offset"
+            raise ValueError(detail)
+
+        if gamma is not None:
+            offset = True
+        else:
+            offset = False
+            gamma = 0
+
+        if p is not None:
+            lfp = True
+        else:
+            lfp = False
+            p = 1
+
+        if f0 is not None:
+            zi = True
+        else:
+            zi = False
+            f0 = 0
+
+        model = Parametric(self, "given parameters", None, offset, lfp, zi)
+        model.gamma = gamma
+        model.p = p
+        model.f0 = f0
+        model.params = np.array(params)
+        self._set_support(model, offset)
+
+        for i, (low, upp) in enumerate(self.bounds):
+            if low is None:
+                lower_limit = -np.inf
+            else:
+                lower_limit = low
+            if upp is None:
+                upper_limit = np.inf
+            else:
+                upper_limit = upp
+
+            if not (lower_limit < params[i] < upper_limit):
+                param_names = ", ".join(self.param_names)
+                detail = (
+                    f"Params {param_names} must be in" f" bounds {self.bounds}"
+                )
+                raise ValueError(detail)
+        return model
+
+
+class OptimisedFitMixin:
+    """The estimation machinery: ``fit`` and everything it needs.
+
+    Separated from :class:`ParametricFitter` so that the distributions
+    which do *not* have it are not claiming to. ``Bernoulli``,
+    ``Binomial`` and ``ExactEventTime`` estimate their parameters in
+    closed form; they take ``x`` and at most ``c``, ``n`` and ``t``, and
+    have no use for ``how``, ``offset``, ``zi``, ``lfp``, ``fixed`` or
+    the truncation arguments. While this lived on the base class those
+    three overrode ``fit`` with a narrower signature, which is a Liskov
+    violation mypy reports and, more to the point, a real one:
+    ``Bernoulli.fit(x, c=...)`` raises TypeError, so code written
+    against a ``ParametricFitter`` breaks on exactly those three.
+
+    Every distribution is still a ``ParametricFitter`` -- that is what
+    the ``isinstance`` gates in the model, mixture, regression, frailty
+    and renewal code check, and what carries the distribution functions
+    and the likelihood. This mixin adds the estimation methods on top,
+    for the 22 that have them.
+
+    Declare a parameter as ``OptimisedFitMixin`` when it must be
+    fittable by a chosen method; declare it as ``ParametricFitter`` when
+    only the distribution functions are needed.
+    """
+
+    if TYPE_CHECKING:
+        # Supplied by ParametricFitter, which every user of this mixin
+        # also inherits. Declared rather than defined so the methods
+        # below type check without the mixin pretending to own them.
+        name: str
+        k: int
+        bounds: tuple[tuple[int | float | None, int | float | None], ...]
+        support: tuple[int | float, int | float]
+        param_names: list[str]
+        param_map: dict[str, int]
+        discrete: bool
+        supports_mpp: bool
+        support_param_index: tuple[int, int]
+
+        def _parameter_initialiser(self, *args: Any, **kwargs: Any) -> Any: ...
+        def _neg_ll_func(self, data: Any, *params: Any) -> Any: ...
+        def _log_likelihood(self, data: Any, *params: Any) -> Any: ...
+        def _moment(self, n: Any, *p: Any, offset: bool = False) -> Any: ...
+        def _set_support(self, model: Any, offset: Any) -> Any: ...
+        def sf(self, x: Any, *params: Any) -> Any: ...
+        def ff(self, x: Any, *params: Any) -> Any: ...
+        def df(self, x: Any, *params: Any) -> Any: ...
+        def Hf(self, x: Any, *params: Any) -> Any: ...
+        def qf(self, u: Any, *params: Any) -> Any: ...
+        def mpp_x_transform(self, x: Any, *args: Any) -> Any: ...
+        def mpp_y_transform(self, y: Any, *params: Any) -> Any: ...
+        def mpp_inv_y_transform(self, y: Any, *params: Any) -> Any: ...
+
     def neg_mean_D(self, x, c, n, tl, tr, *params):
         mask = c == 0
         x_obs = x[mask]
@@ -349,26 +635,6 @@ class ParametricFitter:
         if (c == -1).any():
             obj = obj + np.sum(n[c == -1] * np.log(Dl))
         return -obj / n.sum()
-
-    def _moment(self, n, *params, offset=False):
-        if offset:
-            gamma = params[0]
-            params = params[1::]
-
-            def fun(x):
-                return x**n * self.df((x - gamma), *params)
-
-            m = quad(fun, gamma, np.inf)[0]
-        else:
-            if hasattr(self, "moment"):
-                m = self.moment(n, *params)
-            else:
-
-                def fun(x):
-                    return x**n * self.df(x, *params)
-
-                m = quad(fun, *self.support)[0]
-        return m
 
     def mom_moment_gen(self, *params, offset=False):
         if offset:
@@ -1069,34 +1335,6 @@ class ParametricFitter:
 
         return init
 
-    def _set_support(self, model, offset):
-        """Resolve and assign the fitted model's support interval.
-
-        For an offset model the left edge is the fitted ``gamma``;
-        otherwise each edge comes from the distribution's declared
-        support, except a data-dependent (NaN) edge, which is read from
-        the fitted parameter the distribution nominates via
-        ``support_param_index`` (``a``/``b`` for the uniform and the
-        4-parameter Beta).
-        """
-        if offset:
-            left = model.gamma
-        elif np.isfinite(self.support[0]):
-            left = self.support[0]
-        elif self.support[0] == -np.inf:
-            left = -np.inf
-        elif np.isnan(self.support[0]):
-            left = model.params[self.support_param_index[0]]
-
-        if np.isfinite(self.support[1]):
-            right = self.support[1]
-        elif self.support[1] == np.inf:
-            right = np.inf
-        elif np.isnan(self.support[1]):
-            right = model.params[self.support_param_index[1]]
-
-        model.support = np.array([left, right])
-
     def fit_from_surpyval_data(
         self,
         surv_data: SurpyvalData,
@@ -1353,115 +1591,3 @@ class ParametricFitter:
         model.fitting_info = fitting_info
 
         return METHOD_FUNC_DICT[how](model)
-
-    def from_params(self, params, gamma=None, p=None, f0=None):
-        r"""
-
-        Creating a SurPyval Parametric class with provided parameters.
-
-        Parameters
-        ----------
-
-        params : array like
-            array of the parameters of the distribution.
-
-        gamma : scalar, optional
-            offset value for the distribution. If not provided will fit a
-            regular, unshifted/not offset, distribution.
-
-        p : scalar, optional
-            The proportion of the population that will never die or fail. If
-            used it must be a value between 0 and 1. If None will assume 1,
-            i.e. no proportion of the population will never die or fail.
-
-        f0 : scalar, optional
-            The proportion of the population that will die or fail at time 0.
-            If used it must be a value between 0 and 1. If None will assume 0,
-            i.e. no proportion of the population will die or fail at time 0.
-
-        Returns
-        -------
-
-        Parametric
-            A parametric model with the parameters provided.
-
-
-        Examples
-        --------
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 4])
-        >>> print(model)
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : given parameters
-        Parameters          :
-             alpha: 10
-              beta: 4
-        >>> model = Weibull.from_params([10, 4], gamma=2)
-        >>> print(model)
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : given parameters
-        Offset (gamma)      : 2
-        Parameters          :
-             alpha: 10
-              beta: 4
-        """
-        if self.k != len(params):
-            detail = f"Must have {self.k} params for {self.name} distribution"
-            raise ValueError(detail)
-
-        # Offsetting only makes sense for a half-line support; a fully
-        # unbounded support (Normal) or a data-dependent one whose bounds
-        # are themselves estimated (Uniform/Beta4, declared NaN) cannot be
-        # offset. This mirrors the ``offsettable`` check in ``fit``.
-        if gamma is not None and (
-            np.isinf(self.support).all() or np.isnan(self.support).any()
-        ):
-            detail = f"{self.name} distribution cannot be offset"
-            raise ValueError(detail)
-
-        if gamma is not None:
-            offset = True
-        else:
-            offset = False
-            gamma = 0
-
-        if p is not None:
-            lfp = True
-        else:
-            lfp = False
-            p = 1
-
-        if f0 is not None:
-            zi = True
-        else:
-            zi = False
-            f0 = 0
-
-        model = Parametric(self, "given parameters", None, offset, lfp, zi)
-        model.gamma = gamma
-        model.p = p
-        model.f0 = f0
-        model.params = np.array(params)
-        self._set_support(model, offset)
-
-        for i, (low, upp) in enumerate(self.bounds):
-            if low is None:
-                lower_limit = -np.inf
-            else:
-                lower_limit = low
-            if upp is None:
-                upper_limit = np.inf
-            else:
-                upper_limit = upp
-
-            if not (lower_limit < params[i] < upper_limit):
-                param_names = ", ".join(self.param_names)
-                detail = (
-                    f"Params {param_names} must be in" f" bounds {self.bounds}"
-                )
-                raise ValueError(detail)
-        return model

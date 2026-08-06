@@ -1,13 +1,17 @@
 from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, digamma
+
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
 
 
-class Beta_(ParametricFitter):
+class Beta_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name):
         super().__init__(
             name=name,
@@ -441,4 +445,4 @@ class Beta_(ParametricFitter):
         return 0.0, 1.0
 
 
-Beta: ParametricFitter = Beta_("Beta")
+Beta: Beta_ = Beta_("Beta")

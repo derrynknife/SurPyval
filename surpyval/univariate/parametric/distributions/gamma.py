@@ -3,13 +3,16 @@ from autograd.scipy.special import gammaln as agammaln
 from scipy.special import digamma, gammaincinv
 
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 from surpyval.utils.autograd_gamma_compat import gammainc as agammainc
 from surpyval.utils.autograd_gamma_compat import gammainccln as agammainccln
 from surpyval.utils.autograd_gamma_compat import gammaincln as agammaincln
 
 
-class Gamma_(ParametricFitter):
+class Gamma_(OptimisedFitMixin, ParametricFitter):
     r"""
 
     Class used to generate the Gamma class.
@@ -506,4 +509,4 @@ class Gamma_(ParametricFitter):
         return x - gamma
 
 
-Gamma: ParametricFitter = Gamma_("Gamma")
+Gamma: Gamma_ = Gamma_("Gamma")

@@ -1,6 +1,9 @@
 import surpyval
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    ParametricFitter,
+    reject_structural_params,
+)
 
 from ..parametric import Parametric
 
@@ -77,9 +80,16 @@ class ExactEventTime_(ParametricFitter):
         model.params = np.array([T])
         return model
 
-    def from_params(self, T):
+    def from_params(self, params, gamma=None, p=None, f0=None):
+        """Create an ExactEventTime model from the known event time.
+
+        ``params`` is the event time, previously named ``T``. ``gamma``,
+        ``p`` and ``f0`` are accepted so the signature matches
+        :meth:`ParametricFitter.from_params`, and rejected.
+        """
+        reject_structural_params(self.name, gamma, p, f0)
         model = Parametric(self, "from_params", None, False, False, False)
-        model.params = np.array([T])
+        model.params = np.array([params])
         return model
 
 

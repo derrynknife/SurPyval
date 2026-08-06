@@ -1,8 +1,14 @@
+import numpy.typing as npt
 from scipy.stats import binom
 
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
+)
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+    reject_structural_params,
 )
 
 from ..parametric import Parametric
@@ -25,7 +31,7 @@ class Binomial_(DiscreteParametricFitter):
     same spirit as :class:`Bernoulli`.
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -36,7 +42,7 @@ class Binomial_(DiscreteParametricFitter):
             plot_x_scale="linear",
         )
 
-    def df(self, x, n, p):
+    def df(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Probability mass function for the Binomial distribution:
@@ -68,7 +74,7 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.pmf(x, n, p)
 
-    def ff(self, x, n, p):
+    def ff(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Failure (CDF) function for the Binomial distribution:
@@ -101,7 +107,7 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.cdf(x, n, p)
 
-    def sf(self, x, n, p):
+    def sf(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Survival (reliability) function for the Binomial distribution:
@@ -133,7 +139,7 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.sf(x, n, p)
 
-    def hf(self, x, n, p):
+    def hf(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Discrete hazard rate for the Binomial distribution; the conditional
@@ -163,7 +169,7 @@ class Binomial_(DiscreteParametricFitter):
         denom = self.sf(x, n, p) + d
         return np.where(denom > 0, d / denom, 0.0)
 
-    def Hf(self, x, n, p):
+    def Hf(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard function for the Binomial distribution:
@@ -189,7 +195,7 @@ class Binomial_(DiscreteParametricFitter):
         """
         return -np.log(self.sf(x, n, p))
 
-    def qf(self, q, n, p):
+    def qf(self, q: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Quantile (inverse CDF) function for the Binomial distribution; the
@@ -219,7 +225,7 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.ppf(q, n, p)
 
-    def cs(self, x, X, n, p):
+    def cs(self, x: Numeric, X: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Conditional survival; the probability of surviving a further ``x``
@@ -248,7 +254,7 @@ class Binomial_(DiscreteParametricFitter):
         """
         return self.sf(x + X, n, p) / self.sf(X, n, p)
 
-    def mean(self, n, p):
+    def mean(self, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Mean of the Binomial distribution:
@@ -264,7 +270,7 @@ class Binomial_(DiscreteParametricFitter):
         """
         return n * p
 
-    def moment(self, m, n, p):
+    def moment(self, m: int, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         m-th (raw) moment of the Binomial distribution.
@@ -293,7 +299,7 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.moment(m, n, p)
 
-    def entropy(self, n, p):
+    def entropy(self, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Entropy of the Binomial distribution (in nats).
@@ -306,7 +312,9 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.entropy(n, p)
 
-    def random(self, size, n, p):
+    def random(
+        self, size: int | tuple[int, ...], n: Boxable, p: Boxable
+    ) -> npt.NDArray:
         r"""
 
         Draws random samples from the distribution in shape `size`
@@ -329,7 +337,13 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.rvs(n, p, size=size)
 
-    def fit(self, x, n_trials, c=None, n=None):
+    def fit(
+        self,
+        x: Numeric,
+        n_trials: int,
+        c: npt.NDArray | None = None,
+        n: npt.NDArray | None = None,
+    ) -> Parametric:
         r"""
 
         Fit the Binomial distribution for a known number of trials,
@@ -364,16 +378,16 @@ class Binomial_(DiscreteParametricFitter):
         >>> model.params
         array([5. , 0.5])
         """
-        x = np.atleast_1d(np.asarray(x))
+        x_arr = np.atleast_1d(np.asarray(x))
 
-        if not np.equal(np.mod(x, 1), 0).all():
+        if not np.equal(np.mod(x_arr, 1), 0).all():
             raise ValueError("'x' must contain only integer counts")
 
         n_trials = int(n_trials)
         if n_trials < 1:
             raise ValueError("'n_trials' must be a positive integer")
 
-        if ((x < 0) | (x > n_trials)).any():
+        if ((x_arr < 0) | (x_arr > n_trials)).any():
             raise ValueError("'x' must be between 0 and 'n_trials'")
 
         if c is not None and (np.atleast_1d(np.asarray(c)) != 0).any():
@@ -382,16 +396,29 @@ class Binomial_(DiscreteParametricFitter):
             )
 
         if n is None:
-            n = np.ones_like(x)
+            n = np.ones_like(x_arr)
         n = np.atleast_1d(np.asarray(n))
 
         model = Parametric(self, "MLE", None, False, False, False)
-        p = (x * n).sum() / (n_trials * n.sum())
+        p = (x_arr * n).sum() / (n_trials * n.sum())
         model.params = np.array([float(n_trials), p])
         model.support = np.array([0, n_trials])
         return model
 
-    def from_params(self, params):
+    # Narrower than ParametricFitter.from_params, which takes
+    # (params, gamma, p, f0). Unlike `fit`, this one is not resolved
+    # by the OptimisedFitMixin split: every distribution has a
+    # from_params. It is a parameter *rename* -- the base's `params`
+    # became `params` -- so positional calls work and keyword calls
+    # raise. Fixing it means renaming
+    # back, with a deprecation alias, and is tracked separately.
+    def from_params(
+        self,
+        params: npt.ArrayLike,
+        gamma: Boxable | None = None,
+        p: Boxable | None = None,
+        f0: Boxable | None = None,
+    ) -> Parametric:
         r"""
 
         Create a Binomial model from the parameters ``[n, p]``.
@@ -402,6 +429,12 @@ class Binomial_(DiscreteParametricFitter):
         params : array like
             The two parameters ``[n, p]``; ``n`` the (integer) number of
             trials and ``p`` the per-trial event probability.
+        gamma, p, f0 : None
+            Accepted so the signature matches
+            :meth:`ParametricFitter.from_params`, and rejected: a
+            Binomial has no offset, limited failure population or zero
+            inflation. The base's ``p`` is the *never-fails* proportion,
+            not the per-trial probability, which lives in ``params``.
 
         Returns
         -------
@@ -416,12 +449,13 @@ class Binomial_(DiscreteParametricFitter):
         >>> model.mean()
         np.float64(1.5)
         """
-        params = np.atleast_1d(np.asarray(params, dtype=float))
+        reject_structural_params(self.name, gamma, p, f0)
+        params_arr = np.atleast_1d(np.asarray(params, dtype=float))
 
-        if params.shape[0] != 2:
+        if params_arr.shape[0] != 2:
             raise ValueError("Binomial distribution requires '[n, p]' params")
 
-        n, p = params
+        n, prob = params_arr
 
         if np.mod(n, 1) != 0:
             raise ValueError("'n' must be an integer number of trials")
@@ -429,11 +463,11 @@ class Binomial_(DiscreteParametricFitter):
         if n < 1:
             raise ValueError("'n' must be a positive integer")
 
-        if not (0 <= p <= 1):
+        if not (0 <= prob <= 1):
             raise ValueError("'p' must be between 0 and 1")
 
         model = Parametric(self, "given parameters", None, False, False, False)
-        model.params = np.array([float(n), p])
+        model.params = np.array([float(n), prob])
         model.support = np.array([0, n])
         return model
 

@@ -2,19 +2,25 @@
 Regression tests for the distribution-level defect batch (#257).
 """
 
+import inspect
+
 import numpy as np
 import pytest
 
 from surpyval import (
     Bernoulli,
     Beta,
+    Binomial,
     ExactEventTime,
     Exponential,
     ExpoWeibull,
     Gamma,
     GumbelLEV,
-    LogNormal,
     Logistic,
+    LogNormal,
+)
+from surpyval.univariate.parametric.parametric_fitter import (
+    ParametricFitter,
 )
 
 
@@ -108,3 +114,54 @@ def test_logistic_log_functions_deep_tail():
 def test_exact_event_time_informative_error():
     with pytest.raises(ValueError, match="right-censored"):
         ExactEventTime.fit(np.array([1.0, 2.0, 3.0]), c=np.array([1, 1, 1]))
+
+
+# --- from_params argument names and structural rejection -----------------
+#
+# Bernoulli and ExactEventTime used to name the base's ``params`` argument
+# ``p`` and ``T``, so positional calls worked and keyword calls raised.
+# Bernoulli's was worse than a rename: the base's ``p`` is the proportion
+# that never fails, so the same keyword meant two unrelated things on
+# sibling classes. All three now match ParametricFitter.from_params, and
+# reject the structural arguments they cannot honour.
+
+
+@pytest.mark.parametrize(
+    "dist, params, expected",
+    [
+        (Bernoulli, 0.3, [0.3]),
+        (ExactEventTime, 10, [10]),
+        (Binomial, [5, 0.3], [5.0, 0.3]),
+    ],
+)
+def test_from_params_accepts_the_params_keyword(dist, params, expected):
+    by_keyword = dist.from_params(params=params)
+    by_position = dist.from_params(params)
+    assert by_keyword.params == pytest.approx(expected)
+    assert by_position.params == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "dist, params",
+    [
+        (Bernoulli, 0.3),
+        (ExactEventTime, 10),
+        (Binomial, [5, 0.3]),
+    ],
+)
+@pytest.mark.parametrize("structural", ["gamma", "p", "f0"])
+def test_from_params_rejects_unsupported_structural_args(
+    dist, params, structural
+):
+    with pytest.raises(ValueError, match="does not support"):
+        dist.from_params(params, **{structural: 0.5})
+
+
+def test_from_params_signature_matches_the_base():
+    # The narrower signatures could not be called through a
+    # ParametricFitter reference, which is what made this a real bug and
+    # not a naming preference.
+    base = set(inspect.signature(ParametricFitter.from_params).parameters)
+    for dist in (Bernoulli, Binomial, ExactEventTime):
+        own = set(inspect.signature(type(dist).from_params).parameters)
+        assert base <= own, dist.name

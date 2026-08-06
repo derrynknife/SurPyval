@@ -30,10 +30,10 @@ class InformationCriteriaMixin:
     _aic: float
     _aic_c: float
 
-    def _ic_counts(self):
+    def _ic_counts(self) -> tuple[int, int]:
         raise NotImplementedError
 
-    def _ic_k_aic_c(self):
+    def _ic_k_aic_c(self) -> int:
         # The parameter count used in the aic_c correction term.
         return self.k
 

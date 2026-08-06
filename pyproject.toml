@@ -39,6 +39,29 @@ tests = [
     # (MongoDB compatibility); pymongo provides the bson package.
     "pymongo>=4",
 ]
+docs = [
+    # The documentation build toolchain, used by Read the Docs and by a
+    # local ``sphinx-build``. Fully pinned rather than bounded: the docs
+    # execute every ``.. jupyter-execute::`` cell during the build, so a
+    # toolchain change can break the build in ways a version range would
+    # let through silently. Bump these together and re-validate with a
+    # complete build:
+    #
+    #     pip install -e ".[docs]"
+    #     python -m sphinx -b html docs docs/_build/html
+    #
+    # matplotlib is not repeated here -- it is a runtime dependency of
+    # the package itself, which the docs install alongside these.
+    "sphinx==8.2.3",
+    "sphinx_rtd_theme==3.1.0",
+    "sphinx-copybutton==0.5.2",
+    "sphinx-notfound-page==1.1.0",
+    "jupyter-sphinx==0.5.3",
+    # Capped below 7: jupyter-sphinx notebook execution hangs or dies
+    # with a zmq "Socket operation on non-socket" against the ipykernel
+    # 7 line.
+    "ipykernel==6.31.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/derrynknife/SurPyval"
@@ -77,6 +100,46 @@ skip = ["__init__.py"]
 
 # mypy
 [tool.mypy]
+
+# Local stubs for third-party types that appear in surpyval's own
+# signatures. Only autograd's ArrayBox so far -- see the file for why.
+mypy_path = "stubs"
+
+# Modules whose every function is annotated. Listing one here makes an
+# unannotated function in it an error, so the coverage cannot slip back
+# -- a ratchet rather than a target (#143).
+#
+# The package ships py.typed, which tells a user's type checker that
+# these annotations are there to be trusted. Without this setting mypy
+# only checks the annotations that happen to exist, so nothing stopped
+# that promise from being half true.
+#
+# Add a module here once `mypy <module> --disallow-untyped-defs` is
+# clean. Do not add one with a `# type: ignore` to make it pass; the
+# point is the annotations, not the green tick.
+[[tool.mypy.overrides]]
+module = [
+    'surpyval.distribution',
+    'surpyval.serialisation',
+    'surpyval.metrics.*',
+    'surpyval.univariate.information_criteria',
+    'surpyval.univariate.nonparametric.*',
+    'surpyval.recurrent.nonparametric.*',
+    'surpyval.univariate.regression.frailty.*',
+    'surpyval.datasets',
+    'surpyval.univariate.parametric.distributions.weibull',
+    # The discrete distributions, plus the Discretize wrapper.
+    'surpyval.univariate.parametric.distributions.bernoulli',
+    'surpyval.univariate.parametric.distributions.beta_geometric',
+    'surpyval.univariate.parametric.distributions.binomial',
+    'surpyval.univariate.parametric.distributions.discrete_weibull',
+    'surpyval.univariate.parametric.distributions.discretize',
+    'surpyval.univariate.parametric.distributions.geometric',
+    'surpyval.univariate.parametric.distributions.negative_binomial',
+    'surpyval.univariate.parametric.distributions.poisson',
+]
+disallow_untyped_defs = true
+
 [[tool.mypy.overrides]]
 module = [
     'scipy.*',

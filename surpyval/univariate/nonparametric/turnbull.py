@@ -1,6 +1,8 @@
 import warnings
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
@@ -12,8 +14,14 @@ from .nelson_aalen import nelson_aalen as na
 
 
 def turnbull(
-    x, c, n, t, estimator="Fleming-Harrington", tol=1e-10, max_iter=1000
-):
+    x: npt.ArrayLike,
+    c: npt.ArrayLike,
+    n: npt.ArrayLike,
+    t: npt.ArrayLike,
+    estimator: str = "Fleming-Harrington",
+    tol: float = 1e-10,
+    max_iter: int = 1000,
+) -> dict:
     """
     Turnbull NPMLE via the EM (self-consistency) algorithm.
 
@@ -28,6 +36,13 @@ def turnbull(
     """
     if max_iter < 1:
         raise ValueError(f"max_iter must be at least 1; got {max_iter}")
+    # Taken as arrays before anything indexes or slices them. The
+    # signature accepts array-like because callers pass lists, but the
+    # body below is written against arrays throughout.
+    x = np.asarray(x)
+    c = np.asarray(c)
+    n = np.asarray(n)
+    t = np.asarray(t)
     any_truncated = np.isfinite(t).any()
     # Find all unique bounding points
     bounds = np.unique(np.concatenate([np.unique(x), np.unique(t)]))
@@ -247,6 +262,9 @@ def turnbull(
         # because its event fell inside its window, so for every one seen,
         # unseen "ghost" events fell outside it at rate p_j / P(window).
         # Add n / P(window) everywhere, subtract it back over the window.
+        # A scalar in the untruncated branch, where it broadcasts over
+        # the per-interval counts without allocating an array of zeros.
+        d_ghosts: npt.NDArray | float
         if any_truncated:
             window_p = cumulative[w_hi + 1] - cumulative[w_lo]
             ghost_weight = np.where(window_p > 0, n_truncated / window_p, 0.0)
@@ -442,7 +460,9 @@ def turnbull(
 
         r_var = np.cumsum(const[:M]) - np.cumsum(coeff[:M]) * cumulative[:M]
 
-    out = {}
+    # Heterogeneous by design: arrays, the estimator name, and the
+    # convergence flags all go out in the one dictionary.
+    out: dict[str, Any] = {}
     out["x"] = bounds[1:-1]
     out["r"] = r[1:-1]
     out["d"] = d[1:-1]
@@ -518,10 +538,19 @@ class Turnbull_(NonParametricFitter):
            0.2631432 , 0.2631432 , 0.09680497])
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.how = "Turnbull"
 
-    def _fit(self, x, c, n, t, turnbull_estimator, tol, max_iter):
+    def _fit(
+        self,
+        x: npt.ArrayLike,
+        c: npt.ArrayLike,
+        n: npt.ArrayLike,
+        t: npt.ArrayLike,
+        turnbull_estimator: str,
+        tol: float,
+        max_iter: int,
+    ) -> dict:
         return turnbull(
             x, c, n, t, turnbull_estimator, tol=tol, max_iter=max_iter
         )

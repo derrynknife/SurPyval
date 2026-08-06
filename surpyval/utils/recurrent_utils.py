@@ -1,3 +1,5 @@
+from typing import Literal, overload
+
 import numpy as np
 import numpy.typing as npt
 
@@ -246,6 +248,43 @@ def _expand_windows(
         np.array(new_tr, dtype=float),
         window_map,
     )
+
+
+# ``as_recurrent_data`` picks the return shape, so the two cases are
+# declared separately. Without this every caller taking the default gets
+# the union back and has to narrow it, which is nine call sites saying
+# the same thing about a value the argument already determined.
+@overload
+def handle_xicn(
+    x: npt.ArrayLike,
+    i: npt.ArrayLike | None = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    t: npt.ArrayLike | None = None,
+    tl: npt.ArrayLike | None = None,
+    tr: npt.ArrayLike | None = None,
+    Z: npt.ArrayLike | dict | None = None,
+    as_recurrent_data: Literal[True] = True,
+    windows: dict | None = None,
+    e: npt.ArrayLike | None = None,
+) -> RecurrentEventData: ...
+
+
+@overload
+def handle_xicn(
+    x: npt.ArrayLike,
+    i: npt.ArrayLike | None = None,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    t: npt.ArrayLike | None = None,
+    tl: npt.ArrayLike | None = None,
+    tr: npt.ArrayLike | None = None,
+    Z: npt.ArrayLike | dict | None = None,
+    *,
+    as_recurrent_data: Literal[False],
+    windows: dict | None = None,
+    e: npt.ArrayLike | None = None,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]: ...
 
 
 def handle_xicn(

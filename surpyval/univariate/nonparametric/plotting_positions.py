@@ -1,15 +1,29 @@
+from typing import Callable
+
 import numpy as np
+import numpy.typing as npt
 from pandas import Series
 
 from surpyval.univariate import nonparametric as nonp
+from surpyval.univariate.nonparametric.fleming_harrington import (
+    fleming_harrington,
+)
+from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
+from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen
 from surpyval.utils import xcnt_handler, xcnt_to_xrd
 
 # Estimator-form heuristics share one dispatch; the (A, B) constants
 # define the rank-based plotting-position formula F = (rank - A) / (N + B).
-ESTIMATOR_FUNCS = {
-    "Nelson-Aalen": nonp.nelson_aalen,
-    "Kaplan-Meier": nonp.kaplan_meier,
-    "Fleming-Harrington": nonp.fleming_harrington,
+# Imported from their defining modules rather than through the package
+# namespace. Each shares its name with the submodule that defines it, so
+# ``nonp.nelson_aalen`` is the function only once the package __init__
+# has bound it over the submodule -- and this dict is built at import
+# time, while that __init__ is still running. The other ``nonp.`` uses
+# below are inside functions, so they resolve after it has finished.
+ESTIMATOR_FUNCS: dict[str, Callable[..., npt.NDArray]] = {
+    "Nelson-Aalen": nelson_aalen,
+    "Kaplan-Meier": kaplan_meier,
+    "Fleming-Harrington": fleming_harrington,
 }
 
 HEURISTIC_AB = {
@@ -33,13 +47,13 @@ HEURISTIC_AB = {
 
 
 def plotting_positions(
-    x,
-    c=None,
-    n=None,
-    t=None,
-    heuristic="Blom",
-    turnbull_estimator="Fleming-Harrington",
-):
+    x: npt.ArrayLike,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    t: npt.ArrayLike | None = None,
+    heuristic: str = "Blom",
+    turnbull_estimator: str = "Fleming-Harrington",
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     This function takes in data in the xcnt format and outputs an approximation
     of the CDF. This function can be used to produce estimates of F using the
@@ -143,9 +157,9 @@ def plotting_positions(
     if heuristic == "Filliben":
         out = nonp.filliben(x, c, n, t)
     elif heuristic in ESTIMATOR_FUNCS:
-        x, r, d = xcnt_to_xrd(x, c, n, t)
+        x_e, r, d = xcnt_to_xrd(x, c, n, t)
         R = ESTIMATOR_FUNCS[heuristic](r, d)
-        return x, r, d, 1 - R
+        return x_e, r, d, 1 - R
     elif heuristic == "Turnbull":
         out = nonp.turnbull(x, c, n, t, estimator=turnbull_estimator)
     else:

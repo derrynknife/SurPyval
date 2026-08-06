@@ -9,6 +9,8 @@ API
    surpyval.regression
    surpyval.counting
    surpyval.degradation
+   surpyval.multivariate
+   surpyval.beta
    comparison_and_validation
    surpyval.utilities
    surpyval.datasets
