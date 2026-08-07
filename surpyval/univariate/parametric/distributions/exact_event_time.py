@@ -1,6 +1,10 @@
+import numpy.typing as npt
+
 import surpyval
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     ParametricFitter,
     reject_structural_params,
 )
@@ -9,7 +13,7 @@ from ..parametric import Parametric
 
 
 class ExactEventTime_(ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=1,
@@ -20,33 +24,44 @@ class ExactEventTime_(ParametricFitter):
             plot_x_scale="linear",
         )
 
-    def sf(self, x, T):
-        x = np.atleast_1d(x)
-        return (x < T).astype(float)
+    def sf(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        x_arr = np.atleast_1d(x)
+        return (x_arr < T).astype(float)
 
-    def ff(self, x, T):
-        x = np.atleast_1d(x)
-        return (x >= T).astype(float)
+    def ff(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        x_arr = np.atleast_1d(x)
+        return (x_arr >= T).astype(float)
 
-    def df(self, x, T):
-        x = np.atleast_1d(x)
-        df = np.zeros_like(x).astype(float)
-        df[x == T] = np.inf
+    def df(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        x_arr = np.atleast_1d(x)
+        df = np.zeros_like(x_arr).astype(float)
+        df[x_arr == T] = np.inf
         return df
 
-    def hf(self, x, T):
-        x = np.atleast_1d(x)
-        hf = np.zeros_like(x).astype(float)
-        hf[x >= T] = np.inf
+    def hf(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        x_arr = np.atleast_1d(x)
+        hf = np.zeros_like(x_arr).astype(float)
+        hf[x_arr >= T] = np.inf
         return hf
 
-    def Hf(self, x, T):
+    def Hf(self, x: Numeric, T: Boxable) -> npt.NDArray:
         return self.hf(x, T)
 
-    def random(self, size, T):
+    def random(self, size: int | tuple[int, ...], T: Boxable) -> npt.NDArray:
         return np.ones(size) * T
 
-    def fit(self, x, c=None, n=None, t=None):
+    # Narrower than OptimisedFitMixin.fit by design, and no longer a
+    # Liskov violation: ExactEventTime_ does not inherit that mixin,
+    # so there is no wider fit above this one. The event time is
+    # bracketed exactly by the censoring bounds, so there is nothing
+    # for how, offset, zi or lfp to do.
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+    ) -> Parametric:
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t)
 
         if 0 in c:
@@ -80,7 +95,13 @@ class ExactEventTime_(ParametricFitter):
         model.params = np.array([T])
         return model
 
-    def from_params(self, params, gamma=None, p=None, f0=None):
+    def from_params(
+        self,
+        params: Boxable,
+        gamma: Boxable | None = None,
+        p: Boxable | None = None,
+        f0: Boxable | None = None,
+    ) -> Parametric:
         """Create an ExactEventTime model from the known event time.
 
         ``params`` is the event time, previously named ``T``. ``gamma``,
@@ -93,4 +114,4 @@ class ExactEventTime_(ParametricFitter):
         return model
 
 
-ExactEventTime = ExactEventTime_("ExactEventTime")
+ExactEventTime: ExactEventTime_ = ExactEventTime_("ExactEventTime")

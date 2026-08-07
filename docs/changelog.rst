@@ -108,11 +108,29 @@ v0.19.1 (unreleased)
   mypy cannot resolve them through that cycle. They name the concrete
   class instead.
 
-- **Type-hint coverage is now enforced, for seventeen modules (#143).**
+- **Limited-failure and zero-inflated Rayleigh models could not be fit.**
+  ``Rayleigh.fit(x, lfp=True)`` and ``Rayleigh.fit(x, zi=True)`` both
+  raised ``ValueError: zero-dimensional arrays cannot be concatenated``.
+
+  Rayleigh is the only single-parameter distribution here, and its
+  ``_parameter_initialiser`` returned the sigma seed as a bare scalar
+  rather than a sequence. ``np.array(init)`` in ``_initial_guess`` then
+  produced a 0-dimensional array instead of a length-1 one, and the
+  ``lfp`` and ``zi`` paths append their ``p`` and ``f0`` seeds with
+  ``np.concatenate``, which a 0-d array cannot take. The seed is now a
+  one-tuple. Plain and offset fits are unchanged.
+
+  Found by surveying every ``_parameter_initialiser`` in the library
+  after the type-hint work turned up three different return shapes; a
+  sweep of all fourteen continuous distributions across both paths
+  confirmed Rayleigh was the only one affected.
+
+- **Type-hint coverage is now enforced, for nineteen modules (#143).**
   ``surpyval.distribution``, ``surpyval.serialisation``,
   ``surpyval.metrics``, ``surpyval.univariate.information_criteria``,
-  ``surpyval.datasets``, the Weibull and the eight discrete
-  distributions, and all of ``surpyval.univariate.nonparametric``,
+  ``surpyval.datasets``, the Weibull, the eight discrete
+  distributions, ``CustomDistribution`` and ``ExactEventTime``, and
+  all of ``surpyval.univariate.nonparametric``,
   ``surpyval.recurrent.nonparametric`` and
   ``surpyval.univariate.regression.frailty`` have
   ``disallow_untyped_defs`` set in ``pyproject.toml``, so an
@@ -120,8 +138,26 @@ v0.19.1 (unreleased)
   abstract base classes every model inherits from, the Kaplan-Meier,
   Nelson-Aalen, Fleming-Harrington and Turnbull estimators, the
   log-rank test, the plotting positions, the non-parametric MCF, the
-  shared-frailty fitter, the bundled datasets and nine of the 25
+  shared-frailty fitter, the bundled datasets and eleven of the 25
   parametric distributions.
+
+  ``CustomDistribution`` needed restructuring rather than only
+  annotating. It assigned its distribution functions onto the
+  instance -- ``self.Hf = fun``, then lambdas for ``hf``, ``sf``,
+  ``ff`` and ``df`` -- which stopped being possible once
+  ``OptimisedFitMixin`` declared those names for its own use, because
+  a subclass inherits the declarations and assigning to an inherited
+  method is an error. The function is stored as ``_fun`` and the five
+  are real methods delegating to it. Equivalent by construction: the
+  old ``self.Hf = fun`` was an unbound instance attribute, so
+  ``self.Hf(x, *params)`` called ``fun(x, *params)`` either way. The
+  autograd-derived ``hf`` and ``df`` were checked numerically against
+  the previous implementation, gradients included.
+
+  Its ``_parameter_initialiser`` returns a *list*, where Weibull
+  returns a tuple and the discrete distributions return an array --
+  three shapes for one contract the base never pinned down. Noted in
+  the signatures rather than unified, since every caller coerces.
 
   ``handle_xicn`` gained ``@overload`` declarations as part of this.
   Its return shape is decided by ``as_recurrent_data``, but its

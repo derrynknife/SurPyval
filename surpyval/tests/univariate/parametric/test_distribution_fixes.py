@@ -18,6 +18,7 @@ from surpyval import (
     GumbelLEV,
     Logistic,
     LogNormal,
+    Rayleigh,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
@@ -165,3 +166,28 @@ def test_from_params_signature_matches_the_base():
     for dist in (Bernoulli, Binomial, ExactEventTime):
         own = set(inspect.signature(type(dist).from_params).parameters)
         assert base <= own, dist.name
+
+
+# --- Rayleigh's initial guess had to be a sequence ------------------------
+#
+# Rayleigh is the only single-parameter distribution here, and its
+# _parameter_initialiser returned a bare scalar for the non-offset case.
+# `np.array(init)` in _initial_guess then produced a 0-dimensional array
+# rather than a length-1 one, and the lfp and zi paths concatenate the p
+# and f0 seeds onto it -- which a 0-d array cannot do.
+
+
+def test_rayleigh_initial_guess_is_a_sequence():
+    seed = Rayleigh._parameter_initialiser(np.array([1.0, 2.0, 3.0, 4.0]))
+    assert np.array(seed).ndim == 1
+
+
+@pytest.mark.parametrize("structural", ["lfp", "zi"])
+def test_rayleigh_fits_with_lfp_and_zi(structural):
+    np.random.seed(0)
+    x = Rayleigh.random(200, 10.0)
+    if structural == "zi":
+        x = np.concatenate([x, np.zeros(10)])
+    model = Rayleigh.fit(x, **{structural: True})
+    # The sigma estimate is unaffected; the point is that it runs at all.
+    assert model.params[0] == pytest.approx(9.92, abs=0.5)

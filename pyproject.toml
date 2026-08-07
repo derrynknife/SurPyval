@@ -137,6 +137,8 @@ module = [
     'surpyval.univariate.parametric.distributions.geometric',
     'surpyval.univariate.parametric.distributions.negative_binomial',
     'surpyval.univariate.parametric.distributions.poisson',
+    'surpyval.univariate.parametric.distributions.custom_distribution',
+    'surpyval.univariate.parametric.distributions.exact_event_time',
 ]
 disallow_untyped_defs = true
 

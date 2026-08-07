@@ -50,7 +50,14 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
             gamma_init = np.min(x) - 1.0
             sigma_init = np.sqrt(np.mean((x - gamma_init) ** 2) / 2)
             return gamma_init, sigma_init
-        return np.sqrt(np.mean(x**2) / 2)
+        # A one-tuple, not the bare scalar this used to return. Rayleigh
+        # is the only single-parameter distribution here, and the scalar
+        # made `np.array(init)` in _initial_guess 0-dimensional rather
+        # than length-1. The lfp and zi paths then concatenate the p and
+        # f0 seeds onto it, and a 0-d array cannot be concatenated, so
+        # `Rayleigh.fit(x, lfp=True)` and `zi=True` both raised
+        # "zero-dimensional arrays cannot be concatenated".
+        return (np.sqrt(np.mean(x**2) / 2),)
 
     def sf(self, x, sigma):
         r"""
