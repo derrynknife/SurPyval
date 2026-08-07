@@ -140,6 +140,7 @@ module = [
     'surpyval.univariate.parametric.distributions.custom_distribution',
     'surpyval.univariate.parametric.distributions.exact_event_time',
     'surpyval.univariate.parametric.distributions.normal',
+    'surpyval.univariate.parametric.distributions.lognormal',
 ]
 disallow_untyped_defs = true
 

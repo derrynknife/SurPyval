@@ -208,11 +208,12 @@ v0.19.1 (unreleased)
   sweep of all fourteen continuous distributions across both paths
   confirmed Rayleigh was the only one affected.
 
-- **Type-hint coverage is now enforced, for twenty modules (#143).**
+- **Type-hint coverage is now enforced, for twenty-one modules (#143).**
   ``surpyval.distribution``, ``surpyval.serialisation``,
   ``surpyval.metrics``, ``surpyval.univariate.information_criteria``,
-  ``surpyval.datasets``, the Weibull, the eight discrete
-  distributions, ``CustomDistribution`` and ``ExactEventTime``, and
+  ``surpyval.datasets``, the Weibull, the Normal, the LogNormal, the
+  eight discrete distributions, ``CustomDistribution`` and
+  ``ExactEventTime``, and
   all of ``surpyval.univariate.nonparametric``,
   ``surpyval.recurrent.nonparametric`` and
   ``surpyval.univariate.regression.frailty`` have
@@ -221,8 +222,18 @@ v0.19.1 (unreleased)
   abstract base classes every model inherits from, the Kaplan-Meier,
   Nelson-Aalen, Fleming-Harrington and Turnbull estimators, the
   log-rank test, the plotting positions, the non-parametric MCF, the
-  shared-frailty fitter, the bundled datasets and eleven of the 25
+  shared-frailty fitter, the bundled datasets and thirteen of the 25
   parametric distributions.
+
+  ``LogNormal.moment`` is annotated ``n: Numeric`` where ``Normal``'s
+  is ``n: int``, and the difference is real rather than an oversight.
+  Both docstrings promise "integer or numpy array of integers".
+  LogNormal's closed form is vectorised and delivers that;
+  ``Normal``, ``GumbelLEV`` and ``LogLogistic`` delegate to
+  ``scipy.stats``, which raises ``ValueError: The truth value of an
+  array ... is ambiguous`` on an array of orders. The annotations now
+  say which is which; the three docstrings that overpromise are not
+  yet corrected.
 
   ``CustomDistribution`` needed restructuring rather than only
   annotating. It assigned its distribution functions onto the

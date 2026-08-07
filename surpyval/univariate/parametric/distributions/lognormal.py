@@ -1,3 +1,4 @@
+import numpy.typing as npt
 from autograd.scipy.stats import norm
 from scipy.stats import norm as scipy_norm
 
@@ -8,13 +9,16 @@ from surpyval.univariate.parametric.fitters.closed_form import (
     weighted_mean_and_std,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class LogNormal_(OptimisedFitMixin, ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -42,7 +46,9 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
             ],
         )
 
-    def _parameter_initialiser(self, data, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
         x, c, n = data.x, data.c, data.n
         if offset:
             # Shift the data so the log transform is defined, then
@@ -57,7 +63,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         mu, sigma = norm_mod.params
         return np.array([mu, sigma], dtype=float)
 
-    def _closed_form_mle(self, data):
+    def _closed_form_mle(self, data: SurpyvalData) -> npt.NDArray | None:
         r"""Exact MLE on complete data: the Normal closed form applied to
         :math:`\log x`, since the parameters are those of the underlying
         normal. Censoring or truncation fall back to the optimiser for
@@ -70,7 +76,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
             return None
         return weighted_mean_and_std(np.log(x), data.n)
 
-    def sf(self, x, mu, sigma):
+    def sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Survival (or Reliability) function for the LogNormal Distribution:
@@ -104,7 +110,9 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, mu, sigma)
 
-    def cs(self, x, X, mu, sigma):
+    def cs(
+        self, x: Numeric, X: Numeric, mu: Boxable, sigma: Boxable
+    ) -> Boxable:
         r"""
 
         Conditional survival function for the LogNormal Distribution:
@@ -140,7 +148,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return self.sf(x + X, mu, sigma) / self.sf(X, mu, sigma)
 
-    def ff(self, x, mu, sigma):
+    def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the LogNormal Distribution:
@@ -174,7 +182,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return norm.cdf(np.log(x), mu, sigma)
 
-    def df(self, x, mu, sigma):
+    def df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Density function for the LogNormal Distribution:
@@ -209,7 +217,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return 1.0 / x * norm.pdf(np.log(x), mu, sigma)
 
-    def hf(self, x, mu, sigma):
+    def hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the LogNormal Distribution:
@@ -243,7 +251,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return self.df(x, mu, sigma) / self.sf(x, mu, sigma)
 
-    def Hf(self, x, mu, sigma):
+    def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the LogNormal Distribution:
@@ -277,7 +285,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, mu, sigma))
 
-    def qf(self, p, mu, sigma):
+    def qf(self, p: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Quantile function for the LogNormal Distribution:
@@ -311,7 +319,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(scipy_norm.ppf(p, mu, sigma))
 
-    def mean(self, mu, sigma):
+    def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Mean of the LogNormal Distribution:
@@ -341,7 +349,12 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(mu + (sigma**2) / 2)
 
-    def moment(self, n, mu, sigma):
+    # ``n`` is Numeric, not int as on Normal. The docstring below claims
+    # an array of orders works, and here it does -- the closed form is
+    # vectorised. The scipy-backed siblings (Normal, GumbelLEV,
+    # LogLogistic) carry the same claim and raise on an array, which is
+    # why their annotation is narrower.
+    def moment(self, n: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         n-th (non central) moment of the LogNormal distribution
@@ -373,7 +386,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(n * mu + (n**2 * sigma**2) / 2)
 
-    def entropy(self, mu, sigma):
+    def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the LogNormal distribution.
@@ -403,25 +416,30 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return mu + 0.5 * np.log(2 * np.pi * np.e * sigma**2)
 
-    def log_df(self, x, mu, sigma):
+    def log_df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return -np.log(x) + norm.logpdf(np.log(x), mu, sigma)
 
-    def log_ff(self, x, mu, sigma):
+    def log_ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return norm.logcdf(np.log(x), mu, sigma)
 
-    def log_sf(self, x, mu, sigma):
+    def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return norm.logsf(np.log(x), mu, sigma)
 
-    def mpp_x_transform(self, x, gamma=0):
+    # Takes a gamma that no caller passes: the MPP fitter subtracts the
+    # offset from x itself before calling this (see fitters/mpp.py).
+    # Kept because it is part of the published surface.
+    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
         return np.log(x - gamma)
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         return para.Normal.qf(y, 0, 1)
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         return para.Normal.ff(y, 0, 1)
 
-    def unpack_rr(self, params, rr):
+    def unpack_rr(
+        self, params: npt.NDArray, rr: str
+    ) -> tuple[Boxable, Boxable]:
         if rr == "y":
             sigma, mu = params
             mu = -mu / sigma
@@ -430,7 +448,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
             sigma, mu = params
         return mu, sigma
 
-    def _mom(self, x):
+    def _mom(self, x: npt.NDArray) -> tuple[Boxable, Boxable]:
         norm_mod = para.Normal.fit(np.log(x), how="MOM")
         mu, sigma = norm_mod.params
         return mu, sigma
