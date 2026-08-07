@@ -89,9 +89,12 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         rate = 1.0 / x[np.isfinite(x)].mean()
         if offset:
-            return np.min(x) - (np.max(x) - np.min(x)) / 10.0, rate
+            return np.array(
+                [np.min(x) - (np.max(x) - np.min(x)) / 10.0, rate],
+                dtype=float,
+            )
         else:
-            return np.array([rate])
+            return np.array([rate], dtype=float)
 
     def sf(self, x, failure_rate):
         r"""

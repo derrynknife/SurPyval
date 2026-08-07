@@ -24,7 +24,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        return self.fit(x, c, n, how="MPP").params
+        return np.asarray(self.fit(x, c, n, how="MPP").params, dtype=float)
 
     def sf(self, x, mu, sigma):
         r"""

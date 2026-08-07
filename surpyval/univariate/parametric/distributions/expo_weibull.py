@@ -72,8 +72,11 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             # actually installed defeats the point of shifting at all.
             gamma = np.min(x) - 1.0
             alpha, beta = self._gumbel_seed(x - gamma, c, n, refine=True)
-            return gamma, alpha, beta, 1.0
-        return (*self._gumbel_seed(x, c, n, refine=False), 1.0)
+            return np.array([gamma, alpha, beta, 1.0], dtype=float)
+        return np.array(
+            [*self._gumbel_seed(x, c, n, refine=False), 1.0],
+            dtype=float,
+        )
 
     def sf(self, x, alpha, beta, mu):
         r"""

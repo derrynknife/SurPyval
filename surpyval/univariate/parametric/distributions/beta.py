@@ -36,7 +36,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
             p = self._mom(x)
         else:
             p = 1.0, 1.0
-        return p
+        return np.asarray(p, dtype=float)
 
     def sf(self, x, alpha, beta):
         r"""

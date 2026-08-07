@@ -53,9 +53,12 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         if 2 in c:
             raise ValueError(c)
-        return para.Normal.fit(
-            x[c != -1], c[c != -1], n[c != -1], how="MPP"
-        ).params
+        return np.asarray(
+            para.Normal.fit(
+                x[c != -1], c[c != -1], n[c != -1], how="MPP"
+            ).params,
+            dtype=float,
+        )
 
     def _closed_form_mle(self, data):
         r"""Exact MLE on complete data: the sample mean and (MLE)

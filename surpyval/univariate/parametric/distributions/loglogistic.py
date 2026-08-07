@@ -26,9 +26,12 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             flag = (c == 0).astype(int)
             value_range = np.max(x) - np.min(x)
             gamma_init = np.min(x) - value_range / 10
-            return gamma_init, x.sum() / (n * flag).sum(), 2.0
+            return np.array(
+                [gamma_init, x.sum() / (n * flag).sum(), 2.0],
+                dtype=float,
+            )
         else:
-            return self.fit(x, c, n, how="MPP").params
+            return np.asarray(self.fit(x, c, n, how="MPP").params, dtype=float)
 
     def sf(self, x, alpha, beta):
         r"""

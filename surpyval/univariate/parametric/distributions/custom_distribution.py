@@ -143,7 +143,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         n: npt.NDArray | None = None,
         t: npt.NDArray | None = None,
         offset: bool = False,
-    ) -> list[float]:
+    ) -> npt.NDArray:
         out: list[float] = []
         for low, high in self.bounds:
             if low is None:
@@ -153,7 +153,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
             else:
                 out.append((float(high) + float(low)) / 2.0)
 
-        return out
+        return np.array(out, dtype=float)
 
     def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y

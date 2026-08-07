@@ -49,7 +49,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         if offset:
             gamma_init = np.min(x) - 1.0
             sigma_init = np.sqrt(np.mean((x - gamma_init) ** 2) / 2)
-            return gamma_init, sigma_init
+            return np.array([gamma_init, sigma_init], dtype=float)
         # A one-tuple, not the bare scalar this used to return. Rayleigh
         # is the only single-parameter distribution here, and the scalar
         # made `np.array(init)` in _initial_guess 0-dimensional rather
@@ -57,7 +57,12 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         # f0 seeds onto it, and a 0-d array cannot be concatenated, so
         # `Rayleigh.fit(x, lfp=True)` and `zi=True` both raised
         # "zero-dimensional arrays cannot be concatenated".
-        return (np.sqrt(np.mean(x**2) / 2),)
+        return np.array(
+            [
+                np.sqrt(np.mean(x**2) / 2),
+            ],
+            dtype=float,
+        )
 
     def sf(self, x, sigma):
         r"""

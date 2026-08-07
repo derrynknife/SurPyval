@@ -93,8 +93,8 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             # silent nonsense.
             gamma_init = np.min(x) - 1.0
             alpha, beta = self._moment_estimate(x - gamma_init)
-            return gamma_init, alpha, beta
-        return self._moment_estimate(x)
+            return np.array([gamma_init, alpha, beta], dtype=float)
+        return np.asarray(self._moment_estimate(x), dtype=float)
 
     def sf(self, x, alpha, beta):
         r"""

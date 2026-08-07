@@ -51,10 +51,10 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
                 np.log(x - gamma_init), c=c, n=n, how="MLE"
             )
             mu, sigma = norm_mod.params
-            return gamma_init, mu, sigma
+            return np.array([gamma_init, mu, sigma], dtype=float)
         norm_mod = para.Normal.fit(np.log(x), c=c, n=n, how="MLE")
         mu, sigma = norm_mod.params
-        return mu, sigma
+        return np.array([mu, sigma], dtype=float)
 
     def _closed_form_mle(self, data):
         r"""Exact MLE on complete data: the Normal closed form applied to

@@ -69,7 +69,7 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         alpha = max(term1 * mean, 0.5)
         beta = max(term1 * (1 - mean), 0.5)
 
-        return alpha, beta, a, b
+        return np.array([alpha, beta, a, b], dtype=float)
 
     def _z(self, x, a, b):
         """Standardise ``x`` onto the unit interval."""

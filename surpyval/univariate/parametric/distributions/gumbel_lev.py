@@ -22,7 +22,10 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
         heuristic = "Fleming-Harrington"
-        return self.fit(x, c, n, how="MPP", heuristic=heuristic).params
+        return np.asarray(
+            self.fit(x, c, n, how="MPP", heuristic=heuristic).params,
+            dtype=float,
+        )
 
     def sf(self, x, mu, sigma):
         r"""

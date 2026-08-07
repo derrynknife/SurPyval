@@ -70,8 +70,11 @@ class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
         n: npt.NDArray | None = None,
         t: npt.NDArray | None = None,
         offset: bool = False,
-    ) -> npt.NDArray | tuple[float, ...]:
-        return self.dist._parameter_initialiser(x, c=c, n=n, t=t)
+    ) -> npt.NDArray:
+        return np.asarray(
+            self.dist._parameter_initialiser(x, c=c, n=n, t=t),
+            dtype=float,
+        )
 
     def sf(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""Survival :math:`R_K(k) = R(k)` (the continuous survival)."""

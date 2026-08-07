@@ -30,14 +30,14 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         n: npt.NDArray | None = None,
         t: npt.NDArray | None = None,
         offset: bool = False,
-    ) -> tuple[float, ...]:
+    ) -> npt.NDArray:
         mpp_model = self.fit(
             x, c, n, offset=offset, how="MPP", heuristic="Nelson-Aalen"
         )
         if offset:
-            return (mpp_model.gamma, *mpp_model.params)
+            return np.array([mpp_model.gamma, *mpp_model.params], dtype=float)
         else:
-            return tuple(mpp_model.params)
+            return np.asarray(mpp_model.params, dtype=float)
 
     def sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""

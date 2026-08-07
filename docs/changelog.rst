@@ -108,6 +108,33 @@ v0.19.1 (unreleased)
   mypy cannot resolve them through that cycle. They name the concrete
   class instead.
 
+- **Every ``_parameter_initialiser`` now returns the same thing.**
+  The initial-guess seed a distribution hands the optimiser came back in
+  four different containers across the 21 implementations: a tuple in
+  nine, a numpy array in six, a Python list in one, a fitted model's
+  ``.params`` in five -- and a bare scalar in ``Rayleigh``. Two files
+  disagreed with *themselves*: ``exponential`` returned a tuple in its
+  offset branch and an array in the other, ``rayleigh`` a tuple and a
+  scalar.
+
+  It worked because the one caller, ``_initial_guess``, does
+  ``np.array(init)``, which flattens tuple, list and array alike. It
+  stopped working at the scalar, because ``np.array`` of a scalar is
+  0-dimensional rather than length-1, and the ``lfp`` and ``zi`` paths
+  concatenate onto the seed.
+
+  All 28 return statements now construct a 1-D float array explicitly,
+  so the shape is decided where the values are known rather than
+  inferred downstream, and a 0-dimensional seed is no longer
+  expressible. No seed changed: all 38 -- every distribution, plain and
+  offset -- were compared before and after and are identical.
+
+  The seed itself is unchanged in layout, and it is flat rather than
+  nested: ``[gamma]`` when an offset is requested, then the ``k``
+  distribution parameters, then ``[p]`` for a limited failure population
+  and ``[f0]`` for zero inflation, appended by the caller. The arity
+  therefore depends on both ``k`` and the structural flags.
+
 - **Limited-failure and zero-inflated Rayleigh models could not be fit.**
   ``Rayleigh.fit(x, lfp=True)`` and ``Rayleigh.fit(x, zi=True)`` both
   raised ``ValueError: zero-dimensional arrays cannot be concatenated``.

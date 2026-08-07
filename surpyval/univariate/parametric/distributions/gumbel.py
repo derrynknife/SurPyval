@@ -25,7 +25,10 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
             heuristic = "Turnbull"
         else:
             heuristic = "Nelson-Aalen"
-        return self.fit(x, c, n, how="MPP", heuristic=heuristic).params
+        return np.asarray(
+            self.fit(x, c, n, how="MPP", heuristic=heuristic).params,
+            dtype=float,
+        )
 
     def sf(self, x, mu, sigma):
         r"""

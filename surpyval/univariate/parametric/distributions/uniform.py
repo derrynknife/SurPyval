@@ -23,7 +23,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        return np.min(x) - 1.0, np.max(x) + 1.0
+        return np.array([np.min(x) - 1.0, np.max(x) + 1.0], dtype=float)
 
     def sf(self, x, a, b):
         r"""
