@@ -44,7 +44,8 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
             ],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(self, data, offset=False):
+        x = data.x
         # sqrt(E[x^2] / 2) is the closed-form uncensored MLE for sigma
         if offset:
             gamma_init = np.min(x) - 1.0

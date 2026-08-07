@@ -26,6 +26,7 @@ from surpyval import (
 from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 def test_lognormal_fits_negative_mu():
@@ -181,7 +182,9 @@ def test_from_params_signature_matches_the_base():
 
 
 def test_rayleigh_initial_guess_is_a_sequence():
-    seed = Rayleigh._parameter_initialiser(np.array([1.0, 2.0, 3.0, 4.0]))
+    seed = Rayleigh._parameter_initialiser(
+        SurpyvalData(np.array([1.0, 2.0, 3.0, 4.0]))
+    )
     assert np.array(seed).ndim == 1
 
 
@@ -196,21 +199,37 @@ def test_rayleigh_fits_with_lfp_and_zi(structural):
     assert model.params[0] == pytest.approx(9.92, abs=0.5)
 
 
-# --- _parameter_initialiser must honour its documented c=None ------------
+# --- _parameter_initialiser takes a SurpyvalData -------------------------
 #
-# ParametricFitter documents the signature as
-# (self, x, c=None, n=None, t=None, offset=False), but Normal tested and
-# indexed with c, and Gumbel tested with it, before either was defaulted.
-# Both raised TypeError for the documented call. Every caller inside the
-# package passes c and n, which is why it went unnoticed.
+# It used to take (x, c=None, n=None, t=None, offset=False), and every
+# implementation re-established the conventions that SurpyvalData had
+# already guaranteed -- inconsistently. Normal indexed with c and Gumbel
+# tested membership on it before either was defaulted, so both raised
+# TypeError for the signature the base class documented; every caller
+# inside the package passed c and n, which is why it went unnoticed.
+# There is now nothing to default: the argument is the normalised
+# object, so c, n and t are always arrays.
 
 
 @pytest.mark.parametrize(
     "dist",
     [Normal, Gumbel, GumbelLEV, Weibull, LogNormal, Logistic, Rayleigh],
 )
-def test_parameter_initialiser_accepts_the_documented_defaults(dist):
+def test_parameter_initialiser_takes_surpyval_data(dist):
     x = np.array([1.0, 2.0, 3.0, 4.0, 5.5])
-    seed = dist._parameter_initialiser(x)
+    seed = dist._parameter_initialiser(SurpyvalData(x))
     assert np.asarray(seed).ndim == 1
     assert np.isfinite(np.asarray(seed, dtype=float)).all()
+
+
+@pytest.mark.parametrize(
+    "dist",
+    [Normal, Gumbel, GumbelLEV, Weibull, LogNormal, Logistic, Rayleigh],
+)
+def test_parameter_initialiser_rejects_loose_arrays(dist):
+    # The old signature is gone rather than deprecated. Passing a bare
+    # array reaches the ``.x`` attribute access and fails loudly, which
+    # is the point: a silent partial acceptance is what let the c=None
+    # divergence above survive.
+    with pytest.raises(AttributeError):
+        dist._parameter_initialiser(np.array([1.0, 2.0, 3.0]))

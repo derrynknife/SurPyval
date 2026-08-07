@@ -9,6 +9,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Weibull_(OptimisedFitMixin, ParametricFitter):
@@ -24,15 +25,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         )
 
     def _parameter_initialiser(
-        self,
-        x: Numeric,
-        c: npt.NDArray | None = None,
-        n: npt.NDArray | None = None,
-        t: npt.NDArray | None = None,
-        offset: bool = False,
+        self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
-        mpp_model = self.fit(
-            x, c, n, offset=offset, how="MPP", heuristic="Nelson-Aalen"
+        mpp_model = self.fit_from_surpyval_data(
+            data, offset=offset, how="MPP", heuristic="Nelson-Aalen"
         )
         if offset:
             return np.array([mpp_model.gamma, *mpp_model.params], dtype=float)

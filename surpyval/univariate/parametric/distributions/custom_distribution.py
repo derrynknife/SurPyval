@@ -11,6 +11,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class CustomDistribution(OptimisedFitMixin, ParametricFitter):
@@ -137,12 +138,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     # distributions return an array. The base contract does not pin
     # this down; callers coerce whichever they get.
     def _parameter_initialiser(
-        self,
-        x: npt.ArrayLike,
-        c: npt.NDArray | None = None,
-        n: npt.NDArray | None = None,
-        t: npt.NDArray | None = None,
-        offset: bool = False,
+        self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
         out: list[float] = []
         for low, high in self.bounds:

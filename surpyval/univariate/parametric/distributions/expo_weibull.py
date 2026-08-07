@@ -56,7 +56,8 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             beta = 1.0
         return alpha, beta
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(self, data, offset=False):
+        x, c, n = data.x, data.c, data.n
         if offset:
             # Estimate the offset first and seed alpha and beta from the
             # shifted data. Taking logs before removing the shift reads

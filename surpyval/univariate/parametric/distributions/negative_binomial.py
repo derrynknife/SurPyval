@@ -12,6 +12,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
 )
 from surpyval.utils.autograd_gamma_compat import betainc, betaincln
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
@@ -52,17 +53,13 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         )
 
     def _parameter_initialiser(
-        self,
-        x: npt.NDArray,
-        c: npt.NDArray | None = None,
-        n: npt.NDArray | None = None,
-        t: npt.NDArray | None = None,
-        offset: bool = False,
+        self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
         # Method-of-moments seed from the shifted counts Y = T - 1: for the
         # negative binomial mean_Y = r(1-p)/p and var_Y = mean_Y / p, so
         # p = mean_Y / var_Y and r = mean_Y p / (1 - p). Falls back to a
         # neutral guess when the data are not overdispersed.
+        x = data.x
         finite = x[np.isfinite(x)]
         y = finite - 1.0 if finite.size else np.array([1.0])
         mean_y = max(y.mean(), 1e-3)

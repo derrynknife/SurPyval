@@ -11,6 +11,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
@@ -50,14 +51,10 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         )
 
     def _parameter_initialiser(
-        self,
-        x: npt.NDArray,
-        c: npt.NDArray | None = None,
-        n: npt.NDArray | None = None,
-        t: npt.NDArray | None = None,
-        offset: bool = False,
+        self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
         # The Poisson mean is mu, so the sample mean is the moment seed.
+        x = data.x
         finite = x[np.isfinite(x)]
         mu = finite.mean() if finite.size else 1.0
         return np.array([max(float(mu), 1e-3)])

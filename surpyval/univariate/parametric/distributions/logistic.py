@@ -23,8 +23,10 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
             plot_x_scale="linear",
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        return np.asarray(self.fit(x, c, n, how="MPP").params, dtype=float)
+    def _parameter_initialiser(self, data, offset=False):
+        return np.asarray(
+            self.fit_from_surpyval_data(data, how="MPP").params, dtype=float
+        )
 
     def sf(self, x, mu, sigma):
         r"""

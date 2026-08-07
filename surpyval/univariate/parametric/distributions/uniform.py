@@ -22,7 +22,8 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
             y_ticks=np.linspace(0, 1, 21)[1:-1],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(self, data, offset=False):
+        x = data.x
         return np.array([np.min(x) - 1.0, np.max(x) + 1.0], dtype=float)
 
     def sf(self, x, a, b):

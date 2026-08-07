@@ -119,6 +119,51 @@ v0.19.1 (unreleased)
   because it forwards ``c`` to ``fit`` without inspecting it. A sweep of
   all nineteen distributions found these two and no others.
 
+- **BREAKING: ``_parameter_initialiser`` takes a ``SurpyvalData``.**
+  The signature was ``(self, x, c=None, n=None, t=None, offset=False)``,
+  and every one of the 21 implementations spent its opening lines
+  re-establishing conventions that had already been established --
+  inconsistently, and in some cases wrongly. ``Normal`` defaulted
+  ``c`` and ``n``; ``Gumbel`` guarded ``c`` with ``is not None``;
+  ``Beta`` tested ``(c is not None) and (c == 0).all()``; ``Beta4``
+  tested both ``c`` and ``n``; ``LogLogistic`` ran a whole
+  ``xcnt_handler`` round trip in its offset branch. Two of those checks
+  were absent until this release and raised ``TypeError`` for the
+  documented call.
+
+  None of it was ever needed. The one production caller,
+  ``_initial_guess``, is reached from ``fit_from_surpyval_data``, which
+  is *handed* a ``SurpyvalData`` -- an object whose entire purpose is to
+  guarantee that ``x``, ``c``, ``n`` and ``t`` are present, validated
+  and in xcnt form -- and destructured it into loose arrays on the first
+  line of its body. The convention was rebuilt three layers below the
+  object that had already established it.
+
+  The signature is now ``(self, data: SurpyvalData, offset: bool =
+  False)``. ``offset`` stays a separate argument because it describes
+  the model being requested, not the data. ``_initial_guess`` and
+  ``_fit_numerically`` take the object rather than loose arrays for the
+  same reason. Seven defaulting checks are gone, along with 63 optional
+  data parameters (27 of them explicitly annotated ``| None``), and the
+  initialisers that used to
+  round-trip their arrays back through ``fit`` (re-running
+  ``xcnt_handler`` and rebuilding the object the caller already held)
+  now call ``fit_from_surpyval_data`` directly.
+
+  ``t`` is not passed to the initialisers, and never was: no caller has
+  ever supplied it. ``_initial_guess`` imputes interval- and
+  left-censored points to midpoints before seeding, which can put an
+  observation at or before its own left-truncation bound -- data
+  ``xcnt_handler`` rejects outright (#260) -- so the working copy it
+  builds is deliberately untruncated. That is what every initialiser has
+  always received; it is now explicit rather than accidental.
+
+  This is a breaking change for anyone who has written their own
+  distribution class. There is no shim: a bare array now fails at the
+  first attribute access rather than being half-accepted. Every one of
+  the 38 seeds -- each distribution, plain and offset -- is identical
+  before and after.
+
 - **Every ``_parameter_initialiser`` now returns the same thing.**
   The initial-guess seed a distribution hands the optimiser came back in
   four different containers across the 21 implementations: a tuple in

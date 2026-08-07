@@ -10,6 +10,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
@@ -55,15 +56,11 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
         )
 
     def _parameter_initialiser(
-        self,
-        x: npt.NDArray,
-        c: npt.NDArray | None = None,
-        n: npt.NDArray | None = None,
-        t: npt.NDArray | None = None,
-        offset: bool = False,
+        self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
         # q ~ P(survive the first cycle) from the empirical fraction above 1;
         # start beta at 1 (the geometric special case).
+        x = data.x
         finite = x[np.isfinite(x)]
         q = (finite > 1).mean() if finite.size else 0.5
         return np.array([min(max(q, 1e-3), 1 - 1e-3), 1.0])

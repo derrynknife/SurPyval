@@ -10,6 +10,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
@@ -46,15 +47,11 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         )
 
     def _parameter_initialiser(
-        self,
-        x: npt.NDArray,
-        c: npt.NDArray | None = None,
-        n: npt.NDArray | None = None,
-        t: npt.NDArray | None = None,
-        offset: bool = False,
+        self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
         # Method-of-moments seed: the mean of a geometric on {1, 2, ...} is
         # 1 / p, so p ~ 1 / mean(x). Kept inside (0, 1).
+        x = data.x
         finite = x[np.isfinite(x)]
         mean = finite.mean() if finite.size else 2.0
         p = 1.0 / max(mean, 1.0 + 1e-8)

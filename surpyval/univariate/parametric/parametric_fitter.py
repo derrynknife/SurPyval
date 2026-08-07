@@ -92,6 +92,27 @@ def reject_structural_params(
             )
 
 
+def _imputed_data(
+    x: npt.NDArray, c: npt.NDArray, n: npt.NDArray
+) -> SurpyvalData:
+    """Wrap ``_initial_guess``'s working copy as a ``SurpyvalData``.
+
+    ``group_and_sort=False`` because this is not user input. The rows
+    have already been validated once, and merging duplicates or
+    reordering them would change what the initialisers see for no gain.
+
+    The truncation bounds are deliberately left at their defaults rather
+    than carried over from the data being seeded. The imputation moves
+    interval- and left-censored points to a midpoint, which can put an
+    observation at or before its own left-truncation time -- a
+    contradiction ``xcnt_handler`` rejects outright (#260). Seeding is
+    not inference, so the untruncated copy is the right one: it is what
+    every initialiser has always been given, since no caller ever passed
+    ``t`` down.
+    """
+    return SurpyvalData(x=x, c=c, n=n, group_and_sort=False)
+
+
 PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
 
@@ -129,7 +150,7 @@ class ParametricFitter:
 
     A distribution needs only ``hf`` and ``Hf`` (or ``sf``, ``ff`` and
     ``df``) plus a ``_parameter_initialiser`` with the signature
-    ``(self, x, c=None, n=None, t=None, offset=False)`` for fitting to
+    ``(self, data: SurpyvalData, offset: bool = False)`` for fitting to
     work; ``log_df``, ``log_sf``, ``log_ff`` and ``random`` have generic
     implementations here that subclasses can override with closed forms.
     Probability plotting (the MPP fit method and ``Parametric.plot``)
@@ -572,7 +593,7 @@ class OptimisedFitMixin:
         # Rayleigh, which made the seed 0-dimensional and broke the
         # lfp and zi paths outright.
         def _parameter_initialiser(
-            self, *args: Any, **kwargs: Any
+            self, data: SurpyvalData, offset: bool = False
         ) -> npt.NDArray: ...
         def _neg_ll_func(self, data: Any, *params: Any) -> Any: ...
         def _log_likelihood(self, data: Any, *params: Any) -> Any: ...
@@ -1247,7 +1268,14 @@ class OptimisedFitMixin:
 
         return tl, tr
 
-    def _initial_guess(self, x, c, n, offset, zi, lfp, heuristic):
+    def _initial_guess(
+        self,
+        data: SurpyvalData,
+        offset: bool,
+        zi: bool,
+        lfp: bool,
+        heuristic: str,
+    ) -> npt.NDArray:
         """Derive an initial parameter vector for the iterative fitters.
 
         Builds a working copy of the data with interval- and
@@ -1256,7 +1284,13 @@ class OptimisedFitMixin:
         the limited-failure (``p``) and zero-inflation (``f0``) seeds when
         those models are requested. The returned vector is in the natural
         (untransformed) parameter space.
+
+        The working copy is rewrapped as a ``SurpyvalData`` before it is
+        handed on, rather than the caller's own object being forwarded:
+        the imputation rewrites ``x`` and ``c``, and the masks below drop
+        rows, so the caller's object no longer describes it.
         """
+        x, c, n = data.x, data.c, data.n
         if x.ndim == 2:
             # If x has 2 dims, then there is intervally
             # censored data. Simply take the midpoint to
@@ -1287,7 +1321,9 @@ class OptimisedFitMixin:
         ):
             with np.errstate(all="ignore"):
                 init = np.array(
-                    self._parameter_initialiser(x_init, c_init, n_init)
+                    self._parameter_initialiser(
+                        _imputed_data(x_init, c_init, n_init)
+                    )
                 )
         else:
             with np.errstate(all="ignore"):
@@ -1314,7 +1350,7 @@ class OptimisedFitMixin:
 
                 # Create an initial estimate with the new points
                 init = self._parameter_initialiser(
-                    x_init, c_init, n_init, offset=offset
+                    _imputed_data(x_init, c_init, n_init), offset=offset
                 )
                 init = np.array(init)
 
@@ -1416,9 +1452,7 @@ class OptimisedFitMixin:
             results = self._fit_numerically(
                 model,
                 fitting_info,
-                x,
-                c,
-                n,
+                surv_data,
                 tl,
                 tr,
                 how,
@@ -1537,9 +1571,7 @@ class OptimisedFitMixin:
         self,
         model,
         fitting_info,
-        x,
-        c,
-        n,
+        surv_data: SurpyvalData,
         tl,
         tr,
         how,
@@ -1564,7 +1596,7 @@ class OptimisedFitMixin:
 
         if how != "MPP":
             transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
-                x, model.bounds, fixed, model.param_map
+                surv_data.x, model.bounds, fixed, model.param_map
             )
             fitting_info["inv_trans"] = inv_trans
             fitting_info["const"] = const
@@ -1573,7 +1605,9 @@ class OptimisedFitMixin:
             # ``len``-based check: comparing an ndarray to ``[]`` raises a
             # broadcast error (#261).
             if init is None or len(np.atleast_1d(init)) == 0:
-                init = self._initial_guess(x, c, n, offset, zi, lfp, heuristic)
+                init = self._initial_guess(
+                    surv_data, offset, zi, lfp, heuristic
+                )
 
             init = np.atleast_1d(init)
             if fixed and len(init) == len(not_fixed):  # type: ignore[arg-type]

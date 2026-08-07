@@ -12,6 +12,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
@@ -53,12 +54,7 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         )
 
     def _parameter_initialiser(
-        self,
-        x: npt.NDArray,
-        c: npt.NDArray | None = None,
-        n: npt.NDArray | None = None,
-        t: npt.NDArray | None = None,
-        offset: bool = False,
+        self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
         # A neutral, proper starting point; the Beta(1, 1) mixing is the
         # uniform prior over p, i.e. a diffuse heterogeneity.

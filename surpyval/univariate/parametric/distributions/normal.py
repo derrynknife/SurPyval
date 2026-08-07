@@ -55,19 +55,9 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         )
 
     def _parameter_initialiser(
-        self,
-        x: npt.NDArray,
-        c: npt.NDArray | None = None,
-        n: npt.NDArray | None = None,
-        t: npt.NDArray | None = None,
-        offset: bool = False,
+        self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
-        # The base's signature defaults c and n to None, and this body
-        # both tests and indexes with them, so it raised TypeError for
-        # the documented call. Every caller in the package passes them,
-        # which is why it went unnoticed.
-        c = np.zeros_like(x) if c is None else c
-        n = np.ones_like(x) if n is None else n
+        x, c, n = data.x, data.c, data.n
         if 2 in c:
             raise ValueError(c)
         return np.asarray(

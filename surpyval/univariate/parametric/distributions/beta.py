@@ -30,9 +30,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         # or MOM instead (MOM is analytic for the Beta).
         self.supports_mpp = False
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        if (c is not None) and (c == 0).all():
-            x = np.repeat(x, n)
+    def _parameter_initialiser(self, data, offset=False):
+        if (data.c == 0).all():
+            x = np.repeat(data.x, data.n)
             p = self._mom(x)
         else:
             p = 1.0, 1.0

@@ -46,10 +46,10 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         # ``a`` and ``b`` supply the left and right support bounds.
         self.support_param_index = (2, 3)
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        x = np.asarray(x, dtype=float)
-        if (n is not None) and (c is not None) and (c == 0).all():
-            x = np.repeat(x, n)
+    def _parameter_initialiser(self, data, offset=False):
+        x = np.asarray(data.x, dtype=float)
+        if (data.c == 0).all():
+            x = np.repeat(x, data.n)
 
         span = x.max() - x.min()
         if span <= 0:

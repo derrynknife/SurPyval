@@ -77,7 +77,8 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         beta = x.sum() / (len(x) * alpha)
         return alpha, 1.0 / beta
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(self, data, offset=False):
+        x = data.x
         if offset:
             # ``gamma`` leads the vector, as it does for every other
             # offset-capable distribution. Returning it last put the

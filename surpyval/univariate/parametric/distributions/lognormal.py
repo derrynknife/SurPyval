@@ -42,7 +42,8 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
             ],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(self, data, offset=False):
+        x, c, n = data.x, data.c, data.n
         if offset:
             # Shift the data so the log transform is defined, then
             # initialise mu and sigma from the shifted data

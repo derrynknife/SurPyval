@@ -20,10 +20,12 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
             plot_x_scale="linear",
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(self, data, offset=False):
         heuristic = "Fleming-Harrington"
         return np.asarray(
-            self.fit(x, c, n, how="MPP", heuristic=heuristic).params,
+            self.fit_from_surpyval_data(
+                data, how="MPP", heuristic=heuristic
+            ).params,
             dtype=float,
         )
 

@@ -86,7 +86,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
             return None
         return np.array([events / exposure])
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(self, data, offset=False):
+        x = data.x
         rate = 1.0 / x[np.isfinite(x)].mean()
         if offset:
             return np.array(

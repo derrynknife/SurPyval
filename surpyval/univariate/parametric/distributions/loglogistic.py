@@ -5,7 +5,6 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
-from surpyval.utils import xcnt_handler
 
 
 class LogLogistic_(OptimisedFitMixin, ParametricFitter):
@@ -20,9 +19,13 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             plot_x_scale="log",
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(self, data, offset=False):
         if offset:
-            x, c, n, _ = xcnt_handler(x, c, n, t)
+            # The data arrives already validated in xcnt form, so the
+            # ``xcnt_handler`` round trip that used to open this branch
+            # is gone. It never had anything to re-derive: no caller has
+            # ever passed ``t`` down to an initialiser.
+            x, c, n = data.x, data.c, data.n
             flag = (c == 0).astype(int)
             value_range = np.max(x) - np.min(x)
             gamma_init = np.min(x) - value_range / 10
@@ -31,7 +34,10 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
                 dtype=float,
             )
         else:
-            return np.asarray(self.fit(x, c, n, how="MPP").params, dtype=float)
+            return np.asarray(
+                self.fit_from_surpyval_data(data, how="MPP").params,
+                dtype=float,
+            )
 
     def sf(self, x, alpha, beta):
         r"""

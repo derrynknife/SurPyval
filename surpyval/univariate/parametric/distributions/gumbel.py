@@ -20,15 +20,15 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
             plot_x_scale="linear",
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        # c defaults to None in the base's signature; without this the
-        # membership test raised TypeError for the documented call.
-        if c is not None and ((2 in c) or (-1 in c)):
+    def _parameter_initialiser(self, data, offset=False):
+        if (2 in data.c) or (-1 in data.c):
             heuristic = "Turnbull"
         else:
             heuristic = "Nelson-Aalen"
         return np.asarray(
-            self.fit(x, c, n, how="MPP", heuristic=heuristic).params,
+            self.fit_from_surpyval_data(
+                data, how="MPP", heuristic=heuristic
+            ).params,
             dtype=float,
         )
 
