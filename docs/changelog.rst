@@ -108,6 +108,17 @@ v0.19.1 (unreleased)
   mypy cannot resolve them through that cycle. They name the concrete
   class instead.
 
+- **``Normal`` and ``Gumbel`` ignored their own documented default.**
+  ``ParametricFitter`` documents the initialiser signature as
+  ``(self, x, c=None, n=None, t=None, offset=False)``, but ``Normal``
+  tested ``2 in c`` and indexed ``x[c != -1]``, and ``Gumbel`` tested
+  ``(2 in c) or (-1 in c)``, before either defaulted ``c``. Calling
+  either as documented raised ``TypeError: argument of type 'NoneType'
+  is not iterable``. Every caller inside the package passes ``c`` and
+  ``n``, which is why it went unnoticed; ``GumbelLEV`` is unaffected
+  because it forwards ``c`` to ``fit`` without inspecting it. A sweep of
+  all nineteen distributions found these two and no others.
+
 - **Every ``_parameter_initialiser`` now returns the same thing.**
   The initial-guess seed a distribution hands the optimiser came back in
   four different containers across the 21 implementations: a tuple in
@@ -152,7 +163,7 @@ v0.19.1 (unreleased)
   sweep of all fourteen continuous distributions across both paths
   confirmed Rayleigh was the only one affected.
 
-- **Type-hint coverage is now enforced, for nineteen modules (#143).**
+- **Type-hint coverage is now enforced, for twenty modules (#143).**
   ``surpyval.distribution``, ``surpyval.serialisation``,
   ``surpyval.metrics``, ``surpyval.univariate.information_criteria``,
   ``surpyval.datasets``, the Weibull, the eight discrete

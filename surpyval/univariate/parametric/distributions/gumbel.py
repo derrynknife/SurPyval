@@ -21,7 +21,9 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         )
 
     def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        if (2 in c) or (-1 in c):
+        # c defaults to None in the base's signature; without this the
+        # membership test raised TypeError for the documented call.
+        if c is not None and ((2 in c) or (-1 in c)):
             heuristic = "Turnbull"
         else:
             heuristic = "Nelson-Aalen"

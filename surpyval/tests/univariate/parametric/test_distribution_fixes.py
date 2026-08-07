@@ -15,10 +15,13 @@ from surpyval import (
     Exponential,
     ExpoWeibull,
     Gamma,
+    Gumbel,
     GumbelLEV,
     Logistic,
     LogNormal,
+    Normal,
     Rayleigh,
+    Weibull,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
@@ -191,3 +194,23 @@ def test_rayleigh_fits_with_lfp_and_zi(structural):
     model = Rayleigh.fit(x, **{structural: True})
     # The sigma estimate is unaffected; the point is that it runs at all.
     assert model.params[0] == pytest.approx(9.92, abs=0.5)
+
+
+# --- _parameter_initialiser must honour its documented c=None ------------
+#
+# ParametricFitter documents the signature as
+# (self, x, c=None, n=None, t=None, offset=False), but Normal tested and
+# indexed with c, and Gumbel tested with it, before either was defaulted.
+# Both raised TypeError for the documented call. Every caller inside the
+# package passes c and n, which is why it went unnoticed.
+
+
+@pytest.mark.parametrize(
+    "dist",
+    [Normal, Gumbel, GumbelLEV, Weibull, LogNormal, Logistic, Rayleigh],
+)
+def test_parameter_initialiser_accepts_the_documented_defaults(dist):
+    x = np.array([1.0, 2.0, 3.0, 4.0, 5.5])
+    seed = dist._parameter_initialiser(x)
+    assert np.asarray(seed).ndim == 1
+    assert np.isfinite(np.asarray(seed, dtype=float)).all()
