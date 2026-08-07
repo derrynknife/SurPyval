@@ -253,18 +253,18 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, a, b))
 
-    def qf(self, p, a, b):
+    def qf(self, u, a, b):
         r"""
 
         Quantile function for the Uniform Distribution:
 
         .. math::
-            q(p) = a + p(b - a)
+            q(u) = a + u(b - a)
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
@@ -275,17 +275,17 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Uniform distribution at each value p.
+            The quantiles for the Uniform distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Uniform
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Uniform.qf(p, 0, 6)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Uniform.qf(u, 0, 6)
         array([0.6, 1.2, 1.8, 2.4, 3. ])
         """
-        return a + p * (b - a)
+        return a + u * (b - a)
 
     def mean(self, a, b):
         r"""
@@ -317,18 +317,18 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         """
         return 0.5 * (a + b)
 
-    def moment(self, n, a, b):
+    def moment(self, m, a, b):
         r"""
 
-        n-th (non central) moment of the Uniform distribution
+        m-th (non central) moment of the Uniform distribution
 
         .. math::
-            M(n) = \frac{1}{n +1} \sum_{i=0}^{n}a^ib^{n-i}
+            M(m) = \frac{1}{m +1} \sum_{i=0}^{m}a^ib^{m-i}
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
@@ -347,13 +347,13 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         >>> Uniform.moment(2, 0, 6)
         np.float64(12.0)
         """
-        if n == 0:
+        if m == 0:
             return 1
         else:
-            out = np.zeros(n + 1)
-            for i in range(n + 1):
-                out[i] = a**i * b ** (n - i)
-            return np.sum(out) / (n + 1)
+            out = np.zeros(m + 1)
+            for i in range(m + 1):
+                out[i] = a**i * b ** (m - i)
+            return np.sum(out) / (m + 1)
 
     def entropy(self, a, b):
         r"""

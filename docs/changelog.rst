@@ -4,6 +4,65 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **BREAKING: shared methods now have one signature across every
+  distribution.**
+  A distribution is reached through a ``ParametricFitter`` reference
+  all over the package -- ``fit_best`` iterates a list of them,
+  ``Discretize`` and ``MixtureModel`` wrap one, the regression fitters
+  hold one as ``self.dist`` -- so code written against that reference
+  has to work for every member. Three shared methods disagreed about
+  what their leading argument was called, which made a keyword call
+  correct for a subset and a ``TypeError`` for the rest::
+
+      Weibull.qf(p=0.5, alpha=10, beta=2)   worked
+      Poisson.qf(p=0.5, mu=3)               TypeError
+      Poisson.qf(u=0.5, mu=3)               worked
+      Weibull.moment(n=2, alpha=10, beta=2) worked
+      Poisson.moment(n=2, mu=3)             TypeError
+
+  This is the defect that made the narrow ``from_params`` overrides on
+  ``Bernoulli``, ``Binomial`` and ``ExactEventTime`` worth fixing
+  earlier in this release, applied to the rest of the surface.
+
+  - ``qf``'s first argument is ``u`` in all 22 implementations. It was
+    ``p`` in 14, ``u`` in 7 and ``q`` in ``Binomial``. ``p`` cannot be
+    the shared name because it is an actual parameter of ``Bernoulli``,
+    ``Binomial``, ``Geometric`` and ``NegativeBinomial``, and ``q`` is
+    one of ``DiscreteWeibull``'s -- which is why the two obvious
+    choices had been avoided piecemeal in the first place.
+  - ``moment``'s first argument is ``m`` in all 21. It was ``n`` in 13,
+    and ``n`` is ``Binomial``'s trial count.
+  - ``mpp_x_transform`` takes ``x`` alone in all 15. Eleven of them
+    also took a ``gamma`` they subtracted, and the other four did not.
+    No caller ever passed it: the MPP fitter subtracts the offset from
+    ``x`` before calling (``fitters/mpp.py``), so a caller that did
+    pass it would have subtracted the offset twice. Removed rather
+    than added to the other four.
+
+  Positional calls -- which is what every docstring example, every call
+  inside the package, and every notebook uses -- are unaffected. No
+  keyword call to any of the three exists in the package, its tests or
+  its documentation. There is no deprecation shim: keeping the old name
+  as an alias would preserve exactly the ambiguity the change removes.
+
+  ``moment`` is also now typed ``m: int`` uniformly, and nine
+  docstrings that promised "integer or numpy array of integers" are
+  narrowed to "integer". Only six of the twenty implementations
+  actually accepted an array of orders; the rest raised, because they
+  delegate to ``scipy.stats``::
+
+      LogNormal.moment(np.array([1, 2]), 3., 4.)  ->  [5.99e+04, 3.19e+16]
+      Normal.moment(np.array([1, 2]), 3., 4.)     ->  ValueError
+
+  ``surpyval/tests/univariate/parametric/test_shared_signatures.py``
+  reads the signatures rather than asserting a list of names, so a
+  distribution added later is covered without touching the test, and
+  an open-ended guard fails on *any* method implemented by five or
+  more distributions whose leading data argument disagrees. Parameter
+  names are excluded from that guard: ``Weibull.mean(alpha, beta)``
+  against ``Poisson.mean(mu)`` is not a divergence, it is what the
+  distributions are.
+
 - **API reference pages for the surfaces that only had narrative docs.**
   The multivariate copulas and the beta survival tree and forest had no
   autodoc coverage at all, and the degradation page stopped at the path

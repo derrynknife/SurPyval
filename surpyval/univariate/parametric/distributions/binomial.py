@@ -195,16 +195,16 @@ class Binomial_(DiscreteParametricFitter):
         """
         return -np.log(self.sf(x, n, p))
 
-    def qf(self, q: Numeric, n: Boxable, p: Boxable) -> Boxable:
+    def qf(self, u: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Quantile (inverse CDF) function for the Binomial distribution; the
-        smallest number of events ``x`` such that :math:`F(x) \geq q`.
+        smallest number of events ``x`` such that :math:`F(x) \geq u`.
 
         Parameters
         ----------
 
-        q : numpy array or scalar
+        u : numpy array or scalar
             The values, between 0 and 1, at which the quantile is evaluated
         n : integer
             The number of trials
@@ -215,7 +215,7 @@ class Binomial_(DiscreteParametricFitter):
         -------
 
         qf : scalar or numpy array
-            The quantile(s) at q
+            The quantile(s) at u
 
         Examples
         --------
@@ -223,7 +223,7 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.qf(0.5, 5, 0.3)
         np.float64(1.0)
         """
-        return binom.ppf(q, n, p)
+        return binom.ppf(u, n, p)
 
     def cs(self, x: Numeric, X: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""

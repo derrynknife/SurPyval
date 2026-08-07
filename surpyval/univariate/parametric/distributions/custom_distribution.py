@@ -157,6 +157,5 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 
-    # Takes a gamma the other distributions' mpp_x_transform does not.
-    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
-        return x - gamma
+    def mpp_x_transform(self, x: Numeric) -> Numeric:
+        return x

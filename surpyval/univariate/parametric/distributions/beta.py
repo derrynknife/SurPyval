@@ -247,7 +247,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta))
 
-    def qf(self, p, alpha, beta):
+    def qf(self, u, alpha, beta):
         r"""
 
         Quantile function for the Beta Distribution:
@@ -255,7 +255,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             One shape parameter for the Beta distribution
@@ -266,17 +266,17 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Beta distribution at each value p.
+            The quantiles for the Beta distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Beta
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Beta.qf(p, 3, 4)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Beta.qf(u, 3, 4)
         array([0.20090888, 0.26864915, 0.32332388, 0.37307973, 0.42140719])
         """
-        return betaincinv(alpha, beta, p)
+        return betaincinv(alpha, beta, u)
 
     def mean(self, alpha, beta):
         r"""
@@ -308,19 +308,19 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return alpha / (alpha + beta)
 
-    def moment(self, n, alpha, beta):
+    def moment(self, m, alpha, beta):
         r"""
 
-        n-th (non central) moment of the Beta distribution
+        m-th (non central) moment of the Beta distribution
 
         .. math::
-            E = \frac{B \left( n + \alpha, \beta \right )}{B
+            E = \frac{B \left( m + \alpha, \beta \right )}{B
             \left ( \alpha, \beta \right )}
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         alpha : numpy array or scalar
             One shape parameter for the Beta distribution
@@ -339,7 +339,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         >>> Beta.moment(2, 3, 4)
         np.float64(0.2142857142857143)
         """
-        return np.exp(abetaln(n + alpha, beta) - abetaln(alpha, beta))
+        return np.exp(abetaln(m + alpha, beta) - abetaln(alpha, beta))
 
     def entropy(self, alpha, beta):
         r"""
@@ -400,8 +400,8 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         # be the *last* argument of betainc, not the first shape (#257).
         return abetainc(*params, y)
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
+    def mpp_x_transform(self, x):
+        return x
 
     def mpp(
         self,

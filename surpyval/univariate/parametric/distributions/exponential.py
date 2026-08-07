@@ -307,18 +307,18 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         x = np.array(x)
         return failure_rate * x
 
-    def qf(self, p, failure_rate):
+    def qf(self, u, failure_rate):
         r"""
 
         Quantile function for the Exponential Distribution:
 
         .. math::
-            q(p) = \frac{-\ln\left ( 1 - p \right )}{\lambda}
+            q(u) = \frac{-\ln\left ( 1 - u \right )}{\lambda}
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
@@ -327,17 +327,17 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Exponential distribution at each value p.
+            The quantiles for the Exponential distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Exponential
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Exponential.qf(p, 3)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Exponential.qf(u, 3)
         array([0.03512017, 0.07438118, 0.11889165, 0.17027521, 0.23104906])
         """
-        return -np.log1p(-p) / failure_rate
+        return -np.log1p(-u) / failure_rate
 
     def mean(self, failure_rate):
         r"""
@@ -368,18 +368,18 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return 1.0 / failure_rate
 
-    def moment(self, n, failure_rate):
+    def moment(self, m, failure_rate):
         r"""
 
-        Calculates the n-th moment of the Exponential distribution.
+        Calculates the m-th moment of the Exponential distribution.
 
         .. math::
-            E = \frac{n!}{\lambda^{n}}
+            E = \frac{m!}{\lambda^{m}}
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
@@ -396,7 +396,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         >>> Exponential.moment(2, 3)
         np.float64(0.2222222222222222)
         """
-        return factorial(n) / (failure_rate**n)
+        return factorial(m) / (failure_rate**m)
 
     def entropy(self, failure_rate):
         r"""
@@ -432,8 +432,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
     def log_sf(self, x, failure_rate):
         return -failure_rate * x
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
+    def mpp_x_transform(self, x):
+        return x
 
     def mpp_y_transform(self, y, *params):
         mask = (y == 0) | (y == 1)

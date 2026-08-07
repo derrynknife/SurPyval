@@ -204,18 +204,18 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, mu, sigma))
 
-    def qf(self, p, mu, sigma):
+    def qf(self, u, mu, sigma):
         r"""
 
         Quantile function for the Logistic distribution:
 
         .. math::
-            q(p) = \\mu + \\sigma \\ln \\left ( \\frac{p}{1 - p} \\right)
+            q(u) = \\mu + \\sigma \\ln \\left ( \\frac{u}{1 - u} \\right)
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         mu : numpy array or scalar
             The location parameter for the Logistic distribution
@@ -226,17 +226,17 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Logistic distribution at each value p
+            The quantiles for the Logistic distribution at each value u
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Logistic
-        >>> p = np.array([0.1, 0.2, 0.3, 0.4])
-        >>> Logistic.qf(p, 3, 4)
+        >>> u = np.array([0.1, 0.2, 0.3, 0.4])
+        >>> Logistic.qf(u, 3, 4)
         array([-5.78889831, -2.54517744, -0.38919144,  1.37813957])
         """
-        return mu + sigma * (np.log(p) - np.log1p(-p))
+        return mu + sigma * (np.log(u) - np.log1p(-u))
 
     def mean(self, mu, sigma):
         r"""
@@ -285,9 +285,9 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
     def mgf(self, t, mu, sigma):
         return np.exp(mu * t) * abeta(1 + sigma * t, 1 - sigma * t)
 
-    def moment(self, n, mu, sigma):
+    def moment(self, m, mu, sigma):
         d = self.mgf
-        for i in range(n):
+        for i in range(m):
             d = grad(d)
         return d(0.0, mu, sigma)
 
@@ -321,8 +321,8 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         """
         return np.log(sigma) + 2
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
+    def mpp_x_transform(self, x):
+        return x
 
     def mpp_y_transform(self, y, *params):
         mask = (y == 0) | (y == 1)

@@ -296,18 +296,18 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(norm.sf(x, mu, sigma))
 
-    def qf(self, p: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
+    def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Normal Distribution:
 
         .. math::
-            q(p) = \Phi^{-1} \left( p \right )
+            q(u) = \Phi^{-1} \left( u \right )
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         mu : numpy array or scalar
             The location parameter for the Normal distribution
@@ -318,17 +318,17 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Normal distribution at each value p.
+            The quantiles for the Normal distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Normal
-        >>> p = np.array([0.1, 0.2, 0.3, 0.4])
-        >>> Normal.qf(p, 3, 4)
+        >>> u = np.array([0.1, 0.2, 0.3, 0.4])
+        >>> Normal.qf(u, 3, 4)
         array([-2.12620626, -0.36648493,  0.90239795,  1.98661159])
         """
-        return scipy_norm.ppf(p, mu, sigma)
+        return scipy_norm.ppf(u, mu, sigma)
 
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -360,10 +360,10 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         """
         return mu
 
-    def moment(self, n: int, mu: Boxable, sigma: Boxable) -> Boxable:
+    def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
-        n-th (non central) moment of the Normal distribution
+        m-th (non central) moment of the Normal distribution
 
         .. math::
             E = ... complicated.
@@ -371,7 +371,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         mu : numpy array or scalar
             The location parameter for the Normal distribution
@@ -390,7 +390,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         >>> Normal.moment(2, 3, 4)
         np.float64(25.0)
         """
-        return scipy_norm.moment(n, mu, sigma)
+        return scipy_norm.moment(m, mu, sigma)
 
     def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""

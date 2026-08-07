@@ -220,18 +220,18 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, mu, sigma))
 
-    def qf(self, p, mu, sigma):
+    def qf(self, u, mu, sigma):
         r"""
 
         Quantile function for the Gumbel LEV Distribution:
 
         .. math::
-            q(p) = \mu - \sigma\ln\left ( -\ln\left ( p \right ) \right )
+            q(u) = \mu - \sigma\ln\left ( -\ln\left ( u \right ) \right )
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         mu : numpy array like or scalar
             The location parameter(s) of the distribution
@@ -242,17 +242,17 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the GumbelLEV distribution at each value p.
+            The quantiles for the GumbelLEV distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import GumbelLEV
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> GumbelLEV.qf(p, 3, 2)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> GumbelLEV.qf(u, 3, 2)
         array([1.33193511, 2.04823001, 2.62874648, 3.17484314, 3.73302584])
         """
-        return mu - sigma * np.log(-np.log(p))
+        return mu - sigma * np.log(-np.log(u))
 
     def mean(self, mu, sigma):
         r"""
@@ -297,8 +297,8 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         z = (x - mu) / sigma
         return -np.log(sigma) - (z + np.exp(-z))
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
+    def mpp_x_transform(self, x):
+        return x
 
     def mpp_y_transform(self, y, *params):
         mask = (y == 0) | (y == 1)
@@ -312,8 +312,8 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         # F = exp(-exp(-y)); the previous form was the SEV inverse (#257).
         return np.exp(-np.exp(-y))
 
-    def moment(self, n, mu, sigma):
-        return gumbel_r.moment(n, loc=mu, scale=sigma)
+    def moment(self, m, mu, sigma):
+        return gumbel_r.moment(m, loc=mu, scale=sigma)
 
     def entropy(self, mu, sigma):
         r"""

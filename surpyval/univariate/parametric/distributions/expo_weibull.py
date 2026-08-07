@@ -314,18 +314,18 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta, mu))
 
-    def qf(self, p, alpha, beta, mu):
+    def qf(self, u, alpha, beta, mu):
         r"""
 
         Instantaneous hazard rate for the ExpoWeibull Distribution:
 
         .. math::
-            q(p) =
+            q(u) =
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             scale parameter for the ExpoWeibull distribution
@@ -338,17 +338,17 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         -------
 
         Q : scalar or numpy array
-            The quantiles for the Weibull distribution at each value p
+            The quantiles for the Weibull distribution at each value u
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import ExpoWeibull
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> ExpoWeibull.qf(p, 3, 4, 1.2)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> ExpoWeibull.qf(u, 3, 4, 1.2)
         array([1.89361341, 2.2261045 , 2.46627621, 2.66992747, 2.85807988])
         """
-        return alpha * (-np.log1p(-(p ** (1.0 / mu)))) ** (1 / beta)
+        return alpha * (-np.log1p(-(u ** (1.0 / mu)))) ** (1 / beta)
 
     def log_df(self, x, alpha, beta, mu):
         return (
@@ -416,8 +416,8 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
 
         return -integrate.quad(func, 0, np.inf)[0]
 
-    def mpp_x_transform(self, x, gamma=0):
-        return np.log(x - gamma)
+    def mpp_x_transform(self, x):
+        return np.log(x)
 
     def mpp_y_transform(self, y, *params):
         mu = params[-1]

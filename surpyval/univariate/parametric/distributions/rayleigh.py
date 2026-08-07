@@ -260,18 +260,18 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         """
         return x**2 / (2 * sigma**2)
 
-    def qf(self, p, sigma):
+    def qf(self, u, sigma):
         r"""
 
         Quantile function for the Rayleigh distribution:
 
         .. math::
-            q(p) = \sigma \sqrt{-2 \ln \left ( 1 - p \right )}
+            q(u) = \sigma \sqrt{-2 \ln \left ( 1 - u \right )}
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         sigma : numpy array or scalar
             scale parameter for the Rayleigh distribution
@@ -280,17 +280,17 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Rayleigh distribution at each value p
+            The quantiles for the Rayleigh distribution at each value u
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Rayleigh
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Rayleigh.qf(p, 3)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Rayleigh.qf(u, 3)
         array([1.37713082, 2.00414169, 2.53380129, 3.03230296, 3.53223007])
         """
-        return sigma * np.sqrt(2 * np.log(1 / (1 - p)))
+        return sigma * np.sqrt(2 * np.log(1 / (1 - u)))
 
     def mean(self, sigma):
         r"""
@@ -320,18 +320,18 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         """
         return sigma * np.sqrt(np.pi / 2)
 
-    def moment(self, n, sigma):
+    def moment(self, m, sigma):
         r"""
 
-        n-th moment of the Rayleigh distribution
+        m-th moment of the Rayleigh distribution
 
         .. math::
-            M(n) = \sigma^n 2^{n/2} \Gamma \left ( 1 + \frac{n}{2} \right )
+            M(m) = \sigma^m 2^{m/2} \Gamma \left ( 1 + \frac{m}{2} \right )
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         sigma : numpy array or scalar
             scale parameter for the Rayleigh distribution
@@ -348,7 +348,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         >>> Rayleigh.moment(2, 3)
         np.float64(18.0)
         """
-        return (sigma**n) * (2 ** (n / 2)) * gamma_func(1 + n / 2)
+        return (sigma**m) * (2 ** (m / 2)) * gamma_func(1 + m / 2)
 
     def entropy(self, sigma):
         return euler_gamma / 2 + 1 + np.log(sigma / (np.sqrt(2)))

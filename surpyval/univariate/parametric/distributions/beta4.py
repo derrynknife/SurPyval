@@ -310,18 +310,18 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta, a, b))
 
-    def qf(self, p, alpha, beta, a, b):
+    def qf(self, u, alpha, beta, a, b):
         r"""
 
         Quantile function for the four-parameter Beta distribution:
 
         .. math::
-            q(p) = a + \left(b - a\right) I^{-1}_{p}\left(\alpha, \beta\right)
+            q(u) = a + \left(b - a\right) I^{-1}_{u}\left(\alpha, \beta\right)
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             The first shape parameter for the Beta distribution
@@ -336,17 +336,17 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Beta distribution at each value p.
+            The quantiles for the Beta distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Beta4
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Beta4.qf(p, 3, 4, 2, 3)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Beta4.qf(u, 3, 4, 2, 3)
         array([2.20090888, 2.26864915, 2.32332388, 2.37307973, 2.42140719])
         """
-        return a + (b - a) * betaincinv(alpha, beta, p)
+        return a + (b - a) * betaincinv(alpha, beta, u)
 
     def mean(self, alpha, beta, a, b):
         r"""
@@ -470,8 +470,8 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         z = np.clip(self._z(x, a, b), 0.0, 1.0)
         return abetaincln(alpha, beta, z)
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
+    def mpp_x_transform(self, x):
+        return x
 
     def mpp_y_transform(self, y, *params):
         return self.qf(y, *params)

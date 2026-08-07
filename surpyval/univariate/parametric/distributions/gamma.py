@@ -321,18 +321,18 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta))
 
-    def qf(self, p, alpha, beta):
+    def qf(self, u, alpha, beta):
         r"""
 
         Quantile function for the Gamma Distribution:
 
         .. math::
-            q(p) = \frac{-\ln\left ( p \right )}{\lambda}
+            q(u) = \frac{-\ln\left ( u \right )}{\lambda}
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
@@ -343,17 +343,17 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Gamma distribution at each value p.
+            The quantiles for the Gamma distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Gamma
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Gamma.qf(p, 3, 4)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Gamma.qf(u, 3, 4)
         array([0.27551633, 0.38376105, 0.47844395, 0.57126923, 0.66851508])
         """
-        return gammaincinv(alpha, p) / beta
+        return gammaincinv(alpha, u) / beta
 
     def mean(self, alpha, beta):
         r"""
@@ -385,20 +385,20 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         """
         return alpha / beta
 
-    def moment(self, n, alpha, beta):
+    def moment(self, m, alpha, beta):
         r"""
 
-        Calculates the n-th moment of the Gamma distribution with
+        Calculates the m-th moment of the Gamma distribution with
         given parameters.
 
         .. math::
-            E = \frac{\Gamma \left ( n + \alpha \right )}{\beta^{n}\Gamma
+            E = \frac{\Gamma \left ( m + \alpha \right )}{\beta^{m}\Gamma
             \left ( \alpha \right )}
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
@@ -417,7 +417,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.moment(3, 3, 4)
         np.float64(0.9375)
         """
-        return agamma(n + alpha) / (beta**n * agamma(alpha))
+        return agamma(m + alpha) / (beta**m * agamma(alpha))
 
     def entropy(self, alpha, beta):
         r"""
@@ -506,8 +506,8 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha = params[0]
         return agammainc(alpha, y)
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
+    def mpp_x_transform(self, x):
+        return x
 
 
 Gamma: Gamma_ = Gamma_("Gamma")

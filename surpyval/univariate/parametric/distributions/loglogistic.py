@@ -256,18 +256,18 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta))
 
-    def qf(self, p, alpha, beta):
+    def qf(self, u, alpha, beta):
         r"""
 
         Quantile function for the LogLogistic distribution:
 
         .. math::
-            q(p) = \alpha \left ( \frac{p}{1 - p} \right )^{\frac{1}{\beta}}
+            q(u) = \alpha \left ( \frac{u}{1 - u} \right )^{\frac{1}{\beta}}
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             scale parameter for the LogLogistic distribution
@@ -278,17 +278,17 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the LogLogistic distribution at each value p
+            The quantiles for the LogLogistic distribution at each value u
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import LogLogistic
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> LogLogistic.qf(p, 3, 4)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> LogLogistic.qf(u, 3, 4)
         array([1.73205081, 2.12132034, 2.42732013, 2.71080601, 3.        ])
         """
-        return alpha * (p / (1 - p)) ** (1.0 / beta)
+        return alpha * (u / (1 - u)) ** (1.0 / beta)
 
     def mean(self, alpha, beta):
         r"""
@@ -343,8 +343,8 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         lx = beta * np.log(x)
         return lx - np.logaddexp(la, lx)
 
-    def mpp_x_transform(self, x, gamma=0):
-        return np.log(x - gamma)
+    def mpp_x_transform(self, x):
+        return np.log(x)
 
     def mpp_y_transform(self, y, *params):
         mask = (y == 0) | (y == 1)
@@ -365,8 +365,8 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             alpha = np.exp(params[1] / (beta * params[0]))
         return alpha, beta
 
-    def moment(self, n, alpha, beta):
-        return fisk.moment(n, beta, scale=alpha)
+    def moment(self, m, alpha, beta):
+        return fisk.moment(m, beta, scale=alpha)
 
     def entropy(self, alpha, beta):
         r"""

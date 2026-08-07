@@ -91,18 +91,18 @@ class Bernoulli_(DiscreteParametricFitter):
         """
         return np.ones_like(x).astype(float) * p
 
-    def moment(self, n: int, p: Boxable) -> Boxable:
+    def moment(self, m: int, p: Boxable) -> Boxable:
         r"""
 
-        n-th moment of the Bernoulli distribution
+        m-th moment of the Bernoulli distribution
 
         .. math::
-            M(n) = p
+            M(m) = p
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         p : float
             The probability of failure of the thing

@@ -253,19 +253,19 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         """
         return (x / alpha) ** beta
 
-    def qf(self, p: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
+    def qf(self, u: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Weibull distribution:
 
         .. math::
-            q(p) = \alpha \left ( -\ln \left ( 1 - p \right ) \right )^{1/
+            q(u) = \alpha \left ( -\ln \left ( 1 - u \right ) \right )^{1/
             \beta}
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
@@ -276,17 +276,17 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Weibull distribution at each value p
+            The quantiles for the Weibull distribution at each value u
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Weibull
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Weibull.qf(p, 3, 4)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Weibull.qf(u, 3, 4)
         array([1.70919151, 2.06189877, 2.31840554, 2.5362346 , 2.73733292])
         """
-        return alpha * (-np.log1p(-p)) ** (1 / beta)
+        return alpha * (-np.log1p(-u)) ** (1 / beta)
 
     def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -318,18 +318,18 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         """
         return alpha * gamma_func(1 + 1.0 / beta)
 
-    def moment(self, n: int, alpha: Boxable, beta: Boxable) -> Boxable:
+    def moment(self, m: int, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
-        n-th moment of the Weibull distribution
+        m-th moment of the Weibull distribution
 
         .. math::
-            M(n) = \alpha^n \Gamma \left ( 1 + \frac{n}{\beta} \right )
+            M(m) = \alpha^m \Gamma \left ( 1 + \frac{m}{\beta} \right )
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         alpha : numpy array or scalar
             scale parameter for the Weibull distribution
@@ -348,7 +348,7 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         >>> Weibull.moment(2, 3, 4)
         np.float64(7.976042329074821)
         """
-        return alpha**n * gamma_func(1 + n / beta)
+        return alpha**m * gamma_func(1 + m / beta)
 
     def entropy(self, alpha: Boxable, beta: Boxable) -> Boxable:
         return euler_gamma * (1 - 1 / beta) + np.log(alpha) - np.log(beta) + 1

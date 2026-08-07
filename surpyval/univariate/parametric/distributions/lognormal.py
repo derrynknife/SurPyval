@@ -285,18 +285,18 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, mu, sigma))
 
-    def qf(self, p: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
+    def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Quantile function for the LogNormal Distribution:
 
         .. math::
-            q(p) = e^{\mu + \sigma \Phi^{-1} \left( p \right )}
+            q(u) = e^{\mu + \sigma \Phi^{-1} \left( u \right )}
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         mu : numpy array or scalar
             The location parameter for the LogNormal distribution
@@ -307,17 +307,17 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the LogNormal distribution at each value p.
+            The quantiles for the LogNormal distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import LogNormal
-        >>> p = np.array([0.1, 0.2, 0.3, 0.4])
-        >>> LogNormal.qf(p, 3, 4)
+        >>> u = np.array([0.1, 0.2, 0.3, 0.4])
+        >>> LogNormal.qf(u, 3, 4)
         array([0.11928899, 0.69316658, 2.46550819, 7.29078766])
         """
-        return np.exp(scipy_norm.ppf(p, mu, sigma))
+        return np.exp(scipy_norm.ppf(u, mu, sigma))
 
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -349,15 +349,10 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(mu + (sigma**2) / 2)
 
-    # ``n`` is Numeric, not int as on Normal. The docstring below claims
-    # an array of orders works, and here it does -- the closed form is
-    # vectorised. The scipy-backed siblings (Normal, GumbelLEV,
-    # LogLogistic) carry the same claim and raise on an array, which is
-    # why their annotation is narrower.
-    def moment(self, n: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
+    def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
-        n-th (non central) moment of the LogNormal distribution
+        m-th (non central) moment of the LogNormal distribution
 
         .. math::
             E = ... complicated.
@@ -365,7 +360,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         mu : numpy array or scalar
             The location parameter for the LogNormal distribution
@@ -384,7 +379,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.moment(2, 3, 4)
         np.float64(3.1855931757113756e+16)
         """
-        return np.exp(n * mu + (n**2 * sigma**2) / 2)
+        return np.exp(m * mu + (m**2 * sigma**2) / 2)
 
     def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -425,11 +420,8 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
     def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return norm.logsf(np.log(x), mu, sigma)
 
-    # Takes a gamma that no caller passes: the MPP fitter subtracts the
-    # offset from x itself before calling this (see fitters/mpp.py).
-    # Kept because it is part of the published surface.
-    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
-        return np.log(x - gamma)
+    def mpp_x_transform(self, x: Numeric) -> Boxable:
+        return np.log(x)
 
     def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         return para.Normal.qf(y, 0, 1)
