@@ -32,20 +32,50 @@ class ExactEventTime_(ParametricFitter):
         x_arr = np.atleast_1d(x)
         return (x_arr >= T).astype(float)
 
+    # ``df`` and ``hf`` do not exist for a point mass, and used to be
+    # answered with ``inf``.
+    #
+    # All the probability sits at T, so the density is a Dirac delta:
+    # zero everywhere, infinite at one point, integrating to one. There
+    # is no function of x that represents it -- the old ``df`` returned
+    # ``inf`` at T and 0 elsewhere, which integrates to ``inf``, not 1.
+    # The hazard is the same delta divided by a survival that is zero
+    # from T onwards, so it was ``inf`` at T *and everywhere after*.
+    # Inherited ``log_df`` then computed ``log(inf) - inf`` and returned
+    # ``nan``.
+    #
+    # Raising stops that at the call site. An ``inf`` does not: it
+    # propagates into a plot, a likelihood or a mixture weight and
+    # surfaces somewhere with no connection to the cause. Bernoulli
+    # already omits all three for the same reason -- no time axis to
+    # carry a density.
+    #
+    # ``sf``, ``ff``, ``Hf`` and ``qf`` are all well defined here and
+    # are unaffected.
     def df(self, x: Numeric, T: Boxable) -> npt.NDArray:
-        x_arr = np.atleast_1d(x)
-        df = np.zeros_like(x_arr).astype(float)
-        df[x_arr == T] = np.inf
-        return df
+        raise NotImplementedError(
+            "ExactEventTime has no density: all of its probability is a "
+            "point mass at T, so the density is a Dirac delta rather than "
+            "a function of x. Use sf, ff or Hf, which are step functions "
+            "and well defined."
+        )
 
     def hf(self, x: Numeric, T: Boxable) -> npt.NDArray:
-        x_arr = np.atleast_1d(x)
-        hf = np.zeros_like(x_arr).astype(float)
-        hf[x_arr >= T] = np.inf
-        return hf
+        raise NotImplementedError(
+            "ExactEventTime has no hazard rate: its density is a Dirac "
+            "delta at T and its survival is zero from T onwards, so the "
+            "ratio is undefined at and after the event. Hf is well "
+            "defined -- it steps from 0 to infinity at T."
+        )
 
     def Hf(self, x: Numeric, T: Boxable) -> npt.NDArray:
-        return self.hf(x, T)
+        # -log R(x): zero while the item survives, infinite once the
+        # event has certainly happened. Previously this returned hf,
+        # which happened to be the same two values.
+        x_arr = np.atleast_1d(x)
+        Hf = np.zeros_like(x_arr).astype(float)
+        Hf[x_arr >= T] = np.inf
+        return Hf
 
     def random(self, size: int | tuple[int, ...], T: Boxable) -> npt.NDArray:
         return np.ones(size) * T

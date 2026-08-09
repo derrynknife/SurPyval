@@ -12,6 +12,8 @@ the discrete hazard ``P(T = k) / R(k - 1)``, and the survival ``sf(k)``
 is ``P(T > k)``.
 """
 
+from surpyval import np
+
 from .parametric_fitter import ParametricFitter
 
 
@@ -40,3 +42,25 @@ class DiscreteParametricFitter(ParametricFitter):
         # Kept as an instance attribute (not only the class trait) because
         # the shared ``_validate_fit_inputs`` reads it for every fitter.
         self.supports_mpp = False
+
+    def log_df(self, x, *params):
+        # On the integers the mass at k is the hazard there times the
+        # survival to just before it:
+        #
+        #     P(T = k) = h(k) R(k - 1)
+        #
+        # ``ParametricFitter.log_df`` encodes the continuous identity
+        # f = h R(x) instead, which is the same statement with R(k) in
+        # place of R(k - 1) and so is wrong by a factor R(k)/R(k - 1) --
+        # not a rounding difference. Binomial reached the continuous
+        # version and returned values that drifted from 0.88 of the true
+        # mass down to 0.15 across k = 1..7.
+        #
+        # Most discrete distributions here override this with the
+        # closed-form log-pmf, which is better conditioned than any
+        # identity assembled from hf and sf. This is the fallback for
+        # those that do not.
+        x_arr = np.asarray(x, dtype=float)
+        return np.log(self.hf(x_arr, *params)) + self.log_sf(
+            x_arr - 1.0, *params
+        )

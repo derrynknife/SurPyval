@@ -4,6 +4,87 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **Fixed: ``Binomial.log_df`` returned the wrong mass, and
+  ``ExactEventTime`` answered ``df`` and ``hf`` with ``inf``.**
+
+  Two consequences of continuous-distribution assumptions reaching
+  distributions that are not continuous.
+
+  ``ParametricFitter.log_df`` is ``log(hf) - Hf``, which encodes the
+  continuous identity :math:`f = h R(x)`. On the integers the mass at
+  ``k`` is :math:`P(T = k) = h(k) R(k - 1)` -- the hazard there times
+  the survival to just *before* it. The two differ by a factor
+  :math:`R(k)/R(k-1)`, which is not a rounding difference::
+
+      Binomial.log_df(3, 10, 0.3)  ->  -1.887   (was)
+      log(Binomial.df(3, 10, 0.3)) ->  -1.321
+
+  Across ``k = 1..7`` the returned mass ran from 0.88 of the truth down
+  to 0.15. Five of the six discrete distributions override ``log_df``
+  with a closed-form log-pmf and were unaffected; Binomial did not, and
+  reached the continuous identity. ``DiscreteParametricFitter`` now
+  supplies the discrete relation, so Binomial is correct and any future
+  discrete distribution inherits the right one. The class already
+  documented the convention -- ``hf`` is ``P(T = k) / R(k - 1)`` -- it
+  simply had no ``log_df`` to match it.
+
+  The bug was latent rather than live: ``Binomial.fit`` is analytic
+  (``p`` is the observed mean over the trial count) and never evaluates
+  a log-density, so no fit was affected. ``Binomial.log_df`` is public,
+  though, and generic code that calls it got the wrong numbers.
+
+  Separately, ``ExactEventTime`` is a point mass, so its density is a
+  Dirac delta: zero everywhere, infinite at one point, integrating to
+  one. There is no function of ``x`` that represents it. ``df`` returned
+  ``inf`` at ``T`` and 0 elsewhere, which integrates to ``inf`` rather
+  than 1; ``hf`` returned ``inf`` at ``T`` *and at every x after it*;
+  and the inherited ``log_df`` computed ``log(inf) - inf`` and returned
+  ``nan``. All three now raise ``NotImplementedError`` explaining why
+  and pointing at the functions that are defined. An ``inf`` propagates
+  into a plot, a likelihood or a mixture weight and surfaces far from
+  its cause; a raise stops at the call site. ``Bernoulli`` already
+  omitted ``df``, ``hf`` and ``Hf`` for the same reason.
+
+  ``ExactEventTime.Hf`` is kept and is unchanged in value -- it is
+  :math:`-\log R(x)`, stepping from 0 to infinity at ``T``, which is
+  well defined. It had been written as an alias for ``hf``, which
+  happened to take the same two values; it is now written as itself.
+  ``sf``, ``ff``, ``qf`` and fitting are untouched.
+
+  New tests cover the discrete mass identity for all six distributions,
+  Binomial's log-pmf against scipy, that the discrete hazard is a
+  probability (a continuous-convention hazard can exceed one, which is
+  how the mix-up shows itself), that ``Hf`` accumulates as
+  :math:`-\sum \log(1 - h)` rather than :math:`\sum h`, and the
+  degenerate refusals alongside proof that fitting and serialisation
+  still work.
+
+- **``Beta.mpp`` and ``Beta4.mpp`` removed as unreachable.**
+  Both bodies were a single ``raise NotImplementedError``, and neither
+  could ever run. Refusing probability plotting is declarative --
+  ``supports_mpp = False``, checked in ``fit`` before the fitter is
+  dispatched -- and both distributions already set it, so the guard
+  raised a ``ValueError`` naming the distribution and the alternatives
+  three frames before the method was reachable.
+
+  Deleting them changes no behaviour. ``Beta``, ``Beta4``, ``Gamma`` and
+  ``ExpoWeibull`` all still refuse ``how="MPP"`` from the same guard,
+  with the same message. ``mpp`` is now defined only by ``Exponential``
+  and ``Rayleigh``, which is where the hook means something: absence of
+  ``mpp`` sends a distribution to the *generic* plotting path, so the
+  method is an override for a closed form, never a way to decline.
+
+  Two invariants in ``test_shared_signatures.py`` keep the two
+  mechanisms from drifting back together: no distribution may declare
+  ``supports_mpp = False`` and define ``mpp`` as well, and every
+  distribution that refuses must refuse through the shared guard rather
+  than an exception of its own. The second covers nine distributions and
+  is scoped to those whose ``fit`` takes a ``how`` at all -- ``Bernoulli``,
+  ``Binomial`` and ``ExactEventTime`` override ``fit`` with a narrow
+  signature that has none, so asking them for MPP is a ``TypeError``
+  from argument binding. That is the separate ``fit`` divergence, still
+  open.
+
 - **``cs`` is inherited rather than restated on every distribution,
   and Gamma's ``cs`` documentation no longer describes the exponential.**
   Twelve distributions defined a conditional survival function. Eleven

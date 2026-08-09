@@ -13,6 +13,7 @@ from scipy.stats import geom, nbinom, poisson
 
 from surpyval import (
     BetaGeometric,
+    Binomial,
     DiscreteWeibull,
     Discretize,
     Gamma,
@@ -338,3 +339,81 @@ def test_discretize_rejects_negative_support():
 def test_discretize_name_is_distinct_from_discrete_weibull():
     assert DiscretizedWeibull.name == "Discretize(Weibull)"
     assert DiscretizedWeibull.name != DiscreteWeibull.name
+
+
+def test_log_df_uses_the_discrete_mass_identity():
+    # P(T = k) = h(k) R(k - 1). ParametricFitter.log_df encodes the
+    # continuous f = h R(x) instead, which puts R(k) where R(k - 1)
+    # belongs. Binomial inherited it and returned the mass scaled by
+    # R(k)/R(k - 1) -- 0.88 of the truth at k=1, falling to 0.15 by k=7.
+    x = np.arange(1, 8, dtype=float)
+    cases = [
+        (Binomial, (10, 0.3)),
+        (Poisson, (3.0,)),
+        (Geometric, (0.3,)),
+        (NegativeBinomial, (4.0, 0.4)),
+        (DiscreteWeibull, (0.6, 1.2)),
+        (BetaGeometric, (2.0, 3.0)),
+    ]
+    for dist, params in cases:
+        df = np.asarray(dist.df(x, *params), dtype=float)
+        log_df = np.asarray(dist.log_df(x, *params), dtype=float)
+        np.testing.assert_allclose(
+            np.exp(log_df), df, rtol=1e-9, err_msg=f"{dist.name}"
+        )
+
+
+def test_binomial_log_df_matches_scipy():
+    # Binomial is the one that reached the inherited implementation, so
+    # it is the one worth pinning against an independent source.
+    from scipy.stats import binom
+
+    x = np.arange(0, 11, dtype=float)
+    np.testing.assert_allclose(
+        np.asarray(Binomial.log_df(x, 10, 0.3), dtype=float),
+        binom.logpmf(x, 10, 0.3),
+        rtol=1e-9,
+    )
+
+
+def test_discrete_hazard_is_a_probability():
+    # The discrete hazard is P(T = k)/P(T >= k), which is a probability
+    # and cannot exceed one. The continuous form P(T = k)/P(T > k) can,
+    # which is how a mixed-up convention shows itself.
+    x = np.arange(1, 12, dtype=float)
+    for dist, params in [
+        (Poisson, (3.0,)),
+        (Geometric, (0.3,)),
+        (DiscreteWeibull, (0.6, 1.2)),
+        (NegativeBinomial, (4.0, 0.4)),
+        (BetaGeometric, (2.0, 3.0)),
+        (Binomial, (10, 0.3)),
+    ]:
+        hf = np.asarray(dist.hf(x, *params), dtype=float)
+        finite = hf[np.isfinite(hf)]
+        assert np.all(finite >= 0.0), dist.name
+        assert np.all(
+            finite <= 1.0 + 1e-12
+        ), f"{dist.name}: max {finite.max()}"
+
+
+def test_cumulative_hazard_accumulates_the_discrete_way():
+    # For a discrete distribution R(k) = prod(1 - h), so the cumulative
+    # hazard is -sum log(1 - h), not the sum of the hazards. Hf and hf
+    # must agree through that relation.
+    x = np.arange(1, 9, dtype=float)
+    for dist, params in [
+        (Poisson, (3.0,)),
+        (Geometric, (0.3,)),
+        (DiscreteWeibull, (0.6, 1.2)),
+        (Binomial, (10, 0.3)),
+    ]:
+        hf = np.asarray(dist.hf(x, *params), dtype=float)
+        Hf = np.asarray(dist.Hf(x, *params), dtype=float)
+        seed = -np.log(float(np.asarray(dist.sf(0.0, *params))))
+        np.testing.assert_allclose(
+            np.cumsum(-np.log1p(-hf)) + seed,
+            Hf,
+            rtol=1e-7,
+            err_msg=f"{dist.name}",
+        )
