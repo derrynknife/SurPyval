@@ -115,41 +115,6 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, alpha, beta, a, b)
 
-    def cs(self, x, X, alpha, beta, a, b):
-        r"""
-
-        Conditional survival (or reliability) function for the
-        four-parameter Beta distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        X : numpy array or scalar
-            The value(s) at which each value(s) in x was known to have survived
-        alpha : numpy array or scalar
-            The first shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            The second shape parameter for the Beta distribution
-        a : numpy array or scalar
-            The lower bound of the support
-        b : numpy array or scalar
-            The upper bound of the support
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-        """
-        return self.sf(x + X, alpha, beta, a, b) / self.sf(
-            X, alpha, beta, a, b
-        )
-
     def ff(self, x, alpha, beta, a, b):
         r"""
 

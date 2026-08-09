@@ -118,44 +118,6 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         """
         return norm.sf(x, mu, sigma)
 
-    def cs(
-        self, x: Numeric, X: Numeric, mu: Boxable, sigma: Boxable
-    ) -> Boxable:
-        r"""
-
-        Conditional survival function for the Normal Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The value(s) at which the function will be calculated
-        X : numpy array or scalar
-            The value(s) at which each value(s) in x was known to have survived
-        mu : numpy array or scalar
-            The location parameter for the Normal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the Normal distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            the conditional survival probability at x
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Normal
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Normal.cs(x, 5, 3, 4)
-        array([0.73452116, 0.51421702, 0.34242113, 0.2165286 , 0.1298356 ])
-        """
-        return self.sf(x + X, mu, sigma) / self.sf(X, mu, sigma)
-
     def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 

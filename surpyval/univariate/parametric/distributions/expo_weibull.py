@@ -159,44 +159,6 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         """
         return np.power(1 - np.exp(-((x / alpha) ** beta)), mu)
 
-    def cs(self, x, X, alpha, beta, mu):
-        r"""
-
-        Conditional survival (or reliability) function for the ExpoWeibull
-        Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        alpha : numpy array or scalar
-            scale parameter for the ExpoWeibull distribution
-        beta : numpy array or scalar
-            shape parameter for the ExpoWeibull distribution
-        mu : numpy array or scalar
-            shape parameter for the ExpoWeibull distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import ExpoWeibull
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> ExpoWeibull.cs(x, 1, 3, 4, 1.2)
-        array([8.77367129e-01, 4.25451775e-01, 5.09266354e-02, 5.37452200e-04,
-               1.35732908e-07])
-        """
-        return self.sf(x + X, alpha, beta, mu) / self.sf(X, alpha, beta, mu)
-
     def df(self, x, alpha, beta, mu):
         r"""
 

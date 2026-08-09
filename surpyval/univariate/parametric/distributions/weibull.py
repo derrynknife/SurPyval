@@ -106,45 +106,6 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         # same as np.exp for large values
         return -np.expm1(-((x / alpha) ** beta))
 
-    def cs(
-        self, x: Numeric, X: Numeric, alpha: Boxable, beta: Boxable
-    ) -> Boxable:
-        r"""
-
-        Conditional survival function for the Weibull Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        X : numpy array or scalar
-            The values at which the item is known to have survived
-        alpha : numpy array or scalar
-            scale parameter for the Weibull distribution
-        beta : numpy array or scalar
-            shape parameter for the Weibull distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Weibull
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Weibull.cs(x, 5, 3, 4)
-        array([2.52537548e-04, 3.00394073e-10, 2.45288508e-19, 1.48999440e-32,
-               5.42544000e-51])
-        """
-        return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
-
     def df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 

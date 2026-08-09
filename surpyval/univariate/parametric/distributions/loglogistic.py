@@ -76,42 +76,6 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         # of raising/NaN-ing on the negative power (#280).
         return 1.0 / (1.0 + (x / alpha) ** beta)
 
-    def cs(self, x, X, alpha, beta):
-        r"""
-
-        Conditional survival function for the LogLogistic Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        X : numpy array or scalar
-            The value(s) at which each value(s) in x was known to have survived
-        alpha : numpy array or scalar
-            scale parameter for the LogLogistic distribution
-        beta : numpy array or scalar
-            shape parameter for the LogLogistic distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import LogLogistic
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> LogLogistic.cs(x, 5, 3, 4)
-        array([0.51270879, 0.28444803, 0.16902083, 0.10629329, 0.07003273])
-        """
-        return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
-
     def ff(self, x, alpha, beta):
         r"""
 

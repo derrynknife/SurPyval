@@ -249,10 +249,46 @@ class ParametricFitter:
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
     def cs(self, x, X, *params):
-        # Conditional survival R(x + X) / R(X); distributions override
-        # this only to carry a docstring or a simplified closed form.
-        # The default also gives discrete distributions a working
-        # ``Parametric.cs`` (previously AttributeError).
+        r"""
+
+        Conditional survival function: the probability of surviving a
+        further ``x`` given survival to ``X`` already.
+
+        .. math::
+            R(x, X) = \frac{R(x + X)}{R(X)}
+
+        This is the definition for every distribution, so it lives here
+        rather than being restated on each one. ``Exponential``
+        overrides it because the exponential is memoryless and
+        :math:`R(x, X) = R(x)`, which is both cheaper and free of the
+        cancellation the ratio suffers in the far tail.
+
+        Parameters
+        ----------
+
+        x : numpy array or scalar
+            The additional time to survive, measured from ``X``
+        X : numpy array or scalar
+            The time already survived
+        *params : numpy array like or scalar
+            The parameters of the distribution, in the order given by
+            its ``param_names``
+
+        Returns
+        -------
+
+        cs : scalar or numpy array
+            The value(s) of the conditional survival function.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> x = np.array([1, 2, 3, 4, 5])
+        >>> Weibull.cs(x, 5, 3, 4)
+        array([2.52537548e-04, 3.00394073e-10, 2.45288508e-19, 1.48999440e-32,
+               5.42544000e-51])
+        """
         return self.sf(x + X, *params) / self.sf(X, *params)
 
     def _plot_x_bounds(self, x, params):

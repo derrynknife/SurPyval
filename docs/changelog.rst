@@ -4,6 +4,47 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **``cs`` is inherited rather than restated on every distribution,
+  and Gamma's ``cs`` documentation no longer describes the exponential.**
+  Twelve distributions defined a conditional survival function. Eleven
+  of the twelve had the same body as ``ParametricFitter.cs``, differing
+  only in spelling the parameters out instead of taking ``*params``::
+
+      return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
+
+  The duplication had already rotted. ``Gamma.cs`` carried
+
+  .. math::
+      R(x) = e^{-\lambda x}
+
+  which is the *exponential* survival function -- copy-pasted from
+  ``exponential.py``, where both methods sat at line 136. The body
+  computed the ratio correctly, so the code was right and the
+  documentation above it described a different distribution. Gamma is
+  not memoryless and its conditional survival is not its survival.
+
+  The eleven pass-through overrides are removed (395 lines), and
+  ``ParametricFitter.cs`` -- which had no docstring at all, so ``cs``
+  was undocumented anywhere the override was absent -- now carries the
+  definition, the parameter descriptions and a worked example. The
+  wrong Gamma formula goes with the override it lived on, and Gamma
+  inherits the correct generic statement.
+
+  ``Exponential.cs`` is kept. The exponential is memoryless, so
+  :math:`R(x, X) = R(x)`, which is one ``exp`` rather than two and a
+  division, and avoids the cancellation the ratio suffers far into the
+  tail.
+
+  Ten of the removed docstrings carried doctested examples, and those
+  were the only per-distribution numerical check on ``cs``. Their values
+  are preserved in
+  ``surpyval/tests/univariate/parametric/test_conditional_survival.py``,
+  alongside tests that each distribution's ``cs`` equals the survival
+  ratio (which is what checks Exponential's shortcut against the long
+  way), that ``cs(0, X) == 1``, that the exponential is memoryless for
+  any conditioning time, and that the discrete distributions reach a
+  working inherited ``cs``.
+
 - **BREAKING: shared methods now have one signature across every
   distribution.**
   A distribution is reached through a ``ParametricFitter`` reference

@@ -73,43 +73,6 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, alpha, beta)
 
-    def cs(self, x, X, alpha, beta):
-        r"""
-
-        Conditional survival (or reliability) function for the Beta
-        Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        X : numpy array or scalar
-            The value(s) at which each value(s) in x was known to have survived
-        alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            The scale parameter for the Beta distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Beta
-        >>> x = np.array([.1, .2, .3, .4, .5])
-        >>> Beta.cs(x, 0.4, 3, 4)
-        array([0.6315219 , 0.32921811, 0.12946429, 0.03115814, 0.00233319])
-        """
-        return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
-
     def ff(self, x, alpha, beta):
         r"""
 

@@ -225,35 +225,6 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.ppf(u, n, p)
 
-    def cs(self, x: Numeric, X: Numeric, n: Boxable, p: Boxable) -> Boxable:
-        r"""
-
-        Conditional survival; the probability of surviving a further ``x``
-        events having already survived ``X``:
-
-        .. math::
-            R(x \mid X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The further number of events
-        X : numpy array or scalar
-            The number of events already survived
-        n : integer
-            The number of trials
-        p : float
-            The per-trial probability of an event
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The conditional survival probability
-        """
-        return self.sf(x + X, n, p) / self.sf(X, n, p)
-
     def mean(self, n: Boxable, p: Boxable) -> Boxable:
         r"""
 

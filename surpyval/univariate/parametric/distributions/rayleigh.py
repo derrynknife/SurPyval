@@ -130,40 +130,6 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.expm1(-(x**2) / (2 * sigma**2))
 
-    def cs(self, x, X, sigma):
-        r"""
-
-        Conditional survival function for the Rayleigh Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        X : numpy array or scalar
-            The values at which the item is known to have survived
-        sigma : numpy array or scalar
-            scale parameter for the Rayleigh distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Rayleigh
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Rayleigh.cs(x, 5, 3)
-        array([0.54274748, 0.26359714, 0.11455884, 0.04455143, 0.01550385])
-        """
-        return self.sf(x + X, sigma) / self.sf(X, sigma)
-
     def df(self, x, sigma):
         r"""
 

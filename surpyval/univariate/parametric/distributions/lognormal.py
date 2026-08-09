@@ -110,44 +110,6 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, mu, sigma)
 
-    def cs(
-        self, x: Numeric, X: Numeric, mu: Boxable, sigma: Boxable
-    ) -> Boxable:
-        r"""
-
-        Conditional survival function for the LogNormal Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The value(s) at which the function will be calculated
-        X : numpy array or scalar
-            The value(s) at which each value(s) in x was known to have survived
-        mu : numpy array or scalar
-            The location parameter for the LogNormal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the LogNormal distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            the conditional survival probability at x
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import LogNormal
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> LogNormal.cs(x, 5, 3, 4)
-        array([0.97287811, 0.9496515 , 0.92933892, 0.91129122, 0.89505592])
-        """
-        return self.sf(x + X, mu, sigma) / self.sf(X, mu, sigma)
-
     def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 

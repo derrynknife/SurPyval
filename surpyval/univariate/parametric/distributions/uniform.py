@@ -60,40 +60,6 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, a, b)
 
-    def cs(self, x, X, a, b):
-        r"""
-
-        Survival (or Reliability) function for the Uniform Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Uniform
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Uniform.cs(x, 4, 0, 10)
-        array([0.83333333, 0.66666667, 0.5       , 0.33333333, 0.16666667])
-        """
-        return self.sf(x + X, a, b) / self.sf(X, a, b)
-
     def ff(self, x, a, b):
         r"""
 

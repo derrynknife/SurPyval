@@ -133,43 +133,6 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, alpha, beta)
 
-    def cs(self, x, X, alpha, beta):
-        r"""
-
-        Conditional survival function for the Gamma Distribution:
-
-        .. math::
-            R(x) = e^{-\lambda x}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The value(s) at which the function will be calculated
-        X : numpy array or scalar
-            The value(s) at which each value(s) in x was known to have survived
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            the conditional survival probability.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Gamma
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Gamma.cs(x, 5, 3, 4)
-        array([2.59402488e-02, 6.39048747e-04, 1.51519143e-05, 3.48776510e-07,
-               7.79933496e-09])
-        """
-        return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
-
     def ff(self, x, alpha, beta):
         r"""
 
