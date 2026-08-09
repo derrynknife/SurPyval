@@ -366,20 +366,6 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
     def mpp_x_transform(self, x):
         return x
 
-    def mpp(
-        self,
-        x,
-        c=None,
-        n=None,
-        t=None,
-        heuristic="Nelson-Aalen",
-        rr="y",
-        on_d_is_0=False,
-        offset=False,
-    ):
-        msg = "Probability Plotting Method for Beta distribution"
-        raise NotImplementedError(msg)
-
     def _mom(self, x):
         """
         MOM: Method of Moments for the beta distribution has an analytic answer

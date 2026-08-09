@@ -444,10 +444,6 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
     def mpp_inv_y_transform(self, y, *params):
         return self.ff(y, *params)
 
-    def mpp(self, *args, **kwargs):
-        msg = "Probability Plotting Method for Beta4 distribution"
-        raise NotImplementedError(msg)
-
     def _plot_x_bounds(self, x, params):
         return float(params[2]), float(params[3])
 

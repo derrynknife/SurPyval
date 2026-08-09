@@ -22,6 +22,7 @@ import inspect
 import pathlib
 from collections import defaultdict
 
+import numpy as np
 import pytest
 
 import surpyval
@@ -100,6 +101,58 @@ def test_moment_order_is_a_scalar_everywhere():
         assert params[1] == "m", f"{name}.moment first arg is {params[1]!r}"
         checked += 1
     assert checked > 15, f"only checked {checked} distributions"
+
+
+def test_mpp_override_and_supports_mpp_do_not_contradict():
+    # ``mpp`` is an opt-in hook: fitters/mpp.py dispatches on
+    # hasattr(dist, "mpp") and otherwise runs the generic probability
+    # plotting path. Independently, fit() refuses how="MPP" outright
+    # when supports_mpp is False.
+    #
+    # A distribution that sets supports_mpp = False *and* defines mpp is
+    # carrying dead code -- the guard in fit() raises before dispatch can
+    # reach the method. Beta and Beta4 each had one whose whole body was
+    # `raise NotImplementedError`, which read as the thing doing the
+    # refusing when it could never run.
+    #
+    # The converse is not an error: a distribution can support MPP and
+    # use the generic path, which is what most of them do.
+    contradictory = []
+    for name in dir(surpyval):
+        dist = getattr(surpyval, name)
+        if not isinstance(dist, ParametricFitter):
+            continue
+        defines = any("mpp" in k.__dict__ for k in type(dist).__mro__)
+        if defines and not dist.supports_mpp:
+            contradictory.append(name)
+    assert not contradictory, (
+        "these declare supports_mpp = False but still define mpp, which "
+        f"can never run: {contradictory}"
+    )
+
+
+def test_every_distribution_refusing_mpp_raises_the_same_way():
+    # One refusal, one message, one place -- rather than each
+    # distribution inventing its own NotImplementedError.
+    #
+    # Restricted to distributions whose fit() takes a ``how`` at all.
+    # Bernoulli, Binomial and ExactEventTime override fit() with a
+    # narrow signature that has no ``how``, so asking them for MPP is a
+    # TypeError from argument binding rather than this refusal. That is
+    # the separate fit() divergence, not this one.
+    refusers = [
+        name
+        for name in dir(surpyval)
+        if isinstance(getattr(surpyval, name), ParametricFitter)
+        and not getattr(surpyval, name).supports_mpp
+        and "how"
+        in inspect.signature(type(getattr(surpyval, name)).fit).parameters
+    ]
+    assert len(refusers) > 3, f"expected several refusers, got {refusers}"
+    for name in refusers:
+        dist = getattr(surpyval, name)
+        with pytest.raises(ValueError, match="does not work"):
+            dist.fit(np.array([1.0, 2.0, 3.0, 4.0]), how="MPP")
 
 
 def _param_names_by_module():
