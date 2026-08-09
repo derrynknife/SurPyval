@@ -528,3 +528,57 @@ def test_both_models_round_trip_under_their_own_names():
         restored = surpyval.from_dict(model.to_dict())
         assert restored.dist.name == dist.name
         np.testing.assert_allclose(restored.params, model.params)
+
+
+def test_bernoulli_qf_is_the_standard_quantile():
+    from scipy.stats import binom
+
+    # On (0, 1) it is exactly binom.ppf(u, 1, p) -- the smallest outcome
+    # k with P(X <= k) >= u.
+    u = np.array([0.01, 0.1, 0.5, 0.699, 0.7, 0.701, 0.9, 0.99])
+    np.testing.assert_allclose(
+        np.asarray(Bernoulli.qf(u, P_BERN), dtype=float),
+        binom.ppf(u, 1, P_BERN),
+    )
+    np.testing.assert_allclose(
+        np.asarray(Bernoulli.qf(u, P_BERN), dtype=float),
+        np.asarray(Binomial.qf(u, 1, P_BERN), dtype=float),
+    )
+    # It steps at 1 - p, not at p.
+    assert float(np.ravel(Bernoulli.qf(1 - P_BERN, P_BERN))[0]) == 0.0
+    assert float(np.ravel(Bernoulli.qf(1 - P_BERN + 1e-9, P_BERN))[0]) == 1.0
+    # At u = 0 scipy answers -1, one below the support; this answers 0.
+    assert float(np.ravel(Bernoulli.qf(0.0, P_BERN))[0]) == 0.0
+
+
+def test_bernoulli_qf_drives_inverse_transform_sampling():
+    # The property that makes qf worth having: qf(U) reproduces the
+    # distribution, which is what ParametricFitter.random does.
+    rng = np.random.default_rng(0)
+    U = rng.uniform(size=200_000)
+    draws = np.asarray(Bernoulli.qf(U, P_BERN), dtype=float)
+    assert set(np.unique(draws)) <= {0.0, 1.0}
+    assert np.isclose(draws.mean(), P_BERN, atol=0.005)
+
+
+def test_bernoulli_qf_does_not_invert_this_ff_and_says_so():
+    # Documented consequence of R(x) = P(X >= x): the failure function is
+    # P(X < x), which never exceeds 1 - p on {0, 1}, so the usual
+    # discrete check ff(qf(u)) >= u cannot hold once u passes 1 - p. The
+    # other discrete distributions, whose R(k) is P(X > k), are fine.
+    u = 0.9  # above 1 - p = 0.7
+    k = float(np.ravel(Bernoulli.qf(u, P_BERN))[0])
+    assert k == 1.0
+    assert float(np.ravel(Bernoulli.ff(k, P_BERN))[0]) < u
+    # Whereas for a distribution using the package's R(k) = P(X > k):
+    k_pois = float(np.ravel(Poisson.qf(u, 3.0))[0])
+    assert float(np.ravel(Poisson.ff(k_pois, 3.0))[0]) >= u - 1e-9
+
+
+@pytest.mark.parametrize("p", [0.0, 1.0])
+def test_bernoulli_qf_at_the_degenerate_ends(p):
+    u = np.array([0.01, 0.5, 0.99])
+    expected = 0.0 if p == 0.0 else 1.0
+    np.testing.assert_allclose(
+        np.asarray(Bernoulli.qf(u, p), dtype=float), expected
+    )

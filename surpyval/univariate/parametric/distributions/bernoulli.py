@@ -238,6 +238,60 @@ class Bernoulli_(DiscreteParametricFitter):
         x_arr = self._check_x(x)
         return np.where(x_arr == 0.0, 0.0, -np.log(p))
 
+    def qf(self, u: Numeric, p: Boxable) -> Boxable:
+        r"""
+
+        Quantile function for the Bernoulli Distribution:
+
+        .. math::
+            q(u) = \begin{cases}
+                0 & u \leq 1 - p \\
+                1 & u > 1 - p
+            \end{cases}
+
+        This inverts :math:`P(X \leq x)`, the ordinary CDF, which is the
+        standard quantile and the one that makes inverse-transform
+        sampling work: ``qf(U)`` for uniform ``U`` is 1 with probability
+        ``p``. On the open interval it agrees exactly with
+        ``Binomial.qf(u, 1, p)`` and with ``scipy.stats.binom.ppf``. At
+        ``u = 0`` those return ``-1``, one below the support, where this
+        returns 0 -- the smallest outcome there is.
+
+        .. note::
+           It is *not* the inverse of this class's ``ff``. That is a
+           consequence of the survival convention rather than an
+           oversight: ``R(x) = P(X \geq x)`` forces ``F(x) = P(X < x)``
+           if the two are to sum to one, and ``P(X < x)`` never exceeds
+           ``1 - p`` anywhere on ``{0, 1}`` -- so no ``x`` in the support
+           satisfies ``F(x) >= u`` once ``u`` passes ``1 - p``. The other
+           discrete distributions, whose ``R(k)`` is ``P(X > k)``, do not
+           have this split.
+
+        Parameters
+        ----------
+
+        u : numpy array or scalar
+            The probability or probabilities at which the quantile will
+            be calculated
+        p : float
+            The probability of the ``1`` outcome
+
+        Returns
+        -------
+
+        qf : scalar or numpy array
+            The outcome(s) at the given probabilities.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Bernoulli
+        >>> Bernoulli.qf(np.array([0.1, 0.7, 0.75, 0.99]), 0.3)
+        array([0., 0., 1., 1.])
+        """
+        u_arr = np.asarray(u, dtype=float)
+        return np.where(u_arr <= 1.0 - p, 0.0, 1.0)
+
     def log_df(self, x: Numeric, p: Boxable) -> Boxable:
         # Neither inherited relation fits. DiscreteParametricFitter uses
         # f(k) = h(k) R(k - 1), which assumes R(k) = P(X > k); here R is

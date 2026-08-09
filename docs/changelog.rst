@@ -4,6 +4,33 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **``Bernoulli.qf``.** The quantile function, added after the rest of
+  the distribution::
+
+      Bernoulli.qf([0.1, 0.7, 0.75, 0.99], 0.3)  ->  array([0., 0., 1., 1.])
+
+  It inverts :math:`P(X \leq x)` -- the ordinary CDF -- stepping from 0
+  to 1 at ``u = 1 - p``. On the open interval it matches
+  ``Binomial.qf(u, 1, p)`` and ``scipy.stats.binom.ppf`` exactly. At
+  ``u = 0`` those answer ``-1``, one below the support; this answers 0,
+  the smallest outcome there is.
+
+  It is deliberately *not* the inverse of this class's ``ff``, and that
+  follows from the survival convention rather than being an oversight.
+  ``R(x) = P(X \geq x)`` forces ``F(x) = P(X < x)`` if the two are to
+  sum to one, and ``P(X < x)`` never exceeds ``1 - p`` anywhere on
+  ``{0, 1}`` -- so once ``u`` passes ``1 - p`` no ``x`` in the support
+  satisfies ``F(x) >= u``. The other discrete distributions, whose
+  ``R(k)`` is ``P(X > k)``, do not have this split, and the usual
+  ``ff(qf(u)) >= u`` check still holds for them. A test pins the
+  difference in both directions so it stays a known consequence rather
+  than becoming a surprise.
+
+  What the definition does buy is the property worth having: ``qf(U)``
+  for uniform ``U`` reproduces the distribution, which is how
+  ``ParametricFitter.random`` samples. Tested at 200,000 draws, and at
+  the degenerate ends ``p = 0`` and ``p = 1``.
+
 - **BREAKING: ``Bernoulli`` is now a Bernoulli distribution.**
   It was not one. ``F(x)`` returned ``p`` at every ``x`` -- including
   ``x = -100`` -- which is a flat curve with no time axis, not a coin
