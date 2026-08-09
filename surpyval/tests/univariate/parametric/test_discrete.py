@@ -12,6 +12,7 @@ import pytest
 from scipy.stats import geom, nbinom, poisson
 
 from surpyval import (
+    Bernoulli,
     BetaGeometric,
     Binomial,
     DiscreteWeibull,
@@ -417,3 +418,113 @@ def test_cumulative_hazard_accumulates_the_discrete_way():
             rtol=1e-7,
             err_msg=f"{dist.name}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Bernoulli: a true coin flip since 0.19.1
+# ---------------------------------------------------------------------------
+
+P_BERN = 0.3
+
+
+def test_bernoulli_functions_at_the_two_outcomes():
+    x = np.array([0, 1])
+    np.testing.assert_allclose(Bernoulli.sf(x, P_BERN), [1.0, P_BERN])
+    np.testing.assert_allclose(Bernoulli.ff(x, P_BERN), [0.0, 1 - P_BERN])
+    np.testing.assert_allclose(Bernoulli.df(x, P_BERN), [1 - P_BERN, P_BERN])
+    np.testing.assert_allclose(Bernoulli.hf(x, P_BERN), [1 - P_BERN, 1.0])
+    np.testing.assert_allclose(Bernoulli.Hf(x, P_BERN), [0.0, -np.log(P_BERN)])
+
+
+def test_bernoulli_rejects_anything_but_zero_and_one():
+    # x is the outcome of the flip, not a time. Before 0.19.1 every x
+    # returned the same number, so nothing marked 37.5 as meaningless.
+    for bad in (0.5, 2, -1, 37.5):
+        for method in (
+            Bernoulli.sf,
+            Bernoulli.ff,
+            Bernoulli.df,
+            Bernoulli.hf,
+            Bernoulli.Hf,
+        ):
+            with pytest.raises(ValueError, match="x = 0 and x = 1 only"):
+                method(bad, P_BERN)
+
+
+def test_bernoulli_internal_identities():
+    x = np.array([0, 1])
+    sf = np.asarray(Bernoulli.sf(x, P_BERN), dtype=float)
+    ff = np.asarray(Bernoulli.ff(x, P_BERN), dtype=float)
+    df = np.asarray(Bernoulli.df(x, P_BERN), dtype=float)
+    hf = np.asarray(Bernoulli.hf(x, P_BERN), dtype=float)
+    Hf = np.asarray(Bernoulli.Hf(x, P_BERN), dtype=float)
+    log_df = np.asarray(Bernoulli.log_df(x, P_BERN), dtype=float)
+
+    np.testing.assert_allclose(sf + ff, 1.0)
+    np.testing.assert_allclose(df.sum(), 1.0)
+    np.testing.assert_allclose(hf, df / sf)
+    np.testing.assert_allclose(Hf, -np.log(sf))
+    np.testing.assert_allclose(np.exp(log_df), df)
+    # E[X] from the mass equals the parameter, and equals mean/moment.
+    np.testing.assert_allclose((x * df).sum(), P_BERN)
+    np.testing.assert_allclose(Bernoulli.mean(P_BERN), P_BERN)
+    np.testing.assert_allclose(Bernoulli.moment(1, P_BERN), P_BERN)
+    # X is 0 or 1 so X**m == X, and every moment is p.
+    for m in (1, 2, 5):
+        np.testing.assert_allclose(Bernoulli.moment(m, P_BERN), P_BERN)
+
+
+def test_bernoulli_log_df_needs_its_own_relation():
+    # DiscreteParametricFitter.log_df is f(k) = h(k) R(k - 1), which
+    # assumes R(k) = P(X > k). Bernoulli's R is P(X >= x), so the
+    # at-risk set at x is R(x) itself. Inheriting the discrete relation
+    # would give df(1) = 1 instead of p.
+    x = np.array([0, 1])
+    np.testing.assert_allclose(
+        np.exp(np.asarray(Bernoulli.log_df(x, P_BERN), dtype=float)),
+        np.asarray(Bernoulli.df(x, P_BERN), dtype=float),
+    )
+    # At x = 1 the discrete relation would read h(1) * R(0) = 1 * 1 = 1,
+    # where the mass is p. (R(-1) is not even askable here, which is the
+    # other half of why that relation does not transfer.)
+    h1 = float(np.ravel(Bernoulli.hf(1, P_BERN))[0])
+    R0 = float(np.ravel(Bernoulli.sf(0, P_BERN))[0])
+    assert np.isclose(h1 * R0, 1.0)
+    assert not np.isclose(h1 * R0, P_BERN)
+    with pytest.raises(ValueError):
+        Bernoulli.sf(-1, P_BERN)
+
+
+def test_bernoulli_fit_recovers_the_fraction_of_ones():
+    data = np.array([1, 1, 0, 1, 0, 0, 1, 1, 1, 0])
+    model = Bernoulli.fit(data)
+    np.testing.assert_allclose(model.params, [data.mean()])
+
+
+def test_fixed_event_probability_is_unchanged_and_separate():
+    # The flat model Bernoulli used to be. It is now its own class, so
+    # making Bernoulli a real Bernoulli did not take it away.
+    from surpyval import FixedEventProbability
+
+    assert type(FixedEventProbability) is not type(Bernoulli)
+    for x in (0.0, 1.0, 37.5, -12.0):
+        np.testing.assert_allclose(FixedEventProbability.ff(x, P_BERN), P_BERN)
+        np.testing.assert_allclose(
+            FixedEventProbability.sf(x, P_BERN), 1 - P_BERN
+        )
+    # Its F is constant, so it still has no density, hazard or mean.
+    for absent in ("df", "hf", "Hf", "qf", "mean"):
+        assert not any(
+            absent in k.__dict__ for k in type(FixedEventProbability).__mro__
+        ), absent
+
+
+def test_both_models_round_trip_under_their_own_names():
+    import surpyval
+    from surpyval import FixedEventProbability
+
+    for dist in (Bernoulli, FixedEventProbability):
+        model = dist.from_params(P_BERN)
+        restored = surpyval.from_dict(model.to_dict())
+        assert restored.dist.name == dist.name
+        np.testing.assert_allclose(restored.params, model.params)

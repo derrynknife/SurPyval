@@ -4,6 +4,64 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **BREAKING: ``Bernoulli`` is now a Bernoulli distribution.**
+  It was not one. ``F(x)`` returned ``p`` at every ``x`` -- including
+  ``x = -100`` -- which is a flat curve with no time axis, not a coin
+  flip. Meanwhile ``moment``, ``entropy``, ``random`` and ``fit`` all
+  described a genuine ``{0, 1}`` variable: ``E[X^m] = p``, the binary
+  entropy, draws of 0 and 1, and a fit that rejects anything else. The
+  class was two models at once, and ``df``, ``hf``, ``Hf`` and ``mean``
+  were missing because they are the four places the contradiction
+  cannot be papered over.
+
+  ``Bernoulli`` is now the coin flip the name promises. ``x`` is the
+  outcome, so 0 and 1 are the only values accepted and anything else
+  raises::
+
+      Bernoulli.sf([0, 1], 0.3)  ->  array([1. , 0.3])
+      Bernoulli.df([0, 1], 0.3)  ->  array([0.7, 0.3])
+      Bernoulli.hf([0, 1], 0.3)  ->  array([0.7, 1. ])
+      Bernoulli.sf(37.5, 0.3)    ->  ValueError
+
+  The survival function is :math:`R(x) = P(X \geq x)`, so ``R(0) = 1``
+  and ``R(1) = p``: read as a one-shot device, ``p`` is the probability
+  it works when demanded. ``df``, ``hf``, ``Hf`` and ``mean`` are added
+  and every internal identity now holds -- the mass sums to one,
+  ``h = f/R``, ``H = -ln R``, and ``E[X]`` from the mass equals both
+  ``mean`` and ``moment(1)``. ``moment``, ``entropy``, ``random`` and
+  ``fit`` are unchanged, because they already described this model.
+
+  **``p`` has changed direction.** It was documented as the probability
+  of *failure*; it is now the probability of the ``1`` outcome, which
+  under the survival reading is the probability of *surviving*. Code
+  that coded failures as 1 now fits the survival probability and wants
+  ``1 - p``.
+
+  ``log_df`` is defined on the class rather than inherited. Neither base
+  relation fits: ``DiscreteParametricFitter`` uses
+  ``f(k) = h(k) R(k - 1)``, which assumes ``R(k) = P(X > k)``, and here
+  the at-risk set at ``x`` is ``R(x)`` itself.
+
+  **The flat model is not gone.** It survives unchanged as
+  :data:`FixedEventProbability`, which until now was a second instance
+  of the same class and is now its own. It is the two-point mixture of
+  ``InstantlyOccurs`` (weight ``p``) and ``NeverOccurs`` (weight
+  ``1 - p``) -- which is why ``degenerate.py`` already described those
+  two as its limits at ``p = 1`` and ``p = 0``. Its ``df``, ``hf``,
+  ``qf`` and ``mean`` remain absent, correctly: a constant ``F`` has no
+  density, no invertible quantile and no time to average.
+
+  Both names serialise and round-trip under their own identities, so
+  stored models keep pointing at the model they were fitted with -- but
+  a stored ``Bernoulli`` fitted before 0.19.1 will now be read with the
+  new semantics, and its ``p`` reinterpreted as above.
+
+  ``binomial.py`` claimed Bernoulli was "the special case ``n = 1``".
+  That was false of the old model and is now true of the mass function:
+  ``Bernoulli.df`` and ``Binomial.df(..., 1, p)`` agree exactly. The
+  survival functions remain offset by one by convention, and the
+  docstring now says so.
+
 - **``ExpoWeibull.moment``.** It was the only continuous distribution
   without a public ``moment``, while already having ``mean`` and
   ``entropy``.

@@ -22,6 +22,12 @@ class Binomial_(DiscreteParametricFitter):
 
     It is the recurrent (repeated-trials) counterpart of the
     :class:`Bernoulli` distribution, which is the special case ``n = 1``.
+    The two agree exactly on the probability mass there. Their survival
+    functions are offset by one, which is a convention rather than a
+    disagreement: this class follows the package's discrete rule
+    :math:`R(k) = P(K > k)`, while Bernoulli uses :math:`P(X \geq x)` so
+    that ``R(0) = 1`` and ``R(1) = p``. Hence
+    ``Bernoulli.sf(x, p) == Binomial.sf(x - 1, 1, p)``.
 
     The distribution is parameterised by ``n`` (the number of trials, a
     positive integer) and ``p`` (the per-trial event probability). Because
