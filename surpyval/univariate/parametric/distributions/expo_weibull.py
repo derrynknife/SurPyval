@@ -332,11 +332,54 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             -np.expm1(mu * np.log1p(-np.exp(-((x / alpha) ** beta))))
         )
 
-    def mean(self, alpha, beta, mu):
+    def moment(self, m, alpha, beta, mu):
+        r"""
+
+        m-th (non central) moment of the ExpoWeibull distribution.
+
+        .. math::
+            E = \int_{0}^{\infty} x^{m} f(x) dx
+
+        There is a closed form -- an infinite series in
+        :math:`\binom{\mu - 1}{i}(-1)^{i}(i + 1)^{-(1 + m/\beta)}` -- but
+        it only terminates when :math:`\mu` is a positive integer, and
+        for other :math:`\mu` it is alternating and slow to converge,
+        losing significance to cancellation as :math:`\mu` grows. The
+        integral is quadrature either way, so this takes it directly, as
+        ``entropy`` does for the same reason.
+
+        Parameters
+        ----------
+
+        m : integer
+            The ordinal of the moment to calculate
+        alpha : numpy array or scalar
+            scale parameter for the ExpoWeibull distribution
+        beta : numpy array or scalar
+            shape parameter for the ExpoWeibull distribution
+        mu : numpy array or scalar
+            shape parameter for the ExpoWeibull distribution
+
+        Returns
+        -------
+
+        moment : scalar or numpy array
+            The moment(s) of the ExpoWeibull distribution
+
+        Examples
+        --------
+        >>> from surpyval import ExpoWeibull
+        >>> ExpoWeibull.moment(2, 3, 4, 1.2)
+        8.598425613605164
+        """
+
         def func(x):
-            return x * self.df(x, alpha, beta, mu)
+            return x**m * self.df(x, alpha, beta, mu)
 
         return integrate.quad(func, 0, np.inf)[0]
+
+    def mean(self, alpha, beta, mu):
+        return self.moment(1, alpha, beta, mu)
 
     def entropy(self, alpha, beta, mu):
         r"""

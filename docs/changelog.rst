@@ -4,6 +4,38 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **``ExpoWeibull.moment``.** It was the only continuous distribution
+  without a public ``moment``, while already having ``mean`` and
+  ``entropy``.
+
+  The exponentiated Weibull has a closed form -- an infinite series in
+  :math:`\binom{\mu-1}{i}(-1)^{i}(i+1)^{-(1+m/\beta)}` -- but it only
+  terminates when :math:`\mu` is a positive integer. For other
+  :math:`\mu` it is alternating and slow to converge, losing
+  significance to cancellation as :math:`\mu` grows. The integral is
+  quadrature either way, so ``moment`` takes it directly, as ``entropy``
+  already does and as ``mean`` already did. ``mean`` now delegates to
+  ``moment(1)`` rather than repeating the integral.
+
+  Checked against two references with no integration in them: at
+  :math:`\mu = 1` the distribution collapses to the Weibull, whose
+  m-th moment is :math:`\alpha^{m}\Gamma(1 + m/\beta)` exactly; and
+  for integer :math:`\mu` the series terminates and can be summed. Both
+  agree to about 1e-14. The exponentiated-exponential case
+  (:math:`\alpha = \beta = 1`) is also pinned against the harmonic
+  number :math:`H_{\mu}`, which is its mean.
+
+  ``ExpoWeibull`` joins the ``moment`` comparison against quantile-bounded
+  numerical integration in ``test_distributions_math.py``, which had
+  excluded it by name. That check is not circular despite both sides
+  integrating: the reference integrates between quantiles with
+  breakpoints, ``moment`` integrates from zero to infinity.
+
+  This does not change fitting. ``ParametricFitter._moment`` already had
+  a quadrature fallback for distributions without a ``moment``, so
+  ``how="MOM"`` worked for ``ExpoWeibull`` before this and still does.
+  What was missing was the public method.
+
 - **Fixed: ``Binomial.log_df`` returned the wrong mass, and
   ``ExactEventTime`` answered ``df`` and ``hf`` with ``inf``.**
 

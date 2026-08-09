@@ -12,10 +12,12 @@ Checks closed-form identities independent of fitting:
 """
 
 import math
+from math import comb
 
 import numpy as np
 import pytest
 from scipy import integrate
+from scipy.special import gamma as gamma_func
 from scipy.special import xlogy
 
 from surpyval import (
@@ -265,10 +267,16 @@ def test_mean_matches_numerical_integration(dist, params):
     ), f"{dist.name}: mean() = {computed}, integration gives {expected}"
 
 
-# ExpoWeibull does not implement moment(); LogLogistic needs a larger shape
-# parameter than DIST_PARAMS uses so its second moment exists with a tail
-# light enough for truncated integration.
+# LogLogistic needs a larger shape parameter than DIST_PARAMS uses so its
+# second moment exists with a tail light enough for truncated integration.
+#
+# ExpoWeibull is included even though its own moment() is quadrature: the
+# reference here integrates between quantiles with breakpoints, which is a
+# different scheme from moment()'s plain 0-to-infinity call, so the two
+# agreeing is a real check rather than a tautology. The closed-form checks
+# below pin it independently.
 MOMENT_PARAMS = [
+    (ExpoWeibull, (3.0, 1.5, 0.8)),
     (Gumbel, (-1.0, 2.0)),
     (GumbelLEV, (3.0, 1.5)),
     (Normal, (5.0, 2.0)),
@@ -296,3 +304,75 @@ def test_moment_matches_numerical_integration(dist, params, n):
     assert math.isclose(
         computed, expected, rel_tol=1e-5
     ), f"{dist.name}: moment({n}) = {computed}, integration gives {expected}"
+
+
+# ---------------------------------------------------------------------------
+# 8. ExpoWeibull.moment against closed forms that do not use quadrature
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("m", [1, 2, 3, 4])
+def test_expoweibull_moment_reduces_to_weibull_at_mu_one(m):
+    # mu = 1 collapses the exponentiated Weibull to the Weibull, whose
+    # m-th moment is alpha^m * Gamma(1 + m/beta) exactly. This is the
+    # strongest check available: an independent closed form, no
+    # integration on the reference side.
+    alpha, beta = 3.0, 4.0
+    expected = alpha**m * gamma_func(1.0 + m / beta)
+    computed = ExpoWeibull.moment(m, alpha, beta, 1.0)
+    assert math.isclose(computed, expected, rel_tol=1e-9), (
+        f"ExpoWeibull.moment({m}, {alpha}, {beta}, 1) = {computed}, "
+        f"Weibull closed form gives {expected}"
+    )
+    np.testing.assert_allclose(
+        computed, float(np.ravel(Weibull.moment(m, alpha, beta))[0]), rtol=1e-9
+    )
+
+
+@pytest.mark.parametrize("mu", [1, 2, 3, 5])
+@pytest.mark.parametrize("m", [1, 2])
+def test_expoweibull_moment_matches_the_terminating_series(m, mu):
+    # For integer mu the series solution terminates:
+    #
+    #   E[X^m] = mu alpha^m Gamma(1 + m/beta)
+    #            sum_i (-1)^i C(mu - 1, i) (i + 1)^-(1 + m/beta)
+    #
+    # It is only usable here because mu is an integer -- for other mu it
+    # is an infinite alternating series that loses significance, which
+    # is why moment() integrates instead.
+    alpha, beta = 3.0, 4.0
+    expected = (
+        mu
+        * alpha**m
+        * gamma_func(1.0 + m / beta)
+        * sum(
+            (-1) ** i * comb(mu - 1, i) / (i + 1) ** (1.0 + m / beta)
+            for i in range(mu)
+        )
+    )
+    computed = ExpoWeibull.moment(m, alpha, beta, float(mu))
+    assert math.isclose(computed, expected, rel_tol=1e-9), (
+        f"ExpoWeibull.moment({m}, {alpha}, {beta}, {mu}) = {computed}, "
+        f"series gives {expected}"
+    )
+
+
+def test_expoweibull_mean_is_the_first_moment():
+    # mean() delegates to moment(1) rather than repeating the integral.
+    for params in [(3.0, 4.0, 1.2), (10.0, 2.0, 0.7), (1.0, 1.0, 3.0)]:
+        assert math.isclose(
+            ExpoWeibull.mean(*params),
+            ExpoWeibull.moment(1, *params),
+            rel_tol=1e-12,
+        )
+
+
+def test_expoweibull_exponential_case_is_the_harmonic_sum():
+    # alpha = beta = 1 is the exponentiated exponential, whose mean is
+    # the harmonic number H_mu for integer mu. Another reference with no
+    # integration in it.
+    for mu in (1, 2, 3, 4):
+        expected = sum(1.0 / i for i in range(1, mu + 1))
+        assert math.isclose(
+            ExpoWeibull.mean(1.0, 1.0, float(mu)), expected, rel_tol=1e-9
+        )
