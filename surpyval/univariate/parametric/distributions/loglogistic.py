@@ -1,14 +1,18 @@
+import numpy.typing as npt
 from scipy.stats import fisk
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class LogLogistic_(OptimisedFitMixin, ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -19,7 +23,9 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             plot_x_scale="log",
         )
 
-    def _parameter_initialiser(self, data, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
         if offset:
             # The data arrives already validated in xcnt form, so the
             # ``xcnt_handler`` round trip that used to open this branch
@@ -39,7 +45,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
                 dtype=float,
             )
 
-    def sf(self, x, alpha, beta):
+    def sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Survival (or reliability) function for the LogLogistic Distribution:
@@ -76,7 +82,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         # of raising/NaN-ing on the negative power (#280).
         return 1.0 / (1.0 + (x / alpha) ** beta)
 
-    def ff(self, x, alpha, beta):
+    def ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the LogLogistic
@@ -114,7 +120,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         z = (x / alpha) ** beta
         return z / (1.0 + z)
 
-    def df(self, x, alpha, beta):
+    def df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Density function for the LogLogistic Distribution:
@@ -152,7 +158,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             (1.0 + (x / alpha) ** beta) ** 2.0
         )
 
-    def hf(self, x, alpha, beta):
+    def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the LogLogistic Distribution:
@@ -186,7 +192,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         """
         return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
 
-    def Hf(self, x, alpha, beta):
+    def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the LogLogistic Distribution:
@@ -220,7 +226,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta))
 
-    def qf(self, u, alpha, beta):
+    def qf(self, u: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Quantile function for the LogLogistic distribution:
@@ -254,7 +260,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         """
         return alpha * (u / (1 - u)) ** (1.0 / beta)
 
-    def mean(self, alpha, beta):
+    def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Mean of the LogLogistic distribution
@@ -287,14 +293,14 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         else:
             return np.nan
 
-    def log_df(self, x, alpha, beta):
+    def log_df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return (
             np.log(beta / alpha)
             + (beta - 1) * np.log(x / alpha)
             - 2 * np.log(1 + (x / alpha) ** beta)
         )
 
-    def log_sf(self, x, alpha, beta):
+    def log_sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         # logaddexp form: log(alpha^beta + x^beta) overflows for
         # beta*log(alpha) or beta*log(x) beyond ~709 even when the log
         # probability itself is modest (#280).
@@ -302,25 +308,27 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         lx = beta * np.log(x)
         return la - np.logaddexp(la, lx)
 
-    def log_ff(self, x, alpha, beta):
+    def log_ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         la = beta * np.log(alpha)
         lx = beta * np.log(x)
         return lx - np.logaddexp(la, lx)
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: Numeric) -> Boxable:
         return np.log(x)
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
         out[~mask] = -np.log(1.0 / y[~mask] - 1)
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         return 1.0 / (np.exp(-y) + 1)
 
-    def unpack_rr(self, params, rr):
+    def unpack_rr(
+        self, params: npt.NDArray, rr: str
+    ) -> tuple[Boxable, Boxable]:
         if rr == "y":
             beta = params[0]
             alpha = np.exp(params[1] / -beta)
@@ -329,10 +337,10 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             alpha = np.exp(params[1] / (beta * params[0]))
         return alpha, beta
 
-    def moment(self, m, alpha, beta):
+    def moment(self, m: int, alpha: Boxable, beta: Boxable) -> Boxable:
         return fisk.moment(m, beta, scale=alpha)
 
-    def entropy(self, alpha, beta):
+    def entropy(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the LogLogistic distribution.

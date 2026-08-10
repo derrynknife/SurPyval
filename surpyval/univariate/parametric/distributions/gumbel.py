@@ -1,15 +1,19 @@
+import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.stats import gumbel_l
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Gumbel_(OptimisedFitMixin, ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -20,7 +24,9 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
             plot_x_scale="linear",
         )
 
-    def _parameter_initialiser(self, data, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
         if (2 in data.c) or (-1 in data.c):
             heuristic = "Turnbull"
         else:
@@ -32,7 +38,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
             dtype=float,
         )
 
-    def sf(self, x, mu, sigma):
+    def sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Survival (or Reliability) function for the Gumbel Distribution:
@@ -71,7 +77,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(-np.exp((x - mu) / sigma))
 
-    def ff(self, x, mu, sigma):
+    def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         CDF (or Failure) function for the Gumbel Distribution:
@@ -110,7 +116,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.expm1(-self.Hf(x, mu, sigma))
 
-    def df(self, x, mu, sigma):
+    def df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Density function (pdf) for the Gumbel Distribution:
@@ -150,7 +156,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         z = (x - mu) / sigma
         return (1 / sigma) * np.exp(z - np.exp(z))
 
-    def hf(self, x, mu, sigma):
+    def hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Gumbel Distribution:
@@ -187,7 +193,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         z = (x - mu) / sigma
         return (1 / sigma) * np.exp(z)
 
-    def Hf(self, x, mu, sigma):
+    def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the Gumbel Distribution:
@@ -223,7 +229,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp((x - mu) / sigma)
 
-    def qf(self, u, mu, sigma):
+    def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Gumbel Distribution:
@@ -257,7 +263,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         """
         return mu + sigma * (np.log(-np.log1p(-u)))
 
-    def mean(self, mu, sigma):
+    def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Calculates the mean of the Gumbel distribution with given parameters.
@@ -291,20 +297,20 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         """
         return mu - sigma * euler_gamma
 
-    def log_df(self, x, mu, sigma):
+    def log_df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         z = (x - mu) / sigma
         return z - np.exp(z) - np.log(sigma)
 
-    def log_sf(self, x, mu, sigma):
+    def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return -self.Hf(x, mu, sigma)
 
-    def log_ff(self, x, mu, sigma):
+    def log_ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return np.log(-np.expm1(-self.Hf(x, mu, sigma)))
 
-    def moment(self, m, mu, sigma):
+    def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
         return gumbel_l.moment(m, loc=mu, scale=sigma)
 
-    def entropy(self, mu, sigma):
+    def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the Gumbel distribution.
@@ -336,20 +342,22 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         """
         return np.log(sigma) + euler_gamma + 1
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: Numeric) -> Boxable:
         return x
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
         out[~mask] = np.log(-np.log(1 - y[~mask]))
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         return 1 - np.exp(-np.exp(y))
 
-    def unpack_rr(self, params, rr):
+    def unpack_rr(
+        self, params: npt.NDArray, rr: str
+    ) -> tuple[Boxable, Boxable]:
         if rr == "y":
             sigma = 1.0 / params[0]
             mu = -sigma * params[1]

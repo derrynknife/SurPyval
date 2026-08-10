@@ -1,14 +1,18 @@
+import numpy.typing as npt
 from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, comb, digamma
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Beta4_(OptimisedFitMixin, ParametricFitter):
@@ -29,7 +33,7 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
     lower bound while keeping the upper bound pinned at 1.
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=4,
@@ -46,7 +50,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         # ``a`` and ``b`` supply the left and right support bounds.
         self.support_param_index = (2, 3)
 
-    def _parameter_initialiser(self, data, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
         x = np.asarray(data.x, dtype=float)
         if (data.c == 0).all():
             x = np.repeat(x, data.n)
@@ -71,11 +77,13 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
 
         return np.array([alpha, beta, a, b], dtype=float)
 
-    def _z(self, x, a, b):
+    def _z(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         """Standardise ``x`` onto the unit interval."""
         return (x - a) / (b - a)
 
-    def sf(self, x, alpha, beta, a, b):
+    def sf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Survival (or reliability) function for the four-parameter Beta
@@ -115,7 +123,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, alpha, beta, a, b)
 
-    def ff(self, x, alpha, beta, a, b):
+    def ff(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the four-parameter
@@ -156,7 +166,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         z = np.clip(self._z(x, a, b), 0.0, 1.0)
         return abetainc(alpha, beta, z)
 
-    def df(self, x, alpha, beta, a, b):
+    def df(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Density function for the four-parameter Beta distribution:
@@ -205,7 +217,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         den = abeta(alpha, beta) * (b - a) ** (alpha + beta - 1)
         return np.where(inside, num / den, 0.0)
 
-    def hf(self, x, alpha, beta, a, b):
+    def hf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the four-parameter Beta
@@ -245,7 +259,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         out = np.where(x_arr < a, 0.0, out)
         return np.where(x_arr >= b, np.inf, out)
 
-    def Hf(self, x, alpha, beta, a, b):
+    def Hf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Cumulative hazard rate for the four-parameter Beta distribution.
@@ -275,7 +291,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta, a, b))
 
-    def qf(self, u, alpha, beta, a, b):
+    def qf(
+        self, u: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Quantile function for the four-parameter Beta distribution:
@@ -313,7 +331,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         """
         return a + (b - a) * betaincinv(alpha, beta, u)
 
-    def mean(self, alpha, beta, a, b):
+    def mean(
+        self, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Mean of the four-parameter Beta distribution
@@ -347,7 +367,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         """
         return a + (b - a) * alpha / (alpha + beta)
 
-    def moment(self, m, alpha, beta, a, b):
+    def moment(
+        self, m: int, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         m-th (non central) moment of the four-parameter Beta distribution.
@@ -389,7 +411,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
             total = total + comb(m, k) * a ** (m - k) * scale**k * u_moment
         return total
 
-    def entropy(self, alpha, beta, a, b):
+    def entropy(
+        self, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Differential entropy of the four-parameter Beta distribution.
@@ -423,7 +447,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         )
         return standard + np.log(b - a)
 
-    def log_df(self, x, alpha, beta, a, b):
+    def log_df(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         return (
             (alpha - 1) * np.log(x - a)
             + (beta - 1) * np.log(b - x)
@@ -431,20 +457,24 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
             - (alpha + beta - 1) * np.log(b - a)
         )
 
-    def log_ff(self, x, alpha, beta, a, b):
+    def log_ff(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         z = np.clip(self._z(x, a, b), 0.0, 1.0)
         return abetaincln(alpha, beta, z)
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: Numeric) -> Boxable:
         return x
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         return self.qf(y, *params)
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         return self.ff(y, *params)
 
-    def _plot_x_bounds(self, x, params):
+    def _plot_x_bounds(
+        self, x: npt.NDArray, params: npt.NDArray
+    ) -> tuple[float, float] | None:
         return float(params[2]), float(params[3])
 
 

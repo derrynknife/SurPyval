@@ -1,5 +1,7 @@
 import warnings
+from typing import Any
 
+import numpy.typing as npt
 from scipy.special import factorial
 
 from surpyval import np
@@ -8,9 +10,12 @@ from surpyval.univariate.parametric.fitters.closed_form import (
     entry_times,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Exponential_(OptimisedFitMixin, ParametricFitter):
@@ -24,7 +29,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=1,
@@ -47,7 +52,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
             ],
         )
 
-    def _closed_form_mle(self, data):
+    def _closed_form_mle(self, data: SurpyvalData) -> npt.NDArray | None:
         r"""Exact MLE: total events over total exposure.
 
         With only exact and right-censored observations the
@@ -86,7 +91,9 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
             return None
         return np.array([events / exposure])
 
-    def _parameter_initialiser(self, data, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
         x = data.x
         rate = 1.0 / x[np.isfinite(x)].mean()
         if offset:
@@ -97,7 +104,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         else:
             return np.array([rate], dtype=float)
 
-    def sf(self, x, failure_rate):
+    def sf(self, x: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 
         Survival (or Reliability) function for the Exponential Distribution:
@@ -133,7 +140,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(-failure_rate * x)
 
-    def cs(self, x, X, failure_rate):
+    def cs(self, x: Numeric, X: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 
         Conditional survival function for the Exponential Distribution:
@@ -171,7 +178,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return self.sf(x, failure_rate)
 
-    def ff(self, x, failure_rate):
+    def ff(self, x: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 
         CDF (or unreliability or failure) function for the Exponential
@@ -204,7 +211,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.expm1(-failure_rate * x)
 
-    def df(self, x, failure_rate):
+    def df(self, x: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 
         Density function for the Exponential Distribution:
@@ -237,7 +244,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return failure_rate * np.exp(-failure_rate * x)
 
-    def hf(self, x, failure_rate):
+    def hf(self, x: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Exponential Distribution.
@@ -273,7 +280,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return np.ones_like(x) * failure_rate
 
-    def Hf(self, x, failure_rate):
+    def Hf(self, x: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the Exponential Distribution.
@@ -307,7 +314,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         x = np.array(x)
         return failure_rate * x
 
-    def qf(self, u, failure_rate):
+    def qf(self, u: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Exponential Distribution:
@@ -339,7 +346,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log1p(-u) / failure_rate
 
-    def mean(self, failure_rate):
+    def mean(self, failure_rate: Boxable) -> Boxable:
         r"""
 
         Calculates the mean of the Exponential distribution with given
@@ -368,7 +375,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return 1.0 / failure_rate
 
-    def moment(self, m, failure_rate):
+    def moment(self, m: int, failure_rate: Boxable) -> Boxable:
         r"""
 
         Calculates the m-th moment of the Exponential distribution.
@@ -398,7 +405,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return factorial(m) / (failure_rate**m)
 
-    def entropy(self, failure_rate):
+    def entropy(self, failure_rate: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the Exponential distribution.
@@ -426,37 +433,37 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - np.log(failure_rate)
 
-    def log_df(self, x, failure_rate):
+    def log_df(self, x: Numeric, failure_rate: Boxable) -> Boxable:
         return np.log(failure_rate) - failure_rate * x
 
-    def log_sf(self, x, failure_rate):
+    def log_sf(self, x: Numeric, failure_rate: Boxable) -> Boxable:
         return -failure_rate * x
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: Numeric) -> Boxable:
         return x
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
         out[~mask] = -np.log(1 - y[~mask])
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         # Inverse of y = -log(1 - F) is F = 1 - exp(-y) (#257).
         return 1 - np.exp(-y)
 
     def mpp(
         self,
-        x,
-        c=None,
-        n=None,
-        t=None,
-        heuristic="Nelson-Aalen",
-        rr="y",
-        on_d_is_0=False,
-        offset=False,
-    ):
+        x: npt.NDArray,
+        c: npt.NDArray | None = None,
+        n: npt.NDArray | None = None,
+        t: npt.NDArray | None = None,
+        heuristic: str = "Nelson-Aalen",
+        rr: str = "y",
+        on_d_is_0: bool = False,
+        offset: bool = False,
+    ) -> dict[str, Any]:
         assert rr in ["x", "y"]
         # Forward the truncation windows (previously dropped, #280).
         x_pp, r, d, F = plotting_positions(
@@ -468,7 +475,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
             F = F[d > 0]
 
         # Linearise
-        y_pp = self.mpp_y_transform(F)
+        y_pp = np.asarray(self.mpp_y_transform(F))
 
         mask = np.isfinite(y_pp)
         if not mask.all():

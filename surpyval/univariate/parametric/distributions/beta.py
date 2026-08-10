@@ -1,18 +1,22 @@
+import numpy.typing as npt
 from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, digamma
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Beta_(OptimisedFitMixin, ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -30,7 +34,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         # or MOM instead (MOM is analytic for the Beta).
         self.supports_mpp = False
 
-    def _parameter_initialiser(self, data, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
         if (data.c == 0).all():
             x = np.repeat(data.x, data.n)
             p = self._mom(x)
@@ -38,7 +44,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
             p = 1.0, 1.0
         return np.asarray(p, dtype=float)
 
-    def sf(self, x, alpha, beta):
+    def sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Survival (or reliability) function for the Beta Distribution:
@@ -73,7 +79,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, alpha, beta)
 
-    def ff(self, x, alpha, beta):
+    def ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the Beta Distribution:
@@ -107,7 +113,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return abetainc(alpha, beta, x)
 
-    def df(self, x, alpha, beta):
+    def df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Density function for the Beta Distribution:
@@ -142,7 +148,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return (x ** (alpha - 1) * (1 - x) ** (beta - 1)) / abeta(alpha, beta)
 
-    def hf(self, x, alpha, beta):
+    def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Beta distribution.
@@ -176,7 +182,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
 
-    def Hf(self, x, alpha, beta):
+    def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the Beta distribution.
@@ -210,7 +216,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta))
 
-    def qf(self, u, alpha, beta):
+    def qf(self, u: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Beta Distribution:
@@ -241,7 +247,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return betaincinv(alpha, beta, u)
 
-    def mean(self, alpha, beta):
+    def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Mean of the Beta distribution
@@ -271,7 +277,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return alpha / (alpha + beta)
 
-    def moment(self, m, alpha, beta):
+    def moment(self, m: int, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         m-th (non central) moment of the Beta distribution
@@ -304,7 +310,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(abetaln(m + alpha, beta) - abetaln(alpha, beta))
 
-    def entropy(self, alpha, beta):
+    def entropy(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the Beta distribution.
@@ -345,28 +351,28 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
             + (alpha + beta - 2) * digamma(alpha + beta)
         )
 
-    def log_df(self, x, alpha, beta):
+    def log_df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return (
             (alpha - 1) * np.log(x)
             + (beta - 1) * np.log1p(-x)
             - abetaln(alpha, beta)
         )
 
-    def log_ff(self, x, alpha, beta):
+    def log_ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return abetaincln(alpha, beta, x)
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         return self.qf(y, *params)
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         # The inverse of the quantile transform is the CDF; the point must
         # be the *last* argument of betainc, not the first shape (#257).
         return abetainc(*params, y)
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: Numeric) -> Boxable:
         return x
 
-    def _mom(self, x):
+    def _mom(self, x: npt.NDArray) -> tuple[float, float]:
         """
         MOM: Method of Moments for the beta distribution has an analytic answer
         """
@@ -390,7 +396,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
 
         return alpha, beta
 
-    def _plot_x_bounds(self, x, params):
+    def _plot_x_bounds(
+        self, x: npt.NDArray, params: npt.NDArray
+    ) -> tuple[float, float] | None:
         return 0.0, 1.0
 
 

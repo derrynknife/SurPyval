@@ -1,16 +1,20 @@
+import numpy.typing as npt
 from scipy import integrate
 from scipy.special import xlogy
 
 from surpyval import np
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=3,
@@ -26,7 +30,13 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         )
         self.supports_mpp = False
 
-    def _gumbel_seed(self, x, c, n, refine):
+    def _gumbel_seed(
+        self,
+        x: npt.NDArray,
+        c: npt.NDArray | None,
+        n: npt.NDArray | None,
+        refine: bool,
+    ) -> tuple[float, float]:
         """
         Seed alpha and beta from a Gumbel fit to log(x).
 
@@ -46,7 +56,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         log_x = np.log(x)
         log_x[np.isnan(log_x)] = 0
         gumb = para.Gumbel.fit(log_x, c, n, how="MLE" if refine else "MPP")
-        if refine and not gumb.res.success:
+        # ``res`` is the optimiser result, present only on an MLE
+        # fit -- which is the only branch that sets refine.
+        if refine and not gumb.res.success:  # type: ignore[attr-defined]
             gumb = para.Gumbel.fit(log_x, c, n, how="MPP")
         mu, sigma = gumb.params
         alpha, beta = np.exp(mu), 1.0 / sigma
@@ -56,7 +68,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             beta = 1.0
         return alpha, beta
 
-    def _parameter_initialiser(self, data, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
         x, c, n = data.x, data.c, data.n
         if offset:
             # Estimate the offset first and seed alpha and beta from the
@@ -79,7 +93,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             dtype=float,
         )
 
-    def sf(self, x, alpha, beta, mu):
+    def sf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Survival (or reliability) function for the ExpoWeibull Distribution:
@@ -121,7 +137,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         # inf/-inf for representable tail probabilities (#257).
         return -np.expm1(mu * np.log1p(-np.exp(-((x / alpha) ** beta))))
 
-    def ff(self, x, alpha, beta, mu):
+    def ff(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the ExpoWeibull
@@ -159,7 +177,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         """
         return np.power(1 - np.exp(-((x / alpha) ** beta)), mu)
 
-    def df(self, x, alpha, beta, mu):
+    def df(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Density function for the ExpoWeibull Distribution:
@@ -203,7 +223,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             * np.exp(-((x / alpha) ** beta))
         )
 
-    def hf(self, x, alpha, beta, mu):
+    def hf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the ExpoWeibull Distribution:
@@ -239,7 +261,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         """
         return self.df(x, alpha, beta, mu) / self.sf(x, alpha, beta, mu)
 
-    def Hf(self, x, alpha, beta, mu):
+    def Hf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the ExpoWeibull Distribution:
@@ -276,7 +300,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta, mu))
 
-    def qf(self, u, alpha, beta, mu):
+    def qf(
+        self, u: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the ExpoWeibull Distribution:
@@ -312,7 +338,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         """
         return alpha * (-np.log1p(-(u ** (1.0 / mu)))) ** (1 / beta)
 
-    def log_df(self, x, alpha, beta, mu):
+    def log_df(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         return (
             np.log(beta)
             + np.log(mu)
@@ -322,17 +350,23 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             - ((x / alpha) ** beta)
         )
 
-    def log_ff(self, x, alpha, beta, mu):
+    def log_ff(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         return mu * np.log1p(-np.exp(-((x / alpha) ** beta)))
 
-    def log_sf(self, x, alpha, beta, mu):
+    def log_sf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         # log of the cancellation-free sf form; the naive log1p(-(...)^mu)
         # returns -inf once the inner power rounds to 1 (#257).
         return np.log(
             -np.expm1(mu * np.log1p(-np.exp(-((x / alpha) ** beta))))
         )
 
-    def moment(self, m, alpha, beta, mu):
+    def moment(
+        self, m: int, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         m-th (non central) moment of the ExpoWeibull distribution.
@@ -373,15 +407,15 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         8.598425613605164
         """
 
-        def func(x):
-            return x**m * self.df(x, alpha, beta, mu)
+        def func(x: float) -> float:
+            return float(x**m * self.df(x, alpha, beta, mu))
 
         return integrate.quad(func, 0, np.inf)[0]
 
-    def mean(self, alpha, beta, mu):
+    def mean(self, alpha: Boxable, beta: Boxable, mu: Boxable) -> Boxable:
         return self.moment(1, alpha, beta, mu)
 
-    def entropy(self, alpha, beta, mu):
+    def entropy(self, alpha: Boxable, beta: Boxable, mu: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the ExpoWeibull distribution.
@@ -415,16 +449,16 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         1.8227536487527594
         """
 
-        def func(x):
+        def func(x: float) -> float:
             f = self.df(x, alpha, beta, mu)
-            return xlogy(f, f)
+            return float(xlogy(f, f))
 
         return -integrate.quad(func, 0, np.inf)[0]
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: Numeric) -> Boxable:
         return np.log(x)
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         mu = params[-1]
         mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
@@ -432,12 +466,14 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         i = len(params)
         mu = params[i - 1]
         return (1 - np.exp(-np.exp(y))) ** mu
 
-    def unpack_rr(self, params, rr):
+    def unpack_rr(
+        self, params: npt.NDArray, rr: str
+    ) -> tuple[Boxable, Boxable, float]:
         if rr == "y":
             beta = params[0]
             alpha = np.exp(params[1] / -beta)

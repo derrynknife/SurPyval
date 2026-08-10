@@ -4,6 +4,45 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **Type-hint ratchet: the remaining eleven distributions.** Coverage
+  moves from 665/1760 (38%) to 869/1760 (49%), tracked in <#143>. Every
+  distribution module is now under ``disallow_untyped_defs`` except
+  ``general_log_linear``'s counterpart concerns (<#345>).
+
+  ``rayleigh``, ``beta``, ``beta4``, ``gamma``, ``gumbel``,
+  ``gumbel_lev``, ``loglogistic``, ``exponential``, ``uniform``,
+  ``degenerate`` and ``expo_weibull`` -- 202 signatures. The bulk was
+  mechanical, generated from each distribution's own ``param_names`` so
+  that ``x`` is a ``Numeric``, a parameter is a ``Boxable`` and the
+  return follows the method. What was not mechanical were the places the
+  generated guess was wrong, and each of those is a small fact about the
+  code:
+
+  - ``Rayleigh.mpp`` and ``Exponential.mpp`` treat the output of
+    ``mpp_y_transform`` as an array -- indexing it, and passing it to
+    ``np.polyfit`` and ``np.linalg.lstsq`` -- while the transform is
+    declared to return a ``Boxable``. Wrapped at the call site rather
+    than widening the transform, which is shared.
+  - ``Gamma._moment_estimate`` and the two ``_mom`` helpers return
+    2-tuples, not arrays.
+  - ``Exponential._closed_form_mle`` and ``Uniform._closed_form_mle``
+    return ``None`` when the closed form does not apply to the data, so
+    they are ``npt.NDArray | None``.
+  - ``ExpoWeibull.unpack_rr`` returns *three* values where every other
+    distribution's returns two.
+  - ``degenerate``'s classes inherit ``Distribution``, not
+    ``ParametricFitter``, and its signatures have to match that
+    supertype rather than the distribution convention.
+  - ``ExpoWeibull._gumbel_seed`` reads ``gumb.res``, which a
+    ``Parametric`` only carries after an MLE fit -- the branch that
+    reads it is the one that asked for MLE, so it is annotated as
+    deliberate rather than made unconditional.
+
+  Behaviour is unchanged, and checked rather than assumed: every one of
+  the eleven distributions was fitted by MLE, MPP, MSE and MOM, and its
+  ``entropy`` and second moment evaluated, before and after. All 66
+  results are bit-identical.
+
 - **``Logistic`` ratcheted, and ``mgf`` made private.** ``Logistic`` was
   the only distribution with a public ``mgf``, which read as a method
   the other twenty-two were missing.
