@@ -376,3 +376,59 @@ def test_expoweibull_exponential_case_is_the_harmonic_sum():
         assert math.isclose(
             ExpoWeibull.mean(1.0, 1.0, float(mu)), expected, rel_tol=1e-9
         )
+
+
+# ---------------------------------------------------------------------------
+# 9. Logistic moments come from differentiating the MGF
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("m", [1, 2, 3])
+def test_logistic_moment_matches_the_closed_form(m):
+    # Logistic.moment differentiates the moment generating function m
+    # times with autograd rather than using a closed form, because the
+    # general one needs Bernoulli numbers. These are the low-order raw
+    # moments written out, so the path is pinned against algebra rather
+    # than against another numerical method.
+    mu, sigma = 3.0, 2.0
+    var = sigma**2 * math.pi**2 / 3.0
+    expected = {
+        1: mu,
+        2: mu**2 + var,
+        3: mu**3 + 3 * mu * var,  # the logistic is symmetric, so skew = 0
+    }[m]
+    assert math.isclose(
+        float(Logistic.moment(m, mu, sigma)), expected, rel_tol=1e-9
+    )
+
+
+def test_logistic_variance_from_its_moments():
+    mu, sigma = 3.0, 2.0
+    var = (
+        float(Logistic.moment(2, mu, sigma))
+        - float(Logistic.moment(1, mu, sigma)) ** 2
+    )
+    assert math.isclose(var, sigma**2 * math.pi**2 / 3.0, rel_tol=1e-9)
+
+
+def test_no_distribution_exposes_a_public_mgf():
+    # Logistic had the only public `mgf` in the package, which read as a
+    # method the others were missing rather than as its own internal
+    # machinery -- it exists solely for `moment` to differentiate. It is
+    # `_mgf` now.
+    import surpyval
+    from surpyval.univariate.parametric.parametric_fitter import (
+        ParametricFitter,
+    )
+
+    with_mgf = [
+        name
+        for name in dir(surpyval)
+        if isinstance(getattr(surpyval, name), ParametricFitter)
+        and any(
+            "mgf" in k.__dict__ for k in type(getattr(surpyval, name)).__mro__
+        )
+    ]
+    assert not with_mgf, f"public mgf on: {with_mgf}"
+    # The private one is still there and still drives moment().
+    assert hasattr(Logistic, "_mgf")

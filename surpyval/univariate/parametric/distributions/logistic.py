@@ -1,15 +1,19 @@
+import numpy.typing as npt
 from autograd import grad
 from autograd.scipy.special import beta as abeta
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Logistic_(OptimisedFitMixin, ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -23,12 +27,14 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
             plot_x_scale="linear",
         )
 
-    def _parameter_initialiser(self, data, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
         return np.asarray(
             self.fit_from_surpyval_data(data, how="MPP").params, dtype=float
         )
 
-    def sf(self, x, mu, sigma):
+    def sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Survival (or reliability) function for the Logistic Distribution:
@@ -64,7 +70,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         exp_term = np.exp(-(x - mu) / sigma)
         return exp_term / (1 + exp_term)
 
-    def ff(self, x, mu, sigma):
+    def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the Logistic Distribution:
@@ -99,7 +105,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         z = (x - mu) / sigma
         return 1.0 / (1 + np.exp(-z))
 
-    def df(self, x, mu, sigma):
+    def df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the Logistic Distribution:
@@ -136,7 +142,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         z = (x - mu) / sigma
         return np.exp(-z) / (sigma * (1 + np.exp(-z)) ** 2)
 
-    def hf(self, x, mu, sigma):
+    def hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Logistic Distribution:
@@ -170,7 +176,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         """
         return self.df(x, mu, sigma) / self.sf(x, mu, sigma)
 
-    def Hf(self, x, mu, sigma):
+    def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the Logistic distribution:
@@ -204,7 +210,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, mu, sigma))
 
-    def qf(self, u, mu, sigma):
+    def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Logistic distribution:
@@ -238,7 +244,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         """
         return mu + sigma * (np.log(u) - np.log1p(-u))
 
-    def mean(self, mu, sigma):
+    def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Mean of the Logistic distribution
@@ -268,30 +274,69 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         """
         return mu
 
-    def log_df(self, x, mu, sigma):
+    def log_df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         # logaddexp(0, -z) = log(1 + e^-z) without overflowing exp for
         # z < -709 (#257).
         z = (x - mu) / sigma
         return -(z + np.log(sigma) + 2 * np.logaddexp(0.0, -z))
 
-    def log_sf(self, x, mu, sigma):
+    def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         z = (x - mu) / sigma
         return -(z + np.logaddexp(0.0, -z))
 
-    def log_ff(self, x, mu, sigma):
+    def log_ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         z = (x - mu) / sigma
         return -np.logaddexp(0.0, -z)
 
-    def mgf(self, t, mu, sigma):
+    # Private: the only reason this exists is `moment` below, which
+    # differentiates it. It was the one public `mgf` on any distribution
+    # in the package, which read as a surface other distributions were
+    # missing rather than as this one's internal machinery.
+    def _mgf(self, t: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return np.exp(mu * t) * abeta(1 + sigma * t, 1 - sigma * t)
 
-    def moment(self, m, mu, sigma):
-        d = self.mgf
-        for i in range(m):
+    def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
+        r"""
+
+        m-th (non central) moment of the Logistic distribution.
+
+        Obtained by differentiating the moment generating function
+
+        .. math::
+            M(t) = e^{\mu t} B(1 + \sigma t, 1 - \sigma t)
+
+        ``m`` times at :math:`t = 0`, which is the definition of the raw
+        moment. The general closed form needs Bernoulli numbers, so
+        autograd differentiating the MGF is both shorter and exact.
+
+        Parameters
+        ----------
+
+        m : integer
+            The ordinal of the moment to calculate
+        mu : numpy array or scalar
+            The location parameter of the distribution
+        sigma : numpy array or scalar
+            The scale parameter of the distribution
+
+        Returns
+        -------
+
+        moment : scalar or numpy array
+            The moment(s) of the Logistic distribution
+
+        Examples
+        --------
+        >>> from surpyval import Logistic
+        >>> Logistic.moment(2, 3, 4)
+        np.float64(61.63789013914325)
+        """
+        d = self._mgf
+        for _ in range(m):
             d = grad(d)
         return d(0.0, mu, sigma)
 
-    def entropy(self, mu, sigma):
+    def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the Logistic distribution.
@@ -321,20 +366,22 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         """
         return np.log(sigma) + 2
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: Numeric) -> Numeric:
         return x
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> npt.NDArray:
         mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
         out[~mask] = -np.log(1.0 / y[~mask] - 1)
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
         return 1.0 / (np.exp(-y) + 1)
 
-    def unpack_rr(self, params, rr):
+    def unpack_rr(
+        self, params: npt.NDArray, rr: str
+    ) -> tuple[Boxable, Boxable]:
         if rr == "y":
             sigma = 1.0 / params[0]
             mu = -sigma * params[1]

@@ -4,6 +4,41 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **``Logistic`` ratcheted, and ``mgf`` made private.** ``Logistic`` was
+  the only distribution with a public ``mgf``, which read as a method
+  the other twenty-two were missing.
+
+  It is not an orphan and is not removed: ``Logistic.moment``
+  differentiates it ``m`` times with autograd to get the m-th raw
+  moment, and the results are exact --
+
+  .. code-block:: text
+
+      Logistic(mu=3, sigma=2)
+        moment(1) =   3.0000000000    exact  mu               = 3
+        moment(2) =  22.1594725348    exact  mu^2 + s^2 pi^2/3
+        moment(3) = 145.4352528131    exact  mu^3 + 3 mu s^2 pi^2/3
+
+  The general closed form for a logistic raw moment needs Bernoulli
+  numbers, so differentiating the MGF is both shorter and exact. What was
+  wrong was its visibility: it is machinery for ``moment``, not part of
+  the distribution surface. It is ``_mgf`` now, alongside the other
+  private helpers on distributions (``_closed_form_mle``,
+  ``_moment_estimate``, ``_gumbel_seed``). Nothing outside the class ever
+  referenced it.
+
+  The module is now fully annotated and added to the ratchet (#143).
+  Two annotations had to follow the code rather than the other way
+  round: ``mpp_y_transform`` indexes ``y``, so it takes an
+  ``npt.NDArray`` rather than a ``Numeric`` that includes ``float``, and
+  ``unpack_rr`` returns a *tuple* of two values, not an array -- both
+  matching how ``Weibull`` already declares them.
+
+  New tests pin the three low-order Logistic moments against the algebra
+  rather than against another numerical method, check the variance comes
+  out as :math:`\sigma^2\pi^2/3`, and assert that no distribution
+  exposes a public ``mgf``.
+
 - **Type-hint ratchet: the accelerated-life package, plus nine modules
   that were already complete.** Coverage across the package moves from
   611/1755 (35%) to 646/1760 (37%), tracked in

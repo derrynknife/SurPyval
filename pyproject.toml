@@ -141,6 +141,7 @@ module = [
     'surpyval.univariate.parametric.distributions.exact_event_time',
     'surpyval.univariate.parametric.distributions.normal',
     'surpyval.univariate.parametric.distributions.lognormal',
+    'surpyval.univariate.parametric.distributions.logistic',
     'surpyval.univariate.parametric.distributions.fixed_event_probability',
     # Already fully annotated; listed so they cannot slip back.
     'surpyval.fit_best',
