@@ -4,6 +4,47 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **Type-hint ratchet: ``univariate.parametric`` is finished.** Coverage
+  moves from 869/1760 (49%) to 995/1771 (56%), tracked in <#143>. Every
+  module in the package -- the fitters, the model, the base class and
+  the mixture -- is now under ``disallow_untyped_defs``.
+
+  Two structural additions came out of it, both of the same kind. A
+  ``TYPE_CHECKING`` block on ``ParametricFitter`` now declares the
+  distribution functions its own methods call -- ``cs`` divides two
+  ``sf``\ s, ``log_sf`` negates ``Hf``, ``random`` inverts ``qf``, and
+  the four ``ll_*`` methods are written in terms of ``hf``, ``Hf`` and
+  the log densities. The class docstring already stated that contract in
+  prose ("a distribution needs only ``hf`` and ``Hf``, or ``sf``, ``ff``
+  and ``df``"); this is the same statement in a form the checker reads,
+  and it mirrors the block ``OptimisedFitMixin`` already carried for the
+  estimation machinery. Declared rather than defined, so a distribution
+  that forgets one still gets the ``AttributeError`` that names it
+  instead of a silently wrong inherited implementation.
+
+  ``MixtureModel``'s fitted state -- ``data``, ``params``, ``w``, ``p``
+  and ``loglike`` -- is annotated where it is initialised to ``None``.
+
+  Three annotations had to follow the code rather than the reverse, each
+  a small fact: ``probability_plot_data``'s ``ff`` is the failure
+  *function*, not an array of values; ``bounds_convert`` returns five
+  things, not three; and ``fallback_minimize``'s ``jac`` and ``hess`` are
+  declared optional but are supplied by every caller.
+
+  Where a value comes back from scipy or autograd and genuinely has no
+  narrower type -- the confidence-bound closures, the mixture's
+  prediction inputs -- it is ``Any`` rather than ``npt.ArrayLike``. That
+  is the same trap the ``Numeric``/``Boxable`` comment in
+  ``parametric_fitter`` already documents: ``ArrayLike`` admits ``str``
+  and ``bytes``, so arithmetic on it does not type check, and the
+  ``np.asarray`` that clears the error destroys an autograd box.
+
+  Behaviour is unchanged and was checked rather than assumed: four
+  distributions fitted plain, right- and left-censored, interval
+  censored, truncated, with a limited-failure population and with zero
+  inflation, plus ``neg_ll``, ``aic`` and a two-component mixture fit --
+  bit-identical before and after.
+
 - **Type-hint ratchet: the remaining eleven distributions.** Coverage
   moves from 665/1760 (38%) to 869/1760 (49%), tracked in <#143>. Every
   distribution module is now under ``disallow_untyped_defs`` except

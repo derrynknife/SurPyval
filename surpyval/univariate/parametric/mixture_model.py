@@ -1,5 +1,7 @@
 import warnings
+from typing import Any
 
+import numpy.typing as npt
 from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 
@@ -37,14 +39,21 @@ class MixtureModel(SerialisableMixin, Distribution):
         Defaults to 2.
     """
 
-    def __init__(self, dist, m=2):
+    def __init__(self, dist: Any, m: int = 2) -> None:
         self.m = m
         self.dist = dist
-        self.data = None
-        self.params = None
-        self.w = None
-        self.p = None
-        self.loglike = None
+        # These are None until ``fit`` runs and arrays afterwards, so the
+        # honest annotation is the union -- and every use is downstream of
+        # a fit. Narrowing them to the fitted type would be a lie before
+        # the fit; narrowing to Optional would need an assert at each of
+        # the thirty-odd uses without making anything safer, because
+        # calling a predict method on an unfitted model is a contract
+        # error the AttributeError already reports.
+        self.data: Any = None
+        self.params: Any = None
+        self.w: Any = None
+        self.p: Any = None
+        self.loglike: Any = None
 
     # -- serialisation -----------------------------------------------------
 
@@ -89,7 +98,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         out.w = np.array(model_dict["w"], dtype=float)
         return out
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.params is not None:
             param_string = "\n".join(
                 [
@@ -112,7 +121,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         else:
             return "Unable to fit values"
 
-    def likelihood(self, params):
+    def likelihood(self, params: Any) -> Any:
         """Per-observation likelihood of one component (no count powers:
         counts ``n`` enter the log-likelihood as multipliers -- raising the
         per-component likelihood to ``n`` *before* mixing is wrong, since
@@ -131,7 +140,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         like[data.c == 2] = like_i
         return like
 
-    def _window_prob(self, params_i):
+    def _window_prob(self, params_i: npt.NDArray) -> Any:
         """One component's probability of landing in each observation's
         truncation window ``(tl, tr]`` -- the per-component piece of the
         truncation correction."""
@@ -146,7 +155,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             hi[fin] = self.dist.ff(tr[fin], *params_i)
         return hi - lo
 
-    def neg_ll_of(self, w, params):
+    def neg_ll_of(self, w: npt.NDArray, params: Any) -> Any:
         """Observed negative log-likelihood of the mixture: counts multiply
         in the log domain, and truncated observations are conditioned on
         their window through the mixture probability of the window."""
@@ -162,7 +171,7 @@ class MixtureModel(SerialisableMixin, Distribution):
                 ll -= np.sum(self.data.n * np.log(win))
         return -ll
 
-    def Q(self, params):
+    def Q(self, params: Any) -> Any:
         """EM M-step objective: the (negative) expected complete-data
         log-likelihood over the component labels -- counts times
         responsibilities times each component's log-likelihood."""
@@ -180,7 +189,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             total -= contrib.sum()
         return total
 
-    def expectation(self):
+    def expectation(self) -> Any:
         for i in range(self.m):
             like = self.likelihood(self.params[i])
             like = np.multiply(self.w[i], like)
@@ -189,19 +198,19 @@ class MixtureModel(SerialisableMixin, Distribution):
         # Mixing weights are count-weighted responsibility totals.
         self.w = (self.p * self.data.n).sum(axis=1) / self.data.n.sum()
 
-    def maximisation(self):
+    def maximisation(self) -> Any:
         bounds = self.dist.bounds * self.m
         res = minimize(self.Q, self.params.ravel(), bounds=bounds)
         self.params = res.x.reshape(self.m, self.dist.k)
 
-    def EM(self):
+    def EM(self) -> Any:
         self.expectation()
         self.maximisation()
         # Convergence is tracked on the observed likelihood, not the
         # M-step objective.
         self.loglike = self.neg_ll_of(self.w, self.params)
 
-    def _em(self, tol=1e-10, max_iter=1000):
+    def _em(self, tol: float = 1e-10, max_iter: int = 1000) -> Any:
         i = 0
         self.EM()
         f0 = self.loglike
@@ -217,7 +226,7 @@ class MixtureModel(SerialisableMixin, Distribution):
                 "EM algorithm reached max iterations before converging"
             )
 
-    def initialise_params(self):
+    def initialise_params(self) -> Any:
         splits_x = np.array_split(self.data.x, self.m)
         splits_c = np.array_split(self.data.c, self.m)
         splits_n = np.array_split(self.data.n, self.m)
@@ -232,15 +241,15 @@ class MixtureModel(SerialisableMixin, Distribution):
 
     def fit(
         self,
-        x=None,
-        c=None,
-        n=None,
-        t=None,
-        tl=None,
-        tr=None,
-        xl=None,
-        xr=None,
-    ):
+        x: npt.ArrayLike | None = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
+        xl: npt.ArrayLike | None = None,
+        xr: npt.ArrayLike | None = None,
+    ) -> Any:
         """
         Parameters
         ----------
@@ -326,13 +335,13 @@ class MixtureModel(SerialisableMixin, Distribution):
         else:
             self._em()
 
-    def _direct_mle(self):
+    def _direct_mle(self) -> Any:
         """Directly maximise the observed (truncation-corrected) negative
         log-likelihood over the mixing weights (via softmax logits) and the
         component parameters."""
         k = self.dist.k
 
-        def unpack(theta):
+        def unpack(theta: npt.NDArray) -> Any:
             logits = np.append(theta[: self.m - 1], 0.0)
             logits = logits - logits.max()
             w = np.exp(logits)
@@ -340,11 +349,13 @@ class MixtureModel(SerialisableMixin, Distribution):
             params = theta[self.m - 1 :].reshape(self.m, k)
             return w, params
 
-        def obj(theta):
+        def obj(theta: npt.NDArray) -> Any:
             w, params = unpack(theta)
             return self.neg_ll_of(w, params)
 
-        bounds = [(None, None)] * (self.m - 1)
+        bounds: list[tuple[float | None, float | None]] = [(None, None)] * (
+            self.m - 1
+        )
         for _ in range(self.m):
             for lo, hi in self.dist.bounds:
                 lo_s = None if lo is None else (1e-10 if lo == 0 else lo)
@@ -356,13 +367,13 @@ class MixtureModel(SerialisableMixin, Distribution):
         self.w, self.params = unpack(res.x)
         self.loglike = float(res.fun)
 
-    def mean(self):
+    def mean(self, *args: Any, **kwargs: Any) -> Any:
         mean = 0
         for i in range(self.m):
             mean += self.w[i] * self.dist.mean(*self.params[i])
         return mean
 
-    def random(self, size):
+    def random(self, size: int, *args: Any, **kwargs: Any) -> Any:
         sizes = np.random.multinomial(size, self.w)
         rvs = np.zeros(size)
         s_last = 0
@@ -373,7 +384,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         np.random.shuffle(rvs)
         return rvs
 
-    def df(self, x):
+    def df(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The probability density function of the fitted model.
 
@@ -396,7 +407,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             df += self.w[i] * self.dist.df(x, *self.params[i])
         return df
 
-    def ff(self, x):
+    def ff(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The cumulative density function of the fitted model.
 
@@ -418,7 +429,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             F = F + self.w[i] * self.dist.ff(x, *self.params[i])
         return F
 
-    def sf(self, x):
+    def sf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The survival function of the fitted model.
 
@@ -436,7 +447,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         """
         return 1 - self.ff(x)
 
-    def cs(self, x, X):
+    def cs(self, x: Any, X: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The conditional survival function of the fitted model.
 
@@ -458,7 +469,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         """
         return self.sf(x + X) / self.sf(X)
 
-    def get_plot_data(self, heuristic="Nelson-Aalen"):
+    def get_plot_data(self, heuristic: str = "Nelson-Aalen") -> Any:
         return probability_plot_data(
             dist=self.dist,
             ff=self.ff,
@@ -470,11 +481,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             params=self.params,
         )
 
-    def plot(
-        self,
-        heuristic="Nelson-Aalen",
-        ax=None,
-    ):
+    def plot(self, heuristic: str = "Nelson-Aalen", ax: Any = None) -> Any:
         """
         A method to do a probability plot
 

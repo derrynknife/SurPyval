@@ -1,26 +1,22 @@
 from collections import namedtuple
 from copy import copy, deepcopy
 from math import comb
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any, Callable
 
 import matplotlib.pyplot as plt
 import numpy.typing as npt
 from autograd import jacobian
+from matplotlib.axes import Axes
 from scipy.optimize import NonlinearConstraint, brentq, minimize
 from scipy.special import ndtri as z
 from scipy.stats import uniform
 
 import surpyval as surv
 from surpyval import ParametricDistribution, np
-from surpyval.utils import fsli_to_xcnt
-
-if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-
-    from surpyval.utils.surpyval_data import SurpyvalData
-
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
+from surpyval.utils import fsli_to_xcnt
+from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -360,7 +356,7 @@ class Parametric(
         info = getattr(self, "fitting_info", None) or {}
         return set(info.get("fixed_idx", []) or [])
 
-    def _profile_neg_ll(self, idx: int, value: float) -> float:
+    def _profile_neg_ll(self, idx: int, value: Any) -> float:
         """Profile negative log-likelihood with core parameter ``idx`` fixed.
 
         Holds the ``idx``-th distribution parameter at ``value`` and minimises
@@ -380,7 +376,7 @@ class Parametric(
             j for j in range(len(fixed)) if j != idx and j not in user_fixed
         ]
 
-        def neg_ll(theta):
+        def neg_ll(theta: npt.NDArray) -> Any:
             return float(
                 self.dist._neg_ll_func(
                     self.surv_data, *theta, self.gamma, self.f0, self.p
@@ -391,7 +387,7 @@ class Parametric(
             # Single-parameter distribution: nothing left to profile over.
             return neg_ll(fixed)
 
-        def obj(free_vals):
+        def obj(free_vals: npt.NDArray) -> Any:
             theta = fixed.copy()
             theta[free_idx] = free_vals
             return neg_ll(theta)
@@ -482,10 +478,10 @@ class Parametric(
         else:
             se = 0.5 * abs(theta_hat) if theta_hat != 0 else 1.0
 
-        def deviance(v):
+        def deviance(v: npt.NDArray) -> Any:
             return 2.0 * (self._profile_neg_ll(idx, v) - nll_hat)
 
-        def solve_side(direction):
+        def solve_side(direction: Any) -> Any:
             limit = hi_b if direction > 0 else lo_b
             below = theta_hat  # deviance(below) ~ 0 < crit
             step = se
@@ -1195,7 +1191,7 @@ class Parametric(
 
         return cb
 
-    def _cb_lr_on_func(self, on):
+    def _cb_lr_on_func(self, on: str) -> Any:
         """Return ``g(t, theta)`` for the requested ``on`` function.
 
         Evaluates the chosen distribution function at a single time for a
@@ -1206,7 +1202,7 @@ class Parametric(
         if on not in valid:
             raise ValueError(f"'on' must be one of {valid}")
 
-        def g(t, theta):
+        def g(t: Any, theta: npt.NDArray) -> Any:
             xt = np.atleast_1d(t) - self.gamma
             if on in ("sf", "R"):
                 return self.dist.sf(xt, *theta)[0]
@@ -1220,7 +1216,7 @@ class Parametric(
 
         return g
 
-    def _cb_lr(self, t, on, alpha_ci, bound):
+    def _cb_lr(self, t: Any, on: str, alpha_ci: float, bound: str) -> Any:
         """Profile-likelihood (likelihood-ratio) band on a model function.
 
         At each time the bound is the extreme value of the ``on`` function over
@@ -1253,7 +1249,7 @@ class Parametric(
             )
         )
 
-        def deviance(theta):
+        def deviance(theta: npt.NDArray) -> Any:
             return 2.0 * (
                 float(
                     self.dist._neg_ll_func(
@@ -1286,7 +1282,7 @@ class Parametric(
         order = np.argsort(t)
         t_sorted = t[order]
 
-        def extreme(time, sign, warm):
+        def extreme(time: Any, sign: Any, warm: Any) -> Any:
             # sign = +1 minimises g (lower bound); -1 maximises g (upper).
             res = minimize(
                 lambda th: sign * g(time, th),
@@ -1323,7 +1319,7 @@ class Parametric(
         else:
             return hi_vals[inv]
 
-    def _cb_context(self):
+    def _cb_context(self) -> Any:
         """Assemble the parameter vector and covariance used by ``cb``.
 
         The variance is computed over the extended parameter vector
@@ -1355,7 +1351,7 @@ class Parametric(
 
         return _CBContext(phi_hat=phi_hat, cov=cov, n_core=n_core)
 
-    def _cb_unpack(self, phi, ctx):
+    def _cb_unpack(self, phi: npt.NDArray, ctx: Any) -> Any:
         """Split an extended parameter vector into ``(core, p, f0)``."""
         core = phi[: ctx.n_core]
         i = ctx.n_core
@@ -1367,7 +1363,7 @@ class Parametric(
         f0 = phi[i] if self.zi else 0.0
         return core, p, f0
 
-    def _cb_full_sf(self, x, phi, ctx):
+    def _cb_full_sf(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
         """Survival function including the LFP and zero-inflation mass.
 
         Points below the (offset) support are clamped *before* the base sf is
@@ -1386,12 +1382,14 @@ class Parametric(
         base_sf = np.where(below, 1.0, self.dist.sf(xg, *core))
         return 1 - p + (p - f0) * base_sf
 
-    def _cb_delta_var(self, func, ctx):
+    def _cb_delta_var(self, func: Callable[..., Any], ctx: Any) -> Any:
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
         jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
         return np.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
 
-    def _cb_sf_bound(self, x, ctx, alpha_ci, bound):
+    def _cb_sf_bound(
+        self, x: npt.ArrayLike, ctx: Any, alpha_ci: float, bound: str
+    ) -> Any:
         """Confidence bound on the survival function via a logit transform.
 
         Working on the logit of R keeps the bound within ``(0, 1)``. The
@@ -1399,7 +1397,7 @@ class Parametric(
         layout the public ``cb`` method expects.
         """
 
-        def sf_func(phi):
+        def sf_func(phi: npt.NDArray) -> Any:
             return self._cb_full_sf(x, phi, ctx)
 
         var_R = self._cb_delta_var(sf_func, ctx)
@@ -1424,7 +1422,9 @@ class Parametric(
         R_cb = np.where(np.broadcast_to(R_hat == 0.0, R_cb.shape), 0.0, R_cb)
         return R_cb.T
 
-    def _cb_rate_bound(self, t, ctx, alpha_ci, bound, on):
+    def _cb_rate_bound(
+        self, t: Any, ctx: Any, alpha_ci: float, bound: str, on: str
+    ) -> Any:
         """Confidence bound on the hazard (``hf``) or density (``df``).
 
         Both are non-negative, so the bound is computed on the log scale to
@@ -1432,13 +1432,13 @@ class Parametric(
         rate function rather than differentiating the ``Hf`` bound curve.
         """
 
-        def density(phi):
+        def density(phi: npt.NDArray) -> Any:
             core, p, f0 = self._cb_unpack(phi, ctx)
             return (p - f0) * self.dist.df(t - self.gamma, *core)
 
         if on == "hf":
 
-            def func(phi):
+            def func(phi: npt.NDArray) -> Any:
                 return density(phi) / self._cb_full_sf(t, phi, ctx)
 
         else:
@@ -1462,7 +1462,7 @@ class Parametric(
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin. The aic_c
     # correction uses the same parameter count as the aic() penalty it
     # corrects — including gamma / p / f0 when fitted (#256).
-    def _ic_counts(self):
+    def _ic_counts(self) -> Any:
         n, c = self.data["n"], self.data["c"]
         return n[c == 0].sum(), n.sum()
 
@@ -1507,7 +1507,7 @@ class Parametric(
             and (self.hess_inv is not None)
         ):
 
-            def _cb_func(x_model):
+            def _cb_func(x_model: npt.NDArray) -> Any:
                 return self.cb(x_model, on="ff", alpha_ci=alpha_ci)
 
             cb_func = _cb_func

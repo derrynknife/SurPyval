@@ -1,3 +1,7 @@
+from typing import Any
+
+import numpy.typing as npt
+
 """Base class for the discrete lifetime distributions.
 
 The discrete/continuous distinction used to live in scattered per-class
@@ -37,13 +41,13 @@ class DiscreteParametricFitter(ParametricFitter):
 
     discrete = True
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         # Kept as an instance attribute (not only the class trait) because
         # the shared ``_validate_fit_inputs`` reads it for every fitter.
         self.supports_mpp = False
 
-    def log_df(self, x, *params):
+    def log_df(self, x: npt.NDArray, *params: Any) -> Any:
         # On the integers the mass at k is the hazard there times the
         # survival to just before it:
         #
@@ -61,6 +65,7 @@ class DiscreteParametricFitter(ParametricFitter):
         # identity assembled from hf and sf. This is the fallback for
         # those that do not.
         x_arr = np.asarray(x, dtype=float)
-        return np.log(self.hf(x_arr, *params)) + self.log_sf(
-            x_arr - 1.0, *params
-        )
+        # hf and log_sf come from the concrete distribution; the
+        # base declares them for typing on OptimisedFitMixin only.
+        hf = self.hf(x_arr, *params)  # type: ignore[attr-defined]
+        return np.log(hf) + self.log_sf(x_arr - 1.0, *params)
