@@ -5,7 +5,7 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class Eyring_(LifeModel):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             "Eyring",
             {"a": 0, "b": 1},
@@ -27,7 +27,7 @@ Eyring = Eyring_()
 
 
 class InverseEyring_(LifeModel):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             "InverseEyring",
             {"a": 0, "c": 1},

@@ -5,7 +5,7 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class PowerExponential_(LifeModel):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             "PowerExponential",
             {"c": 0, "a": 1, "n": 2},

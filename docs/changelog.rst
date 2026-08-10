@@ -4,6 +4,58 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **Type-hint ratchet: the accelerated-life package, plus nine modules
+  that were already complete.** Coverage across the package moves from
+  611/1755 (35%) to 646/1760 (37%), tracked in
+  <#143>.
+
+  Nine modules were fully annotated but not listed under
+  ``disallow_untyped_defs``, so nothing stopped them slipping back. They
+  are listed now: ``fit_best``, ``utils.recurrent_utils``,
+  ``utils.score``, ``recurrent.tests``,
+  ``recurrent.parametric.counting_process``,
+  ``univariate.regression.regression_data``,
+  ``univariate.regression.tvc_fit``, ``univariate.regression.frailty``
+  and ``distributions.fixed_event_probability``. Only
+  ``counting_process`` needed work -- four ``*params`` that an AST scan
+  counts as annotated and mypy does not.
+
+  Eleven of the twelve accelerated-life modules follow, and locking them
+  in turned up four real problems that annotations made visible:
+
+  - **``GeneralLogLinear``'s constructor arguments were swapped.** The
+    bounds lambda sat in the ``phi_param_map`` slot and the param-map
+    lambda in the ``phi_bounds`` slot. Nothing consumed either, so it had
+    no observable effect, but it would have bitten whoever finished the
+    model. That module stays out of the ratchet: its ``phi_param_map``
+    and ``phi_bounds`` are callables of the covariate dimension rather
+    than the ``dict`` and ``tuple`` ``LifeModel`` declares, which is why
+    it is already excluded from ``LIFE_MODELS`` (<#345>).
+
+  - **``LifeModel.phi_bounds`` was annotated as a one-element tuple**
+    while every caller passes two or three. Now variadic.
+
+  - **Two dead branches around ``phi_init``.** The fitter chose between
+    three shapes -- a ``"(Z)"``-only signature selected by comparing
+    ``str(inspect.signature(...))``, the two-argument form, and a
+    non-callable ``phi_init``. All ten life models are callable with
+    ``(life, Z)``, so only one branch could ever run.
+
+  - **``AcceleratedLife`` deserialisation accepted a distribution it
+    cannot fit.** The guard established a ``ParametricFitter``, which
+    admits ``Bernoulli``, ``Binomial`` and ``ExactEventTime`` -- none of
+    them fittable. Since the dict is untrusted input, such a name got
+    through and failed deep inside the fitter on a missing attribute; it
+    now raises where the mistake is.
+
+  ``hf`` is also declared in ``OptimisedFitMixin``'s ``TYPE_CHECKING``
+  block, where ``sf``, ``ff``, ``df``, ``Hf`` and ``qf`` already were.
+  Its absence was invisible until a typed caller reached for it.
+
+  Behaviour is unchanged throughout: the accelerated-life fit,
+  prediction, ``random`` and serialisation round-trip all produce
+  bit-identical results before and after.
+
 - **``Bernoulli.qf``.** The quantile function, added after the rest of
   the distribution::
 

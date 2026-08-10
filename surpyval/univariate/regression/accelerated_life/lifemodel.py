@@ -8,8 +8,8 @@ class LifeModel(ABC):
         self,
         name: str,
         phi_param_map: dict[str, int],
-        phi_bounds: tuple[tuple[int | None, int | None]],
-    ):
+        phi_bounds: tuple[tuple[int | None, int | None], ...],
+    ) -> None:
         self.name = name
         self.phi_param_map = phi_param_map
         self.phi_bounds = phi_bounds
