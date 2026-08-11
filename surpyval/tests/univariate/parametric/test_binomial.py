@@ -152,3 +152,28 @@ def test_to_dict_roundtrip():
     restored = Parametric.from_dict(model.to_dict())
     assert np.allclose(restored.params, [N, P])
     assert np.isclose(restored.mean(), N * P)
+
+
+def test_support_brackets_the_outcomes_exclusively():
+    # ``support`` is a pair of exclusive bounds -- ``_validate_fit_inputs``
+    # rejects ``x <= support[0]`` and ``x >= support[1]`` -- so both must
+    # sit one step outside the outcomes {0, ..., n}. Zero events and n
+    # events are ordinary outcomes with real mass, and the bounds used to
+    # exclude both. Nothing observed it because Binomial does not inherit
+    # OptimisedFitMixin, where that check lives.
+    n_trials = 5
+    for model in (
+        Binomial.from_params([n_trials, 0.3]),
+        Binomial.fit([0, 2, 3, 5, 1], n_trials=n_trials),
+    ):
+        lower, upper = model.support
+        for k in (0, n_trials):
+            assert lower < k < upper, k
+            assert Binomial.df(k, n_trials, 0.3) > 0
+
+
+def test_class_level_support_admits_zero_events():
+    # The class-level bound is checked before n is known, so only its
+    # lower end is meaningful; it must still admit k = 0, as Poisson's
+    # does. It read 0 -- Geometric's value, whose first mass is at k = 1.
+    assert Binomial.support[0] < 0

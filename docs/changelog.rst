@@ -61,13 +61,32 @@ v0.19.1 (unreleased)
   ``moment``: a point mass has no density, but its quantile is ``T`` for
   every ``u``, its mean is ``T`` and its m-th moment is ``T**m``.
 
+  **Binomial's support excluded two of its own outcomes.** ``support`` is
+  a pair of *exclusive* bounds -- ``_validate_fit_inputs`` rejects
+  ``x <= support[0]`` and ``x >= support[1]`` -- so a distribution
+  declares them one step outside its first and last mass points, which is
+  why ``Poisson`` declares ``-1`` and ``Geometric`` declares ``0``.
+  ``Binomial`` had ``Geometric``'s lower bound with ``Poisson``'s first
+  mass point: ``0``, saying that zero events in n trials lies outside the
+  distribution when its probability is 0.168 at n = 5, p = 0.3. ``fit``
+  and ``from_params`` set ``[0, n]``, excluding n events as well. The
+  bounds are now ``(-1, n + 1)``.
+
+  Nothing had observed this: the check lives on ``OptimisedFitMixin``,
+  which ``Binomial`` does not inherit -- it is one of the three
+  closed-form distributions that validate their own inputs -- so the
+  field was inert metadata that would have become live the moment
+  anything else read it. All of its values are unchanged, which was
+  checked: 18 fingerprints across both constructors are bit-identical.
+
   Behaviour *on* the support is unchanged and was checked rather than
   assumed: 58 fingerprints -- every function over its support for all six
   discrete distributions, plus each one's fitted parameters and
   ``neg_ll`` fitted plain and right-censored -- are bit-identical before
-  and after. The only intended change is ``BetaGeometric.moment``. Eleven
-  new tests cover the below-support behaviour, the pmf total, the
-  quantile round trip and the divergence rule.
+  and after. The only intended change is ``BetaGeometric.moment``. Nine
+  new tests -- 37 cases once parametrised across the distributions --
+  cover the below-support behaviour, the pmf total, the quantile round
+  trip, the divergence rule and the support bounds.
 
 - **A consistency sweep across the base distributions.** With every
   distribution now annotated, the annotations themselves could be read

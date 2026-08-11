@@ -42,7 +42,22 @@ class Binomial_(DiscreteParametricFitter):
             name=name,
             k=2,
             bounds=((1, None), (0, 1)),
-            support=(0, np.inf),
+            # ``support`` is a pair of *exclusive* bounds: the shared
+            # ``_validate_fit_inputs`` rejects data with
+            # ``x <= support[0]`` or ``x >= support[1]``, so a distribution
+            # declares the bound one step outside its first and last mass
+            # points. The first mass point here is k = 0 -- zero events in
+            # n trials is an ordinary outcome, P = 0.168 at n = 5, p = 0.3
+            # -- so the lower bound is -1, as for ``Poisson``. It read 0,
+            # which is ``Geometric``'s value and says zero events lie
+            # outside the distribution. Nothing observed it because
+            # ``Binomial`` does not inherit ``OptimisedFitMixin``, where
+            # that check lives, and validates its own inputs instead.
+            #
+            # The upper bound stays infinite here because n is not known
+            # until the model is built; ``fit`` and ``from_params`` set it
+            # to n + 1 for the same reason.
+            support=(-1, np.inf),
             param_names=["n", "p"],
             param_map={"n": 0, "p": 1},
             plot_x_scale="linear",
@@ -379,7 +394,9 @@ class Binomial_(DiscreteParametricFitter):
         model = Parametric(self, "MLE", None, False, False, False)
         p = (x_arr * n).sum() / (n_trials * n.sum())
         model.params = np.array([float(n_trials), p])
-        model.support = np.array([0, n_trials])
+        # Exclusive bounds either side of the outcomes {0, ..., n_trials};
+        # see the note in __init__.
+        model.support = np.array([-1, n_trials + 1])
         return model
 
     # Narrower than ParametricFitter.from_params, which takes
@@ -445,7 +462,9 @@ class Binomial_(DiscreteParametricFitter):
 
         model = Parametric(self, "given parameters", None, False, False, False)
         model.params = np.array([float(n), prob])
-        model.support = np.array([0, n])
+        # Exclusive bounds either side of the outcomes {0, ..., n}; see the
+        # note in __init__.
+        model.support = np.array([-1, n + 1])
         return model
 
 
