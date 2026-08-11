@@ -111,6 +111,49 @@ class FixedEventProbability_(DiscreteParametricFitter):
         """
         return np.ones_like(x).astype(float) * p
 
+    def Hf(self, x: Numeric, p: Boxable) -> Boxable:
+        r"""
+
+        Cumulative hazard function for the FixedEventProbability model:
+
+        .. math::
+            H(x) = -\ln R(x) = -\ln (1 - p)
+
+        Constant in ``x``, like the survival it comes from. There is no
+        hazard *rate* -- ``hf`` is absent because ``F`` is flat, so the
+        mass is an atom rather than a density -- but the cumulative
+        hazard is still well defined, exactly as for
+        :class:`ExactEventTime`, whose ``Hf`` exists while its ``hf``
+        does not.
+
+        Without it ``log_sf`` and ``log_ff``, which the base class writes
+        in terms of ``Hf``, raised ``AttributeError`` rather than
+        returning the constants they should.
+
+        Parameters
+        ----------
+
+        x : numpy array or scalar
+            The values at which the function will be calculated
+        p : float
+            The probability of failure of the thing
+
+        Returns
+        -------
+
+        Hf : scalar or numpy array
+            The value(s) of the cumulative hazard function at x
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import FixedEventProbability
+        >>> x = np.array([1, 2, 3])
+        >>> FixedEventProbability.Hf(x, 0.5)
+        array([0.69314718, 0.69314718, 0.69314718])
+        """
+        return -np.log(self.sf(x, p))
+
     def moment(self, m: int, p: Boxable) -> Boxable:
         r"""
 

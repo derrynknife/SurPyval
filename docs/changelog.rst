@@ -4,6 +4,71 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **A behavioural consistency sweep across the base distributions.** The
+  previous sweep compared annotations; this one compares what the
+  distributions actually compute. Every identity that should hold for all
+  of them -- ``sf + ff == 1``, ``Hf == -ln sf``, ``log_df == ln df``,
+  ``hf == df/R(k-1)``, ``qf(ff(x)) == x``, ``mean == moment(1)`` -- was
+  evaluated across all twenty-three, and the disagreements chased down.
+
+  **Six discrete distributions returned nonsense below their support.**
+  Geometric, DiscreteWeibull, BetaGeometric and NegativeBinomial live on
+  :math:`\{1, 2, 3, \dots\}`; Poisson and Binomial on
+  :math:`\{0, 1, 2, \dots\}`. Their closed forms are algebraic and did not
+  know where the support started, so evaluating one step below it gave
+  ``Geometric.df(0) == 0.43`` -- a positive probability outside the
+  distribution, growing without bound as ``k`` decreases --
+  ``BetaGeometric.sf(-1) == 2.0``, a survival above one that ``hf``
+  divided by, ``DiscreteWeibull.df(0) == 0.0355+0.5468j``, a *complex
+  number* from a negative base to a fractional power, and NaN from the
+  incomplete gamma and beta forms in Poisson and NegativeBinomial. The
+  pmf now sums to one whether or not the sum starts below the support;
+  it did not for three of them before.
+
+  The fitter's interior check kept these values out of a likelihood,
+  which is why nothing failed, but ``df`` and ``sf`` are public: anyone
+  plotting a pmf from zero got them. Each is now guarded at the first
+  mass point. The guards clamp the *input*, not just the result, so the
+  discarded branch of the ``np.where`` never evaluates the invalid
+  expression -- otherwise it still computes the NaN and warns before
+  throwing it away.
+
+  **Three quantile functions did not invert their own CDF.**
+  ``Geometric``, ``DiscreteWeibull`` and ``BetaGeometric`` answered
+  ``k + 1`` for a ``u`` that came straight out of their own ``ff``.
+  :math:`F(k) = 1 - R(k)` is formed by cancellation, so recovering ``k``
+  from it lands a few ulp above the integer and ``ceil`` rounds away from
+  it. The first two snap a near-integer before the ceiling; the third
+  compares with a relative slack in its bisection.
+
+  **``BetaGeometric.moment`` reported finite values for moments that do
+  not exist.** The survival decays as :math:`k^{-a}`, so
+  :math:`E[T^m]` converges only for :math:`a > m` -- the condition
+  ``mean`` already applied at :math:`m = 1`. A truncated sum cannot see
+  divergence; at ``a = 2, b = 3`` it returned about 25 for a second
+  moment that is infinite. It now returns ``inf``, and ``moment(1)``
+  uses the closed form, so it agrees with ``mean`` exactly rather than
+  to three decimal places.
+
+  **Two distributions were missing methods that are well defined.**
+  ``FixedEventProbability`` had no ``Hf``, so ``log_sf`` and ``log_ff``
+  -- which the base class writes in terms of it -- raised
+  ``AttributeError`` instead of returning constants. Its ``df``, ``hf``,
+  ``qf`` and ``mean`` remain absent deliberately: ``F`` is flat, so the
+  mass is an atom rather than a density. ``Hf`` is the exception,
+  exactly as for :class:`ExactEventTime`, whose ``Hf`` exists while its
+  ``hf`` does not. ``ExactEventTime`` itself gained ``qf``, ``mean`` and
+  ``moment``: a point mass has no density, but its quantile is ``T`` for
+  every ``u``, its mean is ``T`` and its m-th moment is ``T**m``.
+
+  Behaviour *on* the support is unchanged and was checked rather than
+  assumed: 58 fingerprints -- every function over its support for all six
+  discrete distributions, plus each one's fitted parameters and
+  ``neg_ll`` fitted plain and right-censored -- are bit-identical before
+  and after. The only intended change is ``BetaGeometric.moment``. Eleven
+  new tests cover the below-support behaviour, the pmf total, the
+  quantile round trip and the divergence rule.
+
 - **A consistency sweep across the base distributions.** With every
   distribution now annotated, the annotations themselves could be read
   as data and compared. Ten argument slots and thirteen returns

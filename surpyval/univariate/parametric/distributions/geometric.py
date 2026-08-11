@@ -59,29 +59,45 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def sf(self, x: Numeric, p: Boxable) -> Boxable:
         r"""Survival function :math:`R(k) = (1 - p)^{k}`."""
-        return (1.0 - p) ** x
+        # Nothing can fail before the first trial, so R = 1 below zero.
+        # The algebraic form returns 1/(1 - p) there -- a survival above
+        # one, which ``hf`` used to divide by.
+        return np.where(x < 0.0, 1.0, (1.0 - p) ** x)
 
     def ff(self, x: Numeric, p: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = 1 - (1 - p)^{k}`."""
-        return 1.0 - (1.0 - p) ** x
+        return 1.0 - self.sf(x, p)
 
     def df(self, x: Numeric, p: Boxable) -> Boxable:
-        r"""PMF :math:`P(T = k) = (1 - p)^{k - 1}\,p`."""
-        return (1.0 - p) ** (x - 1.0) * p
+        r"""PMF :math:`P(T = k) = (1 - p)^{k - 1}\,p`, zero below ``k = 1``."""
+        # The algebraic form does not know where the support starts: at
+        # k = 0 it evaluates to p/(1 - p), a positive "probability" below
+        # the first mass point (0.43 at p = 0.3), and it grows without
+        # bound as k decreases. The fitter's interior check keeps such a
+        # value out of a likelihood, but df is public and a caller
+        # plotting a pmf from zero would get it.
+        return np.where(x < 1.0, 0.0, (1.0 - p) ** (x - 1.0) * p)
 
     def hf(self, x: Numeric, p: Boxable) -> Boxable:
         r"""Discrete hazard :math:`h(k) = p` (constant, memoryless)."""
-        return np.ones_like(x, dtype=float) * p
+        # Constant on the support, but zero below it: h(k) = P(T = k)/R(k - 1)
+        # and there is no mass to condition on before k = 1.
+        return np.where(x < 1.0, 0.0, np.ones_like(x, dtype=float) * p)
 
     def Hf(self, x: Numeric, p: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -\ln R(k) = -k\ln(1 - p)`."""
-        return -x * np.log(1.0 - p)
+        return np.where(x < 0.0, 0.0, -x * np.log(1.0 - p))
 
     def qf(self, u: Numeric, p: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
         u = np.asarray(u, dtype=float)
-        q = np.ceil(np.log1p(-u) / np.log(1.0 - p))
-        return np.maximum(q, 1.0)
+        k = np.log1p(-u) / np.log(1.0 - p)
+        # A caller inverting the CDF passes u = F(k), which was formed as
+        # 1 - (1 - p)^k. Recovering k from it lands a few ulp above the
+        # integer, and a bare ceil() then answers k + 1 -- so F and its
+        # quantile did not invert each other. Snap first.
+        k = np.where(np.abs(k - np.round(k)) < 1e-9, np.round(k), k)
+        return np.maximum(np.ceil(k), 1.0)
 
     def mean(self, p: Boxable) -> Boxable:
         return 1.0 / p
@@ -100,10 +116,13 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return np.asarray(self.qf(U, p))
 
     def log_df(self, x: Numeric, p: Boxable) -> Boxable:
-        return (x - 1.0) * np.log(1.0 - p) + np.log(p)
+        # -inf below the support, matching ``df``'s zero.
+        return np.where(
+            x < 1.0, -np.inf, (x - 1.0) * np.log(1.0 - p) + np.log(p)
+        )
 
     def log_sf(self, x: Numeric, p: Boxable) -> Boxable:
-        return x * np.log(1.0 - p)
+        return np.where(x < 0.0, 0.0, x * np.log(1.0 - p))
 
 
 Geometric = Geometric_("Geometric")

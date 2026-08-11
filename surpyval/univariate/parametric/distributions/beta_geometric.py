@@ -93,7 +93,12 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
             if ui <= 0.0:
                 out[idx] = 1.0
                 continue
-            target = 1.0 - ui
+            # ``target`` is reached by cancellation -- the caller almost
+            # always passes u = F(k) = 1 - R(k), and 1 - (1 - R(k)) lands
+            # one ulp below R(k). A strict comparison then rejects the
+            # exact answer and returns k + 1, so F and its quantile did
+            # not invert each other. Compare with a relative slack.
+            target = (1.0 - ui) * (1.0 + 1e-12)
             hi = 1
             while self.sf(float(hi), a, b) > target and hi < 2**40:
                 hi *= 2
@@ -115,8 +120,19 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return (a + b - 1.0) / (a - 1.0)
 
     def moment(self, m: int, a: Boxable, b: Boxable) -> Boxable:
-        # Truncated sum of the pmf; the tail can be heavy, so integrate out to
-        # a far survival quantile.
+        # The survival decays as k^-a, so E[T^m] converges only for a > m --
+        # the same condition ``mean`` applies at m = 1. Without the test a
+        # truncated sum reports a finite value for a moment that does not
+        # exist: at a = 2, b = 3 the second moment is infinite and the old
+        # sum returned about 25.
+        if a <= m:
+            return np.inf
+        if m == 1:
+            # Exact, and the reason mean() and moment(1) now agree: the
+            # truncated sum lost 0.17% of a heavy tail even at the 1 - 1e-6
+            # quantile.
+            return self.mean(a, b)
+        # No closed form for general m; sum out to a far quantile.
         upper = int(self.qf(1.0 - 1e-6, a, b))
         k = np.arange(1, upper + 1, dtype=float)
         return np.sum(k**m * self.df(k, a, b))
@@ -131,10 +147,21 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return geom.rvs(p).astype(float)
 
     def log_sf(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
-        return self._log_beta(a, b + x) - self._log_beta(a, b)
+        # R(k) = 1 for every k below the first mass point. The Beta-ratio
+        # form does not know that -- at k = -1 it returns 2.0, a survival
+        # above one -- so clamp the argument at zero, where it is already 1.
+        safe_x = np.where(x < 0.0, 0.0, x)
+        return self._log_beta(a, b + safe_x) - self._log_beta(a, b)
 
     def log_df(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
-        return self._log_beta(a + 1.0, b + x - 1.0) - self._log_beta(a, b)
+        # Zero mass below k = 1. The Beta-ratio form returns 1.0 at k = 0,
+        # and B(a + 1, b + k - 1) is undefined once b + k - 1 <= 0, so the
+        # argument is clamped before the guard chooses the branch.
+        safe_x = np.where(x < 1.0, 1.0, x)
+        log_df = self._log_beta(a + 1.0, b + safe_x - 1.0) - self._log_beta(
+            a, b
+        )
+        return np.where(x < 1.0, -np.inf, log_df)
 
 
 BetaGeometric = BetaGeometric_("BetaGeometric")

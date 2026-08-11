@@ -233,3 +233,21 @@ def test_parameter_initialiser_rejects_loose_arrays(dist):
     # divergence above survive.
     with pytest.raises(AttributeError):
         dist._parameter_initialiser(np.array([1.0, 2.0, 3.0]))
+
+
+def test_exact_event_time_has_a_quantile_mean_and_moments():
+    # A point mass has no density and no hazard rate -- df and hf raise,
+    # and say why -- but its quantile, mean and moments are all exact and
+    # trivial. They were simply missing, so a caller reaching for the mean
+    # of a known event time got an AttributeError.
+    T = 5.0
+    np.testing.assert_allclose(
+        np.asarray(ExactEventTime.qf([0.01, 0.5, 0.99], T), dtype=float), T
+    )
+    assert ExactEventTime.mean(T) == T
+    assert ExactEventTime.moment(1, T) == T
+    assert ExactEventTime.moment(3, T) == T**3
+    # And the ones that genuinely do not exist still refuse.
+    for method in ("df", "hf"):
+        with pytest.raises(NotImplementedError):
+            getattr(ExactEventTime, method)(np.array([1.0]), T)

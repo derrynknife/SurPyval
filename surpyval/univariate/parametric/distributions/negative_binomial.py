@@ -73,11 +73,16 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def sf(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""Survival function :math:`R(k) = I_{1-p}(k, r)`."""
-        return betainc(x, r, 1.0 - p)
+        # R = 1 below the first mass point at k = 1. The incomplete beta's
+        # first argument must be positive, so it returns NaN for k < 0
+        # rather than the 1 it happens to give at k = 0.
+        safe_x = np.where(x < 0.0, 1.0, x)
+        return np.where(x < 0.0, 1.0, betainc(safe_x, r, 1.0 - p))
 
     def ff(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = I_{p}(r, k)`."""
-        return betainc(r, x, p)
+        safe_x = np.where(x < 0.0, 1.0, x)
+        return np.where(x < 0.0, 0.0, betainc(r, safe_x, p))
 
     def df(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""PMF :math:`P(T = k)`."""
@@ -109,16 +114,20 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         return nbinom.rvs(r, p, size=size) + 1.0
 
     def log_df(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
-        return (
-            gammaln(x - 1.0 + r)
+        safe_x = np.where(x < 1.0, 1.0, x)
+        return np.where(
+            x < 1.0,
+            -np.inf,
+            gammaln(safe_x - 1.0 + r)
             - gammaln(r)
-            - gammaln(x)
+            - gammaln(safe_x)
             + r * np.log(p)
-            + (x - 1.0) * np.log(1.0 - p)
+            + (safe_x - 1.0) * np.log(1.0 - p),
         )
 
     def log_sf(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
-        return betaincln(x, r, 1.0 - p)
+        safe_x = np.where(x < 0.0, 1.0, x)
+        return np.where(x < 0.0, 0.0, betaincln(safe_x, r, 1.0 - p))
 
 
 NegativeBinomial = NegativeBinomial_("NegativeBinomial")

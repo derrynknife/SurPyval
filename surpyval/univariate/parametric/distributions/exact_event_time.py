@@ -77,6 +77,47 @@ class ExactEventTime_(ParametricFitter):
         Hf[x_arr >= T] = np.inf
         return Hf
 
+    def qf(self, u: Numeric, T: Boxable) -> Boxable:
+        r"""Quantile function: :math:`T` for every :math:`u \in (0, 1)`.
+
+        All the probability sits at ``T``, so the smallest ``x`` with
+        :math:`F(x) \geq u` is ``T`` whatever ``u`` is. Unlike ``df`` and
+        ``hf`` there is nothing undefined here -- a point mass has a
+        perfectly good quantile, it is just a constant one.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.qf([0.1, 0.5, 0.9], 5.0)
+        array([5., 5., 5.])
+        """
+        return np.ones_like(np.atleast_1d(np.asarray(u, dtype=float))) * T
+
+    def mean(self, T: Boxable) -> Boxable:
+        r"""Mean of the distribution: :math:`E[X] = T`.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.mean(5.0)
+        5.0
+        """
+        return T
+
+    def moment(self, m: int, T: Boxable) -> Boxable:
+        r"""m-th raw moment: :math:`E[X^m] = T^m`.
+
+        Exact, where the inherited quadrature over a density would have
+        had no density to integrate.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.moment(2, 5.0)
+        25.0
+        """
+        return T**m
+
     def random(self, size: int | tuple[int, ...], T: Boxable) -> npt.NDArray:
         return np.ones(size) * T
 

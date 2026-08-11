@@ -512,11 +512,30 @@ def test_fixed_event_probability_is_unchanged_and_separate():
         np.testing.assert_allclose(
             FixedEventProbability.sf(x, P_BERN), 1 - P_BERN
         )
-    # Its F is constant, so it still has no density, hazard or mean.
-    for absent in ("df", "hf", "Hf", "qf", "mean"):
+    # Its F is constant, so it still has no density, hazard rate, quantile
+    # or mean: the mass is an atom rather than a density, and there is no
+    # time axis to invert or average over.
+    for absent in ("df", "hf", "qf", "mean"):
         assert not any(
             absent in k.__dict__ for k in type(FixedEventProbability).__mro__
         ), absent
+    # ``Hf`` is the exception, and is present. -ln R(x) is a perfectly good
+    # constant, exactly as for ExactEventTime, whose Hf exists while its hf
+    # does not. Its absence was not a design decision but an omission: the
+    # base class writes log_sf and log_ff in terms of Hf, so both raised
+    # AttributeError instead of returning the constants they should.
+    np.testing.assert_allclose(
+        FixedEventProbability.Hf(np.array([1.0, 9.0]), P_BERN),
+        -np.log(1 - P_BERN),
+    )
+    np.testing.assert_allclose(
+        FixedEventProbability.log_sf(np.array([1.0, 9.0]), P_BERN),
+        np.log(1 - P_BERN),
+    )
+    np.testing.assert_allclose(
+        FixedEventProbability.log_ff(np.array([1.0, 9.0]), P_BERN),
+        np.log(P_BERN),
+    )
 
 
 def test_both_models_round_trip_under_their_own_names():
@@ -582,3 +601,84 @@ def test_bernoulli_qf_at_the_degenerate_ends(p):
     np.testing.assert_allclose(
         np.asarray(Bernoulli.qf(u, p), dtype=float), expected
     )
+
+
+# ---------------------------------------------------------------------------
+# Behaviour below the support
+# ---------------------------------------------------------------------------
+
+# (distribution, params, first mass point). Every one of these is defined on
+# consecutive integers from the third entry upwards; below it there is no
+# mass, so the pmf is zero and the survival is one. The closed forms are
+# algebraic and do not know that -- left alone they returned a positive
+# "probability" (Geometric 0.43 at k = 0), a survival above one
+# (BetaGeometric 2.0 at k = -1), a complex number (DiscreteWeibull) or a
+# NaN (Poisson, NegativeBinomial).
+_DISCRETE_SUPPORTS = [
+    (Geometric, (0.3,), 1),
+    (DiscreteWeibull, (0.6, 1.4), 1),
+    (BetaGeometric, (2.0, 3.0), 1),
+    (NegativeBinomial, (3.0, 0.4), 1),
+    (Poisson, (2.5,), 0),
+    (Binomial, (5.0, 0.3), 0),
+]
+
+
+@pytest.mark.parametrize("dist, params, first", _DISCRETE_SUPPORTS)
+def test_below_the_support_is_real_and_finite(dist, params, first):
+    below = np.arange(-4.0, float(first))
+    for method in ("sf", "ff", "df", "hf", "Hf", "log_sf", "log_df"):
+        value = np.asarray(getattr(dist, method)(below, *params))
+        assert np.isrealobj(value), f"{dist.name}.{method} returned complex"
+        assert not np.isnan(
+            np.asarray(value, dtype=float)
+        ).any(), f"{dist.name}.{method} returned NaN below its support"
+
+
+@pytest.mark.parametrize("dist, params, first", _DISCRETE_SUPPORTS)
+def test_no_mass_below_the_support(dist, params, first):
+    below = np.arange(-4.0, float(first))
+    as_float = lambda v: np.asarray(v, dtype=float)  # noqa: E731
+    np.testing.assert_allclose(as_float(dist.df(below, *params)), 0.0)
+    np.testing.assert_allclose(as_float(dist.hf(below, *params)), 0.0)
+    np.testing.assert_allclose(as_float(dist.sf(below, *params)), 1.0)
+    np.testing.assert_allclose(as_float(dist.ff(below, *params)), 0.0)
+    np.testing.assert_allclose(as_float(dist.Hf(below, *params)), 0.0)
+
+
+@pytest.mark.parametrize("dist, params, first", _DISCRETE_SUPPORTS)
+def test_the_pmf_sums_to_one_over_the_support(dist, params, first):
+    # Summed from below the first mass point, so any spurious mass there
+    # would push the total past one. BetaGeometric's tail decays as k^-a,
+    # hence the looser tolerance rather than a longer sum.
+    k = np.arange(-4.0, 4000.0)
+    total = float(np.sum(np.asarray(dist.df(k, *params), dtype=float)))
+    assert total == pytest.approx(1.0, abs=1e-4)
+
+
+@pytest.mark.parametrize("dist, params, first", _DISCRETE_SUPPORTS)
+def test_the_quantile_inverts_the_cdf_on_the_support(dist, params, first):
+    # u = F(k) is formed by cancellation, so it lands a few ulp off the
+    # value the quantile is looking for. Geometric, DiscreteWeibull and
+    # BetaGeometric all answered k + 1 for a u that came straight out of
+    # their own ff.
+    last = 5 if dist is Binomial else 11
+    k = np.arange(float(first), float(last) + 1.0)
+    inverted = np.asarray(dist.qf(dist.ff(k, *params), *params), dtype=float)
+    np.testing.assert_array_equal(inverted, k)
+
+
+def test_beta_geometric_moment_diverges_when_the_tail_is_too_heavy():
+    # R(k) decays as k^-a, so E[T^m] exists only for a > m. A truncated
+    # sum cannot see that: it reported about 25 for a second moment that
+    # is infinite.
+    assert BetaGeometric.moment(2, 2.0, 3.0) == np.inf
+    assert BetaGeometric.mean(1.0, 3.0) == np.inf
+    assert np.isfinite(BetaGeometric.moment(2, 4.0, 3.0))
+
+
+def test_beta_geometric_mean_agrees_with_its_first_moment():
+    for a, b in [(2.0, 3.0), (4.0, 1.5), (3.0, 7.0)]:
+        assert BetaGeometric.moment(1, a, b) == pytest.approx(
+            BetaGeometric.mean(a, b)
+        )
