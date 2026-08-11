@@ -93,9 +93,11 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         k = np.arange(1, upper + 1, dtype=float)
         return np.sum(k**m * self.df(k, p))
 
-    def random(self, size: int | tuple[int, ...], p: Boxable) -> Boxable:
+    def random(self, size: int | tuple[int, ...], p: Boxable) -> npt.NDArray:
         U = uniform.rvs(size=size)
-        return self.qf(U, p)
+        # qf is declared Boxable because a fit differentiates it;
+        # sampling never does, so this is always a real array.
+        return np.asarray(self.qf(U, p))
 
     def log_df(self, x: Numeric, p: Boxable) -> Boxable:
         return (x - 1.0) * np.log(1.0 - p) + np.log(p)

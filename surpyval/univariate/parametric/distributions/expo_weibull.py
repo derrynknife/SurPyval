@@ -455,7 +455,7 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
 
         return -integrate.quad(func, 0, np.inf)[0]
 
-    def mpp_x_transform(self, x: Numeric) -> Boxable:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return np.log(x)
 
     def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
@@ -466,7 +466,7 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         i = len(params)
         mu = params[i - 1]
         return (1 - np.exp(-np.exp(y))) ** mu

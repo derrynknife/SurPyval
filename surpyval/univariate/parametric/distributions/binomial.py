@@ -316,7 +316,7 @@ class Binomial_(DiscreteParametricFitter):
 
     def fit(
         self,
-        x: Numeric,
+        x: npt.ArrayLike,
         n_trials: int,
         c: npt.NDArray | None = None,
         n: npt.NDArray | None = None,

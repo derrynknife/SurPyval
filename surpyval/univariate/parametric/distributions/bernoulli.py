@@ -388,7 +388,9 @@ class Bernoulli_(DiscreteParametricFitter):
         U = uniform.rvs(size=size)
         return (U <= p).astype(int)
 
-    def fit(self, x: Numeric, n: npt.NDArray | None = None) -> Parametric:
+    def fit(
+        self, x: npt.ArrayLike, n: npt.NDArray | None = None
+    ) -> Parametric:
         x_arr = np.atleast_1d(x)
         # Each observation must be a 0 or a 1 — elementwise, for any length
         # (the previous check broadcast x against the literal [0, 1], so any
@@ -415,7 +417,7 @@ class Bernoulli_(DiscreteParametricFitter):
     # back, with a deprecation alias, and is tracked separately.
     def from_params(
         self,
-        params: Boxable,
+        params: npt.ArrayLike,
         gamma: Boxable | None = None,
         p: Boxable | None = None,
         f0: Boxable | None = None,

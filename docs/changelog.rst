@@ -4,6 +4,56 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **A consistency sweep across the base distributions.** With every
+  distribution now annotated, the annotations themselves could be read
+  as data and compared. Ten argument slots and thirteen returns
+  disagreed across the twenty-two modules -- drift from having typed
+  them a batch at a time rather than a deliberate difference.
+
+  Most of it was cosmetic and is now uniform. The three ``mpp_*``
+  transforms take an ``npt.NDArray``: every call site in the package
+  passes one, eight of the fifteen implementations index their
+  argument, and probability plotting is a least-squares regression on
+  plotting positions that is never differentiated, so the input is
+  never an autograd box and never a scalar. Their returns stay
+  ``Boxable``, because the bodies delegate to ``qf``; narrowing them
+  would mean changing code to suit a type hint, which is the wrong way
+  round. ``random`` returns an ``npt.NDArray`` everywhere --
+  ``Geometric`` and ``DiscreteWeibull`` returned ``self.qf(...)``
+  straight through, and now wrap it, which is honest for the same
+  reason in reverse: ``qf`` is ``Boxable`` because a fit differentiates
+  it, and sampling never does. ``_mom`` is ``tuple[float, float]``
+  throughout.
+
+  One difference was a real error rather than an inconsistency.
+  ``Numeric`` and ``Boxable`` both exclude ``list``, and ``fit`` and
+  ``from_params`` were typed with them on four distributions -- yet
+  every one of those accepts a list, as their own docstring examples
+  show (``Binomial.from_params([5, 0.3])``). These are the entry points
+  a user reaches for with whatever data they have. They are now
+  ``npt.ArrayLike``, which is the correct type here precisely because
+  the value is converted with ``np.asarray`` on the first line rather
+  than used in arithmetic. ``Binomial.from_params`` already had it
+  right; ``Bernoulli``, ``FixedEventProbability`` and
+  ``ExactEventTime`` did not.
+
+  Eight differences remain and each is deliberate:
+  ``ExactEventTime``'s ``sf``, ``ff``, ``df``, ``hf`` and ``Hf`` return
+  the narrower ``npt.NDArray``, which is a stronger promise rather than
+  a broken one -- they are step functions built with ``np.atleast_1d``
+  and provably return a real array -- and ``ExpoWeibull.unpack_rr``
+  returns three values where the two-parameter distributions return
+  two.
+
+  Five tests were added to the shared-signature guard, so a future
+  distribution cannot reintroduce any of this: the distribution
+  functions take a ``Numeric`` and return a ``Boxable``, parameters are
+  ``Boxable``, the ``mpp_*`` family takes arrays, ``random`` returns
+  one, and the user entry points accept array-likes. Twenty-two tests
+  in that file now. No behaviour changed -- annotations are erased at
+  runtime, and the two ``np.asarray`` wraps were checked to produce
+  identical samples.
+
 - **Type-hint ratchet: ``univariate.parametric`` is finished.** Coverage
   moves from 869/1760 (49%) to 995/1771 (56%), tracked in <#143>. Every
   module in the package -- the fitters, the model, the base class and

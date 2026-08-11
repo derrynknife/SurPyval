@@ -366,17 +366,17 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         """
         return np.log(sigma) + 2
 
-    def mpp_x_transform(self, x: Numeric) -> Numeric:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
 
-    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> npt.NDArray:
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
         out[~mask] = -np.log(1.0 / y[~mask] - 1)
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return 1.0 / (np.exp(-y) + 1)
 
     def unpack_rr(

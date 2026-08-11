@@ -398,13 +398,13 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
 
         return np.array([np.min(data.x), np.max(data.x)])
 
-    def mpp_x_transform(self, x: Numeric) -> Boxable:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
 
-    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return y
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return y
 
     def unpack_rr(

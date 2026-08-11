@@ -463,13 +463,13 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         z = np.clip(self._z(x, a, b), 0.0, 1.0)
         return abetaincln(alpha, beta, z)
 
-    def mpp_x_transform(self, x: Numeric) -> Boxable:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
 
-    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return self.qf(y, *params)
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return self.ff(y, *params)
 
     def _plot_x_bounds(

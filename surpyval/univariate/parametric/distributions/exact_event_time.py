@@ -127,7 +127,7 @@ class ExactEventTime_(ParametricFitter):
 
     def from_params(
         self,
-        params: Boxable,
+        params: npt.ArrayLike,
         gamma: Boxable | None = None,
         p: Boxable | None = None,
         f0: Boxable | None = None,

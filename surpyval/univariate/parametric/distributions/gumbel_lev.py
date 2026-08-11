@@ -303,7 +303,7 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         z = (x - mu) / sigma
         return -np.log(sigma) - (z + np.exp(-z))
 
-    def mpp_x_transform(self, x: Numeric) -> Boxable:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
 
     def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
@@ -313,7 +313,7 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         # Inverse of the LEV transform y = -log(-log(F)) is
         # F = exp(-exp(-y)); the previous form was the SEV inverse (#257).
         return np.exp(-np.exp(-y))

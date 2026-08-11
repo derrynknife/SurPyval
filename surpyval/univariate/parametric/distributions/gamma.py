@@ -467,15 +467,15 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
     def log_sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return agammainccln(alpha, beta * x)
 
-    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         alpha = params[0]
         return gammaincinv(alpha, y)
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         alpha = params[0]
         return agammainc(alpha, y)
 
-    def mpp_x_transform(self, x: Numeric) -> Boxable:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
 
 

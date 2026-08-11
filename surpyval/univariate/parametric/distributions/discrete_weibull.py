@@ -101,9 +101,11 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def random(
         self, size: int | tuple[int, ...], q: Boxable, beta: Boxable
-    ) -> Boxable:
+    ) -> npt.NDArray:
         U = uniform.rvs(size=size)
-        return self.qf(U, q, beta)
+        # qf is declared Boxable because a fit differentiates it;
+        # sampling never does, so this is always a real array.
+        return np.asarray(self.qf(U, q, beta))
 
     def log_sf(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         return (x**beta) * np.log(q)

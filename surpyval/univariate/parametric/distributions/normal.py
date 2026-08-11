@@ -393,13 +393,13 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
     def log_ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return norm.logcdf(x, mu, sigma)
 
-    def mpp_x_transform(self, x: Numeric) -> Numeric:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
 
-    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return self.qf(y, 0, 1)
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return self.ff(y, 0, 1)
 
     def unpack_rr(

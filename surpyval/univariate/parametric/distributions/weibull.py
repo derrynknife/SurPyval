@@ -326,17 +326,17 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
     def log_sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return -((x / alpha) ** beta)
 
-    def mpp_x_transform(self, x: Numeric) -> npt.NDArray:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return np.log(x)
 
-    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> npt.NDArray:
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
         out[~mask] = np.log(-np.log(1 - y[~mask]))
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return 1 - np.exp(-np.exp(y))
 
     def unpack_rr(

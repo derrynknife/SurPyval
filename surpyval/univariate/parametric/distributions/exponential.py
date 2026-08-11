@@ -439,7 +439,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
     def log_sf(self, x: Numeric, failure_rate: Boxable) -> Boxable:
         return -failure_rate * x
 
-    def mpp_x_transform(self, x: Numeric) -> Boxable:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
 
     def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
@@ -449,7 +449,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         # Inverse of y = -log(1 - F) is F = 1 - exp(-y) (#257).
         return 1 - np.exp(-y)
 

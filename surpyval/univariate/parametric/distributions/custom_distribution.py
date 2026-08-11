@@ -151,11 +151,11 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
 
         return np.array(out, dtype=float)
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return y
 
-    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return y
 
-    def mpp_x_transform(self, x: Numeric) -> Numeric:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x

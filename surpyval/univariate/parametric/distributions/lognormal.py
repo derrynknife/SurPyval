@@ -382,13 +382,13 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
     def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return norm.logsf(np.log(x), mu, sigma)
 
-    def mpp_x_transform(self, x: Numeric) -> Boxable:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return np.log(x)
 
-    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return para.Normal.qf(y, 0, 1)
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return para.Normal.ff(y, 0, 1)
 
     def unpack_rr(
@@ -402,7 +402,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
             sigma, mu = params
         return mu, sigma
 
-    def _mom(self, x: npt.NDArray) -> tuple[Boxable, Boxable]:
+    def _mom(self, x: npt.NDArray) -> tuple[float, float]:
         norm_mod = para.Normal.fit(np.log(x), how="MOM")
         mu, sigma = norm_mod.params
         return mu, sigma

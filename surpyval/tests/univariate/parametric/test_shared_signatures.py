@@ -213,3 +213,114 @@ def test_no_shared_method_diverges_in_its_data_argument():
         "these shared methods disagree on their leading data argument: "
         f"{diverging}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Type conventions, now that every distribution is annotated
+# ---------------------------------------------------------------------------
+
+# ``degenerate`` holds InstantlyOccurs and NeverOccurs, which inherit
+# ``Distribution`` rather than ``ParametricFitter``. Their signatures are
+# dictated by that supertype, so they are not part of these conventions.
+_NOT_PARAMETRIC_FITTERS = {"degenerate"}
+
+
+def _annotations(method):
+    """{module stem: (arg annotations, return annotation)}."""
+    out = {}
+    for path in sorted(DIST_DIR.glob("*.py")):
+        if path.stem in _NOT_PARAMETRIC_FITTERS or path.stem == "__init__":
+            continue
+        tree = ast.parse(path.read_text())
+        for cls in [n for n in tree.body if isinstance(n, ast.ClassDef)]:
+            for fn in [n for n in cls.body if isinstance(n, ast.FunctionDef)]:
+                if fn.name != method:
+                    continue
+                args = [
+                    (
+                        a.arg,
+                        ast.unparse(a.annotation) if a.annotation else None,
+                    )
+                    for a in fn.args.posonlyargs + fn.args.args
+                    if a.arg not in ("self", "cls")
+                ]
+                ret = ast.unparse(fn.returns) if fn.returns else None
+                out[path.stem] = (args, ret)
+    return out
+
+
+@pytest.mark.parametrize(
+    "method", ["sf", "ff", "df", "hf", "Hf", "log_sf", "log_ff", "log_df"]
+)
+def test_distribution_functions_take_numeric_and_return_boxable(method):
+    # ``x`` is what the function is evaluated at -- always real data, so
+    # ``Numeric``. The return may be an autograd box, because a maximum
+    # likelihood fit differentiates these, so ``Boxable``. The one
+    # exception is ExactEventTime, whose step functions are built with
+    # np.atleast_1d and provably return a real array; a narrower return
+    # is a stronger promise, not a broken one.
+    wrong_x, wrong_ret = {}, {}
+    for mod, (args, ret) in _annotations(method).items():
+        if args and args[0][0] == "x" and args[0][1] != "Numeric":
+            wrong_x[mod] = args[0][1]
+        if ret not in ("Boxable", "npt.NDArray"):
+            wrong_ret[mod] = ret
+    assert not wrong_x, f"{method}'s x must be Numeric: {wrong_x}"
+    assert not wrong_ret, f"{method} must return Boxable: {wrong_ret}"
+
+
+def test_distribution_parameters_are_boxable():
+    # A parameter can be an autograd box while a fit differentiates the
+    # likelihood through it. Anything narrower is false; ``Any`` would
+    # make the position uncheckable, which is the whole point of naming
+    # the box in the first place (see the Numeric/Boxable comment in
+    # parametric_fitter).
+    params_by_mod = _param_names_by_module()
+    wrong = {}
+    for method in ("sf", "ff", "df", "hf", "Hf", "qf"):
+        for mod, (args, _) in _annotations(method).items():
+            own = params_by_mod.get(mod, set())
+            for name, ann in args:
+                if name in own and ann != "Boxable":
+                    wrong[f"{mod}.{method}({name})"] = ann
+    assert not wrong, f"distribution parameters must be Boxable: {wrong}"
+
+
+@pytest.mark.parametrize(
+    "method", ["mpp_x_transform", "mpp_y_transform", "mpp_inv_y_transform"]
+)
+def test_mpp_transforms_take_arrays(method):
+    # These act on plotting positions, which are always real arrays:
+    # every call site in the package passes one, and eight of the
+    # fifteen implementations index their argument. Probability plotting
+    # is a regression on those positions and is never differentiated, so
+    # the input is never an autograd box and never a scalar.
+    wrong = {}
+    for mod, (args, _) in _annotations(method).items():
+        if args and args[0][1] != "npt.NDArray":
+            wrong[mod] = f"{args[0][0]}: {args[0][1]}"
+    assert not wrong, f"{method} must take an npt.NDArray: {wrong}"
+
+
+def test_random_returns_an_array():
+    wrong = {
+        mod: ret
+        for mod, (_, ret) in _annotations("random").items()
+        if ret != "npt.NDArray"
+    }
+    assert not wrong, f"random must return npt.NDArray: {wrong}"
+
+
+def test_user_entry_points_accept_array_likes():
+    # ``fit`` and ``from_params`` take whatever a user has: a scalar, a
+    # list or an array. ``Numeric`` and ``Boxable`` both exclude ``list``
+    # -- and every one of these accepts a list, as their own docstring
+    # examples show (``Binomial.from_params([5, 0.3])``).
+    wrong = {}
+    for mod, (args, _) in _annotations("fit").items():
+        if args and args[0][0] == "x" and args[0][1] != "npt.ArrayLike":
+            wrong[f"{mod}.fit(x)"] = args[0][1]
+    for mod, (args, _) in _annotations("from_params").items():
+        if args and args[0][0] == "params" and args[0][1] != "npt.ArrayLike":
+            wrong[f"{mod}.from_params(params)"] = args[0][1]
+    assert not wrong, f"must accept an array-like: {wrong}"

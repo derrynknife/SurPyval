@@ -313,7 +313,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         lx = beta * np.log(x)
         return lx - np.logaddexp(la, lx)
 
-    def mpp_x_transform(self, x: Numeric) -> Boxable:
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return np.log(x)
 
     def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
@@ -323,7 +323,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Boxable:
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return 1.0 / (np.exp(-y) + 1)
 
     def unpack_rr(
