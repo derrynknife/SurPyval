@@ -1,3 +1,4 @@
+import numpy.typing as npt
 from autograd.scipy.stats import norm
 from scipy.stats import norm as scipy_norm
 
@@ -8,9 +9,12 @@ from surpyval.univariate.parametric.fitters.closed_form import (
     weighted_mean_and_std,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Normal_(OptimisedFitMixin, ParametricFitter):
@@ -24,7 +28,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
 
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -50,14 +54,20 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
             ],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
+        x, c, n = data.x, data.c, data.n
         if 2 in c:
             raise ValueError(c)
-        return para.Normal.fit(
-            x[c != -1], c[c != -1], n[c != -1], how="MPP"
-        ).params
+        return np.asarray(
+            para.Normal.fit(
+                x[c != -1], c[c != -1], n[c != -1], how="MPP"
+            ).params,
+            dtype=float,
+        )
 
-    def _closed_form_mle(self, data):
+    def _closed_form_mle(self, data: SurpyvalData) -> npt.NDArray | None:
         r"""Exact MLE on complete data: the sample mean and (MLE)
         standard deviation, dividing by the total weight rather than
         ``total - 1``.
@@ -74,7 +84,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
             return None
         return weighted_mean_and_std(x, data.n)
 
-    def sf(self, x, mu, sigma):
+    def sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Survival (or Reliability) function for the Normal Distribution:
@@ -108,43 +118,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         """
         return norm.sf(x, mu, sigma)
 
-    def cs(self, x, X, mu, sigma):
-        r"""
-
-        Conditional survival function for the Normal Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The value(s) at which the function will be calculated
-        X : numpy array or scalar
-            The value(s) at which each value(s) in x was known to have survived
-        mu : numpy array or scalar
-            The location parameter for the Normal distribution
-        sigma : numpy array or scalar
-            The scale parameter for the Normal distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            the conditional survival probability at x
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Normal
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Normal.cs(x, 5, 3, 4)
-        array([0.73452116, 0.51421702, 0.34242113, 0.2165286 , 0.1298356 ])
-        """
-        return self.sf(x + X, mu, sigma) / self.sf(X, mu, sigma)
-
-    def ff(self, x, mu, sigma):
+    def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         CDF (or unreliability or failure) function for the Normal Distribution:
@@ -178,7 +152,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         """
         return norm.cdf(x, mu, sigma)
 
-    def df(self, x, mu, sigma):
+    def df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Density function for the Normal Distribution:
@@ -213,7 +187,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         """
         return norm.pdf(x, mu, sigma)
 
-    def hf(self, x, mu, sigma):
+    def hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Normal Distribution:
@@ -249,7 +223,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         """
         return norm.pdf(x, mu, sigma) / self.sf(x, mu, sigma)
 
-    def Hf(self, x, mu, sigma):
+    def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the Normal Distribution:
@@ -284,18 +258,18 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(norm.sf(x, mu, sigma))
 
-    def qf(self, p, mu, sigma):
+    def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Normal Distribution:
 
         .. math::
-            q(p) = \Phi^{-1} \left( p \right )
+            q(u) = \Phi^{-1} \left( u \right )
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         mu : numpy array or scalar
             The location parameter for the Normal distribution
@@ -306,19 +280,19 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Normal distribution at each value p.
+            The quantiles for the Normal distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Normal
-        >>> p = np.array([0.1, 0.2, 0.3, 0.4])
-        >>> Normal.qf(p, 3, 4)
+        >>> u = np.array([0.1, 0.2, 0.3, 0.4])
+        >>> Normal.qf(u, 3, 4)
         array([-2.12620626, -0.36648493,  0.90239795,  1.98661159])
         """
-        return scipy_norm.ppf(p, mu, sigma)
+        return scipy_norm.ppf(u, mu, sigma)
 
-    def mean(self, mu, sigma):
+    def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Mean of the Normal distribution
@@ -348,10 +322,10 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         """
         return mu
 
-    def moment(self, n, mu, sigma):
+    def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
-        n-th (non central) moment of the Normal distribution
+        m-th (non central) moment of the Normal distribution
 
         .. math::
             E = ... complicated.
@@ -359,7 +333,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         mu : numpy array or scalar
             The location parameter for the Normal distribution
@@ -378,9 +352,9 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         >>> Normal.moment(2, 3, 4)
         np.float64(25.0)
         """
-        return scipy_norm.moment(n, mu, sigma)
+        return scipy_norm.moment(m, mu, sigma)
 
-    def entropy(self, mu, sigma):
+    def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the Normal distribution.
@@ -410,25 +384,27 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         """
         return 0.5 * np.log(2 * np.pi * np.e * sigma**2)
 
-    def log_df(self, x, mu, sigma):
+    def log_df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return norm.logpdf(x, mu, sigma)
 
-    def log_sf(self, x, mu, sigma):
+    def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return norm.logsf(x, mu, sigma)
 
-    def log_ff(self, x, mu, sigma):
+    def log_ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return norm.logcdf(x, mu, sigma)
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return self.qf(y, 0, 1)
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return self.ff(y, 0, 1)
 
-    def unpack_rr(self, params, rr):
+    def unpack_rr(
+        self, params: npt.NDArray, rr: str
+    ) -> tuple[Boxable, Boxable]:
         if rr == "y":
             sigma, mu = params
             mu = -mu / sigma

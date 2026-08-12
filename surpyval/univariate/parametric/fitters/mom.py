@@ -1,12 +1,17 @@
 import warnings
 from math import comb
+from typing import TYPE_CHECKING, Any, Callable
 
+if TYPE_CHECKING:
+    from ..parametric import Parametric
+
+import numpy.typing as npt
 from scipy.optimize import minimize
 
 from surpyval import np
 
 
-def raw_to_central(moments):
+def raw_to_central(moments: npt.NDArray) -> npt.NDArray:
     """``(mean, var, mu3, ...)`` from raw moments ``E[X], E[X^2], ...``.
 
     ``mu_k = sum_j C(k, j) (-1)^(k-j) E[X^j] mean^(k-j)``, with the mean
@@ -29,7 +34,14 @@ def raw_to_central(moments):
     return np.array(central)
 
 
-def mom_fun(params, dist, inv_trans, const, offset, moments):
+def mom_fun(
+    params: npt.NDArray,
+    dist: Any,
+    inv_trans: Callable[..., Any],
+    const: Callable[..., Any],
+    offset: bool,
+    moments: npt.NDArray,
+) -> Any:
     """Squared mismatch between the sample and model moments.
 
     Compared as *central* moments scaled by the sample's own standard
@@ -68,7 +80,7 @@ def mom_fun(params, dist, inv_trans, const, offset, moments):
     return (((sample - model) / scale) ** 2).sum()
 
 
-def mom(model):
+def mom(model: "Parametric") -> Any:
     """
     MOM: Method of Moments.
 

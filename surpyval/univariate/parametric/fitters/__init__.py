@@ -1,9 +1,18 @@
+from typing import Any, Callable, Sequence
+import numpy.typing as npt
 from scipy.optimize import minimize
 
 from surpyval import np
 
 
-def fallback_minimize(fun, init, args, jac, hess, newton_tol=None):
+def fallback_minimize(
+    fun: Callable[..., Any],
+    init: npt.NDArray,
+    args: tuple[Any, ...],
+    jac: Callable[..., Any] | None,
+    hess: Callable[..., Any] | None,
+    newton_tol: float | None = None,
+) -> Any:
     """
     Minimise ``fun`` with BFGS and the supplied jacobian, escalating to
     Newton-CG with the hessian and then to Nelder-Mead whenever a method
@@ -29,6 +38,7 @@ def fallback_minimize(fun, init, args, jac, hess, newton_tol=None):
     while reporting success, so there is nothing to escalate to and
     Nelder-Mead should take over instead.
     """
+    assert jac is not None and hess is not None
     with np.errstate(all="ignore"):
         res = minimize(fun, init, method="BFGS", jac=jac, args=args)
 
@@ -56,7 +66,13 @@ def fallback_minimize(fun, init, args, jac, hess, newton_tol=None):
     return res
 
 
-def preconditioned_bfgs(fun, x0, args=(), jac=None, options=None):
+def preconditioned_bfgs(
+    fun: Callable[..., Any],
+    x0: npt.NDArray,
+    args: tuple[Any, ...] = (),
+    jac: Callable[..., Any] | None = None,
+    options: dict[str, Any] | None = None,
+) -> Any:
     """BFGS on a diagonally rescaled copy of the search vector.
 
     scipy stops BFGS when ``max|grad| < gtol``, an absolute threshold on
@@ -104,10 +120,12 @@ def preconditioned_bfgs(fun, x0, args=(), jac=None, options=None):
     f0 = float(fun(x0, *args))
     obj_scale = max(abs(f0), 1.0) if np.isfinite(f0) else 1.0
 
-    def scaled_fun(v, *inner):
+    def scaled_fun(v: npt.NDArray, *inner: Any) -> Any:
         return fun(scale * v, *inner) / obj_scale
 
-    def scaled_jac(v, *inner):
+    assert jac is not None
+
+    def scaled_jac(v: npt.NDArray, *inner: Any) -> Any:
         return (
             scale * np.asarray(jac(scale * v, *inner), dtype=float)
         ) / obj_scale
@@ -128,7 +146,7 @@ def preconditioned_bfgs(fun, x0, args=(), jac=None, options=None):
     return res
 
 
-def _dead_branch_safe_exp(x):
+def _dead_branch_safe_exp(x: npt.NDArray) -> Any:
     """``exp(x)`` for the ``x < 0`` half, with the other half clamped.
 
     ``np.where`` picks the right value but autograd evaluates *both*
@@ -144,25 +162,31 @@ def _dead_branch_safe_exp(x):
     return np.exp(np.minimum(x, 0.0))
 
 
-def adj_relu(x):
+def adj_relu(x: npt.NDArray) -> Any:
     return np.where(x >= 0, x + 1, _dead_branch_safe_exp(x))
 
 
-def inv_adj_relu(x):
+def inv_adj_relu(x: npt.NDArray) -> Any:
     # No clamp needed here, unlike ``adj_relu``: this dead branch is
     # ``x >= 1``, which is precisely where ``log`` is best behaved.
     return np.where(x >= 1, x - 1, np.log(x))
 
 
-def rev_adj_relu(x):
+def rev_adj_relu(x: npt.NDArray) -> Any:
     return -np.where(x >= 0, x + 1, _dead_branch_safe_exp(x))
 
 
-def inv_rev_adj_relu(x):
+def inv_rev_adj_relu(x: npt.NDArray) -> Any:
     return np.where(x < -1, -x - 1, np.log(-x))
 
 
-def add_to_funcs(low, upp, i, funcs, inv_f):
+def add_to_funcs(
+    low: float | None,
+    upp: float | None,
+    i: int,
+    funcs: list[Callable[..., Any]],
+    inv_f: list[Callable[..., Any]],
+) -> None:
     if (low is None) and (upp is None):
         funcs.append(lambda x: x)
         inv_f.append(lambda x: x)
@@ -181,15 +205,20 @@ def add_to_funcs(low, upp, i, funcs, inv_f):
         inv_f.append(lambda x: x)
 
 
-def bounds_convert(x, bounds, fixed, param_map):
+def bounds_convert(
+    x: npt.ArrayLike,
+    bounds: Sequence[tuple[float | None, float | None]],
+    fixed: dict[str, float] | None,
+    param_map: dict[str, int],
+) -> tuple[Any, ...]:
     """
     This function is used to transform the parameters from the bounded
     parameter space to the unbounded parameter space. This is an improvement
     over using the scipy.optimize.minimize function's bounds parameter as
     it allows us to avoid the use of the constrained optimization methods.
     """
-    bounded_to_unbounded_transforms = []
-    unbounded_to_bounded_transforms = []
+    bounded_to_unbounded_transforms: list[Callable[..., Any]] = []
+    unbounded_to_bounded_transforms: list[Callable[..., Any]] = []
 
     for i, (lower, upper) in enumerate(bounds):
         add_to_funcs(
@@ -200,7 +229,7 @@ def bounds_convert(x, bounds, fixed, param_map):
             unbounded_to_bounded_transforms,
         )
 
-    def transform_params_to_unbounded(params):
+    def transform_params_to_unbounded(params: npt.NDArray) -> Any:
         return np.array(
             [
                 f(p)
@@ -210,7 +239,7 @@ def bounds_convert(x, bounds, fixed, param_map):
             ]
         )
 
-    def transform_unbounded_value_to_params(params):
+    def transform_unbounded_value_to_params(params: npt.NDArray) -> Any:
         return np.array(
             [
                 f(p)
@@ -227,7 +256,7 @@ def bounds_convert(x, bounds, fixed, param_map):
         not_fixed = [x for x in range(n_params) if x not in fixed_idx]
         not_fixed = np.array(not_fixed, dtype=int)
 
-        def constraints(p):
+        def constraints(p: npt.NDArray) -> Any:
             params = [0] * (n_params)
             for k, v in fixed.items():
                 params[param_map[k]] = bounded_to_unbounded_transforms[
@@ -237,10 +266,10 @@ def bounds_convert(x, bounds, fixed, param_map):
                 params[i] = v
             return np.array(params)
 
-        const = constraints
+        const: Callable[..., Any] = constraints
     else:
 
-        def const(x):
+        def const(x: npt.NDArray) -> Any:
             return x
 
         fixed_idx = []

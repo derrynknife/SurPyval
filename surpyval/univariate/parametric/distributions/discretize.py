@@ -12,6 +12,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
@@ -64,14 +65,12 @@ class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
         )
 
     def _parameter_initialiser(
-        self,
-        x: npt.NDArray,
-        c: npt.NDArray | None = None,
-        n: npt.NDArray | None = None,
-        t: npt.NDArray | None = None,
-        offset: bool = False,
-    ) -> npt.NDArray | tuple[float, ...]:
-        return self.dist._parameter_initialiser(x, c=c, n=n, t=t)
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
+        return np.asarray(
+            self.dist._parameter_initialiser(data),
+            dtype=float,
+        )
 
     def sf(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""Survival :math:`R_K(k) = R(k)` (the continuous survival)."""

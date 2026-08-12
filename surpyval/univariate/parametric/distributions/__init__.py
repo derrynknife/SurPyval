@@ -1,4 +1,5 @@
-from .bernoulli import Bernoulli, FixedEventProbability
+from .bernoulli import Bernoulli
+from .fixed_event_probability import FixedEventProbability
 from .beta import Beta
 from .beta4 import Beta4
 from .beta_geometric import BetaGeometric

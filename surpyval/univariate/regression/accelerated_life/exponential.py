@@ -5,7 +5,7 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class InverseExponential_(LifeModel):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             "InverseExponential",
             {"a": 0, "b": 1},
@@ -27,7 +27,7 @@ InverseExponential = InverseExponential_()
 
 
 class ExponentialLifeModel_(LifeModel):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             "Exponential",
             {"a": 0, "b": 1},

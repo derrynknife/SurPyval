@@ -1,16 +1,22 @@
+from typing import Any
+
+import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
 
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Rayleigh_(OptimisedFitMixin, ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=1,
@@ -44,15 +50,30 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
             ],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
+        x = data.x
         # sqrt(E[x^2] / 2) is the closed-form uncensored MLE for sigma
         if offset:
             gamma_init = np.min(x) - 1.0
             sigma_init = np.sqrt(np.mean((x - gamma_init) ** 2) / 2)
-            return gamma_init, sigma_init
-        return np.sqrt(np.mean(x**2) / 2)
+            return np.array([gamma_init, sigma_init], dtype=float)
+        # A one-tuple, not the bare scalar this used to return. Rayleigh
+        # is the only single-parameter distribution here, and the scalar
+        # made `np.array(init)` in _initial_guess 0-dimensional rather
+        # than length-1. The lfp and zi paths then concatenate the p and
+        # f0 seeds onto it, and a 0-d array cannot be concatenated, so
+        # `Rayleigh.fit(x, lfp=True)` and `zi=True` both raised
+        # "zero-dimensional arrays cannot be concatenated".
+        return np.array(
+            [
+                np.sqrt(np.mean(x**2) / 2),
+            ],
+            dtype=float,
+        )
 
-    def sf(self, x, sigma):
+    def sf(self, x: Numeric, sigma: Boxable) -> Boxable:
         r"""
 
         Survival (or reliability) function for the Rayleigh Distribution:
@@ -84,7 +105,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(-(x**2) / (2 * sigma**2))
 
-    def ff(self, x, sigma):
+    def ff(self, x: Numeric, sigma: Boxable) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the Rayleigh
@@ -117,41 +138,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.expm1(-(x**2) / (2 * sigma**2))
 
-    def cs(self, x, X, sigma):
-        r"""
-
-        Conditional survival function for the Rayleigh Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        X : numpy array or scalar
-            The values at which the item is known to have survived
-        sigma : numpy array or scalar
-            scale parameter for the Rayleigh distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Rayleigh
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Rayleigh.cs(x, 5, 3)
-        array([0.54274748, 0.26359714, 0.11455884, 0.04455143, 0.01550385])
-        """
-        return self.sf(x + X, sigma) / self.sf(X, sigma)
-
-    def df(self, x, sigma):
+    def df(self, x: Numeric, sigma: Boxable) -> Boxable:
         r"""
 
         Density function for the Rayleigh Distribution:
@@ -183,7 +170,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         """
         return (x / (sigma**2)) * self.sf(x, sigma)
 
-    def hf(self, x, sigma):
+    def hf(self, x: Numeric, sigma: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Rayleigh Distribution:
@@ -215,7 +202,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         """
         return x / (sigma**2)
 
-    def Hf(self, x, sigma):
+    def Hf(self, x: Numeric, sigma: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the Rayleigh Distribution:
@@ -247,18 +234,18 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         """
         return x**2 / (2 * sigma**2)
 
-    def qf(self, p, sigma):
+    def qf(self, u: Numeric, sigma: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Rayleigh distribution:
 
         .. math::
-            q(p) = \sigma \sqrt{-2 \ln \left ( 1 - p \right )}
+            q(u) = \sigma \sqrt{-2 \ln \left ( 1 - u \right )}
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         sigma : numpy array or scalar
             scale parameter for the Rayleigh distribution
@@ -267,19 +254,19 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Rayleigh distribution at each value p
+            The quantiles for the Rayleigh distribution at each value u
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Rayleigh
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Rayleigh.qf(p, 3)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Rayleigh.qf(u, 3)
         array([1.37713082, 2.00414169, 2.53380129, 3.03230296, 3.53223007])
         """
-        return sigma * np.sqrt(2 * np.log(1 / (1 - p)))
+        return sigma * np.sqrt(2 * np.log(1 / (1 - u)))
 
-    def mean(self, sigma):
+    def mean(self, sigma: Boxable) -> Boxable:
         r"""
 
         Mean of the Rayleigh distribution
@@ -307,18 +294,18 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         """
         return sigma * np.sqrt(np.pi / 2)
 
-    def moment(self, n, sigma):
+    def moment(self, m: int, sigma: Boxable) -> Boxable:
         r"""
 
-        n-th moment of the Rayleigh distribution
+        m-th moment of the Rayleigh distribution
 
         .. math::
-            M(n) = \sigma^n 2^{n/2} \Gamma \left ( 1 + \frac{n}{2} \right )
+            M(m) = \sigma^m 2^{m/2} \Gamma \left ( 1 + \frac{m}{2} \right )
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         sigma : numpy array or scalar
             scale parameter for the Rayleigh distribution
@@ -335,28 +322,28 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         >>> Rayleigh.moment(2, 3)
         np.float64(18.0)
         """
-        return (sigma**n) * (2 ** (n / 2)) * gamma_func(1 + n / 2)
+        return (sigma**m) * (2 ** (m / 2)) * gamma_func(1 + m / 2)
 
-    def entropy(self, sigma):
+    def entropy(self, sigma: Boxable) -> Boxable:
         return euler_gamma / 2 + 1 + np.log(sigma / (np.sqrt(2)))
 
-    def log_df(self, x, sigma):
+    def log_df(self, x: Numeric, sigma: Boxable) -> Boxable:
         return np.log(x) - 2 * np.log(sigma) - 0.5 * (x / sigma) ** 2
 
-    def log_sf(self, x, sigma):
+    def log_sf(self, x: Numeric, sigma: Boxable) -> Boxable:
         return -0.5 * (x / sigma) ** 2
 
     def mpp(
         self,
-        x,
-        c=None,
-        n=None,
-        t=None,
-        heuristic="Nelson-Aalen",
-        rr="y",
-        on_d_is_0=False,
-        offset=False,
-    ):
+        x: npt.NDArray,
+        c: npt.NDArray | None = None,
+        n: npt.NDArray | None = None,
+        t: npt.NDArray | None = None,
+        heuristic: str = "Nelson-Aalen",
+        rr: str = "y",
+        on_d_is_0: bool = False,
+        offset: bool = False,
+    ) -> dict[str, Any]:
         assert rr in ["x", "y"]
         # Forward the truncation windows: the custom Rayleigh path used to
         # drop them silently, making fits with and without tl/tr
@@ -376,8 +363,8 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         F = F[valid]
 
         # Linearise
-        y_pp = self.mpp_y_transform(F)
-        x_pp = self.mpp_x_transform(x_pp)
+        y_pp = np.asarray(self.mpp_y_transform(F))
+        x_pp = np.asarray(self.mpp_x_transform(x_pp))
 
         if offset:
             if rr == "y":
@@ -407,17 +394,17 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
 
             return {"params": params}
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         mask = y == 0
         out = np.zeros_like(y)
         out[~mask] = np.sqrt(-np.log(1 - y[~mask]))
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return 1 - np.exp(-(y**2))
 
 

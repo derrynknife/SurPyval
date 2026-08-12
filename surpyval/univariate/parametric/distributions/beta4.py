@@ -1,14 +1,18 @@
+import numpy.typing as npt
 from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, comb, digamma
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Beta4_(OptimisedFitMixin, ParametricFitter):
@@ -29,7 +33,7 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
     lower bound while keeping the upper bound pinned at 1.
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=4,
@@ -46,10 +50,12 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         # ``a`` and ``b`` supply the left and right support bounds.
         self.support_param_index = (2, 3)
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        x = np.asarray(x, dtype=float)
-        if (n is not None) and (c is not None) and (c == 0).all():
-            x = np.repeat(x, n)
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
+        x = np.asarray(data.x, dtype=float)
+        if (data.c == 0).all():
+            x = np.repeat(x, data.n)
 
         span = x.max() - x.min()
         if span <= 0:
@@ -69,13 +75,15 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         alpha = max(term1 * mean, 0.5)
         beta = max(term1 * (1 - mean), 0.5)
 
-        return alpha, beta, a, b
+        return np.array([alpha, beta, a, b], dtype=float)
 
-    def _z(self, x, a, b):
+    def _z(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         """Standardise ``x`` onto the unit interval."""
         return (x - a) / (b - a)
 
-    def sf(self, x, alpha, beta, a, b):
+    def sf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Survival (or reliability) function for the four-parameter Beta
@@ -115,42 +123,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, alpha, beta, a, b)
 
-    def cs(self, x, X, alpha, beta, a, b):
-        r"""
-
-        Conditional survival (or reliability) function for the
-        four-parameter Beta distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        X : numpy array or scalar
-            The value(s) at which each value(s) in x was known to have survived
-        alpha : numpy array or scalar
-            The first shape parameter for the Beta distribution
-        beta : numpy array or scalar
-            The second shape parameter for the Beta distribution
-        a : numpy array or scalar
-            The lower bound of the support
-        b : numpy array or scalar
-            The upper bound of the support
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-        """
-        return self.sf(x + X, alpha, beta, a, b) / self.sf(
-            X, alpha, beta, a, b
-        )
-
-    def ff(self, x, alpha, beta, a, b):
+    def ff(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the four-parameter
@@ -191,7 +166,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         z = np.clip(self._z(x, a, b), 0.0, 1.0)
         return abetainc(alpha, beta, z)
 
-    def df(self, x, alpha, beta, a, b):
+    def df(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Density function for the four-parameter Beta distribution:
@@ -240,7 +217,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         den = abeta(alpha, beta) * (b - a) ** (alpha + beta - 1)
         return np.where(inside, num / den, 0.0)
 
-    def hf(self, x, alpha, beta, a, b):
+    def hf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the four-parameter Beta
@@ -280,7 +259,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         out = np.where(x_arr < a, 0.0, out)
         return np.where(x_arr >= b, np.inf, out)
 
-    def Hf(self, x, alpha, beta, a, b):
+    def Hf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Cumulative hazard rate for the four-parameter Beta distribution.
@@ -310,18 +291,20 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta, a, b))
 
-    def qf(self, p, alpha, beta, a, b):
+    def qf(
+        self, u: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Quantile function for the four-parameter Beta distribution:
 
         .. math::
-            q(p) = a + \left(b - a\right) I^{-1}_{p}\left(\alpha, \beta\right)
+            q(u) = a + \left(b - a\right) I^{-1}_{u}\left(\alpha, \beta\right)
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             The first shape parameter for the Beta distribution
@@ -336,19 +319,21 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Beta distribution at each value p.
+            The quantiles for the Beta distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Beta4
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Beta4.qf(p, 3, 4, 2, 3)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Beta4.qf(u, 3, 4, 2, 3)
         array([2.20090888, 2.26864915, 2.32332388, 2.37307973, 2.42140719])
         """
-        return a + (b - a) * betaincinv(alpha, beta, p)
+        return a + (b - a) * betaincinv(alpha, beta, u)
 
-    def mean(self, alpha, beta, a, b):
+    def mean(
+        self, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Mean of the four-parameter Beta distribution
@@ -382,7 +367,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         """
         return a + (b - a) * alpha / (alpha + beta)
 
-    def moment(self, m, alpha, beta, a, b):
+    def moment(
+        self, m: int, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         m-th (non central) moment of the four-parameter Beta distribution.
@@ -424,7 +411,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
             total = total + comb(m, k) * a ** (m - k) * scale**k * u_moment
         return total
 
-    def entropy(self, alpha, beta, a, b):
+    def entropy(
+        self, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         r"""
 
         Differential entropy of the four-parameter Beta distribution.
@@ -458,7 +447,9 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         )
         return standard + np.log(b - a)
 
-    def log_df(self, x, alpha, beta, a, b):
+    def log_df(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         return (
             (alpha - 1) * np.log(x - a)
             + (beta - 1) * np.log(b - x)
@@ -466,24 +457,24 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
             - (alpha + beta - 1) * np.log(b - a)
         )
 
-    def log_ff(self, x, alpha, beta, a, b):
+    def log_ff(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
         z = np.clip(self._z(x, a, b), 0.0, 1.0)
         return abetaincln(alpha, beta, z)
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
+        return x
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return self.qf(y, *params)
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return self.ff(y, *params)
 
-    def mpp(self, *args, **kwargs):
-        msg = "Probability Plotting Method for Beta4 distribution"
-        raise NotImplementedError(msg)
-
-    def _plot_x_bounds(self, x, params):
+    def _plot_x_bounds(
+        self, x: npt.NDArray, params: npt.NDArray
+    ) -> tuple[float, float] | None:
         return float(params[2]), float(params[3])
 
 

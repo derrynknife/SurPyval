@@ -15,13 +15,18 @@ from surpyval import (
     Exponential,
     ExpoWeibull,
     Gamma,
+    Gumbel,
     GumbelLEV,
     Logistic,
     LogNormal,
+    Normal,
+    Rayleigh,
+    Weibull,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 def test_lognormal_fits_negative_mu():
@@ -165,3 +170,84 @@ def test_from_params_signature_matches_the_base():
     for dist in (Bernoulli, Binomial, ExactEventTime):
         own = set(inspect.signature(type(dist).from_params).parameters)
         assert base <= own, dist.name
+
+
+# --- Rayleigh's initial guess had to be a sequence ------------------------
+#
+# Rayleigh is the only single-parameter distribution here, and its
+# _parameter_initialiser returned a bare scalar for the non-offset case.
+# `np.array(init)` in _initial_guess then produced a 0-dimensional array
+# rather than a length-1 one, and the lfp and zi paths concatenate the p
+# and f0 seeds onto it -- which a 0-d array cannot do.
+
+
+def test_rayleigh_initial_guess_is_a_sequence():
+    seed = Rayleigh._parameter_initialiser(
+        SurpyvalData(np.array([1.0, 2.0, 3.0, 4.0]))
+    )
+    assert np.array(seed).ndim == 1
+
+
+@pytest.mark.parametrize("structural", ["lfp", "zi"])
+def test_rayleigh_fits_with_lfp_and_zi(structural):
+    np.random.seed(0)
+    x = Rayleigh.random(200, 10.0)
+    if structural == "zi":
+        x = np.concatenate([x, np.zeros(10)])
+    model = Rayleigh.fit(x, **{structural: True})
+    # The sigma estimate is unaffected; the point is that it runs at all.
+    assert model.params[0] == pytest.approx(9.92, abs=0.5)
+
+
+# --- _parameter_initialiser takes a SurpyvalData -------------------------
+#
+# It used to take (x, c=None, n=None, t=None, offset=False), and every
+# implementation re-established the conventions that SurpyvalData had
+# already guaranteed -- inconsistently. Normal indexed with c and Gumbel
+# tested membership on it before either was defaulted, so both raised
+# TypeError for the signature the base class documented; every caller
+# inside the package passed c and n, which is why it went unnoticed.
+# There is now nothing to default: the argument is the normalised
+# object, so c, n and t are always arrays.
+
+
+@pytest.mark.parametrize(
+    "dist",
+    [Normal, Gumbel, GumbelLEV, Weibull, LogNormal, Logistic, Rayleigh],
+)
+def test_parameter_initialiser_takes_surpyval_data(dist):
+    x = np.array([1.0, 2.0, 3.0, 4.0, 5.5])
+    seed = dist._parameter_initialiser(SurpyvalData(x))
+    assert np.asarray(seed).ndim == 1
+    assert np.isfinite(np.asarray(seed, dtype=float)).all()
+
+
+@pytest.mark.parametrize(
+    "dist",
+    [Normal, Gumbel, GumbelLEV, Weibull, LogNormal, Logistic, Rayleigh],
+)
+def test_parameter_initialiser_rejects_loose_arrays(dist):
+    # The old signature is gone rather than deprecated. Passing a bare
+    # array reaches the ``.x`` attribute access and fails loudly, which
+    # is the point: a silent partial acceptance is what let the c=None
+    # divergence above survive.
+    with pytest.raises(AttributeError):
+        dist._parameter_initialiser(np.array([1.0, 2.0, 3.0]))
+
+
+def test_exact_event_time_has_a_quantile_mean_and_moments():
+    # A point mass has no density and no hazard rate -- df and hf raise,
+    # and say why -- but its quantile, mean and moments are all exact and
+    # trivial. They were simply missing, so a caller reaching for the mean
+    # of a known event time got an AttributeError.
+    T = 5.0
+    np.testing.assert_allclose(
+        np.asarray(ExactEventTime.qf([0.01, 0.5, 0.99], T), dtype=float), T
+    )
+    assert ExactEventTime.mean(T) == T
+    assert ExactEventTime.moment(1, T) == T
+    assert ExactEventTime.moment(3, T) == T**3
+    # And the ones that genuinely do not exist still refuse.
+    for method in ("df", "hf"):
+        with pytest.raises(NotImplementedError):
+            getattr(ExactEventTime, method)(np.array([1.0]), T)

@@ -1,5 +1,10 @@
 import autograd.numpy as np
 
+from surpyval.univariate.parametric.parametric_fitter import (
+    OptimisedFitMixin,
+)
+
+from .lifemodel import LifeModel
 from .parameter_substitution import ParameterSubstitutionFitter
 
 # Map each supported distribution to its life parameter name and any
@@ -19,7 +24,9 @@ _LIFE_PARAM_MAP = {
 }
 
 
-def AcceleratedLife(distribution, life_model):
+def AcceleratedLife(
+    distribution: OptimisedFitMixin, life_model: LifeModel
+) -> ParameterSubstitutionFitter:
     """
     Create an Accelerated Life fitter for the given distribution and
     life model.

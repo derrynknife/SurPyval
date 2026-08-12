@@ -1,15 +1,19 @@
+import numpy.typing as npt
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
 from scipy.special import digamma, gammaincinv
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
 from surpyval.utils.autograd_gamma_compat import gammainc as agammainc
 from surpyval.utils.autograd_gamma_compat import gammainccln as agammainccln
 from surpyval.utils.autograd_gamma_compat import gammaincln as agammaincln
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Gamma_(OptimisedFitMixin, ParametricFitter):
@@ -23,7 +27,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
 
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -55,7 +59,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         self.supports_mpp = False
 
     @staticmethod
-    def _moment_estimate(x):
+    def _moment_estimate(x: npt.NDArray) -> tuple[float, float]:
         """Closed-form approximation to the Gamma MLE.
 
         The shape solves ``log(alpha) - digamma(alpha) = s`` with
@@ -77,7 +81,10 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         beta = x.sum() / (len(x) * alpha)
         return alpha, 1.0 / beta
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
+        x = data.x
         if offset:
             # ``gamma`` leads the vector, as it does for every other
             # offset-capable distribution. Returning it last put the
@@ -93,10 +100,10 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             # silent nonsense.
             gamma_init = np.min(x) - 1.0
             alpha, beta = self._moment_estimate(x - gamma_init)
-            return gamma_init, alpha, beta
-        return self._moment_estimate(x)
+            return np.array([gamma_init, alpha, beta], dtype=float)
+        return np.asarray(self._moment_estimate(x), dtype=float)
 
-    def sf(self, x, alpha, beta):
+    def sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Survival (or Reliability) function for the Gamma Distribution:
@@ -132,44 +139,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, alpha, beta)
 
-    def cs(self, x, X, alpha, beta):
-        r"""
-
-        Conditional survival function for the Gamma Distribution:
-
-        .. math::
-            R(x) = e^{-\lambda x}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The value(s) at which the function will be calculated
-        X : numpy array or scalar
-            The value(s) at which each value(s) in x was known to have survived
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            the conditional survival probability.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Gamma
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Gamma.cs(x, 5, 3, 4)
-        array([2.59402488e-02, 6.39048747e-04, 1.51519143e-05, 3.48776510e-07,
-               7.79933496e-09])
-        """
-        return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
-
-    def ff(self, x, alpha, beta):
+    def ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         CDF (or unreliability or failure) function for the Gamma Distribution:
@@ -206,7 +176,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         x = np.array(x)
         return agammainc(alpha, beta * x)
 
-    def df(self, x, alpha, beta):
+    def df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Density function for the Gamma Distribution:
@@ -247,7 +217,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             / (agamma(alpha))
         )
 
-    def hf(self, x, alpha, beta):
+    def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Gamma Distribution:
@@ -284,7 +254,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         """
         return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
 
-    def Hf(self, x, alpha, beta):
+    def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the Gamma Distribution:
@@ -320,18 +290,18 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta))
 
-    def qf(self, p, alpha, beta):
+    def qf(self, u: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Gamma Distribution:
 
         .. math::
-            q(p) = \frac{-\ln\left ( p \right )}{\lambda}
+            q(u) = \frac{-\ln\left ( u \right )}{\lambda}
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
@@ -342,19 +312,19 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Gamma distribution at each value p.
+            The quantiles for the Gamma distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Gamma
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Gamma.qf(p, 3, 4)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Gamma.qf(u, 3, 4)
         array([0.27551633, 0.38376105, 0.47844395, 0.57126923, 0.66851508])
         """
-        return gammaincinv(alpha, p) / beta
+        return gammaincinv(alpha, u) / beta
 
-    def mean(self, alpha, beta):
+    def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Calculates the mean of the Gamma distribution with given parameters.
@@ -384,20 +354,20 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         """
         return alpha / beta
 
-    def moment(self, n, alpha, beta):
+    def moment(self, m: int, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
-        Calculates the n-th moment of the Gamma distribution with
+        Calculates the m-th moment of the Gamma distribution with
         given parameters.
 
         .. math::
-            E = \frac{\Gamma \left ( n + \alpha \right )}{\beta^{n}\Gamma
+            E = \frac{\Gamma \left ( m + \alpha \right )}{\beta^{m}\Gamma
             \left ( \alpha \right )}
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
@@ -416,9 +386,9 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.moment(3, 3, 4)
         np.float64(0.9375)
         """
-        return agamma(n + alpha) / (beta**n * agamma(alpha))
+        return agamma(m + alpha) / (beta**m * agamma(alpha))
 
-    def entropy(self, alpha, beta):
+    def entropy(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the Gamma distribution.
@@ -457,7 +427,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             + (1 - alpha) * digamma(alpha)
         )
 
-    def log_df(self, x, alpha, beta):
+    def log_df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Calculates the log of the density function of the Gamma distribution
@@ -491,22 +461,22 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             - agammaln(alpha)
         )
 
-    def log_ff(self, x, alpha, beta):
+    def log_ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return agammaincln(alpha, beta * x)
 
-    def log_sf(self, x, alpha, beta):
+    def log_sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return agammainccln(alpha, beta * x)
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         alpha = params[0]
         return gammaincinv(alpha, y)
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         alpha = params[0]
         return agammainc(alpha, y)
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
+        return x
 
 
 Gamma: Gamma_ = Gamma_("Gamma")

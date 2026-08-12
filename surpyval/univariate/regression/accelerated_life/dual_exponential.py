@@ -30,7 +30,7 @@ class DualExponential_(LifeModel):
             on observed data.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize the DualExponential_ class.
 

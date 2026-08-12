@@ -11,6 +11,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
@@ -50,14 +51,10 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         )
 
     def _parameter_initialiser(
-        self,
-        x: npt.NDArray,
-        c: npt.NDArray | None = None,
-        n: npt.NDArray | None = None,
-        t: npt.NDArray | None = None,
-        offset: bool = False,
+        self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
         # The Poisson mean is mu, so the sample mean is the moment seed.
+        x = data.x
         finite = x[np.isfinite(x)]
         mu = finite.mean() if finite.size else 1.0
         return np.array([max(float(mu), 1e-3)])
@@ -66,11 +63,18 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         r"""Survival function :math:`R(k) = P(T > k)`."""
         # P(X > k) = P(X >= k + 1) is the regularised lower incomplete gamma
         # ``gammainc(k + 1, mu)``.
-        return gammainc(np.floor(x) + 1.0, mu)
+        #
+        # The first mass point is k = 0, so R = 1 below it. The gamma form
+        # only reaches that far by accident: its first argument is
+        # floor(k) + 1, which is 0 at k = -1 (where gammainc returns 1) but
+        # negative below that, where it returns NaN.
+        safe_a = np.where(x < 0.0, 1.0, np.floor(x) + 1.0)
+        return np.where(x < 0.0, 1.0, gammainc(safe_a, mu))
 
     def ff(self, x: Numeric, mu: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = P(T \le k)`."""
-        return gammaincc(np.floor(x) + 1.0, mu)
+        safe_a = np.where(x < 0.0, 1.0, np.floor(x) + 1.0)
+        return np.where(x < 0.0, 0.0, gammaincc(safe_a, mu))
 
     def df(self, x: Numeric, mu: Boxable) -> Boxable:
         r"""PMF :math:`P(T = k) = \mu^{k} e^{-\mu} / k!`."""
@@ -102,10 +106,13 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         return poisson.rvs(mu, size=size).astype(float)
 
     def log_df(self, x: Numeric, mu: Boxable) -> Boxable:
-        return x * np.log(mu) - mu - gammaln(x + 1.0)
+        return np.where(
+            x < 0.0, -np.inf, x * np.log(mu) - mu - gammaln(x + 1.0)
+        )
 
     def log_sf(self, x: Numeric, mu: Boxable) -> Boxable:
-        return np.log(gammainc(np.floor(x) + 1.0, mu))
+        safe_a = np.where(x < 0.0, 1.0, np.floor(x) + 1.0)
+        return np.where(x < 0.0, 0.0, np.log(gammainc(safe_a, mu)))
 
 
 Poisson = Poisson_("Poisson")

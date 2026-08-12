@@ -1,17 +1,23 @@
-import inspect
 import warnings
+from typing import Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+    OptimisedFitMixin,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._fit_skeleton import HazardIdentitiesMixin
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
+from .lifemodel import LifeModel
 
 
 class ParameterSubstitutionFitter(
@@ -19,15 +25,15 @@ class ParameterSubstitutionFitter(
 ):
     def __init__(
         self,
-        kind,
-        name,
-        distribution,
-        life_model,
-        life_parameter,
-        baseline=None,
-        param_transform=None,
-        inverse_param_transform=None,
-    ):
+        kind: str,
+        name: str,
+        distribution: OptimisedFitMixin,
+        life_model: LifeModel,
+        life_parameter: str,
+        baseline: list[str] | str | None = None,
+        param_transform: Callable[[Boxable], Boxable] | None = None,
+        inverse_param_transform: Callable[[Boxable], Boxable] | None = None,
+    ) -> None:
         if baseline is None:
             baseline = []
         elif not isinstance(baseline, list):
@@ -58,25 +64,28 @@ class ParameterSubstitutionFitter(
             self.param_transform = lambda x: x
             self.inverse_param_transform = lambda x: x
         else:
+            # Supplied as a pair -- accelerated_life.py passes both or
+            # neither -- so the inverse is not None here.
+            assert inverse_param_transform is not None
             self.param_transform = param_transform
             self.inverse_param_transform = inverse_param_transform
 
-    def Hf(self, x, Z, *params):
+    def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         x = np.array(x)
         if np.isscalar(Z):
-            Z = np.ones_like(x) * Z
+            Z_arr = np.ones_like(x) * Z
         else:
-            Z = np.array(Z)
-        if Z.ndim == 1:
+            Z_arr = np.array(Z)
+        if Z_arr.ndim == 1:
             # A 1-D stress vector (one stress variable) becomes a single
             # column so the per-stress masking below works (#261).
-            Z = Z.reshape(-1, 1)
+            Z_arr = Z_arr.reshape(-1, 1)
 
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
 
         Hf = np.zeros_like(x)
-        stresses = np.unique(Z, axis=0)
+        stresses = np.unique(Z_arr, axis=0)
         for stress in stresses:
             life_param_mask = (
                 np.arange(len(dist_params))
@@ -87,27 +96,27 @@ class ParameterSubstitutionFitter(
                 self.param_transform(self.phi(stress, *phi_params)),
                 dist_params,
             )
-            mask = (Z == stress).all(axis=1)
+            mask = (Z_arr == stress).all(axis=1)
             Hf = np.where(mask, self.Hf_dist(x, *dist_params_i), Hf)
 
         return Hf
 
-    def hf(self, x, Z, *params):
+    def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         x = np.array(x)
         if np.isscalar(Z):
-            Z = np.ones_like(x) * Z
+            Z_arr = np.ones_like(x) * Z
         else:
-            Z = np.array(Z)
-        if Z.ndim == 1:
+            Z_arr = np.array(Z)
+        if Z_arr.ndim == 1:
             # A 1-D stress vector (one stress variable) becomes a single
             # column so the per-stress masking below works (#261).
-            Z = Z.reshape(-1, 1)
+            Z_arr = Z_arr.reshape(-1, 1)
 
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
 
         hf = np.zeros_like(x)
-        for stress in np.unique(Z, axis=0):
+        for stress in np.unique(Z_arr, axis=0):
             life_param_mask = (
                 np.arange(len(dist_params))
                 == self.param_map[self.life_parameter]
@@ -117,7 +126,7 @@ class ParameterSubstitutionFitter(
                 self.param_transform(self.phi(stress, *phi_params)),
                 dist_params,
             )
-            mask = (Z == stress).all(axis=1)
+            mask = (Z_arr == stress).all(axis=1)
             hf = np.where(mask, self.hf_dist(x, *dist_params_i), hf)
 
         return hf
@@ -126,42 +135,52 @@ class ParameterSubstitutionFitter(
     # Hf and hf above already do the scalar/1-D stress coercion (#261),
     # so the identities need no preamble of their own.
 
-    def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
-        out = []
+    def _parameter_initialiser_dist(
+        self,
+        x: Numeric,
+        c: Numeric | None = None,
+        n: Numeric | None = None,
+        t: Numeric | None = None,
+    ) -> list[float]:
+        out: list[float] = []
         for low, high in self.bounds:
             if (low is None) and (high is None):
-                out.append(0)
+                out.append(0.0)
             elif high is None:
-                out.append(low + 1.0)
+                assert low is not None  # both-None handled above
+                out.append(float(low) + 1.0)
             elif low is None:
-                out.append(high - 1.0)
+                out.append(float(high) - 1.0)
             else:
-                out.append((high + low) / 2.0)
+                out.append((float(high) + float(low)) / 2.0)
 
         return out
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 
-    def mpp_x_transform(self, x, gamma=0):
+    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
         return x - gamma
 
-    def random(self, size, Z, *params):
+    def random(
+        self, size: int, Z: Numeric | tuple[float, float], *params: Boxable
+    ) -> tuple[npt.NDArray, npt.NDArray]:
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
 
         x = []
         Z_out = []
         if isinstance(Z, tuple):
+            # A (low, high) pair draws the stresses uniformly.
             Z = np.random.uniform(*Z, size)
-        Z = np.asarray(Z)
-        if Z.ndim == 1:
-            Z = Z.reshape(-1, 1)
+        Z_arr = np.asarray(Z)
+        if Z_arr.ndim == 1:
+            Z_arr = Z_arr.reshape(-1, 1)
 
-        for stress in np.unique(Z, axis=0):
+        for stress in np.unique(Z_arr, axis=0):
             life_param_mask = (
                 np.arange(len(dist_params))
                 == self.param_map[self.life_parameter]
@@ -181,7 +200,7 @@ class ParameterSubstitutionFitter(
             Z_out.append(np.ones((size, cols)) * stress)
         return np.array(x).flatten(), np.concatenate(Z_out)
 
-    def neg_ll(self, data, *params):
+    def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
 
     def fit(
@@ -244,15 +263,12 @@ class ParameterSubstitutionFitter(
 
             parameter_data = self.inverse_param_transform(parameter_data)
 
-            if callable(self.life_model.phi_init):
-                if str(inspect.signature(self.life_model.phi_init)) == "(Z)":
-                    phi_init = self.life_model.phi_init(Z)
-                else:
-                    phi_init = self.life_model.phi_init(
-                        parameter_data, stress_data
-                    )
-            else:
-                phi_init = self.life_model.phi_init
+            # Every life model's phi_init is (life, Z). There used to be
+            # a branch here for a "(Z)"-only signature, chosen by
+            # comparing str(inspect.signature(...)) == "(Z)", and another
+            # for a non-callable phi_init. Neither could run: all ten
+            # life models are callable with the two-argument signature.
+            phi_init = self.life_model.phi_init(parameter_data, stress_data)
             init = np.array([*dist_init, *phi_init])
         else:
             init = np.array(init)
@@ -295,7 +311,7 @@ class ParameterSubstitutionFitter(
 
         with np.errstate(all="ignore"):
 
-            def fun(params):
+            def fun(params: npt.NDArray) -> Boxable:
                 return self.neg_ll(data, *inv_trans(const(params)))
 
             res1 = minimize(

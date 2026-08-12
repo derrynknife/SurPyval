@@ -1,3 +1,5 @@
+import numpy.typing as npt
+
 """
 Royston-Parmar flexible parametric survival models.
 
@@ -35,7 +37,7 @@ right-truncation. Right-censored contribute ``log S``, left-censored
 each observation's contribution by ``S(t_l) - S(t_r)``.
 """
 
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 from scipy.optimize import brentq, minimize
@@ -89,7 +91,7 @@ def _place_knots(x_events: np.ndarray, n_internal: int) -> np.ndarray:
     return np.quantile(lx, qs)
 
 
-def _scale_terms(eta: np.ndarray, scale: str):
+def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
     """``(log S, log(-dS/deta))`` at linear predictor ``eta`` for a scale."""
     if scale == "hazard":
         log_S = -np.exp(eta)
@@ -113,7 +115,7 @@ def _sf_from_eta(eta: np.ndarray, scale: str) -> np.ndarray:
 
 def _sf_at(
     times: np.ndarray, knots: np.ndarray, gamma: np.ndarray, scale: str
-):
+) -> npt.NDArray:
     """Survival at arbitrary times, with the boundary conventions the
     censoring/truncation likelihoods need: ``S = 1`` at times ``<= 0`` (and
     ``-inf``) and ``S = 0`` at ``+inf``. Finite positive times go through the
@@ -325,7 +327,9 @@ class RoystonParmarModel(SerialisableMixin):
         return out
 
 
-def _numerical_hessian(f, x, eps=1e-5):
+def _numerical_hessian(
+    f: Callable[..., Any], x: npt.NDArray, eps: float = 1e-05
+) -> npt.NDArray:
     n = len(x)
     H = np.zeros((n, n))
     steps = np.maximum(np.abs(x), 1.0) * eps
@@ -480,7 +484,7 @@ class RoystonParmar_:
         B_il = _rcs_basis(np.log(x_il), knots) if x_il.size else None
         B_ir = _rcs_basis(np.log(x_ir), knots) if x_ir.size else None
 
-        def neg_ll(g):
+        def neg_ll(g: npt.NDArray) -> Any:
             ll = 0.0
             if B_o is not None:  # events: log f = log(-dS) + log s' - log t
                 eta = B_o @ g

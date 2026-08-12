@@ -1,12 +1,17 @@
 import inspect
+from typing import Callable
 
+import numpy.typing as npt
 from autograd import elementwise_grad
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class CustomDistribution(OptimisedFitMixin, ParametricFitter):
@@ -58,7 +63,16 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     >>> model = Gompertz.fit(x)
     """
 
-    def __init__(self, name, fun, param_names, bounds, support):
+    def __init__(
+        self,
+        name: str,
+        # Validated at runtime to have the signature (x, *params);
+        # Callable[..., Boxable] is as close as the type system gets.
+        fun: Callable[..., Boxable],
+        param_names: list[str],
+        bounds: tuple[tuple[int | float | None, int | float | None], ...],
+        support: tuple[int | float, int | float],
+    ) -> None:
         if str(inspect.signature(fun)) != "(x, *params)":
             detail = "Function must have the signature '(x, *params)'"
             raise ValueError(detail)
@@ -96,31 +110,52 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
             plot_x_scale="linear",
             y_ticks=np.linspace(0, 1, 11),
         )
-        self.Hf = fun
-        self.hf = lambda x, *params: elementwise_grad(self.Hf)(x, *params)
-        self.sf = lambda x, *params: np.exp(-self.Hf(x, *params))
-        self.ff = lambda x, *params: -np.expm1(-self.Hf(x, *params))
-        self.df = lambda x, *params: elementwise_grad(self.ff)(x, *params)
+        # Stored, then exposed through real methods below. Assigning
+        # over self.Hf and friends stopped being possible once
+        # OptimisedFitMixin declared them for its own use: a subclass
+        # inherits those declarations, and assigning to an inherited
+        # method is an error. Delegating is equivalent -- the previous
+        # ``self.Hf = fun`` was an unbound instance attribute, so
+        # ``self.Hf(x, *params)`` called ``fun(x, *params)`` either way.
+        self._fun = fun
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        out = []
+    def Hf(self, x: Numeric, *params: Boxable) -> Boxable:
+        return self._fun(x, *params)
+
+    def hf(self, x: Numeric, *params: Boxable) -> Boxable:
+        return elementwise_grad(self.Hf)(x, *params)
+
+    def sf(self, x: Numeric, *params: Boxable) -> Boxable:
+        return np.exp(-self.Hf(x, *params))
+
+    def ff(self, x: Numeric, *params: Boxable) -> Boxable:
+        return -np.expm1(-self.Hf(x, *params))
+
+    def df(self, x: Numeric, *params: Boxable) -> Boxable:
+        return elementwise_grad(self.ff)(x, *params)
+
+    # Returns a list, where Weibull returns a tuple and the discrete
+    # distributions return an array. The base contract does not pin
+    # this down; callers coerce whichever they get.
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
+        out: list[float] = []
         for low, high in self.bounds:
-            if (low is None) and (high is None):
-                out.append(0)
+            if low is None:
+                out.append(0.0 if high is None else float(high) - 1.0)
             elif high is None:
-                out.append(low + 1.0)
-            elif low is None:
-                out.append(high - 1.0)
+                out.append(float(low) + 1.0)
             else:
-                out.append((high + low) / 2.0)
+                out.append((float(high) + float(low)) / 2.0)
 
-        return out
+        return np.array(out, dtype=float)
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return y
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return y
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
+        return x

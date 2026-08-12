@@ -16,6 +16,7 @@ from surpyval import (
     Parametric,
     Weibull,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 def test_mse_with_offset():
@@ -44,7 +45,7 @@ def test_loglogistic_offset_initial_guess_length():
     # The offset initial guess returned one parameter too many, which the
     # parameter transforms silently truncated.
     init = LogLogistic._parameter_initialiser(
-        np.array([1.0, 2.0, 3.0, 4.0, 5.0]), offset=True
+        SurpyvalData(np.array([1.0, 2.0, 3.0, 4.0, 5.0])), offset=True
     )
     assert len(init) == LogLogistic.k + 1
 
@@ -53,7 +54,7 @@ def test_lognormal_offset_initial_guess_length():
     # The offset initial guess ignored the offset flag and returned one
     # parameter too few, so offset fits crashed before optimising.
     init = LogNormal._parameter_initialiser(
-        np.array([1.0, 2.0, 3.0, 4.0, 5.0]), offset=True
+        SurpyvalData(np.array([1.0, 2.0, 3.0, 4.0, 5.0])), offset=True
     )
     assert len(init) == LogNormal.k + 1
 

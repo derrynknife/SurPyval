@@ -1,6 +1,10 @@
+import numpy.typing as npt
+
 import surpyval
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     ParametricFitter,
     reject_structural_params,
 )
@@ -9,7 +13,7 @@ from ..parametric import Parametric
 
 
 class ExactEventTime_(ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=1,
@@ -20,33 +24,115 @@ class ExactEventTime_(ParametricFitter):
             plot_x_scale="linear",
         )
 
-    def sf(self, x, T):
-        x = np.atleast_1d(x)
-        return (x < T).astype(float)
+    def sf(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        x_arr = np.atleast_1d(x)
+        return (x_arr < T).astype(float)
 
-    def ff(self, x, T):
-        x = np.atleast_1d(x)
-        return (x >= T).astype(float)
+    def ff(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        x_arr = np.atleast_1d(x)
+        return (x_arr >= T).astype(float)
 
-    def df(self, x, T):
-        x = np.atleast_1d(x)
-        df = np.zeros_like(x).astype(float)
-        df[x == T] = np.inf
-        return df
+    # ``df`` and ``hf`` do not exist for a point mass, and used to be
+    # answered with ``inf``.
+    #
+    # All the probability sits at T, so the density is a Dirac delta:
+    # zero everywhere, infinite at one point, integrating to one. There
+    # is no function of x that represents it -- the old ``df`` returned
+    # ``inf`` at T and 0 elsewhere, which integrates to ``inf``, not 1.
+    # The hazard is the same delta divided by a survival that is zero
+    # from T onwards, so it was ``inf`` at T *and everywhere after*.
+    # Inherited ``log_df`` then computed ``log(inf) - inf`` and returned
+    # ``nan``.
+    #
+    # Raising stops that at the call site. An ``inf`` does not: it
+    # propagates into a plot, a likelihood or a mixture weight and
+    # surfaces somewhere with no connection to the cause. Bernoulli
+    # already omits all three for the same reason -- no time axis to
+    # carry a density.
+    #
+    # ``sf``, ``ff``, ``Hf`` and ``qf`` are all well defined here and
+    # are unaffected.
+    def df(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        raise NotImplementedError(
+            "ExactEventTime has no density: all of its probability is a "
+            "point mass at T, so the density is a Dirac delta rather than "
+            "a function of x. Use sf, ff or Hf, which are step functions "
+            "and well defined."
+        )
 
-    def hf(self, x, T):
-        x = np.atleast_1d(x)
-        hf = np.zeros_like(x).astype(float)
-        hf[x >= T] = np.inf
-        return hf
+    def hf(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        raise NotImplementedError(
+            "ExactEventTime has no hazard rate: its density is a Dirac "
+            "delta at T and its survival is zero from T onwards, so the "
+            "ratio is undefined at and after the event. Hf is well "
+            "defined -- it steps from 0 to infinity at T."
+        )
 
-    def Hf(self, x, T):
-        return self.hf(x, T)
+    def Hf(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        # -log R(x): zero while the item survives, infinite once the
+        # event has certainly happened. Previously this returned hf,
+        # which happened to be the same two values.
+        x_arr = np.atleast_1d(x)
+        Hf = np.zeros_like(x_arr).astype(float)
+        Hf[x_arr >= T] = np.inf
+        return Hf
 
-    def random(self, size, T):
+    def qf(self, u: Numeric, T: Boxable) -> Boxable:
+        r"""Quantile function: :math:`T` for every :math:`u \in (0, 1)`.
+
+        All the probability sits at ``T``, so the smallest ``x`` with
+        :math:`F(x) \geq u` is ``T`` whatever ``u`` is. Unlike ``df`` and
+        ``hf`` there is nothing undefined here -- a point mass has a
+        perfectly good quantile, it is just a constant one.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.qf([0.1, 0.5, 0.9], 5.0)
+        array([5., 5., 5.])
+        """
+        return np.ones_like(np.atleast_1d(np.asarray(u, dtype=float))) * T
+
+    def mean(self, T: Boxable) -> Boxable:
+        r"""Mean of the distribution: :math:`E[X] = T`.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.mean(5.0)
+        5.0
+        """
+        return T
+
+    def moment(self, m: int, T: Boxable) -> Boxable:
+        r"""m-th raw moment: :math:`E[X^m] = T^m`.
+
+        Exact, where the inherited quadrature over a density would have
+        had no density to integrate.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.moment(2, 5.0)
+        25.0
+        """
+        return T**m
+
+    def random(self, size: int | tuple[int, ...], T: Boxable) -> npt.NDArray:
         return np.ones(size) * T
 
-    def fit(self, x, c=None, n=None, t=None):
+    # Narrower than OptimisedFitMixin.fit by design, and no longer a
+    # Liskov violation: ExactEventTime_ does not inherit that mixin,
+    # so there is no wider fit above this one. The event time is
+    # bracketed exactly by the censoring bounds, so there is nothing
+    # for how, offset, zi or lfp to do.
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+    ) -> Parametric:
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t)
 
         if 0 in c:
@@ -80,7 +166,13 @@ class ExactEventTime_(ParametricFitter):
         model.params = np.array([T])
         return model
 
-    def from_params(self, params, gamma=None, p=None, f0=None):
+    def from_params(
+        self,
+        params: npt.ArrayLike,
+        gamma: Boxable | None = None,
+        p: Boxable | None = None,
+        f0: Boxable | None = None,
+    ) -> Parametric:
         """Create an ExactEventTime model from the known event time.
 
         ``params`` is the event time, previously named ``T``. ``gamma``,
@@ -93,4 +185,4 @@ class ExactEventTime_(ParametricFitter):
         return model
 
 
-ExactEventTime = ExactEventTime_("ExactEventTime")
+ExactEventTime: ExactEventTime_ = ExactEventTime_("ExactEventTime")

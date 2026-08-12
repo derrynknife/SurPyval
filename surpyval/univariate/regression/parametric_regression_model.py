@@ -238,6 +238,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         """
         import surpyval
         from surpyval.univariate.parametric.parametric_fitter import (
+            OptimisedFitMixin,
             ParametricFitter,
         )
 
@@ -273,6 +274,19 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 raise ValueError(
                     "Cannot deserialise Accelerated Life model with life "
                     "model {!r}".format(life_name)
+                )
+            # The guard above only establishes a ParametricFitter, which
+            # admits Bernoulli, Binomial and ExactEventTime -- none of
+            # them fittable, and an accelerated life model needs a
+            # distribution it can fit. The dict is untrusted input, so a
+            # name like that would otherwise get this far and fail deep
+            # inside the fitter on a missing attribute.
+            if not isinstance(dist, OptimisedFitMixin):
+                raise ValueError(
+                    "Cannot deserialise Accelerated Life model with "
+                    "distribution {!r}: it has no fitting machinery.".format(
+                        model_dict["distribution"]
+                    )
                 )
             reg_model = LIFE_MODELS[life_name]
             fitter = AcceleratedLife(dist, reg_model)

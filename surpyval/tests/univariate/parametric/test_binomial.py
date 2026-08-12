@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from scipy.stats import binom
 
-from surpyval import Bernoulli, Binomial, Parametric
+from surpyval import Bernoulli, Binomial, FixedEventProbability, Parametric
 
 N, P = 5, 0.3
 
@@ -94,17 +94,30 @@ def test_fit_with_counts():
 
 
 def test_reduces_to_bernoulli_at_n_one():
-    # At n = 1 the event probabilities match the Bernoulli: P(K=1) = p and
-    # P(K=0) = 1 - p. Note surpyval's Bernoulli is a degenerate
-    # "fixed event probability" model whose survival is the constant
-    # probability of *no* event (1 - p), so it lines up with the binomial's
-    # P(K = 0) = ff(0), not its sf(0).
+    # At n = 1 the binomial *is* the Bernoulli, and since 0.19.1 the two
+    # agree exactly on the probability mass:
     binomial = Binomial.from_params([1, P])
     bernoulli = Bernoulli.from_params(P)
     assert np.isclose(binomial.df(1), P)
     assert np.isclose(binomial.df(0), 1 - P)
-    assert np.isclose(binomial.ff(0), bernoulli.sf(0))
-    assert np.isclose(binomial.sf(0), bernoulli.ff(0))
+    np.testing.assert_allclose(
+        np.asarray(bernoulli.df([0, 1]), dtype=float),
+        np.asarray(binomial.df([0, 1]), dtype=float),
+    )
+
+    # The survival functions are offset by one, and that is a convention
+    # rather than a disagreement. Binomial follows the package's discrete
+    # rule R(k) = P(K > k); Bernoulli uses R(x) = P(X >= x), so that
+    # R(0) = 1 and R(1) = p read as a one-shot device. Hence:
+    for x in (0, 1):
+        assert np.isclose(bernoulli.sf(x), binomial.sf(x - 1))
+
+    # Before 0.19.1 Bernoulli was a flat "fixed event probability" model
+    # with F(x) = p at every x, which lined up with neither. That model
+    # still exists under its own name and is unchanged.
+    fixed = FixedEventProbability.from_params(P)
+    assert np.isclose(fixed.ff(0), P)
+    assert np.isclose(fixed.ff(37.5), P)
 
 
 @pytest.mark.parametrize(
@@ -139,3 +152,28 @@ def test_to_dict_roundtrip():
     restored = Parametric.from_dict(model.to_dict())
     assert np.allclose(restored.params, [N, P])
     assert np.isclose(restored.mean(), N * P)
+
+
+def test_support_brackets_the_outcomes_exclusively():
+    # ``support`` is a pair of exclusive bounds -- ``_validate_fit_inputs``
+    # rejects ``x <= support[0]`` and ``x >= support[1]`` -- so both must
+    # sit one step outside the outcomes {0, ..., n}. Zero events and n
+    # events are ordinary outcomes with real mass, and the bounds used to
+    # exclude both. Nothing observed it because Binomial does not inherit
+    # OptimisedFitMixin, where that check lives.
+    n_trials = 5
+    for model in (
+        Binomial.from_params([n_trials, 0.3]),
+        Binomial.fit([0, 2, 3, 5, 1], n_trials=n_trials),
+    ):
+        lower, upper = model.support
+        for k in (0, n_trials):
+            assert lower < k < upper, k
+            assert Binomial.df(k, n_trials, 0.3) > 0
+
+
+def test_class_level_support_admits_zero_events():
+    # The class-level bound is checked before n is known, so only its
+    # lower end is meaningful; it must still admit k = 0, as Poisson's
+    # does. It read 0 -- Geometric's value, whose first mass is at k = 1.
+    assert Binomial.support[0] < 0

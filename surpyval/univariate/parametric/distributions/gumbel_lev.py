@@ -1,15 +1,19 @@
+import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.stats import gumbel_r
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -20,11 +24,18 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
             plot_x_scale="linear",
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
         heuristic = "Fleming-Harrington"
-        return self.fit(x, c, n, how="MPP", heuristic=heuristic).params
+        return np.asarray(
+            self.fit_from_surpyval_data(
+                data, how="MPP", heuristic=heuristic
+            ).params,
+            dtype=float,
+        )
 
-    def sf(self, x, mu, sigma):
+    def sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Survival (or reliability) function for the Gumbel LEV Distribution:
@@ -63,7 +74,7 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         """
         return 1 - self.ff(x, mu, sigma)
 
-    def ff(self, x, mu, sigma):
+    def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         CDF (or Failure) function for the Gumbel LEV Distribution:
@@ -103,7 +114,7 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         z = (x - mu) / sigma
         return np.exp(-np.exp(-z))
 
-    def df(self, x, mu, sigma):
+    def df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Density function (pdf) for the Gumbel LEV Distribution:
@@ -143,7 +154,7 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         z = (x - mu) / sigma
         return (1.0 / sigma) * np.exp(-(z + np.exp(-z)))
 
-    def hf(self, x, mu, sigma):
+    def hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Gumbel LEV Distribution:
@@ -179,7 +190,7 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         """
         return self.df(x, mu, sigma) / self.sf(x, mu, sigma)
 
-    def Hf(self, x, mu, sigma):
+    def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the Gumbel LEV Distribution:
@@ -215,18 +226,18 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         """
         return -np.log(self.sf(x, mu, sigma))
 
-    def qf(self, p, mu, sigma):
+    def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Gumbel LEV Distribution:
 
         .. math::
-            q(p) = \mu - \sigma\ln\left ( -\ln\left ( p \right ) \right )
+            q(u) = \mu - \sigma\ln\left ( -\ln\left ( u \right ) \right )
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         mu : numpy array like or scalar
             The location parameter(s) of the distribution
@@ -237,19 +248,19 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the GumbelLEV distribution at each value p.
+            The quantiles for the GumbelLEV distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import GumbelLEV
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> GumbelLEV.qf(p, 3, 2)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> GumbelLEV.qf(u, 3, 2)
         array([1.33193511, 2.04823001, 2.62874648, 3.17484314, 3.73302584])
         """
-        return mu - sigma * np.log(-np.log(p))
+        return mu - sigma * np.log(-np.log(u))
 
-    def mean(self, mu, sigma):
+    def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Calculates the mean of the Gumbel LEV distribution with given
@@ -282,35 +293,35 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         """
         return mu + sigma * euler_gamma
 
-    def log_sf(self, x, mu, sigma):
+    def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return -self.Hf(x, mu, sigma)
 
-    def log_ff(self, x, mu, sigma):
+    def log_ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return -np.exp(-(x - mu) / sigma)
 
-    def log_df(self, x, mu, sigma):
+    def log_df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         z = (x - mu) / sigma
         return -np.log(sigma) - (z + np.exp(-z))
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
+        return x
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
         out[~mask] = -np.log(-np.log(y[~mask]))
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         # Inverse of the LEV transform y = -log(-log(F)) is
         # F = exp(-exp(-y)); the previous form was the SEV inverse (#257).
         return np.exp(-np.exp(-y))
 
-    def moment(self, n, mu, sigma):
-        return gumbel_r.moment(n, loc=mu, scale=sigma)
+    def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
+        return gumbel_r.moment(m, loc=mu, scale=sigma)
 
-    def entropy(self, mu, sigma):
+    def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the Gumbel LEV distribution.
@@ -342,7 +353,9 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         """
         return np.log(sigma) + euler_gamma + 1
 
-    def unpack_rr(self, params, rr):
+    def unpack_rr(
+        self, params: npt.NDArray, rr: str
+    ) -> tuple[Boxable, Boxable]:
         if rr == "y":
             sigma = 1.0 / params[0]
             mu = -sigma * params[1]

@@ -22,6 +22,12 @@ class Binomial_(DiscreteParametricFitter):
 
     It is the recurrent (repeated-trials) counterpart of the
     :class:`Bernoulli` distribution, which is the special case ``n = 1``.
+    The two agree exactly on the probability mass there. Their survival
+    functions are offset by one, which is a convention rather than a
+    disagreement: this class follows the package's discrete rule
+    :math:`R(k) = P(K > k)`, while Bernoulli uses :math:`P(X \geq x)` so
+    that ``R(0) = 1`` and ``R(1) = p``. Hence
+    ``Bernoulli.sf(x, p) == Binomial.sf(x - 1, 1, p)``.
 
     The distribution is parameterised by ``n`` (the number of trials, a
     positive integer) and ``p`` (the per-trial event probability). Because
@@ -36,7 +42,22 @@ class Binomial_(DiscreteParametricFitter):
             name=name,
             k=2,
             bounds=((1, None), (0, 1)),
-            support=(0, np.inf),
+            # ``support`` is a pair of *exclusive* bounds: the shared
+            # ``_validate_fit_inputs`` rejects data with
+            # ``x <= support[0]`` or ``x >= support[1]``, so a distribution
+            # declares the bound one step outside its first and last mass
+            # points. The first mass point here is k = 0 -- zero events in
+            # n trials is an ordinary outcome, P = 0.168 at n = 5, p = 0.3
+            # -- so the lower bound is -1, as for ``Poisson``. It read 0,
+            # which is ``Geometric``'s value and says zero events lie
+            # outside the distribution. Nothing observed it because
+            # ``Binomial`` does not inherit ``OptimisedFitMixin``, where
+            # that check lives, and validates its own inputs instead.
+            #
+            # The upper bound stays infinite here because n is not known
+            # until the model is built; ``fit`` and ``from_params`` set it
+            # to n + 1 for the same reason.
+            support=(-1, np.inf),
             param_names=["n", "p"],
             param_map={"n": 0, "p": 1},
             plot_x_scale="linear",
@@ -195,16 +216,16 @@ class Binomial_(DiscreteParametricFitter):
         """
         return -np.log(self.sf(x, n, p))
 
-    def qf(self, q: Numeric, n: Boxable, p: Boxable) -> Boxable:
+    def qf(self, u: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
 
         Quantile (inverse CDF) function for the Binomial distribution; the
-        smallest number of events ``x`` such that :math:`F(x) \geq q`.
+        smallest number of events ``x`` such that :math:`F(x) \geq u`.
 
         Parameters
         ----------
 
-        q : numpy array or scalar
+        u : numpy array or scalar
             The values, between 0 and 1, at which the quantile is evaluated
         n : integer
             The number of trials
@@ -215,7 +236,7 @@ class Binomial_(DiscreteParametricFitter):
         -------
 
         qf : scalar or numpy array
-            The quantile(s) at q
+            The quantile(s) at u
 
         Examples
         --------
@@ -223,36 +244,7 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.qf(0.5, 5, 0.3)
         np.float64(1.0)
         """
-        return binom.ppf(q, n, p)
-
-    def cs(self, x: Numeric, X: Numeric, n: Boxable, p: Boxable) -> Boxable:
-        r"""
-
-        Conditional survival; the probability of surviving a further ``x``
-        events having already survived ``X``:
-
-        .. math::
-            R(x \mid X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The further number of events
-        X : numpy array or scalar
-            The number of events already survived
-        n : integer
-            The number of trials
-        p : float
-            The per-trial probability of an event
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The conditional survival probability
-        """
-        return self.sf(x + X, n, p) / self.sf(X, n, p)
+        return binom.ppf(u, n, p)
 
     def mean(self, n: Boxable, p: Boxable) -> Boxable:
         r"""
@@ -339,7 +331,7 @@ class Binomial_(DiscreteParametricFitter):
 
     def fit(
         self,
-        x: Numeric,
+        x: npt.ArrayLike,
         n_trials: int,
         c: npt.NDArray | None = None,
         n: npt.NDArray | None = None,
@@ -402,7 +394,9 @@ class Binomial_(DiscreteParametricFitter):
         model = Parametric(self, "MLE", None, False, False, False)
         p = (x_arr * n).sum() / (n_trials * n.sum())
         model.params = np.array([float(n_trials), p])
-        model.support = np.array([0, n_trials])
+        # Exclusive bounds either side of the outcomes {0, ..., n_trials};
+        # see the note in __init__.
+        model.support = np.array([-1, n_trials + 1])
         return model
 
     # Narrower than ParametricFitter.from_params, which takes
@@ -468,7 +462,9 @@ class Binomial_(DiscreteParametricFitter):
 
         model = Parametric(self, "given parameters", None, False, False, False)
         model.params = np.array([float(n), prob])
-        model.support = np.array([0, n])
+        # Exclusive bounds either side of the outcomes {0, ..., n}; see the
+        # note in __init__.
+        model.support = np.array([-1, n + 1])
         return model
 
 

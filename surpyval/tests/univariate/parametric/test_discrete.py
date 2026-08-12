@@ -12,7 +12,9 @@ import pytest
 from scipy.stats import geom, nbinom, poisson
 
 from surpyval import (
+    Bernoulli,
     BetaGeometric,
+    Binomial,
     DiscreteWeibull,
     Discretize,
     Gamma,
@@ -338,3 +340,345 @@ def test_discretize_rejects_negative_support():
 def test_discretize_name_is_distinct_from_discrete_weibull():
     assert DiscretizedWeibull.name == "Discretize(Weibull)"
     assert DiscretizedWeibull.name != DiscreteWeibull.name
+
+
+def test_log_df_uses_the_discrete_mass_identity():
+    # P(T = k) = h(k) R(k - 1). ParametricFitter.log_df encodes the
+    # continuous f = h R(x) instead, which puts R(k) where R(k - 1)
+    # belongs. Binomial inherited it and returned the mass scaled by
+    # R(k)/R(k - 1) -- 0.88 of the truth at k=1, falling to 0.15 by k=7.
+    x = np.arange(1, 8, dtype=float)
+    cases = [
+        (Binomial, (10, 0.3)),
+        (Poisson, (3.0,)),
+        (Geometric, (0.3,)),
+        (NegativeBinomial, (4.0, 0.4)),
+        (DiscreteWeibull, (0.6, 1.2)),
+        (BetaGeometric, (2.0, 3.0)),
+    ]
+    for dist, params in cases:
+        df = np.asarray(dist.df(x, *params), dtype=float)
+        log_df = np.asarray(dist.log_df(x, *params), dtype=float)
+        np.testing.assert_allclose(
+            np.exp(log_df), df, rtol=1e-9, err_msg=f"{dist.name}"
+        )
+
+
+def test_binomial_log_df_matches_scipy():
+    # Binomial is the one that reached the inherited implementation, so
+    # it is the one worth pinning against an independent source.
+    from scipy.stats import binom
+
+    x = np.arange(0, 11, dtype=float)
+    np.testing.assert_allclose(
+        np.asarray(Binomial.log_df(x, 10, 0.3), dtype=float),
+        binom.logpmf(x, 10, 0.3),
+        rtol=1e-9,
+    )
+
+
+def test_discrete_hazard_is_a_probability():
+    # The discrete hazard is P(T = k)/P(T >= k), which is a probability
+    # and cannot exceed one. The continuous form P(T = k)/P(T > k) can,
+    # which is how a mixed-up convention shows itself.
+    x = np.arange(1, 12, dtype=float)
+    for dist, params in [
+        (Poisson, (3.0,)),
+        (Geometric, (0.3,)),
+        (DiscreteWeibull, (0.6, 1.2)),
+        (NegativeBinomial, (4.0, 0.4)),
+        (BetaGeometric, (2.0, 3.0)),
+        (Binomial, (10, 0.3)),
+    ]:
+        hf = np.asarray(dist.hf(x, *params), dtype=float)
+        finite = hf[np.isfinite(hf)]
+        assert np.all(finite >= 0.0), dist.name
+        assert np.all(
+            finite <= 1.0 + 1e-12
+        ), f"{dist.name}: max {finite.max()}"
+
+
+def test_cumulative_hazard_accumulates_the_discrete_way():
+    # For a discrete distribution R(k) = prod(1 - h), so the cumulative
+    # hazard is -sum log(1 - h), not the sum of the hazards. Hf and hf
+    # must agree through that relation.
+    x = np.arange(1, 9, dtype=float)
+    for dist, params in [
+        (Poisson, (3.0,)),
+        (Geometric, (0.3,)),
+        (DiscreteWeibull, (0.6, 1.2)),
+        (Binomial, (10, 0.3)),
+    ]:
+        hf = np.asarray(dist.hf(x, *params), dtype=float)
+        Hf = np.asarray(dist.Hf(x, *params), dtype=float)
+        seed = -np.log(float(np.asarray(dist.sf(0.0, *params))))
+        np.testing.assert_allclose(
+            np.cumsum(-np.log1p(-hf)) + seed,
+            Hf,
+            rtol=1e-7,
+            err_msg=f"{dist.name}",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Bernoulli: a true coin flip since 0.19.1
+# ---------------------------------------------------------------------------
+
+P_BERN = 0.3
+
+
+def test_bernoulli_functions_at_the_two_outcomes():
+    x = np.array([0, 1])
+    np.testing.assert_allclose(Bernoulli.sf(x, P_BERN), [1.0, P_BERN])
+    np.testing.assert_allclose(Bernoulli.ff(x, P_BERN), [0.0, 1 - P_BERN])
+    np.testing.assert_allclose(Bernoulli.df(x, P_BERN), [1 - P_BERN, P_BERN])
+    np.testing.assert_allclose(Bernoulli.hf(x, P_BERN), [1 - P_BERN, 1.0])
+    np.testing.assert_allclose(Bernoulli.Hf(x, P_BERN), [0.0, -np.log(P_BERN)])
+
+
+def test_bernoulli_rejects_anything_but_zero_and_one():
+    # x is the outcome of the flip, not a time. Before 0.19.1 every x
+    # returned the same number, so nothing marked 37.5 as meaningless.
+    for bad in (0.5, 2, -1, 37.5):
+        for method in (
+            Bernoulli.sf,
+            Bernoulli.ff,
+            Bernoulli.df,
+            Bernoulli.hf,
+            Bernoulli.Hf,
+        ):
+            with pytest.raises(ValueError, match="x = 0 and x = 1 only"):
+                method(bad, P_BERN)
+
+
+def test_bernoulli_internal_identities():
+    x = np.array([0, 1])
+    sf = np.asarray(Bernoulli.sf(x, P_BERN), dtype=float)
+    ff = np.asarray(Bernoulli.ff(x, P_BERN), dtype=float)
+    df = np.asarray(Bernoulli.df(x, P_BERN), dtype=float)
+    hf = np.asarray(Bernoulli.hf(x, P_BERN), dtype=float)
+    Hf = np.asarray(Bernoulli.Hf(x, P_BERN), dtype=float)
+    log_df = np.asarray(Bernoulli.log_df(x, P_BERN), dtype=float)
+
+    np.testing.assert_allclose(sf + ff, 1.0)
+    np.testing.assert_allclose(df.sum(), 1.0)
+    np.testing.assert_allclose(hf, df / sf)
+    np.testing.assert_allclose(Hf, -np.log(sf))
+    np.testing.assert_allclose(np.exp(log_df), df)
+    # E[X] from the mass equals the parameter, and equals mean/moment.
+    np.testing.assert_allclose((x * df).sum(), P_BERN)
+    np.testing.assert_allclose(Bernoulli.mean(P_BERN), P_BERN)
+    np.testing.assert_allclose(Bernoulli.moment(1, P_BERN), P_BERN)
+    # X is 0 or 1 so X**m == X, and every moment is p.
+    for m in (1, 2, 5):
+        np.testing.assert_allclose(Bernoulli.moment(m, P_BERN), P_BERN)
+
+
+def test_bernoulli_log_df_needs_its_own_relation():
+    # DiscreteParametricFitter.log_df is f(k) = h(k) R(k - 1), which
+    # assumes R(k) = P(X > k). Bernoulli's R is P(X >= x), so the
+    # at-risk set at x is R(x) itself. Inheriting the discrete relation
+    # would give df(1) = 1 instead of p.
+    x = np.array([0, 1])
+    np.testing.assert_allclose(
+        np.exp(np.asarray(Bernoulli.log_df(x, P_BERN), dtype=float)),
+        np.asarray(Bernoulli.df(x, P_BERN), dtype=float),
+    )
+    # At x = 1 the discrete relation would read h(1) * R(0) = 1 * 1 = 1,
+    # where the mass is p. (R(-1) is not even askable here, which is the
+    # other half of why that relation does not transfer.)
+    h1 = float(np.ravel(Bernoulli.hf(1, P_BERN))[0])
+    R0 = float(np.ravel(Bernoulli.sf(0, P_BERN))[0])
+    assert np.isclose(h1 * R0, 1.0)
+    assert not np.isclose(h1 * R0, P_BERN)
+    with pytest.raises(ValueError):
+        Bernoulli.sf(-1, P_BERN)
+
+
+def test_bernoulli_fit_recovers_the_fraction_of_ones():
+    data = np.array([1, 1, 0, 1, 0, 0, 1, 1, 1, 0])
+    model = Bernoulli.fit(data)
+    np.testing.assert_allclose(model.params, [data.mean()])
+
+
+def test_fixed_event_probability_is_unchanged_and_separate():
+    # The flat model Bernoulli used to be. It is now its own class, so
+    # making Bernoulli a real Bernoulli did not take it away.
+    from surpyval import FixedEventProbability
+
+    assert type(FixedEventProbability) is not type(Bernoulli)
+    for x in (0.0, 1.0, 37.5, -12.0):
+        np.testing.assert_allclose(FixedEventProbability.ff(x, P_BERN), P_BERN)
+        np.testing.assert_allclose(
+            FixedEventProbability.sf(x, P_BERN), 1 - P_BERN
+        )
+    # Its F is constant, so it still has no density, hazard rate, quantile
+    # or mean: the mass is an atom rather than a density, and there is no
+    # time axis to invert or average over.
+    for absent in ("df", "hf", "qf", "mean"):
+        assert not any(
+            absent in k.__dict__ for k in type(FixedEventProbability).__mro__
+        ), absent
+    # ``Hf`` is the exception, and is present. -ln R(x) is a perfectly good
+    # constant, exactly as for ExactEventTime, whose Hf exists while its hf
+    # does not. Its absence was not a design decision but an omission: the
+    # base class writes log_sf and log_ff in terms of Hf, so both raised
+    # AttributeError instead of returning the constants they should.
+    np.testing.assert_allclose(
+        FixedEventProbability.Hf(np.array([1.0, 9.0]), P_BERN),
+        -np.log(1 - P_BERN),
+    )
+    np.testing.assert_allclose(
+        FixedEventProbability.log_sf(np.array([1.0, 9.0]), P_BERN),
+        np.log(1 - P_BERN),
+    )
+    np.testing.assert_allclose(
+        FixedEventProbability.log_ff(np.array([1.0, 9.0]), P_BERN),
+        np.log(P_BERN),
+    )
+
+
+def test_both_models_round_trip_under_their_own_names():
+    import surpyval
+    from surpyval import FixedEventProbability
+
+    for dist in (Bernoulli, FixedEventProbability):
+        model = dist.from_params(P_BERN)
+        restored = surpyval.from_dict(model.to_dict())
+        assert restored.dist.name == dist.name
+        np.testing.assert_allclose(restored.params, model.params)
+
+
+def test_bernoulli_qf_is_the_standard_quantile():
+    from scipy.stats import binom
+
+    # On (0, 1) it is exactly binom.ppf(u, 1, p) -- the smallest outcome
+    # k with P(X <= k) >= u.
+    u = np.array([0.01, 0.1, 0.5, 0.699, 0.7, 0.701, 0.9, 0.99])
+    np.testing.assert_allclose(
+        np.asarray(Bernoulli.qf(u, P_BERN), dtype=float),
+        binom.ppf(u, 1, P_BERN),
+    )
+    np.testing.assert_allclose(
+        np.asarray(Bernoulli.qf(u, P_BERN), dtype=float),
+        np.asarray(Binomial.qf(u, 1, P_BERN), dtype=float),
+    )
+    # It steps at 1 - p, not at p.
+    assert float(np.ravel(Bernoulli.qf(1 - P_BERN, P_BERN))[0]) == 0.0
+    assert float(np.ravel(Bernoulli.qf(1 - P_BERN + 1e-9, P_BERN))[0]) == 1.0
+    # At u = 0 scipy answers -1, one below the support; this answers 0.
+    assert float(np.ravel(Bernoulli.qf(0.0, P_BERN))[0]) == 0.0
+
+
+def test_bernoulli_qf_drives_inverse_transform_sampling():
+    # The property that makes qf worth having: qf(U) reproduces the
+    # distribution, which is what ParametricFitter.random does.
+    rng = np.random.default_rng(0)
+    U = rng.uniform(size=200_000)
+    draws = np.asarray(Bernoulli.qf(U, P_BERN), dtype=float)
+    assert set(np.unique(draws)) <= {0.0, 1.0}
+    assert np.isclose(draws.mean(), P_BERN, atol=0.005)
+
+
+def test_bernoulli_qf_does_not_invert_this_ff_and_says_so():
+    # Documented consequence of R(x) = P(X >= x): the failure function is
+    # P(X < x), which never exceeds 1 - p on {0, 1}, so the usual
+    # discrete check ff(qf(u)) >= u cannot hold once u passes 1 - p. The
+    # other discrete distributions, whose R(k) is P(X > k), are fine.
+    u = 0.9  # above 1 - p = 0.7
+    k = float(np.ravel(Bernoulli.qf(u, P_BERN))[0])
+    assert k == 1.0
+    assert float(np.ravel(Bernoulli.ff(k, P_BERN))[0]) < u
+    # Whereas for a distribution using the package's R(k) = P(X > k):
+    k_pois = float(np.ravel(Poisson.qf(u, 3.0))[0])
+    assert float(np.ravel(Poisson.ff(k_pois, 3.0))[0]) >= u - 1e-9
+
+
+@pytest.mark.parametrize("p", [0.0, 1.0])
+def test_bernoulli_qf_at_the_degenerate_ends(p):
+    u = np.array([0.01, 0.5, 0.99])
+    expected = 0.0 if p == 0.0 else 1.0
+    np.testing.assert_allclose(
+        np.asarray(Bernoulli.qf(u, p), dtype=float), expected
+    )
+
+
+# ---------------------------------------------------------------------------
+# Behaviour below the support
+# ---------------------------------------------------------------------------
+
+# (distribution, params, first mass point). Every one of these is defined on
+# consecutive integers from the third entry upwards; below it there is no
+# mass, so the pmf is zero and the survival is one. The closed forms are
+# algebraic and do not know that -- left alone they returned a positive
+# "probability" (Geometric 0.43 at k = 0), a survival above one
+# (BetaGeometric 2.0 at k = -1), a complex number (DiscreteWeibull) or a
+# NaN (Poisson, NegativeBinomial).
+_DISCRETE_SUPPORTS = [
+    (Geometric, (0.3,), 1),
+    (DiscreteWeibull, (0.6, 1.4), 1),
+    (BetaGeometric, (2.0, 3.0), 1),
+    (NegativeBinomial, (3.0, 0.4), 1),
+    (Poisson, (2.5,), 0),
+    (Binomial, (5.0, 0.3), 0),
+]
+
+
+@pytest.mark.parametrize("dist, params, first", _DISCRETE_SUPPORTS)
+def test_below_the_support_is_real_and_finite(dist, params, first):
+    below = np.arange(-4.0, float(first))
+    for method in ("sf", "ff", "df", "hf", "Hf", "log_sf", "log_df"):
+        value = np.asarray(getattr(dist, method)(below, *params))
+        assert np.isrealobj(value), f"{dist.name}.{method} returned complex"
+        assert not np.isnan(
+            np.asarray(value, dtype=float)
+        ).any(), f"{dist.name}.{method} returned NaN below its support"
+
+
+@pytest.mark.parametrize("dist, params, first", _DISCRETE_SUPPORTS)
+def test_no_mass_below_the_support(dist, params, first):
+    below = np.arange(-4.0, float(first))
+    as_float = lambda v: np.asarray(v, dtype=float)  # noqa: E731
+    np.testing.assert_allclose(as_float(dist.df(below, *params)), 0.0)
+    np.testing.assert_allclose(as_float(dist.hf(below, *params)), 0.0)
+    np.testing.assert_allclose(as_float(dist.sf(below, *params)), 1.0)
+    np.testing.assert_allclose(as_float(dist.ff(below, *params)), 0.0)
+    np.testing.assert_allclose(as_float(dist.Hf(below, *params)), 0.0)
+
+
+@pytest.mark.parametrize("dist, params, first", _DISCRETE_SUPPORTS)
+def test_the_pmf_sums_to_one_over_the_support(dist, params, first):
+    # Summed from below the first mass point, so any spurious mass there
+    # would push the total past one. BetaGeometric's tail decays as k^-a,
+    # hence the looser tolerance rather than a longer sum.
+    k = np.arange(-4.0, 4000.0)
+    total = float(np.sum(np.asarray(dist.df(k, *params), dtype=float)))
+    assert total == pytest.approx(1.0, abs=1e-4)
+
+
+@pytest.mark.parametrize("dist, params, first", _DISCRETE_SUPPORTS)
+def test_the_quantile_inverts_the_cdf_on_the_support(dist, params, first):
+    # u = F(k) is formed by cancellation, so it lands a few ulp off the
+    # value the quantile is looking for. Geometric, DiscreteWeibull and
+    # BetaGeometric all answered k + 1 for a u that came straight out of
+    # their own ff.
+    last = 5 if dist is Binomial else 11
+    k = np.arange(float(first), float(last) + 1.0)
+    inverted = np.asarray(dist.qf(dist.ff(k, *params), *params), dtype=float)
+    np.testing.assert_array_equal(inverted, k)
+
+
+def test_beta_geometric_moment_diverges_when_the_tail_is_too_heavy():
+    # R(k) decays as k^-a, so E[T^m] exists only for a > m. A truncated
+    # sum cannot see that: it reported about 25 for a second moment that
+    # is infinite.
+    assert BetaGeometric.moment(2, 2.0, 3.0) == np.inf
+    assert BetaGeometric.mean(1.0, 3.0) == np.inf
+    assert np.isfinite(BetaGeometric.moment(2, 4.0, 3.0))
+
+
+def test_beta_geometric_mean_agrees_with_its_first_moment():
+    for a, b in [(2.0, 3.0), (4.0, 1.5), (3.0, 7.0)]:
+        assert BetaGeometric.moment(1, a, b) == pytest.approx(
+            BetaGeometric.mean(a, b)
+        )

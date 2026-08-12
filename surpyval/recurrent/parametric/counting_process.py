@@ -25,17 +25,17 @@ class CountingProcess(ABC):
     """
 
     @abstractmethod
-    def iif(self, x: ArrayLike, *params) -> ArrayLike:
+    def iif(self, x: ArrayLike, *params: ArrayLike) -> ArrayLike:
         """Instantaneous intensity function (event rate) at ``x``."""
         ...
 
     @abstractmethod
-    def cif(self, x: ArrayLike, *params) -> ArrayLike:
+    def cif(self, x: ArrayLike, *params: ArrayLike) -> ArrayLike:
         """Cumulative intensity (expected event count) by ``x``."""
         ...
 
     @abstractmethod
-    def log_iif(self, x: ArrayLike, *params) -> ArrayLike:
+    def log_iif(self, x: ArrayLike, *params: ArrayLike) -> ArrayLike:
         """Natural logarithm of the instantaneous intensity at ``x``."""
         ...
 
@@ -66,7 +66,7 @@ class IntensityModel(CountingProcess):
     """
 
     @abstractmethod
-    def inv_cif(self, N: ArrayLike, *params) -> ArrayLike:
+    def inv_cif(self, N: ArrayLike, *params: ArrayLike) -> ArrayLike:
         """Time by which ``N`` events are expected; the inverse of ``cif``."""
         ...
 

@@ -1,3 +1,7 @@
+from typing import Any
+
+import numpy.typing as npt
+
 """Base class for the discrete lifetime distributions.
 
 The discrete/continuous distinction used to live in scattered per-class
@@ -11,6 +15,8 @@ is the probability mass function ``P(T = k)`` (not a density), ``hf`` is
 the discrete hazard ``P(T = k) / R(k - 1)``, and the survival ``sf(k)``
 is ``P(T > k)``.
 """
+
+from surpyval import np
 
 from .parametric_fitter import ParametricFitter
 
@@ -35,8 +41,31 @@ class DiscreteParametricFitter(ParametricFitter):
 
     discrete = True
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         # Kept as an instance attribute (not only the class trait) because
         # the shared ``_validate_fit_inputs`` reads it for every fitter.
         self.supports_mpp = False
+
+    def log_df(self, x: npt.NDArray, *params: Any) -> Any:
+        # On the integers the mass at k is the hazard there times the
+        # survival to just before it:
+        #
+        #     P(T = k) = h(k) R(k - 1)
+        #
+        # ``ParametricFitter.log_df`` encodes the continuous identity
+        # f = h R(x) instead, which is the same statement with R(k) in
+        # place of R(k - 1) and so is wrong by a factor R(k)/R(k - 1) --
+        # not a rounding difference. Binomial reached the continuous
+        # version and returned values that drifted from 0.88 of the true
+        # mass down to 0.15 across k = 1..7.
+        #
+        # Most discrete distributions here override this with the
+        # closed-form log-pmf, which is better conditioned than any
+        # identity assembled from hf and sf. This is the fallback for
+        # those that do not.
+        x_arr = np.asarray(x, dtype=float)
+        # hf and log_sf come from the concrete distribution; the
+        # base declares them for typing on OptimisedFitMixin only.
+        hf = self.hf(x_arr, *params)  # type: ignore[attr-defined]
+        return np.log(hf) + self.log_sf(x_arr - 1.0, *params)
