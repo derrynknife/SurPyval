@@ -34,15 +34,16 @@ Two ways to fix this are provided:
 import numpy as np
 from scipy.stats import norm
 
+from surpyval.utils.linalg import bound_signs as _bound_signs
+from surpyval.utils.linalg import delta_method_se as _delta_se
+from surpyval.utils.linalg import numerical_hessian as _num_hessian
+from surpyval.utils.linalg import (
+    safe_inv,
+)
+
 # -- delta-method helpers shared with the recurrent package (the two
 # packages used to carry verbatim copies of these, the drift-prone
 # pattern that produced #288) ---------------------------------------------
-
-from surpyval.recurrent.inference import (
-    _bound_signs,
-    delta_method_std_errors as _delta_se,
-    numerical_hessian as _num_hessian,
-)
 
 
 def _logit_bound(p_hat, se, alpha_ci, bound):
@@ -100,10 +101,7 @@ def pseudo_time_variances(model):
         theta = model.path_params[idx]
         x_unit = model.x[model.i == unit]
         J = np.atleast_2d(model.path_model.jacobian(x_unit, *theta))
-        try:
-            cov_theta = sigma2 * np.linalg.inv(J.T @ J)
-        except np.linalg.LinAlgError:
-            cov_theta = sigma2 * np.linalg.pinv(J.T @ J)
+        cov_theta = sigma2 * safe_inv(J.T @ J)
         g = _inv_path_grad(model.path_model, model.threshold, theta)
         v[idx] = float(g @ cov_theta @ g)
     return v
@@ -149,10 +147,7 @@ def life_parameter_covariance(model, method="analytic"):
     t = np.asarray(model.pseudo_failure_times, dtype=float)
 
     H = -_num_hessian(lambda p: _life_loglik(model, p, t), phi)
-    try:
-        Hinv = np.linalg.inv(H)
-    except np.linalg.LinAlgError:
-        Hinv = np.linalg.pinv(H)
+    Hinv = safe_inv(H)
 
     v = pseudo_time_variances(model)
     events = np.where((model.c == 0) & (v > 0))[0]

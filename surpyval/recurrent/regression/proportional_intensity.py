@@ -2,14 +2,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from surpyval.recurrent import diagnostics
-from surpyval.recurrent.inference import (
-    LikelihoodInferenceMixin,
-    delta_method_std_errors,
-    log_transformed_cb,
-)
+from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 
 
 class ProportionalIntensityModel(
@@ -316,7 +313,7 @@ class ProportionalIntensityModel(
                 Z @ theta[n_dist_params:]
             )
 
-        se = delta_method_std_errors(cif_at, self._mle, self.covariance())
+        se = delta_method_se(cif_at, self._mle, self.covariance())
         return log_transformed_cb(self.cif(x, Z), se, alpha_ci, bound)
 
     def plot(self, ax=None, plot_bounds=True, confidence=0.95):

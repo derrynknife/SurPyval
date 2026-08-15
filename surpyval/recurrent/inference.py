@@ -3,95 +3,12 @@ import warnings
 import numpy as np
 from scipy.stats import norm
 
-
-def numerical_hessian(func, x):
-    """
-    Central finite-difference Hessian of a scalar ``func`` at ``x``. Used to
-    approximate the observed Fisher information from the negative
-    log-likelihood of the renewal models, which are fitted with a derivative
-    -free optimiser.
-    """
-    x = np.asarray(x, dtype=float)
-    n = x.size
-    # Step scaled to each parameter; cube-root of machine epsilon is the usual
-    # choice for a second-derivative central difference.
-    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(x), 1e-2)
-    H = np.zeros((n, n))
-    for i in range(n):
-        for j in range(i, n):
-            ei = np.zeros(n)
-            ei[i] = step[i]
-            ej = np.zeros(n)
-            ej[j] = step[j]
-            H[i, j] = H[j, i] = (
-                func(x + ei + ej)
-                - func(x + ei - ej)
-                - func(x - ei + ej)
-                + func(x - ei - ej)
-            ) / (4.0 * step[i] * step[j])
-    return H
-
-
-def delta_method_std_errors(func, mle, cov):
-    """
-    Standard errors of the (possibly vector-valued) function ``func`` of the
-    parameters, evaluated at the MLE, via the delta method with a
-    central-difference Jacobian: ``se_i = sqrt(J_i' cov J_i)``.
-    """
-    mle = np.asarray(mle, dtype=float)
-    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(mle), 1e-2)
-    cols = []
-    for i in range(mle.size):
-        ei = np.zeros(mle.size)
-        ei[i] = step[i]
-        cols.append(
-            (
-                np.asarray(func(mle + ei), dtype=float)
-                - np.asarray(func(mle - ei), dtype=float)
-            )
-            / (2.0 * step[i])
-        )
-    J = np.stack(cols, axis=-1)
-    var = np.einsum("...i,ij,...j->...", J, cov, J)
-    with np.errstate(invalid="ignore"):
-        return np.sqrt(var)
-
-
-def _bound_signs(alpha_ci, bound):
-    """
-    The one-sided tail probability and the signs of the normal quantile for
-    each requested bound: ``[-1, 1]`` (lower, upper) for two-sided bounds,
-    a single sign otherwise.
-    """
-    if bound == "two-sided":
-        return alpha_ci / 2.0, np.array([-1.0, 1.0])
-    elif bound == "lower":
-        return alpha_ci, np.array([-1.0])
-    elif bound == "upper":
-        return alpha_ci, np.array([1.0])
-    raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
-
-
-def log_transformed_cb(estimate, se, alpha_ci=0.05, bound="two-sided"):
-    """
-    Log-transformed normal confidence bounds ``est * exp(+/- z * se / est)``
-    for a positive curve (the same construction as the exponential Greenwood
-    bounds on the nonparametric MCF). Where the estimate is zero (e.g. a CIF
-    at ``x = 0``) both bounds are zero.
-
-    For two-sided bounds the last axis holds ``[lower, upper]``; one-sided
-    bounds are returned with the shape of ``estimate``.
-    """
-    estimate = np.asarray(estimate, dtype=float)
-    se = np.asarray(se, dtype=float)
-    alpha, signs = _bound_signs(alpha_ci, bound)
-    z = norm.ppf(1.0 - alpha)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ratio = np.where(estimate > 0, se / estimate, 0.0)
-    cb = estimate[..., None] * np.exp(signs * z * ratio[..., None])
-    if bound == "two-sided":
-        return cb
-    return cb[..., 0]
+# The finite-difference Hessian and the bound-sign helper live in
+# ``surpyval.utils.linalg`` -- shared with the parametric-regression
+# bounds machinery, which used to carry verbatim copies of them (the
+# drift-prone pattern that produced #288).
+from surpyval.utils.linalg import bound_signs as _bound_signs
+from surpyval.utils.linalg import numerical_hessian
 
 
 class LikelihoodInferenceMixin:

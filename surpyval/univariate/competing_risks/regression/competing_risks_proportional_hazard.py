@@ -18,8 +18,9 @@ from surpyval.utils import (
     validate_fine_gray_inputs,
     wrangle_and_check_form_and_Z_cols,
 )
+from surpyval.utils.ipcw import step_at as _step
 
-from .fine_gray import FineGray, _step
+from .fine_gray import FineGray
 
 
 class CompetingRisksProportionalHazards:

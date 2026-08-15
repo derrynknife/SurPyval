@@ -63,6 +63,18 @@ def validate_float_array(arr, name):
         )
 
 
+def validate_1d(arr, name: str) -> npt.NDArray:
+    """
+    Coerce ``arr`` to a one-dimensional float array, naming it in the
+    error when it is not. A scalar becomes a length-one array; anything
+    two-dimensional or higher is rejected.
+    """
+    out = np.atleast_1d(np.asarray(arr, dtype=float))
+    if out.ndim != 1:
+        raise ValueError("'{}' must be one-dimensional".format(name))
+    return out
+
+
 def _group_ids(key):
     """Group id per row, plus the row at which each group first appears.
 

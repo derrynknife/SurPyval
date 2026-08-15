@@ -8,14 +8,14 @@ from scipy.stats import norm
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
-
-from ._bounds import (
+from surpyval.utils.linalg import (
     bound_signs,
     delta_method_se,
     log_transformed_cb,
-    logit_sf_bound,
     numerical_hessian,
 )
+
+from ._bounds import logit_sf_bound
 from .regression_data import (
     model_spec_to_meta,
     prepare_Z,

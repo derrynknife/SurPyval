@@ -37,7 +37,7 @@ right-truncation. Right-censored contribute ``log S``, left-censored
 each observation's contribution by ``S(t_l) - S(t_r)``.
 """
 
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 from scipy.optimize import brentq, minimize
@@ -45,6 +45,7 @@ from scipy.special import ndtri as _ndtri
 from scipy.stats import norm
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.utils.linalg import numerical_hessian
 
 _SCALES = ("hazard", "odds", "normal")
 
@@ -327,32 +328,6 @@ class RoystonParmarModel(SerialisableMixin):
         return out
 
 
-def _numerical_hessian(
-    f: Callable[..., Any], x: npt.NDArray, eps: float = 1e-05
-) -> npt.NDArray:
-    n = len(x)
-    H = np.zeros((n, n))
-    steps = np.maximum(np.abs(x), 1.0) * eps
-    for i in range(n):
-        for j in range(i, n):
-            xpp = x.copy()
-            xpp[i] += steps[i]
-            xpp[j] += steps[j]
-            xpm = x.copy()
-            xpm[i] += steps[i]
-            xpm[j] -= steps[j]
-            xmp = x.copy()
-            xmp[i] -= steps[i]
-            xmp[j] += steps[j]
-            xmm = x.copy()
-            xmm[i] -= steps[i]
-            xmm[j] -= steps[j]
-            H[i, j] = H[j, i] = (f(xpp) - f(xpm) - f(xmp) + f(xmm)) / (
-                4 * steps[i] * steps[j]
-            )
-    return H
-
-
 class RoystonParmar_:
     """Fitter for :class:`RoystonParmarModel`. Use the singleton
     :data:`RoystonParmar`.
@@ -534,7 +509,10 @@ class RoystonParmar_:
         covariance = None
         with np.errstate(all="ignore"):
             try:
-                cov = np.linalg.inv(_numerical_hessian(neg_ll, gamma))
+                steps = 1e-05 * np.maximum(np.abs(gamma), 1.0)
+                cov = np.linalg.inv(
+                    numerical_hessian(neg_ll, gamma, step=steps)
+                )
                 if np.all(np.isfinite(cov)):
                     covariance = cov
             except np.linalg.LinAlgError:

@@ -47,6 +47,8 @@ import numpy.typing as npt
 from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import minimize
 
+from surpyval.utils.linalg import psd_floor, psd_precision
+
 _LARGE = 1e30
 
 
@@ -68,11 +70,7 @@ def _z_from_init(
     cov_init: npt.NDArray, sigma2_init: float, p: int
 ) -> npt.NDArray:
     """Starting z vector from (possibly rank-deficient) moment estimates."""
-    cov_init = (cov_init + cov_init.T) / 2.0
-    eigvals, eigvecs = np.linalg.eigh(cov_init)
-    floor = max(eigvals.max() * 1e-4, sigma2_init * 1e-6, 1e-12)
-    eigvals = np.clip(eigvals, floor, None)
-    cov_init = eigvecs @ np.diag(eigvals) @ eigvecs.T
+    cov_init = psd_floor(cov_init, 1e-4, max(sigma2_init * 1e-6, 1e-12))
     chol = np.linalg.cholesky(cov_init)
     z = np.empty(_n_z(p))
     z[:p] = np.log(np.diag(chol))
@@ -173,11 +171,7 @@ def _prior_precision(cov: npt.NDArray, sigma2: float) -> npt.NDArray:
     A rank-deficient or tiny ``Sigma`` gives a very tight (but proper)
     prior in the deficient directions rather than a singular precision.
     """
-    cov = (cov + cov.T) / 2.0
-    eigvals, eigvecs = np.linalg.eigh(cov)
-    floor = max(eigvals.max() * 1e-8, sigma2 * 1e-12, np.finfo(float).tiny)
-    inv_eigvals = 1.0 / np.clip(eigvals, floor, None)
-    return eigvecs @ np.diag(inv_eigvals) @ eigvecs.T
+    return psd_precision(cov, 1e-8, sigma2 * 1e-12)
 
 
 def _conditional_mode(

@@ -2,14 +2,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from surpyval.recurrent import diagnostics
-from surpyval.recurrent.inference import (
-    LikelihoodInferenceMixin,
-    delta_method_std_errors,
-    log_transformed_cb,
-)
+from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
 from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 
 
 class ParametricRecurrenceModel(
@@ -319,7 +316,7 @@ class ParametricRecurrenceModel(
         """
         self._check_fitted()
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        se = delta_method_std_errors(
+        se = delta_method_se(
             lambda params: self.dist.cif(x, *params),
             self._mle,
             self.covariance(),

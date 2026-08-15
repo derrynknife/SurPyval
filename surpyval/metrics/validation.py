@@ -33,52 +33,15 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils import validate_1d as _as_1d
+from surpyval.utils.ipcw import censoring_survival, step_at
+
 __all__ = [
     "survival_probability",
     "brier_score",
     "integrated_brier_score",
     "auc_td",
 ]
-
-
-def _as_1d(a: npt.ArrayLike, name: str) -> npt.NDArray:
-    arr = np.atleast_1d(np.asarray(a, dtype=float))
-    if arr.ndim != 1:
-        raise ValueError("'{}' must be one-dimensional".format(name))
-    return arr
-
-
-def _censoring_km(
-    x_train: npt.NDArray, c_train: npt.NDArray
-) -> tuple[npt.NDArray, npt.NDArray]:
-    """Kaplan-Meier estimate of the *censoring* survival ``G(t) = P(C > t)``.
-
-    Censoring is treated as the event of interest: an originally right-censored
-    observation (``c == 1``) is a censoring "event", an originally observed
-    event (``c == 0``) is "censored" for ``G``. Returns the sorted unique times
-    and the right-continuous step values of ``G`` on them.
-    """
-    order = np.argsort(x_train)
-    xs = x_train[order]
-    cs = c_train[order]
-    uniq = np.unique(xs)
-    g = np.empty(uniq.size)
-    surv = 1.0
-    for i, t in enumerate(uniq):
-        n_cens = np.count_nonzero((xs == t) & (cs == 1))
-        n_risk = np.count_nonzero(xs >= t)
-        if n_risk > 0:
-            surv *= 1.0 - n_cens / n_risk
-        g[i] = surv
-    return uniq, g
-
-
-def _g_at(
-    uniq: npt.NDArray, g: npt.NDArray, query: npt.NDArray
-) -> npt.NDArray:
-    """Right-continuous step evaluation of ``G`` at ``query`` (``G(0)=1``)."""
-    idx = np.searchsorted(uniq, query, side="right") - 1
-    return np.where(idx >= 0, g[np.clip(idx, 0, g.size - 1)], 1.0)
 
 
 def survival_probability(
@@ -184,8 +147,8 @@ def brier_score(
     xt = x if x_train is None else _as_1d(x_train, "x_train")
     ct = c if c_train is None else _as_1d(c_train, "c_train")
 
-    uniq, g = _censoring_km(xt, ct)
-    g_xi = _g_at(uniq, g, x)
+    uniq, g = censoring_survival(xt, ct == 1)
+    g_xi = step_at(uniq, g, x, before=1.0)
     with np.errstate(divide="ignore", invalid="ignore"):
         w_case = np.where(g_xi > 0, 1.0 / g_xi, 0.0)
 
@@ -193,7 +156,7 @@ def brier_score(
     bs = np.empty(times.size)
     for k, t in enumerate(times):
         s = survival[:, k]
-        g_t = float(_g_at(uniq, g, np.array([t]))[0])
+        g_t = float(step_at(uniq, g, np.array([t]), before=1.0)[0])
         w_ctrl = 1.0 / g_t if g_t > 0 else 0.0
         died = (x <= t) & (c == 0)
         alive = x > t
@@ -290,8 +253,8 @@ def auc_td(
     xt = x if x_train is None else _as_1d(x_train, "x_train")
     ct = c if c_train is None else _as_1d(c_train, "c_train")
 
-    uniq, g = _censoring_km(xt, ct)
-    g_xi = _g_at(uniq, g, x)
+    uniq, g = censoring_survival(xt, ct == 1)
+    g_xi = step_at(uniq, g, x, before=1.0)
     with np.errstate(divide="ignore", invalid="ignore"):
         w = np.where(g_xi > 0, 1.0 / g_xi, 0.0)
 

@@ -29,6 +29,8 @@ import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.utils.linalg import numerical_hessian
+
 from ..regression_data import design_matrix_from_df
 from .frailty_model import FrailtyModel
 
@@ -81,39 +83,6 @@ def _make_transforms(dist: Any, k_dist: int) -> tuple[
         return np.array(out, dtype=float)
 
     return to_unc, to_nat
-
-
-def _numerical_hessian(
-    f: Callable[[npt.NDArray], float],
-    x: npt.NDArray,
-    eps: float = 1e-5,
-) -> npt.NDArray:
-    """Finite-difference Hessian of scalar ``f`` at ``x``."""
-    n = len(x)
-    H = np.zeros((n, n))
-    steps = np.maximum(np.abs(x), 1.0) * eps
-    for i in range(n):
-        for j in range(i, n):
-            xi = x.copy()
-            xi[i] += steps[i]
-            xi[j] += steps[j]
-            fpp = f(xi)
-            xi = x.copy()
-            xi[i] += steps[i]
-            xi[j] -= steps[j]
-            fpm = f(xi)
-            xi = x.copy()
-            xi[i] -= steps[i]
-            xi[j] += steps[j]
-            fmp = f(xi)
-            xi = x.copy()
-            xi[i] -= steps[i]
-            xi[j] -= steps[j]
-            fmm = f(xi)
-            H[i, j] = H[j, i] = (fpp - fpm - fmp + fmm) / (
-                4 * steps[i] * steps[j]
-            )
-    return H
 
 
 class FrailtyFitter:
@@ -293,7 +262,8 @@ class FrailtyFitter:
         covariance = None
         with np.errstate(all="ignore"):
             try:
-                Hmat = _numerical_hessian(nll_nat, nat)
+                steps = 1e-5 * np.maximum(np.abs(nat), 1.0)
+                Hmat = numerical_hessian(nll_nat, nat, step=steps)
                 cov = np.linalg.inv(Hmat)
                 if np.all(np.isfinite(cov)):
                     covariance = cov

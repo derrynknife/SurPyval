@@ -4,6 +4,54 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **The duplicated numeric helpers are consolidated into two new utils
+  modules.** A sweep of every module-level helper in the package found
+  the same functions written repeatedly, three of them verbatim.
+
+  ``surpyval.utils.linalg`` now holds the single copy of each:
+  ``numerical_hessian``, ``delta_method_se``, ``bound_signs`` and
+  ``log_transformed_cb`` were duplicated wholesale between
+  ``recurrent.inference`` and ``univariate.regression._bounds`` -- the
+  drift-prone verbatim-copy pattern that produced <#288> -- with two
+  *further* hand-rolled Hessians (a different step rule, ``1e-5`` against
+  cube-root-of-epsilon) on ``royston_parmar`` and the frailty fitter,
+  which now pass their step explicitly. The ``inv``-then-``pinv``
+  fallback, written out at seven call sites, is ``safe_inv`` and
+  ``safe_quadform`` (the latter the ``u'V^{-1}u`` test-statistic shape
+  shared by the log-rank and Gray's tests). The eigenvalue-surgery family
+  from the degradation package -- symmetrise, ``eigh``, repair the
+  spectrum, reconstruct, five sites in three flavours -- is
+  ``psd_project``, ``psd_floor``, ``psd_precision`` and ``psd_root``,
+  with each call site's own floor convention preserved as arguments.
+
+  ``surpyval.utils.ipcw`` holds the censoring-distribution Kaplan-Meier
+  (``censoring_survival``) and the right-continuous step lookup
+  (``step_at``) that Gray's test, Fine-Gray and the prediction metrics
+  each carried privately -- three copies of each, under three names
+  (``_G_at``/``_step``/``_g_at`` for the same four lines). The copies had
+  begun to drift: the metrics copy silently ignored count weights,
+  consistent with its callers today but a trap for the next reuse. The
+  shared implementation is weighted, with no ``n`` as the unweighted
+  case. ``utils.validate_1d`` joins the wrangling helpers for the 1-D
+  float coercion the metrics module had as ``_as_1d``.
+
+  The bodies are transplants, not rewrites, and behaviour was checked
+  rather than assumed: 37 fingerprints across every touched path --
+  Gray's test (both ``rho``), Fine-Gray coefficients/covariance/CIF, the
+  competing-risks PH wrapper, Brier/IBS/AUC, a three-group log-rank, Cox
+  ``check_ph`` and dfbeta residuals, additive-hazards fit, Royston-Parmar
+  and frailty covariances, Crow-AMSAA/HPP standard errors and bounds,
+  WeibullPH ``sf``/``hf`` bounds, the degradation fit with its corrected
+  life covariance, REML, and the seeded induced-life sample -- are
+  bit-identical before and after. One caller-facing rename:
+  ``delta_method_std_errors`` (the ``recurrent.inference`` spelling) is
+  now ``delta_method_se`` everywhere, matching the regression package's
+  name for the identical function.
+
+  Both new modules are fully annotated and under the mypy ratchet
+  (<#143>) from birth, so the coming ``utils`` typing pass types each of
+  these once instead of three times.
+
 - **A behavioural consistency sweep across the base distributions.** The
   previous sweep compared annotations; this one compares what the
   distributions actually compute. Every identity that should hold for all

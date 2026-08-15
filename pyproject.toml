@@ -169,6 +169,8 @@ module = [
     'surpyval.univariate.parametric.distributions.fixed_event_probability',
     # Already fully annotated; listed so they cannot slip back.
     'surpyval.fit_best',
+    'surpyval.utils.linalg',
+    'surpyval.utils.ipcw',
     'surpyval.utils.recurrent_utils',
     'surpyval.utils.score',
     'surpyval.recurrent.tests',
