@@ -36,40 +36,10 @@ from autograd import numpy as anp
 from scipy.optimize import minimize
 from scipy.stats import norm
 
-from surpyval.utils import validate_fine_gray_inputs
 from surpyval.serialisation import SerialisableMixin, stamp_schema
-
-
-def _censoring_survival(x, c, n):
-    """
-    Kaplan-Meier estimate of the censoring survival ``G(t) = P(C > t)``.
-
-    The roles are reversed relative to an ordinary survival fit: right-censored
-    rows (``c == 1``) are the "events" for the censoring distribution and
-    observed events (``c == 0``) are treated as censored. Returns the sorted
-    unique times and the right-continuous ``G`` evaluated at each.
-    """
-    times = np.unique(x)
-    G = np.ones(times.shape[0])
-    surv = 1.0
-    for k, t in enumerate(times):
-        at_risk = n[x >= t].sum()
-        censored = n[(x == t) & (c == 1)].sum()
-        if at_risk > 0:
-            surv = surv * (1.0 - censored / at_risk)
-        G[k] = surv
-    return times, G
-
-
-def _step(times, values, query, before):
-    """
-    Right-continuous step function: the value carried by the largest ``times``
-    entry ``<= query``; ``before`` is returned where ``query`` precedes the
-    first time.
-    """
-    idx = np.searchsorted(times, query, side="right") - 1
-    out = np.where(idx < 0, before, values[np.clip(idx, 0, len(values) - 1)])
-    return out
+from surpyval.utils import validate_fine_gray_inputs
+from surpyval.utils.ipcw import censoring_survival, step_at
+from surpyval.utils.linalg import safe_inv
 
 
 def _fit_cause(x, Z, e, c, n, cause):
@@ -86,14 +56,14 @@ def _fit_cause(x, Z, e, c, n, cause):
     is_competing = (c == 0) & (e != cause)
 
     # Censoring-survival for the IPCW weights.
-    g_times, g_vals = _censoring_survival(x, c, n)
+    g_times, g_vals = censoring_survival(x, c == 1, n)
     # G is >= its last positive value; guard the ratio against division by a
     # zero tail (times beyond the last censoring-KM step).
     g_floor = g_vals[g_vals > 0].min() if np.any(g_vals > 0) else 1.0
-    G_x = np.maximum(_step(g_times, g_vals, x, before=1.0), g_floor)
+    G_x = np.maximum(step_at(g_times, g_vals, x, before=1.0), g_floor)
 
     event_times = x[is_event]
-    G_t = _step(g_times, g_vals, event_times, before=1.0)
+    G_t = step_at(g_times, g_vals, event_times, before=1.0)
 
     # Subdistribution risk-set weight matrix W (n_events x N), independent of
     # beta: 1 for the ordinary risk set (x_i >= t_j); G(t_j)/G(x_i) for a
@@ -124,10 +94,7 @@ def _fit_cause(x, Z, e, c, n, cause):
 
     # Standard errors from the inverse observed information.
     H = hessian(neg_ll)(beta)
-    try:
-        cov = np.linalg.inv(H)
-    except np.linalg.LinAlgError:
-        cov = np.linalg.pinv(H)
+    cov = safe_inv(H)
     var = np.diag(cov)
     with np.errstate(invalid="ignore"):
         se = np.sqrt(np.where(var > 0, var, np.nan))
@@ -246,7 +213,7 @@ class FineGrayModel(SerialisableMixin):
         """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.asarray(Z, dtype=float).ravel()
-        H0 = _step(self._times, self._cumhaz, x, before=0.0)
+        H0 = step_at(self._times, self._cumhaz, x, before=0.0)
         return 1.0 - np.exp(-H0 * np.exp(Z @ self.beta))
 
     def sf(self, x, Z):

@@ -23,6 +23,8 @@ from scipy.stats import chi2
 from surpyval.univariate.competing_risks.aalen_johansen import (
     aalen_johansen_iif,
 )
+from surpyval.utils.ipcw import censoring_survival, step_at
+from surpyval.utils.linalg import safe_quadform
 
 
 class GrayTestResult(NamedTuple):
@@ -31,30 +33,6 @@ class GrayTestResult(NamedTuple):
     p_value: float
     cause: Any
     groups: list
-
-
-def _censoring_survival(x: np.ndarray, censored: np.ndarray, n: np.ndarray):
-    """Kaplan-Meier estimate of the censoring-time survival ``G(t)`` on the
-    pooled sample (treating censorings as the events), returned as the unique
-    times and the right-continuous ``G`` at those times."""
-    times = np.unique(x)
-    G = np.ones(times.size)
-    surv = 1.0
-    for i, t in enumerate(times):
-        at_risk = n[x >= t].sum()
-        cens_here = n[(x == t) & censored].sum()
-        if at_risk > 0:
-            surv *= 1.0 - cens_here / at_risk
-        G[i] = surv
-    return times, G
-
-
-def _G_at(times: np.ndarray, G: np.ndarray, q: np.ndarray) -> np.ndarray:
-    """Right-continuous ``G`` evaluated at query times ``q`` (1 before the
-    first event time)."""
-    idx = np.searchsorted(times, q, side="right") - 1
-    out = np.where(idx < 0, 1.0, G[np.clip(idx, 0, times.size - 1)])
-    return out
 
 
 def gray_test(
@@ -118,8 +96,9 @@ def gray_test(
         raise ValueError("Gray's test needs at least two groups.")
 
     # Censoring-distribution survival for the IPCW subdistribution weights.
-    ctimes, Gsurv = _censoring_survival(x, censored, n)
-    G_at_x = _G_at(ctimes, Gsurv, x)  # G at each subject's own time
+    ctimes, Gsurv = censoring_survival(x, censored, n)
+    # G at each subject's own time.
+    G_at_x = step_at(ctimes, Gsurv, x, before=1.0)
 
     # Pooled cumulative incidence of the cause, for the (optional) rho weight.
     cause_times = np.unique(x[is_cause])
@@ -131,7 +110,7 @@ def gray_test(
     F_pooled = _pooled_cif(x, all_event, is_cause, n, cause_times)
     weights = (1.0 - np.concatenate([[0.0], F_pooled[:-1]])) ** rho
 
-    G_at_tau = _G_at(ctimes, Gsurv, cause_times)
+    G_at_tau = step_at(ctimes, Gsurv, cause_times, before=1.0)
 
     grp_idx = {g: i for i, g in enumerate(groups)}
     gi = np.array([grp_idx[g] for g in group])
@@ -176,10 +155,7 @@ def gray_test(
     # Drop the last group for a full-rank (G-1) quadratic form.
     U_r = U[:-1]
     V_r = V[:-1, :-1]
-    try:
-        stat = float(U_r @ np.linalg.solve(V_r, U_r))
-    except np.linalg.LinAlgError:
-        stat = float(U_r @ np.linalg.pinv(V_r) @ U_r)
+    stat = safe_quadform(V_r, U_r)
     df = G_count - 1
     return GrayTestResult(
         statistic=stat,

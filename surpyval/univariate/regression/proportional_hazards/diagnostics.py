@@ -16,8 +16,9 @@ References
 from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.linalg import inv, pinv
 from scipy.stats import chi2
+
+from surpyval.utils.linalg import safe_inv
 
 from .cox_ph import cox_at_risk_mask
 
@@ -235,7 +236,7 @@ def compute_residuals(
         # the coefficient covariance and d the number of events. Centring on
         # beta makes the plot read directly as beta(t).
         n_events = int(d.sum())
-        V = _safe_inv(_information(model))
+        V = safe_inv(_information(model))
         return beta + n_events * (sch @ V)
 
     # Score / dfbeta residuals. The score residual for observation i is
@@ -267,17 +268,7 @@ def compute_residuals(
     score = score * n[:, None]
     if kind == "score":
         return score
-    return score @ _safe_inv(_information(model))  # dfbeta
-
-
-def _safe_inv(m: np.ndarray) -> np.ndarray:
-    try:
-        out = inv(m)
-        if not np.all(np.isfinite(out)):
-            raise np.linalg.LinAlgError
-        return out
-    except np.linalg.LinAlgError:
-        return pinv(m)
+    return score @ safe_inv(_information(model))  # dfbeta
 
 
 def robust_covariance(
@@ -486,7 +477,7 @@ def check_ph(
         }
 
     # Global joint test: T = (d / Sgc2) u' I^{-1} u ~ chi2_p.
-    V = _safe_inv(info)
+    V = safe_inv(info)
     global_stat = float((n_events / Sgc2) * (u @ V @ u))
     global_p = float(chi2.sf(global_stat, df=p))
 

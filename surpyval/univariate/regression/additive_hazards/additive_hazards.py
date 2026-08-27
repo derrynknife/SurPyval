@@ -45,13 +45,13 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
-from numpy.linalg import LinAlgError, inv, pinv
 from scipy.stats import norm
 
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils import check_Z_and_x, wrangle_Z, xcnt_handler
+from surpyval.utils.linalg import safe_inv
 
 from ..regression_data import design_matrix_from_df, prepare_Z
-from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -360,10 +360,7 @@ class AdditiveHazards_:
         np.add.at(E1_at, bucket, w_event[:, None] * Z)
         b = (E1_at - d_at[:, None] * Zbar).sum(axis=0)
 
-        try:
-            A_inv = inv(A)
-        except LinAlgError:
-            A_inv = pinv(A)
+        A_inv = safe_inv(A)
         beta = A_inv @ b
 
         # Lin-Ying sandwich variance: B = sum over events of the centered

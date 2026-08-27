@@ -4,6 +4,7 @@ from scipy.stats import chi2
 
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
 from surpyval.utils import xcnt_handler
+from surpyval.utils.linalg import safe_quadform
 
 
 class LogRankResult:
@@ -284,10 +285,7 @@ def logrank(
     # last group
     z_r = z[:-1]
     V_r = V[:-1, :-1]
-    try:
-        statistic = float(z_r @ np.linalg.solve(V_r, z_r))
-    except np.linalg.LinAlgError:
-        statistic = float(z_r @ np.linalg.pinv(V_r) @ z_r)
+    statistic = safe_quadform(V_r, z_r)
 
     dof = k - 1
     p_value = float(chi2.sf(statistic, dof))

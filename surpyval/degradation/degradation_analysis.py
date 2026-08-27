@@ -21,11 +21,18 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
 from surpyval.univariate.regression import AFT
 from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
+)
+from surpyval.utils.linalg import (
+    psd_precision,
+    psd_project,
+    psd_root,
+    safe_inv,
 )
 
 from ._bounds import (
@@ -35,7 +42,6 @@ from ._bounds import (
 )
 from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate, reml_estimate_nonlinear
-from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 
 def _is_regression_fitter(fitter) -> bool:
@@ -46,22 +52,6 @@ def _is_regression_fitter(fitter) -> bool:
         return "Z" in inspect.signature(fitter.fit).parameters
     except (TypeError, ValueError):
         return False
-
-
-def _clip_psd(matrix: npt.NDArray) -> tuple[npt.NDArray, bool]:
-    """
-    Project a symmetric matrix onto the positive semi-definite cone
-    by clipping negative eigenvalues to zero.
-
-    Returns the projected matrix and whether any eigenvalue was
-    *materially* negative (beyond floating-point noise).
-    """
-    matrix = (matrix + matrix.T) / 2.0
-    eigvals, eigvecs = np.linalg.eigh(matrix)
-    tol = 1e-10 * max(np.abs(eigvals).max(), np.finfo(float).tiny)
-    clipped = bool((eigvals < -tol).any())
-    eigvals = np.clip(eigvals, 0.0, None)
-    return eigvecs @ np.diag(eigvals) @ eigvecs.T, clipped
 
 
 @dataclass
@@ -713,11 +703,7 @@ class DegradationModel(SerialisableMixin):
         # floor the prior covariance's eigenvalues so a clipped
         # (rank-deficient) covariance still gives a proper, very tight
         # prior in the deficient directions
-        eigvals, eigvecs = np.linalg.eigh(self.path_param_cov)
-        floor = max(eigvals.max() * 1e-8, np.finfo(float).tiny)
-        prior_precision = (
-            eigvecs @ np.diag(1.0 / np.clip(eigvals, floor, None)) @ eigvecs.T
-        )
+        prior_precision = psd_precision(self.path_param_cov, 1e-8, 0.0)
         noise_var = self.measurement_var
 
         theta = prior_mean.copy()
@@ -893,9 +879,7 @@ class DegradationModel(SerialisableMixin):
         cov = np.asarray(self.path_param_cov, dtype=float)
         # Robust MVN sampling: symmetrise and clip the (possibly PSD-clipped)
         # covariance's eigenvalues to be non-negative before taking its root.
-        cov = (cov + cov.T) / 2.0
-        eigvals, eigvecs = np.linalg.eigh(cov)
-        root = eigvecs @ np.diag(np.sqrt(np.clip(eigvals, 0.0, None)))
+        root = psd_root(cov)
         z = rng.standard_normal((n_samples, mean.size))
         theta = mean + z @ root.T
 
@@ -1335,10 +1319,7 @@ class DegradationAnalysis_:
             dof_total += len(x_unit) - n_params
             jacobian = path_model.jacobian(x_unit, *params)
             jtj = jacobian.T @ jacobian
-            try:
-                estimation_cov_sum += np.linalg.inv(jtj)
-            except np.linalg.LinAlgError:
-                estimation_cov_sum += np.linalg.pinv(jtj)
+            estimation_cov_sum += safe_inv(jtj)
             y_by_unit.append(y_unit)
             x_by_unit.append(x_unit)
             design_by_unit.append(jacobian)
@@ -1352,7 +1333,7 @@ class DegradationAnalysis_:
             np.cov(path_params, rowvar=False, ddof=1)
         )
         mean_estimation_cov = measurement_var * estimation_cov_sum / len(units)
-        path_param_cov, was_clipped = _clip_psd(
+        path_param_cov, was_clipped = psd_project(
             path_param_sample_cov - mean_estimation_cov
         )
         if was_clipped and population_method == "moments":
