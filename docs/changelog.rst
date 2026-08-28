@@ -4,6 +4,49 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **Type-hint ratchet: finished.** Every function in the package is
+  annotated -- 1750 of 1750 defs -- and the per-module ratchet list is
+  gone: ``disallow_untyped_defs`` now holds package-wide, with only the
+  test suite and the alpha tree exempt (they are exercised, not typed,
+  but are still checked against the package's annotations). <#143> can
+  close.
+
+  The final pass covered the remaining seven areas in sequence -- the
+  regression fitters and ``cox_ph``, the ``utils`` wrangling surface and
+  the ``autograd_gamma_compat`` shim, competing risks, the whole
+  recurrent package, degradation, the copulas and the ``beta.ml``
+  forest. The conventions are the ones the earlier passes established:
+  ``Numeric``/``Boxable`` wherever autograd differentiates,
+  ``npt.ArrayLike`` at user entry points and never in arithmetic,
+  declaration blocks for fit-populated model attributes, and
+  ``TYPE_CHECKING`` contract stubs where a mixin calls methods its host
+  supplies.
+
+  Typing the bodies kept finding things, as it has all along:
+
+  - ``SemiParametricRegressionModel.neg_ll``/``jac`` were declared as a
+    float and an array; they hold the fit's closures.
+  - ``Parametric.random`` is documented and annotated to return an
+    array, but returns xcnt-format ``(x, c, n, t)`` arrays for
+    limited-failure-population and zero-inflated models -- now
+    annotated and documented honestly.
+  - ``singleton_fitter`` is typed ``(cls: type[T]) -> T``, so the
+    checker finally knows every fitter singleton is an instance; one
+    ``type(...)``-indirection call site simplified away.
+  - ``NonParametricCounting.var`` is honestly Optional (simulated MCFs
+    carry no variance), and three error paths that crashed with
+    unpacking/attribute errors now raise named ``ValueError``\ s:
+    ``BuckleyJamesModel.bootstrap_ci`` and destructive-degradation
+    bootstrap bounds on models carrying no fit data, and ``mcf_cb`` on
+    a simulated MCF.
+  - The recurrent intensity contract moved off the documented
+    ``ArrayLike`` trap onto the honest ``Boxable`` union -- those
+    functions are differentiated by autograd in the NHPP likelihoods.
+  - A handful of genuine signature divergences (the covariate-extended
+    simulation methods, the named-single-parameter intensity and copula
+    families against their variadic base contracts) are documented at
+    the definition with targeted ignores rather than silently widened.
+
 - **Type-hint ratchet: the regression package's shared plumbing and its
   two model classes.** Coverage moves to 1041/1747 (60%), tracked in
   <#143>. Typed in dependency order -- the base layer before the

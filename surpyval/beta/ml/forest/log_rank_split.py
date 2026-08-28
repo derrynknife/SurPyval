@@ -7,7 +7,9 @@ from numpy.typing import NDArray
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
-def _weight_at_or_after(values, weights, grid):
+def _weight_at_or_after(
+    values: NDArray, weights: NDArray, grid: NDArray
+) -> NDArray:
     """Total weight of ``values >= t``, for every ``t`` in ``grid``.
 
     ``grid`` is assumed sorted, as ``to_xrd`` returns it.

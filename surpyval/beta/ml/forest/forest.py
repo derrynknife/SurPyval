@@ -33,7 +33,7 @@ class RandomSurvivalForest(SerialisableMixin):
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
         kind: str = "weibull",
-    ):
+    ) -> None:
         self.data: SurpyvalData = data
         Z = np.asarray(Z)
         if Z.ndim == 1:
@@ -89,7 +89,7 @@ class RandomSurvivalForest(SerialisableMixin):
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
         kind: str = "weibull",
-    ):
+    ) -> "RandomSurvivalForest":
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
         data = SurpyvalData(
