@@ -1265,7 +1265,7 @@ def validate_cr_df_inputs(
     e_col: str,
     c_col: "str | None" = None,
     n_col: "str | None" = None,
-) -> tuple:
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     x = df[x_col].values
     e = df[e_col].values
 
@@ -1287,7 +1287,7 @@ def validate_cr_inputs(
     n: "npt.ArrayLike | None",
     e: npt.ArrayLike,
     method: str,
-) -> tuple:
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     # Validates the inputs prior to be used by the CoxPH model.
     # Use existing surpyval validator. But don't group and sort
     # so as to put it out of order of the event array, e.
@@ -1542,7 +1542,7 @@ def validate_fine_gray_inputs(
     e: npt.ArrayLike,
     c: "npt.ArrayLike | None",
     n: "npt.ArrayLike | None",
-) -> tuple:
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     # A missing event (None / NaN) marks a censored observation; if c is not
     # given it is derived from the events.
     e, c = resolve_cr_censoring(e, c)

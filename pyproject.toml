@@ -178,6 +178,8 @@ module = [
     # its LifeModel-contract mismatch (#345) is a runtime-shape question,
     # not an annotation gap.
     'surpyval.univariate.regression.*',
+    'surpyval.univariate.competing_risks',
+    'surpyval.univariate.competing_risks.*',
 ]
 disallow_untyped_defs = true
 
