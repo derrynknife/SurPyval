@@ -11,9 +11,10 @@ a fitter class rather than a class that is only ever instantiated once.
 """
 
 import sys
+from typing import Any
 
 
-def singleton_fitter(cls):
+def singleton_fitter(cls: type) -> Any:
     """Bind the decorated class' name to a single configured instance.
 
     Use on a fitter whose ``__init__`` takes no required arguments. The name is

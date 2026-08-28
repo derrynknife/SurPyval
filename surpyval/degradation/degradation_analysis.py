@@ -832,7 +832,9 @@ class DegradationModel(SerialisableMixin):
             rng = np.random.default_rng(random_state)
             u = rng.uniform(size=size)
             return self._reg_qf(u, Z)
-        return self.life_model.random(size)
+        # The life model here is a plain fit (no LFP / zero-inflation),
+        # so ``random`` returns a bare array, never the xcnt tuple.
+        return np.asarray(self.life_model.random(size))
 
     def induced_life(
         self, n_samples: int = 10_000, random_state=None

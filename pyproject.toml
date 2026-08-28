@@ -169,10 +169,8 @@ module = [
     'surpyval.univariate.parametric.distributions._single_probability',
     # Already fully annotated; listed so they cannot slip back.
     'surpyval.fit_best',
-    'surpyval.utils.linalg',
-    'surpyval.utils.ipcw',
-    'surpyval.utils.recurrent_utils',
-    'surpyval.utils.score',
+    'surpyval.utils',
+    'surpyval.utils.*',
     'surpyval.recurrent.tests',
     'surpyval.recurrent.parametric.counting_process',
     # The whole regression package: plumbing and models first, then the
