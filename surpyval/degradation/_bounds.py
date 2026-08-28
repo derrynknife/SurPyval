@@ -31,7 +31,10 @@ Two ways to fix this are provided:
   the first-order approximation is weakest.
 """
 
+from typing import Any
+
 import numpy as np
+import numpy.typing as npt
 from scipy.stats import norm
 
 from surpyval.utils.linalg import bound_signs as _bound_signs
@@ -46,15 +49,20 @@ from surpyval.utils.linalg import (
 # pattern that produced #288) ---------------------------------------------
 
 
-def _logit_bound(p_hat, se, alpha_ci, bound):
+def _logit_bound(
+    p_hat: npt.ArrayLike,
+    se: npt.ArrayLike,
+    alpha_ci: float,
+    bound: str,
+) -> npt.NDArray:
     """Confidence bounds for a probability, taken on the logit scale so they
     stay in ``(0, 1)``. Two-sided puts ``[lower, upper]`` on the last axis."""
-    p_hat = np.clip(np.asarray(p_hat, dtype=float), 1e-15, 1.0 - 1e-15)
+    p_arr = np.clip(np.asarray(p_hat, dtype=float), 1e-15, 1.0 - 1e-15)
     alpha, signs = _bound_signs(alpha_ci, bound)
     z = norm.ppf(1.0 - alpha)
-    logit = np.log(p_hat / (1.0 - p_hat))
+    logit = np.log(p_arr / (1.0 - p_arr))
     with np.errstate(divide="ignore", invalid="ignore"):
-        se_logit = np.asarray(se, dtype=float) / (p_hat * (1.0 - p_hat))
+        se_logit = np.asarray(se, dtype=float) / (p_arr * (1.0 - p_arr))
     lb = logit[..., None] + signs * z * se_logit[..., None]
     cb = 1.0 / (1.0 + np.exp(-lb))
     return cb if bound == "two-sided" else cb[..., 0]
@@ -63,7 +71,9 @@ def _logit_bound(p_hat, se, alpha_ci, bound):
 # -- first stage: per-unit pseudo-failure-time variances ------------------
 
 
-def _inv_path_grad(path_model, threshold, theta):
+def _inv_path_grad(
+    path_model: Any, threshold: float, theta: npt.NDArray
+) -> npt.NDArray:
     """Gradient of ``inv_path(threshold; theta)`` w.r.t. the path parameters,
     by central differences."""
     theta = np.asarray(theta, dtype=float)
@@ -79,7 +89,7 @@ def _inv_path_grad(path_model, threshold, theta):
     return g
 
 
-def pseudo_time_variances(model):
+def pseudo_time_variances(model: Any) -> npt.NDArray:
     """
     Variance of each unit's pseudo failure time from the first stage.
 
@@ -110,7 +120,7 @@ def pseudo_time_variances(model):
 # -- second stage: corrected life-model covariance ------------------------
 
 
-def _life_loglik(model, phi, t):
+def _life_loglik(model: Any, phi: npt.NDArray, t: npt.ArrayLike) -> float:
     """Life-model log-likelihood at parameters ``phi`` and pseudo failure
     times ``t`` (events use the density, censored units the survival)."""
     lm = model.life_model
@@ -124,7 +134,9 @@ def _life_loglik(model, phi, t):
     return float(np.sum(contrib))
 
 
-def life_parameter_covariance(model, method="analytic"):
+def life_parameter_covariance(
+    model: Any, method: str = "analytic"
+) -> npt.NDArray:
     """
     Covariance of the fitted life-model parameters.
 
@@ -184,18 +196,24 @@ def life_parameter_covariance(model, method="analytic"):
 # -- public confidence-bound entry points ---------------------------------
 
 
-def _target(model, x, on):
+def _target(model: Any, x: npt.ArrayLike, on: str) -> Any:
     lm = model.life_model
     gamma = float(getattr(lm, "gamma", 0.0) or 0.0)
     x = np.atleast_1d(np.asarray(x, dtype=float))
 
-    def sf_of(phi):
+    def sf_of(phi: npt.NDArray) -> npt.NDArray:
         return lm.dist.sf(x - gamma, *phi)
 
     return x, sf_of
 
 
-def analytic_cb(model, x, on, alpha_ci, bound):
+def analytic_cb(
+    model: Any,
+    x: npt.ArrayLike,
+    on: str,
+    alpha_ci: float,
+    bound: str,
+) -> npt.NDArray:
     cov = life_parameter_covariance(model, method="analytic")
     phi = np.asarray(model.life_model.params, dtype=float)
     x, sf_of = _target(model, x, on)
@@ -220,7 +238,16 @@ def analytic_cb(model, x, on, alpha_ci, bound):
     return (1.0 - sf_b) if on in ("ff", "F") else -np.log(sf_b)
 
 
-def bootstrap_cb(model, x, on, alpha_ci, bound, n_boot, seed, Z=None):
+def bootstrap_cb(
+    model: Any,
+    x: npt.ArrayLike,
+    on: str,
+    alpha_ci: float,
+    bound: str,
+    n_boot: int,
+    seed: "int | None",
+    Z: "npt.ArrayLike | None" = None,
+) -> npt.NDArray:
     """
     Two-stage bootstrap confidence bounds: resample units with
     replacement and rerun the whole pipeline (per-unit path fit ->
@@ -290,14 +317,14 @@ def bootstrap_cb(model, x, on, alpha_ci, bound, n_boot, seed, Z=None):
             "The degradation bootstrap produced too few successful refits "
             "to form a confidence bound" + detail + "."
         )
-    curves = np.asarray(curves)
+    curves_arr = np.asarray(curves)
     if bound == "two-sided":
-        lo = np.quantile(curves, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(curves, 1.0 - alpha_ci / 2.0, axis=0)
+        lo = np.quantile(curves_arr, alpha_ci / 2.0, axis=0)
+        hi = np.quantile(curves_arr, 1.0 - alpha_ci / 2.0, axis=0)
         return np.stack([lo, hi], axis=-1)
     q = alpha_ci if bound == "lower" else 1.0 - alpha_ci
-    return np.quantile(curves, q, axis=0)
+    return np.quantile(curves_arr, q, axis=0)
 
 
-def _on_method(on):
+def _on_method(on: str) -> str:
     return {"sf": "sf", "R": "sf", "ff": "ff", "F": "ff", "Hf": "Hf"}[on]

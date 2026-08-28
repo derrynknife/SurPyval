@@ -180,6 +180,8 @@ module = [
     'surpyval.univariate.regression.*',
     'surpyval.univariate.competing_risks',
     'surpyval.univariate.competing_risks.*',
+    'surpyval.degradation',
+    'surpyval.degradation.*',
 ]
 disallow_untyped_defs = true
 
