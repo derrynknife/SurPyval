@@ -182,6 +182,8 @@ module = [
     'surpyval.univariate.competing_risks.*',
     'surpyval.degradation',
     'surpyval.degradation.*',
+    'surpyval.multivariate',
+    'surpyval.multivariate.*',
 ]
 disallow_untyped_defs = true
 

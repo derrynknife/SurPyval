@@ -1,6 +1,9 @@
 """The fitted joint model from ``Copula.fit`` / ``Copula.from_params``."""
 
+from typing import Any
+
 import numpy as onp
+import numpy.typing as npt
 
 from surpyval.distribution import MultivariateDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
@@ -21,7 +24,14 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         The fitted margin models (each exposes ``ff``/``df``/``qf``).
     """
 
-    def __init__(self, copula, params, margins, data=None, how="given"):
+    def __init__(
+        self,
+        copula: Any,
+        params: npt.ArrayLike,
+        margins: Any,
+        data: Any = None,
+        how: str = "given",
+    ) -> None:
         self.copula = copula
         self.params = onp.atleast_1d(onp.asarray(params, dtype=float))
         self.margins = list(margins)
@@ -29,7 +39,9 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         self.method = how
 
     # -- internal ---------------------------------------------------------
-    def _uv(self, x):
+    def _uv(
+        self, x: npt.ArrayLike
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         x = onp.atleast_2d(onp.asarray(x, dtype=float))
         if x.shape[1] != 2:
             raise ValueError("x must have two columns (one per dimension)")
@@ -38,18 +50,18 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         return x, u, v
 
     # -- joint survival interface ----------------------------------------
-    def cdf(self, x):
+    def cdf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Joint CDF ``P(X_1 <= x_1, X_2 <= x_2)``."""
         _, u, v = self._uv(x)
         return onp.asarray(self.copula.cdf(u, v, *self.params))
 
-    def sf(self, x):
+    def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Joint survival ``P(X_1 > x_1, X_2 > x_2)``."""
         _, u, v = self._uv(x)
         c = onp.asarray(self.copula.cdf(u, v, *self.params))
         return 1.0 - u - v + c
 
-    def pdf(self, x):
+    def pdf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Joint density ``c(F_1, F_2) f_1 f_2``."""
         x, u, v = self._uv(x)
         c = onp.asarray(self.copula.pdf(u, v, *self.params))
@@ -57,11 +69,13 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         f2 = onp.asarray(self.margins[1].df(x[:, 1]))
         return c * f1 * f2
 
-    def ff(self, x):
+    def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         """Alias of :meth:`cdf` for consistency with surpyval naming."""
         return self.cdf(x)
 
-    def conditional_cdf(self, x, given_dim=0):
+    def conditional_cdf(
+        self, x: npt.ArrayLike, given_dim: int = 0
+    ) -> npt.NDArray:
         """``P(X_other <= x_other | X_d = x_d)`` -- the copula h-function."""
         x, u, v = self._uv(x)
         if given_dim == 0:
@@ -69,7 +83,11 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         return onp.asarray(self.copula.dv(u, v, *self.params))
 
     # -- sampling ---------------------------------------------------------
-    def random(self, size, random_state=None):
+    def random(
+        self,
+        size: "int | tuple[int, ...]",
+        random_state: "int | None" = None,
+    ) -> npt.NDArray:
         """Draw correlated samples; returns an array of shape ``(size, 2)``."""
         u, v = self.copula.sample_uv(size, self.params, random_state)
         x1 = onp.asarray(self.margins[0].qf(u))
@@ -77,17 +95,17 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         return onp.column_stack([x1, x2])
 
     # -- dependence summaries --------------------------------------------
-    def kendall_tau(self):
+    def kendall_tau(self) -> float:
         return self.copula.kendall_tau(*self.params)
 
-    def spearman_rho(self):
+    def spearman_rho(self) -> float:
         return self.copula.spearman_rho(*self.params)
 
-    def tail_dependence(self):
+    def tail_dependence(self) -> tuple:
         return self.copula.tail_dependence(*self.params)
 
     # -- serialisation ----------------------------------------------------
-    def to_dict(self):
+    def to_dict(self) -> dict:
         margins = []
         for m in self.margins:
             margins.append(m.to_dict() if hasattr(m, "to_dict") else None)
@@ -102,7 +120,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         )
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict) -> "CopulaModel":
         import surpyval
 
         from .archimedean import Clayton, Frank, Gumbel, Independence
@@ -134,7 +152,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             how=model_dict.get("how", "given"),
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         param_str = ", ".join(
             f"{n}={p:.4g}"
             for n, p in zip(self.copula.param_names, self.params)

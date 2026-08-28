@@ -6,7 +6,10 @@ Clayton additionally supplies closed forms for speed. Each family converts
 an empirical Kendall's tau into a starting parameter for the optimiser.
 """
 
+from typing import Any
+
 import numpy as onp
+import numpy.typing as npt
 from scipy.optimize import brentq
 
 from surpyval import np
@@ -20,44 +23,48 @@ class IndependenceCopula(Copula):
     bounds = ()
     param_names = ()
 
-    def cdf(self, u, v, *params):
+    def cdf(self, u: Any, v: Any, *params: Any) -> Any:
         return u * v
 
-    def du(self, u, v, *params):
+    def du(self, u: Any, v: Any, *params: Any) -> Any:
         return np.asarray(v) * np.ones_like(np.asarray(u))
 
-    def dv(self, u, v, *params):
+    def dv(self, u: Any, v: Any, *params: Any) -> Any:
         return np.asarray(u) * np.ones_like(np.asarray(v))
 
-    def pdf(self, u, v, *params):
+    def pdf(self, u: Any, v: Any, *params: Any) -> Any:
         return np.ones_like(np.asarray(u) * np.asarray(v))
 
-    def kendall_tau(self, *params):
+    def kendall_tau(self, *params: float) -> float:
         return 0.0
 
-    def spearman_rho(self, *params):
+    def spearman_rho(self, *params: float) -> float:
         return 0.0
 
     def fit(
         self,
-        x,
-        c=None,
-        n=None,
-        t=None,
-        margins=None,
-        how="IFM",
-        xl=None,
-        xr=None,
-    ):
+        x: npt.ArrayLike,
+        c: "npt.ArrayLike | None" = None,
+        n: "npt.ArrayLike | None" = None,
+        t: "npt.ArrayLike | None" = None,
+        margins: Any = None,
+        how: str = "IFM",
+        xl: "npt.ArrayLike | None" = None,
+        xr: "npt.ArrayLike | None" = None,
+    ) -> Any:
         # No parameter to estimate; only the margins are fitted.
         return super().fit(
             x, c=c, n=n, t=t, margins=margins, how="IFM", xl=xl, xr=xr
         )
 
-    def _fit_theta(self, margin_models, data):
+    def _fit_theta(  # type: ignore[override]
+        self, margin_models: list, data: Any
+    ) -> npt.NDArray:
         return onp.asarray([], dtype=float)
 
-    def _fit_joint(self, margins, margin_models, data):
+    def _fit_joint(
+        self, margins: Any, margin_models: list, data: Any
+    ) -> tuple:
         return onp.asarray([], dtype=float), margin_models
 
 
@@ -68,17 +75,21 @@ class ClaytonCopula(Copula):
     bounds = ((0, None),)
     param_names = ("theta",)
 
-    def cdf(self, u, v, theta):
+    # Named single parameter narrows the variadic base contract.
+    def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
         return (u ** (-theta) + v ** (-theta) - 1.0) ** (-1.0 / theta)
 
-    def du(self, u, v, theta):
+    # Named single parameter narrows the variadic base contract.
+    def du(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
         base = u ** (-theta) + v ** (-theta) - 1.0
         return u ** (-theta - 1.0) * base ** (-1.0 / theta - 1.0)
 
-    def dv(self, u, v, theta):
+    # Named single parameter narrows the variadic base contract.
+    def dv(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
         return self.du(v, u, theta)
 
-    def pdf(self, u, v, theta):
+    # Named single parameter narrows the variadic base contract.
+    def pdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
         base = u ** (-theta) + v ** (-theta) - 1.0
         return (
             (1.0 + theta)
@@ -86,13 +97,13 @@ class ClaytonCopula(Copula):
             * base ** (-1.0 / theta - 2.0)
         )
 
-    def kendall_tau(self, theta):
+    def kendall_tau(self, theta: float) -> float:  # type: ignore[override]
         return theta / (theta + 2.0)
 
-    def tail_dependence(self, theta):
+    def tail_dependence(self, theta: float) -> tuple:  # type: ignore[override]
         return (2.0 ** (-1.0 / theta), 0.0)
 
-    def _init_theta(self, dims):
+    def _init_theta(self, dims: list) -> npt.NDArray:
         tau = onp.clip(self._emp_tau(dims), 1e-3, 0.95)
         return onp.asarray([max(2.0 * tau / (1.0 - tau), 1e-2)])
 
@@ -104,18 +115,19 @@ class GumbelCopula(Copula):
     bounds = ((1, None),)
     param_names = ("theta",)
 
-    def cdf(self, u, v, theta):
+    # Named single parameter narrows the variadic base contract.
+    def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
         lu = (-np.log(u)) ** theta
         lv = (-np.log(v)) ** theta
         return np.exp(-((lu + lv) ** (1.0 / theta)))
 
-    def kendall_tau(self, theta):
+    def kendall_tau(self, theta: float) -> float:  # type: ignore[override]
         return 1.0 - 1.0 / theta
 
-    def tail_dependence(self, theta):
+    def tail_dependence(self, theta: float) -> tuple:  # type: ignore[override]
         return (0.0, 2.0 - 2.0 ** (1.0 / theta))
 
-    def _init_theta(self, dims):
+    def _init_theta(self, dims: list) -> npt.NDArray:
         tau = onp.clip(self._emp_tau(dims), 1e-3, 0.95)
         return onp.asarray([max(1.0 / (1.0 - tau), 1.0 + 1e-2)])
 
@@ -127,23 +139,24 @@ class FrankCopula(Copula):
     bounds = ((None, None),)
     param_names = ("theta",)
 
-    def cdf(self, u, v, theta):
+    # Named single parameter narrows the variadic base contract.
+    def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
         # Guard the removable singularity at theta -> 0 (independence).
         theta = np.where(np.abs(theta) < 1e-8, 1e-8, theta)
         num = (np.exp(-theta * u) - 1.0) * (np.exp(-theta * v) - 1.0)
         return -1.0 / theta * np.log(1.0 + num / (np.exp(-theta) - 1.0))
 
-    def kendall_tau(self, theta):
+    def kendall_tau(self, theta: float) -> float:  # type: ignore[override]
         if abs(theta) < 1e-8:
             return 0.0
         return 1.0 - 4.0 / theta * (1.0 - _debye1(theta))
 
-    def _init_theta(self, dims):
+    def _init_theta(self, dims: list) -> npt.NDArray:
         tau = onp.clip(self._emp_tau(dims), -0.95, 0.95)
         if abs(tau) < 1e-3:
             return onp.asarray([1e-2])
 
-        def gap(theta):
+        def gap(theta: float) -> float:
             return self.kendall_tau(theta) - tau
 
         try:
@@ -155,7 +168,7 @@ class FrankCopula(Copula):
         return onp.asarray([theta])
 
 
-def _debye1(theta):
+def _debye1(theta: float) -> float:
     """First Debye function ``D_1(t) = (1/t) int_0^t s/(e^s-1) ds``."""
     from scipy.integrate import quad
 

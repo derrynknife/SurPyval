@@ -18,7 +18,10 @@ each right/left/interval-censored dimension contributes a difference of
 bookkeeping uniform across all 16 bivariate censoring combinations.
 """
 
+from typing import Any
+
 import numpy as onp
+import numpy.typing as npt
 from autograd import elementwise_grad
 from scipy.optimize import minimize
 
@@ -46,43 +49,43 @@ class Copula:
     param_names: tuple = ("theta",)
 
     # -- the four copula primitives ---------------------------------------
-    def cdf(self, u, v, *params):
+    def cdf(self, u: Any, v: Any, *params: Any) -> Any:
         raise NotImplementedError
 
-    def du(self, u, v, *params):
+    def du(self, u: Any, v: Any, *params: Any) -> Any:
         """``dC/du`` -- the h-function. autograd default; override if known."""
         return elementwise_grad(lambda a: self.cdf(a, v, *params))(
             onp.asarray(u, dtype=float)
         )
 
-    def dv(self, u, v, *params):
+    def dv(self, u: Any, v: Any, *params: Any) -> Any:
         """``dC/dv``. autograd default; override if known."""
         return elementwise_grad(lambda b: self.cdf(u, b, *params))(
             onp.asarray(v, dtype=float)
         )
 
-    def pdf(self, u, v, *params):
+    def pdf(self, u: Any, v: Any, *params: Any) -> Any:
         """``d2C/du dv`` -- the copula density. autograd default."""
         return elementwise_grad(lambda b: self.du(u, b, *params))(
             onp.asarray(v, dtype=float)
         )
 
     # -- dependence measures (closed-form overrides preferred) ------------
-    def kendall_tau(self, *params):
+    def kendall_tau(self, *params: float) -> float:
         """Kendall's tau. Default: empirical estimate from a large sample."""
         from scipy.stats import kendalltau
 
         u, v = self.sample_uv(50_000, params, random_state=0)
         return float(kendalltau(u, v).statistic)
 
-    def spearman_rho(self, *params):
+    def spearman_rho(self, *params: float) -> float:
         """Spearman's rho. Default: empirical estimate from a large sample."""
         from scipy.stats import spearmanr
 
         u, v = self.sample_uv(50_000, params, random_state=0)
         return float(spearmanr(u, v).statistic)
 
-    def tail_dependence(self, *params):
+    def tail_dependence(self, *params: float) -> tuple:
         """Lower/upper tail-dependence coefficients ``(lambda_L, lambda_U)``.
 
         Default ``(0.0, 0.0)`` (no tail dependence); families override.
@@ -90,7 +93,12 @@ class Copula:
         return (0.0, 0.0)
 
     # -- sampling ---------------------------------------------------------
-    def sample_uv(self, size, params, random_state=None):
+    def sample_uv(
+        self,
+        size: int,
+        params: Any,
+        random_state: "int | None" = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
         """Draw ``(u, v)`` pairs by conditional inversion of the h-function.
 
         ``u`` is uniform; given ``u`` and a uniform ``w``, ``v`` solves
@@ -103,7 +111,13 @@ class Copula:
         v = self._invert_du(u, w, params)
         return u, v
 
-    def _invert_du(self, u, w, params, iters=60):
+    def _invert_du(
+        self,
+        u: npt.NDArray,
+        w: npt.NDArray,
+        params: Any,
+        iters: int = 60,
+    ) -> npt.NDArray:
         lo = onp.full_like(onp.asarray(u, dtype=float), _EPS)
         hi = onp.full_like(lo, 1 - _EPS)
         for _ in range(iters):
@@ -114,7 +128,14 @@ class Copula:
         return 0.5 * (lo + hi)
 
     # -- likelihood primitives -------------------------------------------
-    def _eval(self, u, v, diff_u, diff_v, params):
+    def _eval(
+        self,
+        u: Any,
+        v: Any,
+        diff_u: bool,
+        diff_v: bool,
+        params: Any,
+    ) -> Any:
         u = np.clip(u, _EPS, 1 - _EPS)
         v = np.clip(v, _EPS, 1 - _EPS)
         if diff_u and diff_v:
@@ -126,7 +147,7 @@ class Copula:
         return self.cdf(u, v, *params)
 
     @staticmethod
-    def _op_terms(code, upoint, ulo, uhi):
+    def _op_terms(code: int, upoint: Any, ulo: Any, uhi: Any) -> list:
         """Per-dimension operator: list of ``(coef, u_value, differentiate)``.
 
         Applying the tensor product of the two dimensions' operators to ``C``
@@ -142,7 +163,7 @@ class Copula:
         # interval censored -> C(.,uhi) - C(.,ulo)
         return [(1.0, uhi, False), (-1.0, ulo, False)]
 
-    def _pair_loglik(self, params, d0, d1):
+    def _pair_loglik(self, params: Any, d0: Any, d1: Any) -> Any:
         """Per-row log-likelihood for two prepared dimensions ``d0, d1``."""
         c0, c1 = d0["c"], d1["c"]
         N = len(c0)
@@ -176,7 +197,7 @@ class Copula:
             ll = ll - self._trunc_logmass(params, d0, d1)
         return ll
 
-    def _trunc_logmass(self, params, d0, d1):
+    def _trunc_logmass(self, params: Any, d0: Any, d1: Any) -> Any:
         """Log copula mass over the per-row truncation rectangle."""
         ul0, ur0 = d0["ul"], d0["ur"]
         ul1, ur1 = d1["ul"], d1["ur"]
@@ -189,7 +210,16 @@ class Copula:
         return onp.log(onp.clip(mass, _TINY, None))
 
     # -- fitting ----------------------------------------------------------
-    def _prepare_dim(self, margin, x, c, xl, xr, tl, tr):
+    def _prepare_dim(
+        self,
+        margin: Any,
+        x: Any,
+        c: Any,
+        xl: Any,
+        xr: Any,
+        tl: Any,
+        tr: Any,
+    ) -> dict:
         """Transform one dimension's data into copula (u-space) arrays."""
         u = onp.clip(onp.asarray(margin.ff(x), dtype=float), _EPS, 1 - _EPS)
         ulo = onp.clip(onp.asarray(margin.ff(xl), dtype=float), _EPS, 1 - _EPS)
@@ -210,21 +240,21 @@ class Copula:
             "has_trunc": has_trunc,
         }
 
-    def neg_ll(self, params, dims, weights):
+    def neg_ll(self, params: Any, dims: list, weights: npt.NDArray) -> float:
         ll = self._pair_loglik(params, dims[0], dims[1])
         return -float(onp.sum(weights * ll))
 
     def fit(
         self,
-        x,
-        c=None,
-        n=None,
-        t=None,
-        margins=None,
-        how="IFM",
-        xl=None,
-        xr=None,
-    ):
+        x: npt.ArrayLike,
+        c: "npt.ArrayLike | None" = None,
+        n: "npt.ArrayLike | None" = None,
+        t: "npt.ArrayLike | None" = None,
+        margins: Any = None,
+        how: str = "IFM",
+        xl: "npt.ArrayLike | None" = None,
+        xr: "npt.ArrayLike | None" = None,
+    ) -> Any:
         """Fit the copula and its margins to multivariate survival data.
 
         Parameters
@@ -267,7 +297,7 @@ class Copula:
 
         return CopulaModel(self, theta, margin_models, data=data, how=how)
 
-    def from_params(self, params, margins):
+    def from_params(self, params: Any, margins: Any) -> Any:
         """Build a :class:`CopulaModel` from a known parameter and margins."""
         from surpyval.multivariate.parametric.copula.copula_model import (
             CopulaModel,
@@ -276,7 +306,7 @@ class Copula:
         params = onp.atleast_1d(onp.asarray(params, dtype=float))
         return CopulaModel(self, params, list(margins), data=None, how="given")
 
-    def _fit_margins(self, margins, data):
+    def _fit_margins(self, margins: Any, data: Any) -> list:
         models = []
         for d, margin in enumerate(margins):
             if not hasattr(margin, "fit"):
@@ -297,7 +327,7 @@ class Copula:
                 models.append(margin.fit(x=xd, c=cd))
         return models
 
-    def _bounds_transforms(self):
+    def _bounds_transforms(self) -> tuple:
         from surpyval.univariate.parametric.fitters import bounds_convert
 
         param_map = {n: i for i, n in enumerate(self.param_names)}
@@ -306,14 +336,14 @@ class Copula:
         )
         return to_unbounded, to_bounded
 
-    def _fit_theta(self, margin_models, data):
+    def _fit_theta(self, margin_models: list, data: Any) -> npt.NDArray:
         dims = [
             self._prepare_dim(margin_models[d], *data.dimension(d))
             for d in range(data.D)
         ]
         to_unbounded, to_bounded = self._bounds_transforms()
 
-        def obj(phi):
+        def obj(phi: npt.NDArray) -> float:
             params = to_bounded(phi)
             return self.neg_ll(params, dims, data.n)
 
@@ -321,7 +351,9 @@ class Copula:
         res = minimize(obj, init, method="Nelder-Mead")
         return onp.asarray(to_bounded(res.x), dtype=float)
 
-    def _fit_joint(self, margins, margin_models, data):
+    def _fit_joint(
+        self, margins: Any, margin_models: list, data: Any
+    ) -> tuple:
         # Start from the IFM solution, then refine copula + margin params
         # jointly. Margins are re-evaluated from their parameter vectors at
         # each step via ``from_params``.
@@ -330,7 +362,7 @@ class Copula:
         splits = onp.cumsum([len(m.params) for m in margin_models])[:-1]
         to_unbounded, to_bounded = self._bounds_transforms()
 
-        def unpack(phi):
+        def unpack(phi: npt.NDArray) -> tuple:
             theta = to_bounded(phi[: len(self.param_names)])
             rest = phi[len(self.param_names) :]
             parts = onp.split(rest, splits)
@@ -339,7 +371,7 @@ class Copula:
             ]
             return theta, models
 
-        def obj(phi):
+        def obj(phi: npt.NDArray) -> float:
             theta, models = unpack(phi)
             dims = [
                 self._prepare_dim(models[d], *data.dimension(d))
@@ -359,12 +391,12 @@ class Copula:
         theta, models = unpack(res.x)
         return onp.asarray(theta, dtype=float), models
 
-    def _init_theta(self, dims):
+    def _init_theta(self, dims: list) -> npt.NDArray:
         """Initial parameter guess. Override per family for robustness."""
         return onp.asarray([1.0])
 
     @staticmethod
-    def _emp_tau(dims):
+    def _emp_tau(dims: list) -> float:
         """Empirical Kendall's tau over rows where both dims are observed."""
         from scipy.stats import kendalltau
 

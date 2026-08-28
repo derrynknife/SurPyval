@@ -6,7 +6,10 @@ The Gaussian copula's CDF is the bivariate-normal CDF, which has no
 optimised on a ``tanh`` reparameterisation so the optimiser stays in range.
 """
 
+from typing import Any
+
 import numpy as onp
+import numpy.typing as npt
 from scipy.special import ndtr, ndtri
 from scipy.stats import multivariate_normal
 
@@ -23,10 +26,11 @@ class GaussianCopula(Copula):
     param_names = ("rho",)
 
     @staticmethod
-    def _clip_rho(rho):
+    def _clip_rho(rho: float) -> float:
         return float(onp.clip(rho, -_RHO_MAX, _RHO_MAX))
 
-    def cdf(self, u, v, rho):
+    # Named single parameter narrows the variadic base contract.
+    def cdf(self, u: Any, v: Any, rho: Any) -> Any:  # type: ignore[override]
         rho = self._clip_rho(rho)
         a = ndtri(onp.clip(onp.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         b = ndtri(onp.clip(onp.asarray(v, dtype=float), 1e-12, 1 - 1e-12))
@@ -35,16 +39,19 @@ class GaussianCopula(Copula):
         out = multivariate_normal.cdf(pts, mean=[0.0, 0.0], cov=cov)
         return onp.asarray(out).reshape(onp.asarray(a).shape)
 
-    def du(self, u, v, rho):
+    # Named single parameter narrows the variadic base contract.
+    def du(self, u: Any, v: Any, rho: Any) -> Any:  # type: ignore[override]
         rho = self._clip_rho(rho)
         a = ndtri(onp.clip(onp.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         b = ndtri(onp.clip(onp.asarray(v, dtype=float), 1e-12, 1 - 1e-12))
         return ndtr((b - rho * a) / onp.sqrt(1.0 - rho**2))
 
-    def dv(self, u, v, rho):
+    # Named single parameter narrows the variadic base contract.
+    def dv(self, u: Any, v: Any, rho: Any) -> Any:  # type: ignore[override]
         return self.du(v, u, rho)
 
-    def pdf(self, u, v, rho):
+    # Named single parameter narrows the variadic base contract.
+    def pdf(self, u: Any, v: Any, rho: Any) -> Any:  # type: ignore[override]
         rho = self._clip_rho(rho)
         a = ndtri(onp.clip(onp.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         b = ndtri(onp.clip(onp.asarray(v, dtype=float), 1e-12, 1 - 1e-12))
@@ -52,13 +59,18 @@ class GaussianCopula(Copula):
         quad = (rho**2 * (a**2 + b**2) - 2.0 * rho * a * b) / (2.0 * denom)
         return onp.exp(-quad) / onp.sqrt(denom)
 
-    def kendall_tau(self, rho):
+    def kendall_tau(self, rho: float) -> float:  # type: ignore[override]
         return 2.0 / onp.pi * onp.arcsin(self._clip_rho(rho))
 
-    def spearman_rho(self, rho):
+    def spearman_rho(self, rho: float) -> float:  # type: ignore[override]
         return 6.0 / onp.pi * onp.arcsin(self._clip_rho(rho) / 2.0)
 
-    def sample_uv(self, size, params, random_state=None):
+    def sample_uv(
+        self,
+        size: int,
+        params: Any,
+        random_state: "int | None" = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
         rho = self._clip_rho(params[0])
         rng = onp.random.default_rng(random_state)
         z1 = rng.standard_normal(size)
@@ -66,17 +78,17 @@ class GaussianCopula(Copula):
         z2 = rho * z1 + onp.sqrt(1.0 - rho**2) * z2
         return ndtr(z1), ndtr(z2)
 
-    def _bounds_transforms(self):
+    def _bounds_transforms(self) -> tuple:
         # tanh keeps rho strictly inside (-1, 1) during optimisation.
-        def to_unbounded(params):
+        def to_unbounded(params: npt.NDArray) -> npt.NDArray:
             return onp.arctanh(onp.clip(params, -_RHO_MAX, _RHO_MAX))
 
-        def to_bounded(phi):
+        def to_bounded(phi: npt.NDArray) -> npt.NDArray:
             return onp.tanh(onp.asarray(phi, dtype=float))
 
         return to_unbounded, to_bounded
 
-    def _init_theta(self, dims):
+    def _init_theta(self, dims: list) -> npt.NDArray:
         return onp.asarray([onp.sin(onp.pi / 2.0 * self._emp_tau(dims))])
 
 

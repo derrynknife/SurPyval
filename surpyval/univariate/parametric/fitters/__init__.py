@@ -206,7 +206,7 @@ def add_to_funcs(
 
 
 def bounds_convert(
-    x: npt.ArrayLike,
+    x: "npt.ArrayLike | None",
     bounds: Sequence[tuple[float | None, float | None]],
     fixed: dict[str, float] | None,
     param_map: dict[str, int],
