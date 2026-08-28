@@ -19,7 +19,11 @@ reuses the whole intensity-fitting, inference and diagnostic machinery
 unchanged.
 """
 
+from typing import Any
+
+import numpy as np
 from matplotlib import pyplot as plt
+from numpy.typing import ArrayLike
 
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.parametric.parametric_recurrence import (
@@ -43,14 +47,22 @@ class CauseSpecificNHPP(SerialisableMixin):
     diagnostic behaviour -- or use the convenience methods below.
     """
 
-    def __repr__(self):
+    # Populated by the fit classmethods; declared for the type checker.
+    df: Any
+    data: Any
+    event_types: list
+    models: dict
+    dist: Any
+    how: str
+
+    def __repr__(self) -> str:
         return "Cause-specific {} with causes: {}".format(
             self.dist.name, self.event_types
         )
 
     # -- serialisation -----------------------------------------------------
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """
         Serialise this fitted cause-specific NHPP to a plain,
         JSON-serialisable dict: the shared intensity model's name, the list of
@@ -72,7 +84,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         )
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict) -> "CauseSpecificNHPP":
         """
         Rebuild a cause-specific NHPP from a :meth:`to_dict` dictionary.
 
@@ -97,7 +109,7 @@ class CauseSpecificNHPP(SerialisableMixin):
     # --- per-item observation windows ------------------------------------
 
     @staticmethod
-    def _item_window(data, item):
+    def _item_window(data: Any, item: Any) -> tuple:
         """The ``(entry, end)`` observation window of a single item.
 
         Entry is the item's left-truncation bound (delayed entry). The end is
@@ -120,8 +132,12 @@ class CauseSpecificNHPP(SerialisableMixin):
 
     @classmethod
     def fit_from_recurrent_data(
-        cls, data, dist=CrowAMSAA, how="MLE", init=None
-    ):
+        cls,
+        data: Any,
+        dist: Any = CrowAMSAA,
+        how: str = "MLE",
+        init: "ArrayLike | None" = None,
+    ) -> "CauseSpecificNHPP":
         """
         Fit the cause-specific intensity model from prepared
         :class:`RecurrentEventData` carrying event-type marks ``e``.
@@ -198,17 +214,17 @@ class CauseSpecificNHPP(SerialisableMixin):
     @classmethod
     def fit(
         cls,
-        x,
-        i=None,
-        c=None,
-        n=None,
-        e=None,
-        tl=None,
-        tr=None,
-        dist=CrowAMSAA,
-        how="MLE",
-        init=None,
-    ):
+        x: ArrayLike,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        n: "ArrayLike | None" = None,
+        e: "ArrayLike | None" = None,
+        tl: "ArrayLike | None" = None,
+        tr: "ArrayLike | None" = None,
+        dist: Any = CrowAMSAA,
+        how: str = "MLE",
+        init: "ArrayLike | None" = None,
+    ) -> "CauseSpecificNHPP":
         """
         Fit a cause-specific intensity model.
 
@@ -250,24 +266,24 @@ class CauseSpecificNHPP(SerialisableMixin):
     @classmethod
     def fit_from_df(
         cls,
-        df,
-        x_col,
-        e_col,
-        i_col=None,
-        c_col=None,
-        n_col=None,
-        tl_col=None,
-        tr_col=None,
-        dist=CrowAMSAA,
-        how="MLE",
-        init=None,
-    ):
+        df: Any,
+        x_col: str,
+        e_col: str,
+        i_col: "str | None" = None,
+        c_col: "str | None" = None,
+        n_col: "str | None" = None,
+        tl_col: "str | None" = None,
+        tr_col: "str | None" = None,
+        dist: Any = CrowAMSAA,
+        how: str = "MLE",
+        init: "ArrayLike | None" = None,
+    ) -> "CauseSpecificNHPP":
         """
         Fit a cause-specific intensity model from a :class:`pandas.DataFrame`,
         naming the columns to read. See :meth:`fit` for the meaning of each.
         """
 
-        def col(name):
+        def col(name: "str | None") -> Any:
             return None if name is None else df[name].to_numpy()
 
         model = cls.fit(
@@ -287,7 +303,7 @@ class CauseSpecificNHPP(SerialisableMixin):
 
     # --- evaluation ------------------------------------------------------
 
-    def _check_cause(self, cause):
+    def _check_cause(self, cause: Any) -> None:
         if cause not in self.models:
             raise ValueError(
                 "Unrecognised cause {!r}; known causes are {}".format(
@@ -295,36 +311,35 @@ class CauseSpecificNHPP(SerialisableMixin):
                 )
             )
 
-    def cif(self, x, cause):
+    def cif(self, x: ArrayLike, cause: Any) -> np.ndarray:
         """Cause-specific cumulative intensity (expected ``cause`` count)."""
         self._check_cause(cause)
         return self.models[cause].cif(x)
 
-    def iif(self, x, cause):
+    def iif(self, x: ArrayLike, cause: Any) -> np.ndarray:
         """Cause-specific instantaneous intensity for ``cause``."""
         self._check_cause(cause)
         return self.models[cause].iif(x)
 
-    def mcf(self, x, cause):
+    def mcf(self, x: ArrayLike, cause: Any) -> np.ndarray:
         """Cause-specific mean cumulative function (alias of :meth:`cif`)."""
         return self.cif(x, cause)
 
-    def total_cif(self, x):
+    def total_cif(self, x: ArrayLike) -> np.ndarray:
         """
         Total cumulative intensity across all causes -- the expected number of
         events of any type, which (the causes being independent thinnings of
         the overall process) is the sum of the cause-specific intensities.
         """
-        total = None
+        total: "np.ndarray | None" = None
         for cause in self.event_types:
             contribution = self.models[cause].cif(x)
             total = contribution if total is None else total + contribution
+        assert total is not None  # event_types is never empty on a fit model
         return total
 
-    def plot(self, ax=None):
+    def plot(self, ax: Any = None) -> Any:
         """Overlay the fitted cause-specific CIFs on a single axis."""
-        import numpy as np
-
         if ax is None:
             ax = plt.gcf().gca()
         x_plot = np.linspace(0, float(self.data.x.max()), 200)

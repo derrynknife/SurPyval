@@ -1,4 +1,7 @@
+from typing import Any, Callable
+
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
@@ -58,16 +61,16 @@ class ProportionalIntensityHPP:
     # ``ProportionalIntensityModel``'s repr via ``dist.name``.
     name = "Constant"
 
-    def iif(self, x, rate):
+    def iif(self, x: ArrayLike, rate: ArrayLike) -> ArrayLike:
         return np.ones_like(np.asarray(x, dtype=float)) * rate
 
-    def cif(self, x, rate):
+    def cif(self, x: ArrayLike, rate: ArrayLike) -> ArrayLike:
         return rate * np.asarray(x, dtype=float)
 
-    def inv_cif(self, cif, rate):
+    def inv_cif(self, cif: ArrayLike, rate: ArrayLike) -> ArrayLike:
         return np.asarray(cif, dtype=float) / rate
 
-    def create_negll_func(self, data):
+    def create_negll_func(self, data: Any) -> Callable:
         x, c, n = data.x, data.c, data.n
         Z = data.Z
         x_prev = data.get_previous_x()
@@ -107,7 +110,7 @@ class ProportionalIntensityHPP:
             Z_o = Z[c == 0]
         else:
             x_o = 0.0
-            len_observed = 0.0
+            len_observed = 0
             Z_o = np.zeros((1, Z.shape[1]))
 
         if has_right_censoring:
@@ -138,6 +141,8 @@ class ProportionalIntensityHPP:
             Z_left = np.zeros((1, Z.shape[1]))
 
         if has_interval_censoring:
+            # interval data implies 2-D x, so the right column exists
+            assert x_r is not None
             x_i_l = x_l[c == 2]
             x_i_r = x_r[c == 2]
             delta_xi = x_i_r - x_i_l
@@ -164,7 +169,7 @@ class ProportionalIntensityHPP:
         x_close = x_close_last - x_close_tr
         Z_close = Z[close_idx]
 
-        def negll_func(params):
+        def negll_func(params: np.ndarray) -> float:
             log_rate = params[0]
             rate = np.exp(log_rate)
             beta_coeffs = params[1:]
@@ -205,8 +210,17 @@ class ProportionalIntensityHPP:
         return negll_func
 
     def fit(
-        self, x, Z, i=None, c=None, n=None, t=None, tl=None, tr=None, init=None
-    ):
+        self,
+        x: ArrayLike,
+        Z: ArrayLike,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        n: "ArrayLike | None" = None,
+        t: "ArrayLike | None" = None,
+        tl: "ArrayLike | None" = None,
+        tr: "ArrayLike | None" = None,
+        init: "ArrayLike | None" = None,
+    ) -> Any:
         """
         Fit the model using the provided data and initial parameters (if given)
 
@@ -245,7 +259,12 @@ class ProportionalIntensityHPP:
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
         return self.fit_from_recurrent_data(data, init=init)
 
-    def fit_from_recurrent_data(self, data, dist=None, init=None):
+    def fit_from_recurrent_data(
+        self,
+        data: Any,
+        dist: Any = None,
+        init: "ArrayLike | None" = None,
+    ) -> Any:
         """
         Fit from a prepared ``RecurrentEventData``. ``dist`` is accepted for a
         uniform interface with the NHPP fitter but is ignored: the homogeneous

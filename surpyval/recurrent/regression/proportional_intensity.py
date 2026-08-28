@@ -1,5 +1,8 @@
+from typing import Any
+
 import numpy as np
 from matplotlib import pyplot as plt
+from numpy.typing import ArrayLike
 
 from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
@@ -40,7 +43,22 @@ class ProportionalIntensityModel(
     array([8.84210972e-07, 2.79074784e-05, 2.10220821e-04])
     """
 
-    def __repr__(self):
+    # Populated by the fitters; declared for the type checker.
+    kind: str
+    parameterization: str
+    support: tuple
+    _fitter_dist: Any
+    dist: Any
+    params: "np.ndarray"
+    coeffs: "np.ndarray"
+    param_names: list
+    bounds: tuple
+    name: str
+    data: Any
+    how: str
+    res: Any
+
+    def __repr__(self) -> str:
         out = (
             "Proportional Intensity Recurrence Model"
             + "\n======================================="
@@ -62,7 +80,7 @@ class ProportionalIntensityModel(
 
     # -- serialisation -----------------------------------------------------
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """
         Serialise this fitted proportional-intensity model to a plain,
         JSON-serialisable dict.
@@ -90,7 +108,7 @@ class ProportionalIntensityModel(
         )
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict) -> "ProportionalIntensityModel":
         """
         Rebuild a proportional-intensity model from a :meth:`to_dict`
         dictionary.
@@ -121,7 +139,7 @@ class ProportionalIntensityModel(
         out.coeffs = np.array(model_dict["coeffs"], dtype=float)
         return out
 
-    def cif(self, x, Z):
+    def cif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
         """
         Compute the cumulative incidence function of the model with the
         parameters found by the fit method.
@@ -138,7 +156,7 @@ class ProportionalIntensityModel(
         """
         return self.dist.cif(x, *self.params) * np.exp(Z @ self.coeffs)
 
-    def iif(self, x, Z):
+    def iif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
         """
         Compute the instantaneous incidence function of the model with the
         parameters found by the fit method.
@@ -155,7 +173,7 @@ class ProportionalIntensityModel(
         """
         return self.dist.iif(x, *self.params) * np.exp(Z @ self.coeffs)
 
-    def inv_cif(self, x, Z):
+    def inv_cif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
         if hasattr(self.dist, "inv_cif"):
             return self.dist.inv_cif(x / np.exp(self.coeffs @ Z), *self.params)
         else:
@@ -163,7 +181,7 @@ class ProportionalIntensityModel(
                 "Inverse cif undefined for {}".format(self.dist.name)
             )
 
-    def _item_cif_map(self):
+    def _item_cif_map(self) -> dict:
         # Each item's cumulative intensity is the baseline scaled by its own
         # ``exp(Z'beta)`` factor. The covariates are per item (static), so the
         # item's Z is taken from its first row. Returns ``{item: cif(x)}`` for
@@ -177,7 +195,7 @@ class ProportionalIntensityModel(
             )
         return cif_map
 
-    def residuals(self, kind="cumulative_hazard"):
+    def residuals(self, kind: str = "cumulative_hazard") -> np.ndarray:
         """
         Residual diagnostics for the fitted model, from the time-rescaling
         theorem applied per item (each item's intensity is the baseline
@@ -214,7 +232,9 @@ class ProportionalIntensityModel(
             "got {!r}".format(kind)
         )
 
-    def trend_test(self, test="laplace", alternative="two-sided"):
+    def trend_test(
+        self, test: str = "laplace", alternative: str = "two-sided"
+    ) -> Any:
         """
         Run a trend test on the data this model was fitted to. The null
         hypothesis is a *homogeneous* Poisson process (no trend); the
@@ -240,7 +260,9 @@ class ProportionalIntensityModel(
             self.data, test=test, alternative=alternative
         )
 
-    def cramer_von_mises(self, n_boot=200, seed=None):
+    def cramer_von_mises(
+        self, n_boot: int = 200, seed: "int | None" = None
+    ) -> Any:
         """
         Cramer-von Mises goodness-of-fit test of the fitted proportional-
         intensity model.
@@ -273,7 +295,13 @@ class ProportionalIntensityModel(
             self, n_boot=n_boot, seed=seed
         )
 
-    def cif_cb(self, x, Z, alpha_ci=0.05, bound="two-sided"):
+    def cif_cb(
+        self,
+        x: ArrayLike,
+        Z: ArrayLike,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> np.ndarray:
         """
         Confidence bounds on the fitted CIF at ``x`` for covariates ``Z``,
         from the delta method.
@@ -308,7 +336,7 @@ class ProportionalIntensityModel(
         Z = np.asarray(Z, dtype=float)
         n_dist_params = len(self.params)
 
-        def cif_at(theta):
+        def cif_at(theta: np.ndarray) -> np.ndarray:
             return self.dist.cif(x, *theta[:n_dist_params]) * np.exp(
                 Z @ theta[n_dist_params:]
             )
@@ -316,7 +344,13 @@ class ProportionalIntensityModel(
         se = delta_method_se(cif_at, self._mle, self.covariance())
         return log_transformed_cb(self.cif(x, Z), se, alpha_ci, bound)
 
-    def plot(self, ax=None, plot_bounds=True, confidence=0.95):
+    # Extends the mixin plot with covariates -- same known divergence.
+    def plot(  # type: ignore[override]
+        self,
+        ax: Any = None,
+        plot_bounds: bool = True,
+        confidence: float = 0.95,
+    ) -> Any:
         """
         PLots the CIF of the model against the data used to fit it.
 
@@ -366,7 +400,7 @@ class ProportionalIntensityModel(
             )
         return ax
 
-    def _parameter_names(self):
+    def _parameter_names(self) -> list:
         # The base-rate (intensity) parameters lead ``_mle``, followed by the
         # covariate coefficients.
         return [
@@ -374,21 +408,29 @@ class ProportionalIntensityModel(
             *["beta_{}".format(i) for i in range(len(self.coeffs))],
         ]
 
-    def _parameter_bounds(self):
+    def _parameter_bounds(self) -> list:
         # The base-rate bounds come from the intensity model (PI-HPP stores
         # them on the fitted model directly; PI-NHPP's live on ``dist``); the
         # covariate coefficients are unbounded.
         dist_bounds = getattr(self, "bounds", None) or self.dist.bounds
         return [*dist_bounds, *[(None, None)] * len(self.coeffs)]
 
-    def _cif_args(self):
+    def _cif_args(self) -> tuple:
         # The shared inverse-CIF sampler threads these into cif/inv_cif; the
         # covariate vector for the run is stashed on ``_sim_Z`` by the public
         # simulation entry points below. (CoxLewis post-processing is handled
         # by the shared mixin.)
         return (self._sim_Z,)
 
-    def count_terminated_simulation(self, events, Z, items=1, seed=None):
+    # Extends the mixin signature with the covariate vector ``Z``
+    # -- a known signature divergence in the simulation API.
+    def count_terminated_simulation(  # type: ignore[override]
+        self,
+        events: int,
+        Z: ArrayLike,
+        items: int = 1,
+        seed: "int | None" = None,
+    ) -> Any:
         """
         Simulate count-terminated recurrence data based on the fitted model.
 
@@ -415,9 +457,17 @@ class ProportionalIntensityModel(
             events, items=items, seed=seed
         )
 
-    def time_terminated_simulation(
-        self, T, Z, items=1, tol=1e-8, max_events=10_000, seed=None
-    ):
+    # Extends the mixin signature with the covariate vector ``Z``
+    # -- a known signature divergence in the simulation API.
+    def time_terminated_simulation(  # type: ignore[override]
+        self,
+        T: float,
+        Z: ArrayLike,
+        items: int = 1,
+        tol: float = 1e-8,
+        max_events: int = 10_000,
+        seed: "int | None" = None,
+    ) -> Any:
         """
         Simulate time-terminated recurrence data based on the fitted model.
 
@@ -457,7 +507,15 @@ class ProportionalIntensityModel(
             T, items=items, tol=tol, max_events=max_events, seed=seed
         )
 
-    def count_terminated_simulation_data(self, events, Z, items=1, seed=None):
+    # Extends the mixin signature with the covariate vector ``Z``
+    # -- a known signature divergence in the simulation API.
+    def count_terminated_simulation_data(  # type: ignore[override]
+        self,
+        events: int,
+        Z: ArrayLike,
+        items: int = 1,
+        seed: "int | None" = None,
+    ) -> Any:
         """
         Simulate count-terminated recurrence data and return the raw events.
         Like :meth:`count_terminated_simulation` but yields the simulated
@@ -468,9 +526,17 @@ class ProportionalIntensityModel(
             events, items=items, seed=seed
         )
 
-    def time_terminated_simulation_data(
-        self, T, Z, items=1, tol=1e-8, max_events=10_000, seed=None
-    ):
+    # Extends the mixin signature with the covariate vector ``Z``
+    # -- a known signature divergence in the simulation API.
+    def time_terminated_simulation_data(  # type: ignore[override]
+        self,
+        T: float,
+        Z: ArrayLike,
+        items: int = 1,
+        tol: float = 1e-8,
+        max_events: int = 10_000,
+        seed: "int | None" = None,
+    ) -> Any:
         """
         Simulate time-terminated recurrence data and return the raw events.
         Like :meth:`time_terminated_simulation` but yields the simulated
@@ -481,7 +547,15 @@ class ProportionalIntensityModel(
             T, items=items, tol=tol, max_events=max_events, seed=seed
         )
 
-    def mcf(self, x, Z, items=1000, seed=None):
+    # Extends the mixin signature with the covariate vector ``Z``
+    # -- a known signature divergence in the simulation API.
+    def mcf(  # type: ignore[override]
+        self,
+        x: ArrayLike,
+        Z: ArrayLike,
+        items: int = 1000,
+        seed: "int | None" = None,
+    ) -> Any:
         """
         Estimate the mean cumulative function at ``x`` for covariates ``Z`` by
         simulating ``items`` time-terminated sequences out to ``max(x)``.

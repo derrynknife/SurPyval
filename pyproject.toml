@@ -171,8 +171,8 @@ module = [
     'surpyval.fit_best',
     'surpyval.utils',
     'surpyval.utils.*',
-    'surpyval.recurrent.tests',
-    'surpyval.recurrent.parametric.counting_process',
+    'surpyval.recurrent',
+    'surpyval.recurrent.*',
     # The whole regression package: plumbing and models first, then the
     # fitters, cox_ph and the heavies. general_log_linear is included --
     # its LifeModel-contract mismatch (#345) is a runtime-shape question,

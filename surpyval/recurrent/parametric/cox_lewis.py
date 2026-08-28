@@ -1,5 +1,7 @@
 import numpy as np
+import numpy.typing as npt
 
+from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.fitter import singleton_fitter
 
 from .nhpp_fitter import NHPPFitter
@@ -42,7 +44,7 @@ class CoxLewis(NHPPFitter):
            3.00754742])
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.name = "Cox-Lewis"
         self.param_names = ["alpha", "beta"]
         # alpha is the *log*-intensity intercept and is legitimately
@@ -52,27 +54,27 @@ class CoxLewis(NHPPFitter):
         self.bounds = ((None, None), (None, None))
         self.support = (0.0, np.inf)
 
-    def parameter_initialiser(self, x):
+    def parameter_initialiser(self, x: npt.ArrayLike) -> npt.NDArray:
         return np.array([1.0, 1.0])
 
-    def cif(self, x, *params):
+    def cif(self, x: Boxable, *params: Boxable) -> Boxable:
         # The Cox-Lewis intensity is log-linear, so its cumulative intensity
         # is the integral of ``exp(alpha + beta * x)`` from 0 to ``x``.
         alpha = params[0]
         beta = params[1]
         return np.exp(alpha) / beta * (np.exp(beta * x) - 1.0)
 
-    def iif(self, x, *params):
+    def iif(self, x: Boxable, *params: Boxable) -> Boxable:
         alpha = params[0]
         beta = params[1]
         return np.exp(alpha + beta * x)
 
-    def log_iif(self, x, *params):
+    def log_iif(self, x: Boxable, *params: Boxable) -> Boxable:
         alpha = params[0]
         beta = params[1]
         return alpha + beta * x
 
-    def inv_cif(self, N, *params):
+    def inv_cif(self, N: Boxable, *params: Boxable) -> Boxable:
         alpha = params[0]
         beta = params[1]
         # For an improving system (beta < 0) the cumulative intensity is

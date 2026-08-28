@@ -1,4 +1,5 @@
 import warnings
+from typing import Any, Callable
 
 import numpy as np
 
@@ -35,14 +36,21 @@ class LikelihoodInferenceMixin:
     returned as NaN with a warning.
     """
 
-    def _check_fitted(self):
+    # Supplied by the fitting routine (see the class docstring); declared
+    # here so the checker knows their types on the host class.
+    _neg_ll: Callable
+    _mle: np.ndarray
+    _n_obs: int
+    _fitter: Any
+
+    def _check_fitted(self) -> None:
         if not hasattr(self, "_neg_ll"):
             raise ValueError(
                 "Inference is only available for models fitted from data; "
                 "fit_from_parameters does not compute a likelihood."
             )
 
-    def _parameter_names(self):
+    def _parameter_names(self) -> list:
         """
         Names of the entries of ``_mle``, in order. Subclasses override this to
         label their parameters (e.g. the renewal models prepend the restoration
@@ -51,28 +59,28 @@ class LikelihoodInferenceMixin:
         raise NotImplementedError
 
     @property
-    def parameter_names(self):
+    def parameter_names(self) -> list:
         self._check_fitted()
         return list(self._parameter_names())
 
     @property
-    def log_likelihood(self):
+    def log_likelihood(self) -> float:
         self._check_fitted()
         return -float(self._neg_ll(self._mle))
 
     @property
-    def aic(self):
+    def aic(self) -> float:
         self._check_fitted()
         k = self._mle.size
         return 2.0 * k - 2.0 * self.log_likelihood
 
     @property
-    def bic(self):
+    def bic(self) -> float:
         self._check_fitted()
         k = self._mle.size
         return k * np.log(self._n_obs) - 2.0 * self.log_likelihood
 
-    def covariance(self):
+    def covariance(self) -> np.ndarray:
         """
         Approximate parameter covariance matrix, ordered to match
         :attr:`parameter_names`. Computed as the inverse of the numerical
@@ -93,7 +101,7 @@ class LikelihoodInferenceMixin:
             warnings.warn("Hessian is singular; covariance is unavailable.")
             return np.full((n, n), np.nan)
 
-    def standard_errors(self):
+    def standard_errors(self) -> np.ndarray:
         """
         Standard errors of the fitted parameters (the square roots of the
         diagonal of :meth:`covariance`), ordered to match
@@ -110,7 +118,7 @@ class LikelihoodInferenceMixin:
             )
         return se
 
-    def _parameter_bounds(self):
+    def _parameter_bounds(self) -> list:
         """
         Natural-space ``(lower, upper)`` bounds for each entry of ``_mle``,
         ordered to match :attr:`parameter_names`. Subclasses override this so
@@ -119,7 +127,12 @@ class LikelihoodInferenceMixin:
         """
         return [(None, None)] * self._mle.size
 
-    def param_cb(self, name, alpha_ci=0.05, bound="two-sided"):
+    def param_cb(
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> np.ndarray:
         """
         Confidence bound(s) on a fitted parameter, mirroring the univariate
         ``Parametric.param_cb`` API.

@@ -22,11 +22,13 @@ and are exposed as methods on ``ParametricRecurrenceModel``.
 """
 
 import warnings
+from typing import Any, Callable
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 
-def _validate_diagnostic_data(data, what):
+def _validate_diagnostic_data(data: Any, what: str) -> None:
     """
     The diagnostics need exact event times: interval-censored (2D ``x`` or
     ``c == 2``) and left-censored (``c == -1``) observations cannot be
@@ -44,7 +46,7 @@ def _validate_diagnostic_data(data, what):
         )
 
 
-def _per_item_windows(data):
+def _per_item_windows(data: Any) -> list:
     """
     Group the data by item and resolve each item's observation window.
 
@@ -79,7 +81,7 @@ def _per_item_windows(data):
     return items
 
 
-def _as_item_cif(cif):
+def _as_item_cif(cif: Any) -> Callable:
     """
     Normalise the ``cif`` argument of the diagnostics into a factory that
     maps an item identifier to that item's CIF callable. A plain callable
@@ -92,7 +94,7 @@ def _as_item_cif(cif):
     return lambda item: cif[item]
 
 
-def cumulative_hazard_residuals(data, cif):
+def cumulative_hazard_residuals(data: Any, cif: Any) -> np.ndarray:
     """
     Rescaled interarrival times ``cif(t_k) - cif(t_{k-1})`` for every
     observed event (with ``t_0`` each item's entry time), pooled across
@@ -116,7 +118,7 @@ def cumulative_hazard_residuals(data, cif):
     return np.concatenate(residuals)
 
 
-def martingale_residuals(data, cif):
+def martingale_residuals(data: Any, cif: Any) -> np.ndarray:
     """
     Per-item martingale residuals: the observed event count minus the
     expected count ``cif(close) - cif(entry)`` over the item's observation
@@ -158,14 +160,21 @@ class GoodnessOfFitResult:
         The number of systems (items) in the data.
     """
 
-    def __init__(self, statistic, p_value, n_boot, n_events, n_systems):
+    def __init__(
+        self,
+        statistic: float,
+        p_value: float,
+        n_boot: int,
+        n_events: int,
+        n_systems: int,
+    ) -> None:
         self.statistic = statistic
         self.p_value = p_value
         self.n_boot = n_boot
         self.n_events = n_events
         self.n_systems = n_systems
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         title = "Cramer-von Mises Goodness-of-Fit Test"
         return "\n".join(
             [
@@ -180,7 +189,7 @@ class GoodnessOfFitResult:
         )
 
 
-def _conditional_uniforms(data, cif):
+def _conditional_uniforms(data: Any, cif: Any) -> tuple[np.ndarray, int]:
     """
     The conditionally-uniform transforms behind the Cramer-von Mises
     statistic, pooled across items. For a time-truncated item every event
@@ -212,7 +221,9 @@ def _conditional_uniforms(data, cif):
     return np.concatenate(u), n_systems
 
 
-def trend_test(data, test="laplace", alternative="two-sided"):
+def trend_test(
+    data: Any, test: str = "laplace", alternative: str = "two-sided"
+) -> Any:
     """
     Trend test for recurrent-event data: the null hypothesis is that the
     events follow a *homogeneous* Poisson process (no trend), so it checks
@@ -249,7 +260,7 @@ def trend_test(data, test="laplace", alternative="two-sided"):
     return tests[test](x, i=i, T=T, alternative=alternative)
 
 
-def cvm_statistic(u):
+def cvm_statistic(u: ArrayLike) -> float:
     """
     The Cramer-von Mises statistic ``1/(12M) + sum_j (u_(j) -
     (2j - 1)/(2M))^2`` of a sample ``u`` against the standard uniform.
@@ -260,7 +271,9 @@ def cvm_statistic(u):
     return float(1.0 / (12.0 * m) + np.sum((u - (2 * j - 1) / (2 * m)) ** 2))
 
 
-def _renewal_conditional_uniforms(data, increments):
+def _renewal_conditional_uniforms(
+    data: Any, increments: np.ndarray
+) -> tuple[np.ndarray, int]:
     """
     The conditionally-uniform transforms behind the Cramer-von Mises statistic
     for a renewal / virtual-age process, which has no marginal cumulative
@@ -298,8 +311,13 @@ def _renewal_conditional_uniforms(data, increments):
 
 
 def _cvm_pvalue(
-    data, payload, simulate_refit, n_boot, seed, uniforms=_conditional_uniforms
-):
+    data: Any,
+    payload: Any,
+    simulate_refit: Callable,
+    n_boot: int,
+    seed: "int | None",
+    uniforms: Callable = _conditional_uniforms,
+) -> "GoodnessOfFitResult":
     """
     Shared Cramer-von Mises core: the observed statistic comes from the
     conditionally-uniform transforms of ``data`` under ``payload`` (computed
@@ -316,7 +334,7 @@ def _cvm_pvalue(
     observed = cvm_statistic(u)
 
     rng = np.random.default_rng(seed)
-    statistics = []
+    statistics: list = []
     failures = 0
     while len(statistics) < n_boot and failures < 2 * n_boot:
         try:
@@ -342,20 +360,27 @@ def _cvm_pvalue(
             "dropped.".format(failures)
         )
 
-    statistics = np.asarray(statistics)
+    stats_arr = np.asarray(statistics)
     p_value = float(
-        (1.0 + np.sum(statistics >= observed)) / (statistics.size + 1.0)
+        (1.0 + np.sum(stats_arr >= observed)) / (stats_arr.size + 1.0)
     )
     return GoodnessOfFitResult(
         statistic=observed,
         p_value=p_value,
-        n_boot=int(statistics.size),
+        n_boot=int(stats_arr.size),
         n_events=int(u.size),
         n_systems=n_systems,
     )
 
 
-def _simulate_window(rng, entry, close, span, e0, inv_cif):
+def _simulate_window(
+    rng: Any,
+    entry: float,
+    close: float,
+    span: float,
+    e0: float,
+    inv_cif: Callable,
+) -> tuple[np.ndarray, float]:
     """
     Simulate one item's window from the fitted intensity: the event count over
     ``[entry, close]`` is Poisson with mean ``span`` and the times are the
@@ -367,7 +392,9 @@ def _simulate_window(rng, entry, close, span, e0, inv_cif):
     return times, close
 
 
-def cramer_von_mises(model, n_boot=200, seed=None):
+def cramer_von_mises(
+    model: Any, n_boot: int = 200, seed: "int | None" = None
+) -> "GoodnessOfFitResult":
     """
     Cramer-von Mises goodness-of-fit test of a fitted parametric recurrent
     model; see :meth:`ParametricRecurrenceModel.cramer_von_mises` for the
@@ -390,7 +417,7 @@ def cramer_von_mises(model, n_boot=200, seed=None):
         )
     windows = _per_item_windows(data)
 
-    def simulate_refit(rng):
+    def simulate_refit(rng: Any) -> tuple:
         x_b, i_b, c_b, tl_b = [], [], [], []
         for item_id, (_, _, entry, close, _) in enumerate(windows):
             span = float(model.cif(close) - model.cif(entry))
@@ -417,7 +444,9 @@ def cramer_von_mises(model, n_boot=200, seed=None):
     return _cvm_pvalue(data, model.cif, simulate_refit, n_boot, seed)
 
 
-def cramer_von_mises_regression(model, n_boot=200, seed=None):
+def cramer_von_mises_regression(
+    model: Any, n_boot: int = 200, seed: "int | None" = None
+) -> "GoodnessOfFitResult":
     """
     Cramer-von Mises goodness-of-fit test of a fitted proportional-intensity
     regression model; see
@@ -441,7 +470,7 @@ def cramer_von_mises_regression(model, n_boot=200, seed=None):
     item_cif = model._item_cif_map()
     windows = _per_item_windows(data)
 
-    def simulate_refit(rng):
+    def simulate_refit(rng: Any) -> tuple:
         x_b, i_b, c_b, tl_b, Z_b = [], [], [], [], []
         for item_id, (item, _, entry, close, _) in enumerate(windows):
             Z_item = Z_by_item[item]
@@ -487,7 +516,9 @@ def cramer_von_mises_regression(model, n_boot=200, seed=None):
     return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, seed)
 
 
-def cramer_von_mises_renewal(model, n_boot=200, seed=None):
+def cramer_von_mises_renewal(
+    model: Any, n_boot: int = 200, seed: "int | None" = None
+) -> "GoodnessOfFitResult":
     """
     Cramer-von Mises goodness-of-fit test of a fitted renewal / virtual-age
     imperfect-repair model; see :meth:`RenewalModel.cramer_von_mises` for the
@@ -514,7 +545,7 @@ def cramer_von_mises_renewal(model, n_boot=200, seed=None):
         int((data.c[data.i == item] == 0).sum()) for item in np.unique(data.i)
     ]
 
-    def simulate_refit(rng):
+    def simulate_refit(rng: Any) -> tuple:
         x_b, i_b = [], []
         new_id = 0
         for count in counts:

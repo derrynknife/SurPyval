@@ -1,5 +1,7 @@
 import numpy as np
+import numpy.typing as npt
 
+from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.fitter import singleton_fitter
 
 from .nhpp_fitter import NHPPFitter
@@ -42,25 +44,25 @@ class Duane(NHPPFitter):
            2714.87871658, 3071.25832646])
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.name = "Duane"
         self.param_names = ["alpha", "b"]
         self.bounds = ((0, None), (0, None))
         self.support = (0.0, np.inf)
 
-    def parameter_initialiser(self, x):
+    def parameter_initialiser(self, x: npt.ArrayLike) -> npt.NDArray:
         return np.array([1.0, 1.0])
 
-    def cif(self, x, *params):
+    def cif(self, x: Boxable, *params: Boxable) -> Boxable:
         return params[1] * x ** params[0]
 
-    def iif(self, x, *params):
+    def iif(self, x: Boxable, *params: Boxable) -> Boxable:
         return params[0] * params[1] * x ** (params[0] - 1.0)
 
-    def log_iif(self, x, *params):
+    def log_iif(self, x: Boxable, *params: Boxable) -> Boxable:
         return (
             np.log(params[0]) + np.log(params[1]) + (params[0] - 1) * np.log(x)
         )
 
-    def inv_cif(self, N, *params):
+    def inv_cif(self, N: Boxable, *params: Boxable) -> Boxable:
         return (N / params[1]) ** (1.0 / params[0])

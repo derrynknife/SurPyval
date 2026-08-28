@@ -1,6 +1,14 @@
 from abc import ABC, abstractmethod
 
-from numpy.typing import ArrayLike
+import numpy.typing as npt
+from autograd.numpy.numpy_boxes import ArrayBox
+
+# The NHPP likelihoods differentiate these functions with autograd, so a
+# parameter (and hence any value computed from one) may be a plain array,
+# a float, or an autograd ArrayBox -- the same union the univariate
+# distributions use. ``ArrayLike`` would be a trap here: it admits str
+# and bytes, so the concrete models' arithmetic would not type check.
+Boxable = npt.NDArray | float | ArrayBox
 
 
 class CountingProcess(ABC):
@@ -24,18 +32,21 @@ class CountingProcess(ABC):
     process.
     """
 
+    #: Names of the model's parameters (see the class docstring).
+    param_names: list
+
     @abstractmethod
-    def iif(self, x: ArrayLike, *params: ArrayLike) -> ArrayLike:
+    def iif(self, x: Boxable, *params: Boxable) -> Boxable:
         """Instantaneous intensity function (event rate) at ``x``."""
         ...
 
     @abstractmethod
-    def cif(self, x: ArrayLike, *params: ArrayLike) -> ArrayLike:
+    def cif(self, x: Boxable, *params: Boxable) -> Boxable:
         """Cumulative intensity (expected event count) by ``x``."""
         ...
 
     @abstractmethod
-    def log_iif(self, x: ArrayLike, *params: ArrayLike) -> ArrayLike:
+    def log_iif(self, x: Boxable, *params: Boxable) -> Boxable:
         """Natural logarithm of the instantaneous intensity at ``x``."""
         ...
 
@@ -66,11 +77,11 @@ class IntensityModel(CountingProcess):
     """
 
     @abstractmethod
-    def inv_cif(self, N: ArrayLike, *params: ArrayLike) -> ArrayLike:
+    def inv_cif(self, N: Boxable, *params: Boxable) -> Boxable:
         """Time by which ``N`` events are expected; the inverse of ``cif``."""
         ...
 
     @abstractmethod
-    def parameter_initialiser(self, x: ArrayLike) -> ArrayLike:
+    def parameter_initialiser(self, x: npt.ArrayLike) -> npt.NDArray:
         """Starting parameter vector for the optimiser given event times."""
         ...

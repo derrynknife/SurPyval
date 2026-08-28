@@ -1,5 +1,8 @@
+from typing import Any
+
 import numpy as np
 from matplotlib import pyplot as plt
+from numpy.typing import ArrayLike
 
 from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
@@ -34,9 +37,21 @@ class ParametricRecurrenceModel(
     >>> model = HPP.fit(x)
     """
 
+    # Populated by the fitters; declared for the type checker.
+    dist: Any
+    params: "np.ndarray"
+    param_names: list
+    bounds: tuple
+    support: tuple
+    name: str
+    data: Any
+    mcf_hat: "np.ndarray"
+    how: str
+    res: Any
+
     # -- serialisation -----------------------------------------------------
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """
         Serialise this fitted recurrence model to a plain, JSON-serialisable
         dict.
@@ -61,7 +76,7 @@ class ParametricRecurrenceModel(
         )
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict) -> "ParametricRecurrenceModel":
         """
         Rebuild a recurrence model from a :meth:`to_dict` dictionary.
 
@@ -80,13 +95,13 @@ class ParametricRecurrenceModel(
         out.how = model_dict.get("how", "from_params")
         return out
 
-    def _parameter_names(self):
+    def _parameter_names(self) -> list:
         return list(self.dist.param_names)
 
-    def _parameter_bounds(self):
+    def _parameter_bounds(self) -> list:
         return list(self.dist.bounds)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         param_string = "\n".join(
             [
                 "{:>10}".format(name) + ": " + str(p)
@@ -106,7 +121,7 @@ class ParametricRecurrenceModel(
     # CoxLewis post-processing from RecurrenceSimulationMixin; this model is
     # unconditional, so it needs no extra cif args (_cif_args defaults to ()).
 
-    def cif(self, x):
+    def cif(self, x: ArrayLike) -> np.ndarray:
         """
         Compute the cumulative incidence function (CIF) based on the fitted
         model. No need to pass parameters as it uses the parameters of the
@@ -127,7 +142,9 @@ class ParametricRecurrenceModel(
         x = np.array(x)
         return self.dist.cif(x, *self.params)
 
-    def mcf(self, x):
+    # Narrows the mixin mcf (no simulation arguments): the fitted
+    # model evaluates its own CIF directly.
+    def mcf(self, x: ArrayLike) -> np.ndarray:  # type: ignore[override]
         """
         The mean cumulative function (MCF). For these counting processes the
         MCF equals the cumulative intensity, so this is a closed-form alias for
@@ -147,7 +164,7 @@ class ParametricRecurrenceModel(
         """
         return self.cif(x)
 
-    def iif(self, x):
+    def iif(self, x: ArrayLike) -> np.ndarray:
         """
         Compute the intensity function based on the fitted model. No need to
         pass parameters as it uses the parameters of the fitted model.
@@ -167,7 +184,7 @@ class ParametricRecurrenceModel(
         x = np.array(x)
         return self.dist.iif(x, *self.params)
 
-    def inv_cif(self, x):
+    def inv_cif(self, x: ArrayLike) -> np.ndarray:
         x = np.array(x)
         if hasattr(self.dist, "inv_cif"):
             return self.dist.inv_cif(x, *self.params)
@@ -176,14 +193,14 @@ class ParametricRecurrenceModel(
                 "Inverse cif undefined for {}".format(self.dist.name)
             )
 
-    def _check_has_data(self, what):
+    def _check_has_data(self, what: str) -> None:
         if not hasattr(self, "data"):
             raise ValueError(
                 "{} requires a model fitted from data; fit_from_parameters "
                 "models carry no data.".format(what)
             )
 
-    def residuals(self, kind="cumulative_hazard"):
+    def residuals(self, kind: str = "cumulative_hazard") -> np.ndarray:
         """
         Residual diagnostics for the fitted model, from the time-rescaling
         theorem.
@@ -221,7 +238,9 @@ class ParametricRecurrenceModel(
             "got {!r}".format(kind)
         )
 
-    def trend_test(self, test="laplace", alternative="two-sided"):
+    def trend_test(
+        self, test: str = "laplace", alternative: str = "two-sided"
+    ) -> Any:
         """
         Run a trend test on the data this model was fitted to.
 
@@ -251,7 +270,9 @@ class ParametricRecurrenceModel(
             self.data, test=test, alternative=alternative
         )
 
-    def cramer_von_mises(self, n_boot=200, seed=None):
+    def cramer_von_mises(
+        self, n_boot: int = 200, seed: "int | None" = None
+    ) -> Any:
         """
         Cramer-von Mises goodness-of-fit test of the fitted intensity.
 
@@ -286,7 +307,12 @@ class ParametricRecurrenceModel(
         self._check_has_data("cramer_von_mises")
         return diagnostics.cramer_von_mises(self, n_boot=n_boot, seed=seed)
 
-    def cif_cb(self, x, alpha_ci=0.05, bound="two-sided"):
+    def cif_cb(
+        self,
+        x: ArrayLike,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> np.ndarray:
         """
         Confidence bounds on the fitted CIF at ``x``, from the delta method.
 
@@ -323,7 +349,13 @@ class ParametricRecurrenceModel(
         )
         return log_transformed_cb(self.cif(x), se, alpha_ci, bound)
 
-    def plot(self, ax=None, plot_bounds=True, confidence=0.95):
+    # Narrows the mixin plot (bounds options) -- same known divergence.
+    def plot(  # type: ignore[override]
+        self,
+        ax: Any = None,
+        plot_bounds: bool = True,
+        confidence: float = 0.95,
+    ) -> Any:
         """
         Plot the fitted CIF over the nonparametric MCF of the data used to
         fit it, with a delta-method confidence band around the fitted curve
