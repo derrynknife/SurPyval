@@ -53,6 +53,19 @@ class LogLinearPhi:
         return {"beta_" + str(i): i for i in range(Z.shape[1])}
 
 
+class MirroredDistributionAttrs:
+    """Class-level declarations for the attributes
+    :func:`mirror_distribution` sets, so a fitter that inherits this
+    alongside its other mixins has them visible to the type checker."""
+
+    dist: Any
+    k_dist: int
+    bounds: tuple
+    support: tuple
+    param_names: list
+    param_map: dict
+
+
 def mirror_distribution(fitter: Any, distribution: Any) -> None:
     """Copy a distribution's metadata onto a regression fitter.
 

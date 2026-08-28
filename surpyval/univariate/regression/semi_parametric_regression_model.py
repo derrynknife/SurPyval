@@ -44,10 +44,12 @@ class SemiParametricRegressionModel(SerialisableMixin):
     H0: npt.NDArray
     phi: Callable[..., npt.NDArray]
     p_values: npt.NDArray
-    jac: npt.NDArray
-    hess: npt.NDArray
+    #: The fit's score/Hessian and negative-partial-log-likelihood
+    #: closures (the scalar value is ``_neg_log_like``).
+    jac: Callable
+    hess: Callable
     res: Any
-    neg_ll: float
+    neg_ll: Callable
     _neg_log_like: float
     tie_method: str
     baseline_method: str

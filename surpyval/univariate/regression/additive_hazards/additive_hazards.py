@@ -104,7 +104,7 @@ class AdditiveHazardsModel(SerialisableMixin):
     _A: npt.NDArray
     _b: npt.NDArray
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.kind = "Additive Hazards"
         self.parameterization = "Semi-Parametric"
 

@@ -125,7 +125,6 @@ module = [
     'surpyval.univariate.information_criteria',
     'surpyval.univariate.nonparametric.*',
     'surpyval.recurrent.nonparametric.*',
-    'surpyval.univariate.regression.frailty.*',
     'surpyval.datasets',
     'surpyval.univariate.parametric.distributions.weibull',
     # The discrete distributions, plus the Discretize wrapper.
@@ -176,35 +175,11 @@ module = [
     'surpyval.utils.score',
     'surpyval.recurrent.tests',
     'surpyval.recurrent.parametric.counting_process',
-    'surpyval.univariate.regression.regression_data',
-    # The regression package's shared plumbing and the two model
-    # classes -- typed before the fitters that build on them, so the
-    # fitters' pass starts from typed call boundaries.
-    'surpyval.univariate.regression._fit_skeleton',
-    'surpyval.univariate.regression._likelihood',
-    'surpyval.univariate.regression._bounds',
-    'surpyval.univariate.regression.tvc_schedule',
-    'surpyval.univariate.regression.parametric_regression_model',
-    'surpyval.univariate.regression.semi_parametric_regression_model',
-    'surpyval.univariate.regression.proportional_hazards',
-    'surpyval.univariate.regression.additive_hazards',
-    'surpyval.univariate.regression.tvc_fit',
-    'surpyval.univariate.regression.frailty',
-    # Every accelerated-life module except general_log_linear, whose
-    # phi_param_map and phi_bounds are callables of the covariate
-    # dimension rather than the dict and tuple LifeModel declares. It is
-    # excluded from LIFE_MODELS for the same reason (#345).
-    'surpyval.univariate.regression.accelerated_life',
-    'surpyval.univariate.regression.accelerated_life.accelerated_life',
-    'surpyval.univariate.regression.accelerated_life.dual_exponential',
-    'surpyval.univariate.regression.accelerated_life.dual_power',
-    'surpyval.univariate.regression.accelerated_life.exponential',
-    'surpyval.univariate.regression.accelerated_life.eyring',
-    'surpyval.univariate.regression.accelerated_life.lifemodel',
-    'surpyval.univariate.regression.accelerated_life.linear',
-    'surpyval.univariate.regression.accelerated_life.parameter_substitution',
-    'surpyval.univariate.regression.accelerated_life.power',
-    'surpyval.univariate.regression.accelerated_life.power_exponential',
+    # The whole regression package: plumbing and models first, then the
+    # fitters, cox_ph and the heavies. general_log_linear is included --
+    # its LifeModel-contract mismatch (#345) is a runtime-shape question,
+    # not an annotation gap.
+    'surpyval.univariate.regression.*',
 ]
 disallow_untyped_defs = true
 

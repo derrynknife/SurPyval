@@ -69,7 +69,7 @@ class _GroupBy:
     and only ever rebinds the result, never mutates it in place.
     """
 
-    def __init__(self, keys):
+    def __init__(self, keys: npt.NDArray) -> None:
         self.unique, self._inv = np.unique(keys, return_inverse=True)
         self._inv = np.asarray(self._inv).ravel()
         self._n = len(self.unique)
@@ -83,7 +83,7 @@ class _GroupBy:
             None if already_grouped else np.argsort(self._inv, kind="stable")
         )
 
-    def sum(self, values):
+    def sum(self, values: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
         # ``asarray`` rather than ``astype``: no copy when the caller
         # already handed over float64, which it almost always does.
         values = np.asarray(values, dtype=float)
@@ -98,14 +98,14 @@ class _GroupBy:
             )
         return self.unique, result
 
-    def max(self, values):
+    def max(self, values: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
         values = np.asarray(values)
         result = np.full(self._n, -np.inf)
         np.maximum.at(result, self._inv, values)
         return self.unique, result
 
 
-def _efron_tie_weights(n_d):
+def _efron_tie_weights(n_d: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
     """``c = j / d`` for every tied death, with a mask marking the entries
     that only exist to square off the ragged ``j < d`` ranges.
 
@@ -125,7 +125,9 @@ def _efron_tie_weights(n_d):
     return weights, valid
 
 
-def efron_log_denominator(n_d, Ri, Di):
+def efron_log_denominator(
+    n_d: npt.NDArray, Ri: npt.NDArray, Di: npt.NDArray
+) -> npt.NDArray:
     """Per event time, ``sum_j log(R - (j/d) D)`` over the ``d`` tied deaths.
 
     Where at most one death occurs, ``j`` only ever takes the value 0, so
@@ -149,7 +151,14 @@ def efron_log_denominator(n_d, Ri, Di):
 
 
 # @njit
-def efron_jac(n_d, Ri, ZRi, Di, ZDi, masked_array):
+def efron_jac(
+    n_d: npt.NDArray,
+    Ri: npt.NDArray,
+    ZRi: npt.NDArray,
+    Di: npt.NDArray,
+    ZDi: npt.NDArray,
+    masked_array: npt.NDArray,
+) -> npt.NDArray:
     # Vectorised implementation of term two of the efron ll
     # jacobian.
 
@@ -170,7 +179,15 @@ def efron_jac(n_d, Ri, ZRi, Di, ZDi, masked_array):
     return out
 
 
-def efron_hess(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di):
+def efron_hess(
+    n_d: npt.NDArray,
+    Ri: npt.NDArray,
+    ZRi: npt.NDArray,
+    Z2Ri: npt.NDArray,
+    Di: npt.NDArray,
+    ZDi: npt.NDArray,
+    Z2Di: npt.NDArray,
+) -> npt.NDArray:
     # Per-event-time contribution to the observed information (the Hessian of
     # the negative Efron partial log-likelihood). For each of the ``n_d[i]``
     # tied deaths the Efron correction shrinks the risk set by ``c * D``:
@@ -239,7 +256,13 @@ def efron_hess(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di):
     return out
 
 
-def _sort_by_event_time(x, Z, c, n, tl):
+def _sort_by_event_time(
+    x: npt.NDArray,
+    Z: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    tl: npt.NDArray,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Put the rows in event-time order before building the closures.
 
     Nothing in the partial likelihood depends on the order of the rows --
@@ -257,13 +280,15 @@ def _sort_by_event_time(x, Z, c, n, tl):
     return x[order], Z[order], c[order], n[order], tl[order]
 
 
-def at_risk_beta_Z(arr, n, gb_x):
+def at_risk_beta_Z(
+    arr: npt.NDArray, n: npt.NDArray, gb_x: "_GroupBy"
+) -> npt.NDArray:
     R = gb_x.sum(n * arr)[1]
     # Get the reverse cumulative sum
     return R[::-1].cumsum(axis=0)[::-1]
 
 
-def not_yet_entered(pos, mass_by_tl):
+def not_yet_entered(pos: npt.NDArray, mass_by_tl: npt.NDArray) -> npt.NDArray:
     """Per unique event time, the total ``mass_by_tl`` of observations whose
     entry (left-truncation) time is at or after that event time — the amount
     to subtract from the reverse-cumulative at-risk sums so that a subject
@@ -282,7 +307,7 @@ def not_yet_entered(pos, mass_by_tl):
     return np.concatenate([suffix, pad], axis=0)[pos]
 
 
-def _sub(a, mask):
+def _sub(a: "npt.ArrayLike | None", mask: npt.NDArray) -> "npt.NDArray | None":
     """Index ``a`` by ``mask``, passing ``None`` through unchanged."""
     if a is None:
         return None
@@ -296,7 +321,7 @@ def _sub(a, mask):
 _EXACT_MAX_TIES = 12
 
 
-def _elementary_symmetric(v, d):
+def _elementary_symmetric(v: Any, d: int) -> Any:
     """The ``d``-th elementary symmetric polynomial ``e_d`` of the entries of
     ``v`` -- i.e. the sum, over every ``d``-subset of ``v``, of the product of
     that subset's entries.
@@ -317,7 +342,7 @@ def _elementary_symmetric(v, d):
     return e[d]
 
 
-def _exact_ordering_logterm(a, risk_sum):
+def _exact_ordering_logterm(a: Any, risk_sum: Any) -> Any:
     """``log`` of the average-over-orderings exact tie term.
 
     For ``d`` tied deaths with risk scores ``a`` (``a_j = exp(Z_j'b)``) drawn
@@ -358,7 +383,12 @@ def _exact_ordering_logterm(a, risk_sum):
     return anp.log(h[full])
 
 
-def _solve_beta_and_p_values(neg_ll, jac, beta_init, tol):
+def _solve_beta_and_p_values(
+    neg_ll: Callable,
+    jac: Callable,
+    beta_init: npt.NDArray,
+    tol: float,
+) -> tuple[Any, npt.NDArray]:
     """Root-find the score (with BFGS fallback) and compute Wald p-values
     from the observed information; shared by ``fit`` and
     ``_fit_stratified`` so the most-patched block in this file exists
@@ -402,7 +432,7 @@ def _solve_beta_and_p_values(neg_ll, jac, beta_init, tol):
     return res, p_values
 
 
-def _combine_generators(gens):
+def _combine_generators(gens: list) -> tuple[Callable, Callable]:
     """Sum per-stratum ``(log_like, jac_hess)`` generators into one.
 
     The Cox partial likelihood factorises across strata: with a separate
@@ -413,10 +443,10 @@ def _combine_generators(gens):
     own observations.
     """
 
-    def neg_ll(beta):
+    def neg_ll(beta: npt.NDArray) -> float:
         return sum(g[0](beta) for g in gens)
 
-    def jac_hess(beta):
+    def jac_hess(beta: npt.NDArray) -> tuple:
         jac_total = None
         hess_total = None
         for g in gens:
@@ -428,7 +458,9 @@ def _combine_generators(gens):
     return neg_ll, jac_hess
 
 
-def cox_at_risk_mask(x, tl, tau):
+def cox_at_risk_mask(
+    x: npt.NDArray, tl: npt.NDArray, tau: float
+) -> npt.NDArray:
     """The Cox risk-set convention, in one place (#299): a row is at risk
     at event time ``tau`` once it has entered (``tl < tau`` — strict, so a
     start-stop row is not at risk at its own entry time) and until it
@@ -443,7 +475,13 @@ class CoxPH_:
     # http://www-personal.umich.edu/~yili/lect4notes.pdf
 
     def baseline(
-        self, beta, x, c, n, Z, tl=None
+        self,
+        beta: npt.NDArray,
+        x: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        Z: npt.NDArray,
+        tl: "npt.NDArray | None" = None,
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         # Breslow baseline hazard. The risk set at each event time ``tau_i``
         # follows ``cox_at_risk_mask`` (entered ``tl < tau_i``, not yet
@@ -480,7 +518,14 @@ class CoxPH_:
 
         return unique_x, r_exit - r_pre, d
 
-    def create_efron_ll_jac_hess(self, x, Z, c, n, tl):
+    def create_efron_ll_jac_hess(
+        self,
+        x: npt.NDArray,
+        Z: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        tl: npt.NDArray,
+    ) -> tuple[Callable, Callable]:
         # The reference used to compute the jacobian and hessian
         # was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
         # Left-truncation is handled by subtracting the pre-entry risk set
@@ -504,7 +549,7 @@ class CoxPH_:
         # feeds the not-yet-entered suffix-sum gather below.
         pos = np.searchsorted(x_tl, x_, side="left")
 
-        def log_like(beta):
+        def log_like(beta: npt.NDArray) -> float:
             beta_z = Z @ beta
 
             S_d = gb_x.sum(n_d_x * beta_z.reshape(-1, 1))[1].reshape(-1, 1)
@@ -536,7 +581,7 @@ class CoxPH_:
         # on every root-finding iteration, 1.1s of a 16.9s fit (#329).
         Z2 = np.einsum("ij, ik -> ijk", Z, Z)
 
-        def jac_hess(beta):
+        def jac_hess(beta: npt.NDArray) -> tuple:
             # This line troubled me for longer than I care
             # to admit. I was using n, but it is only the
             # number of deaths at each point, n_d_x
@@ -586,7 +631,14 @@ class CoxPH_:
 
         return log_like, jac_hess
 
-    def create_breslow_ll_jac_hess(self, x, Z, c, n, tl):
+    def create_breslow_ll_jac_hess(
+        self,
+        x: npt.NDArray,
+        Z: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        tl: npt.NDArray,
+    ) -> tuple[Callable, Callable]:
         # The reference used to compute the jacobian and hessian
         # was https://mathweb.ucsd.edu/~rxu/math284/slect5.pdf
         # Left-truncation is handled by subtracting the pre-entry risk set
@@ -608,7 +660,7 @@ class CoxPH_:
         pos = np.searchsorted(x_tl, x_, side="left")
 
         # Create the log_like function for the data
-        def log_like(beta):
+        def log_like(beta: npt.NDArray) -> float:
             beta_z = Z @ beta
             di_beta_z = gb_x.sum(n_d_x * beta_z.reshape(-1, 1))[1].reshape(
                 -1, 1
@@ -631,7 +683,7 @@ class CoxPH_:
         # Constant for the life of the fit; see the Efron branch (#329).
         Z2 = np.einsum("ij, ik -> ijk", Z, Z)
 
-        def jac_hess(beta):
+        def jac_hess(beta: npt.NDArray) -> tuple:
             # Only call this once.. Yay.
             beta_z = Z @ beta
 
@@ -672,7 +724,14 @@ class CoxPH_:
 
         return log_like, jac_hess
 
-    def _prepare_exact_tie_data(self, x, Z, c, n, tl):
+    def _prepare_exact_tie_data(
+        self,
+        x: npt.NDArray,
+        Z: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        tl: npt.NDArray,
+    ) -> tuple:
         """Expand count-weighted rows and pre-compute, per event time, the
         death rows, the (delayed-entry-aware) risk-set rows, and the death
         covariate sum. Shared by the ``exact`` and ``kalbfleisch-prentice``
@@ -711,7 +770,7 @@ class CoxPH_:
         return Ze, event_times, death_idx, risk_idx, np.array(death_Z_sum)
 
     @staticmethod
-    def _autograd_ll_jac_hess(neg_ll):
+    def _autograd_ll_jac_hess(neg_ll: Callable) -> tuple[Callable, Callable]:
         """Wrap a scalar ``autograd.numpy`` negative-log-likelihood into the
         ``(neg_ll, jac_hess)`` contract used by :meth:`fit`.
 
@@ -728,7 +787,7 @@ class CoxPH_:
         score = grad(neg_ll)
         eps = 1e-6
 
-        def jac_hess(beta):
+        def jac_hess(beta: npt.NDArray) -> tuple:
             beta = np.asarray(beta, dtype=float)
             s0 = np.asarray(score(beta))
             p = beta.shape[0]
@@ -742,7 +801,14 @@ class CoxPH_:
 
         return neg_ll, jac_hess
 
-    def create_kalbfleisch_prentice_ll_jac_hess(self, x, Z, c, n, tl):
+    def create_kalbfleisch_prentice_ll_jac_hess(
+        self,
+        x: npt.NDArray,
+        Z: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        tl: npt.NDArray,
+    ) -> tuple[Callable, Callable]:
         """Kalbfleisch-Prentice discrete (conditional-logistic) tie handling.
 
         Treats tied event times as genuinely discrete: the contribution of a
@@ -761,7 +827,7 @@ class CoxPH_:
         )
         ds = [len(d) for d in death_idx]
 
-        def neg_ll(beta):
+        def neg_ll(beta: npt.NDArray) -> float:
             r = anp.exp(anp.dot(Ze, beta))
             total = anp.zeros(())
             for i in range(len(event_times)):
@@ -772,7 +838,14 @@ class CoxPH_:
 
         return self._autograd_ll_jac_hess(neg_ll)
 
-    def create_exact_ll_jac_hess(self, x, Z, c, n, tl):
+    def create_exact_ll_jac_hess(
+        self,
+        x: npt.NDArray,
+        Z: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        tl: npt.NDArray,
+    ) -> tuple[Callable, Callable]:
         """Exact (average-over-orderings) partial-likelihood tie handling.
 
         Appropriate when ties arise from coarse rounding of an underlying
@@ -799,7 +872,7 @@ class CoxPH_:
                 )
             )
 
-        def neg_ll(beta):
+        def neg_ll(beta: npt.NDArray) -> float:
             r = anp.exp(anp.dot(Ze, beta))
             total = anp.zeros(())
             for i in range(len(event_times)):
@@ -938,7 +1011,16 @@ class CoxPH_:
         return model
 
     def _fit_stratified(
-        self, x, Z, c, n, tl, method, tol, strata, func_generator
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: "npt.ArrayLike | None",
+        n: "npt.ArrayLike | None",
+        tl: "npt.ArrayLike | None",
+        method: str,
+        tol: float,
+        strata: npt.ArrayLike,
+        func_generator: Callable,
     ) -> SemiParametricRegressionModel:
         """Fit a stratified Cox model (shared ``beta``, per-stratum baseline).
 

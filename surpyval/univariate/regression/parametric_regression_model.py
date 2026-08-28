@@ -94,6 +94,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     fun: Any
     _neg_ll: float
     _bic: float
+    #: Set by the AFT time-varying-covariate fit; absent otherwise.
+    is_tvc: bool
+    n_subjects: int
     _aic: float
     _aic_c: float
 

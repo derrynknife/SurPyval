@@ -1,11 +1,18 @@
 import inspect
-from typing import Any
+from typing import Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
 
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+)
+from surpyval.utils.surpyval_data import SurpyvalData
+
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
+    MirroredDistributionAttrs,
     assemble_regression_model,
     mirror_distribution,
     optimise_ph,
@@ -25,18 +32,21 @@ class Phi:
 
 
 class ProportionalHazardsFitter(
-    HazardIdentitiesMixin, TVCFitMixin, DataFrameRegressionMixin
+    MirroredDistributionAttrs,
+    HazardIdentitiesMixin,
+    TVCFitMixin,
+    DataFrameRegressionMixin,
 ):
     def __init__(
         self,
-        name,
-        dist,
-        phi,
-        phi_name,
-        phi_bounds,
-        phi_param_map,
-        phi_init=None,
-    ):
+        name: str,
+        dist: Any,
+        phi: Callable,
+        phi_name: str,
+        phi_bounds: "Callable[[npt.NDArray], tuple] | tuple",
+        phi_param_map: "Callable[[npt.NDArray], dict] | dict",
+        phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
+    ) -> None:
         if str(inspect.signature(phi)) != "(Z, *params)":
             raise ValueError(
                 "PH function must have the signature '(Z, *params)'"
@@ -55,28 +65,30 @@ class ProportionalHazardsFitter(
         self.phi_bounds = phi_bounds
         self.phi_param_map = phi_param_map
 
-    def Hf(self, x, Z, *params):
+    def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         Hf_raw = self.Hf_dist(x, *dist_params)
         return self.phi(Z, *phi_params) * Hf_raw
 
-    def hf(self, x, Z, *params):
+    def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         hf_raw = self.hf_dist(x, *dist_params)
         return self.phi(Z, *phi_params) * hf_raw
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 
-    def mpp_x_transform(self, x, gamma=0):
+    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
         return x - gamma
 
-    def random(self, size, Z, *params):
+    def random(
+        self, size: int, Z: npt.ArrayLike, *params: float
+    ) -> tuple[npt.NDArray, npt.NDArray]:
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         Z_arr = np.atleast_2d(np.asarray(Z, dtype=float))
@@ -91,11 +103,11 @@ class ProportionalHazardsFitter(
             Z_out.append(np.tile(row, (size, 1)))
         return np.concatenate(x), np.vstack(Z_out)
 
-    def neg_ll(self, data, *params):
+    def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
 
     @staticmethod
-    def create(distribution):
+    def create(distribution: Any) -> "ProportionalHazardsFitter":
         """
         Create a Proportional Hazards fitter for the given distribution using
         exp(beta'Z) as the hazard multiplier.
@@ -116,7 +128,9 @@ class ProportionalHazardsFitter(
         )
 
     @classmethod
-    def create_general_log_linear_fitter(cls, name, distribution):
+    def create_general_log_linear_fitter(
+        cls, name: str, distribution: Any
+    ) -> "ProportionalHazardsFitter":
         return cls(
             name,
             distribution,
@@ -228,7 +242,7 @@ class ProportionalHazardsFitter(
 
         with np.errstate(all="ignore"):
 
-            def fun(params):
+            def fun(params: npt.NDArray) -> Boxable:
                 return self.neg_ll(data, *inv_trans(const(params)))
 
             res = optimise_ph(fun, init_t)
