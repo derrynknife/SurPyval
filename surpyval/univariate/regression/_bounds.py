@@ -20,10 +20,16 @@ survival bound, which is its own.
 """
 
 import numpy as np
+import numpy.typing as npt
 from scipy.stats import norm
 
 
-def logit_sf_bound(sf_hat, se, sign, alpha_tail):
+def logit_sf_bound(
+    sf_hat: npt.ArrayLike,
+    se: npt.ArrayLike,
+    sign: float,
+    alpha_tail: float,
+) -> npt.NDArray:
     """
     A single survival-function confidence bound on the logit scale, which keeps
     it inside ``(0, 1)``: ``expit(logit(sf) + sign z se/(sf(1-sf)))``. ``sign``

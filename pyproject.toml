@@ -177,6 +177,17 @@ module = [
     'surpyval.recurrent.tests',
     'surpyval.recurrent.parametric.counting_process',
     'surpyval.univariate.regression.regression_data',
+    # The regression package's shared plumbing and the two model
+    # classes -- typed before the fitters that build on them, so the
+    # fitters' pass starts from typed call boundaries.
+    'surpyval.univariate.regression._fit_skeleton',
+    'surpyval.univariate.regression._likelihood',
+    'surpyval.univariate.regression._bounds',
+    'surpyval.univariate.regression.tvc_schedule',
+    'surpyval.univariate.regression.parametric_regression_model',
+    'surpyval.univariate.regression.semi_parametric_regression_model',
+    'surpyval.univariate.regression.proportional_hazards',
+    'surpyval.univariate.regression.additive_hazards',
     'surpyval.univariate.regression.tvc_fit',
     'surpyval.univariate.regression.frailty',
     # Every accelerated-life module except general_log_linear, whose

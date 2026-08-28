@@ -4,6 +4,43 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **Type-hint ratchet: the regression package's shared plumbing and its
+  two model classes.** Coverage moves to 1041/1747 (60%), tracked in
+  <#143>. Typed in dependency order -- the base layer before the
+  fitters that build on it, the same sequencing the parametric package
+  used -- so the coming fitter pass starts from typed call boundaries
+  instead of ``Any`` flowing in.
+
+  Eight modules join the ratchet: ``_fit_skeleton`` (the fitting spine
+  every family imports -- ``LogLinearPhi``, ``HazardIdentitiesMixin``,
+  the prepare/assemble pair, both optimiser ladders and
+  ``mirror_distribution``), ``_likelihood`` (the shared censoring- and
+  truncation-aware negative log-likelihood), ``_bounds``,
+  ``tvc_schedule`` (the ``StepSchedule`` machinery), the
+  ``parametric_regression_model`` and
+  ``semi_parametric_regression_model`` classes, and the ``PH``/``AH``
+  factory ``__init__``\ s.
+
+  The conventions carry over from the parametric package:
+  ``Numeric``/``Boxable`` for the distribution-function surface
+  (``HazardIdentitiesMixin`` and ``LogLinearPhi.phi`` are
+  differentiated under autograd), ``npt.ArrayLike`` at the user entry
+  points, and a ``TYPE_CHECKING`` contract block on
+  ``HazardIdentitiesMixin`` declaring the ``Hf``/``hf`` its identities
+  call -- the host class supplies them, and one that forgets still gets
+  the ``AttributeError`` that names it.
+
+  Three annotations followed the code rather than the reverse:
+  ``prepare_regression_fit``'s ``phi_bounds``/``phi_param_map`` really
+  are callables *or* static values (both branches are live);
+  ``_safe_eval`` in the schedule expression interpreter returns
+  ``float | bool`` because comparisons are values in that grammar; and
+  ``_ic_counts`` matches the ``tuple[int, int]`` its mixin supertype
+  declares. No behaviour changed -- annotations are erased at runtime,
+  and the only body edits are local renames where a variable was
+  reused with a second type (the ``segments`` accumulation list, the
+  expression interpreter's comparison operator).
+
 - **The structural duplicates: shared bases extracted where whole class
   bodies were copied.** The body-level sweep's deeper findings, where
   the fix is a base class or driver rather than a moved function.
