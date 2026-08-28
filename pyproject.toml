@@ -167,6 +167,7 @@ module = [
     'surpyval.univariate.parametric.parametric',
     'surpyval.univariate.parametric.mixture_model',
     'surpyval.univariate.parametric.distributions.fixed_event_probability',
+    'surpyval.univariate.parametric.distributions._single_probability',
     # Already fully annotated; listed so they cannot slip back.
     'surpyval.fit_best',
     'surpyval.utils.linalg',

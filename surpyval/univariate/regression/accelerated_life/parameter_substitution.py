@@ -135,27 +135,6 @@ class ParameterSubstitutionFitter(
     # Hf and hf above already do the scalar/1-D stress coercion (#261),
     # so the identities need no preamble of their own.
 
-    def _parameter_initialiser_dist(
-        self,
-        x: Numeric,
-        c: Numeric | None = None,
-        n: Numeric | None = None,
-        t: Numeric | None = None,
-    ) -> list[float]:
-        out: list[float] = []
-        for low, high in self.bounds:
-            if (low is None) and (high is None):
-                out.append(0.0)
-            elif high is None:
-                assert low is not None  # both-None handled above
-                out.append(float(low) + 1.0)
-            elif low is None:
-                out.append(float(high) - 1.0)
-            else:
-                out.append((float(high) + float(low)) / 2.0)
-
-        return out
-
     def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 

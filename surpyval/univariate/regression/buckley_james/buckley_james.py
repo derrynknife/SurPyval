@@ -37,12 +37,12 @@ import warnings
 
 import numpy as np
 
+from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils import (
     wrangle_and_check_form_and_Z_cols,
     wrangle_Z,
     xcnt_handler,
 )
-from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 
 def _residual_km(e, delta, w):

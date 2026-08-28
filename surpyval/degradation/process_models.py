@@ -26,6 +26,7 @@ from scipy.integrate import quad
 from scipy.optimize import brentq, minimize_scalar
 from scipy.special import gammaincc, gammaln
 from scipy.stats import norm
+
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 
 __all__ = [

@@ -12,6 +12,7 @@ import textwrap
 import numpy as np
 
 import surpyval as surv
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 from surpyval.univariate.competing_risks.aalen_johansen import (
     aalen_johansen_iif,
 )
@@ -24,7 +25,6 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 
 class CompetingRisks(SerialisableMixin):

@@ -166,6 +166,47 @@ def log_transformed_cb(
     return cb if bound == "two-sided" else cb[..., 0]
 
 
+def wald_bound_on_support(
+    p_hat: float,
+    var: float,
+    lower: "float | None",
+    upper: "float | None",
+    alpha_ci: float = 0.05,
+    bound: str = "two-sided",
+) -> npt.NDArray:
+    """
+    Wald confidence bound(s) on a single fitted parameter, computed on a
+    transformed scale chosen from its support so the result respects it:
+    a generalised logit for an interval-bounded parameter (e.g. a repair
+    efficiency in ``(0, 1)``), log distance from the bound for a
+    one-sided-bounded parameter (e.g. a positive rate), and the natural
+    scale for an unbounded one.
+
+    This is the core both ``param_cb`` implementations -- the
+    recurrent-event inference mixin's and the parametric regression
+    model's -- shared verbatim; each supplies ``p_hat``/``var`` and the
+    parameter's ``(lower, upper)`` from its own bookkeeping.
+    """
+    alpha, signs = bound_signs(alpha_ci, bound)
+    offsets = signs * norm.ppf(1.0 - alpha) * np.sqrt(var)
+
+    if lower is not None and upper is not None:
+        # Bounds on the generalised logit keep the result in (lower,
+        # upper).
+        width = upper - lower
+        frac = (p_hat - lower) / width
+        u_hat = np.log(frac / (1.0 - frac))
+        du = offsets / (width * frac * (1.0 - frac))
+        return lower + width / (1.0 + np.exp(-(u_hat + du)))
+    elif lower is not None:
+        # Bounds on log(p - lower) keep the result above ``lower``.
+        return lower + (p_hat - lower) * np.exp(offsets / (p_hat - lower))
+    elif upper is not None:
+        # Bounds on log(upper - p) keep the result below ``upper``.
+        return upper - (upper - p_hat) * np.exp(-offsets / (upper - p_hat))
+    return p_hat + offsets
+
+
 # -- eigenvalue surgery on symmetric matrices ------------------------------
 #
 # Three operations of one family: symmetrise, eigendecompose, repair the

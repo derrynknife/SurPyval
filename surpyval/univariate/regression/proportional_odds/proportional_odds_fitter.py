@@ -1,14 +1,13 @@
 import autograd.numpy as np
 import numpy.typing as npt
 
-
-from .._likelihood import regression_neg_ll
 from .._fit_skeleton import (
     LogLinearPhi,
     assemble_regression_model,
     optimise_nm_tnc,
     prepare_regression_fit,
 )
+from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 

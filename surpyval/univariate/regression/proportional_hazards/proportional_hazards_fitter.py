@@ -3,6 +3,7 @@ from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
+
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     assemble_regression_model,
@@ -69,20 +70,6 @@ class ProportionalHazardsFitter(
         phi_params = np.array(params[self.k_dist :])
         hf_raw = self.hf_dist(x, *dist_params)
         return self.phi(Z, *phi_params) * hf_raw
-
-    def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
-        out = []
-        for low, high in self.bounds:
-            if (low is None) and (high is None):
-                out.append(0)
-            elif high is None:
-                out.append(low + 1.0)
-            elif low is None:
-                out.append(high - 1.0)
-            else:
-                out.append((high + low) / 2.0)
-
-        return out
 
     def mpp_inv_y_transform(self, y, *params):
         return y

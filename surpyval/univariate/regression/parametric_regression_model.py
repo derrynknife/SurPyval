@@ -4,15 +4,14 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
-from scipy.stats import norm
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.utils.linalg import (
-    bound_signs,
     delta_method_se,
     log_transformed_cb,
     numerical_hessian,
+    wald_bound_on_support,
 )
 
 from ._bounds import logit_sf_bound
@@ -1008,21 +1007,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         n_phi = len(names) - self.k_dist
         all_bounds = dist_bounds + [(None, None)] * n_phi
         lower, upper = all_bounds[idx]
-
-        alpha, signs = bound_signs(alpha_ci, bound)
-        offsets = signs * norm.ppf(1.0 - alpha) * np.sqrt(var)
-
-        if lower is not None and upper is not None:
-            width = upper - lower
-            frac = (p_hat - lower) / width
-            u_hat = np.log(frac / (1.0 - frac))
-            du = offsets / (width * frac * (1.0 - frac))
-            return lower + width / (1.0 + np.exp(-(u_hat + du)))
-        elif lower is not None:
-            return lower + (p_hat - lower) * np.exp(offsets / (p_hat - lower))
-        elif upper is not None:
-            return upper - (upper - p_hat) * np.exp(-offsets / (upper - p_hat))
-        return p_hat + offsets
+        return wald_bound_on_support(p_hat, var, lower, upper, alpha_ci, bound)
 
     def cb(
         self,

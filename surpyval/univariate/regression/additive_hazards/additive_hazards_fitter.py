@@ -34,14 +34,13 @@ import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
 
-
-from .._likelihood import regression_neg_ll
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
     assemble_regression_model,
     prepare_regression_fit,
 )
+from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from ..tvc_fit import TVCFitMixin
