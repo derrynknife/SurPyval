@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.optimize import brentq, minimize
+from scipy.optimize import brentq
 
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
@@ -283,25 +283,20 @@ class ARI(RenewalFitMixin):
         reject_gapped_observation(data, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, m)
-        transform, inv_trans = self._bounds_transform(
-            data.x, [(0, 1), *dist.bounds], ["rho", *dist.param_names]
+        base_params0 = (
+            self._initial_baseline_params(data, dist) if init is None else None
         )
-
-        def fit_once(x0):
-            return minimize(
-                lambda p: neg_ll(inv_trans(p)),
-                transform(np.asarray(x0, dtype=float)),
-                method="Nelder-Mead",
-            )
-
-        if init is None:
-            base_params = self._initial_baseline_params(data, dist)
-            inits = [[rho_init, *base_params] for rho_init in (0.1, 0.5, 0.9)]
-        else:
-            inits = None
-        res = self._multistart(fit_once, inits, init)
-
-        rho, *dist_params = inv_trans(res.x)
+        res, params = self._fit_restoration_ml(
+            data,
+            neg_ll,
+            (0, 1),
+            "rho",
+            dist,
+            (0.1, 0.5, 0.9),
+            base_params0,
+            init,
+        )
+        rho, *dist_params = params
         out = self._make_model(dist, dist_params, rho, m)
         # Only the observed failures (c == 0) contribute an intensity term, so
         # they are the events that enter the BIC sample size.

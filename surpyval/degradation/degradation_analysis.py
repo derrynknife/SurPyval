@@ -758,6 +758,16 @@ class DegradationModel(SerialisableMixin):
             )
         return x, y
 
+    def _life_fn(self, name: str, x: npt.ArrayLike, Z) -> npt.NDArray:
+        # One dispatcher for the five distribution functions: the
+        # accelerated model evaluates its regression at stress ``Z``, the
+        # plain model evaluates its fitted life distribution. The named
+        # methods below each carried this body verbatim.
+        Z = self._predict_Z(Z)
+        if self.is_accelerated:
+            return getattr(self._reg, name)(x, Z)
+        return getattr(self.life_model, name)(x)
+
     def sf(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
         """
         Survival function of the fitted life model.
@@ -765,38 +775,23 @@ class DegradationModel(SerialisableMixin):
         For an accelerated-degradation model (fitted with covariates) the
         stress vector ``Z`` at which to evaluate life is required.
         """
-        Z = self._predict_Z(Z)
-        if self.is_accelerated:
-            return self._reg.sf(x, Z)
-        return self.life_model.sf(x)
+        return self._life_fn("sf", x, Z)
 
     def ff(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
         """CDF of the fitted life model (pass ``Z`` for accelerated models)."""
-        Z = self._predict_Z(Z)
-        if self.is_accelerated:
-            return self._reg.ff(x, Z)
-        return self.life_model.ff(x)
+        return self._life_fn("ff", x, Z)
 
     def df(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
         """Density of the fitted life model (``Z`` for accelerated models)."""
-        Z = self._predict_Z(Z)
-        if self.is_accelerated:
-            return self._reg.df(x, Z)
-        return self.life_model.df(x)
+        return self._life_fn("df", x, Z)
 
     def hf(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
         """Hazard rate of the fitted life model (``Z`` for accelerated)."""
-        Z = self._predict_Z(Z)
-        if self.is_accelerated:
-            return self._reg.hf(x, Z)
-        return self.life_model.hf(x)
+        return self._life_fn("hf", x, Z)
 
     def Hf(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
         """Cumulative hazard of the life model (``Z`` for accelerated)."""
-        Z = self._predict_Z(Z)
-        if self.is_accelerated:
-            return self._reg.Hf(x, Z)
-        return self.life_model.Hf(x)
+        return self._life_fn("Hf", x, Z)
 
     def qf(self, p: npt.ArrayLike, Z=None) -> npt.NDArray:
         """

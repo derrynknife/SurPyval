@@ -5,6 +5,7 @@ from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
     assemble_regression_model,
+    mirror_distribution,
     optimise_nm_tnc,
     prepare_regression_fit,
 )
@@ -44,12 +45,7 @@ class AFTFitter(
     """
 
     def __init__(self, distribution):
-        self.dist = distribution
-        self.k_dist = len(distribution.param_names)
-        self.bounds = distribution.bounds
-        self.support = distribution.support
-        self.param_names = distribution.param_names
-        self.param_map = {v: i for i, v in enumerate(distribution.param_names)}
+        mirror_distribution(self, distribution)
         self._phi_model = _LogLinearPhiModel()
         self.Hf_dist = distribution.Hf
         self.hf_dist = distribution.hf

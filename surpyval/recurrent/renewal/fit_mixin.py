@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import bounds_convert
 
@@ -85,6 +86,50 @@ class RenewalFitMixin:
                 "converge. Try a different initial guess."
             )
         return res
+
+    def _fit_restoration_ml(
+        self,
+        data,
+        neg_ll,
+        restoration_bounds,
+        restoration_name,
+        dist,
+        restoration_inits,
+        dist_init_params,
+        init,
+    ):
+        """
+        The transform-space fitting spine shared by ``ARA``, ``ARI`` and
+        ``GeneralizedRenewal``: multi-start Nelder-Mead on the negative
+        log-likelihood over ``[restoration, *dist params]``, run in the
+        unconstrained (bounded-to-unbounded) transform space. Each family
+        supplies its restoration parameter's name, bounds and start grid,
+        and the initial distribution parameters (``None`` when a user
+        ``init`` is given). Returns ``(res, natural_params)``.
+
+        ``GeneralizedOneRenewal`` does not use this: its likelihood only
+        needs ``q > -1``, so it optimises directly under box bounds
+        rather than in a transform space.
+        """
+        transform, inv_trans = self._bounds_transform(
+            data.x,
+            [restoration_bounds, *dist.bounds],
+            [restoration_name, *dist.param_names],
+        )
+
+        def fit_once(x0):
+            return minimize(
+                lambda p: neg_ll(inv_trans(p)),
+                transform(np.asarray(x0, dtype=float)),
+                method="Nelder-Mead",
+            )
+
+        if init is None:
+            inits = [[r0, *dist_init_params] for r0 in restoration_inits]
+        else:
+            inits = None
+        res = self._multistart(fit_once, inits, init)
+        return res, inv_trans(res.x)
 
     def _attach_inference(self, model, neg_ll, mle, n_obs, res, data):
         """

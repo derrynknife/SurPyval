@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.optimize import minimize
 
 from surpyval import Weibull
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
@@ -205,25 +204,20 @@ class ARA(RenewalFitMixin):
         reject_gapped_observation(data, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, m)
-        transform, inv_trans = self._bounds_transform(
-            data.x, [(0, 1), *dist.bounds], ["rho", *dist.param_names]
+        dist_params0 = (
+            self._initial_dist_params(data, dist) if init is None else None
         )
-
-        def fit_once(x0):
-            return minimize(
-                lambda p: neg_ll(inv_trans(p)),
-                transform(np.asarray(x0, dtype=float)),
-                method="Nelder-Mead",
-            )
-
-        if init is None:
-            dist_params = self._initial_dist_params(data, dist)
-            inits = [[rho_init, *dist_params] for rho_init in (0.1, 0.5, 0.9)]
-        else:
-            inits = None
-        res = self._multistart(fit_once, inits, init)
-
-        rho, *dist_params = inv_trans(res.x)
+        res, params = self._fit_restoration_ml(
+            data,
+            neg_ll,
+            (0, 1),
+            "rho",
+            dist,
+            (0.1, 0.5, 0.9),
+            dist_params0,
+            init,
+        )
+        rho, *dist_params = params
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, rho, m)
         self._attach_inference(

@@ -4,6 +4,53 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **The structural duplicates: shared bases extracted where whole class
+  bodies were copied.** The body-level sweep's deeper findings, where
+  the fix is a base class or driver rather than a moved function.
+
+  ``WienerProcessModel`` and ``GammaProcessModel`` now share
+  ``FirstPassageProcessModel``: both reduce their failure-time
+  distribution to one hook -- the probability the process has crossed a
+  distance by time ``t`` -- and everything expressible in terms of that
+  CDF (``ff``/``sf``, the hazard identities, the bracket-and-``brentq``
+  quantile, ``predict_rul``, serialisation) had been written out twice,
+  verbatim. The density, mean, sampling and repr stay per class: those
+  genuinely differ.
+
+  ``ARA``, ``ARI`` and ``GeneralizedRenewal`` shared their entire
+  fitting spine -- multi-start Nelder-Mead over ``[restoration, *dist
+  params]`` in the unconstrained transform space -- as three copies that
+  the near-match pass scored at 0.84-0.94 similarity: already drifting.
+  It is now ``RenewalFitMixin._fit_restoration_ml``; each family
+  supplies its restoration parameter's name, bounds and start grid.
+  ``GeneralizedOneRenewal`` keeps its own optimiser call deliberately:
+  its likelihood needs only ``q > -1``, so it runs under box bounds
+  rather than a transform.
+
+  Two five-way wrapper stacks collapsed to dispatchers:
+  ``ParametricRegressionModel``'s ``sf``/``ff``/``df``/``hf``/``Hf``
+  carried the same coerce-resolve-evaluate body five times (now
+  ``_eval``), and ``DegradationModel``'s five carried the same
+  accelerated-or-plain dispatch (now ``_life_fn``). The named methods
+  and their docstrings remain. The four regression fitters' ``__init__``
+  blocks mirrored the same six distribution attributes verbatim; that is
+  now ``_fit_skeleton.mirror_distribution``.
+
+  Investigated and left where they are: ``hpp.fit`` and the NHPP
+  fitter's ``fit`` (identical one-call wrappers over genuinely different
+  fitting routines), the forest and tree prediction methods (already
+  two-line delegations to each class's dispatcher -- the end state, not
+  duplication), and the renewal ``fit``/``_refit`` wrappers (two-line
+  delegations whose docstrings carry the per-family defaults).
+
+  Behaviour was checked rather than assumed: 82 fingerprints -- the 47
+  from the previous sweeps plus both process models' full surface
+  (fit, all distribution functions, quantiles, RUL, seeded sampling and
+  a serialisation round trip), all four renewal fits, and the regression
+  and degradation models' five prediction functions -- are bit-identical
+  before and after, with the baseline verified to import the pre-change
+  code.
+
 - **A second duplication sweep, this time by function body.** The first
   sweep matched helper names; this one normalised every function and
   method in the package at the AST level -- identifiers abstracted,

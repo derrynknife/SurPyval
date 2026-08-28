@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.optimize import minimize
 
 from surpyval import Weibull
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
@@ -269,26 +268,21 @@ class GeneralizedRenewal(RenewalFitMixin):
         reject_gapped_observation(data, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, kijima=kijima)
-        transform, inv_trans = self._bounds_transform(
-            data.x, [(0, None), *dist.bounds], ["q", *dist.param_names]
-        )
-
         # result is (very!!) sensitive to the initial value of q
-        def fit_once(x0):
-            return minimize(
-                lambda p: neg_ll(inv_trans(p)),
-                transform(np.asarray(x0, dtype=float)),
-                method="Nelder-Mead",
-            )
-
-        if init is None:
-            dist_params = self._initial_dist_params(data, dist)
-            inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
-        else:
-            inits = None
-        res = self._multistart(fit_once, inits, init)
-
-        q, *dist_params = inv_trans(res.x)
+        dist_params0 = (
+            self._initial_dist_params(data, dist) if init is None else None
+        )
+        res, params = self._fit_restoration_ml(
+            data,
+            neg_ll,
+            (0, None),
+            "q",
+            dist,
+            (0.0001, 1.0, 2.0),
+            dist_params0,
+            init,
+        )
+        q, *dist_params = params
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, q, kijima)
         self._attach_inference(

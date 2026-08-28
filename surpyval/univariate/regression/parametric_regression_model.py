@@ -417,6 +417,21 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
         return self.reg_model.phi(Z, *self.phi_params)
 
+    def _eval(
+        self,
+        fn: Any,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+    ) -> npt.NDArray:
+        # The shared body of the five distribution functions below: coerce
+        # ``x``, resolve DataFrame covariates against the fit-time design,
+        # and evaluate the family's function at the fitted parameters. Each
+        # named method carried this verbatim.
+        if isinstance(x, list):
+            x = np.array(x)
+        Z = self._prepare_Z(Z)
+        return fn(x, Z, *self.params)
+
     def sf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
@@ -452,10 +467,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.sf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.9812, 0.9382, 0.7429])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.sf(x, Z, *self.params)
+        return self._eval(self.model.sf, x, Z)
 
     # Families whose survival along a step-valued covariate path has an exact
     # closed form. Proportional and additive hazards accumulate a *cumulative
@@ -693,10 +705,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.ff([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0188, 0.0618, 0.2571])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.ff(x, Z, *self.params)
+        return self._eval(self.model.ff, x, Z)
 
     def df(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -734,10 +743,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.df([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0326, 0.0524, 0.1289])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.df(x, Z, *self.params)
+        return self._eval(self.model.df, x, Z)
 
     def hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -776,10 +782,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0332, 0.0559, 0.1735])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.hf(x, Z, *self.params)
+        return self._eval(self.model.hf, x, Z)
 
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -819,10 +822,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.Hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0189, 0.0638, 0.2972])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.Hf(x, Z, *self.params)
+        return self._eval(self.model.Hf, x, Z)
 
     def random(
         self, size: int, Z: "npt.ArrayLike | pd.DataFrame"

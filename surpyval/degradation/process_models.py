@@ -116,11 +116,146 @@ class ProcessRUL:
 
 
 # --------------------------------------------------------------------------
+# Shared first-passage machinery
+# --------------------------------------------------------------------------
+
+
+class FirstPassageProcessModel(SerialisableMixin):
+    """
+    The machinery shared by the fitted process models.
+
+    Both models reduce their failure-time distribution to one hook,
+    ``_ff_distance(t, distance)`` -- the probability the process has
+    crossed ``distance`` by time ``t``. Everything expressible in terms
+    of that CDF lives here once: ``ff``/``sf``, the hazard identities,
+    the bracket-and-``brentq`` quantile (each subclass supplies only its
+    starting bracket via ``_quantile_hi0``), ``predict_rul`` (independent
+    increments make the remaining passage over the residual distance a
+    fresh copy of the same law), and the ``to_dict``/``from_dict`` pair,
+    driven by ``param_names``. The density, the mean, sampling and the
+    repr stay on the subclasses: those genuinely differ (closed form
+    against numeric derivative, closed form against quadrature, Wald
+    sampling against inverse-CDF).
+
+    ``WienerProcessModel`` and ``GammaProcessModel`` carried all of this
+    verbatim twice -- ``predict_rul``, ``qf`` and the wrappers were the
+    largest within-file duplicates in the package.
+    """
+
+    # Subclasses set these classattrs for serialisation and messages.
+    _model_tag: str
+    _human_name: str
+
+    param_names: list
+    threshold: float
+
+    def __init__(self, *params_then_threshold):
+        # Subclasses define their own named-parameter __init__; this
+        # signature exists so ``from_dict`` type-checks against the base.
+        raise NotImplementedError
+
+    def _ff_distance(self, t, distance):
+        raise NotImplementedError
+
+    def _quantile_hi0(self, distance):
+        """Starting upper bracket for the quantile search."""
+        raise NotImplementedError
+
+    def to_dict(self) -> dict:
+        """Serialise this fitted process model to a plain dict."""
+        out: dict = {"model": self._model_tag}
+        for name in self.param_names:
+            out[name] = getattr(self, name)
+        out["threshold"] = self.threshold
+        return stamp_schema(out)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "FirstPassageProcessModel":
+        """Rebuild a fitted process model from a :meth:`to_dict` dict."""
+        if model_dict.get("model") != cls._model_tag:
+            raise ValueError(
+                "Must create a {} model from a {} dict".format(
+                    cls._human_name, cls._model_tag
+                )
+            )
+        return cls(
+            *(model_dict[name] for name in cls.param_names),
+            model_dict["threshold"],
+        )
+
+    def ff(self, t):
+        """Failure (CDF) of the first-passage time to the threshold."""
+        scalar = np.isscalar(t)
+        res = self._ff_distance(np.atleast_1d(t), self.threshold)
+        return float(res[0]) if scalar else res
+
+    def sf(self, t):
+        """Survival function of the first-passage time."""
+        scalar = np.isscalar(t)
+        res = 1.0 - self._ff_distance(np.atleast_1d(t), self.threshold)
+        return float(res[0]) if scalar else res
+
+    def hf(self, t):
+        """Hazard function of the first-passage time."""
+        return self.df(t) / self.sf(t)
+
+    def Hf(self, t):
+        """Cumulative hazard of the first-passage time."""
+        return -np.log(self.sf(t))
+
+    def qf(self, p):
+        """Quantile (inverse CDF) of the first-passage time."""
+        p = np.atleast_1d(np.asarray(p, dtype=float))
+        out = np.array([self._quantile(pi, self.threshold) for pi in p])
+        return float(out[0]) if out.shape == (1,) else out
+
+    def _quantile(self, p, distance):
+        if not (0.0 < p < 1.0):
+            return 0.0 if p <= 0.0 else np.inf
+        # bracket from the subclass's starting scale and expand until it
+        # contains the quantile
+        hi = self._quantile_hi0(distance)
+        while self._ff_distance(np.array([hi]), distance)[0] < p:
+            hi *= 2.0
+            if hi > 1e12:
+                return np.inf
+        return brentq(
+            lambda t: self._ff_distance(np.array([t]), distance)[0] - p,
+            1e-12,
+            hi,
+        )
+
+    def predict_rul(self, current_degradation, alpha_ci=0.05):
+        """
+        Remaining useful life given the current degradation level.
+
+        Increments are independent for both processes, so the remaining
+        first passage over the residual distance ``threshold -
+        current_degradation`` follows the same law as a fresh process;
+        its median and equal-tailed interval are returned.
+
+        Parameters
+        ----------
+        current_degradation : float
+            The unit's current degradation level.
+        alpha_ci : float, optional
+            Tail probability of the returned interval. Default ``0.05``.
+        """
+        distance = self.threshold - float(current_degradation)
+        if distance <= 0:
+            return ProcessRUL(0.0, (0.0, 0.0), 1.0, alpha_ci)
+        med = self._quantile(0.5, distance)
+        lo = self._quantile(alpha_ci / 2.0, distance)
+        hi = self._quantile(1.0 - alpha_ci / 2.0, distance)
+        return ProcessRUL(med, (lo, hi), 0.0, alpha_ci)
+
+
+# --------------------------------------------------------------------------
 # Wiener process
 # --------------------------------------------------------------------------
 
 
-class WienerProcessModel(SerialisableMixin):
+class WienerProcessModel(FirstPassageProcessModel):
     """
     A fitted Wiener-process degradation model, ``W(t) = mu*t + sigma*B(t)``.
 
@@ -140,35 +275,15 @@ class WienerProcessModel(SerialisableMixin):
         The degradation level defining failure.
     """
 
+    _model_tag = "WienerProcessModel"
+    _human_name = "Wiener-process"
+    param_names = ["mu", "sigma"]
+
     def __init__(self, mu, sigma, threshold):
         self.mu = float(mu)
         self.sigma = float(sigma)
         self.threshold = float(threshold)
         self.params = np.array([self.mu, self.sigma])
-        self.param_names = ["mu", "sigma"]
-
-    def to_dict(self) -> dict:
-        """Serialise this fitted Wiener-process model to a plain dict."""
-        return stamp_schema(
-            {
-                "model": "WienerProcessModel",
-                "mu": self.mu,
-                "sigma": self.sigma,
-                "threshold": self.threshold,
-            }
-        )
-
-    @classmethod
-    def from_dict(cls, model_dict: dict) -> "WienerProcessModel":
-        """Rebuild a Wiener-process model from a :meth:`to_dict` dict."""
-        if model_dict.get("model") != "WienerProcessModel":
-            raise ValueError(
-                "Must create a Wiener-process model from a WienerProcessModel "
-                "dict"
-            )
-        return cls(
-            model_dict["mu"], model_dict["sigma"], model_dict["threshold"]
-        )
 
     def _ig(self, distance):
         # Inverse-Gaussian (mean nu, shape lam) parameters for first passage
@@ -177,7 +292,8 @@ class WienerProcessModel(SerialisableMixin):
         lam = distance**2 / self.sigma**2
         return nu, lam
 
-    def _ig_cdf(self, t, distance):
+    def _ff_distance(self, t, distance):
+        # Inverse-Gaussian first-passage CDF over ``distance``.
         t = np.asarray(t, dtype=float)
         nu, lam = self._ig(distance)
         out = np.zeros_like(t, dtype=float)
@@ -189,17 +305,6 @@ class WienerProcessModel(SerialisableMixin):
         ) * norm.cdf(-root * (tp / nu + 1.0))
         out[pos] = cdf
         return out
-
-    def ff(self, t):
-        """Failure (CDF) of the first-passage time to the threshold."""
-        scalar = np.isscalar(t)
-        res = self._ig_cdf(np.atleast_1d(t), self.threshold)
-        return float(res[0]) if scalar else res
-
-    def sf(self, t):
-        """Survival function of the first-passage time."""
-        res = 1.0 - self.ff(np.atleast_1d(t))
-        return float(res[0]) if np.isscalar(t) else res
 
     def df(self, t):
         """Density of the first-passage (Inverse-Gaussian) time."""
@@ -214,70 +319,19 @@ class WienerProcessModel(SerialisableMixin):
         )
         return float(out[0]) if scalar else out
 
-    def hf(self, t):
-        """Hazard function of the first-passage time."""
-        return self.df(t) / self.sf(t)
-
-    def Hf(self, t):
-        """Cumulative hazard of the first-passage time."""
-        return -np.log(self.sf(t))
-
     def mean(self):
         """Mean time to failure (``threshold / mu``)."""
         return self.threshold / self.mu
 
-    def qf(self, p):
-        """Quantile (inverse CDF) of the first-passage time."""
-        p = np.atleast_1d(np.asarray(p, dtype=float))
-        out = np.array([self._quantile(pi, self.threshold) for pi in p])
-        return float(out[0]) if out.shape == (1,) else out
-
-    def _quantile(self, p, distance):
-        if not (0.0 < p < 1.0):
-            if p <= 0.0:
-                return 0.0
-            return np.inf
-        nu = distance / self.mu
-        # bracket around the mean and expand until it contains the quantile
-        hi = nu
-        while self._ig_cdf(np.array([hi]), distance)[0] < p:
-            hi *= 2.0
-            if hi > 1e12:
-                return np.inf
-        return brentq(
-            lambda t: self._ig_cdf(np.array([t]), distance)[0] - p,
-            1e-12,
-            hi,
-        )
+    def _quantile_hi0(self, distance):
+        # bracket around the first-passage mean
+        return distance / self.mu
 
     def random(self, size, random_state=None):
         """Draw first-passage (failure) times from the fitted model."""
         rng = np.random.default_rng(random_state)
         nu, lam = self._ig(self.threshold)
         return rng.wald(nu, lam, size=size)
-
-    def predict_rul(self, current_degradation, alpha_ci=0.05):
-        """
-        Remaining useful life given the current degradation level.
-
-        Because Wiener increments are independent, the remaining first passage
-        over the residual distance ``threshold - current_degradation`` is again
-        Inverse-Gaussian; its median and interval are returned.
-
-        Parameters
-        ----------
-        current_degradation : float
-            The unit's current degradation level.
-        alpha_ci : float, optional
-            Tail probability of the returned interval. Default ``0.05``.
-        """
-        distance = self.threshold - float(current_degradation)
-        if distance <= 0:
-            return ProcessRUL(0.0, (0.0, 0.0), 1.0, alpha_ci)
-        med = self._quantile(0.5, distance)
-        lo = self._quantile(alpha_ci / 2.0, distance)
-        hi = self._quantile(1.0 - alpha_ci / 2.0, distance)
-        return ProcessRUL(med, (lo, hi), 0.0, alpha_ci)
 
     def __repr__(self):
         return (
@@ -337,7 +391,7 @@ class WienerProcess:
 # --------------------------------------------------------------------------
 
 
-class GammaProcessModel(SerialisableMixin):
+class GammaProcessModel(FirstPassageProcessModel):
     """
     A fitted Gamma-process degradation model with stationary independent
     increments: over an interval ``dt`` the degradation increment is
@@ -358,35 +412,15 @@ class GammaProcessModel(SerialisableMixin):
         The degradation level defining failure.
     """
 
+    _model_tag = "GammaProcessModel"
+    _human_name = "gamma-process"
+    param_names = ["alpha", "beta"]
+
     def __init__(self, alpha, beta, threshold):
         self.alpha = float(alpha)
         self.beta = float(beta)
         self.threshold = float(threshold)
         self.params = np.array([self.alpha, self.beta])
-        self.param_names = ["alpha", "beta"]
-
-    def to_dict(self) -> dict:
-        """Serialise this fitted gamma-process model to a plain dict."""
-        return stamp_schema(
-            {
-                "model": "GammaProcessModel",
-                "alpha": self.alpha,
-                "beta": self.beta,
-                "threshold": self.threshold,
-            }
-        )
-
-    @classmethod
-    def from_dict(cls, model_dict: dict) -> "GammaProcessModel":
-        """Rebuild a gamma-process model from a :meth:`to_dict` dict."""
-        if model_dict.get("model") != "GammaProcessModel":
-            raise ValueError(
-                "Must create a gamma-process model from a GammaProcessModel "
-                "dict"
-            )
-        return cls(
-            model_dict["alpha"], model_dict["beta"], model_dict["threshold"]
-        )
 
     def _ff_distance(self, t, distance):
         # P(T <= t) = P(W(t) >= distance) with W(t) ~ Gamma(alpha t, beta).
@@ -395,18 +429,6 @@ class GammaProcessModel(SerialisableMixin):
         pos = t > 0
         out[pos] = gammaincc(self.alpha * t[pos], self.beta * distance)
         return out
-
-    def ff(self, t):
-        """Failure (CDF) of the first-passage time to the threshold."""
-        scalar = np.isscalar(t)
-        res = self._ff_distance(np.atleast_1d(t), self.threshold)
-        return float(res[0]) if scalar else res
-
-    def sf(self, t):
-        """Survival function of the first-passage time."""
-        scalar = np.isscalar(t)
-        res = 1.0 - self._ff_distance(np.atleast_1d(t), self.threshold)
-        return float(res[0]) if scalar else res
 
     def df(self, t):
         """Density of the first-passage time (numeric derivative of ``ff``)."""
@@ -423,14 +445,6 @@ class GammaProcessModel(SerialisableMixin):
         out = np.clip(out, 0.0, None)
         return float(out[0]) if scalar else out
 
-    def hf(self, t):
-        """Hazard function of the first-passage time."""
-        return self.df(t) / self.sf(t)
-
-    def Hf(self, t):
-        """Cumulative hazard of the first-passage time."""
-        return -np.log(self.sf(t))
-
     def mean(self):
         """Mean time to failure, ``integral of the survival function``."""
         val, _ = quad(
@@ -446,48 +460,16 @@ class GammaProcessModel(SerialisableMixin):
             return 1.0
         return 1.0 - gammaincc(self.alpha * t, self.beta * distance)
 
-    def qf(self, p):
-        """Quantile (inverse CDF) of the first-passage time."""
-        p = np.atleast_1d(np.asarray(p, dtype=float))
-        out = np.array([self._quantile(pi, self.threshold) for pi in p])
-        return float(out[0]) if out.shape == (1,) else out
-
-    def _quantile(self, p, distance):
-        if not (0.0 < p < 1.0):
-            return 0.0 if p <= 0.0 else np.inf
+    def _quantile_hi0(self, distance):
         # rough starting scale from the mean increment rate
         rate = self.alpha / self.beta  # mean degradation per unit time
-        hi = max(distance / rate, 1.0)
-        while self._ff_distance(np.array([hi]), distance)[0] < p:
-            hi *= 2.0
-            if hi > 1e12:
-                return np.inf
-        return brentq(
-            lambda t: self._ff_distance(np.array([t]), distance)[0] - p,
-            1e-12,
-            hi,
-        )
+        return max(distance / rate, 1.0)
 
     def random(self, size, random_state=None):
         """Draw first-passage (failure) times via inverse-CDF sampling."""
         rng = np.random.default_rng(random_state)
         u = rng.uniform(size=size)
         return np.array([self._quantile(ui, self.threshold) for ui in u])
-
-    def predict_rul(self, current_degradation, alpha_ci=0.05):
-        """
-        Remaining useful life given the current degradation level. The
-        residual distance ``threshold - current_degradation`` is crossed by a
-        fresh gamma process, so its first-passage median and interval are
-        returned.
-        """
-        distance = self.threshold - float(current_degradation)
-        if distance <= 0:
-            return ProcessRUL(0.0, (0.0, 0.0), 1.0, alpha_ci)
-        med = self._quantile(0.5, distance)
-        lo = self._quantile(alpha_ci / 2.0, distance)
-        hi = self._quantile(1.0 - alpha_ci / 2.0, distance)
-        return ProcessRUL(med, (lo, hi), 0.0, alpha_ci)
 
     def __repr__(self):
         return (

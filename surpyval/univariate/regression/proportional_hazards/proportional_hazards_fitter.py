@@ -7,6 +7,7 @@ import numpy.typing as npt
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     assemble_regression_model,
+    mirror_distribution,
     optimise_ph,
     prepare_regression_fit,
 )
@@ -42,12 +43,7 @@ class ProportionalHazardsFitter(
             )
 
         self.name = name
-        self.dist = dist
-        self.k_dist = len(self.dist.param_names)
-        self.bounds = self.dist.bounds
-        self.support = self.dist.support
-        self.param_names = self.dist.param_names
-        self.param_map = {v: i for i, v in enumerate(self.dist.param_names)}
+        mirror_distribution(self, dist)
         self.phi = phi
         self.phi_name = phi_name
         self.Hf_dist = self.dist.Hf
