@@ -1,14 +1,12 @@
 import warnings
 
 import numpy as np
-from scipy.stats import norm
 
 # The finite-difference Hessian and the bound-sign helper live in
 # ``surpyval.utils.linalg`` -- shared with the parametric-regression
 # bounds machinery, which used to carry verbatim copies of them (the
 # drift-prone pattern that produced #288).
-from surpyval.utils.linalg import bound_signs as _bound_signs
-from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 
 
 class LikelihoodInferenceMixin:
@@ -160,22 +158,4 @@ class LikelihoodInferenceMixin:
         p_hat = float(self._mle[idx])
         var = float(self.covariance()[idx, idx])
         lower, upper = self._parameter_bounds()[idx]
-
-        alpha, signs = _bound_signs(alpha_ci, bound)
-        offsets = signs * norm.ppf(1.0 - alpha) * np.sqrt(var)
-
-        if lower is not None and upper is not None:
-            # Bounds on the generalised logit keep the result in (lower,
-            # upper).
-            width = upper - lower
-            frac = (p_hat - lower) / width
-            u_hat = np.log(frac / (1.0 - frac))
-            du = offsets / (width * frac * (1.0 - frac))
-            return lower + width / (1.0 + np.exp(-(u_hat + du)))
-        elif lower is not None:
-            # Bounds on log(p - lower) keep the result above ``lower``.
-            return lower + (p_hat - lower) * np.exp(offsets / (p_hat - lower))
-        elif upper is not None:
-            # Bounds on log(upper - p) keep the result below ``upper``.
-            return upper - (upper - p_hat) * np.exp(-offsets / (upper - p_hat))
-        return p_hat + offsets
+        return wald_bound_on_support(p_hat, var, lower, upper, alpha_ci, bound)

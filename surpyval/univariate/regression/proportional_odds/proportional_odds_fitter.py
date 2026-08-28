@@ -1,14 +1,14 @@
 import autograd.numpy as np
 import numpy.typing as npt
 
-
-from .._likelihood import regression_neg_ll
 from .._fit_skeleton import (
     LogLinearPhi,
     assemble_regression_model,
+    mirror_distribution,
     optimise_nm_tnc,
     prepare_regression_fit,
 )
+from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 
@@ -31,12 +31,7 @@ class ProportionalOddsFitter(DataFrameRegressionMixin):
     """
 
     def __init__(self, distribution):
-        self.dist = distribution
-        self.k_dist = len(distribution.param_names)
-        self.bounds = distribution.bounds
-        self.support = distribution.support
-        self.param_names = distribution.param_names
-        self.param_map = {v: i for i, v in enumerate(distribution.param_names)}
+        mirror_distribution(self, distribution)
         self.Hf_dist = distribution.Hf
         self.hf_dist = distribution.hf
         self.sf_dist = distribution.sf

@@ -15,11 +15,11 @@ See ``surpyval.univariate.competing_risks`` for the univariate
 from matplotlib import pyplot as plt
 
 from surpyval.recurrent.nonparametric.mcf import NonParametricCounting
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 
 def _counting_model_from_xrd(x, r, d):

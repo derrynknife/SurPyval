@@ -51,6 +51,24 @@ class LogLinearPhi:
         return {"beta_" + str(i): i for i in range(Z.shape[1])}
 
 
+def mirror_distribution(fitter: Any, distribution: Any) -> None:
+    """Copy a distribution's metadata onto a regression fitter.
+
+    Every parametric regression fitter starts by mirroring the same six
+    attributes of its underlying distribution -- ``dist``, ``k_dist``,
+    ``bounds``, ``support``, ``param_names`` and the name-to-index
+    ``param_map`` -- and each family's ``__init__`` carried the block
+    verbatim. The ``*_dist`` method aliases stay with each family: which
+    ones it needs depends on which identities it implements.
+    """
+    fitter.dist = distribution
+    fitter.k_dist = len(distribution.param_names)
+    fitter.bounds = distribution.bounds
+    fitter.support = distribution.support
+    fitter.param_names = distribution.param_names
+    fitter.param_map = {v: i for i, v in enumerate(distribution.param_names)}
+
+
 class HazardIdentitiesMixin:
     """The standard survival identities in terms of ``Hf``/``hf``.
 

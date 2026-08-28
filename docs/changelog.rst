@@ -4,6 +4,108 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **The structural duplicates: shared bases extracted where whole class
+  bodies were copied.** The body-level sweep's deeper findings, where
+  the fix is a base class or driver rather than a moved function.
+
+  ``WienerProcessModel`` and ``GammaProcessModel`` now share
+  ``FirstPassageProcessModel``: both reduce their failure-time
+  distribution to one hook -- the probability the process has crossed a
+  distance by time ``t`` -- and everything expressible in terms of that
+  CDF (``ff``/``sf``, the hazard identities, the bracket-and-``brentq``
+  quantile, ``predict_rul``, serialisation) had been written out twice,
+  verbatim. The density, mean, sampling and repr stay per class: those
+  genuinely differ.
+
+  ``ARA``, ``ARI`` and ``GeneralizedRenewal`` shared their entire
+  fitting spine -- multi-start Nelder-Mead over ``[restoration, *dist
+  params]`` in the unconstrained transform space -- as three copies that
+  the near-match pass scored at 0.84-0.94 similarity: already drifting.
+  It is now ``RenewalFitMixin._fit_restoration_ml``; each family
+  supplies its restoration parameter's name, bounds and start grid.
+  ``GeneralizedOneRenewal`` keeps its own optimiser call deliberately:
+  its likelihood needs only ``q > -1``, so it runs under box bounds
+  rather than a transform.
+
+  Two five-way wrapper stacks collapsed to dispatchers:
+  ``ParametricRegressionModel``'s ``sf``/``ff``/``df``/``hf``/``Hf``
+  carried the same coerce-resolve-evaluate body five times (now
+  ``_eval``), and ``DegradationModel``'s five carried the same
+  accelerated-or-plain dispatch (now ``_life_fn``). The named methods
+  and their docstrings remain. The four regression fitters' ``__init__``
+  blocks mirrored the same six distribution attributes verbatim; that is
+  now ``_fit_skeleton.mirror_distribution``.
+
+  Investigated and left where they are: ``hpp.fit`` and the NHPP
+  fitter's ``fit`` (identical one-call wrappers over genuinely different
+  fitting routines), the forest and tree prediction methods (already
+  two-line delegations to each class's dispatcher -- the end state, not
+  duplication), and the renewal ``fit``/``_refit`` wrappers (two-line
+  delegations whose docstrings carry the per-family defaults).
+
+  Behaviour was checked rather than assumed: 82 fingerprints -- the 47
+  from the previous sweeps plus both process models' full surface
+  (fit, all distribution functions, quantiles, RUL, seeded sampling and
+  a serialisation round trip), all four renewal fits, and the regression
+  and degradation models' five prediction functions -- are bit-identical
+  before and after, with the baseline verified to import the pre-change
+  code.
+
+- **A second duplication sweep, this time by function body.** The first
+  sweep matched helper names; this one normalised every function and
+  method in the package at the AST level -- identifiers abstracted,
+  docstrings stripped -- and compared the 1,483 non-trivial bodies for
+  exact and near matches. Three findings were acted on; the rest are
+  either deliberate parallels (the distribution API restates ``hf`` and
+  ``Hf`` per class, each with its own closed-form docstring) or
+  structural refactors queued with their areas (the renewal family's
+  triplicated fitting loop, the two process-model classes sharing
+  verbatim ``predict_rul``/``qf``/``ff``).
+
+  **The legacy AFT fitter was dead code, and two of its methods lived on
+  as orphans.** ``accelerated_failure_time/accelerated_failure_time.py``
+  -- the pre-skeleton ``AcceleratedFailureTimeFitter``, 220 lines --
+  was imported by nothing: the package ``__init__`` re-exports from
+  ``aft_fitter``, and no test touches it. It carried the only *live*
+  copy of ``_parameter_initialiser_dist``; the verbatim copies on the
+  proportional-hazards fitter and the accelerated-life
+  parameter-substitution fitter had no callers at all. All three are
+  deleted along with the module.
+
+  **The Bernoulli / FixedEventProbability split had copied its
+  estimation machinery wholesale.** The 0.19.1 split gave each class its
+  own verbatim ``fit``, ``from_params``, ``entropy`` and ``random`` --
+  the largest exact duplicate in the package. They now share
+  ``SingleProbabilityMixin`` (``distributions/_single_probability.py``,
+  ratcheted from birth): one probability in ``(0, 1)`` fitted from 0/1
+  data by a weighted mean is the same estimation problem for both
+  models, while everything distributional -- ``sf``, ``ff``, supports
+  and each model's own convention docstrings -- stays on the classes.
+  Consolidating also fixed a copy-paste artifact:
+  ``FixedEventProbability.from_params``'s docstring said "Create a
+  Bernoulli model".
+
+  **The support-respecting Wald transform existed twice.** The
+  four-branch core of ``param_cb`` -- generalised logit for an
+  interval-bounded parameter, log distance for one-sided, natural scale
+  otherwise -- was verbatim between the recurrent-event inference mixin
+  and the parametric regression model, each wrapped in its own parameter
+  lookup. It is now ``utils.linalg.wald_bound_on_support``; both
+  ``param_cb``\ s keep their lookup and delegate.
+
+  Two hash matches were investigated and deliberately left: ``sf_tvc``
+  and ``_prepare_Z`` are five-line and one-line wrappers over machinery
+  that is already shared (``Hf_tvc`` genuinely differs per family;
+  ``prepare_Z`` is common), and their docstrings carry per-family
+  content worth keeping.
+
+  Behaviour was checked rather than assumed: 47 fingerprints -- the 37
+  from the previous consolidation plus ``param_cb`` on both a bounded
+  distribution parameter and an unbounded coefficient, and the
+  Bernoulli / FixedEventProbability ``fit``/``from_params``/``entropy``
+  and seeded ``random`` -- are bit-identical against ``develop``, with
+  the baseline run verified to import the pre-change code.
+
 - **The duplicated numeric helpers are consolidated into two new utils
   modules.** A sweep of every module-level helper in the package found
   the same functions written repeatedly, three of them verbatim.

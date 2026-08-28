@@ -1,15 +1,15 @@
 import autograd.numpy as np
 import numpy.typing as npt
 
-
-from .._likelihood import regression_neg_ll
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
     assemble_regression_model,
+    mirror_distribution,
     optimise_nm_tnc,
     prepare_regression_fit,
 )
+from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from .aft_tvc_fit import AFTTVCFitMixin
@@ -45,12 +45,7 @@ class AFTFitter(
     """
 
     def __init__(self, distribution):
-        self.dist = distribution
-        self.k_dist = len(distribution.param_names)
-        self.bounds = distribution.bounds
-        self.support = distribution.support
-        self.param_names = distribution.param_names
-        self.param_map = {v: i for i, v in enumerate(distribution.param_names)}
+        mirror_distribution(self, distribution)
         self._phi_model = _LogLinearPhiModel()
         self.Hf_dist = distribution.Hf
         self.hf_dist = distribution.hf

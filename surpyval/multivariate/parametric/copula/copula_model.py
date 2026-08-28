@@ -104,6 +104,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
     @classmethod
     def from_dict(cls, model_dict):
         import surpyval
+
         from .archimedean import Clayton, Frank, Gumbel, Independence
         from .elliptical import Gaussian
 

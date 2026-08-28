@@ -30,18 +30,20 @@ proportional hazards model, whose exponential form keeps the hazard positive
 by construction, is the safer choice.
 """
 
+from typing import Any
+
 import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
 
-
-from .._likelihood import regression_neg_ll
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
     assemble_regression_model,
+    mirror_distribution,
     prepare_regression_fit,
 )
+from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from ..tvc_fit import TVCFitMixin
@@ -57,14 +59,18 @@ class _AdditiveReg:
 class AdditiveHazardsFitter(
     HazardIdentitiesMixin, TVCFitMixin, DataFrameRegressionMixin
 ):
+    # Set by ``mirror_distribution`` in ``__init__``; declared so the
+    # attributes are visible to the type checker.
+    dist: Any
+    k_dist: int
+    bounds: tuple
+    support: tuple
+    param_names: list
+    param_map: dict
+
     def __init__(self, name, dist):
         self.name = name
-        self.dist = dist
-        self.k_dist = len(dist.param_names)
-        self.bounds = dist.bounds
-        self.support = dist.support
-        self.param_names = dist.param_names
-        self.param_map = {v: i for i, v in enumerate(dist.param_names)}
+        mirror_distribution(self, dist)
         self.Hf_dist = dist.Hf
         self.hf_dist = dist.hf
 

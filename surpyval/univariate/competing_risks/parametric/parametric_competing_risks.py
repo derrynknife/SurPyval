@@ -27,6 +27,7 @@ H_j(u))`. The cause CIFs sum to the all-cause failure probability
 import numpy as np
 from scipy.integrate import cumulative_trapezoid
 
+from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
 from surpyval.utils import (
@@ -34,7 +35,6 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 
 def _validate(x, c, n, e):

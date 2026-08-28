@@ -26,8 +26,8 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.recurrent.serialisation import intensity_dist_by_name
-from surpyval.utils.recurrent_utils import handle_xicn
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.utils.recurrent_utils import handle_xicn
 
 
 class CauseSpecificNHPP(SerialisableMixin):

@@ -4,15 +4,14 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
-from scipy.stats import norm
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.utils.linalg import (
-    bound_signs,
     delta_method_se,
     log_transformed_cb,
     numerical_hessian,
+    wald_bound_on_support,
 )
 
 from ._bounds import logit_sf_bound
@@ -418,6 +417,21 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
         return self.reg_model.phi(Z, *self.phi_params)
 
+    def _eval(
+        self,
+        fn: Any,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+    ) -> npt.NDArray:
+        # The shared body of the five distribution functions below: coerce
+        # ``x``, resolve DataFrame covariates against the fit-time design,
+        # and evaluate the family's function at the fitted parameters. Each
+        # named method carried this verbatim.
+        if isinstance(x, list):
+            x = np.array(x)
+        Z = self._prepare_Z(Z)
+        return fn(x, Z, *self.params)
+
     def sf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
@@ -453,10 +467,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.sf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.9812, 0.9382, 0.7429])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.sf(x, Z, *self.params)
+        return self._eval(self.model.sf, x, Z)
 
     # Families whose survival along a step-valued covariate path has an exact
     # closed form. Proportional and additive hazards accumulate a *cumulative
@@ -694,10 +705,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.ff([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0188, 0.0618, 0.2571])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.ff(x, Z, *self.params)
+        return self._eval(self.model.ff, x, Z)
 
     def df(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -735,10 +743,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.df([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0326, 0.0524, 0.1289])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.df(x, Z, *self.params)
+        return self._eval(self.model.df, x, Z)
 
     def hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -777,10 +782,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0332, 0.0559, 0.1735])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.hf(x, Z, *self.params)
+        return self._eval(self.model.hf, x, Z)
 
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -820,10 +822,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.Hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0189, 0.0638, 0.2972])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.Hf(x, Z, *self.params)
+        return self._eval(self.model.Hf, x, Z)
 
     def random(
         self, size: int, Z: "npt.ArrayLike | pd.DataFrame"
@@ -1008,21 +1007,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         n_phi = len(names) - self.k_dist
         all_bounds = dist_bounds + [(None, None)] * n_phi
         lower, upper = all_bounds[idx]
-
-        alpha, signs = bound_signs(alpha_ci, bound)
-        offsets = signs * norm.ppf(1.0 - alpha) * np.sqrt(var)
-
-        if lower is not None and upper is not None:
-            width = upper - lower
-            frac = (p_hat - lower) / width
-            u_hat = np.log(frac / (1.0 - frac))
-            du = offsets / (width * frac * (1.0 - frac))
-            return lower + width / (1.0 + np.exp(-(u_hat + du)))
-        elif lower is not None:
-            return lower + (p_hat - lower) * np.exp(offsets / (p_hat - lower))
-        elif upper is not None:
-            return upper - (upper - p_hat) * np.exp(-offsets / (upper - p_hat))
-        return p_hat + offsets
+        return wald_bound_on_support(p_hat, var, lower, upper, alpha_ci, bound)
 
     def cb(
         self,
