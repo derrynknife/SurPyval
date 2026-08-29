@@ -376,24 +376,27 @@ class StepSchedule:
         the covariate beyond the final ``xr`` is held constant. Rows may be
         given in any order and are sorted by ``xl``.
         """
-        xl = np.atleast_1d(np.asarray(xl, dtype=float))
-        xr = np.atleast_1d(np.asarray(xr, dtype=float))
-        Z = np.asarray(Z, dtype=float)
-        if Z.ndim == 1:
-            Z = Z.reshape(-1, 1)
-        if not (xl.shape[0] == xr.shape[0] == Z.shape[0]):
+        # Fresh names after coercion: assigning back to the ArrayLike
+        # parameters keeps their declared union under some mypy releases,
+        # which then rejects the arithmetic below.
+        xl_a = np.atleast_1d(np.asarray(xl, dtype=float))
+        xr_a = np.atleast_1d(np.asarray(xr, dtype=float))
+        Z_a = np.asarray(Z, dtype=float)
+        if Z_a.ndim == 1:
+            Z_a = Z_a.reshape(-1, 1)
+        if not (xl_a.shape[0] == xr_a.shape[0] == Z_a.shape[0]):
             raise ValueError("xl, xr and Z must have the same number of rows")
-        order = np.argsort(xl)
-        xl, xr, Z = xl[order], xr[order], Z[order]
-        if np.any(xl >= xr):
+        order = np.argsort(xl_a)
+        xl_a, xr_a, Z_a = xl_a[order], xr_a[order], Z_a[order]
+        if np.any(xl_a >= xr_a):
             raise ValueError("every interval must have xl < xr")
-        if np.any(np.abs(xl[1:] - xr[:-1]) > 1e-9):
+        if np.any(np.abs(xl_a[1:] - xr_a[:-1]) > 1e-9):
             raise ValueError(
                 "intervals must be contiguous (each xr must equal the next "
                 "xl); a step schedule cannot have gaps or overlaps"
             )
-        edges = np.concatenate([xl, [xr[-1]]])
-        return cls(edges, Z)
+        edges = np.concatenate([xl_a, [xr_a[-1]]])
+        return cls(edges, Z_a)
 
     @classmethod
     def cyclic(
