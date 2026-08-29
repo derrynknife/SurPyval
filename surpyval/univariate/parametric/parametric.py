@@ -839,7 +839,7 @@ class Parametric(
         size: int | tuple[int, ...],
         a: float | None = None,
         b: float | None = None,
-    ) -> npt.NDArray:
+    ) -> "npt.NDArray | tuple":
         r"""
 
         A method to draw random samples from the distributions using the
@@ -858,9 +858,13 @@ class Parametric(
 
         Returns
         -------
-        random : numpy array
-            Returns a numpy array of size ``size`` with random values
-            drawn from the distribution.
+        random : numpy array, or tuple of numpy arrays
+            For a plain model, a numpy array of size ``size`` with random
+            values drawn from the distribution. A limited-failure-population
+            or zero-inflated model instead returns the draw as xcnt-format
+            ``(x, c, n, t)`` arrays, because some of its draws are
+            never-failing (right-censored) units that a bare array of
+            failure times cannot represent.
 
         Examples
         --------

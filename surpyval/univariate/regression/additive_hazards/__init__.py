@@ -1,3 +1,5 @@
+from typing import Any
+
 from surpyval.univariate.parametric import (
     Exponential,
     Gamma,
@@ -12,7 +14,7 @@ from .additive_hazards import AdditiveHazards, AdditiveHazardsModel
 from .additive_hazards_fitter import AdditiveHazardsFitter
 
 
-def AH(distribution):
+def AH(distribution: Any) -> AdditiveHazardsFitter:
     """
     Create a parametric Additive Hazards fitter for the given distribution.
 

@@ -28,7 +28,7 @@ import numpy.typing as npt
 from scipy.optimize import curve_fit
 
 
-def _ols(z, y):
+def _ols(z: npt.NDArray, y: npt.NDArray) -> tuple[float, float]:
     """Closed-form least squares fit of ``y = intercept + slope * z``."""
     A = np.column_stack([np.ones_like(z), z])
     (intercept, slope), *_ = np.linalg.lstsq(A, y, rcond=None)
@@ -96,7 +96,9 @@ class PathModel(ABC):
     def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         """Raise ``ValueError`` if the data is outside the model domain."""
 
-    def _initial_guess(self, x, y):
+    def _initial_guess(
+        self, x: npt.NDArray, y: npt.NDArray
+    ) -> "npt.ArrayLike | list":
         """One starting parameter vector, or a list of candidates."""
         raise NotImplementedError
 
@@ -127,7 +129,7 @@ class PathModel(ABC):
             )
         return best_params
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "{} Degradation Path Model".format(self.name)
 
 
@@ -138,21 +140,21 @@ class LinearPath_(PathModel):
     param_names = ["a", "b"]
     linear_in_parameters = True
 
-    def path(self, x, *params):
+    def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         return a + b * np.asarray(x, dtype=float)
 
-    def inv_path(self, y, *params):
+    def inv_path(self, y: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return (y - a) / b
 
-    def jacobian(self, x, *params):
+    def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         return np.column_stack([np.ones_like(x), x])
 
-    def fit(self, x, y):
+    def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
         self.check_data(x, y)
@@ -165,30 +167,32 @@ class ExponentialPath_(PathModel):
     name = "Exponential"
     param_names = ["a", "b"]
 
-    def path(self, x, *params):
+    def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         return a * np.exp(b * np.asarray(x, dtype=float))
 
-    def inv_path(self, y, *params):
+    def inv_path(self, y: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return np.log(y / a) / b
 
-    def jacobian(self, x, *params):
+    def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         x = np.asarray(x, dtype=float)
         e = np.exp(b * x)
         return np.column_stack([e, a * x * e])
 
-    def check_data(self, x, y):
+    def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         if (y <= 0).any():
             raise ValueError(
                 "The exponential path model requires strictly positive "
                 "degradation measurements"
             )
 
-    def _initial_guess(self, x, y):
+    def _initial_guess(
+        self, x: npt.NDArray, y: npt.NDArray
+    ) -> "npt.ArrayLike | list":
         intercept, slope = _ols(x, np.log(y))
         return np.exp(intercept), slope
 
@@ -199,24 +203,24 @@ class PowerPath_(PathModel):
     name = "Power"
     param_names = ["a", "b"]
 
-    def path(self, x, *params):
+    def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         with np.errstate(divide="ignore", invalid="ignore"):
             return a * np.power(np.asarray(x, dtype=float), b)
 
-    def inv_path(self, y, *params):
+    def inv_path(self, y: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return np.power(y / a, 1.0 / b)
 
-    def jacobian(self, x, *params):
+    def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         x = np.asarray(x, dtype=float)
         xb = np.power(x, b)
         return np.column_stack([xb, a * xb * np.log(x)])
 
-    def check_data(self, x, y):
+    def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         if (x <= 0).any():
             raise ValueError(
                 "The power path model requires strictly positive times"
@@ -227,7 +231,9 @@ class PowerPath_(PathModel):
                 "degradation measurements"
             )
 
-    def _initial_guess(self, x, y):
+    def _initial_guess(
+        self, x: npt.NDArray, y: npt.NDArray
+    ) -> "npt.ArrayLike | list":
         intercept, slope = _ols(np.log(x), np.log(y))
         return np.exp(intercept), slope
 
@@ -239,28 +245,28 @@ class LogarithmicPath_(PathModel):
     param_names = ["a", "b"]
     linear_in_parameters = True
 
-    def path(self, x, *params):
+    def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         with np.errstate(divide="ignore", invalid="ignore"):
             return a + b * np.log(np.asarray(x, dtype=float))
 
-    def inv_path(self, y, *params):
+    def inv_path(self, y: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             return np.exp((y - a) / b)
 
-    def jacobian(self, x, *params):
+    def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         return np.column_stack([np.ones_like(x), np.log(x)])
 
-    def check_data(self, x, y):
+    def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         if (x <= 0).any():
             raise ValueError(
                 "The logarithmic path model requires strictly positive times"
             )
 
-    def fit(self, x, y):
+    def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
         self.check_data(x, y)
@@ -274,28 +280,28 @@ class LloydLipowPath_(PathModel):
     param_names = ["a", "b"]
     linear_in_parameters = True
 
-    def path(self, x, *params):
+    def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         with np.errstate(divide="ignore", invalid="ignore"):
             return a - b / np.asarray(x, dtype=float)
 
-    def inv_path(self, y, *params):
+    def inv_path(self, y: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return b / (a - y)
 
-    def jacobian(self, x, *params):
+    def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         return np.column_stack([np.ones_like(x), -1.0 / x])
 
-    def check_data(self, x, y):
+    def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         if (x <= 0).any():
             raise ValueError(
                 "The Lloyd-Lipow path model requires strictly positive times"
             )
 
-    def fit(self, x, y):
+    def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
         self.check_data(x, y)
@@ -310,12 +316,12 @@ class QuadraticPath_(PathModel):
     param_names = ["a", "b", "c"]
     linear_in_parameters = True
 
-    def path(self, x, *params):
+    def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b, c = params
         x = np.asarray(x, dtype=float)
         return a + b * x + c * x**2
 
-    def inv_path(self, y, *params):
+    def inv_path(self, y: npt.ArrayLike, *params: float) -> npt.NDArray:
         """First positive time at which the parabola reaches ``y``."""
         a, b, c = params
         y = np.asarray(y, dtype=float)
@@ -337,11 +343,11 @@ class QuadraticPath_(PathModel):
             first = np.where(np.isfinite(first), first, np.nan)
             return np.where(c == 0, linear_root, first)
 
-    def jacobian(self, x, *params):
+    def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         return np.column_stack([np.ones_like(x), x, x**2])
 
-    def fit(self, x, y):
+    def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
         self.check_data(x, y)
@@ -359,19 +365,19 @@ class GompertzPath_(PathModel):
     name = "Gompertz"
     param_names = ["a", "b", "c"]
 
-    def path(self, x, *params):
+    def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b, c = params
         x = np.asarray(x, dtype=float)
         with np.errstate(over="ignore"):
             return a * np.exp(-b * np.exp(-c * x))
 
-    def inv_path(self, y, *params):
+    def inv_path(self, y: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b, c = params
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return -np.log(-np.log(y / a) / b) / c
 
-    def jacobian(self, x, *params):
+    def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b, c = params
         x = np.asarray(x, dtype=float)
         inner = np.exp(-c * x)
@@ -380,14 +386,16 @@ class GompertzPath_(PathModel):
             [outer, -a * inner * outer, a * b * x * inner * outer]
         )
 
-    def check_data(self, x, y):
+    def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         if (y <= 0).any():
             raise ValueError(
                 "The Gompertz path model requires strictly positive "
                 "degradation measurements"
             )
 
-    def _initial_guess(self, x, y):
+    def _initial_guess(
+        self, x: npt.NDArray, y: npt.NDArray
+    ) -> "npt.ArrayLike | list":
         # slightly above the largest measurement as the asymptote, then
         # -ln(y/a) decays exponentially: linearise on its logarithm
         a0 = 1.05 * y.max()
@@ -406,25 +414,27 @@ class OffsetExponentialPath_(PathModel):
     name = "Offset Exponential"
     param_names = ["a", "b", "c"]
 
-    def path(self, x, *params):
+    def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b, c = params
         x = np.asarray(x, dtype=float)
         with np.errstate(over="ignore"):
             return a + b * np.exp(c * x)
 
-    def inv_path(self, y, *params):
+    def inv_path(self, y: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b, c = params
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return np.log((y - a) / b) / c
 
-    def jacobian(self, x, *params):
+    def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b, c = params
         x = np.asarray(x, dtype=float)
         e = np.exp(c * x)
         return np.column_stack([np.ones_like(x), e, b * x * e])
 
-    def _initial_guess(self, x, y):
+    def _initial_guess(
+        self, x: npt.NDArray, y: npt.NDArray
+    ) -> "npt.ArrayLike | list":
         # for an offset outside the observed range, y - a0 has one
         # sign, so its magnitude linearises on a log scale; try an
         # offset on each side and keep the better fit
@@ -450,25 +460,25 @@ class MichaelisMentenPath_(PathModel):
     name = "Michaelis-Menten"
     param_names = ["a", "b"]
 
-    def path(self, x, *params):
+    def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         x = np.asarray(x, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return a * x / (b + x)
 
-    def inv_path(self, y, *params):
+    def inv_path(self, y: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         y = np.asarray(y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
             return b * y / (a - y)
 
-    def jacobian(self, x, *params):
+    def jacobian(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
         x = np.asarray(x, dtype=float)
         denominator = b + x
         return np.column_stack([x / denominator, -a * x / denominator**2])
 
-    def check_data(self, x, y):
+    def check_data(self, x: npt.NDArray, y: npt.NDArray) -> None:
         if (x <= 0).any():
             raise ValueError(
                 "The Michaelis-Menten path model requires strictly "
@@ -480,7 +490,9 @@ class MichaelisMentenPath_(PathModel):
                 "positive degradation measurements"
             )
 
-    def _initial_guess(self, x, y):
+    def _initial_guess(
+        self, x: npt.NDArray, y: npt.NDArray
+    ) -> "npt.ArrayLike | list":
         # Lineweaver-Burk linearisation: 1/y = 1/a + (b/a) / x
         intercept, slope = _ols(1.0 / x, 1.0 / y)
         if intercept > 0:

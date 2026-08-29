@@ -15,14 +15,21 @@ single, well-tested place rather than duplicated — and subtly inconsistent —
 across each fitter.
 """
 
+from typing import Any
+
 import autograd.numpy as np
+
+from surpyval.univariate.parametric.parametric_fitter import Boxable
+from surpyval.utils.surpyval_data import SurpyvalData
 
 # Smallest positive float; used to floor probability masses so that
 # ``log`` stays finite for impossible (zero-width) intervals.
 _TINY = np.finfo(float).tiny
 
 
-def truncation_correction(model, data, *params):
+def truncation_correction(
+    model: Any, data: SurpyvalData, *params: Boxable
+) -> Boxable:
     """Log of the probability mass within each observation's truncation
     interval, summed over the truncated rows.
 
@@ -86,7 +93,9 @@ def truncation_correction(model, data, *params):
     return (data.n_t * log_mass).sum()
 
 
-def regression_neg_ll(model, data, *params):
+def regression_neg_ll(
+    model: Any, data: SurpyvalData, *params: Boxable
+) -> Boxable:
     """Negative log-likelihood for a covariate-aware survival model.
 
     Parameters
@@ -100,7 +109,7 @@ def regression_neg_ll(model, data, *params):
     *params : float
         The distribution parameters followed by the regression parameters.
     """
-    ll = 0.0
+    ll: Boxable = 0.0
 
     if data.x_o.size > 0:
         ll = ll + (data.n_o * model.log_df(data.x_o, data.Z_o, *params)).sum()

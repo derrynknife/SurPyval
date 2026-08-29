@@ -42,6 +42,8 @@ reduces exactly to the linear REML in one pass (``w_i = y_i`` and the
 modes drop out), so the two routines agree.
 """
 
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 from scipy.linalg import cho_factor, cho_solve
@@ -80,7 +82,12 @@ def _z_from_init(
     return z
 
 
-def _reml_pieces(z, y_list, x_mat_list, p):
+def _reml_pieces(
+    z: npt.NDArray,
+    y_list: list,
+    x_mat_list: list,
+    p: int,
+) -> tuple:
     """
     Evaluate the model at ``z``.
 
@@ -143,7 +150,7 @@ def reml_estimate(
     """
     p = x_mat_list[0].shape[1]
 
-    def objective(z):
+    def objective(z: npt.NDArray) -> float:
         try:
             return _reml_pieces(z, y_list, x_mat_list, p)[0]
         except np.linalg.LinAlgError:
@@ -175,7 +182,7 @@ def _prior_precision(cov: npt.NDArray, sigma2: float) -> npt.NDArray:
 
 
 def _conditional_mode(
-    path_model,
+    path_model: Any,
     x: npt.NDArray,
     y: npt.NDArray,
     mu: npt.NDArray,
@@ -194,7 +201,7 @@ def _conditional_mode(
     """
     theta = np.array(theta0, dtype=float)
 
-    def penalised(t):
+    def penalised(t: npt.NDArray) -> float:
         resid = y - path_model.path(x, *t)
         delta = t - mu
         return (resid @ resid) / sigma2 + delta @ prior_precision @ delta
@@ -233,7 +240,7 @@ def _conditional_mode(
 def reml_estimate_nonlinear(
     y_list: "list[npt.NDArray]",
     x_list: "list[npt.NDArray]",
-    path_model,
+    path_model: Any,
     mean_init: npt.NDArray,
     cov_init: npt.NDArray,
     sigma2_init: float,

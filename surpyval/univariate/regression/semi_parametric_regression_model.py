@@ -44,10 +44,12 @@ class SemiParametricRegressionModel(SerialisableMixin):
     H0: npt.NDArray
     phi: Callable[..., npt.NDArray]
     p_values: npt.NDArray
-    jac: npt.NDArray
-    hess: npt.NDArray
+    #: The fit's score/Hessian and negative-partial-log-likelihood
+    #: closures (the scalar value is ``_neg_log_like``).
+    jac: Callable
+    hess: Callable
     res: Any
-    neg_ll: float
+    neg_ll: Callable
     _neg_log_like: float
     tie_method: str
     baseline_method: str
@@ -285,7 +287,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
 
         return check_ph(self, transform)
 
-    def robust_covariance(self, cluster=None) -> npt.NDArray:
+    def robust_covariance(
+        self, cluster: "npt.ArrayLike | None" = None
+    ) -> npt.NDArray:
         """
         Cluster-robust ("sandwich") covariance of the coefficients.
 
@@ -298,7 +302,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
 
         return robust_covariance(self, cluster)
 
-    def robust_summary(self, cluster=None) -> dict:
+    def robust_summary(self, cluster: "npt.ArrayLike | None" = None) -> dict:
         """
         Cluster-robust standard errors, z-scores and p-values for the
         coefficients. See :func:`~surpyval.univariate.regression.
@@ -377,7 +381,12 @@ class SemiParametricRegressionModel(SerialisableMixin):
         Hf = self._tvc_cumhaz(query, xl_a, Z_a)
         return query, np.exp(-Hf), Hf
 
-    def _tvc_cumhaz(self, query, starts, Zseg):
+    def _tvc_cumhaz(
+        self,
+        query: npt.NDArray,
+        starts: npt.NDArray,
+        Zseg: npt.NDArray,
+    ) -> npt.NDArray:
         r"""
         Cumulative hazard of the fitted baseline at each ``query`` time for a
         covariate that takes value ``Zseg[i]`` on the segment starting at

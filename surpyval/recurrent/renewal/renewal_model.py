@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -50,6 +50,9 @@ class RenewalModel(
         a transform that keeps its confidence bounds inside the support.
     """
 
+    # Set by the GeneralizedRenewal fitter for its Kijima sampler.
+    _virtual_age_function: Any
+
     #: Set by the fitter for the generalized-renewal family (``"i"``/``"ii"``);
     #: absent otherwise.
     kijima_type: Any
@@ -58,15 +61,15 @@ class RenewalModel(
 
     def __init__(
         self,
-        model,
-        restoration,
-        restoration_name,
-        restoration_label,
-        kind,
-        sampler_factory,
-        dist_label="Distribution",
-        restoration_bounds=(None, None),
-    ):
+        model: Any,
+        restoration: float,
+        restoration_name: str,
+        restoration_label: str,
+        kind: str,
+        sampler_factory: Callable,
+        dist_label: str = "Distribution",
+        restoration_bounds: tuple = (None, None),
+    ) -> None:
         self.model = model
         self.restoration = restoration
         self._restoration_param_name = restoration_name
@@ -189,25 +192,25 @@ class RenewalModel(
         # GeneralizedOneRenewal
         return fitter.fit_from_parameters(params, restoration, dist=dist)
 
-    def _new_sequence_sampler(self):
+    def _new_sequence_sampler(self) -> Callable:
         return self._sampler_factory(self)
 
-    def _parameter_names(self):
+    def _parameter_names(self) -> list:
         # The restoration parameter (``q``/``rho``) leads ``_mle``, followed by
         # the underlying lifetime/intensity model's parameters.
         return [self._restoration_param_name, *self.model.dist.param_names]
 
-    def _parameter_bounds(self):
+    def _parameter_bounds(self) -> list:
         return [self._restoration_bounds, *self.model.dist.bounds]
 
-    def _check_has_data(self, what):
+    def _check_has_data(self, what: str) -> None:
         if not hasattr(self, "data"):
             raise ValueError(
                 "{} requires a model fitted from data; fit_from_parameters "
                 "models carry no data.".format(what)
             )
 
-    def residuals(self, kind="cumulative_hazard"):
+    def residuals(self, kind: str = "cumulative_hazard") -> np.ndarray:
         """
         Residual diagnostics for the fitted imperfect-repair model, from the
         time-rescaling theorem applied to the process's *conditional*
@@ -260,7 +263,9 @@ class RenewalModel(
             "got {!r}".format(kind)
         )
 
-    def trend_test(self, test="laplace", alternative="two-sided"):
+    def trend_test(
+        self, test: str = "laplace", alternative: str = "two-sided"
+    ) -> Any:
         """
         Run a trend test on the data this model was fitted to. The null
         hypothesis is a *homogeneous* Poisson process (no trend); the statistic
@@ -289,7 +294,9 @@ class RenewalModel(
             self.data, test=test, alternative=alternative
         )
 
-    def cramer_von_mises(self, n_boot=200, seed=None):
+    def cramer_von_mises(
+        self, n_boot: int = 200, seed: "int | None" = None
+    ) -> Any:
         """
         Cramer-von Mises goodness-of-fit test of the fitted imperfect-repair
         model.
@@ -328,7 +335,7 @@ class RenewalModel(
             self, n_boot=n_boot, seed=seed
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         title = f"{self.kind} SurPyval Model"
         lines = [
             title,

@@ -94,6 +94,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     fun: Any
     _neg_ll: float
     _bic: float
+    #: Set by the AFT time-varying-covariate fit; absent otherwise.
+    is_tvc: bool
+    n_subjects: int
     _aic: float
     _aic_c: float
 
@@ -482,7 +485,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         "Accelerated Failure Time",
     )
 
-    def _tvc_segments(self, schedule, t_max):
+    def _tvc_segments(
+        self, schedule: Any, t_max: float
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Materialise ``schedule`` to ``t_max`` with the first segment held back
         to the time origin (survival measured from ``0``).
@@ -491,7 +496,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         return segments_from_origin(schedule, t_max)
 
-    def _to_schedule(self, Z, xl):
+    def _to_schedule(self, Z: Any, xl: "npt.ArrayLike | None") -> Any:
         """
         Coerce the ``sf_tvc`` covariate argument into a
         :class:`~...tvc_schedule.StepSchedule` and check its covariate count
@@ -567,7 +572,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             return self._tvc_hf_additive(xq, starts, ends, Zseg)
         return self._tvc_hf_aft(xq, starts, ends, Zseg)
 
-    def _tvc_hf_additive(self, xq, starts, ends, Zseg):
+    def _tvc_hf_additive(
+        self,
+        xq: npt.NDArray,
+        starts: npt.NDArray,
+        ends: npt.NDArray,
+        Zseg: npt.NDArray,
+    ) -> npt.NDArray:
         """
         Cumulative hazard along a step path for the additive-cumulative-hazard
         families (PH, AH): telescoping sum of the model's ``Hf`` increment on
@@ -586,7 +597,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             H = H + (hi - lo)
         return H
 
-    def _tvc_hf_aft(self, xq, starts, ends, Zseg):
+    def _tvc_hf_aft(
+        self,
+        xq: npt.NDArray,
+        starts: npt.NDArray,
+        ends: npt.NDArray,
+        Zseg: npt.NDArray,
+    ) -> npt.NDArray:
         r"""
         Cumulative hazard along a step path for accelerated failure time.
 
@@ -878,11 +895,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         )
 
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin.
-    def _ic_counts(self):
+    def _ic_counts(self) -> tuple[int, int]:
         n, c = self.data.n, self.data.c
         return n[c == 0].sum(), n.sum()
 
-    def _ic_k_aic_c(self):
+    def _ic_k_aic_c(self) -> int:
         # Regression models have historically used the full parameter-
         # vector length here (which can differ from ``self.k`` when
         # parameters are fixed); preserved as-is (#298).

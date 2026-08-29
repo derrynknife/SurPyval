@@ -105,97 +105,25 @@ skip = ["__init__.py"]
 # signatures. Only autograd's ArrayBox so far -- see the file for why.
 mypy_path = "stubs"
 
-# Modules whose every function is annotated. Listing one here makes an
-# unannotated function in it an error, so the coverage cannot slip back
-# -- a ratchet rather than a target (#143).
-#
-# The package ships py.typed, which tells a user's type checker that
-# these annotations are there to be trusted. Without this setting mypy
-# only checks the annotations that happen to exist, so nothing stopped
-# that promise from being half true.
-#
-# Add a module here once `mypy <module> --disallow-untyped-defs` is
-# clean. Do not add one with a `# type: ignore` to make it pass; the
-# point is the annotations, not the green tick.
+# Every function in the package is annotated (#143), and the package
+# ships py.typed, which tells a user's type checker those annotations
+# are there to be trusted. ``disallow_untyped_defs`` holds that line
+# package-wide: an unannotated function anywhere in ``surpyval`` is an
+# error, so the coverage cannot slip back. This replaced the long
+# per-module ratchet list the coverage was built up under.
+disallow_untyped_defs = true
+
+# The test suite and the alpha (pre-release, no API contract) tree are
+# exercised, not typed; they are exempt from the annotation requirement
+# but still type-checked against the package's annotations.
 [[tool.mypy.overrides]]
 module = [
-    'surpyval.distribution',
-    'surpyval.serialisation',
-    'surpyval.metrics.*',
-    'surpyval.univariate.information_criteria',
-    'surpyval.univariate.nonparametric.*',
-    'surpyval.recurrent.nonparametric.*',
-    'surpyval.univariate.regression.frailty.*',
-    'surpyval.datasets',
-    'surpyval.univariate.parametric.distributions.weibull',
-    # The discrete distributions, plus the Discretize wrapper.
-    'surpyval.univariate.parametric.distributions.bernoulli',
-    'surpyval.univariate.parametric.distributions.beta_geometric',
-    'surpyval.univariate.parametric.distributions.binomial',
-    'surpyval.univariate.parametric.distributions.discrete_weibull',
-    'surpyval.univariate.parametric.distributions.discretize',
-    'surpyval.univariate.parametric.distributions.geometric',
-    'surpyval.univariate.parametric.distributions.negative_binomial',
-    'surpyval.univariate.parametric.distributions.poisson',
-    'surpyval.univariate.parametric.distributions.custom_distribution',
-    'surpyval.univariate.parametric.distributions.exact_event_time',
-    'surpyval.univariate.parametric.distributions.normal',
-    'surpyval.univariate.parametric.distributions.lognormal',
-    'surpyval.univariate.parametric.distributions.logistic',
-    'surpyval.univariate.parametric.distributions.rayleigh',
-    'surpyval.univariate.parametric.distributions.beta',
-    'surpyval.univariate.parametric.distributions.beta4',
-    'surpyval.univariate.parametric.distributions.gamma',
-    'surpyval.univariate.parametric.distributions.gumbel',
-    'surpyval.univariate.parametric.distributions.gumbel_lev',
-    'surpyval.univariate.parametric.distributions.loglogistic',
-    'surpyval.univariate.parametric.distributions.exponential',
-    'surpyval.univariate.parametric.distributions.uniform',
-    'surpyval.univariate.parametric.distributions.degenerate',
-    'surpyval.univariate.parametric.distributions.expo_weibull',
-    'surpyval.univariate.parametric.fitters',
-    'surpyval.univariate.parametric.fitters.closed_form',
-    'surpyval.univariate.parametric.fitters.mle',
-    'surpyval.univariate.parametric.fitters.mpp',
-    'surpyval.univariate.parametric.fitters.mom',
-    'surpyval.univariate.parametric.fitters.mps',
-    'surpyval.univariate.parametric.fitters.mse',
-    'surpyval.univariate.parametric.probability_plotting',
-    'surpyval.univariate.parametric.discrete_fitter',
-    'surpyval.univariate.parametric.royston_parmar',
-    'surpyval.univariate.parametric.parametric_fitter',
-    'surpyval.univariate.parametric.parametric',
-    'surpyval.univariate.parametric.mixture_model',
-    'surpyval.univariate.parametric.distributions.fixed_event_probability',
-    'surpyval.univariate.parametric.distributions._single_probability',
-    # Already fully annotated; listed so they cannot slip back.
-    'surpyval.fit_best',
-    'surpyval.utils.linalg',
-    'surpyval.utils.ipcw',
-    'surpyval.utils.recurrent_utils',
-    'surpyval.utils.score',
-    'surpyval.recurrent.tests',
-    'surpyval.recurrent.parametric.counting_process',
-    'surpyval.univariate.regression.regression_data',
-    'surpyval.univariate.regression.tvc_fit',
-    'surpyval.univariate.regression.frailty',
-    # Every accelerated-life module except general_log_linear, whose
-    # phi_param_map and phi_bounds are callables of the covariate
-    # dimension rather than the dict and tuple LifeModel declares. It is
-    # excluded from LIFE_MODELS for the same reason (#345).
-    'surpyval.univariate.regression.accelerated_life',
-    'surpyval.univariate.regression.accelerated_life.accelerated_life',
-    'surpyval.univariate.regression.accelerated_life.dual_exponential',
-    'surpyval.univariate.regression.accelerated_life.dual_power',
-    'surpyval.univariate.regression.accelerated_life.exponential',
-    'surpyval.univariate.regression.accelerated_life.eyring',
-    'surpyval.univariate.regression.accelerated_life.lifemodel',
-    'surpyval.univariate.regression.accelerated_life.linear',
-    'surpyval.univariate.regression.accelerated_life.parameter_substitution',
-    'surpyval.univariate.regression.accelerated_life.power',
-    'surpyval.univariate.regression.accelerated_life.power_exponential',
+    'surpyval.tests.*',
+    'surpyval.alpha.*',
+    'conftest',
+    'scripts.*',
 ]
-disallow_untyped_defs = true
+disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
 module = [

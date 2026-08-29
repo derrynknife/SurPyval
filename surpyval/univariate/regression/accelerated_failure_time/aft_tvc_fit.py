@@ -32,8 +32,10 @@ code.
 """
 
 import types
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import bounds_convert
@@ -42,7 +44,9 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from ..parametric_regression_model import ParametricRegressionModel
 
 
-def _validate_full_coverage(x, tl, ident):
+def _validate_full_coverage(
+    x: npt.NDArray, tl: npt.NDArray, ident: npt.NDArray
+) -> None:
     """
     Require each subject's episodes to tile ``(0, T]`` completely: first
     entry at 0 and no gaps between consecutive episodes.
@@ -83,7 +87,13 @@ def _validate_full_coverage(x, tl, ident):
             )
 
 
-def _grouped_episodes(x, c, n, tl, ident):
+def _grouped_episodes(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    tl: npt.NDArray,
+    ident: npt.NDArray,
+) -> dict:
     """
     From the (subject-contiguous, entry-sorted) episode arrays returned by
     ``handle_tvc``, derive the per-subject grouping the accumulated-age
@@ -111,7 +121,7 @@ def _grouped_episodes(x, c, n, tl, ident):
     }
 
 
-def _aft_tvc_neg_ll(self, data, *params):
+def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
     """
     Negative log-likelihood of the accelerated-failure-time model along each
     subject's time-varying covariate path.
@@ -148,7 +158,10 @@ def _aft_tvc_neg_ll(self, data, *params):
     return -ll
 
 
-class AFTTVCFitMixin:
+from .._fit_skeleton import MirroredDistributionAttrs  # noqa: E402
+
+
+class AFTTVCFitMixin(MirroredDistributionAttrs):
     """
     Adds time-varying-covariate fitting (``fit_tvc`` and friends) to the
     accelerated failure time fitter. Mixed into ``AFTFitter``; kept separate
@@ -156,7 +169,16 @@ class AFTTVCFitMixin:
     accumulated-age likelihood rather than a reshape-and-refit.
     """
 
-    def fit_tvc(self, i, xl, xr, c, Z, n=None, fixed=None):
+    def fit_tvc(
+        self,
+        i: npt.ArrayLike,
+        xl: npt.ArrayLike,
+        xr: npt.ArrayLike,
+        c: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        n: "npt.ArrayLike | None" = None,
+        fixed: "dict[str, float] | None" = None,
+    ) -> ParametricRegressionModel:
         """
         Fit the accelerated failure time model to start-stop (counting-process)
         time-varying-covariate data.
@@ -191,7 +213,15 @@ class AFTTVCFitMixin:
             x, c_a, n_a, tl, Z_a, ident, AFTFitter, fixed
         )
 
-    def fit_tvc_timeline(self, i, x, Z, c, n=None, fixed=None):
+    def fit_tvc_timeline(
+        self,
+        i: npt.ArrayLike,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike,
+        n: "npt.ArrayLike | None" = None,
+        fixed: "dict[str, float] | None" = None,
+    ) -> ParametricRegressionModel:
         """
         Fit from a per-subject covariate *timeline* (one row per covariate
         change, terminal status on the last row) instead of explicit
@@ -203,8 +233,16 @@ class AFTTVCFitMixin:
         return self.fit_tvc(i2, xl, xr, c2, Z2, n=n2, fixed=fixed)
 
     def fit_tvc_from_df(
-        self, df, id_col, xl_col, xr_col, c_col, Z_cols, n_col=None, fixed=None
-    ):
+        self,
+        df: Any,
+        id_col: str,
+        xl_col: str,
+        xr_col: str,
+        c_col: str,
+        Z_cols: "str | list[str]",
+        n_col: "str | None" = None,
+        fixed: "dict[str, float] | None" = None,
+    ) -> ParametricRegressionModel:
         """
         ``fit_tvc`` from a start-stop ``DataFrame``. ``Z_cols`` may be a single
         column name or a list; ``feature_names`` is recorded on the model.
@@ -223,7 +261,17 @@ class AFTTVCFitMixin:
         model.feature_names = cols
         return model
 
-    def _fit_tvc_arrays(self, x, c, n, tl, Z, ident, AFTFitter, fixed):
+    def _fit_tvc_arrays(
+        self,
+        x: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        tl: npt.NDArray,
+        Z: npt.NDArray,
+        ident: npt.NDArray,
+        AFTFitter: Any,
+        fixed: "dict[str, float] | None",
+    ) -> ParametricRegressionModel:
         if fixed is None:
             fixed = {}
         Z = np.atleast_2d(np.asarray(Z, dtype=float))
@@ -262,7 +310,7 @@ class AFTTVCFitMixin:
 
         with np.errstate(all="ignore"):
 
-            def fun(pars):
+            def fun(pars: npt.NDArray) -> float:
                 return like.neg_ll(None, *inv_trans(const(pars)))
 
             res = minimize(
@@ -279,7 +327,7 @@ class AFTTVCFitMixin:
             name = "Log Linear [exp(beta'Z)]"
             phi_param_map = _pm
 
-            def phi(self, Z, *pp):
+            def phi(self, Z: npt.NDArray, *pp: float) -> npt.NDArray:
                 return np.exp(np.dot(Z, np.array(pp)))
 
         # Episode-level data container so generic consumers (repr, plotting)

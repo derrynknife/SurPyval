@@ -24,7 +24,10 @@ H_j(u))`. The cause CIFs sum to the all-cause failure probability
 :math:`1 - S(t)`.
 """
 
+from typing import Any
+
 import numpy as np
+import numpy.typing as npt
 from scipy.integrate import cumulative_trapezoid
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
@@ -37,7 +40,12 @@ from surpyval.utils import (
 )
 
 
-def _validate(x, c, n, e):
+def _validate(
+    x: npt.ArrayLike,
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+    e: npt.ArrayLike,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Wrangle ``x``/``c``/``n`` and check the event labels: ``e`` is the
     per-observation cause. A missing event (``None`` / ``NaN``) marks a
     censored observation; if ``c`` is not given it is derived from the events.
@@ -109,7 +117,7 @@ class ParametricCompetingRisks(SerialisableMixin):
         }
         return out
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         dists = ", ".join(
             "{}: {}".format(k, self.models[k].dist.name) for k in self.causes
         )
@@ -124,7 +132,7 @@ class ParametricCompetingRisks(SerialisableMixin):
 
     # -- cause-specific and all-cause functions ---------------------------
 
-    def Hf(self, x, event=None):
+    def Hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """Cumulative hazard. ``event=None`` gives the all-cause cumulative
         hazard :math:`\\sum_k H_k`; ``event=k`` gives cause ``k``'s."""
         if event is not None:
@@ -132,7 +140,7 @@ class ParametricCompetingRisks(SerialisableMixin):
             return self.models[event].Hf(x)
         return sum(self.models[k].Hf(x) for k in self.causes)
 
-    def hf(self, x, event=None):
+    def hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """Hazard rate. ``event=None`` is the all-cause hazard
         :math:`\\sum_k h_k`; ``event=k`` is the cause-specific hazard."""
         if event is not None:
@@ -140,16 +148,16 @@ class ParametricCompetingRisks(SerialisableMixin):
             return self.models[event].hf(x)
         return sum(self.models[k].hf(x) for k in self.causes)
 
-    def sf(self, x):
+    def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         """All-cause survival :math:`S(t) = \\prod_k S_k(t)`."""
         return np.exp(-self.Hf(x))
 
-    def ff(self, x):
+    def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         """All-cause failure probability :math:`1 - S(t)` (the total
         cumulative incidence over all causes)."""
         return -np.expm1(-self.Hf(x))
 
-    def iif(self, x, event):
+    def iif(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         """
         Instantaneous incidence function (the subdistribution density) of a
         cause: :math:`f_k^{\\mathrm{sub}}(t) = h_k(t) S(t) = f_k(t)
@@ -166,7 +174,9 @@ class ParametricCompetingRisks(SerialisableMixin):
         with np.errstate(divide="ignore", invalid="ignore"):
             return self.models[event].df(x) * others
 
-    def cif(self, x, event=None):
+    def cif(
+        self, x: npt.ArrayLike, event: Any = None
+    ) -> "npt.NDArray | float":
         """
         Cumulative incidence function. ``event=k`` returns
         :math:`\\int_0^t f_k^{\\mathrm{sub}}(u)\\,du`, the probability of
@@ -187,7 +197,7 @@ class ParametricCompetingRisks(SerialisableMixin):
         out = np.interp(x_arr, grid, cif_grid)
         return out if np.ndim(x) else float(out[0])
 
-    def probability_of_cause(self, event):
+    def probability_of_cause(self, event: Any) -> Any:
         """
         The eventual probability that a unit fails from ``event``,
         :math:`\\mathrm{CIF}_k(\\infty)`. These sum to one over all causes.
@@ -198,7 +208,9 @@ class ParametricCompetingRisks(SerialisableMixin):
         upper = max(self._model_horizon(k) for k in self.causes)
         return self.cif(upper, event)
 
-    def random(self, size, random_state=None):
+    def random(
+        self, size: int, random_state: "int | None" = None
+    ) -> npt.NDArray:
         """
         Draw ``size`` samples of ``(time, cause)`` from the model, using the
         latent-failure-time representation: draw a latent time from each cause
@@ -234,21 +246,21 @@ class ParametricCompetingRisks(SerialisableMixin):
 
     # -- goodness of fit (the joint likelihood factorises over causes) ----
 
-    def neg_ll(self):
+    def neg_ll(self) -> float:
         """Total negative log-likelihood: the sum over the per-cause fits."""
         return float(sum(self.models[k].neg_ll() for k in self.causes))
 
-    def aic(self):
+    def aic(self) -> float:
         """Akaike information criterion of the joint model."""
         return float(sum(self.models[k].aic() for k in self.causes))
 
-    def bic(self):
+    def bic(self) -> float:
         """Bayesian information criterion of the joint model."""
         return float(sum(self.models[k].bic() for k in self.causes))
 
     # -- helpers ----------------------------------------------------------
 
-    def _check_event(self, event):
+    def _check_event(self, event: Any) -> None:
         if event not in self.models:
             raise ValueError(
                 "Unknown cause {!r}; fitted causes are {}.".format(
@@ -256,7 +268,7 @@ class ParametricCompetingRisks(SerialisableMixin):
                 )
             )
 
-    def _model_horizon(self, k):
+    def _model_horizon(self, k: Any) -> float:
         # The time by which cause k has essentially played out, used as the
         # finite upper limit for the (numerically integrated) CIF(inf). Its
         # very high quantile when that is finite; for a cure fraction the
@@ -288,7 +300,7 @@ class ParametricCompetingRisks(SerialisableMixin):
     # -- construction -----------------------------------------------------
 
     @classmethod
-    def from_fitted(cls, models):
+    def from_fitted(cls, models: dict) -> "ParametricCompetingRisks":
         """
         Assemble a competing-risks model from already-fitted single-cause
         models -- one per cause -- instead of fitting them here.
@@ -356,7 +368,15 @@ class ParametricCompetingRisks(SerialisableMixin):
         return model
 
     @classmethod
-    def fit(cls, x, e, c=None, n=None, dist=Weibull, how="MLE"):
+    def fit(
+        cls,
+        x: npt.ArrayLike,
+        e: npt.ArrayLike,
+        c: "npt.ArrayLike | None" = None,
+        n: "npt.ArrayLike | None" = None,
+        dist: Any = Weibull,
+        how: str = "MLE",
+    ) -> "ParametricCompetingRisks":
         """
         Fit a parametric distribution to each cause's cause-specific hazard.
 
@@ -408,8 +428,15 @@ class ParametricCompetingRisks(SerialisableMixin):
 
     @classmethod
     def fit_from_df(
-        cls, df, x_col, e_col, c_col=None, n_col=None, dist=Weibull, how="MLE"
-    ):
+        cls,
+        df: Any,
+        x_col: str,
+        e_col: str,
+        c_col: "str | None" = None,
+        n_col: "str | None" = None,
+        dist: Any = Weibull,
+        how: str = "MLE",
+    ) -> "ParametricCompetingRisks":
         """Fit from a DataFrame; see :meth:`fit`. ``x_col`` / ``e_col`` name
         the time and cause columns, with optional ``c_col`` / ``n_col``."""
         x = df[x_col].to_numpy()

@@ -28,7 +28,8 @@ class NonParametricCounting(SerialisableMixin):
     r: npt.NDArray
     d: npt.NDArray
     mcf_hat: npt.NDArray
-    var: npt.NDArray
+    #: ``None`` on simulated models, which carry no variance.
+    var: "npt.NDArray | None"
     data: RecurrentEventData
 
     # -- serialisation -----------------------------------------------------
@@ -139,6 +140,11 @@ class NonParametricCounting(SerialisableMixin):
             # parametric cif_cb (#285).
             stat = np.array([1, -1]).reshape(2, 1) * stat
 
+        if self.var is None:
+            raise ValueError(
+                "This model carries no variance (a simulated MCF), so "
+                "confidence bounds are unavailable."
+            )
         if bound_type == "exp":
             # Exponential Greenwood confidence
             mcf_cb = self.mcf_hat * np.exp(

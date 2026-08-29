@@ -34,8 +34,10 @@ two-point cycle rather than a fixed point -- a known feature of the estimator
 """
 
 import warnings
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils import (
@@ -45,7 +47,9 @@ from surpyval.utils import (
 )
 
 
-def _residual_km(e, delta, w):
+def _residual_km(
+    e: npt.NDArray, delta: npt.NDArray, w: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Weighted Kaplan-Meier of the residuals with an Efron tail-correction.
 
@@ -81,7 +85,9 @@ def _residual_km(e, delta, w):
     return uniq, surv, jumps
 
 
-def _impute(Y, delta, Zbeta, w):
+def _impute(
+    Y: npt.NDArray, delta: npt.NDArray, Zbeta: npt.NDArray, w: npt.NDArray
+) -> npt.NDArray:
     """
     Buckley-James imputed responses. Observed (``delta == 1``) rows keep their
     value; each censored row is replaced by ``Zbeta_i + E[e | e > e_i]``, the
@@ -108,7 +114,7 @@ def _impute(Y, delta, Zbeta, w):
     return np.where(keep, Y, imputed)
 
 
-def _wls_slope(Z, Y, w):
+def _wls_slope(Z: npt.NDArray, Y: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     """Weighted least-squares slope of ``Y`` on ``Z`` with the intercept
     profiled out by centring (the location stays in the residuals)."""
     wsum = w.sum()
@@ -120,7 +126,14 @@ def _wls_slope(Z, Y, w):
     return np.linalg.solve(A, b.ravel())
 
 
-def _fit_beta(Y, delta, Z, w, tol, max_iter):
+def _fit_beta(
+    Y: npt.NDArray,
+    delta: npt.NDArray,
+    Z: npt.NDArray,
+    w: npt.NDArray,
+    tol: float,
+    max_iter: int,
+) -> tuple[npt.NDArray, int, bool]:
     """Run the Buckley-James iteration and return
     ``(beta, n_iter, converged)``. A two-point cycle is resolved by averaging
     the cycle."""
@@ -158,7 +171,15 @@ class BuckleyJamesModel(SerialisableMixin):
     formula = None
     _model_spec = None
 
-    def __init__(self, beta, resid, resid_surv, n_iter, converged, data):
+    def __init__(
+        self,
+        beta: npt.ArrayLike,
+        resid: npt.NDArray,
+        resid_surv: npt.NDArray,
+        n_iter: int,
+        converged: bool,
+        data: "tuple | None",
+    ) -> None:
         self.beta = np.asarray(beta, dtype=float)
         self.params = self.beta
         self.coef = self.beta
@@ -168,12 +189,12 @@ class BuckleyJamesModel(SerialisableMixin):
         self.converged = converged
         self._data = data  # (Y, delta, Z, w) for the bootstrap
 
-    def _prepare_Z(self, Z):
+    def _prepare_Z(self, Z: Any) -> npt.NDArray:
         from ..regression_data import prepare_Z
 
         return prepare_Z(Z, self.feature_names, self._model_spec)
 
-    def _resid_sf(self, r):
+    def _resid_sf(self, r: npt.NDArray) -> npt.NDArray:
         # Right-continuous residual survival at query points ``r``.
         idx = np.searchsorted(self._resid, r, side="right") - 1
         out = np.where(
@@ -185,7 +206,7 @@ class BuckleyJamesModel(SerialisableMixin):
 
     # -- serialisation -----------------------------------------------------
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """
         Serialise this fitted Buckley-James model to a plain, JSON-serialisable
         dict.
@@ -231,7 +252,7 @@ class BuckleyJamesModel(SerialisableMixin):
         return stamp_schema(out)
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict) -> "BuckleyJamesModel":
         """
         Rebuild a Buckley-James model from a :meth:`to_dict` dictionary.
 
@@ -270,7 +291,7 @@ class BuckleyJamesModel(SerialisableMixin):
             out._model_spec = rebuild_model_spec(out.formula, formula_meta)
         return out
 
-    def sf(self, x, Z):
+    def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """Survival ``P(T > x | Z) = S_eps(log x - beta'Z)`` for a single
         covariate vector ``Z``."""
         x = np.atleast_1d(np.asarray(x, dtype=float))
@@ -281,14 +302,19 @@ class BuckleyJamesModel(SerialisableMixin):
         r = np.log(x) + Z @ self.beta
         return self._resid_sf(r)
 
-    def ff(self, x, Z):
+    def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         return 1.0 - self.sf(x, Z)
 
-    def Hf(self, x, Z):
+    def Hf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         with np.errstate(divide="ignore"):
             return -np.log(self.sf(x, Z))
 
-    def bootstrap_ci(self, alpha_ci=0.05, n_boot=200, seed=None):
+    def bootstrap_ci(
+        self,
+        alpha_ci: float = 0.05,
+        n_boot: int = 200,
+        seed: "int | None" = None,
+    ) -> npt.NDArray:
         """
         Percentile bootstrap confidence intervals for the coefficients.
 
@@ -297,6 +323,11 @@ class BuckleyJamesModel(SerialisableMixin):
         taking percentiles of the coefficient distribution. Returns an
         ``(n_coef, 2)`` array of ``[lower, upper]`` bounds.
         """
+        if self._data is None:
+            raise ValueError(
+                "bootstrap_ci needs the fit data, which this model does not "
+                "carry"
+            )
         Y, delta, Z, w = self._data
         rng = np.random.default_rng(seed)
         n = Y.shape[0]
@@ -310,12 +341,12 @@ class BuckleyJamesModel(SerialisableMixin):
                 boot.append(-g)  # report in the accelerated-failure sign
             except np.linalg.LinAlgError:
                 continue
-        boot = np.asarray(boot)
-        lo = np.quantile(boot, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(boot, 1.0 - alpha_ci / 2.0, axis=0)
+        boot_arr = np.asarray(boot)
+        lo = np.quantile(boot_arr, alpha_ci / 2.0, axis=0)
+        hi = np.quantile(boot_arr, 1.0 - alpha_ci / 2.0, axis=0)
         return np.stack([lo, hi], axis=-1)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         lines = [
             "Buckley-James AFT SurPyval Model",
             "================================",
@@ -334,13 +365,13 @@ class BuckleyJamesModel(SerialisableMixin):
 class BuckleyJames_:
     def fit(
         self,
-        x,
-        Z,
-        c=None,
-        n=None,
-        tol=1e-5,
-        max_iter=100,
-    ):
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: "npt.ArrayLike | None" = None,
+        n: "npt.ArrayLike | None" = None,
+        tol: float = 1e-5,
+        max_iter: int = 100,
+    ) -> BuckleyJamesModel:
         """
         Fit the Buckley-James AFT model.
 
@@ -365,26 +396,28 @@ class BuckleyJames_:
         BuckleyJamesModel
             The fitted model.
         """
-        x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
-        Z, mask = wrangle_Z(Z)
-        x, c, n = x[mask], c[mask], n[mask]
-        x, c, n, Z = (a.astype(float) for a in (x, c, n, Z))
+        x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
+        Z_arr, mask = wrangle_Z(Z)
+        x_a = np.asarray(x_h, dtype=float)[mask]
+        c_a = np.asarray(c_h, dtype=float)[mask]
+        n_a = np.asarray(n_h, dtype=float)[mask]
+        Z_a = np.asarray(Z_arr, dtype=float)
 
-        if np.any((c != 0) & (c != 1)):
+        if np.any((c_a != 0) & (c_a != 1)):
             raise ValueError(
                 "Buckley-James supports only observed (c=0) and "
                 "right-censored (c=1) data."
             )
-        if np.any(x <= 0):
+        if np.any(x_a <= 0):
             raise ValueError(
                 "Buckley-James models log(time); all times must be positive."
             )
 
-        Y = np.log(x)
-        delta = (c == 0).astype(float)
+        Y = np.log(x_a)
+        delta = (c_a == 0).astype(float)
         # gamma is the textbook ``log T = gamma'Z + eps`` slope; report its
         # negative so a positive coefficient accelerates failure.
-        gamma, n_iter, converged = _fit_beta(Y, delta, Z, n, tol, max_iter)
+        gamma, n_iter, converged = _fit_beta(Y, delta, Z_a, n_a, tol, max_iter)
         if not converged:
             warnings.warn(
                 "Buckley-James did not converge in {} iterations; returning "
@@ -392,23 +425,23 @@ class BuckleyJames_:
             )
 
         # Final residual distribution used for prediction.
-        resid, resid_surv, _ = _residual_km(Y - Z @ gamma, delta, n)
+        resid, resid_surv, _ = _residual_km(Y - Z_a @ gamma, delta, n_a)
 
         return BuckleyJamesModel(
-            -gamma, resid, resid_surv, n_iter, converged, (Y, delta, Z, n)
+            -gamma, resid, resid_surv, n_iter, converged, (Y, delta, Z_a, n_a)
         )
 
     def fit_from_df(
         self,
-        df,
-        x_col,
-        Z_cols=None,
-        c_col=None,
-        n_col=None,
-        formula=None,
-        tol=1e-5,
-        max_iter=100,
-    ):
+        df: Any,
+        x_col: str,
+        Z_cols: "str | list[str] | None" = None,
+        c_col: "str | None" = None,
+        n_col: "str | None" = None,
+        formula: "str | None" = None,
+        tol: float = 1e-5,
+        max_iter: int = 100,
+    ) -> BuckleyJamesModel:
         """
         Fit a Buckley-James model from a pandas DataFrame. See :meth:`fit` for
         the estimator; ``Z_cols`` or ``formula`` selects the covariates.

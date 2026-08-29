@@ -1,4 +1,7 @@
+from typing import Any, Callable
+
 import numpy as np
+from numpy.typing import ArrayLike
 
 from surpyval import Weibull
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
@@ -12,7 +15,9 @@ from surpyval.utils.recurrent_utils import (
 )
 
 
-def kijima_ii_from_prev_interarrival(previous_interarrival_times, q):
+def kijima_ii_from_prev_interarrival(
+    previous_interarrival_times: np.ndarray, q: float
+) -> np.ndarray:
     """
     Takes the interarrival times from the previous event for a given item
     and returns the virtual age for each interarrival time.
@@ -70,13 +75,13 @@ class GeneralizedRenewal(RenewalFitMixin):
     array([0.1214   , 1.1772   , 2.406    , 3.919    , 5.804    , 8.6088822])
     """
 
-    def kijima_i(self, v, x, q):
+    def kijima_i(self, v: float, x: float, q: float) -> float:
         return v + q * x
 
-    def kijima_ii(self, v, x, q):
+    def kijima_ii(self, v: float, x: float, q: float) -> float:
         return q * (v + x)
 
-    def _resolve_virtual_age_function(self, kijima_type):
+    def _resolve_virtual_age_function(self, kijima_type: str) -> Callable:
         if kijima_type == "i":
             return self.kijima_i
         if kijima_type == "ii":
@@ -86,12 +91,12 @@ class GeneralizedRenewal(RenewalFitMixin):
         )
 
     @staticmethod
-    def _build_sampler(model):
+    def _build_sampler(model: Any) -> Callable:
         q = model.q
         virtual_age_function = model._virtual_age_function
         virtual_age = 0.0
 
-        def sample(ui):
+        def sample(ui: float) -> float:
             nonlocal virtual_age
             u_adj = ui * model.model.sf(virtual_age)
             xi = model.model.qf(1 - u_adj) - virtual_age
@@ -100,7 +105,9 @@ class GeneralizedRenewal(RenewalFitMixin):
 
         return sample
 
-    def _make_model(self, underlying_model, q, kijima_type):
+    def _make_model(
+        self, underlying_model: Any, q: float, kijima_type: str
+    ) -> "RenewalModel":
         out = RenewalModel(
             underlying_model,
             q,
@@ -116,7 +123,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         )
         return out
 
-    def _rescaled_increments(self, model, data):
+    def _rescaled_increments(self, model: Any, data: Any) -> np.ndarray:
         """
         Per-interval cumulative-hazard increments ``H(v_k + x_k) - H(v_k)``
         (the time-rescaling residuals) for a fitted Kijima renewal model, where
@@ -151,7 +158,7 @@ class GeneralizedRenewal(RenewalFitMixin):
             model.model.Hf(x_new) - model.model.Hf(virtual_ages), dtype=float
         )
 
-    def _refit(self, model, data):
+    def _refit(self, model: Any, data: Any) -> Any:
         """Refit this model family on ``data`` with the same lifetime
         distribution and Kijima type; used by the Cramer-von Mises bootstrap.
         """
@@ -159,17 +166,18 @@ class GeneralizedRenewal(RenewalFitMixin):
             data, dist=model.model.dist, kijima=model.kijima_type
         )
 
-    def create_negll_func(self, data, dist, kijima="i"):
+    def create_negll_func(
+        self, data: Any, dist: Any, kijima: str = "i"
+    ) -> Callable:
         _, idx = np.unique(data.i, return_index=True)
         c = data.c
         x_interarrival = data.get_interarrival_times()
 
         if kijima == "i":
             arrival_times = np.split(data.x, idx)[1:]
-            cumulative_previous = [
-                np.concatenate([[0], arr[:-1]]) for arr in arrival_times
-            ]
-            cumulative_previous = np.concatenate(cumulative_previous)
+            cumulative_previous = np.concatenate(
+                [np.concatenate([[0], arr[:-1]]) for arr in arrival_times]
+            )
 
         elif kijima == "ii":
             prev_x_interarrival = np.concatenate(
@@ -179,7 +187,7 @@ class GeneralizedRenewal(RenewalFitMixin):
                 ]
             )
 
-        def negll_func(params):
+        def negll_func(params: np.ndarray) -> float:
             q = params[0]
             params = params[1:]
 
@@ -215,8 +223,12 @@ class GeneralizedRenewal(RenewalFitMixin):
         return negll_func
 
     def fit_from_recurrent_data(
-        self, data, dist=Weibull, kijima="i", init=None
-    ):
+        self,
+        data: Any,
+        dist: Any = Weibull,
+        kijima: str = "i",
+        init: "ArrayLike | None" = None,
+    ) -> "RenewalModel":
         """
         Fit the generalized renewal model from recurrent data.
 
@@ -291,8 +303,15 @@ class GeneralizedRenewal(RenewalFitMixin):
         return out
 
     def fit(
-        self, x, i=None, c=None, n=None, dist=Weibull, kijima="i", init=None
-    ):
+        self,
+        x: ArrayLike,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        n: "ArrayLike | None" = None,
+        dist: Any = Weibull,
+        kijima: str = "i",
+        init: "ArrayLike | None" = None,
+    ) -> "RenewalModel":
         """
         Fit the generalized renewal model.
 
@@ -346,7 +365,13 @@ class GeneralizedRenewal(RenewalFitMixin):
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, kijima, init=init)
 
-    def fit_from_parameters(self, params, q, kijima="i", dist=Weibull):
+    def fit_from_parameters(
+        self,
+        params: ArrayLike,
+        q: float,
+        kijima: str = "i",
+        dist: Any = Weibull,
+    ) -> "RenewalModel":
         """
         Fit the generalized renewal model from given parameters.
 

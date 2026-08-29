@@ -47,7 +47,7 @@ class SurvivalTree(SerialisableMixin):
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         kind: str = "weibull",
-    ):
+    ) -> None:
         self.data = data
         self.Z = Z
 
@@ -87,7 +87,7 @@ class SurvivalTree(SerialisableMixin):
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         kind: str = "weibull",
-    ):
+    ) -> "SurvivalTree":
         """
         Fit a survival tree from data in the full xcnt(+truncation) data
         model.

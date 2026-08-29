@@ -7,7 +7,10 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
+from typing import Any
+
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.univariate.competing_risks.aalen_johansen import (
     aalen_johansen_iif,
@@ -24,6 +27,23 @@ from .fine_gray import FineGray
 
 
 class CompetingRisksProportionalHazards:
+    # Populated by ``fit``; declared for the type checker.
+    how: str
+    x: "npt.NDArray"
+    results: list
+    betas: "npt.NDArray"
+    beta: "npt.NDArray"
+    event_idx_map: dict
+    n_event_types: int
+    h0_e: "npt.NDArray"
+    H0_e: "npt.NDArray"
+    phi: Any
+    phi_e: Any
+    _fg_models: dict
+    feature_names: "list | None"
+    formula: Any
+    _model_spec: Any
+
     """
     Competing-risks proportional-hazards regression.
 
@@ -36,7 +56,7 @@ class CompetingRisksProportionalHazards:
     TODO: Time-Varying Implementation
     """
 
-    def _fg_model(self, event):
+    def _fg_model(self, event: Any) -> Any:
         # Resolve the per-cause Fine-Gray subdistribution model, requiring an
         # explicit cause (the Fine-Gray CIF is defined one cause at a time).
         if event is None:
@@ -47,7 +67,14 @@ class CompetingRisksProportionalHazards:
             raise ValueError("Unrecognised event type for this model")
         return self._fg_models[event]
 
-    def _f(self, arr, x, Z, event=None, interp="step"):
+    def _f(
+        self,
+        arr: npt.NDArray,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        event: Any = None,
+        interp: str = "step",
+    ) -> npt.NDArray:
         idx, rev = _get_idx(self.x, x)
 
         if event is not None:
@@ -70,7 +97,13 @@ class CompetingRisksProportionalHazards:
         # zero there (#253).
         return np.where(idx[rev] < 0, 0.0, out)
 
-    def hf(self, x, Z, event=None, interp="step"):
+    def hf(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        event: Any = None,
+        interp: str = "step",
+    ) -> npt.NDArray:
         if self.how == "Fine-Gray":
             raise ValueError(
                 "The Fine-Gray subdistribution hazard has no pointwise "
@@ -78,23 +111,47 @@ class CompetingRisksProportionalHazards:
             )
         return self._f(self.h0_e, x, Z, event=event, interp=interp)
 
-    def Hf(self, x, Z, event=None, interp="step"):
+    def Hf(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        event: Any = None,
+        interp: str = "step",
+    ) -> npt.NDArray:
         if self.how == "Fine-Gray":
             # Cumulative subdistribution hazard H0_k(x) * exp(beta'Z) = -log S.
             return -np.log(self.sf(x, Z, event=event))
         return self._f(self.H0_e, x, Z, event=event, interp=interp)
 
-    def sf(self, x, Z, event=None, interp="step"):
+    def sf(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        event: Any = None,
+        interp: str = "step",
+    ) -> npt.NDArray:
         if self.how == "Fine-Gray":
             return self._fg_model(event).sf(x, Z)
         return np.exp(-self.Hf(x, Z, event=event, interp=interp))
 
-    def ff(self, x, Z, event=None, interp="step"):
+    def ff(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        event: Any = None,
+        interp: str = "step",
+    ) -> npt.NDArray:
         if self.how == "Fine-Gray":
             return self.cif(x, Z, event)
         return 1 - self.sf(x, Z, event=event, interp=interp)
 
-    def df(self, x, Z, event=None, interp="step"):
+    def df(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        event: Any = None,
+        interp: str = "step",
+    ) -> npt.NDArray:
         if self.how == "Fine-Gray":
             raise ValueError(
                 "The Fine-Gray subdistribution density has no pointwise form "
@@ -104,7 +161,9 @@ class CompetingRisksProportionalHazards:
             x, Z, event=event, interp=interp
         )
 
-    def cif(self, x, Z, event):
+    def cif(
+        self, x: npt.ArrayLike, Z: npt.ArrayLike, event: Any
+    ) -> npt.NDArray:
         if self.how == "Fine-Gray":
             # Direct subdistribution CIF: 1 - exp(-H0_k(x) exp(beta'Z)).
             return self._fg_model(event).cif(x, Z)
@@ -123,16 +182,16 @@ class CompetingRisksProportionalHazards:
     @classmethod
     def fit_from_df(
         cls,
-        df,
-        x_col,
-        e_col,
-        Z_cols=None,
-        c_col=None,
-        n_col=None,
-        formula=None,
-        how="Cox",
-        tie_method="efron",
-    ):
+        df: Any,
+        x_col: str,
+        e_col: str,
+        Z_cols: "str | list[str] | None" = None,
+        c_col: "str | None" = None,
+        n_col: "str | None" = None,
+        formula: "str | None" = None,
+        how: str = "Cox",
+        tie_method: str = "efron",
+    ) -> "CompetingRisksProportionalHazards":
         """
         Fit a competing-risks proportional-hazards model from a pandas
         DataFrame.
@@ -188,7 +247,16 @@ class CompetingRisksProportionalHazards:
         return model
 
     @classmethod
-    def fit(cls, x, Z, e, c=None, n=None, how="Cox", tie_method="efron"):
+    def fit(
+        cls,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        e: npt.ArrayLike,
+        c: "npt.ArrayLike | None" = None,
+        n: "npt.ArrayLike | None" = None,
+        how: str = "Cox",
+        tie_method: str = "efron",
+    ) -> "CompetingRisksProportionalHazards":
         r"""
         This function aimed to have an API to mimic the simplicity
         of the scipy API. That is, to use a simple :code:`fit()` call,

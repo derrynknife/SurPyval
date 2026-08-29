@@ -1,3 +1,5 @@
+from typing import Any
+
 from surpyval.univariate.parametric import (
     Exponential,
     Gamma,
@@ -12,7 +14,7 @@ from .cox_ph import CoxPH
 from .proportional_hazards_fitter import ProportionalHazardsFitter
 
 
-def PH(distribution):
+def PH(distribution: Any) -> ProportionalHazardsFitter:
     """
     Create a Proportional Hazards fitter for the given distribution.
 

@@ -36,9 +36,16 @@ import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
 
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+)
+from surpyval.utils.surpyval_data import SurpyvalData
+
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
+    MirroredDistributionAttrs,
     assemble_regression_model,
     mirror_distribution,
     prepare_regression_fit,
@@ -57,18 +64,12 @@ class _AdditiveReg:
 
 
 class AdditiveHazardsFitter(
-    HazardIdentitiesMixin, TVCFitMixin, DataFrameRegressionMixin
+    MirroredDistributionAttrs,
+    HazardIdentitiesMixin,
+    TVCFitMixin,
+    DataFrameRegressionMixin,
 ):
-    # Set by ``mirror_distribution`` in ``__init__``; declared so the
-    # attributes are visible to the type checker.
-    dist: Any
-    k_dist: int
-    bounds: tuple
-    support: tuple
-    param_names: list
-    param_map: dict
-
-    def __init__(self, name, dist):
+    def __init__(self, name: str, dist: Any) -> None:
         self.name = name
         mirror_distribution(self, dist)
         self.Hf_dist = dist.Hf
@@ -76,15 +77,15 @@ class AdditiveHazardsFitter(
 
     # -- covariate-aware distribution functions (x, Z, *params) -----------
 
-    def _beta_Z(self, Z, beta):
+    def _beta_Z(self, Z: Numeric, beta: "tuple[Boxable, ...]") -> Boxable:
         return np.dot(Z, np.array(beta))
 
-    def hf(self, x, Z, *params):
+    def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         dist_params = np.array(params[: self.k_dist])
         beta = params[self.k_dist :]
         return self.hf_dist(x, *dist_params) + self._beta_Z(Z, beta)
 
-    def Hf(self, x, Z, *params):
+    def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         # H(x | Z) = H_0(x) + integral_0^x beta'Z ds = H_0(x) + x * beta'Z.
         dist_params = np.array(params[: self.k_dist])
         beta = params[self.k_dist :]
@@ -97,19 +98,21 @@ class AdditiveHazardsFitter(
     # mpp transforms are the identity (probability plotting is not used for
     # these models, but the interface is kept consistent with the other
     # regression fitters).
-    def mpp_x_transform(self, x, gamma=0):
+    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
         return x - gamma
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 
-    def neg_ll(self, data, *params):
+    def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
 
-    def random(self, size, Z, *params):
+    def random(
+        self, size: int, Z: npt.ArrayLike, *params: float
+    ) -> tuple[npt.NDArray, npt.NDArray]:
         """
         Draw ``size`` samples for a single covariate vector ``Z`` by
         numerically inverting the (monotone) cumulative hazard. Requires the
@@ -121,7 +124,7 @@ class AdditiveHazardsFitter(
         bz = float(np.dot(Z, beta))
         target = -np.log(np.random.uniform(0, 1, size))
 
-        def cum_haz(xv):
+        def cum_haz(xv: npt.NDArray) -> npt.NDArray:
             return self.Hf_dist(xv, *dist_params) + xv * bz
 
         lo = np.zeros(size)
@@ -143,7 +146,7 @@ class AdditiveHazardsFitter(
     # -- factory ----------------------------------------------------------
 
     @staticmethod
-    def create(distribution):
+    def create(distribution: Any) -> "AdditiveHazardsFitter":
         """
         Create a parametric additive hazards fitter for the given
         distribution.
@@ -232,10 +235,10 @@ class AdditiveHazardsFitter(
 
         with np.errstate(all="ignore"):
 
-            def true_neg_ll(params):
+            def true_neg_ll(params: npt.NDArray) -> Boxable:
                 return self.neg_ll(data, *inv_trans(const(params)))
 
-            def fun(params):
+            def fun(params: npt.NDArray) -> Boxable:
                 # Where the additive hazard goes non-positive the log-
                 # likelihood is genuinely -inf; return a large finite penalty
                 # (not a solver constraint) so the derivative-free optimiser

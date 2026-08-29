@@ -18,6 +18,7 @@ References
 from typing import Any, NamedTuple
 
 import numpy as np
+import numpy.typing as npt
 from scipy.stats import chi2
 
 from surpyval.univariate.competing_risks.aalen_johansen import (
@@ -36,12 +37,12 @@ class GrayTestResult(NamedTuple):
 
 
 def gray_test(
-    x,
-    e,
-    group,
-    cause,
-    c=None,
-    n=None,
+    x: npt.ArrayLike,
+    e: npt.ArrayLike,
+    group: npt.ArrayLike,
+    cause: Any,
+    c: "npt.ArrayLike | None" = None,
+    n: "npt.ArrayLike | None" = None,
     rho: float = 0.0,
 ) -> GrayTestResult:
     """
@@ -166,7 +167,13 @@ def gray_test(
     )
 
 
-def _pooled_cif(x, all_event, is_cause, n, cause_times) -> np.ndarray:
+def _pooled_cif(
+    x: npt.NDArray,
+    all_event: npt.NDArray,
+    is_cause: npt.NDArray,
+    n: npt.NDArray,
+    cause_times: npt.NDArray,
+) -> np.ndarray:
     """Aalen-Johansen cumulative incidence of the cause on the pooled sample,
     evaluated at ``cause_times``."""
     times = np.unique(x)

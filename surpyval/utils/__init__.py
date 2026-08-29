@@ -1,4 +1,6 @@
 import warnings
+from numbers import Number
+from typing import Any, Callable
 from collections import defaultdict
 
 import numpy as np
@@ -10,7 +12,7 @@ COX_PH_METHODS = ["breslow", "efron", "exact", "kalbfleisch-prentice", "kp"]
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
 
 
-def _round_vals(x):
+def _round_vals(x: npt.NDArray) -> npt.NDArray:
     not_different = True
     i = 1
     while not_different:
@@ -20,7 +22,7 @@ def _round_vals(x):
     return x_ticks
 
 
-def round_sig(points, sig=2):
+def round_sig(points: npt.NDArray, sig: int = 2) -> list:
     # Used to round to sig significant figures.
     places = sig - np.floor(np.log10(np.abs(points))) - 1
     output = []
@@ -29,9 +31,9 @@ def round_sig(points, sig=2):
     return output
 
 
-def _check_x_not_empty(func):
+def _check_x_not_empty(func: Callable) -> Callable:
     # Decorator to check that x is not empty
-    def wrap(obj, x, *args, **kwargs):
+    def wrap(obj: Any, x: Any, *args: Any, **kwargs: Any) -> Any:
         x = np.array(x)
         if x.size == 0:
             return 0
@@ -43,15 +45,17 @@ def _check_x_not_empty(func):
     return wrap
 
 
-def check_no_censoring(c):
+def check_no_censoring(c: npt.NDArray) -> bool:
     return any(c != 0)
 
 
-def no_left_or_int(c):
+def no_left_or_int(c: npt.NDArray) -> bool:
     return any((c == -1) | (c == 2))
 
 
-def validate_float_array(arr, name):
+def validate_float_array(
+    arr: "npt.ArrayLike | None", name: str
+) -> npt.NDArray:
     """Convert input to float array with better error handling."""
     if arr is None:
         return np.array([], dtype=np.float64)
@@ -63,7 +67,7 @@ def validate_float_array(arr, name):
         )
 
 
-def validate_1d(arr, name: str) -> npt.NDArray:
+def validate_1d(arr: npt.ArrayLike, name: str) -> npt.NDArray:
     """
     Coerce ``arr`` to a one-dimensional float array, naming it in the
     error when it is not. A scalar becomes a length-one array; anything
@@ -75,7 +79,7 @@ def validate_1d(arr, name: str) -> npt.NDArray:
     return out
 
 
-def _group_ids(key):
+def _group_ids(key: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
     """Group id per row, plus the row at which each group first appears.
 
     ``np.lexsort`` rather than ``np.unique(axis=0)``: the latter takes a
@@ -98,7 +102,9 @@ def _group_ids(key):
     return group, order[starts]
 
 
-def group_xcnt(x, c, n, t):
+def group_xcnt(
+    x: npt.NDArray, c: npt.NDArray, n: npt.NDArray, t: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Collapse identical ``(x, c, t)`` rows, summing their counts.
 
     This used to walk every observation in Python, accumulating into a
@@ -162,7 +168,9 @@ def group_xcnt(x, c, n, t):
     return x[representative], c[representative], totals, t[representative]
 
 
-def xcnt_sort(x, c, n, t):
+def xcnt_sort(
+    x: npt.NDArray, c: npt.NDArray, n: npt.NDArray, t: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     idx_c = np.argsort(c, kind="stable")
     x = x[idx_c]
     c = c[idx_c]
@@ -191,7 +199,12 @@ def xcnt_sort(x, c, n, t):
     return x, c, n, t
 
 
-def fsli_handler(f=None, s=None, l=None, i=None):
+def fsli_handler(
+    f: "npt.ArrayLike | None" = None,
+    s: "npt.ArrayLike | None" = None,
+    l: "npt.ArrayLike | None" = None,
+    i: "npt.ArrayLike | None" = None,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Takes in the fsli format and ensures that the data is correctly defined.
     Takes an assorted combination of f, s, l, and i and returns them in the
@@ -273,7 +286,9 @@ def fsli_handler(f=None, s=None, l=None, i=None):
     return f, s, l, i
 
 
-def xrd_handler(x, r, d):
+def xrd_handler(
+    x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Takes a combination of 'x', 'r', and 'd' arrays and ensures that the data
     is feasible.
@@ -358,7 +373,7 @@ def xrd_handler(x, r, d):
     return x, r, d
 
 
-def coerce_xcnt_x(x) -> npt.NDArray:
+def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
     """
     Coerce the ``x`` variable of xcnt-format data into a numpy array.
 
@@ -404,7 +419,12 @@ def coerce_xcnt_x(x) -> npt.NDArray:
     return x
 
 
-def format_truncation(t, tl, tr, n_rows) -> npt.NDArray:
+def format_truncation(
+    t: "npt.ArrayLike | None",
+    tl: "npt.ArrayLike | Number | None",
+    tr: "npt.ArrayLike | Number | None",
+    n_rows: int,
+) -> npt.NDArray:
     """
     Build the ``(n_rows, 2)`` truncation array from either a ``t`` matrix or
     separate ``tl``/``tr`` bounds (scalars broadcast to all rows). The default
@@ -464,15 +484,15 @@ def format_truncation(t, tl, tr, n_rows) -> npt.NDArray:
 
 
 def xcnt_handler(
-    x=None,
-    c=None,
-    n=None,
-    t=None,
-    xl=None,
-    xr=None,
-    tl=None,
-    tr=None,
-    group_and_sort=True,
+    x: "npt.ArrayLike | None" = None,
+    c: "npt.ArrayLike | None" = None,
+    n: "npt.ArrayLike | None" = None,
+    t: "npt.ArrayLike | None" = None,
+    xl: "npt.ArrayLike | None" = None,
+    xr: "npt.ArrayLike | None" = None,
+    tl: "npt.ArrayLike | Number | None" = None,
+    tr: "npt.ArrayLike | Number | None" = None,
+    group_and_sort: bool = True,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Main handler that ensures any input to a surpyval fitter meets the
@@ -746,7 +766,11 @@ def xcnt_handler(
     return x, c, n, t
 
 
-def xcn_to_fs(x, c=None, n=None):
+def xcn_to_fs(
+    x: npt.ArrayLike,
+    c: "npt.ArrayLike | None" = None,
+    n: "npt.ArrayLike | None" = None,
+) -> tuple[npt.NDArray, npt.NDArray]:
     x = np.array(x)
     if c is None:
         c = np.zeros_like(x)
@@ -761,7 +785,9 @@ def xcn_to_fs(x, c=None, n=None):
     return f, s
 
 
-def _entered_before(tl, x, n):
+def _entered_before(
+    tl: npt.NDArray, x: npt.NDArray, n: npt.NDArray
+) -> npt.NDArray:
     """Weighted count of observations that entered strictly before each ``x``.
 
     ``e[j] = sum_i n_i * 1[tl_i < x_j]`` -- the ``(entry, exit]``
@@ -802,7 +828,13 @@ def _entered_before(tl, x, n):
     return cumulative[np.searchsorted(tl_sorted, x, side="left")]
 
 
-def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
+def xcnt_to_xrd(
+    x: npt.ArrayLike,
+    c: "npt.ArrayLike | None" = None,
+    n: "npt.ArrayLike | None" = None,
+    t: "npt.ArrayLike | None" = None,
+    **kwargs: Any,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Converts the xcn format to the xrd format.
 
@@ -892,7 +924,9 @@ def xcnt_to_xrd(x, c=None, n=None, t=None, **kwargs):
     return x, r, d
 
 
-def xrd_to_xcnt(x, r, d):
+def xrd_to_xcnt(
+    x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Converts the xrd format to the xcn format. Assumes that there is no
     right truncation or left censoring.
@@ -961,19 +995,25 @@ def xrd_to_xcnt(x, r, d):
             " output, so this data cannot be converted with xrd_to_xcnt."
         )
 
+    x = np.asarray(x)
     delta = np.abs(np.diff(np.hstack([r, [0]])))
 
     sus = delta - d
     x_s = x[sus > 0]
     n_s = sus[sus > 0]
 
-    x_f = np.repeat(x_f, n_f)
-    x_s = np.repeat(x_s, n_s)
+    x_f = np.repeat(np.asarray(x_f), np.asarray(n_f, dtype=int))
+    x_s = np.repeat(x_s, np.asarray(n_s, dtype=int))
 
     return fs_to_xcnt(x_f, x_s)
 
 
-def fsli_to_xcnt(f=None, s=None, l=None, i=None):
+def fsli_to_xcnt(
+    f: "npt.ArrayLike | None" = None,
+    s: "npt.ArrayLike | None" = None,
+    l: "npt.ArrayLike | None" = None,
+    i: "npt.ArrayLike | None" = None,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Converts the fsli format to the xcn format. This ensures is so that the
     data can be passed to one of the parametric or nonparametric fitters.
@@ -1046,7 +1086,11 @@ def fsli_to_xcnt(f=None, s=None, l=None, i=None):
         return x, c, n, t
 
 
-def fsl_to_xcnt(f=None, s=None, l=None):
+def fsl_to_xcnt(
+    f: "npt.ArrayLike | None" = None,
+    s: "npt.ArrayLike | None" = None,
+    l: "npt.ArrayLike | None" = None,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     if f is None:
         f = []
     if s is None:
@@ -1073,11 +1117,15 @@ def fsl_to_xcnt(f=None, s=None, l=None):
     return x, c, n, t
 
 
-def fs_to_xcnt(f=None, s=None):
+def fs_to_xcnt(
+    f: "npt.ArrayLike | None" = None, s: "npt.ArrayLike | None" = None
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     return fsl_to_xcnt(f, s, None)
 
 
-def _get_idx(x_target, x):
+def _get_idx(
+    x_target: npt.NDArray, x: npt.ArrayLike
+) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Function to get the indices for a given vector of x values
     """
@@ -1089,26 +1137,26 @@ def _get_idx(x_target, x):
     return idx, rev
 
 
-def check_left_or_int_cens(c):
+def check_left_or_int_cens(c: npt.NDArray) -> None:
     if (-1 in c) or (2 in c):
         raise ValueError(
             "Left or interval censoring not implemented with Competing Risks"
         )
 
 
-def check_Z_and_x(Z, x):
+def check_Z_and_x(Z: npt.NDArray, x: npt.NDArray) -> None:
     if x.shape[0] != Z.shape[0]:
         raise ValueError("Z must have len(x) number of rows")
 
 
-def check_e_and_x(e, x):
+def check_e_and_x(e: npt.NDArray, x: npt.NDArray) -> None:
     if e.shape != x.shape:
         raise ValueError(
             "Event vector, e, and duration vector, x, must have same shape"
         )
 
 
-def check_c_and_e(c, e):
+def check_c_and_e(c: npt.NDArray, e: npt.NDArray) -> None:
     if any(e_i is not None for e_i in e[c == 1]) or any(
         e_i is None for e_i in e[c != 1]
     ):
@@ -1119,7 +1167,7 @@ def check_c_and_e(c, e):
         )
 
 
-def is_missing_event(value):
+def is_missing_event(value: Any) -> bool:
     """Whether a competing-risks event value marks *no* attributed cause -- a
     censored observation. That is Python ``None`` or any missing value
     (``NaN``, pandas ``NA``)."""
@@ -1131,7 +1179,9 @@ def is_missing_event(value):
         return False
 
 
-def resolve_cr_censoring(e, c):
+def resolve_cr_censoring(
+    e: npt.ArrayLike, c: "npt.ArrayLike | None"
+) -> tuple[npt.NDArray, npt.NDArray]:
     """Canonicalise a competing-risks event vector and its censoring flag.
 
     A *missing* event value (``None``, ``NaN`` or pandas ``NA``) marks a
@@ -1149,10 +1199,14 @@ def resolve_cr_censoring(e, c):
     e = np.array([None if m else v for v, m in zip(e, missing)], dtype=object)
     if c is None:
         c = np.where(missing, 1, 0)
-    return e, c
+    return e, np.asarray(c)
 
 
-def wrangle_and_check_form_and_Z_cols(Z_cols, formula, df):
+def wrangle_and_check_form_and_Z_cols(
+    Z_cols: "str | list[str] | None",
+    formula: "str | None",
+    df: Any,
+) -> tuple:
     if (Z_cols is None) and (formula is None):
         raise ValueError("'Z_cols' or 'formula' cannot both be None")
 
@@ -1190,7 +1244,7 @@ def wrangle_and_check_form_and_Z_cols(Z_cols, formula, df):
     return Z, mask, form, feature_names, model_spec
 
 
-def wrangle_Z(Z):
+def wrangle_Z(Z: npt.ArrayLike) -> tuple[npt.NDArray, npt.NDArray]:
     Z = np.array(Z)
 
     if Z.ndim == 1:
@@ -1205,7 +1259,13 @@ def wrangle_Z(Z):
     return Z[mask], mask
 
 
-def validate_cr_df_inputs(df, x_col, e_col, c_col=None, n_col=None):
+def validate_cr_df_inputs(
+    df: Any,
+    x_col: str,
+    e_col: str,
+    c_col: "str | None" = None,
+    n_col: "str | None" = None,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     x = df[x_col].values
     e = df[e_col].values
 
@@ -1221,7 +1281,13 @@ def validate_cr_df_inputs(df, x_col, e_col, c_col=None, n_col=None):
     return x, c, n, e
 
 
-def validate_cr_inputs(x, c, n, e, method):
+def validate_cr_inputs(
+    x: npt.ArrayLike,
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+    e: npt.ArrayLike,
+    method: str,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     # Validates the inputs prior to be used by the CoxPH model.
     # Use existing surpyval validator. But don't group and sort
     # so as to put it out of order of the event array, e.
@@ -1251,17 +1317,19 @@ def validate_cr_inputs(x, c, n, e, method):
     return x, c, n, e
 
 
-def validate_event(mapping, event):
+def validate_event(mapping: dict, event: Any) -> None:
     if event is not None and event not in mapping:
         raise ValueError("Event type not in model")
 
 
-def validate_cif_event(event):
+def validate_cif_event(event: Any) -> None:
     if event is None:
         raise ValueError("CIF needs event type, not None")
 
 
-def _check_an_ids_tl_and_x(id, tl, x):
+def _check_an_ids_tl_and_x(
+    id: npt.NDArray, tl: npt.NDArray, x: npt.NDArray
+) -> None:
     # This function checks that, for a given item, id, the history
     # of the item is complete. That is, the timeline provided in the
     # steps from tl[0] > x[0] == tl[1] > x[1] == ... tl[-1] > x[-1]
@@ -1285,47 +1353,63 @@ def _check_an_ids_tl_and_x(id, tl, x):
 
     # check that there is one start time and one finish time and
     # no other double ups or gaps
-    x, n = np.unique([tl, x], return_counts=True)
+    _, counts = np.unique([tl, x], return_counts=True)
 
-    if n[0] != 1:
+    if counts[0] != 1:
         raise ValueError("Multiple start times for item {id}".format(id=id))
-    if n[-1] != 1:
+    if counts[-1] != 1:
         raise ValueError("Multiple end times for item {id}".format(id=id))
 
-    if np.any(n[1:-1] != 2):
+    if np.any(counts[1:-1] != 2):
         raise ValueError(
             "Missing or doubled-up time windows for item {id}".format(id=id)
         )
 
 
-def validate_tv_coxph(id, tl, x, Z, c, n):
-    x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+def validate_tv_coxph(
+    id: npt.ArrayLike,
+    tl: npt.ArrayLike,
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+) -> tuple:
+    x_a, c_a, n_a, t_a = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
 
     if id is None:
         warnings.warn("No id provided, model fitted by coherence not checked")
     else:
-        id = np.array(id)
-        for i in id:
-            tl_i = tl[id == i]
-            x_i = x[id == i]
+        id_arr = np.array(id)
+        tl_arr = np.asarray(tl)
+        for i in id_arr:
+            tl_i = tl_arr[id_arr == i]
+            x_i = x_a[id_arr == i]
             _check_an_ids_tl_and_x(i, tl_i, x_i)
 
     # One validation pass is enough: mask the already-validated arrays
     # (including the truncation bounds — the old second xcnt_handler call
     # used the unmasked tl and would raise a confusing length error
     # whenever wrangle_Z actually dropped NaN rows).
-    Z, mask = wrangle_Z(Z)
-    x, c, n, t = (arr[mask] for arr in (x, c, n, t))
-    x, c, n, Z = (arr.astype(float) for arr in [x, c, n, Z])
+    Z_arr, mask = wrangle_Z(Z)
+    x_a, c_a, n_a, t_a = (arr[mask] for arr in (x_a, c_a, n_a, t_a))
+    x_a, c_a, n_a = (arr.astype(float) for arr in [x_a, c_a, n_a])
+    Z_arr = Z_arr.astype(float)
 
-    check_Z_and_x(Z, x)
+    check_Z_and_x(Z_arr, x_a)
 
-    return t[:, 0], x, Z, c, n
+    return t_a[:, 0], x_a, Z_arr, c_a, n_a
 
 
 def validate_tv_coxph_df_inputs(
-    df, id_col, tl_col, x_col, Z_cols, c_col, n_col, formula
-):
+    df: Any,
+    id_col: str,
+    tl_col: str,
+    x_col: str,
+    Z_cols: "str | list[str] | None",
+    c_col: "str | None",
+    n_col: "str | None",
+    formula: "str | None",
+) -> tuple:
     # TODO: Create count of dropped rows
 
     if x_col is None:
@@ -1378,7 +1462,14 @@ def validate_tv_coxph_df_inputs(
     return t[:, 0], x, Z, id, c, n, form
 
 
-def validate_coxph_df_inputs(df, x_col, c_col, n_col, Z_cols, formula):
+def validate_coxph_df_inputs(
+    df: Any,
+    x_col: str,
+    c_col: "str | None",
+    n_col: "str | None",
+    Z_cols: "str | list[str] | None",
+    formula: "str | None",
+) -> tuple:
     # TODO: Return the count of dropped rows?
 
     Z, mask, form, feature_names, model_spec = (
@@ -1403,7 +1494,12 @@ def validate_coxph_df_inputs(df, x_col, c_col, n_col, Z_cols, formula):
 
 
 def validate_coxph(
-    x, c, n, Z, tl, method
+    x: "npt.ArrayLike | None",
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+    Z: "npt.ArrayLike | None",
+    tl: "npt.ArrayLike | None",
+    method: str,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     if method not in COX_PH_METHODS:
         raise ValueError("Method must be in {}".format(COX_PH_METHODS))
@@ -1423,43 +1519,54 @@ def validate_coxph(
             "for right/interval-truncated data."
         )
 
-    x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+    x_a, c_a, n_a, t_a = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
 
-    tl = t[:, 0]
+    tl_a = t_a[:, 0]
 
-    x, c, n, Z, tl = (np.array(a).astype(float) for a in [x, c, n, Z, tl])
+    x_a, c_a, n_a, tl_a = (
+        np.array(a).astype(float) for a in [x_a, c_a, n_a, tl_a]
+    )
 
-    Z, mask = wrangle_Z(Z)
-    x, c, n, tl = (arr[mask] for arr in (x, c, n, tl))
-    x, c, n, tl, Z = (arr.astype(float) for arr in [x, c, n, tl, Z])
+    Z_arr, mask = wrangle_Z(np.array(Z).astype(float))
+    x_a, c_a, n_a, tl_a = (arr[mask] for arr in (x_a, c_a, n_a, tl_a))
+    Z_arr = Z_arr.astype(float)
 
-    check_Z_and_x(Z, x)
+    check_Z_and_x(Z_arr, x_a)
 
-    return x, c, n, tl, Z
+    return x_a, c_a, n_a, tl_a, Z_arr
 
 
-def validate_fine_gray_inputs(x, Z, e, c, n):
+def validate_fine_gray_inputs(
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    e: npt.ArrayLike,
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     # A missing event (None / NaN) marks a censored observation; if c is not
     # given it is derived from the events.
     e, c = resolve_cr_censoring(e, c)
-    x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
+    x_a, c_a, n_a, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
-    e = np.array(e)
-    Z, mask = wrangle_Z(Z)
-    x, c, n, e = (arr[mask] for arr in (x, c, n, e))
+    e_arr = np.array(e)
+    Z_arr, mask = wrangle_Z(Z)
+    x_a, c_a, n_a, e_arr = (arr[mask] for arr in (x_a, c_a, n_a, e_arr))
 
     # Set all dtypes to float. Very poor results otherwise.
-    x, c, n, Z = (arr.astype(float) for arr in [x, c, n, Z])
+    x_a, c_a, n_a = (arr.astype(float) for arr in [x_a, c_a, n_a])
+    Z_arr = Z_arr.astype(float)
 
-    check_e_and_x(e, x)
-    check_Z_and_x(Z, x)
-    check_c_and_e(c, e)
-    check_left_or_int_cens(c)
+    check_e_and_x(e_arr, x_a)
+    check_Z_and_x(Z_arr, x_a)
+    check_c_and_e(c_a, e_arr)
+    check_left_or_int_cens(c_a)
 
-    return x, Z, e, c, n
+    return x_a, Z_arr, e_arr, c_a, n_a
 
 
-def fs_to_xrd(f, s):
+def fs_to_xrd(
+    f: npt.ArrayLike, s: npt.ArrayLike
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Converts the fs format to the xrd format.
 

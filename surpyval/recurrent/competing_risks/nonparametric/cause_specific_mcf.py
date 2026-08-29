@@ -12,7 +12,11 @@ See ``surpyval.univariate.competing_risks`` for the univariate
 (time-to-first-event) competing-risks models.
 """
 
+from typing import Any
+
+import numpy as np
 from matplotlib import pyplot as plt
+from numpy.typing import ArrayLike
 
 from surpyval.recurrent.nonparametric.mcf import NonParametricCounting
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
@@ -22,10 +26,14 @@ from surpyval.utils.recurrent_utils import (
 )
 
 
-def _counting_model_from_xrd(x, r, d):
+def _counting_model_from_xrd(
+    x: np.ndarray, r: np.ndarray, d: np.ndarray
+) -> Any:
     """Single-cause ``NonParametricCounting`` from an ``(x, r, d)``
     triple; delegates to the one shared estimator."""
-    return type(NonParametricCounting).from_xrd(x, r, d)
+    # ``from_xrd`` is a classmethod, so calling it through the
+    # singleton instance binds the class exactly as ``type(...)`` did.
+    return NonParametricCounting.from_xrd(x, r, d)
 
 
 class CauseSpecificMCF(SerialisableMixin):
@@ -38,12 +46,20 @@ class CauseSpecificMCF(SerialisableMixin):
     ``self.models[cause]`` or use the convenience methods below.
     """
 
-    def __repr__(self):
+    # Populated by the fit classmethods; declared for the type checker.
+    df: Any
+    data: Any
+    event_types: list
+    models: dict
+    x: "np.ndarray"
+    r: "np.ndarray"
+
+    def __repr__(self) -> str:
         return "Cause-specific MCF with causes: {}".format(self.event_types)
 
     # -- serialisation -----------------------------------------------------
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """
         Serialise this fitted cause-specific MCF to a plain, JSON-serialisable
         dict: the list of event types and each cause's per-cause MCF estimate.
@@ -63,7 +79,7 @@ class CauseSpecificMCF(SerialisableMixin):
         )
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict) -> "CauseSpecificMCF":
         """
         Rebuild a cause-specific MCF from a :meth:`to_dict` dictionary.
 
@@ -83,15 +99,22 @@ class CauseSpecificMCF(SerialisableMixin):
         }
         return out
 
-    def mcf(self, x, cause, interp="step"):
+    def mcf(
+        self, x: ArrayLike, cause: Any, interp: str = "step"
+    ) -> np.ndarray:
         """Cause-specific MCF evaluated at ``x`` for the given ``cause``."""
         return self.models[cause].mcf(x, interp=interp)
 
-    def mcf_cb(self, x, cause, **kwargs):
+    def mcf_cb(self, x: ArrayLike, cause: Any, **kwargs: Any) -> Any:
         """Confidence bounds on the cause-specific MCF for ``cause``."""
         return self.models[cause].mcf_cb(x, **kwargs)
 
-    def plot(self, confidence=0.95, plot_bounds=True, ax=None):
+    def plot(
+        self,
+        confidence: float = 0.95,
+        plot_bounds: bool = True,
+        ax: Any = None,
+    ) -> Any:
         """Overlay the MCF of every cause on a single axis."""
         if ax is None:
             ax = plt.gcf().gca()
@@ -102,7 +125,7 @@ class CauseSpecificMCF(SerialisableMixin):
         return ax
 
     @classmethod
-    def fit_from_recurrent_data(cls, data):
+    def fit_from_recurrent_data(cls, data: Any) -> "CauseSpecificMCF":
         if data.e is None:
             raise ValueError(
                 "RecurrentEventData has no event-type marks; pass `e` to "
@@ -120,7 +143,16 @@ class CauseSpecificMCF(SerialisableMixin):
         return out
 
     @classmethod
-    def fit(cls, x, i=None, c=None, n=None, e=None, tl=None, tr=None):
+    def fit(
+        cls,
+        x: ArrayLike,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        n: "ArrayLike | None" = None,
+        e: "ArrayLike | None" = None,
+        tl: "ArrayLike | None" = None,
+        tr: "ArrayLike | None" = None,
+    ) -> "CauseSpecificMCF":
         """
         Fit a cause-specific MCF.
 
@@ -160,15 +192,15 @@ class CauseSpecificMCF(SerialisableMixin):
     @classmethod
     def fit_from_df(
         cls,
-        df,
-        x_col,
-        e_col,
-        i_col=None,
-        c_col=None,
-        n_col=None,
-        tl_col=None,
-        tr_col=None,
-    ):
+        df: Any,
+        x_col: str,
+        e_col: str,
+        i_col: "str | None" = None,
+        c_col: "str | None" = None,
+        n_col: "str | None" = None,
+        tl_col: "str | None" = None,
+        tr_col: "str | None" = None,
+    ) -> "CauseSpecificMCF":
         """
         Fit a cause-specific MCF from a :class:`pandas.DataFrame`, naming the
         columns to read.
@@ -196,7 +228,7 @@ class CauseSpecificMCF(SerialisableMixin):
         CauseSpecificMCF
         """
 
-        def col(name):
+        def col(name: "str | None") -> Any:
             return None if name is None else df[name].to_numpy()
 
         model = cls.fit(

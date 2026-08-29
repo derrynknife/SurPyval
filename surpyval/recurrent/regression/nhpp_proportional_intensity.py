@@ -1,4 +1,7 @@
+from typing import Any, Callable
+
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
@@ -63,7 +66,7 @@ class ProportionalIntensityNHPP:
     <BLANKLINE>
     """
 
-    def create_negll_func(self, data, dist):
+    def create_negll_func(self, data: Any, dist: Any) -> Callable:
         Z = data.Z
         s = data.split_for_nhpp_likelihood()
         x_o, x_o_prev = s["x_o"], s["x_o_prev"]
@@ -94,7 +97,7 @@ class ProportionalIntensityNHPP:
         # will not encounter any invalid values since taking the log of 0
         # will not occur.
 
-        def negll_func(params):
+        def negll_func(params: np.ndarray) -> float:
             dist_params = params[: len(dist.param_names)]
             beta_coeffs = params[len(dist.param_names) :]
             # ll of directly observed
@@ -151,7 +154,12 @@ class ProportionalIntensityNHPP:
 
         return negll_func
 
-    def fit_from_recurrent_data(self, data, dist, init=None):
+    def fit_from_recurrent_data(
+        self,
+        data: Any,
+        dist: Any,
+        init: "ArrayLike | None" = None,
+    ) -> Any:
         if not isinstance(dist, CountingProcess):
             raise TypeError(
                 "`dist` must be a CountingProcess instance "
@@ -208,17 +216,17 @@ class ProportionalIntensityNHPP:
 
     def fit(
         self,
-        x,
-        Z,
-        i=None,
-        c=None,
-        n=None,
-        t=None,
-        tl=None,
-        tr=None,
-        dist=Duane,
-        init=None,
-    ):
+        x: ArrayLike,
+        Z: ArrayLike,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        n: "ArrayLike | None" = None,
+        t: "ArrayLike | None" = None,
+        tl: "ArrayLike | None" = None,
+        tr: "ArrayLike | None" = None,
+        dist: Any = Duane,
+        init: "ArrayLike | None" = None,
+    ) -> Any:
         """
         Fit the model using the provided data and initial parameters.
 

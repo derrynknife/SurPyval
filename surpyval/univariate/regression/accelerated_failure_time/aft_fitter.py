@@ -1,5 +1,13 @@
+from typing import Any
+
 import autograd.numpy as np
 import numpy.typing as npt
+
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+)
+from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
@@ -20,18 +28,20 @@ class _LogLinearPhiModel:
 
     name = "Log Linear [exp(beta'Z)]"
 
-    def phi(self, Z, *params):
+    def phi(self, Z: Numeric, *params: Boxable) -> Boxable:
         return np.exp(np.dot(Z, np.array(params)))
 
-    def phi_bounds(self, Z):
+    def phi_bounds(self, Z: npt.NDArray) -> tuple:
         return ((None, None),) * Z.shape[1]
 
-    def phi_param_map(self, Z):
+    def phi_param_map(self, Z: npt.NDArray) -> dict[str, int]:
         return {"beta_" + str(i): i for i in range(Z.shape[1])}
 
 
 class AFTFitter(
-    HazardIdentitiesMixin, AFTTVCFitMixin, DataFrameRegressionMixin
+    HazardIdentitiesMixin,
+    AFTTVCFitMixin,
+    DataFrameRegressionMixin,
 ):
     """
     Accelerated Failure Time fitter using exp(beta'Z) as the acceleration
@@ -44,7 +54,7 @@ class AFTFitter(
     failure (shorter life), consistent with the PH sign convention.
     """
 
-    def __init__(self, distribution):
+    def __init__(self, distribution: Any) -> None:
         mirror_distribution(self, distribution)
         self._phi_model = _LogLinearPhiModel()
         self.Hf_dist = distribution.Hf
@@ -52,17 +62,17 @@ class AFTFitter(
         self.sf_dist = distribution.sf
         self.ff_dist = distribution.ff
 
-    def _phi(self, Z, *phi_params):
+    def _phi(self, Z: Numeric, *phi_params: Boxable) -> Boxable:
         return self._phi_model.phi(Z, *phi_params)
 
-    def Hf(self, x, Z, *params):
+    def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.atleast_2d(np.asarray(Z, dtype=float))
         dist_params = params[: self.k_dist]
         phi_params = params[self.k_dist :]
         return self.Hf_dist(self._phi(Z, *phi_params) * x, *dist_params)
 
-    def hf(self, x, Z, *params):
+    def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.atleast_2d(np.asarray(Z, dtype=float))
         dist_params = params[: self.k_dist]
@@ -70,7 +80,7 @@ class AFTFitter(
         phi_val = self._phi(Z, *phi_params)
         return phi_val * self.hf_dist(phi_val * x, *dist_params)
 
-    def neg_ll(self, data, *params):
+    def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
 
     def fit(
@@ -99,7 +109,7 @@ class AFTFitter(
 
         with np.errstate(all="ignore"):
 
-            def fun(params):
+            def fun(params: npt.NDArray) -> Boxable:
                 return self.neg_ll(data, *inv_trans(const(params)))
 
             res = optimise_nm_tnc(fun, init_t)
@@ -120,7 +130,7 @@ class AFTFitter(
         )
 
 
-def AFT(distribution):
+def AFT(distribution: Any) -> "AFTFitter":
     """
     Create an Accelerated Failure Time fitter for the given distribution.
 

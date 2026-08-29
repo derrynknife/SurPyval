@@ -21,7 +21,10 @@ degradation:
   distribution comes from the (regularised) incomplete gamma function.
 """
 
+from typing import TYPE_CHECKING
+
 import numpy as np
+import numpy.typing as npt
 from scipy.integrate import quad
 from scipy.optimize import brentq, minimize_scalar
 from scipy.special import gammaincc, gammaln
@@ -38,7 +41,9 @@ __all__ = [
 ]
 
 
-def _increments(x, y, i):
+def _increments(
+    x: npt.ArrayLike, y: npt.ArrayLike, i: npt.ArrayLike
+) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Validate degradation data and return the pooled per-unit increments.
 
@@ -99,13 +104,19 @@ class ProcessRUL:
         current degradation is at or beyond it).
     """
 
-    def __init__(self, rul, rul_interval, prob_already_failed, alpha_ci):
+    def __init__(
+        self,
+        rul: float,
+        rul_interval: tuple,
+        prob_already_failed: float,
+        alpha_ci: float,
+    ) -> None:
         self.rul = rul
         self.rul_interval = rul_interval
         self.prob_already_failed = prob_already_failed
         self.alpha_ci = alpha_ci
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         lo, hi = self.rul_interval
         return (
             "ProcessRUL(rul={:.4g}, interval=({:.4g}, {:.4g}), "
@@ -149,15 +160,19 @@ class FirstPassageProcessModel(SerialisableMixin):
     param_names: list
     threshold: float
 
-    def __init__(self, *params_then_threshold):
+    if TYPE_CHECKING:
+        # The density is each subclass's own (closed form vs numeric).
+        def df(self, t: npt.ArrayLike) -> "npt.NDArray | float": ...
+
+    def __init__(self, *params_then_threshold: float) -> None:
         # Subclasses define their own named-parameter __init__; this
         # signature exists so ``from_dict`` type-checks against the base.
         raise NotImplementedError
 
-    def _ff_distance(self, t, distance):
+    def _ff_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
         raise NotImplementedError
 
-    def _quantile_hi0(self, distance):
+    def _quantile_hi0(self, distance: float) -> float:
         """Starting upper bracket for the quantile search."""
         raise NotImplementedError
 
@@ -183,33 +198,33 @@ class FirstPassageProcessModel(SerialisableMixin):
             model_dict["threshold"],
         )
 
-    def ff(self, t):
+    def ff(self, t: npt.ArrayLike) -> "npt.NDArray | float":
         """Failure (CDF) of the first-passage time to the threshold."""
         scalar = np.isscalar(t)
         res = self._ff_distance(np.atleast_1d(t), self.threshold)
         return float(res[0]) if scalar else res
 
-    def sf(self, t):
+    def sf(self, t: npt.ArrayLike) -> "npt.NDArray | float":
         """Survival function of the first-passage time."""
         scalar = np.isscalar(t)
         res = 1.0 - self._ff_distance(np.atleast_1d(t), self.threshold)
         return float(res[0]) if scalar else res
 
-    def hf(self, t):
+    def hf(self, t: npt.ArrayLike) -> "npt.NDArray | float":
         """Hazard function of the first-passage time."""
         return self.df(t) / self.sf(t)
 
-    def Hf(self, t):
+    def Hf(self, t: npt.ArrayLike) -> "npt.NDArray | float":
         """Cumulative hazard of the first-passage time."""
         return -np.log(self.sf(t))
 
-    def qf(self, p):
+    def qf(self, p: npt.ArrayLike) -> "npt.NDArray | float":
         """Quantile (inverse CDF) of the first-passage time."""
         p = np.atleast_1d(np.asarray(p, dtype=float))
         out = np.array([self._quantile(pi, self.threshold) for pi in p])
         return float(out[0]) if out.shape == (1,) else out
 
-    def _quantile(self, p, distance):
+    def _quantile(self, p: float, distance: float) -> float:
         if not (0.0 < p < 1.0):
             return 0.0 if p <= 0.0 else np.inf
         # bracket from the subclass's starting scale and expand until it
@@ -225,7 +240,9 @@ class FirstPassageProcessModel(SerialisableMixin):
             hi,
         )
 
-    def predict_rul(self, current_degradation, alpha_ci=0.05):
+    def predict_rul(
+        self, current_degradation: float, alpha_ci: float = 0.05
+    ) -> ProcessRUL:
         """
         Remaining useful life given the current degradation level.
 
@@ -279,20 +296,20 @@ class WienerProcessModel(FirstPassageProcessModel):
     _human_name = "Wiener-process"
     param_names = ["mu", "sigma"]
 
-    def __init__(self, mu, sigma, threshold):
+    def __init__(self, mu: float, sigma: float, threshold: float) -> None:
         self.mu = float(mu)
         self.sigma = float(sigma)
         self.threshold = float(threshold)
         self.params = np.array([self.mu, self.sigma])
 
-    def _ig(self, distance):
+    def _ig(self, distance: float) -> tuple[float, float]:
         # Inverse-Gaussian (mean nu, shape lam) parameters for first passage
         # over ``distance`` at drift mu / diffusion sigma.
         nu = distance / self.mu
         lam = distance**2 / self.sigma**2
         return nu, lam
 
-    def _ff_distance(self, t, distance):
+    def _ff_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
         # Inverse-Gaussian first-passage CDF over ``distance``.
         t = np.asarray(t, dtype=float)
         nu, lam = self._ig(distance)
@@ -306,7 +323,7 @@ class WienerProcessModel(FirstPassageProcessModel):
         out[pos] = cdf
         return out
 
-    def df(self, t):
+    def df(self, t: npt.ArrayLike) -> "npt.NDArray | float":
         """Density of the first-passage (Inverse-Gaussian) time."""
         scalar = np.isscalar(t)
         t = np.atleast_1d(np.asarray(t, dtype=float))
@@ -319,21 +336,23 @@ class WienerProcessModel(FirstPassageProcessModel):
         )
         return float(out[0]) if scalar else out
 
-    def mean(self):
+    def mean(self) -> float:
         """Mean time to failure (``threshold / mu``)."""
         return self.threshold / self.mu
 
-    def _quantile_hi0(self, distance):
+    def _quantile_hi0(self, distance: float) -> float:
         # bracket around the first-passage mean
         return distance / self.mu
 
-    def random(self, size, random_state=None):
+    def random(
+        self, size: int, random_state: "int | None" = None
+    ) -> npt.NDArray:
         """Draw first-passage (failure) times from the fitted model."""
         rng = np.random.default_rng(random_state)
         nu, lam = self._ig(self.threshold)
         return rng.wald(nu, lam, size=size)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             "Wiener Process Degradation Model\n"
             "================================\n"
@@ -351,7 +370,13 @@ class WienerProcess:
     :class:`WienerProcessModel`)."""
 
     @classmethod
-    def fit(cls, x, y, i, threshold):
+    def fit(
+        cls,
+        x: npt.ArrayLike,
+        y: npt.ArrayLike,
+        i: npt.ArrayLike,
+        threshold: float,
+    ) -> "WienerProcessModel":
         """
         Fit a Wiener-process degradation model by maximum likelihood.
 
@@ -416,13 +441,13 @@ class GammaProcessModel(FirstPassageProcessModel):
     _human_name = "gamma-process"
     param_names = ["alpha", "beta"]
 
-    def __init__(self, alpha, beta, threshold):
+    def __init__(self, alpha: float, beta: float, threshold: float) -> None:
         self.alpha = float(alpha)
         self.beta = float(beta)
         self.threshold = float(threshold)
         self.params = np.array([self.alpha, self.beta])
 
-    def _ff_distance(self, t, distance):
+    def _ff_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
         # P(T <= t) = P(W(t) >= distance) with W(t) ~ Gamma(alpha t, beta).
         t = np.asarray(t, dtype=float)
         out = np.zeros_like(t, dtype=float)
@@ -430,7 +455,7 @@ class GammaProcessModel(FirstPassageProcessModel):
         out[pos] = gammaincc(self.alpha * t[pos], self.beta * distance)
         return out
 
-    def df(self, t):
+    def df(self, t: npt.ArrayLike) -> "npt.NDArray | float":
         """Density of the first-passage time (numeric derivative of ``ff``)."""
         scalar = np.isscalar(t)
         t = np.atleast_1d(np.asarray(t, dtype=float))
@@ -445,7 +470,7 @@ class GammaProcessModel(FirstPassageProcessModel):
         out = np.clip(out, 0.0, None)
         return float(out[0]) if scalar else out
 
-    def mean(self):
+    def mean(self) -> float:
         """Mean time to failure, ``integral of the survival function``."""
         val, _ = quad(
             lambda t: self._sf_distance_scalar(t, self.threshold),
@@ -455,23 +480,25 @@ class GammaProcessModel(FirstPassageProcessModel):
         )
         return val
 
-    def _sf_distance_scalar(self, t, distance):
+    def _sf_distance_scalar(self, t: float, distance: float) -> float:
         if t <= 0:
             return 1.0
         return 1.0 - gammaincc(self.alpha * t, self.beta * distance)
 
-    def _quantile_hi0(self, distance):
+    def _quantile_hi0(self, distance: float) -> float:
         # rough starting scale from the mean increment rate
         rate = self.alpha / self.beta  # mean degradation per unit time
         return max(distance / rate, 1.0)
 
-    def random(self, size, random_state=None):
+    def random(
+        self, size: int, random_state: "int | None" = None
+    ) -> npt.NDArray:
         """Draw first-passage (failure) times via inverse-CDF sampling."""
         rng = np.random.default_rng(random_state)
         u = rng.uniform(size=size)
         return np.array([self._quantile(ui, self.threshold) for ui in u])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             "Gamma Process Degradation Model\n"
             "===============================\n"
@@ -489,7 +516,13 @@ class GammaProcess:
     :class:`GammaProcessModel`)."""
 
     @classmethod
-    def fit(cls, x, y, i, threshold):
+    def fit(
+        cls,
+        x: npt.ArrayLike,
+        y: npt.ArrayLike,
+        i: npt.ArrayLike,
+        threshold: float,
+    ) -> "GammaProcessModel":
         """
         Fit a Gamma-process degradation model by maximum likelihood.
 
@@ -526,7 +559,7 @@ class GammaProcess:
         sum_dy = dy.sum()
         log_dy = np.log(dy)
 
-        def neg_ll(alpha):
+        def neg_ll(alpha: float) -> float:
             # Profile out beta: d/dbeta -> beta = alpha * sum_dt / sum_dy.
             beta = alpha * sum_dt / sum_dy
             k = alpha * dt

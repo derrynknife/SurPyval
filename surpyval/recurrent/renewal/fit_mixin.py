@@ -1,4 +1,7 @@
+from typing import Any, Callable
+
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import bounds_convert
@@ -23,7 +26,7 @@ class RenewalFitMixin:
     """
 
     @staticmethod
-    def _initial_dist_params(data, dist):
+    def _initial_dist_params(data: Any, dist: Any) -> np.ndarray:
         """
         Initial parameters for the underlying lifetime distribution, fitted to
         the times-to-first-event when there are enough of them (these are
@@ -47,7 +50,9 @@ class RenewalFitMixin:
         return dist_params
 
     @staticmethod
-    def _bounds_transform(data_x, bounds, param_names):
+    def _bounds_transform(
+        data_x: np.ndarray, bounds: list, param_names: list
+    ) -> tuple[Callable, Callable]:
         """
         Build the (bounded -> unbounded) parameter transforms used by the
         fitters that optimise in an unconstrained space. ``bounds`` are the
@@ -61,7 +66,11 @@ class RenewalFitMixin:
         return transform, inv_trans
 
     @staticmethod
-    def _multistart(fit_once, inits, user_init):
+    def _multistart(
+        fit_once: Callable,
+        inits: "list | None",
+        user_init: "ArrayLike | None",
+    ) -> Any:
         """
         Drive the multi-start fit. ``fit_once(x0) -> OptimizeResult`` runs the
         optimiser from a single natural-space start ``x0``. With no user
@@ -71,6 +80,7 @@ class RenewalFitMixin:
         Raises ``ValueError`` with the shared messages when nothing converges.
         """
         if user_init is None:
+            assert inits is not None
             results = [res for res in map(fit_once, inits) if res.success]
             if not results:
                 raise ValueError(
@@ -89,15 +99,15 @@ class RenewalFitMixin:
 
     def _fit_restoration_ml(
         self,
-        data,
-        neg_ll,
-        restoration_bounds,
-        restoration_name,
-        dist,
-        restoration_inits,
-        dist_init_params,
-        init,
-    ):
+        data: Any,
+        neg_ll: Callable,
+        restoration_bounds: tuple,
+        restoration_name: str,
+        dist: Any,
+        restoration_inits: tuple,
+        dist_init_params: "np.ndarray | None",
+        init: "ArrayLike | None",
+    ) -> tuple[Any, np.ndarray]:
         """
         The transform-space fitting spine shared by ``ARA``, ``ARI`` and
         ``GeneralizedRenewal``: multi-start Nelder-Mead on the negative
@@ -117,7 +127,7 @@ class RenewalFitMixin:
             [restoration_name, *dist.param_names],
         )
 
-        def fit_once(x0):
+        def fit_once(x0: np.ndarray) -> Any:
             return minimize(
                 lambda p: neg_ll(inv_trans(p)),
                 transform(np.asarray(x0, dtype=float)),
@@ -125,13 +135,24 @@ class RenewalFitMixin:
             )
 
         if init is None:
+            # The caller supplies initial distribution parameters whenever
+            # it does not supply a full ``init``.
+            assert dist_init_params is not None
             inits = [[r0, *dist_init_params] for r0 in restoration_inits]
         else:
             inits = None
         res = self._multistart(fit_once, inits, init)
         return res, inv_trans(res.x)
 
-    def _attach_inference(self, model, neg_ll, mle, n_obs, res, data):
+    def _attach_inference(
+        self,
+        model: Any,
+        neg_ll: Callable,
+        mle: ArrayLike,
+        n_obs: int,
+        res: Any,
+        data: Any,
+    ) -> Any:
         """
         Store the fit artefacts and the attributes
         :class:`LikelihoodInferenceMixin` needs: ``_neg_ll`` (the negative

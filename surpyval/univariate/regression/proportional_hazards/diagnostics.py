@@ -16,6 +16,7 @@ References
 from typing import TYPE_CHECKING
 
 import numpy as np
+import numpy.typing as npt
 from scipy.stats import chi2
 
 from surpyval.utils.linalg import safe_inv
@@ -57,7 +58,9 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
     return model._fit_data
 
 
-def _risk_set_means(data: dict, beta: np.ndarray, tie_method: str = "breslow"):
+def _risk_set_means(
+    data: dict, beta: np.ndarray, tie_method: str = "breslow"
+) -> tuple:
     """Per distinct event time: risk-set covariate means and baseline-hazard
     step aggregates, weighted by ``n * exp(beta'Z)`` and respecting delayed
     entry.
@@ -204,7 +207,7 @@ def compute_residuals(
         delta = (c == 0).astype(float)
         Lam = np.concatenate([[0.0], np.cumsum(A)])
 
-        def _Lam_at(t):
+        def _Lam_at(t: np.ndarray) -> np.ndarray:
             return Lam[np.searchsorted(event_times, t, side="right")]
 
         cum_haz = _Lam_at(x) - _Lam_at(tl)
@@ -272,7 +275,8 @@ def compute_residuals(
 
 
 def robust_covariance(
-    model: "SemiParametricRegressionModel", cluster=None
+    model: "SemiParametricRegressionModel",
+    cluster: "npt.ArrayLike | None" = None,
 ) -> np.ndarray:
     """
     Cluster-robust ("sandwich") covariance of the Cox coefficients.
@@ -336,7 +340,8 @@ def robust_covariance(
 
 
 def robust_summary(
-    model: "SemiParametricRegressionModel", cluster=None
+    model: "SemiParametricRegressionModel",
+    cluster: "npt.ArrayLike | None" = None,
 ) -> dict:
     """
     Cluster-robust standard errors, z-scores and p-values for the

@@ -32,8 +32,10 @@ into concrete ``(start, end, Z)`` triples.
 
 import ast
 import math
+from typing import Callable
 
 import numpy as np
+import numpy.typing as npt
 
 __all__ = ["StepSchedule", "StepValuedError"]
 
@@ -41,14 +43,19 @@ __all__ = ["StepSchedule", "StepValuedError"]
 # Functions that turn a continuous input into a piecewise-constant output. Once
 # ``t`` passes through one of these, later arithmetic keeps the result stepped
 # (any pure function of a step function is still a step function).
-_QUANTIZERS = {"floor", "ceil", "round", "trunc"}
+_QUANTIZERS: "set[str]" = {"floor", "ceil", "round", "trunc"}
 
 # Names an expression may reference besides the free variable ``t``.
-_CONSTANTS = {"pi": math.pi, "e": math.e, "tau": math.tau, "inf": math.inf}
+_CONSTANTS: "dict[str, float]" = {
+    "pi": math.pi,
+    "e": math.e,
+    "tau": math.tau,
+    "inf": math.inf,
+}
 
 # Callables an expression may use. Kept to quantizers plus a few pure helpers
 # that cannot smuggle in continuous variation on their own.
-_FUNCTIONS = {
+_FUNCTIONS: "dict[str, Callable]" = {
     "floor": math.floor,
     "ceil": math.ceil,
     "round": round,
@@ -69,7 +76,7 @@ class StepValuedError(ValueError):
     """
 
 
-def _varies_continuously(node):
+def _varies_continuously(node: ast.AST) -> bool:
     """
     Return ``True`` if the AST ``node`` lets the free variable ``t`` influence
     its value *continuously* (rather than only through a quantizer/comparison).
@@ -116,7 +123,7 @@ def _varies_continuously(node):
     return True
 
 
-def _safe_eval(node, t):
+def _safe_eval(node: ast.AST, t: float) -> "float | bool":
     """
     Evaluate a validated expression AST at a single time ``t``.
 
@@ -179,19 +186,19 @@ def _safe_eval(node, t):
     if isinstance(node, ast.Compare):
         left = _safe_eval(node.left, t)
         result = True
-        for op, comparator in zip(node.ops, node.comparators):
+        for cmp_op, comparator in zip(node.ops, node.comparators):
             right = _safe_eval(comparator, t)
-            if isinstance(op, ast.Lt):
+            if isinstance(cmp_op, ast.Lt):
                 ok = left < right
-            elif isinstance(op, ast.LtE):
+            elif isinstance(cmp_op, ast.LtE):
                 ok = left <= right
-            elif isinstance(op, ast.Gt):
+            elif isinstance(cmp_op, ast.Gt):
                 ok = left > right
-            elif isinstance(op, ast.GtE):
+            elif isinstance(cmp_op, ast.GtE):
                 ok = left >= right
-            elif isinstance(op, ast.Eq):
+            elif isinstance(cmp_op, ast.Eq):
                 ok = left == right
-            elif isinstance(op, ast.NotEq):
+            elif isinstance(cmp_op, ast.NotEq):
                 ok = left != right
             else:
                 raise StepValuedError("unsupported comparison in expression")
@@ -220,7 +227,9 @@ def _safe_eval(node, t):
     )
 
 
-def _coalesce(times, values):
+def _coalesce(
+    times: npt.NDArray, values: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Collapse a fine grid of ``(time, value-row)`` samples into the minimal set
     of step segments, merging consecutive samples that share a covariate row.
@@ -265,7 +274,12 @@ class StepSchedule:
     All the family math needs is :meth:`segments`.
     """
 
-    def __init__(self, edges, Z, period=None):
+    def __init__(
+        self,
+        edges: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        period: "float | None" = None,
+    ) -> None:
         edges = np.asarray(edges, dtype=float)
         Z = np.asarray(Z, dtype=float)
         if Z.ndim == 1:
@@ -303,14 +317,14 @@ class StepSchedule:
         self.period = period
 
     @property
-    def p(self):
+    def p(self) -> int:
         """Number of covariates (columns of ``Z``)."""
         return self.Z.shape[1]
 
     # -- structural constructors ------------------------------------------
 
     @classmethod
-    def constant(cls, Z):
+    def constant(cls, Z: npt.ArrayLike) -> "StepSchedule":
         """
         A constant covariate ``Z`` over all time. Evaluating a model on it is
         identical to ``model.sf(x, Z)``.
@@ -319,7 +333,9 @@ class StepSchedule:
         return cls(np.array([0.0, np.inf]), Z)
 
     @classmethod
-    def from_changepoints(cls, times, values):
+    def from_changepoints(
+        cls, times: npt.ArrayLike, values: npt.ArrayLike
+    ) -> "StepSchedule":
         """
         Build a schedule from ``(time, value)`` change-points.
 
@@ -349,7 +365,9 @@ class StepSchedule:
         return cls(edges, values)
 
     @classmethod
-    def from_intervals(cls, xl, xr, Z):
+    def from_intervals(
+        cls, xl: npt.ArrayLike, xr: npt.ArrayLike, Z: npt.ArrayLike
+    ) -> "StepSchedule":
         """
         Build a schedule from explicit ``(xl, xr]`` interval rows -- the same
         layout ``fit_tvc`` consumes.
@@ -358,27 +376,35 @@ class StepSchedule:
         the covariate beyond the final ``xr`` is held constant. Rows may be
         given in any order and are sorted by ``xl``.
         """
-        xl = np.atleast_1d(np.asarray(xl, dtype=float))
-        xr = np.atleast_1d(np.asarray(xr, dtype=float))
-        Z = np.asarray(Z, dtype=float)
-        if Z.ndim == 1:
-            Z = Z.reshape(-1, 1)
-        if not (xl.shape[0] == xr.shape[0] == Z.shape[0]):
+        # Fresh names after coercion: assigning back to the ArrayLike
+        # parameters keeps their declared union under some mypy releases,
+        # which then rejects the arithmetic below.
+        xl_a = np.atleast_1d(np.asarray(xl, dtype=float))
+        xr_a = np.atleast_1d(np.asarray(xr, dtype=float))
+        Z_a = np.asarray(Z, dtype=float)
+        if Z_a.ndim == 1:
+            Z_a = Z_a.reshape(-1, 1)
+        if not (xl_a.shape[0] == xr_a.shape[0] == Z_a.shape[0]):
             raise ValueError("xl, xr and Z must have the same number of rows")
-        order = np.argsort(xl)
-        xl, xr, Z = xl[order], xr[order], Z[order]
-        if np.any(xl >= xr):
+        order = np.argsort(xl_a)
+        xl_a, xr_a, Z_a = xl_a[order], xr_a[order], Z_a[order]
+        if np.any(xl_a >= xr_a):
             raise ValueError("every interval must have xl < xr")
-        if np.any(np.abs(xl[1:] - xr[:-1]) > 1e-9):
+        if np.any(np.abs(xl_a[1:] - xr_a[:-1]) > 1e-9):
             raise ValueError(
                 "intervals must be contiguous (each xr must equal the next "
                 "xl); a step schedule cannot have gaps or overlaps"
             )
-        edges = np.concatenate([xl, [xr[-1]]])
-        return cls(edges, Z)
+        edges = np.concatenate([xl_a, [xr_a[-1]]])
+        return cls(edges, Z_a)
 
     @classmethod
-    def cyclic(cls, pattern_times, pattern_values, period):
+    def cyclic(
+        cls,
+        pattern_times: npt.ArrayLike,
+        pattern_values: npt.ArrayLike,
+        period: float,
+    ) -> "StepSchedule":
         """
         A within-period covariate pattern repeated indefinitely.
 
@@ -416,7 +442,13 @@ class StepSchedule:
     # -- expression constructor -------------------------------------------
 
     @classmethod
-    def from_expression(cls, expr, horizon, resolution=1.0, t0=0.0):
+    def from_expression(
+        cls,
+        expr: "str | list[str]",
+        horizon: float,
+        resolution: float = 1.0,
+        t0: float = 0.0,
+    ) -> "StepSchedule":
         r"""
         Build a schedule from a step-valued expression string (or list of
         strings) in the free variable ``t``.
@@ -498,7 +530,9 @@ class StepSchedule:
 
     # -- consumption ------------------------------------------------------
 
-    def segments(self, t_max):
+    def segments(
+        self, t_max: float
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Materialise the schedule up to ``t_max`` into concrete step segments.
 
@@ -530,14 +564,14 @@ class StepSchedule:
             pattern_starts = self.edges[:-1]
             base = self.edges[0]
             reps = int(math.ceil((t_max - base) / self.period))
-            starts = []
+            start_list = []
             Zrows = []
             for k in range(reps):
                 offset = k * self.period
                 for s, z in zip(pattern_starts, self.Z):
-                    starts.append(s + offset)
+                    start_list.append(s + offset)
                     Zrows.append(z)
-            starts = np.asarray(starts, dtype=float)
+            starts = np.asarray(start_list, dtype=float)
             edges = np.concatenate([starts, [starts[0] + reps * self.period]])
             Z = np.asarray(Zrows, dtype=float)
 
@@ -550,7 +584,7 @@ class StepSchedule:
         ends = np.minimum(ends, t_max)
         return starts, ends, Z
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         kind = "cyclic" if self.period is not None else "step"
         return "StepSchedule({}, {} segment(s), p={})".format(
             kind, self.Z.shape[0], self.p
@@ -565,7 +599,9 @@ class StepSchedule:
 # covariate row per segment).
 
 
-def as_step_schedule(Z, xl=None):
+def as_step_schedule(
+    Z: "StepSchedule | npt.ArrayLike", xl: "npt.ArrayLike | None" = None
+) -> StepSchedule:
     """
     Coerce a model ``sf_tvc`` covariate argument into a :class:`StepSchedule`.
 
@@ -586,7 +622,9 @@ def as_step_schedule(Z, xl=None):
     return StepSchedule.from_changepoints(xl, Z)
 
 
-def segments_from_origin(schedule, t_max):
+def segments_from_origin(
+    schedule: StepSchedule, t_max: float
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Materialise ``schedule`` to ``t_max``, holding the first segment back to
     the time origin so cumulative hazard is measured from ``0`` (unconditional

@@ -1,4 +1,7 @@
+from typing import Any, Callable
+
 import numpy as np
+from numpy.typing import ArrayLike
 
 from surpyval import Weibull
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
@@ -13,7 +16,9 @@ from surpyval.utils.recurrent_utils import (
 )
 
 
-def ara_virtual_ages(arrival_times, rho, m):
+def ara_virtual_ages(
+    arrival_times: np.ndarray, rho: float, m: "int | float"
+) -> np.ndarray:
     """
     Effective (virtual) age at the start of each interarrival for the
     Arithmetic Reduction of Age model with memory ``m`` (Doyen & Gaudoin,
@@ -83,13 +88,13 @@ class ARA(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model):
+    def _build_sampler(model: Any) -> Callable:
         rho = model.rho
         m = model.m
-        arrivals = []
+        arrivals: list = []
         running = 0.0
 
-        def sample(ui):
+        def sample(ui: float) -> float:
             nonlocal running
             if not arrivals:
                 v = 0.0
@@ -107,7 +112,9 @@ class ARA(RenewalFitMixin):
 
         return sample
 
-    def _make_model(self, underlying_model, rho, m):
+    def _make_model(
+        self, underlying_model: Any, rho: float, m: "int | float"
+    ) -> "RenewalModel":
         out = RenewalModel(
             underlying_model,
             rho,
@@ -120,7 +127,7 @@ class ARA(RenewalFitMixin):
         out.m = m
         return out
 
-    def _rescaled_increments(self, model, data):
+    def _rescaled_increments(self, model: Any, data: Any) -> np.ndarray:
         """
         Per-interval cumulative-hazard increments ``H(v_k + x_k) - H(v_k)``
         (the time-rescaling residuals) for a fitted ARA model, with ``v_k`` the
@@ -139,20 +146,22 @@ class ARA(RenewalFitMixin):
             model.model.Hf(x_new) - model.model.Hf(virtual_ages), dtype=float
         )
 
-    def _refit(self, model, data):
+    def _refit(self, model: Any, data: Any) -> Any:
         """Refit this model family on ``data`` with the same lifetime
         distribution and memory; used by the Cramer-von Mises bootstrap."""
         return self.fit_from_recurrent_data(
             data, dist=model.model.dist, m=model.m
         )
 
-    def create_negll_func(self, data, dist, m):
+    def create_negll_func(
+        self, data: Any, dist: Any, m: "int | float"
+    ) -> Callable:
         _, idx = np.unique(data.i, return_index=True)
         arrival_by_item = np.split(data.x, idx)[1:]
         interarrival = data.get_interarrival_times()
         c = data.c
 
-        def negll_func(params):
+        def negll_func(params: np.ndarray) -> float:
             rho = params[0]
             dist_params = params[1:]
 
@@ -175,7 +184,13 @@ class ARA(RenewalFitMixin):
 
         return negll_func
 
-    def fit_from_recurrent_data(self, data, dist=Weibull, m=1, init=None):
+    def fit_from_recurrent_data(
+        self,
+        data: Any,
+        dist: Any = Weibull,
+        m: "int | float" = 1,
+        init: "ArrayLike | None" = None,
+    ) -> "RenewalModel":
         """
         Fit the ARA model from recurrent data.
 
@@ -225,7 +240,16 @@ class ARA(RenewalFitMixin):
         )
         return out
 
-    def fit(self, x, i=None, c=None, n=None, dist=Weibull, m=1, init=None):
+    def fit(
+        self,
+        x: ArrayLike,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        n: "ArrayLike | None" = None,
+        dist: Any = Weibull,
+        m: "int | float" = 1,
+        init: "ArrayLike | None" = None,
+    ) -> "RenewalModel":
         """
         Fit the ARA model.
 
@@ -257,7 +281,13 @@ class ARA(RenewalFitMixin):
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, m, init=init)
 
-    def fit_from_parameters(self, params, rho, m=1, dist=Weibull):
+    def fit_from_parameters(
+        self,
+        params: ArrayLike,
+        rho: float,
+        m: "int | float" = 1,
+        dist: Any = Weibull,
+    ) -> "RenewalModel":
         """
         Build an ARA model from given parameters.
 

@@ -44,7 +44,7 @@ from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate, reml_estimate_nonlinear
 
 
-def _is_regression_fitter(fitter) -> bool:
+def _is_regression_fitter(fitter: Any) -> bool:
     """True if ``fitter.fit`` takes a covariate matrix ``Z`` (i.e. it is one of
     the regression fitters -- AFT, PH, PO, additive hazards, accelerated
     life)."""
@@ -144,7 +144,9 @@ class InducedFailureDistribution(SerialisableMixin):
         Name of the degradation path model.
     """
 
-    def __init__(self, samples, threshold, path_name):
+    def __init__(
+        self, samples: npt.NDArray, threshold: float, path_name: str
+    ) -> None:
         self.samples = np.asarray(samples, dtype=float)
         self.threshold = float(threshold)
         self.path_name = path_name
@@ -215,12 +217,14 @@ class InducedFailureDistribution(SerialisableMixin):
         """Median failure time."""
         return float(self.qf(0.5))
 
-    def random(self, size: int, random_state=None) -> npt.NDArray:
+    def random(
+        self, size: int, random_state: "int | None" = None
+    ) -> npt.NDArray:
         """Draw failure times by resampling the Monte-Carlo population."""
         rng = np.random.default_rng(random_state)
         return rng.choice(self.samples, size=size)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             "InducedFailureDistribution({} path, threshold={:.6g}, "
             "median={:.6g}, prob_never_fails={:.4g})".format(
@@ -308,7 +312,9 @@ class DegradationModel(SerialisableMixin):
     path_params: npt.NDArray
     pseudo_failure_times: npt.NDArray
     c: npt.NDArray
-    life_model: Parametric
+    #: A plain ``Parametric`` life model, or the regression model
+    #: for an accelerated (covariate) fit.
+    life_model: Any
     measurement_var: float
     path_param_mean: npt.NDArray
     path_param_cov: npt.NDArray
@@ -324,24 +330,24 @@ class DegradationModel(SerialisableMixin):
 
     def __init__(
         self,
-        x,
-        y,
-        i,
-        units,
-        threshold,
-        path_model,
-        path_params,
-        pseudo_failure_times,
-        c,
-        life_model,
-        measurement_var,
-        path_param_mean,
-        path_param_cov,
-        path_param_sample_cov,
-        population_method,
-        path_selection=None,
-        Z=None,
-    ):
+        x: npt.NDArray,
+        y: npt.NDArray,
+        i: npt.NDArray,
+        units: npt.NDArray,
+        threshold: float,
+        path_model: Any,
+        path_params: npt.NDArray,
+        pseudo_failure_times: npt.NDArray,
+        c: npt.NDArray,
+        life_model: Any,
+        measurement_var: float,
+        path_param_mean: npt.NDArray,
+        path_param_cov: npt.NDArray,
+        path_param_sample_cov: npt.NDArray,
+        population_method: str,
+        path_selection: "dict | None" = None,
+        Z: "npt.NDArray | None" = None,
+    ) -> None:
         self.x = x
         self.y = y
         self.i = i
@@ -364,7 +370,7 @@ class DegradationModel(SerialisableMixin):
     # -- serialisation -----------------------------------------------------
 
     @staticmethod
-    def _life_model_to_dict(life_model) -> dict:
+    def _life_model_to_dict(life_model: Any) -> dict:
         out = life_model.to_dict()
         out["_life_class"] = (
             "ParametricRegressionModel"
@@ -374,7 +380,7 @@ class DegradationModel(SerialisableMixin):
         return out
 
     @staticmethod
-    def _life_model_from_dict(life_dict: dict):
+    def _life_model_from_dict(life_dict: dict) -> Any:
         life_dict = dict(life_dict)
         life_class = life_dict.pop("_life_class")
         if life_class == "ParametricRegressionModel":
@@ -490,7 +496,7 @@ class DegradationModel(SerialisableMixin):
         """The life model viewed as a regression model (accelerated only)."""
         return cast(ParametricRegressionModel, self.life_model)
 
-    def _predict_Z(self, Z):
+    def _predict_Z(self, Z: Any) -> Any:
         """Validate the covariate argument for the prediction methods: an
         accelerated model needs a stress vector ``Z``; a plain model rejects
         one."""
@@ -508,7 +514,7 @@ class DegradationModel(SerialisableMixin):
             )
         return None
 
-    def path(self, x: npt.ArrayLike, unit) -> npt.NDArray:
+    def path(self, x: npt.ArrayLike, unit: Any) -> npt.NDArray:
         """Evaluate the fitted degradation path of ``unit`` at ``x``."""
         idx = self._unit_index[unit]
         return self.path_model.path(x, *self.path_params[idx])
@@ -576,7 +582,7 @@ class DegradationModel(SerialisableMixin):
         y: npt.ArrayLike,
         alpha_ci: float = 0.05,
         n_samples: int = 10_000,
-        random_state=None,
+        random_state: "int | None" = None,
     ) -> RULPrediction:
         """
         Bayesian remaining-useful-life prediction for a new unit.
@@ -758,7 +764,7 @@ class DegradationModel(SerialisableMixin):
             )
         return x, y
 
-    def _life_fn(self, name: str, x: npt.ArrayLike, Z) -> npt.NDArray:
+    def _life_fn(self, name: str, x: npt.ArrayLike, Z: Any) -> npt.NDArray:
         # One dispatcher for the five distribution functions: the
         # accelerated model evaluates its regression at stress ``Z``, the
         # plain model evaluates its fitted life distribution. The named
@@ -768,7 +774,7 @@ class DegradationModel(SerialisableMixin):
             return getattr(self._reg, name)(x, Z)
         return getattr(self.life_model, name)(x)
 
-    def sf(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
+    def sf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
         Survival function of the fitted life model.
 
@@ -777,23 +783,23 @@ class DegradationModel(SerialisableMixin):
         """
         return self._life_fn("sf", x, Z)
 
-    def ff(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
+    def ff(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """CDF of the fitted life model (pass ``Z`` for accelerated models)."""
         return self._life_fn("ff", x, Z)
 
-    def df(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
+    def df(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Density of the fitted life model (``Z`` for accelerated models)."""
         return self._life_fn("df", x, Z)
 
-    def hf(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
+    def hf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Hazard rate of the fitted life model (``Z`` for accelerated)."""
         return self._life_fn("hf", x, Z)
 
-    def Hf(self, x: npt.ArrayLike, Z=None) -> npt.NDArray:
+    def Hf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Cumulative hazard of the life model (``Z`` for accelerated)."""
         return self._life_fn("Hf", x, Z)
 
-    def qf(self, p: npt.ArrayLike, Z=None) -> npt.NDArray:
+    def qf(self, p: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
         Quantile function of the fitted life model.
 
@@ -806,7 +812,7 @@ class DegradationModel(SerialisableMixin):
             return self._reg_qf(p, Z)
         return self.life_model.qf(p)
 
-    def mean(self, Z=None) -> float:
+    def mean(self, Z: Any = None) -> float:
         """
         Mean of the fitted life model.
 
@@ -819,7 +825,12 @@ class DegradationModel(SerialisableMixin):
             return self._reg_mean(Z)
         return self.life_model.mean()
 
-    def random(self, size: int, Z=None, random_state=None) -> npt.NDArray:
+    def random(
+        self,
+        size: int,
+        Z: Any = None,
+        random_state: "int | None" = None,
+    ) -> npt.NDArray:
         """
         Random pseudo failure times from the fitted life model.
 
@@ -832,10 +843,12 @@ class DegradationModel(SerialisableMixin):
             rng = np.random.default_rng(random_state)
             u = rng.uniform(size=size)
             return self._reg_qf(u, Z)
-        return self.life_model.random(size)
+        # The life model here is a plain fit (no LFP / zero-inflation),
+        # so ``random`` returns a bare array, never the xcnt tuple.
+        return np.asarray(self.life_model.random(size))
 
     def induced_life(
-        self, n_samples: int = 10_000, random_state=None
+        self, n_samples: int = 10_000, random_state: "int | None" = None
     ) -> InducedFailureDistribution:
         """
         The population failure-time distribution induced by the path model
@@ -891,7 +904,7 @@ class DegradationModel(SerialisableMixin):
             t, self.threshold, self.path_model.name
         )
 
-    def _reg_qf(self, p: npt.ArrayLike, Z) -> npt.NDArray:
+    def _reg_qf(self, p: npt.ArrayLike, Z: Any) -> npt.NDArray:
         """
         Quantile function of an accelerated life model by bisection.
 
@@ -907,7 +920,7 @@ class DegradationModel(SerialisableMixin):
         if not (np.isfinite(scale) and scale > 0):
             scale = 1.0
 
-        def target_sf(t):
+        def target_sf(t: float) -> float:
             return float(self._reg.sf(np.array([t]), Z).ravel()[0])
 
         out = np.empty_like(p_arr)
@@ -940,7 +953,7 @@ class DegradationModel(SerialisableMixin):
             out[k] = 0.5 * (lo + hi)
         return out
 
-    def _reg_mean(self, Z) -> float:
+    def _reg_mean(self, Z: Any) -> float:
         """
         Mean life of an accelerated model at stress ``Z``.
 
@@ -983,8 +996,8 @@ class DegradationModel(SerialisableMixin):
         bound: str = "two-sided",
         method: str = "analytic",
         n_boot: int = 200,
-        seed=None,
-        Z=None,
+        seed: "int | None" = None,
+        Z: Any = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the reliability of the fitted life model that
@@ -1057,7 +1070,7 @@ class DegradationModel(SerialisableMixin):
             return bootstrap_cb(self, x, on, alpha_ci, bound, n_boot, seed)
         raise ValueError("`method` must be 'analytic' or 'bootstrap'")
 
-    def plot(self, ax=None):
+    def plot(self, ax: Any = None) -> Any:
         """
         Plot the degradation data, the fitted per-unit paths (extended
         to each unit's pseudo failure time), and the failure threshold.
@@ -1101,7 +1114,7 @@ class DegradationModel(SerialisableMixin):
         ax.legend()
         return ax
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.is_accelerated:
             names = self.life_model.parameter_names()
             dist_name = self.life_model.distribution.name
@@ -1185,7 +1198,7 @@ class DegradationAnalysis_:
         i: npt.ArrayLike,
         threshold: float,
         path: "str | PathModel" = "linear",
-        distribution=Weibull,
+        distribution: Any = Weibull,
         how: str = "MLE",
         population_method: str = "moments",
         Z: npt.ArrayLike | None = None,
@@ -1441,7 +1454,10 @@ class DegradationAnalysis_:
 
     @staticmethod
     def _select_path_model(
-        x_arr, y_arr, i_arr, units
+        x_arr: npt.NDArray,
+        y_arr: npt.NDArray,
+        i_arr: npt.NDArray,
+        units: npt.NDArray,
     ) -> "tuple[PathModel, dict[str, float]]":
         """
         Select the registered path model with the smallest AICc over
@@ -1508,7 +1524,7 @@ class DegradationAnalysis_:
         y: str = "y",
         i: str = "i",
         Z_cols: "str | list[str] | None" = None,
-        **fit_kwargs,
+        **fit_kwargs: Any,
     ) -> DegradationModel:
         """
         Fit a degradation analysis model from a DataFrame.
