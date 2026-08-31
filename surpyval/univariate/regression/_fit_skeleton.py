@@ -36,6 +36,12 @@ class LogLinearPhi:
     constructor argument.
     """
 
+    #: The two historical serialisation names for this link: PH models
+    #: are serialised with ``e^``, AFT and PO with ``exp``. Both spell
+    #: the same function.
+    NAME_E = "Log Linear [e^(beta'Z)]"
+    NAME_EXP = "Log Linear [exp(beta'Z)]"
+
     def __init__(self, name: str, phi_param_map: dict) -> None:
         self.name = name
         self.phi_param_map = phi_param_map
@@ -51,6 +57,20 @@ class LogLinearPhi:
     @staticmethod
     def make_param_map(Z: npt.NDArray) -> dict[str, int]:
         return {"beta_" + str(i): i for i in range(Z.shape[1])}
+
+
+def make_objective(
+    fitter: Any, data: SurpyvalData, inv_trans: Callable, const: Callable
+) -> Callable:
+    """The optimiser objective every regression fitter used to build
+    inline: the fitter's negative log-likelihood evaluated in the
+    transformed (unconstrained, fixed-parameters-removed) search space.
+    """
+
+    def fun(params: npt.NDArray) -> Boxable:
+        return fitter.neg_ll(data, *inv_trans(const(params)))
+
+    return fun
 
 
 class MirroredDistributionAttrs:
@@ -96,6 +116,11 @@ class HazardIdentitiesMixin:
     which case ``log_df`` is nan and the MLE machinery rejects the
     point — the fit fails rather than returning an invalid model.
     """
+
+    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
+        # Probability-plot x axis: a location shift is the only x
+        # transform any of these hazard-based fitters uses.
+        return x - gamma
 
     if TYPE_CHECKING:
         # The host class supplies these; declared rather than defined so

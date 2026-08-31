@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+import numpy as np
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 
@@ -81,7 +82,11 @@ class IntensityModel(CountingProcess):
         """Time by which ``N`` events are expected; the inverse of ``cif``."""
         ...
 
-    @abstractmethod
     def parameter_initialiser(self, x: npt.ArrayLike) -> npt.NDArray:
-        """Starting parameter vector for the optimiser given event times."""
-        ...
+        """Starting parameter vector for the optimiser given event times.
+
+        All three baselines start the search from a vector of ones, so
+        that is the default; a subclass whose parameters need a data-
+        driven start overrides this.
+        """
+        return np.ones(len(self.param_names), dtype=float)

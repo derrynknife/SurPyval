@@ -120,6 +120,22 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 SCHEMA_VERSION = 1
 
 
+def require_model_tag(model_dict: dict, tag: str, human: str) -> None:
+    """Reject a ``from_dict`` dictionary whose ``model`` tag is not ``tag``.
+
+    Every serialisable model's ``from_dict`` starts with this check;
+    each used to write out the three-line guard itself. ``human`` is the
+    phrase for the thing being built ("a renewal model", "an MCF
+    estimate", ...); the raised message always contains ``tag`` so a
+    caller can match on the model name.
+    """
+    if model_dict.get("model") != tag:
+        article = "an" if tag[0] in "AEIOU" else "a"
+        raise ValueError(
+            "Must create {} from {} {} dict".format(human, article, tag)
+        )
+
+
 def stamp_schema(model_dict: dict) -> dict:
     """Stamp the serialisation schema version into a ``to_dict`` output."""
     model_dict["schema"] = SCHEMA_VERSION

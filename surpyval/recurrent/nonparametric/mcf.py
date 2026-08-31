@@ -5,7 +5,11 @@ import numpy.typing as npt
 from matplotlib import pyplot as plt
 from scipy.stats import norm
 
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import (
@@ -66,10 +70,9 @@ class NonParametricCounting(SerialisableMixin):
         --------
         to_dict, to_json, from_json
         """
-        if model_dict.get("model") != "NonParametricCounting":
-            raise ValueError(
-                "Must create an MCF estimate from a NonParametricCounting dict"
-            )
+        require_model_tag(
+            model_dict, "NonParametricCounting", "an MCF estimate"
+        )
         out = cls()
         out.x = np.array(model_dict["x"], dtype=float)
         out.mcf_hat = np.array(model_dict["mcf_hat"], dtype=float)

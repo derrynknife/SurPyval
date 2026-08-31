@@ -1,5 +1,4 @@
 import numpy as np
-import numpy.typing as npt
 
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.fitter import singleton_fitter
@@ -49,9 +48,6 @@ class CrowAMSAA(NHPPFitter):
         self.param_names = ["alpha", "beta"]
         self.bounds = ((0, None), (None, None))
         self.support = (0.0, np.inf)
-
-    def parameter_initialiser(self, x: npt.ArrayLike) -> npt.NDArray:
-        return np.array([1.0, 1.0])
 
     def cif(self, x: Boxable, *params: Boxable) -> Boxable:
         alpha = params[0]

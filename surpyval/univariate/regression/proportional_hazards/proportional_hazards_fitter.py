@@ -12,8 +12,10 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
+    LogLinearPhi,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    make_objective,
     mirror_distribution,
     optimise_ph,
     prepare_regression_fit,
@@ -47,7 +49,16 @@ class ProportionalHazardsFitter(
         phi_param_map: "Callable[[npt.NDArray], dict] | dict",
         phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
     ) -> None:
-        if str(inspect.signature(phi)) != "(Z, *params)":
+        # Compare names and kinds rather than the signature's string
+        # form so an annotated phi (e.g. ``LogLinearPhi.phi``) passes.
+        phi_sig = list(inspect.signature(phi).parameters.values())
+        if not (
+            len(phi_sig) == 2
+            and phi_sig[0].name == "Z"
+            and phi_sig[0].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+            and phi_sig[1].name == "params"
+            and phi_sig[1].kind is inspect.Parameter.VAR_POSITIONAL
+        ):
             raise ValueError(
                 "PH function must have the signature '(Z, *params)'"
             )
@@ -82,9 +93,6 @@ class ProportionalHazardsFitter(
 
     def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
-
-    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
-        return x - gamma
 
     def random(
         self, size: int, Z: npt.ArrayLike, *params: float
@@ -134,12 +142,10 @@ class ProportionalHazardsFitter(
         return cls(
             name,
             distribution,
-            lambda Z, *params: np.exp(np.dot(Z, np.array(params))),
-            "Log Linear [e^(beta'Z)]",
-            lambda Z: (((None, None),) * Z.shape[1]),
-            phi_param_map=lambda Z: {
-                "beta_" + str(i): i for i in range(Z.shape[1])
-            },
+            LogLinearPhi.phi,
+            LogLinearPhi.NAME_E,
+            LogLinearPhi.phi_bounds,
+            phi_param_map=LogLinearPhi.make_param_map,
             phi_init=lambda Z: np.zeros(Z.shape[1]),
         )
 
@@ -242,8 +248,7 @@ class ProportionalHazardsFitter(
 
         with np.errstate(all="ignore"):
 
-            def fun(params: npt.NDArray) -> Boxable:
-                return self.neg_ll(data, *inv_trans(const(params)))
+            fun = make_objective(self, data, inv_trans, const)
 
             res = optimise_ph(fun, init_t)
 

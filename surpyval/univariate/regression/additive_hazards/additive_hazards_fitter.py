@@ -47,6 +47,7 @@ from .._fit_skeleton import (
     LogLinearPhi,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    make_objective,
     mirror_distribution,
     prepare_regression_fit,
 )
@@ -98,9 +99,6 @@ class AdditiveHazardsFitter(
     # mpp transforms are the identity (probability plotting is not used for
     # these models, but the interface is kept consistent with the other
     # regression fitters).
-    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
-        return x - gamma
-
     def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 
@@ -235,8 +233,7 @@ class AdditiveHazardsFitter(
 
         with np.errstate(all="ignore"):
 
-            def true_neg_ll(params: npt.NDArray) -> Boxable:
-                return self.neg_ll(data, *inv_trans(const(params)))
+            true_neg_ll = make_objective(self, data, inv_trans, const)
 
             def fun(params: npt.NDArray) -> Boxable:
                 # Where the additive hazard goes non-positive the log-

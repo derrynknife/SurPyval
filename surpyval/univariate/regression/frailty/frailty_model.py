@@ -30,12 +30,17 @@ from typing import Any
 import numpy as np
 from scipy.special import ndtri as _z
 
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+    to_native,
+)
 
 from ..regression_data import (
-    model_spec_to_meta,
     prepare_Z,
-    rebuild_model_spec,
+    restore_covariate_meta,
+    serialise_covariate_meta,
 )
 
 
@@ -262,12 +267,7 @@ class FrailtyModel(SerialisableMixin):
         }
         if self.covariance is not None:
             out["covariance"] = np.asarray(self.covariance, float).tolist()
-        if self.feature_names is not None:
-            out["feature_names"] = list(self.feature_names)
-        if self.formula is not None:
-            out["formula"] = str(self.formula)
-            if self._model_spec is not None:
-                out["formula_meta"] = model_spec_to_meta(self._model_spec)
+        serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
     @classmethod
@@ -278,8 +278,7 @@ class FrailtyModel(SerialisableMixin):
             ParametricFitter,
         )
 
-        if model_dict.get("model") != "FrailtyModel":
-            raise ValueError("Must create a FrailtyModel from its own dict")
+        require_model_tag(model_dict, "FrailtyModel", "a frailty model")
 
         dist = getattr(surv, model_dict["distribution"], None)
         if not isinstance(dist, ParametricFitter):
@@ -305,9 +304,5 @@ class FrailtyModel(SerialisableMixin):
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)
-        out.feature_names = model_dict.get("feature_names")
-        out.formula = model_dict.get("formula")
-        formula_meta = model_dict.get("formula_meta")
-        if out.formula is not None and formula_meta is not None:
-            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
+        restore_covariate_meta(out, model_dict)
         return out
