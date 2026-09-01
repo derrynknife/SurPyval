@@ -55,9 +55,7 @@ class CountingProcess(ABC):
 class IntensityModel(CountingProcess):
     """
     Contract shared by the closed-form NHPP intensity baselines
-    (:class:`Crow-AMSAA <surpyval.recurrent.parametric.crow_amsaa.CrowAMSAA_>`,
-    :class:`Duane <surpyval.recurrent.parametric.duane.Duane_>`,
-    :class:`Cox-Lewis <surpyval.recurrent.parametric.cox_lewis.CoxLewis_>`).
+    (``CrowAMSAA``, ``Duane``, ``CoxLewis``).
 
     These models are mathematically distinct but expose the *same* four
     functions of time and their parameters, plus a parameter initialiser. The

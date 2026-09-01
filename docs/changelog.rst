@@ -4,6 +4,28 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **API reference completed for the remaining public surfaces**
+  (<#141>). New autodoc pages for every distribution that had none:
+  the discrete lifetimes (Geometric, Poisson, Binomial, Negative
+  Binomial, Beta-Geometric, discrete Weibull and ``Discretize``), the
+  per-demand and degenerate models (Bernoulli, FixedEventProbability,
+  ExactEventTime, InstantlyOccurs/NeverOccurs), the continuous
+  stragglers (Beta, Rayleigh, GumbelLEV) and the Royston-Parmar
+  flexible parametric model. The competing-risks subpackage -- absent
+  from the API tree entirely -- has a page (Aalen-Johansen
+  ``CompetingRisks``, ``ParametricCompetingRisks``, ``FineGray``,
+  ``CompetingRisksProportionalHazards``), as do model persistence
+  (``from_dict``/``from_json``) and the recurrent trend tests
+  (``laplace``, ``mil_hdbk_189c``). ``fit_best`` gained its first
+  docstring and joined the comparison-and-validation page, and the
+  regression pages now document the fitted-model classes
+  (``ParametricRegressionModel``, ``AdditiveHazardsModel``).
+
+  Fixed along the way: every recurrent-events API page still targeted
+  the ``ARA_``-style shadow classes that the ``singleton_fitter``
+  refactor removed, so their method documentation had silently dropped
+  out of clean builds.
+
 - **Third duplicate-code consolidation.** Another sweep for repeated
   definitions, this time at the small end (exact duplicates the earlier
   sweeps' size thresholds skipped, plus inline fragments):
