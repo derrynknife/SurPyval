@@ -8,8 +8,8 @@ Greenwood confidence bounds via ``mcf_cb``.
 
 .. class:: NonParametricCounting
 
-   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting_.fit
-   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting_.fit_from_recurrent_data
-   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting_.mcf
-   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting_.mcf_cb
-   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting_.plot
+   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.fit
+   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.fit_from_recurrent_data
+   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.mcf
+   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.mcf_cb
+   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.plot

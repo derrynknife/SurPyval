@@ -13,7 +13,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from .._fit_skeleton import HazardIdentitiesMixin
+from .._fit_skeleton import HazardIdentitiesMixin, make_objective
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
@@ -140,9 +140,6 @@ class ParameterSubstitutionFitter(
 
     def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
-
-    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
-        return x - gamma
 
     def random(
         self, size: int, Z: Numeric | tuple[float, float], *params: Boxable
@@ -290,8 +287,7 @@ class ParameterSubstitutionFitter(
 
         with np.errstate(all="ignore"):
 
-            def fun(params: npt.NDArray) -> Boxable:
-                return self.neg_ll(data, *inv_trans(const(params)))
+            fun = make_objective(self, data, inv_trans, const)
 
             res1 = minimize(
                 fun, init, method="Nelder-Mead", options={"maxiter": 1000}

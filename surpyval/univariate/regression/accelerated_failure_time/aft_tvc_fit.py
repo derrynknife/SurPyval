@@ -158,7 +158,10 @@ def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
     return -ll
 
 
-from .._fit_skeleton import MirroredDistributionAttrs  # noqa: E402
+from .._fit_skeleton import (  # noqa: E402
+    LogLinearPhi,
+    MirroredDistributionAttrs,
+)
 
 
 class AFTTVCFitMixin(MirroredDistributionAttrs):
@@ -321,15 +324,6 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
 
         params = inv_trans(const(res.x))
 
-        _pm = phi_param_map
-
-        class _PhiModel:
-            name = "Log Linear [exp(beta'Z)]"
-            phi_param_map = _pm
-
-            def phi(self, Z: npt.NDArray, *pp: float) -> npt.NDArray:
-                return np.exp(np.dot(Z, np.array(pp)))
-
         # Episode-level data container so generic consumers (repr, plotting)
         # have the usual attributes; the likelihood does not read it.
         edata = SurpyvalData(
@@ -343,7 +337,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
 
         model = ParametricRegressionModel()
         model.model = like
-        model.reg_model = _PhiModel()
+        model.reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, phi_param_map)
         model.kind = "Accelerated Failure Time"
         model.distribution = self.dist
         model.params = np.array(params)

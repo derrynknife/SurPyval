@@ -21,7 +21,11 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
 from surpyval.univariate.regression import AFT
@@ -175,11 +179,11 @@ class InducedFailureDistribution(SerialisableMixin):
     @classmethod
     def from_dict(cls, model_dict: dict) -> "InducedFailureDistribution":
         """Rebuild an induced failure-time distribution from a dict."""
-        if model_dict.get("model") != "InducedFailureDistribution":
-            raise ValueError(
-                "Must create an induced failure-time distribution from an "
-                "InducedFailureDistribution dict"
-            )
+        require_model_tag(
+            model_dict,
+            "InducedFailureDistribution",
+            "an induced failure-time distribution",
+        )
         samples = np.array(
             [np.inf if s is None else s for s in model_dict["samples"]],
             dtype=float,
@@ -449,10 +453,9 @@ class DegradationModel(SerialisableMixin):
         --------
         to_dict, to_json, from_json
         """
-        if model_dict.get("model") != "DegradationModel":
-            raise ValueError(
-                "Must create a degradation model from a DegradationModel dict"
-            )
+        require_model_tag(
+            model_dict, "DegradationModel", "a degradation model"
+        )
         Z = model_dict.get("Z")
         out = cls(
             x=np.array(model_dict["x"], dtype=float),

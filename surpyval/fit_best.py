@@ -54,6 +54,52 @@ def fit_best(
     include: Iterable[str] | None = None,
     exclude: Iterable[str] | None = None,
 ) -> Parametric | None:
+    """
+    Fit every candidate continuous distribution to the data and return
+    the fitted model with the best value of ``metric``.
+
+    The candidates are the fittable continuous univariate distributions
+    (Beta, Beta4, Exponential, ExpoWeibull, Gamma, Gumbel, Logistic,
+    LogLogistic, LogNormal, Normal, Rayleigh, Uniform and Weibull).
+    Distributions whose fit fails or does not converge are skipped with
+    a warning; if every candidate fails, ``None`` is returned.
+
+    Parameters
+    ----------
+    x : array_like
+        The observed event times (or intervals), in any of the formats
+        ``fit`` accepts.
+    c : array_like, optional
+        The censoring indicators.
+    n : array_like, optional
+        The counts for each observation.
+    t : array_like, optional
+        The truncation intervals.
+    metric : str, optional
+        The model-selection criterion to minimise: ``"aic"`` (default),
+        ``"aic_c"``, ``"bic"`` or ``"neg_ll"``.
+    include : iterable of str, optional
+        Only try distributions with these names. Mutually exclusive
+        with ``exclude``.
+    exclude : iterable of str, optional
+        Try every candidate except distributions with these names.
+        Mutually exclusive with ``include``.
+
+    Returns
+    -------
+    Parametric or None
+        The fitted model that minimises ``metric``, or ``None`` when no
+        candidate converged.
+
+    Examples
+    --------
+    >>> from surpyval import fit_best
+    >>> import numpy as np
+    >>> np.random.seed(1)
+    >>> from surpyval import Weibull
+    >>> x = Weibull.random(50, 10, 2)
+    >>> model = fit_best(x, metric="bic")
+    """
     include_set = set(include) if include is not None else set()
     exclude_set = set(exclude) if exclude is not None else set()
 

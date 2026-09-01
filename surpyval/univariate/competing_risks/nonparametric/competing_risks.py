@@ -14,7 +14,12 @@ import numpy as np
 import numpy.typing as npt
 
 import surpyval as surv
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+    to_native,
+)
 from surpyval.univariate.competing_risks.aalen_johansen import (
     aalen_johansen_iif,
 )
@@ -88,11 +93,9 @@ class CompetingRisks(SerialisableMixin):
     @classmethod
     def from_dict(cls, model_dict: dict) -> "CompetingRisks":
         """Rebuild a nonparametric competing-risks model from a dict."""
-        if model_dict.get("model") != "CompetingRisks":
-            raise ValueError(
-                "Must create a competing-risks model from a CompetingRisks "
-                "dict"
-            )
+        require_model_tag(
+            model_dict, "CompetingRisks", "a competing-risks model"
+        )
         out = cls()
         out.event_idx_map = {k: int(v) for k, v in model_dict["event_idx_map"]}
         out.n_event_types = int(model_dict["n_event_types"])

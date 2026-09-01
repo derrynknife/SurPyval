@@ -8,7 +8,11 @@ from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 
 
@@ -84,11 +88,9 @@ class ParametricRecurrenceModel(
         --------
         to_dict, to_json, from_json
         """
-        if model_dict.get("model") != "ParametricRecurrenceModel":
-            raise ValueError(
-                "Must create a recurrence model from a "
-                "ParametricRecurrenceModel dict"
-            )
+        require_model_tag(
+            model_dict, "ParametricRecurrenceModel", "a recurrence model"
+        )
         out = cls()
         out.dist = intensity_dist_by_name(model_dict["dist"])
         out.params = np.array(model_dict["params"], dtype=float)
@@ -191,13 +193,6 @@ class ParametricRecurrenceModel(
         else:
             raise ValueError(
                 "Inverse cif undefined for {}".format(self.dist.name)
-            )
-
-    def _check_has_data(self, what: str) -> None:
-        if not hasattr(self, "data"):
-            raise ValueError(
-                "{} requires a model fitted from data; fit_from_parameters "
-                "models carry no data.".format(what)
             )
 
     def residuals(self, kind: str = "cumulative_hazard") -> np.ndarray:

@@ -39,7 +39,11 @@ from autograd import numpy as anp
 from scipy.optimize import minimize
 from scipy.stats import norm
 
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.ipcw import censoring_survival, step_at
 from surpyval.utils.linalg import safe_inv
@@ -189,10 +193,7 @@ class FineGrayModel(SerialisableMixin):
     @classmethod
     def from_dict(cls, model_dict: dict) -> "FineGrayModel":
         """Rebuild a Fine-Gray model from a :meth:`to_dict` dictionary."""
-        if model_dict.get("model") != "FineGrayModel":
-            raise ValueError(
-                "Must create a Fine-Gray model from a FineGrayModel dict"
-            )
+        require_model_tag(model_dict, "FineGrayModel", "a Fine-Gray model")
         return cls(
             {
                 "cause": model_dict["cause"],

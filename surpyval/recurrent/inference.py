@@ -50,6 +50,13 @@ class LikelihoodInferenceMixin:
                 "fit_from_parameters does not compute a likelihood."
             )
 
+    def _check_has_data(self, what: str) -> None:
+        if not hasattr(self, "data"):
+            raise ValueError(
+                "{} requires a model fitted from data; fit_from_parameters "
+                "models carry no data.".format(what)
+            )
+
     def _parameter_names(self) -> list:
         """
         Names of the entries of ``_mle``, in order. Subclasses override this to

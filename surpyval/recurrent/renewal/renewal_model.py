@@ -4,7 +4,11 @@ import numpy as np
 
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 
 
 class RenewalModel(
@@ -141,10 +145,7 @@ class RenewalModel(
         import surpyval.recurrent as recurrent
         from surpyval.recurrent.serialisation import intensity_dist_by_name
 
-        if model_dict.get("model") != "RenewalModel":
-            raise ValueError(
-                "Must create a renewal model from a RenewalModel dict"
-            )
+        require_model_tag(model_dict, "RenewalModel", "a renewal model")
         family = model_dict["family"]
         fitters: "dict[str, Any]" = {
             "GeneralizedRenewal": recurrent.GeneralizedRenewal,
@@ -202,13 +203,6 @@ class RenewalModel(
 
     def _parameter_bounds(self) -> list:
         return [self._restoration_bounds, *self.model.dist.bounds]
-
-    def _check_has_data(self, what: str) -> None:
-        if not hasattr(self, "data"):
-            raise ValueError(
-                "{} requires a model fitted from data; fit_from_parameters "
-                "models carry no data.".format(what)
-            )
 
     def residuals(self, kind: str = "cumulative_hazard") -> np.ndarray:
         """
