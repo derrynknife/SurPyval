@@ -54,6 +54,19 @@ Path Models
 
 .. autofunction:: surpyval.degradation.path_models.get_path_model
 
+Stress-Dependent Path Parameters
+--------------------------------
+
+For accelerated degradation tests whose *mechanism* depends on stress
+(``links`` in :meth:`DegradationAnalysis.fit`): the path parameters are
+modelled on a link scale, ``eta_i = D(z_i) gamma + u_i``, so a
+log-linked rate with ``Z = 1/T`` follows the Arrhenius relationship.
+
+.. autoclass:: surpyval.degradation.stress.LinkedPathModel
+   :members:
+
+.. autofunction:: surpyval.degradation.stress.stress_design
+
 Stochastic Process Models
 -------------------------
 

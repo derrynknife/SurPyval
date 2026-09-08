@@ -4,6 +4,32 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **Accelerated degradation, Stage 2: stress-dependent path
+  parameters** (<#155>, first half). ``DegradationAnalysis.fit`` takes
+  ``links`` alongside ``Z`` to model the degradation *mechanism*
+  against stress rather than only the pseudo failure times: the path
+  parameters named in ``links`` depend on the unit's stress on an
+  ``"identity"`` or ``"log"`` link (a log-linked rate with ``Z = 1/T``
+  is the Arrhenius relationship), the others are common, and a
+  per-unit random effect sits on top -- ``eta_i = D(z_i) gamma + u_i``
+  with ``u_i ~ MVN(0, Sigma)``. ``gamma`` and ``Sigma`` are estimated
+  by the same two-stage (Lu-Meeker) or REML route as the plain
+  population and stored as ``path_param_fixed`` (labelled by
+  ``path_param_fixed_names``) and ``path_param_link_cov``; the fitted
+  model round-trips through ``to_dict``/``from_dict`` and shows the
+  fixed effects in its ``repr``. The life model is still the Stage-1
+  regression on the pseudo failure times, so every existing prediction
+  method is unchanged; the stress-conditional prior for ``predict_rul``
+  and ``induced_life`` is the second half.
+
+  Under the hood a :class:`LinkedPathModel` presents any path model on
+  its link scale, so the per-unit fits and the FOCE linearisation apply
+  unchanged, and the REML routines take an optional fixed-effects
+  design (``a_mat_list`` / ``d_mat_list``). Without ``links`` the
+  pipeline is bit-identical to before (verified by fingerprinting 55
+  numeric outputs across the moments, REML, nonlinear-REML,
+  best-path, Stage-1 ADT and bootstrap surfaces).
+
 - **API reference completed for the remaining public surfaces**
   (<#141>). New autodoc pages for every distribution that had none:
   the discrete lifetimes (Geometric, Poisson, Binomial, Negative

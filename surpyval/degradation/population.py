@@ -40,6 +40,22 @@ alternating algorithm (the FOCE linearisation used by ``nlme``):
 iterating 1-3 to convergence. For a linear-in-parameters path this
 reduces exactly to the linear REML in one pass (``w_i = y_i`` and the
 modes drop out), so the two routines agree.
+
+Stress-dependent path parameters
+--------------------------------
+For an accelerated degradation test whose path parameters depend on
+the unit's stress (``links`` in ``DegradationAnalysis.fit``) the fixed
+effect is no longer a single mean but ``D_i gamma``, a per-unit
+fixed-effects design times a coefficient vector, and the marginal model
+is
+
+    y_i ~ N(A_i gamma, V_i),  A_i = X_i D_i,  V_i = X_i Sigma X_i' + sigma^2 I.
+
+Both routines take that fixed-effects design optionally
+(``a_mat_list`` / ``d_mat_list``); without it ``D_i = I`` and ``gamma``
+is the population mean ``mu`` as above. The random-effects design
+``X_i`` is unchanged, so ``Sigma`` keeps its meaning as the
+between-unit covariance of the path parameters *given* the stress.
 """
 
 from typing import Any
@@ -87,40 +103,45 @@ def _reml_pieces(
     y_list: list,
     x_mat_list: list,
     p: int,
+    a_mat_list: list,
 ) -> tuple:
     """
     Evaluate the model at ``z``.
 
-    Returns ``(neg_reml, mu, Sigma, sigma2)`` where ``neg_reml`` is the
-    negative REML log-likelihood (up to a constant) with the fixed
-    effect ``mu`` profiled out by GLS.
+    Returns ``(neg_reml, gamma, Sigma, sigma2)`` where ``neg_reml`` is
+    the negative REML log-likelihood (up to a constant) with the fixed
+    effects ``gamma`` profiled out by GLS. ``x_mat_list`` is the
+    random-effects design (it forms ``V_i``) and ``a_mat_list`` the
+    fixed-effects design; the two are the same list for the plain
+    population model.
     """
     chol = _chol_from_z(z, p)
     covariance = chol @ chol.T
     sigma2 = np.exp(2.0 * z[-1])
 
-    gls_information = np.zeros((p, p))  # sum X' V^-1 X
-    gls_rhs = np.zeros(p)  # sum X' V^-1 y
+    m = a_mat_list[0].shape[1]
+    gls_information = np.zeros((m, m))  # sum A' V^-1 A
+    gls_rhs = np.zeros(m)  # sum A' V^-1 y
     y_v_y = 0.0  # sum y' V^-1 y
     logdet_v = 0.0
 
-    for y_i, x_mat in zip(y_list, x_mat_list):
+    for y_i, x_mat, a_mat in zip(y_list, x_mat_list, a_mat_list):
         v_i = x_mat @ covariance @ x_mat.T + sigma2 * np.eye(len(y_i))
         cho = cho_factor(v_i, lower=True)
         logdet_v += 2.0 * np.log(np.diag(cho[0])).sum()
         v_inv_y = cho_solve(cho, y_i)
-        v_inv_x = cho_solve(cho, x_mat)
-        gls_information += x_mat.T @ v_inv_x
-        gls_rhs += x_mat.T @ v_inv_y
+        v_inv_a = cho_solve(cho, a_mat)
+        gls_information += a_mat.T @ v_inv_a
+        gls_rhs += a_mat.T @ v_inv_y
         y_v_y += y_i @ v_inv_y
 
-    mu = np.linalg.solve(gls_information, gls_rhs)
-    quad = y_v_y - 2.0 * mu @ gls_rhs + mu @ gls_information @ mu
+    gamma = np.linalg.solve(gls_information, gls_rhs)
+    quad = y_v_y - 2.0 * gamma @ gls_rhs + gamma @ gls_information @ gamma
     sign, logdet_info = np.linalg.slogdet(gls_information)
     if sign <= 0:
         raise np.linalg.LinAlgError("GLS information not positive definite")
     neg_reml = 0.5 * (logdet_v + quad + logdet_info)
-    return neg_reml, mu, covariance, sigma2
+    return neg_reml, gamma, covariance, sigma2
 
 
 def reml_estimate(
@@ -128,31 +149,41 @@ def reml_estimate(
     x_mat_list: "list[npt.NDArray]",
     cov_init: npt.NDArray,
     sigma2_init: float,
+    a_mat_list: "list[npt.NDArray] | None" = None,
 ) -> tuple[npt.NDArray, npt.NDArray, float, bool]:
     """
-    REML fit of ``y_i ~ N(X_i mu, X_i Sigma X_i' + sigma^2 I)``.
+    REML fit of ``y_i ~ N(A_i gamma, X_i Sigma X_i' + sigma^2 I)``.
 
     Parameters
     ----------
     y_list : list of ndarray
         Each unit's measurement vector.
     x_mat_list : list of ndarray
-        Each unit's design matrix (the path Jacobian, constant in the
-        parameters for linear-in-parameter path models).
+        Each unit's random-effects design matrix (the path Jacobian,
+        constant in the parameters for linear-in-parameter path
+        models).
     cov_init, sigma2_init : ndarray, float
         Starting values for ``Sigma`` and ``sigma^2`` (typically the
         two-stage moment estimates); ``cov_init`` may be
         rank-deficient, its eigenvalues are floored.
+    a_mat_list : list of ndarray, optional
+        Each unit's fixed-effects design ``A_i = X_i D_i`` when the
+        path parameters depend on the unit's stress. Default ``None``:
+        ``A_i = X_i``, so the fixed effect is the population mean.
 
     Returns
     -------
-    (mu, Sigma, sigma2, converged)
+    (gamma, Sigma, sigma2, converged)
+        ``gamma`` is the population mean ``mu`` when ``a_mat_list`` is
+        not given.
     """
     p = x_mat_list[0].shape[1]
+    if a_mat_list is None:
+        a_mat_list = x_mat_list
 
     def objective(z: npt.NDArray) -> float:
         try:
-            return _reml_pieces(z, y_list, x_mat_list, p)[0]
+            return _reml_pieces(z, y_list, x_mat_list, p, a_mat_list)[0]
         except np.linalg.LinAlgError:
             return _LARGE
 
@@ -168,8 +199,10 @@ def reml_estimate(
             "fatol": 1e-10,
         },
     )
-    _, mu, covariance, sigma2 = _reml_pieces(result.x, y_list, x_mat_list, p)
-    return mu, covariance, sigma2, bool(result.success)
+    _, gamma, covariance, sigma2 = _reml_pieces(
+        result.x, y_list, x_mat_list, p, a_mat_list
+    )
+    return gamma, covariance, sigma2, bool(result.success)
 
 
 def _prior_precision(cov: npt.NDArray, sigma2: float) -> npt.NDArray:
@@ -247,6 +280,7 @@ def reml_estimate_nonlinear(
     theta_init: npt.NDArray,
     max_outer: int = 50,
     tol: float = 1e-5,
+    d_mat_list: "list[npt.NDArray] | None" = None,
 ) -> tuple[npt.NDArray, npt.NDArray, float, bool]:
     """
     REML fit of a nonlinear random-effects degradation path by the
@@ -262,8 +296,9 @@ def reml_estimate_nonlinear(
     path_model : PathModel
         The (nonlinear) degradation path model.
     mean_init, cov_init, sigma2_init : ndarray, ndarray, float
-        Starting values for ``mu``, ``Sigma`` and ``sigma^2`` (typically
-        the two-stage moment estimates).
+        Starting values for ``mu`` (or ``gamma``, see ``d_mat_list``),
+        ``Sigma`` and ``sigma^2`` (typically the two-stage moment
+        estimates).
     theta_init : ndarray
         Per-unit unpenalised least-squares path fits, one row per unit;
         the starting points for the conditional-mode search.
@@ -271,12 +306,19 @@ def reml_estimate_nonlinear(
         Maximum outer (linearise / LME) iterations. Default 50.
     tol : float, optional
         Relative convergence tolerance on ``(mu, Sigma, sigma^2)``.
+    d_mat_list : list of ndarray, optional
+        Each unit's ``(p, m)`` fixed-effects design ``D_i`` when the
+        path parameters depend on the unit's stress: the unit's prior
+        mean is ``D_i gamma`` and the linearised fixed-effects design is
+        ``A_i = J_i D_i``. Default ``None``: ``D_i = I``.
 
     Returns
     -------
-    (mu, Sigma, sigma2, converged)
+    (gamma, Sigma, sigma2, converged)
+        ``gamma`` is the population mean ``mu`` when ``d_mat_list`` is
+        not given.
     """
-    mu = np.array(mean_init, dtype=float)
+    gamma = np.array(mean_init, dtype=float)
     covariance = np.array(cov_init, dtype=float)
     sigma2 = float(sigma2_init)
     theta_hat = np.array(theta_init, dtype=float)
@@ -285,13 +327,14 @@ def reml_estimate_nonlinear(
     for _ in range(max_outer):
         prior_precision = _prior_precision(covariance, sigma2)
         # Step 1: conditional modes given the current population.
-        w_list, jac_list = [], []
+        w_list, jac_list, a_list = [], [], []
         for k, (y_i, x_i) in enumerate(zip(y_list, x_list)):
+            prior_mean = gamma if d_mat_list is None else d_mat_list[k] @ gamma
             theta_i = _conditional_mode(
                 path_model,
                 x_i,
                 y_i,
-                mu,
+                prior_mean,
                 prior_precision,
                 sigma2,
                 theta_hat[k],
@@ -302,21 +345,27 @@ def reml_estimate_nonlinear(
             fitted = np.asarray(path_model.path(x_i, *theta_i), dtype=float)
             w_list.append(y_i - fitted + jac @ theta_i)
             jac_list.append(jac)
+            if d_mat_list is not None:
+                a_list.append(jac @ d_mat_list[k])
 
         # Step 3: linear REML step on the pseudo-data, warm-started from
         # the current variance components.
-        mu_new, cov_new, sigma2_new, inner_ok = reml_estimate(
-            w_list, jac_list, covariance, sigma2
+        gamma_new, cov_new, sigma2_new, inner_ok = reml_estimate(
+            w_list,
+            jac_list,
+            covariance,
+            sigma2,
+            a_mat_list=None if d_mat_list is None else a_list,
         )
 
-        prev = np.concatenate([mu, covariance.ravel(), [sigma2]])
-        curr = np.concatenate([mu_new, cov_new.ravel(), [sigma2_new]])
+        prev = np.concatenate([gamma, covariance.ravel(), [sigma2]])
+        curr = np.concatenate([gamma_new, cov_new.ravel(), [sigma2_new]])
         scale = np.maximum(np.abs(prev), np.abs(curr)) + 1e-12
         rel_change = float(np.max(np.abs(curr - prev) / scale))
 
-        mu, covariance, sigma2 = mu_new, cov_new, sigma2_new
+        gamma, covariance, sigma2 = gamma_new, cov_new, sigma2_new
         if rel_change < tol:
             converged = bool(inner_ok)
             break
 
-    return mu, covariance, sigma2, converged
+    return gamma, covariance, sigma2, converged
