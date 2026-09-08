@@ -27,6 +27,8 @@ from .path_models import (
     get_path_model,
 )
 
+from .stress import LinkedPathModel  # isort: skip
+
 from .degradation_analysis import (  # isort: skip
     DegradationAnalysis,
     DegradationModel,

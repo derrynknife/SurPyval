@@ -46,6 +46,22 @@ from ._bounds import (
 )
 from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate, reml_estimate_nonlinear
+from .stress import (
+    LinkedPathModel,
+    fixed_effect_names,
+    stress_design,
+    validate_links,
+)
+
+
+def _optional_list(arr: "npt.NDArray | None") -> "list | None":
+    """``to_dict`` helper: an optional array as a nested list."""
+    return None if arr is None else np.asarray(arr, dtype=float).tolist()
+
+
+def _optional_array(value: "list | None") -> "npt.NDArray | None":
+    """``from_dict`` helper: the inverse of :func:`_optional_list`."""
+    return None if value is None else np.array(value, dtype=float)
 
 
 def _is_regression_fitter(fitter: Any) -> bool:
@@ -305,6 +321,27 @@ class DegradationModel(SerialisableMixin):
         candidate path model (``nan`` for candidates that could not be
         fitted to every unit); ``None`` otherwise. The fitted
         ``path_model`` is the candidate with the smallest score.
+    links : dict or None
+        When the path parameters were modelled against stress
+        (``links`` given to :meth:`DegradationAnalysis.fit`), the
+        stress-dependent parameters and their links; ``None``
+        otherwise. With ``links`` the population of path parameters is
+        stress-conditional, on the link scale: ``eta_i = D(z_i) gamma
+        + u_i`` with ``u_i ~ MVN(0, Sigma)`` and ``theta_i = h(eta_i)``.
+    path_param_fixed : ndarray or None
+        The fixed effects ``gamma`` of the stress-conditional population
+        model, labelled by ``path_param_fixed_names``: for every path
+        parameter its link-scale intercept, followed (for the
+        stress-dependent ones) by its coefficient on each covariate.
+    path_param_fixed_names : list of str or None
+        Labels for ``path_param_fixed``: the link-scale parameter name
+        (``"log(b)"`` for a log link) and ``"<name>:Z<j>"`` for the
+        coefficient on covariate ``j``.
+    path_param_link_cov : ndarray or None
+        The between-unit covariance ``Sigma`` of the link-scale path
+        parameters *given* the stress -- the scatter left after the
+        stress effect is removed, unlike the pooled ``path_param_cov``
+        which mixes the stress levels.
     """
 
     x: npt.NDArray
@@ -328,6 +365,10 @@ class DegradationModel(SerialisableMixin):
     #: Per-unit covariates when fitted as an accelerated-degradation model
     #: (``Z`` given to :meth:`DegradationAnalysis.fit`); ``None`` otherwise.
     Z: "npt.NDArray | None"
+    links: "dict[str, str] | None"
+    path_param_fixed: "npt.NDArray | None"
+    path_param_fixed_names: "list[str] | None"
+    path_param_link_cov: "npt.NDArray | None"
     # Recorded after construction so the bootstrap bounds can rerun the fit.
     _distribution: Any
     _how: str
@@ -351,6 +392,10 @@ class DegradationModel(SerialisableMixin):
         population_method: str,
         path_selection: "dict | None" = None,
         Z: "npt.NDArray | None" = None,
+        links: "dict[str, str] | None" = None,
+        path_param_fixed: "npt.NDArray | None" = None,
+        path_param_fixed_names: "list[str] | None" = None,
+        path_param_link_cov: "npt.NDArray | None" = None,
     ) -> None:
         self.x = x
         self.y = y
@@ -369,6 +414,10 @@ class DegradationModel(SerialisableMixin):
         self.population_method = population_method
         self.path_selection = path_selection
         self.Z = Z
+        self.links = links
+        self.path_param_fixed = path_param_fixed
+        self.path_param_fixed_names = path_param_fixed_names
+        self.path_param_link_cov = path_param_link_cov
         self._unit_index = {unit: idx for idx, unit in enumerate(units)}
 
     # -- serialisation -----------------------------------------------------
@@ -438,6 +487,16 @@ class DegradationModel(SerialisableMixin):
                 "path_selection": self.path_selection,
                 "Z": None if self.Z is None else np.asarray(self.Z).tolist(),
                 "how": self._how,
+                "links": None if self.links is None else dict(self.links),
+                "path_param_fixed": _optional_list(self.path_param_fixed),
+                "path_param_fixed_names": (
+                    None
+                    if self.path_param_fixed_names is None
+                    else list(self.path_param_fixed_names)
+                ),
+                "path_param_link_cov": _optional_list(
+                    self.path_param_link_cov
+                ),
             }
         )
 
@@ -481,6 +540,14 @@ class DegradationModel(SerialisableMixin):
             population_method=model_dict["population_method"],
             path_selection=model_dict.get("path_selection"),
             Z=None if Z is None else np.array(Z, dtype=float),
+            links=model_dict.get("links"),
+            path_param_fixed=_optional_array(
+                model_dict.get("path_param_fixed")
+            ),
+            path_param_fixed_names=model_dict.get("path_param_fixed_names"),
+            path_param_link_cov=_optional_array(
+                model_dict.get("path_param_link_cov")
+            ),
         )
         # Recorded so bootstrap bounds can rerun the pipeline; the original
         # distribution object is not serialised, so bounds default to the
@@ -1117,6 +1184,25 @@ class DegradationModel(SerialisableMixin):
         ax.legend()
         return ax
 
+    def _stress_repr(self) -> str:
+        """The stress-conditional path population, for ``__repr__``."""
+        if self.links is None or self.path_param_fixed is None:
+            return ""
+        assert self.path_param_fixed_names is not None
+        link_string = ", ".join(
+            "{}: {}".format(name, link) for name, link in self.links.items()
+        )
+        effects = "\n".join(
+            f"{name:>14}: {value}"
+            for name, value in zip(
+                self.path_param_fixed_names, self.path_param_fixed
+            )
+        )
+        return (
+            f"\nPath Stress Links   : {link_string}"
+            "\nPath Fixed Effects  :\n" + effects
+        )
+
     def __repr__(self) -> str:
         if self.is_accelerated:
             names = self.life_model.parameter_names()
@@ -1134,7 +1220,9 @@ class DegradationModel(SerialisableMixin):
                 f"\nNumber of Units     : {len(self.units)}"
                 f"\nCensored Units      : {int((self.c == 1).sum())}"
                 f"\nLife Distribution   : {dist_name} ({reg_name} covariates)"
-                "\nParameters          :\n" + param_string
+                "\nParameters          :\n"
+                + param_string
+                + self._stress_repr()
             )
         param_string = "\n".join(
             [
@@ -1205,6 +1293,7 @@ class DegradationAnalysis_:
         how: str = "MLE",
         population_method: str = "moments",
         Z: npt.ArrayLike | None = None,
+        links: "dict[str, str] | None" = None,
     ) -> DegradationModel:
         """
         Fit a degradation analysis model.
@@ -1265,6 +1354,25 @@ class DegradationAnalysis_:
             failure time model, ``AFT(distribution)``. The returned model's
             prediction methods (``sf``, ``ff``, ``qf``, ``random`` ...) then
             take the stress vector ``Z`` at which to evaluate life.
+        links : dict, optional
+            Model the degradation *mechanism* against stress as well
+            (requires ``Z``): the path parameters named here depend on
+            the unit's stress, the rest do not. Each value is the link
+            the parameter is modelled on -- ``"identity"`` (the
+            parameter is linear in ``Z``) or ``"log"`` (its log is
+            linear in ``Z``, so a rate with ``Z = 1/T`` follows an
+            Arrhenius relationship and the parameter stays positive).
+            Per unit, ``eta_i = D(z_i) gamma + u_i`` on the link scale
+            with a between-unit random effect ``u_i ~ MVN(0, Sigma)``;
+            ``gamma`` and ``Sigma`` are estimated by the same two-stage
+            or REML route as the plain population, and stored as
+            ``path_param_fixed`` (labelled by ``path_param_fixed_names``)
+            and ``path_param_link_cov``. The life model is still the
+            covariate regression on the pseudo failure times, so every
+            prediction method works as without ``links``. For example
+            ``links={"b": "log"}`` with the linear path lets the
+            degradation rate ``b`` accelerate log-linearly with stress
+            while the intercept ``a`` (the initial state) is common.
 
         Returns
         -------
@@ -1299,6 +1407,19 @@ class DegradationAnalysis_:
         else:
             path_model = get_path_model(path)
 
+        # Stage-2 accelerated degradation: the path parameters depend on
+        # stress, modelled on a link scale by a wrapped path model.
+        Z_units = None if Z is None else self._handle_Z(Z, i_arr, units)
+        linked: "LinkedPathModel | None" = None
+        if links is not None:
+            if Z_units is None:
+                raise ValueError(
+                    "links models the path parameters against stress, so "
+                    "the stress covariates Z must be given too"
+                )
+            links = validate_links(path_model, links)
+            linked = LinkedPathModel(path_model, links)
+
         n_params = len(path_model.param_names)
         path_params = np.empty((len(units), n_params))
         pseudo = np.empty(len(units))
@@ -1309,6 +1430,9 @@ class DegradationAnalysis_:
         y_by_unit = []
         x_by_unit = []
         design_by_unit = []
+        link_params = np.empty((len(units), n_params))
+        link_design_by_unit = []
+        link_estimation_covs = []
 
         for idx, unit in enumerate(units):
             mask = i_arr == unit
@@ -1334,6 +1458,17 @@ class DegradationAnalysis_:
             y_by_unit.append(y_unit)
             x_by_unit.append(x_unit)
             design_by_unit.append(jacobian)
+
+            if linked is not None:
+                # the same fit on the link scale, with the Jacobian
+                # (and hence the estimation covariance) mapped there
+                eta = linked.to_link(params)
+                link_params[idx] = eta
+                link_jacobian = linked.jacobian(x_unit, *eta)
+                link_design_by_unit.append(link_jacobian)
+                link_estimation_covs.append(
+                    safe_inv(link_jacobian.T @ link_jacobian)
+                )
 
         # Two-stage (Lu-Meeker) noise correction: the scatter of the
         # per-unit estimates is Sigma + V_i, so subtracting the average
@@ -1399,6 +1534,37 @@ class DegradationAnalysis_:
             path_param_cov = reml_cov
             measurement_var = reml_var
 
+        path_param_fixed = None
+        path_param_fixed_names = None
+        path_param_link_cov = None
+        if linked is not None:
+            assert Z_units is not None and links is not None
+            path_param_fixed, path_param_link_cov, link_var = (
+                self._fit_stress_population(
+                    linked,
+                    links,
+                    Z_units,
+                    y_by_unit,
+                    x_by_unit,
+                    link_params,
+                    link_design_by_unit,
+                    link_estimation_covs,
+                    measurement_var,
+                    population_method,
+                )
+            )
+            path_param_fixed_names = fixed_effect_names(
+                linked.param_names,
+                path_model.param_names,
+                links,
+                Z_units.shape[1],
+            )
+            if population_method == "reml":
+                # the stress-conditional model is the population model
+                # of a linked fit; its noise estimate supersedes the
+                # pooled one
+                measurement_var = link_var
+
         events = np.isfinite(pseudo) & (pseudo > 0)
         if not events.any():
             raise ValueError(
@@ -1418,11 +1584,9 @@ class DegradationAnalysis_:
         pseudo_failure_times = np.where(events, pseudo, last_time)
         c = np.where(events, 0, 1)
 
-        Z_units = None
-        if Z is None:
+        if Z_units is None:
             life_model = distribution.fit(x=pseudo_failure_times, c=c, how=how)
         else:
-            Z_units = self._handle_Z(Z, i_arr, units)
             reg = (
                 distribution
                 if _is_regression_fitter(distribution)
@@ -1448,12 +1612,93 @@ class DegradationAnalysis_:
             population_method=population_method,
             path_selection=path_selection,
             Z=Z_units,
+            links=links,
+            path_param_fixed=path_param_fixed,
+            path_param_fixed_names=path_param_fixed_names,
+            path_param_link_cov=path_param_link_cov,
         )
         # Recorded so the bootstrap confidence bounds can rerun the pipeline
         # (with the selected path model held fixed) on resampled units.
         model._distribution = distribution
         model._how = how
         return model
+
+    @staticmethod
+    def _fit_stress_population(
+        linked: LinkedPathModel,
+        links: dict[str, str],
+        Z_units: npt.NDArray,
+        y_by_unit: list,
+        x_by_unit: list,
+        link_params: npt.NDArray,
+        link_design_by_unit: list,
+        link_estimation_covs: list,
+        measurement_var: float,
+        population_method: str,
+    ) -> tuple[npt.NDArray, npt.NDArray, float]:
+        """
+        Estimate the stress-conditional population of link-scale path
+        parameters, ``eta_i = D(z_i) gamma + u_i``.
+
+        The two-stage estimate regresses the per-unit link-scale fits on
+        their stress designs by least squares for ``gamma``, and takes
+        the covariance of the residuals less the average link-scale
+        estimation covariance (the Lu-Meeker correction) for ``Sigma``.
+        With ``population_method="reml"`` that is the starting point of
+        the mixed-model REML fit, exact for a linear-in-parameters
+        linked path and by FOCE linearisation otherwise.
+
+        Returns ``(gamma, Sigma, sigma2)``.
+        """
+        n_units, n_params = link_params.shape
+        designs = [
+            stress_design(z, links, linked.base.param_names) for z in Z_units
+        ]
+        stacked = np.vstack(designs)
+        gamma, *_ = np.linalg.lstsq(stacked, link_params.ravel(), rcond=None)
+        residuals = link_params - np.array([d @ gamma for d in designs])
+        ddof = 1 if n_units > 1 else 0
+        residual_cov = np.atleast_2d(
+            np.cov(residuals, rowvar=False, ddof=ddof)
+        )
+        mean_estimation_cov = measurement_var * np.mean(
+            link_estimation_covs, axis=0
+        )
+        link_cov, _ = psd_project(residual_cov - mean_estimation_cov)
+        sigma2 = measurement_var
+
+        if population_method == "reml":
+            if linked.linear_in_parameters:
+                a_by_unit = [
+                    jac @ d for jac, d in zip(link_design_by_unit, designs)
+                ]
+                gamma, link_cov, sigma2, converged = reml_estimate(
+                    y_by_unit,
+                    link_design_by_unit,
+                    link_cov,
+                    measurement_var,
+                    a_mat_list=a_by_unit,
+                )
+            else:
+                gamma, link_cov, sigma2, converged = reml_estimate_nonlinear(
+                    y_by_unit,
+                    x_by_unit,
+                    linked,
+                    gamma,
+                    link_cov,
+                    measurement_var,
+                    link_params,
+                    d_mat_list=designs,
+                )
+            if not converged:
+                warnings.warn(
+                    "The REML optimisation of the stress-conditional path "
+                    "population did not report convergence; "
+                    "path_param_fixed and path_param_link_cov may be "
+                    "inaccurate",
+                    stacklevel=3,
+                )
+        return gamma, link_cov, sigma2
 
     @staticmethod
     def _select_path_model(
