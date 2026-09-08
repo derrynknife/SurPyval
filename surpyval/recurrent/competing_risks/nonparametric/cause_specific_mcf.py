@@ -19,7 +19,13 @@ from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 
 from surpyval.recurrent.nonparametric.mcf import NonParametricCounting
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+    to_native,
+)
+from surpyval.utils import optional_column
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
@@ -87,10 +93,9 @@ class CauseSpecificMCF(SerialisableMixin):
         --------
         to_dict, to_json, from_json
         """
-        if model_dict.get("model") != "CauseSpecificMCF":
-            raise ValueError(
-                "Must create a cause-specific MCF from a CauseSpecificMCF dict"
-            )
+        require_model_tag(
+            model_dict, "CauseSpecificMCF", "a cause-specific MCF"
+        )
         out = cls()
         out.event_types = list(model_dict["event_types"])
         out.models = {
@@ -228,17 +233,14 @@ class CauseSpecificMCF(SerialisableMixin):
         CauseSpecificMCF
         """
 
-        def col(name: "str | None") -> Any:
-            return None if name is None else df[name].to_numpy()
-
         model = cls.fit(
             x=df[x_col].to_numpy(),
-            i=col(i_col),
-            c=col(c_col),
-            n=col(n_col),
-            e=col(e_col),
-            tl=col(tl_col),
-            tr=col(tr_col),
+            i=optional_column(df, i_col),
+            c=optional_column(df, c_col),
+            n=optional_column(df, n_col),
+            e=optional_column(df, e_col),
+            tl=optional_column(df, tl_col),
+            tr=optional_column(df, tr_col),
         )
         model.df = df
         return model

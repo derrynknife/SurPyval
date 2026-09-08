@@ -4,6 +4,67 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **API reference completed for the remaining public surfaces**
+  (<#141>). New autodoc pages for every distribution that had none:
+  the discrete lifetimes (Geometric, Poisson, Binomial, Negative
+  Binomial, Beta-Geometric, discrete Weibull and ``Discretize``), the
+  per-demand and degenerate models (Bernoulli, FixedEventProbability,
+  ExactEventTime, InstantlyOccurs/NeverOccurs), the continuous
+  stragglers (Beta, Rayleigh, GumbelLEV) and the Royston-Parmar
+  flexible parametric model. The competing-risks subpackage -- absent
+  from the API tree entirely -- has a page (Aalen-Johansen
+  ``CompetingRisks``, ``ParametricCompetingRisks``, ``FineGray``,
+  ``CompetingRisksProportionalHazards``), as do model persistence
+  (``from_dict``/``from_json``) and the recurrent trend tests
+  (``laplace``, ``mil_hdbk_189c``). ``fit_best`` gained its first
+  docstring and joined the comparison-and-validation page, and the
+  regression pages now document the fitted-model classes
+  (``ParametricRegressionModel``, ``AdditiveHazardsModel``).
+
+  Fixed along the way: every recurrent-events API page still targeted
+  the ``ARA_``-style shadow classes that the ``singleton_fitter``
+  refactor removed, so their method documentation had silently dropped
+  out of clean builds.
+
+- **Third duplicate-code consolidation.** Another sweep for repeated
+  definitions, this time at the small end (exact duplicates the earlier
+  sweeps' size thresholds skipped, plus inline fragments):
+
+  - Every ``from_dict`` opened with the same three-line "wrong dict"
+    guard, written out 21 times with hand-composed messages. They now
+    call ``require_model_tag`` (``surpyval.serialisation``), which
+    raises the same "Must create ... from a <Tag> dict" ``ValueError``
+    with the model tag always present. One message changed wording:
+    ``FrailtyModel.from_dict`` said "from its own dict" and now names
+    the tag like every other model.
+  - The five models that persist covariate metadata (feature names,
+    formula, formula terms -- <#244>) carried the same ``to_dict``/
+    ``from_dict`` blocks; they now call ``serialise_covariate_meta``/
+    ``restore_covariate_meta`` in ``regression_data``.
+  - The ``exp(beta'Z)`` covariate link was still restated in six places
+    after <#295> introduced ``LogLinearPhi``: the AFT fitter's private
+    copy, PO's methods, the AFT time-varying-covariate fit's local
+    class, PH's lambdas and the deserialiser's lambda. All now use
+    ``LogLinearPhi``, whose two historical serialisation names (PH's
+    ``e^`` vs AFT/PO's ``exp``) are class constants. The PH
+    constructor's phi signature check now compares parameter names and
+    kinds instead of the signature's string form, so the annotated
+    shared function passes.
+  - The optimiser objective every regression ``fit`` built inline is
+    now ``make_objective`` in the fit skeleton, and the shared
+    ``x - gamma`` probability-plot transform lives on
+    ``HazardIdentitiesMixin``.
+  - Small orphans: ``_check_has_data`` moved to
+    ``LikelihoodInferenceMixin``; the NHPP baselines' identical
+    all-ones ``parameter_initialiser`` became the ``IntensityModel``
+    default; the two competing-risks ``fit_from_df`` helpers share
+    ``optional_column`` in ``utils``.
+
+  Verified by fingerprinting 101 numeric outputs across the touched
+  surfaces on both sides of the change: all identical except the one
+  reworded frailty message. The heavier parameterised rewrites found in
+  the same sweep are filed as <#350>, <#351> and <#352>.
+
 - **Type-hint ratchet: finished.** Every function in the package is
   annotated -- 1750 of 1750 defs -- and the per-module ratchet list is
   gone: ``disallow_untyped_defs`` now holds package-wide, with only the

@@ -30,7 +30,13 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.recurrent.serialisation import intensity_dist_by_name
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+    to_native,
+)
+from surpyval.utils import optional_column
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -92,11 +98,9 @@ class CauseSpecificNHPP(SerialisableMixin):
         --------
         to_dict, to_json, from_json
         """
-        if model_dict.get("model") != "CauseSpecificNHPP":
-            raise ValueError(
-                "Must create a cause-specific NHPP from a CauseSpecificNHPP "
-                "dict"
-            )
+        require_model_tag(
+            model_dict, "CauseSpecificNHPP", "a cause-specific NHPP"
+        )
         out = cls()
         out.dist = intensity_dist_by_name(model_dict["dist"])
         out.event_types = list(model_dict["event_types"])
@@ -283,17 +287,14 @@ class CauseSpecificNHPP(SerialisableMixin):
         naming the columns to read. See :meth:`fit` for the meaning of each.
         """
 
-        def col(name: "str | None") -> Any:
-            return None if name is None else df[name].to_numpy()
-
         model = cls.fit(
             x=df[x_col].to_numpy(),
-            i=col(i_col),
-            c=col(c_col),
-            n=col(n_col),
-            e=col(e_col),
-            tl=col(tl_col),
-            tr=col(tr_col),
+            i=optional_column(df, i_col),
+            c=optional_column(df, c_col),
+            n=optional_column(df, n_col),
+            e=optional_column(df, e_col),
+            tl=optional_column(df, tl_col),
+            tr=optional_column(df, tr_col),
             dist=dist,
             how=how,
             init=init,

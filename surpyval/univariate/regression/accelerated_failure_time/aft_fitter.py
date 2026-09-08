@@ -13,6 +13,7 @@ from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
     assemble_regression_model,
+    make_objective,
     mirror_distribution,
     optimise_nm_tnc,
     prepare_regression_fit,
@@ -21,21 +22,6 @@ from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from .aft_tvc_fit import AFTTVCFitMixin
-
-
-class _LogLinearPhiModel:
-    """Internal phi object: phi(Z) = exp(beta'Z)."""
-
-    name = "Log Linear [exp(beta'Z)]"
-
-    def phi(self, Z: Numeric, *params: Boxable) -> Boxable:
-        return np.exp(np.dot(Z, np.array(params)))
-
-    def phi_bounds(self, Z: npt.NDArray) -> tuple:
-        return ((None, None),) * Z.shape[1]
-
-    def phi_param_map(self, Z: npt.NDArray) -> dict[str, int]:
-        return {"beta_" + str(i): i for i in range(Z.shape[1])}
 
 
 class AFTFitter(
@@ -56,14 +42,13 @@ class AFTFitter(
 
     def __init__(self, distribution: Any) -> None:
         mirror_distribution(self, distribution)
-        self._phi_model = _LogLinearPhiModel()
         self.Hf_dist = distribution.Hf
         self.hf_dist = distribution.hf
         self.sf_dist = distribution.sf
         self.ff_dist = distribution.ff
 
     def _phi(self, Z: Numeric, *phi_params: Boxable) -> Boxable:
-        return self._phi_model.phi(Z, *phi_params)
+        return LogLinearPhi.phi(Z, *phi_params)
 
     def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         x = np.atleast_1d(np.asarray(x, dtype=float))
@@ -102,20 +87,19 @@ class AFTFitter(
             t,
             init,
             fixed,
-            self._phi_model.phi_bounds,
-            self._phi_model.phi_param_map,
+            LogLinearPhi.phi_bounds,
+            LogLinearPhi.make_param_map,
         )
         init_t, bounds, pmap, transform, inv_trans, const, fixed = prep
 
         with np.errstate(all="ignore"):
 
-            def fun(params: npt.NDArray) -> Boxable:
-                return self.neg_ll(data, *inv_trans(const(params)))
+            fun = make_objective(self, data, inv_trans, const)
 
             res = optimise_nm_tnc(fun, init_t)
 
         params = inv_trans(const(res.x))
-        reg_model = LogLinearPhi(_LogLinearPhiModel.name, pmap)
+        reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, pmap)
 
         return assemble_regression_model(
             self,

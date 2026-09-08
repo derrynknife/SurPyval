@@ -6,7 +6,11 @@ from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 
 from surpyval import Distribution, np
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
@@ -84,10 +88,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             ParametricFitter,
         )
 
-        if model_dict.get("model") != "MixtureModel":
-            raise ValueError(
-                "Must create a mixture model from a MixtureModel dict"
-            )
+        require_model_tag(model_dict, "MixtureModel", "a mixture model")
         dist = getattr(surpyval, model_dict["dist"], None)
         if not isinstance(dist, ParametricFitter):
             raise ValueError(

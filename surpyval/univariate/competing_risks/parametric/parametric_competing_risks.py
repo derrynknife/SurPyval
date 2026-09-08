@@ -30,7 +30,12 @@ import numpy as np
 import numpy.typing as npt
 from scipy.integrate import cumulative_trapezoid
 
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+    to_native,
+)
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
 from surpyval.utils import (
@@ -104,11 +109,11 @@ class ParametricCompetingRisks(SerialisableMixin):
     @classmethod
     def from_dict(cls, model_dict: dict) -> "ParametricCompetingRisks":
         """Rebuild a parametric competing-risks model from a dict."""
-        if model_dict.get("model") != "ParametricCompetingRisks":
-            raise ValueError(
-                "Must create a parametric competing-risks model from a "
-                "ParametricCompetingRisks dict"
-            )
+        require_model_tag(
+            model_dict,
+            "ParametricCompetingRisks",
+            "a parametric competing-risks model",
+        )
         out = cls()
         out.causes = list(model_dict["causes"])
         out.models = {

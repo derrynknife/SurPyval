@@ -6,10 +6,17 @@ from collections import defaultdict
 import numpy as np
 import numpy.typing as npt
 from formulaic import Formula
-from pandas import Series, isna
+from pandas import DataFrame, Series, isna
 
 COX_PH_METHODS = ["breslow", "efron", "exact", "kalbfleisch-prentice", "kp"]
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
+
+
+def optional_column(df: DataFrame, name: "str | None") -> "npt.NDArray | None":
+    """The named DataFrame column as an array, or ``None`` when no
+    column is named -- for ``fit_from_df`` methods whose optional
+    arguments (censoring, counts, truncation, ...) may not be given."""
+    return None if name is None else df[name].to_numpy()
 
 
 def _round_vals(x: npt.NDArray) -> npt.NDArray:

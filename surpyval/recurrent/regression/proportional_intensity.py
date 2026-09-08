@@ -8,7 +8,11 @@ from surpyval.recurrent import diagnostics
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.serialisation import intensity_dist_by_name
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 
 
@@ -117,11 +121,11 @@ class ProportionalIntensityModel(
         --------
         to_dict, to_json, from_json
         """
-        if model_dict.get("model") != "ProportionalIntensityModel":
-            raise ValueError(
-                "Must create a proportional-intensity model from a "
-                "ProportionalIntensityModel dict"
-            )
+        require_model_tag(
+            model_dict,
+            "ProportionalIntensityModel",
+            "a proportional-intensity model",
+        )
         out = cls()
         out.kind = model_dict["kind"]
         out.parameterization = model_dict["parameterization"]

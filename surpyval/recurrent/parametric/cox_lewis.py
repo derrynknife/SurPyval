@@ -1,5 +1,4 @@
 import numpy as np
-import numpy.typing as npt
 
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.fitter import singleton_fitter
@@ -53,9 +52,6 @@ class CoxLewis(NHPPFitter):
         # at alpha = 0 (#286).
         self.bounds = ((None, None), (None, None))
         self.support = (0.0, np.inf)
-
-    def parameter_initialiser(self, x: npt.ArrayLike) -> npt.NDArray:
-        return np.array([1.0, 1.0])
 
     def cif(self, x: Boxable, *params: Boxable) -> Boxable:
         # The Cox-Lewis intensity is log-linear, so its cumulative intensity

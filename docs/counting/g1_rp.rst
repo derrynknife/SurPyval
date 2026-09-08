@@ -5,6 +5,6 @@ The G1 renewal process (Lam's geometric process, reparameterised): the ``j``-th 
 
 .. class:: GeneralizedOneRenewal
 
-   .. automethod:: surpyval.recurrent.renewal.generalized_one_renewal.GeneralizedOneRenewal_.fit
-   .. automethod:: surpyval.recurrent.renewal.generalized_one_renewal.GeneralizedOneRenewal_.fit_from_recurrent_data
-   .. automethod:: surpyval.recurrent.renewal.generalized_one_renewal.GeneralizedOneRenewal_.fit_from_parameters
+   .. automethod:: surpyval.recurrent.renewal.generalized_one_renewal.GeneralizedOneRenewal.fit
+   .. automethod:: surpyval.recurrent.renewal.generalized_one_renewal.GeneralizedOneRenewal.fit_from_recurrent_data
+   .. automethod:: surpyval.recurrent.renewal.generalized_one_renewal.GeneralizedOneRenewal.fit_from_parameters

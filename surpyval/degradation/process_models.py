@@ -30,7 +30,11 @@ from scipy.optimize import brentq, minimize_scalar
 from scipy.special import gammaincc, gammaln
 from scipy.stats import norm
 
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 
 __all__ = [
     "WienerProcess",
@@ -187,12 +191,11 @@ class FirstPassageProcessModel(SerialisableMixin):
     @classmethod
     def from_dict(cls, model_dict: dict) -> "FirstPassageProcessModel":
         """Rebuild a fitted process model from a :meth:`to_dict` dict."""
-        if model_dict.get("model") != cls._model_tag:
-            raise ValueError(
-                "Must create a {} model from a {} dict".format(
-                    cls._human_name, cls._model_tag
-                )
-            )
+        require_model_tag(
+            model_dict,
+            cls._model_tag,
+            "a {} model".format(cls._human_name),
+        )
         return cls(
             *(model_dict[name] for name in cls.param_names),
             model_dict["threshold"],

@@ -154,6 +154,34 @@ def prepare_Z(
     )
 
 
+def serialise_covariate_meta(model: Any, out: dict) -> None:
+    """Store a fitted model's covariate metadata into its ``to_dict``.
+
+    ``feature_names``, ``formula`` and -- when the model was fit from a
+    formula -- the ``formula_meta`` needed to rebuild the design-matrix
+    transformer on load, so a restored model expands raw covariates
+    (e.g. categoricals) exactly as the original did (#244). Every
+    DataFrame-fittable model class used to carry this block verbatim.
+    """
+    if model.feature_names is not None:
+        out["feature_names"] = list(model.feature_names)
+    if model.formula is not None:
+        out["formula"] = str(model.formula)
+        if getattr(model, "_model_spec", None) is not None:
+            out["formula_meta"] = model_spec_to_meta(model._model_spec)
+
+
+def restore_covariate_meta(model: Any, model_dict: dict) -> None:
+    """The ``from_dict`` counterpart of :func:`serialise_covariate_meta`:
+    read back ``feature_names``/``formula`` and rebuild the formula's
+    design-matrix transformer from the stored ``formula_meta`` (#244)."""
+    model.feature_names = model_dict.get("feature_names")
+    model.formula = model_dict.get("formula")
+    formula_meta = model_dict.get("formula_meta")
+    if model.formula is not None and formula_meta is not None:
+        model._model_spec = rebuild_model_spec(model.formula, formula_meta)
+
+
 def model_spec_to_meta(model_spec: Any) -> dict:
     """
     Capture the JSON-safe state needed to rebuild a ``formulaic`` model spec.

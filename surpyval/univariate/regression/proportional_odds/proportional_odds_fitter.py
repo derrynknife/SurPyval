@@ -13,6 +13,7 @@ from .._fit_skeleton import (
     LogLinearPhi,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    make_objective,
     mirror_distribution,
     optimise_nm_tnc,
     prepare_regression_fit,
@@ -49,14 +50,8 @@ class ProportionalOddsFitter(
         self.ff_dist = distribution.ff
         self.df_dist = distribution.df
 
-    def _phi_bounds(self, Z: npt.NDArray) -> tuple:
-        return ((None, None),) * Z.shape[1]
-
-    def _phi_param_map(self, Z: npt.NDArray) -> dict[str, int]:
-        return {"beta_" + str(i): i for i in range(Z.shape[1])}
-
     def _phi(self, Z: Numeric, *phi_params: Boxable) -> Boxable:
-        return np.exp(np.dot(Z, np.array(phi_params)))
+        return LogLinearPhi.phi(Z, *phi_params)
 
     def sf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         x = np.atleast_1d(np.asarray(x, dtype=float))
@@ -158,20 +153,19 @@ class ProportionalOddsFitter(
             t,
             init,
             fixed,
-            self._phi_bounds,
-            self._phi_param_map,
+            LogLinearPhi.phi_bounds,
+            LogLinearPhi.make_param_map,
         )
         init_t, bounds, pmap, transform, inv_trans, const, fixed = prep
 
         with np.errstate(all="ignore"):
 
-            def fun(params: npt.NDArray) -> Boxable:
-                return self.neg_ll(data, *inv_trans(const(params)))
+            fun = make_objective(self, data, inv_trans, const)
 
             res = optimise_nm_tnc(fun, init_t)
 
         params = inv_trans(const(res.x))
-        reg_model = LogLinearPhi("Log Linear [exp(beta'Z)]", pmap)
+        reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, pmap)
 
         return assemble_regression_model(
             self,

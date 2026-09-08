@@ -47,11 +47,20 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils import check_Z_and_x, wrangle_Z, xcnt_handler
 from surpyval.utils.linalg import safe_inv
 
-from ..regression_data import design_matrix_from_df, prepare_Z
+from ..regression_data import (
+    design_matrix_from_df,
+    prepare_Z,
+    restore_covariate_meta,
+    serialise_covariate_meta,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -156,17 +165,7 @@ class AdditiveHazardsModel(SerialisableMixin):
         }
         if getattr(self, "p_values", None) is not None:
             out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
-        if self.feature_names is not None:
-            out["feature_names"] = list(self.feature_names)
-        if self.formula is not None:
-            out["formula"] = str(self.formula)
-            # Persist the encoder state so a restored model expands raw
-            # covariates the same way (#244, applied to the Lin-Ying
-            # additive-hazards model in #261).
-            if getattr(self, "_model_spec", None) is not None:
-                from ..regression_data import model_spec_to_meta
-
-                out["formula_meta"] = model_spec_to_meta(self._model_spec)
+        serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
     @classmethod
@@ -179,11 +178,9 @@ class AdditiveHazardsModel(SerialisableMixin):
         --------
         to_dict, to_json, from_json
         """
-        if model_dict.get("model") != "AdditiveHazardsModel":
-            raise ValueError(
-                "Must create an additive-hazards model from an "
-                "AdditiveHazardsModel dict"
-            )
+        require_model_tag(
+            model_dict, "AdditiveHazardsModel", "an additive-hazards model"
+        )
         out = cls()
         out.beta = np.array(model_dict["beta"], dtype=float)
         out.params = np.array(model_dict["params"], dtype=float)
@@ -194,13 +191,7 @@ class AdditiveHazardsModel(SerialisableMixin):
         out.se = np.array(model_dict["se"], dtype=float)
         if "p_values" in model_dict:
             out.p_values = np.array(model_dict["p_values"], dtype=float)
-        out.feature_names = model_dict.get("feature_names")
-        out.formula = model_dict.get("formula")
-        formula_meta = model_dict.get("formula_meta")
-        if out.formula is not None and formula_meta is not None:
-            from ..regression_data import rebuild_model_spec
-
-            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
+        restore_covariate_meta(out, model_dict)
         return out
 
     def _h0_at(self, x: npt.NDArray) -> npt.NDArray:

@@ -44,7 +44,12 @@ from scipy.optimize import brentq, minimize
 from scipy.special import ndtri as _ndtri
 from scipy.stats import norm
 
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+    to_native,
+)
 from surpyval.utils.linalg import numerical_hessian
 
 _SCALES = ("hazard", "odds", "normal")
@@ -314,8 +319,9 @@ class RoystonParmarModel(SerialisableMixin):
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RoystonParmarModel":
-        if model_dict.get("model") != "RoystonParmarModel":
-            raise ValueError("Must create a RoystonParmarModel from its dict")
+        require_model_tag(
+            model_dict, "RoystonParmarModel", "a Royston-Parmar model"
+        )
         out = cls()
         out.scale = model_dict["scale"]
         out.knots = np.array(model_dict["knots"], dtype=float)

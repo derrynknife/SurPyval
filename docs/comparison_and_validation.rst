@@ -22,6 +22,14 @@ The two-group restricted-mean-survival-time difference (the per-model
 
 .. autofunction:: surpyval.univariate.nonparametric.nonparametric.rmst_diff
 
+Automatic distribution selection
+--------------------------------
+
+Fit every candidate continuous distribution and keep the one with the
+best information criterion:
+
+.. autofunction:: surpyval.fit_best.fit_best
+
 Prediction-validation metrics
 -----------------------------
 

@@ -16,9 +16,9 @@ from surpyval.utils.linalg import (
 
 from ._bounds import logit_sf_bound
 from .regression_data import (
-    model_spec_to_meta,
     prepare_Z,
-    rebuild_model_spec,
+    restore_covariate_meta,
+    serialise_covariate_meta,
 )
 
 if TYPE_CHECKING:
@@ -195,15 +195,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out["gamma"] = float(getattr(self, "gamma", 0.0))
         out["p"] = float(getattr(self, "p", 1.0))
         out["f0"] = float(getattr(self, "f0", 0.0))
-        if self.feature_names is not None:
-            out["feature_names"] = list(self.feature_names)
-        if self.formula is not None:
-            out["formula"] = str(self.formula)
-            # Persist the categorical levels / numeric columns needed to
-            # rebuild the formula's design-matrix transformer on load, so a
-            # restored model expands raw covariates the same way (#244).
-            if self._model_spec is not None:
-                out["formula_meta"] = model_spec_to_meta(self._model_spec)
+        serialise_covariate_meta(self, out)
 
         # Store the parameter covariance so the restored model can produce
         # confidence bounds without the original data: from the fit when
@@ -304,8 +296,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 phi_param_map=phi_param_map,
             )
             if phi_kind == "exp":
-                # the log-linear multiplier exp(beta'Z), matching the fitters
-                reg_model.phi = lambda Z, *p: np.exp(np.dot(Z, np.array(p)))
+                # The log-linear multiplier exp(beta'Z), matching the
+                # fitters. Imported here because _fit_skeleton imports
+                # this module at load time.
+                from ._fit_skeleton import LogLinearPhi
+
+                reg_model.phi = LogLinearPhi.phi
         else:
             raise ValueError(
                 "Cannot deserialise regression kind {!r}".format(kind)
@@ -328,15 +324,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
-        out.feature_names = model_dict.get("feature_names")
-        out.formula = model_dict.get("formula")
-
-        # Rebuild the formula's design-matrix transformer so the restored
-        # model expands raw covariates (e.g. categoricals) at prediction time
-        # exactly as the original did (#244).
-        formula_meta = model_dict.get("formula_meta")
-        if out.formula is not None and formula_meta is not None:
-            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
+        restore_covariate_meta(out, model_dict)
 
         if "covariance" in model_dict:
             out._restored_covariance = np.array(

@@ -3,7 +3,11 @@ from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.beta.ml.forest.tree import SurvivalTree
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils.score import score
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -214,11 +218,9 @@ class RandomSurvivalForest(SerialisableMixin):
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RandomSurvivalForest":
         """Reconstruct a fitted forest from a :meth:`to_dict` dictionary."""
-        if model_dict.get("model") != "RandomSurvivalForest":
-            raise ValueError(
-                "Must create a RandomSurvivalForest from a "
-                "RandomSurvivalForest model dict"
-            )
+        require_model_tag(
+            model_dict, "RandomSurvivalForest", "a random survival forest"
+        )
         forest = cls.__new__(cls)
         forest.kind = model_dict["kind"]
         forest.n_trees = model_dict["n_trees"]

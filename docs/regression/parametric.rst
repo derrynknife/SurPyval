@@ -142,3 +142,15 @@ a step-valued expression string in ``t`` (``from_expression``); see
 
 .. autoclass:: surpyval.univariate.regression.tvc_schedule.StepSchedule
     :members:
+
+
+The fitted model
+----------------
+
+Every parametric regression ``fit`` returns a
+``ParametricRegressionModel`` carrying the fitted distribution and
+covariate parameters together with prediction, plotting and
+serialisation methods.
+
+.. autoclass:: surpyval.univariate.regression.parametric_regression_model.ParametricRegressionModel
+    :members:
