@@ -39,6 +39,7 @@ from surpyval.univariate.parametric import (
     Geometric,
     Gumbel,
     GumbelLEV,
+    Hypoexponential,
     InstantlyOccurs,
     Logistic,
     LogLogistic,

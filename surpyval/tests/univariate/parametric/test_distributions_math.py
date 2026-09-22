@@ -13,6 +13,7 @@ Checks closed-form identities independent of fitting:
 
 import math
 from math import comb
+from typing import Any
 
 import numpy as np
 import pytest
@@ -28,6 +29,7 @@ from surpyval import (
     Gamma,
     Gumbel,
     GumbelLEV,
+    Hypoexponential,
     Logistic,
     LogLogistic,
     LogNormal,
@@ -38,7 +40,7 @@ from surpyval import (
 )
 
 # (distribution, params)
-DIST_PARAMS = [
+DIST_PARAMS: list[tuple[Any, tuple[float, ...]]] = [
     (Gumbel, (-1.0, 2.0)),
     (GumbelLEV, (3.0, 1.5)),
     (Normal, (5.0, 2.0)),
@@ -53,6 +55,7 @@ DIST_PARAMS = [
     (Exponential, (0.5,)),
     (Rayleigh, (3.0,)),
     (Uniform, (2.0, 8.0)),
+    (Hypoexponential, (0.5, 1.5, 3.0)),
 ]
 
 DIST_PARAM_IDS = [d.name for d, _ in DIST_PARAMS]
@@ -137,7 +140,7 @@ def test_qf_median(dist, params, expected, desc):
 # ---------------------------------------------------------------------------
 
 # (distribution, params, theoretical_mean, theoretical_variance)
-RANDOM_STATS = [
+RANDOM_STATS: list[tuple[Any, tuple[float, ...], float, float]] = [
     # Normal(mu, sigma): mean=mu, var=sigma^2
     (Normal, (5.0, 2.0), 5.0, 4.0),
     # Weibull(alpha, 1) = Exponential: mean=alpha, var=alpha^2
@@ -148,6 +151,8 @@ RANDOM_STATS = [
     (Beta4, (1.0, 1.0, 10.0, 20.0), 15.0, 100.0 / 12.0),
     # Gamma(alpha, beta) rate-parameterised: mean=alpha/beta, var=alpha/beta^2
     (Gamma, (4.0, 2.0), 2.0, 1.0),
+    # Hypoexponential: stage means and variances add
+    (Hypoexponential, (1.0, 2.0, 4.0), 1.75, 1.3125),
 ]
 
 RANDOM_STATS_IDS = [d.name for d, *_ in RANDOM_STATS]
@@ -275,7 +280,7 @@ def test_mean_matches_numerical_integration(dist, params):
 # different scheme from moment()'s plain 0-to-infinity call, so the two
 # agreeing is a real check rather than a tautology. The closed-form checks
 # below pin it independently.
-MOMENT_PARAMS = [
+MOMENT_PARAMS: list[tuple[Any, tuple[float, ...]]] = [
     (ExpoWeibull, (3.0, 1.5, 0.8)),
     (Gumbel, (-1.0, 2.0)),
     (GumbelLEV, (3.0, 1.5)),
@@ -290,6 +295,7 @@ MOMENT_PARAMS = [
     (Exponential, (0.5,)),
     (Rayleigh, (3.0,)),
     (Uniform, (2.0, 8.0)),
+    (Hypoexponential, (0.5, 1.5, 3.0)),
 ]
 
 MOMENT_IDS = [d.name for d, _ in MOMENT_PARAMS]

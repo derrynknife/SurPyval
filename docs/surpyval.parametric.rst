@@ -18,6 +18,7 @@ Distribution Classes
    :maxdepth: 1
 
    univariate/exponential
+   univariate/hypoexponential
    univariate/weibull
    univariate/expo_weibull
    univariate/gumbel

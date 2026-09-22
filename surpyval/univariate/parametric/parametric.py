@@ -138,6 +138,9 @@ class Parametric(
             raise ValueError(
                 f"Unknown distribution '{model_dict['distribution']}'"
             )
+        # A variable-arity distribution supplies the instance sized to
+        # these parameters; every other distribution returns itself.
+        dist = dist._for_params(model_dict["params"])
         how = model_dict["how"]
         if "data" in model_dict:
             # Coerce the JSON lists back to arrays so downstream users
