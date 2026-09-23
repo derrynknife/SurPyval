@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "surpyval"
-version = "0.19.0"
+version = "0.20.0"
 description = "A python package for survival analysis"
 readme = "README.md"
 license = {text = "MIT"}
@@ -39,6 +39,29 @@ tests = [
     # (MongoDB compatibility); pymongo provides the bson package.
     "pymongo>=4",
 ]
+docs = [
+    # The documentation build toolchain, used by Read the Docs and by a
+    # local ``sphinx-build``. Fully pinned rather than bounded: the docs
+    # execute every ``.. jupyter-execute::`` cell during the build, so a
+    # toolchain change can break the build in ways a version range would
+    # let through silently. Bump these together and re-validate with a
+    # complete build:
+    #
+    #     pip install -e ".[docs]"
+    #     python -m sphinx -b html docs docs/_build/html
+    #
+    # matplotlib is not repeated here -- it is a runtime dependency of
+    # the package itself, which the docs install alongside these.
+    "sphinx==8.2.3",
+    "sphinx_rtd_theme==3.1.0",
+    "sphinx-copybutton==0.5.2",
+    "sphinx-notfound-page==1.1.0",
+    "jupyter-sphinx==0.5.3",
+    # Capped below 7: jupyter-sphinx notebook execution hangs or dies
+    # with a zmq "Socket operation on non-socket" against the ipykernel
+    # 7 line.
+    "ipykernel==6.31.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/derrynknife/SurPyval"
@@ -48,6 +71,22 @@ where = ["."]
 
 [tool.setuptools.package-data]
 "*" = ["datasets/*.csv", "py.typed"]
+
+# pytest
+[tool.pytest.ini_options]
+# Applied to the ``--doctest-modules`` run (see .github/workflows/actions.yml),
+# which executes the ``>>>`` examples in the docstrings and compares their
+# printed output.
+#
+# numpy chooses its own line breaks and column padding when it reprs an
+# array, and both change with the width of the widest element. Without
+# this an example is only correct for the exact terminal wrapping it was
+# captured at, and a docstring wrapped to 79 columns by hand -- as most
+# of these are -- can never match.
+#
+# The other half of the comparison is in conftest.py, which compares the
+# numbers in the output as numbers rather than as text.
+doctest_optionflags = "NORMALIZE_WHITESPACE"
 
 # For Black pre-commit hook
 [tool.black]
@@ -61,6 +100,31 @@ skip = ["__init__.py"]
 
 # mypy
 [tool.mypy]
+
+# Local stubs for third-party types that appear in surpyval's own
+# signatures. Only autograd's ArrayBox so far -- see the file for why.
+mypy_path = "stubs"
+
+# Every function in the package is annotated (#143), and the package
+# ships py.typed, which tells a user's type checker those annotations
+# are there to be trusted. ``disallow_untyped_defs`` holds that line
+# package-wide: an unannotated function anywhere in ``surpyval`` is an
+# error, so the coverage cannot slip back. This replaced the long
+# per-module ratchet list the coverage was built up under.
+disallow_untyped_defs = true
+
+# The test suite and the alpha (pre-release, no API contract) tree are
+# exercised, not typed; they are exempt from the annotation requirement
+# but still type-checked against the package's annotations.
+[[tool.mypy.overrides]]
+module = [
+    'surpyval.tests.*',
+    'surpyval.alpha.*',
+    'conftest',
+    'scripts.*',
+]
+disallow_untyped_defs = false
+
 [[tool.mypy.overrides]]
 module = [
     'scipy.*',

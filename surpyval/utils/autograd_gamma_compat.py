@@ -22,9 +22,13 @@ Replaces the abandoned autograd-gamma package. VJP approach:
     inner VJPs are plain numpy), which nothing in surpyval needs.
 """
 
+from typing import Callable
+
 import autograd.numpy as anp
 import numpy as np
+import numpy.typing as npt
 from autograd.extend import defvjp, primitive
+from autograd.numpy.numpy_boxes import ArrayBox
 from autograd.scipy.special import betaln as _ag_betaln
 from autograd.scipy.special import gammaln as _ag_gammaln
 from autograd.tracer import getval
@@ -32,17 +36,21 @@ from scipy.special import betainc as _sc_betainc
 from scipy.special import gammainc as _sc_gammainc
 from scipy.special import gammaincc as _sc_gammaincc
 
+# The value-or-box union the distributions use (see parametric_fitter):
+# every boundary here may see a plain numpy value or an ArrayBox.
+Boxable = npt.NDArray | float | ArrayBox
+
 _LOG_EPS = 1e-35
 _EPS_H = np.finfo(float).eps ** (1.0 / 3.0)
 
 
-def _step(v):
+def _step(v: Boxable) -> Boxable:
     """Exact floating-point step size for central differences."""
     h = np.maximum(np.abs(v) * _EPS_H, 1e-7)
     return (v + h) - v
 
 
-def _cdiff(f, v):
+def _cdiff(f: Callable, v: Boxable) -> Boxable:
     """5th-order central difference of a one-argument callable at v."""
     h = _step(v)
     return (-f(v + 2 * h) + 8 * f(v + h) - 8 * f(v - h) + f(v - 2 * h)) / (
@@ -50,7 +58,7 @@ def _cdiff(f, v):
     )
 
 
-def _cdiff_second(f, v):
+def _cdiff_second(f: Callable, v: Boxable) -> Boxable:
     """5-point second-derivative stencil of a one-argument callable at v."""
     h = _step(v)
     return (
@@ -62,7 +70,7 @@ def _cdiff_second(f, v):
     ) / (12 * h * h)
 
 
-def _cdiff1(f, a, x):
+def _cdiff1(f: Callable, a: Boxable, x: Boxable) -> Boxable:
     """5th-order central diff of f(a, x) w.r.t. a.
 
     Both a and x must be plain numpy values — call with getval().
@@ -70,17 +78,17 @@ def _cdiff1(f, a, x):
     return _cdiff(lambda aa: f(aa, x), a)
 
 
-def _cdiff2_a(f, a, b, x):
+def _cdiff2_a(f: Callable, a: Boxable, b: Boxable, x: Boxable) -> Boxable:
     """5th-order central diff of f(a, b, x) w.r.t. a — all args plain numpy."""
     return _cdiff(lambda aa: f(aa, b, x), a)
 
 
-def _cdiff2_b(f, a, b, x):
+def _cdiff2_b(f: Callable, a: Boxable, b: Boxable, x: Boxable) -> Boxable:
     """5th-order central diff of f(a, b, x) w.r.t. b — all args plain numpy."""
     return _cdiff(lambda bb: f(a, bb, x), b)
 
 
-def _make_da_primitive(f):
+def _make_da_primitive(f: Callable) -> Callable:
     """Traced first derivative w.r.t. the shape parameter of f(a, x).
 
     Returns a primitive ``f_da(a, x) = df/da`` whose own VJPs are the
@@ -89,15 +97,15 @@ def _make_da_primitive(f):
     """
 
     @primitive
-    def f_da(a, x):
+    def f_da(a: Boxable, x: Boxable) -> Boxable:
         return _cdiff1(f, a, x)
 
-    def vjp_a(ans, a, x):
+    def vjp_a(ans: Boxable, a: Boxable, x: Boxable) -> Callable:
         av, xv = getval(a), getval(x)
         d2 = _cdiff_second(lambda aa: f(aa, xv), av)
         return lambda g: (getval(g) * d2).sum()
 
-    def vjp_x(ans, a, x):
+    def vjp_x(ans: Boxable, a: Boxable, x: Boxable) -> Callable:
         av, xv = getval(a), getval(x)
         mixed = _cdiff(lambda xx: _cdiff1(f, av, xx), xv)
         return lambda g: getval(g) * mixed
@@ -106,7 +114,7 @@ def _make_da_primitive(f):
     return f_da
 
 
-def _make_dab_primitives(f):
+def _make_dab_primitives(f: Callable) -> tuple[Callable, Callable]:
     """Traced first derivatives w.r.t. both shape parameters of f(a, b, x).
 
     Returns primitives ``(f_da, f_db)`` whose VJPs are the numerical pure,
@@ -114,42 +122,44 @@ def _make_dab_primitives(f):
     """
 
     @primitive
-    def f_da(a, b, x):
+    def f_da(a: Boxable, b: Boxable, x: Boxable) -> Boxable:
         return _cdiff2_a(f, a, b, x)
 
     @primitive
-    def f_db(a, b, x):
+    def f_db(a: Boxable, b: Boxable, x: Boxable) -> Boxable:
         return _cdiff2_b(f, a, b, x)
 
-    def _vals(a, b, x):
+    def _vals(
+        a: Boxable, b: Boxable, x: Boxable
+    ) -> tuple[Boxable, Boxable, Boxable]:
         return getval(a), getval(b), getval(x)
 
-    def da_vjp_a(ans, a, b, x):
+    def da_vjp_a(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         d2 = _cdiff_second(lambda aa: f(aa, bv, xv), av)
         return lambda g: (getval(g) * d2).sum()
 
-    def da_vjp_b(ans, a, b, x):
+    def da_vjp_b(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         d2 = _cdiff(lambda bb: _cdiff2_a(f, av, bb, xv), bv)
         return lambda g: (getval(g) * d2).sum()
 
-    def da_vjp_x(ans, a, b, x):
+    def da_vjp_x(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         mixed = _cdiff(lambda xx: _cdiff2_a(f, av, bv, xx), xv)
         return lambda g: getval(g) * mixed
 
-    def db_vjp_a(ans, a, b, x):
+    def db_vjp_a(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         d2 = _cdiff(lambda aa: _cdiff2_b(f, aa, bv, xv), av)
         return lambda g: (getval(g) * d2).sum()
 
-    def db_vjp_b(ans, a, b, x):
+    def db_vjp_b(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         d2 = _cdiff_second(lambda bb: f(av, bb, xv), bv)
         return lambda g: (getval(g) * d2).sum()
 
-    def db_vjp_x(ans, a, b, x):
+    def db_vjp_x(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         mixed = _cdiff(lambda xx: _cdiff2_b(f, av, bv, xx), xv)
         return lambda g: getval(g) * mixed
@@ -165,7 +175,7 @@ def _make_dab_primitives(f):
 
 
 @primitive
-def gammainc(a, x):
+def gammainc(a: Boxable, x: Boxable) -> Boxable:
     return _sc_gammainc(a, x)
 
 
@@ -186,12 +196,12 @@ defvjp(
 # ---------------------------------------------------------------------------
 
 
-def _gammaincln_raw(a, x):
+def _gammaincln_raw(a: Boxable, x: Boxable) -> Boxable:
     return np.log(np.clip(_sc_gammainc(a, x), _LOG_EPS, np.inf))
 
 
 @primitive
-def gammaincln(a, x):
+def gammaincln(a: Boxable, x: Boxable) -> Boxable:
     return _gammaincln_raw(a, x)
 
 
@@ -210,12 +220,12 @@ defvjp(
 # ---------------------------------------------------------------------------
 
 
-def _gammainccln_raw(a, x):
+def _gammainccln_raw(a: Boxable, x: Boxable) -> Boxable:
     return np.log(np.clip(_sc_gammaincc(a, x), _LOG_EPS, np.inf))
 
 
 @primitive
-def gammainccln(a, x):
+def gammainccln(a: Boxable, x: Boxable) -> Boxable:
     return _gammainccln_raw(a, x)
 
 
@@ -235,7 +245,7 @@ defvjp(
 
 
 @primitive
-def betainc(a, b, x):
+def betainc(a: Boxable, b: Boxable, x: Boxable) -> Boxable:
     return _sc_betainc(a, b, x)
 
 
@@ -257,12 +267,12 @@ defvjp(
 # ---------------------------------------------------------------------------
 
 
-def _betaincln_raw(a, b, x):
+def _betaincln_raw(a: Boxable, b: Boxable, x: Boxable) -> Boxable:
     return np.log(np.clip(_sc_betainc(a, b, x), _LOG_EPS, np.inf))
 
 
 @primitive
-def betaincln(a, b, x):
+def betaincln(a: Boxable, b: Boxable, x: Boxable) -> Boxable:
     return _betaincln_raw(a, b, x)
 
 

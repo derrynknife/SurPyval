@@ -18,6 +18,7 @@ from surpyval import (
     Uniform,
     Weibull,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 # ---------------------------------------------------------------------------
 # _clamp_truncation_to_support
@@ -57,11 +58,15 @@ def test_clamp_truncation_unbounded_is_noop():
 def test_initial_guess_returns_one_value_per_parameter():
     np.random.seed(0)
     x = Weibull.random(500, 10.0, 3.0)
-    c = np.zeros_like(x)
-    n = np.ones_like(x)
+    c = np.zeros(x.shape[0], dtype=int)
+    n = np.ones(x.shape[0], dtype=int)
 
     init = Weibull._initial_guess(
-        x, c, n, offset=False, zi=False, lfp=False, heuristic="Nelson-Aalen"
+        SurpyvalData(x, c, n, group_and_sort=False),
+        offset=False,
+        zi=False,
+        lfp=False,
+        heuristic="Nelson-Aalen",
     )
 
     assert len(init) == Weibull.k
@@ -73,11 +78,15 @@ def test_initial_guess_returns_one_value_per_parameter():
 def test_initial_guess_lfp_appends_a_bounded_p_seed():
     np.random.seed(1)
     x = Weibull.random(500, 10.0, 3.0)
-    c = np.zeros_like(x)
-    n = np.ones_like(x)
+    c = np.zeros(x.shape[0], dtype=int)
+    n = np.ones(x.shape[0], dtype=int)
 
     init = Weibull._initial_guess(
-        x, c, n, offset=False, zi=False, lfp=True, heuristic="Nelson-Aalen"
+        SurpyvalData(x, c, n, group_and_sort=False),
+        offset=False,
+        zi=False,
+        lfp=True,
+        heuristic="Nelson-Aalen",
     )
 
     assert len(init) == Weibull.k + 1
@@ -88,11 +97,15 @@ def test_initial_guess_lfp_appends_a_bounded_p_seed():
 def test_initial_guess_zi_appends_zero_fraction():
     np.random.seed(2)
     x = np.concatenate([np.zeros(50), Weibull.random(450, 10.0, 3.0)])
-    c = np.zeros_like(x)
-    n = np.ones_like(x)
+    c = np.zeros(x.shape[0], dtype=int)
+    n = np.ones(x.shape[0], dtype=int)
 
     init = Weibull._initial_guess(
-        x, c, n, offset=False, zi=True, lfp=False, heuristic="Nelson-Aalen"
+        SurpyvalData(x, c, n, group_and_sort=False),
+        offset=False,
+        zi=True,
+        lfp=False,
+        heuristic="Nelson-Aalen",
     )
 
     assert len(init) == Weibull.k + 1
@@ -103,11 +116,15 @@ def test_initial_guess_zi_appends_zero_fraction():
 def test_initial_guess_offset_seeds_gamma_below_min():
     np.random.seed(3)
     x = Weibull.random(500, 10.0, 3.0) + 7.0
-    c = np.zeros_like(x)
-    n = np.ones_like(x)
+    c = np.zeros(x.shape[0], dtype=int)
+    n = np.ones(x.shape[0], dtype=int)
 
     init = Weibull._initial_guess(
-        x, c, n, offset=True, zi=False, lfp=False, heuristic="Nelson-Aalen"
+        SurpyvalData(x, c, n, group_and_sort=False),
+        offset=True,
+        zi=False,
+        lfp=False,
+        heuristic="Nelson-Aalen",
     )
 
     # Offset distributions carry gamma as the leading parameter; the seed
@@ -123,10 +140,14 @@ def test_initial_guess_interval_data_uses_midpoint():
     centres = Weibull.random(300, 10.0, 3.0)
     x = np.vstack([centres - 0.5, centres + 0.5]).T
     c = np.full(centres.shape, 2)
-    n = np.ones(centres.shape)
+    n = np.ones(centres.shape, dtype=int)
 
     init = Weibull._initial_guess(
-        x, c, n, offset=False, zi=False, lfp=False, heuristic="Nelson-Aalen"
+        SurpyvalData(x, c, n, group_and_sort=False),
+        offset=False,
+        zi=False,
+        lfp=False,
+        heuristic="Nelson-Aalen",
     )
 
     assert len(init) == Weibull.k

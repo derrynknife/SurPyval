@@ -1,5 +1,10 @@
 import warnings
+from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    from ..parametric import Parametric
+
+import numpy.typing as npt
 from autograd import hessian, jacobian
 from autograd.numpy.linalg import inv
 from numdifftools import Hessian  # type: ignore
@@ -9,7 +14,7 @@ from surpyval import np
 from surpyval.univariate.parametric.fitters import preconditioned_bfgs
 
 
-def mle(model):
+def mle(model: "Parametric") -> Any:
     """
     Maximum Likelihood Estimation (MLE)
 
@@ -33,15 +38,15 @@ def mle(model):
     """
 
     def fun(
-        params,
-        offset=False,
-        lfp=False,
-        zi=False,
-        transform=True,
-        gamma=0,
-        f0=0,
-        p=1,
-    ):
+        params: Any,
+        offset: bool = False,
+        lfp: bool = False,
+        zi: bool = False,
+        transform: bool = True,
+        gamma: float = 0,
+        f0: float = 0,
+        p: float = 1,
+    ) -> Any:
         # Transform parameters from (-Inf, Inf) range to parameter
         # to correct bounded values
         if transform:
@@ -224,7 +229,7 @@ def mle(model):
         embed[var_idx, np.arange(len(var_idx))] = 1.0
         u_held = np.where(embed.sum(axis=1) == 0, u_full, 0.0)
 
-        def transformed_fun(u):
+        def transformed_fun(u: npt.NDArray) -> Any:
             theta = inv_trans(embed @ u + u_held)[n_head:]
             if zi:
                 *theta, f0_i = theta
@@ -238,7 +243,7 @@ def mle(model):
                 model.surv_data, *theta, gamma, f0_i, p_i
             )
 
-        def u_to_phi(u):
+        def u_to_phi(u: npt.NDArray) -> Any:
             return inv_trans(embed @ u + u_held)[n_head:]
 
         try:

@@ -1,97 +1,13 @@
 import warnings
+from typing import Any, Callable
 
 import numpy as np
-from scipy.stats import norm
 
-
-def numerical_hessian(func, x):
-    """
-    Central finite-difference Hessian of a scalar ``func`` at ``x``. Used to
-    approximate the observed Fisher information from the negative
-    log-likelihood of the renewal models, which are fitted with a derivative
-    -free optimiser.
-    """
-    x = np.asarray(x, dtype=float)
-    n = x.size
-    # Step scaled to each parameter; cube-root of machine epsilon is the usual
-    # choice for a second-derivative central difference.
-    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(x), 1e-2)
-    H = np.zeros((n, n))
-    for i in range(n):
-        for j in range(i, n):
-            ei = np.zeros(n)
-            ei[i] = step[i]
-            ej = np.zeros(n)
-            ej[j] = step[j]
-            H[i, j] = H[j, i] = (
-                func(x + ei + ej)
-                - func(x + ei - ej)
-                - func(x - ei + ej)
-                + func(x - ei - ej)
-            ) / (4.0 * step[i] * step[j])
-    return H
-
-
-def delta_method_std_errors(func, mle, cov):
-    """
-    Standard errors of the (possibly vector-valued) function ``func`` of the
-    parameters, evaluated at the MLE, via the delta method with a
-    central-difference Jacobian: ``se_i = sqrt(J_i' cov J_i)``.
-    """
-    mle = np.asarray(mle, dtype=float)
-    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(mle), 1e-2)
-    cols = []
-    for i in range(mle.size):
-        ei = np.zeros(mle.size)
-        ei[i] = step[i]
-        cols.append(
-            (
-                np.asarray(func(mle + ei), dtype=float)
-                - np.asarray(func(mle - ei), dtype=float)
-            )
-            / (2.0 * step[i])
-        )
-    J = np.stack(cols, axis=-1)
-    var = np.einsum("...i,ij,...j->...", J, cov, J)
-    with np.errstate(invalid="ignore"):
-        return np.sqrt(var)
-
-
-def _bound_signs(alpha_ci, bound):
-    """
-    The one-sided tail probability and the signs of the normal quantile for
-    each requested bound: ``[-1, 1]`` (lower, upper) for two-sided bounds,
-    a single sign otherwise.
-    """
-    if bound == "two-sided":
-        return alpha_ci / 2.0, np.array([-1.0, 1.0])
-    elif bound == "lower":
-        return alpha_ci, np.array([-1.0])
-    elif bound == "upper":
-        return alpha_ci, np.array([1.0])
-    raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
-
-
-def log_transformed_cb(estimate, se, alpha_ci=0.05, bound="two-sided"):
-    """
-    Log-transformed normal confidence bounds ``est * exp(+/- z * se / est)``
-    for a positive curve (the same construction as the exponential Greenwood
-    bounds on the nonparametric MCF). Where the estimate is zero (e.g. a CIF
-    at ``x = 0``) both bounds are zero.
-
-    For two-sided bounds the last axis holds ``[lower, upper]``; one-sided
-    bounds are returned with the shape of ``estimate``.
-    """
-    estimate = np.asarray(estimate, dtype=float)
-    se = np.asarray(se, dtype=float)
-    alpha, signs = _bound_signs(alpha_ci, bound)
-    z = norm.ppf(1.0 - alpha)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ratio = np.where(estimate > 0, se / estimate, 0.0)
-    cb = estimate[..., None] * np.exp(signs * z * ratio[..., None])
-    if bound == "two-sided":
-        return cb
-    return cb[..., 0]
+# The finite-difference Hessian and the bound-sign helper live in
+# ``surpyval.utils.linalg`` -- shared with the parametric-regression
+# bounds machinery, which used to carry verbatim copies of them (the
+# drift-prone pattern that produced #288).
+from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 
 
 class LikelihoodInferenceMixin:
@@ -120,14 +36,28 @@ class LikelihoodInferenceMixin:
     returned as NaN with a warning.
     """
 
-    def _check_fitted(self):
+    # Supplied by the fitting routine (see the class docstring); declared
+    # here so the checker knows their types on the host class.
+    _neg_ll: Callable
+    _mle: np.ndarray
+    _n_obs: int
+    _fitter: Any
+
+    def _check_fitted(self) -> None:
         if not hasattr(self, "_neg_ll"):
             raise ValueError(
                 "Inference is only available for models fitted from data; "
                 "fit_from_parameters does not compute a likelihood."
             )
 
-    def _parameter_names(self):
+    def _check_has_data(self, what: str) -> None:
+        if not hasattr(self, "data"):
+            raise ValueError(
+                "{} requires a model fitted from data; fit_from_parameters "
+                "models carry no data.".format(what)
+            )
+
+    def _parameter_names(self) -> list:
         """
         Names of the entries of ``_mle``, in order. Subclasses override this to
         label their parameters (e.g. the renewal models prepend the restoration
@@ -136,28 +66,28 @@ class LikelihoodInferenceMixin:
         raise NotImplementedError
 
     @property
-    def parameter_names(self):
+    def parameter_names(self) -> list:
         self._check_fitted()
         return list(self._parameter_names())
 
     @property
-    def log_likelihood(self):
+    def log_likelihood(self) -> float:
         self._check_fitted()
         return -float(self._neg_ll(self._mle))
 
     @property
-    def aic(self):
+    def aic(self) -> float:
         self._check_fitted()
         k = self._mle.size
         return 2.0 * k - 2.0 * self.log_likelihood
 
     @property
-    def bic(self):
+    def bic(self) -> float:
         self._check_fitted()
         k = self._mle.size
         return k * np.log(self._n_obs) - 2.0 * self.log_likelihood
 
-    def covariance(self):
+    def covariance(self) -> np.ndarray:
         """
         Approximate parameter covariance matrix, ordered to match
         :attr:`parameter_names`. Computed as the inverse of the numerical
@@ -178,7 +108,7 @@ class LikelihoodInferenceMixin:
             warnings.warn("Hessian is singular; covariance is unavailable.")
             return np.full((n, n), np.nan)
 
-    def standard_errors(self):
+    def standard_errors(self) -> np.ndarray:
         """
         Standard errors of the fitted parameters (the square roots of the
         diagonal of :meth:`covariance`), ordered to match
@@ -195,7 +125,7 @@ class LikelihoodInferenceMixin:
             )
         return se
 
-    def _parameter_bounds(self):
+    def _parameter_bounds(self) -> list:
         """
         Natural-space ``(lower, upper)`` bounds for each entry of ``_mle``,
         ordered to match :attr:`parameter_names`. Subclasses override this so
@@ -204,7 +134,12 @@ class LikelihoodInferenceMixin:
         """
         return [(None, None)] * self._mle.size
 
-    def param_cb(self, name, alpha_ci=0.05, bound="two-sided"):
+    def param_cb(
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> np.ndarray:
         """
         Confidence bound(s) on a fitted parameter, mirroring the univariate
         ``Parametric.param_cb`` API.
@@ -243,22 +178,4 @@ class LikelihoodInferenceMixin:
         p_hat = float(self._mle[idx])
         var = float(self.covariance()[idx, idx])
         lower, upper = self._parameter_bounds()[idx]
-
-        alpha, signs = _bound_signs(alpha_ci, bound)
-        offsets = signs * norm.ppf(1.0 - alpha) * np.sqrt(var)
-
-        if lower is not None and upper is not None:
-            # Bounds on the generalised logit keep the result in (lower,
-            # upper).
-            width = upper - lower
-            frac = (p_hat - lower) / width
-            u_hat = np.log(frac / (1.0 - frac))
-            du = offsets / (width * frac * (1.0 - frac))
-            return lower + width / (1.0 + np.exp(-(u_hat + du)))
-        elif lower is not None:
-            # Bounds on log(p - lower) keep the result above ``lower``.
-            return lower + (p_hat - lower) * np.exp(offsets / (p_hat - lower))
-        elif upper is not None:
-            # Bounds on log(upper - p) keep the result below ``upper``.
-            return upper - (upper - p_hat) * np.exp(-offsets / (upper - p_hat))
-        return p_hat + offsets
+        return wald_bound_on_support(p_hat, var, lower, upper, alpha_ci, bound)

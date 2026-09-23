@@ -1,11 +1,12 @@
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
 )
 
 
-def nelson_aalen_variance(r, d):
+def nelson_aalen_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     """
     Aalen's (Poisson) estimate of the variance of the Nelson-Aalen
     cumulative hazard estimator:
@@ -24,7 +25,7 @@ def nelson_aalen_variance(r, d):
         return np.cumsum(var)
 
 
-def nelson_aalen(r, d):
+def nelson_aalen(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     H = np.cumsum(d / r)
     H[np.isnan(H)] = np.inf
     R = np.exp(-H)
@@ -57,7 +58,7 @@ class NelsonAalen_(NonParametricFitter):
     array([0.81873075, 0.63762815, 0.45688054, 0.27711205, 0.10194383])
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.how = "Nelson-Aalen"
 
 

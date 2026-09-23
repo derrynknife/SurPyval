@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -24,12 +25,12 @@ class Distribution(ABC):
     """
 
     @abstractmethod
-    def sf(self, x: ArrayLike, *args, **kwargs) -> ArrayLike: ...
+    def sf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike: ...
 
     @abstractmethod
-    def ff(self, x: ArrayLike, *args, **kwargs) -> ArrayLike: ...
+    def ff(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike: ...
 
-    def Hf(self, x: ArrayLike, *args, **kwargs) -> ArrayLike:
+    def Hf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike:
         # Cumulative hazard derived from the survival function. Models
         # with a closed-form cumulative hazard override this.
         return -np.log(self.sf(x, *args, **kwargs))
@@ -44,14 +45,14 @@ class ParametricDistribution(Distribution):
 
     @abstractmethod
     def random(
-        self, size: int | tuple[int, ...], *args, **kwargs
+        self, size: int | tuple[int, ...], *args: Any, **kwargs: Any
     ) -> ArrayLike: ...
 
     @abstractmethod
-    def moment(self, n: int, *args, **kwargs) -> ArrayLike: ...
+    def moment(self, n: int, *args: Any, **kwargs: Any) -> ArrayLike: ...
 
     @abstractmethod
-    def entropy(self, *args, **kwargs) -> ArrayLike: ...
+    def entropy(self, *args: Any, **kwargs: Any) -> ArrayLike: ...
 
     @abstractmethod
     def to_dict(self) -> dict: ...
@@ -65,7 +66,7 @@ class NonParametricDistribution(Distribution):
     """
 
     @abstractmethod
-    def random(self, size: int, *args, **kwargs) -> ArrayLike: ...
+    def random(self, size: int, *args: Any, **kwargs: Any) -> ArrayLike: ...
 
 
 class MultivariateDistribution(ABC):
@@ -87,15 +88,15 @@ class MultivariateDistribution(ABC):
     """
 
     @abstractmethod
-    def cdf(self, x: ArrayLike, *args, **kwargs) -> ArrayLike: ...
+    def cdf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike: ...
 
     @abstractmethod
-    def sf(self, x: ArrayLike, *args, **kwargs) -> ArrayLike: ...
+    def sf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike: ...
 
     @abstractmethod
-    def pdf(self, x: ArrayLike, *args, **kwargs) -> ArrayLike: ...
+    def pdf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike: ...
 
     @abstractmethod
     def random(
-        self, size: int | tuple[int, ...], *args, **kwargs
+        self, size: int | tuple[int, ...], *args: Any, **kwargs: Any
     ) -> ArrayLike: ...

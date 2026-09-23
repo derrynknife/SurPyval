@@ -16,6 +16,7 @@ from surpyval import (
     Rayleigh,
     Weibull,
 )
+from surpyval.utils.surpyval_data import SurpyvalData
 
 DISTS = [
     Gumbel,
@@ -246,7 +247,10 @@ def test_mle_convergence_small(dist, random_parameters, kind):
     "dist,random_parameters,rr", generate_mpp_test_cases(), ids=idfunc
 )
 def test_mpp(dist, random_parameters, rr):
-    if dist not in [Beta, ExpoWeibull]:
+    # Gate on the distribution's own flag rather than a hardcoded
+    # list: Beta, ExpoWeibull and Gamma all lack a linearising
+    # probability plot, and a new one should not need this edited.
+    if dist.supports_mpp:
         for n in FIT_SIZES:
             test_params = []
             tol = 0.025
@@ -358,7 +362,13 @@ def test_offset_initialiser_puts_the_offset_first(dist, dist_params):
     n = np.ones(x.size, dtype=np.int64)
 
     init = np.asarray(
-        dist._initial_guess(x, c, n, True, False, False, "Nelson-Aalen"),
+        dist._initial_guess(
+            SurpyvalData(x, c, n, group_and_sort=False),
+            True,
+            False,
+            False,
+            "Nelson-Aalen",
+        ),
         dtype=float,
     )
     assert len(init) == len(dist_params) + 1
@@ -563,7 +573,9 @@ def test_expoweibull_offset_seeds_from_shifted_data():
     np.random.seed(11)
     x = 100.0 + ExpoWeibull.random(500, 10.0, 2.0, 1.0)
 
-    gamma, alpha, beta, mu = ExpoWeibull._parameter_initialiser(x, offset=True)
+    gamma, alpha, beta, mu = ExpoWeibull._parameter_initialiser(
+        SurpyvalData(x), offset=True
+    )
     # Seeded from x - gamma these sit near the truth; seeded from x they
     # came back as alpha = 111, beta = 23.5.
     assert beta == pytest.approx(2.0, rel=0.5)

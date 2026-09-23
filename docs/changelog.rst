@@ -1,6 +1,1712 @@
 Changelog
 =========
 
+v0.20.0 (23 September 2026)
+---------------------------
+
+- **Offset moments are exact.** ``ParametricFitter._moment`` with an
+  offset -- what the method-of-moments fit and ``Parametric.var`` use
+  -- computed :math:`E[(\gamma + X)^n]` by integrating the shifted
+  density to infinity with ``quad``, even for distributions whose
+  moments have closed forms. It now takes the binomial expansion of
+  the un-offset raw moments, as ``Parametric.moment`` already did: no
+  quadrature for closed-form distributions, and no ``IntegrationWarning``
+  on machines where the shifted integral hit ``quad``'s roundoff limit
+  (which failed the warnings-as-errors documentation build for this
+  release).
+
+- **New distribution: Hypoexponential.** The sum of independent
+  Exponential stages with distinct rates (the generalised Erlang),
+  which is the lifetime of a load-sharing group or a warm/hot standby
+  system -- anything that passes through several memoryless stages in
+  series. ``Hypoexponential.from_params([r1, r2, ...])`` takes any
+  number of stage rates and returns an ordinary ``Parametric`` model
+  with that many parameters (``lambda_1 ... lambda_m``), so ``sf``,
+  ``ff``, ``df``, ``hf``, ``Hf``, ``qf`` (bisection between exact
+  exponential brackets), ``mean``, ``var``, ``moment``, ``entropy``,
+  ``random`` (one exponential draw per stage), offsets, limited-failure
+  and zero-inflated variants and ``to_dict``/``from_dict`` all come with
+  it. The distribution functions also take the rates directly,
+  ``Hypoexponential.sf(x, r1, r2, ...)``. Rates must be strictly
+  positive and distinct: the partial-fraction coefficients blow up with
+  alternating signs as two rates approach, so near-equal rates raise a
+  clear error pointing at ``Gamma`` (equal rates are the Erlang). There
+  is no ``fit``; construct it from known stage rates.
+
+  To make a variable-parameter-count distribution deserialisable,
+  ``ParametricFitter`` gained a ``_for_params`` hook (returns ``self``
+  for every fixed-arity distribution) that ``Parametric.from_dict``
+  consults, so the restored model reports the right ``k``.
+
+- **Accelerated degradation, Stage 2: stress-dependent path
+  parameters** (<#155>, first half). ``DegradationAnalysis.fit`` takes
+  ``links`` alongside ``Z`` to model the degradation *mechanism*
+  against stress rather than only the pseudo failure times: the path
+  parameters named in ``links`` depend on the unit's stress on an
+  ``"identity"`` or ``"log"`` link (a log-linked rate with ``Z = 1/T``
+  is the Arrhenius relationship), the others are common, and a
+  per-unit random effect sits on top -- ``eta_i = D(z_i) gamma + u_i``
+  with ``u_i ~ MVN(0, Sigma)``. ``gamma`` and ``Sigma`` are estimated
+  by the same two-stage (Lu-Meeker) or REML route as the plain
+  population and stored as ``path_param_fixed`` (labelled by
+  ``path_param_fixed_names``) and ``path_param_link_cov``; the fitted
+  model round-trips through ``to_dict``/``from_dict`` and shows the
+  fixed effects in its ``repr``. The life model is still the Stage-1
+  regression on the pseudo failure times, so every existing prediction
+  method is unchanged; the stress-conditional prior for ``predict_rul``
+  and ``induced_life`` is the second half.
+
+  Under the hood a :class:`LinkedPathModel` presents any path model on
+  its link scale, so the per-unit fits and the FOCE linearisation apply
+  unchanged, and the REML routines take an optional fixed-effects
+  design (``a_mat_list`` / ``d_mat_list``). Without ``links`` the
+  pipeline is bit-identical to before (verified by fingerprinting 55
+  numeric outputs across the moments, REML, nonlinear-REML,
+  best-path, Stage-1 ADT and bootstrap surfaces).
+
+- **API reference completed for the remaining public surfaces**
+  (<#141>). New autodoc pages for every distribution that had none:
+  the discrete lifetimes (Geometric, Poisson, Binomial, Negative
+  Binomial, Beta-Geometric, discrete Weibull and ``Discretize``), the
+  per-demand and degenerate models (Bernoulli, FixedEventProbability,
+  ExactEventTime, InstantlyOccurs/NeverOccurs), the continuous
+  stragglers (Beta, Rayleigh, GumbelLEV) and the Royston-Parmar
+  flexible parametric model. The competing-risks subpackage -- absent
+  from the API tree entirely -- has a page (Aalen-Johansen
+  ``CompetingRisks``, ``ParametricCompetingRisks``, ``FineGray``,
+  ``CompetingRisksProportionalHazards``), as do model persistence
+  (``from_dict``/``from_json``) and the recurrent trend tests
+  (``laplace``, ``mil_hdbk_189c``). ``fit_best`` gained its first
+  docstring and joined the comparison-and-validation page, and the
+  regression pages now document the fitted-model classes
+  (``ParametricRegressionModel``, ``AdditiveHazardsModel``).
+
+  Fixed along the way: every recurrent-events API page still targeted
+  the ``ARA_``-style shadow classes that the ``singleton_fitter``
+  refactor removed, so their method documentation had silently dropped
+  out of clean builds.
+
+- **Third duplicate-code consolidation.** Another sweep for repeated
+  definitions, this time at the small end (exact duplicates the earlier
+  sweeps' size thresholds skipped, plus inline fragments):
+
+  - Every ``from_dict`` opened with the same three-line "wrong dict"
+    guard, written out 21 times with hand-composed messages. They now
+    call ``require_model_tag`` (``surpyval.serialisation``), which
+    raises the same "Must create ... from a <Tag> dict" ``ValueError``
+    with the model tag always present. One message changed wording:
+    ``FrailtyModel.from_dict`` said "from its own dict" and now names
+    the tag like every other model.
+  - The five models that persist covariate metadata (feature names,
+    formula, formula terms -- <#244>) carried the same ``to_dict``/
+    ``from_dict`` blocks; they now call ``serialise_covariate_meta``/
+    ``restore_covariate_meta`` in ``regression_data``.
+  - The ``exp(beta'Z)`` covariate link was still restated in six places
+    after <#295> introduced ``LogLinearPhi``: the AFT fitter's private
+    copy, PO's methods, the AFT time-varying-covariate fit's local
+    class, PH's lambdas and the deserialiser's lambda. All now use
+    ``LogLinearPhi``, whose two historical serialisation names (PH's
+    ``e^`` vs AFT/PO's ``exp``) are class constants. The PH
+    constructor's phi signature check now compares parameter names and
+    kinds instead of the signature's string form, so the annotated
+    shared function passes.
+  - The optimiser objective every regression ``fit`` built inline is
+    now ``make_objective`` in the fit skeleton, and the shared
+    ``x - gamma`` probability-plot transform lives on
+    ``HazardIdentitiesMixin``.
+  - Small orphans: ``_check_has_data`` moved to
+    ``LikelihoodInferenceMixin``; the NHPP baselines' identical
+    all-ones ``parameter_initialiser`` became the ``IntensityModel``
+    default; the two competing-risks ``fit_from_df`` helpers share
+    ``optional_column`` in ``utils``.
+
+  Verified by fingerprinting 101 numeric outputs across the touched
+  surfaces on both sides of the change: all identical except the one
+  reworded frailty message. The heavier parameterised rewrites found in
+  the same sweep are filed as <#350>, <#351> and <#352>.
+
+- **Type-hint ratchet: finished.** Every function in the package is
+  annotated -- 1750 of 1750 defs -- and the per-module ratchet list is
+  gone: ``disallow_untyped_defs`` now holds package-wide, with only the
+  test suite and the alpha tree exempt (they are exercised, not typed,
+  but are still checked against the package's annotations). <#143> can
+  close.
+
+  The final pass covered the remaining seven areas in sequence -- the
+  regression fitters and ``cox_ph``, the ``utils`` wrangling surface and
+  the ``autograd_gamma_compat`` shim, competing risks, the whole
+  recurrent package, degradation, the copulas and the ``beta.ml``
+  forest. The conventions are the ones the earlier passes established:
+  ``Numeric``/``Boxable`` wherever autograd differentiates,
+  ``npt.ArrayLike`` at user entry points and never in arithmetic,
+  declaration blocks for fit-populated model attributes, and
+  ``TYPE_CHECKING`` contract stubs where a mixin calls methods its host
+  supplies.
+
+  Typing the bodies kept finding things, as it has all along:
+
+  - ``SemiParametricRegressionModel.neg_ll``/``jac`` were declared as a
+    float and an array; they hold the fit's closures.
+  - ``Parametric.random`` is documented and annotated to return an
+    array, but returns xcnt-format ``(x, c, n, t)`` arrays for
+    limited-failure-population and zero-inflated models -- now
+    annotated and documented honestly.
+  - ``singleton_fitter`` is typed ``(cls: type[T]) -> T``, so the
+    checker finally knows every fitter singleton is an instance; one
+    ``type(...)``-indirection call site simplified away.
+  - ``NonParametricCounting.var`` is honestly Optional (simulated MCFs
+    carry no variance), and three error paths that crashed with
+    unpacking/attribute errors now raise named ``ValueError``\ s:
+    ``BuckleyJamesModel.bootstrap_ci`` and destructive-degradation
+    bootstrap bounds on models carrying no fit data, and ``mcf_cb`` on
+    a simulated MCF.
+  - The recurrent intensity contract moved off the documented
+    ``ArrayLike`` trap onto the honest ``Boxable`` union -- those
+    functions are differentiated by autograd in the NHPP likelihoods.
+  - A handful of genuine signature divergences (the covariate-extended
+    simulation methods, the named-single-parameter intensity and copula
+    families against their variadic base contracts) are documented at
+    the definition with targeted ignores rather than silently widened.
+
+- **Type-hint ratchet: the regression package's shared plumbing and its
+  two model classes.** Coverage moves to 1041/1747 (60%), tracked in
+  <#143>. Typed in dependency order -- the base layer before the
+  fitters that build on it, the same sequencing the parametric package
+  used -- so the coming fitter pass starts from typed call boundaries
+  instead of ``Any`` flowing in.
+
+  Eight modules join the ratchet: ``_fit_skeleton`` (the fitting spine
+  every family imports -- ``LogLinearPhi``, ``HazardIdentitiesMixin``,
+  the prepare/assemble pair, both optimiser ladders and
+  ``mirror_distribution``), ``_likelihood`` (the shared censoring- and
+  truncation-aware negative log-likelihood), ``_bounds``,
+  ``tvc_schedule`` (the ``StepSchedule`` machinery), the
+  ``parametric_regression_model`` and
+  ``semi_parametric_regression_model`` classes, and the ``PH``/``AH``
+  factory ``__init__``\ s.
+
+  The conventions carry over from the parametric package:
+  ``Numeric``/``Boxable`` for the distribution-function surface
+  (``HazardIdentitiesMixin`` and ``LogLinearPhi.phi`` are
+  differentiated under autograd), ``npt.ArrayLike`` at the user entry
+  points, and a ``TYPE_CHECKING`` contract block on
+  ``HazardIdentitiesMixin`` declaring the ``Hf``/``hf`` its identities
+  call -- the host class supplies them, and one that forgets still gets
+  the ``AttributeError`` that names it.
+
+  Three annotations followed the code rather than the reverse:
+  ``prepare_regression_fit``'s ``phi_bounds``/``phi_param_map`` really
+  are callables *or* static values (both branches are live);
+  ``_safe_eval`` in the schedule expression interpreter returns
+  ``float | bool`` because comparisons are values in that grammar; and
+  ``_ic_counts`` matches the ``tuple[int, int]`` its mixin supertype
+  declares. No behaviour changed -- annotations are erased at runtime,
+  and the only body edits are local renames where a variable was
+  reused with a second type (the ``segments`` accumulation list, the
+  expression interpreter's comparison operator).
+
+- **The structural duplicates: shared bases extracted where whole class
+  bodies were copied.** The body-level sweep's deeper findings, where
+  the fix is a base class or driver rather than a moved function.
+
+  ``WienerProcessModel`` and ``GammaProcessModel`` now share
+  ``FirstPassageProcessModel``: both reduce their failure-time
+  distribution to one hook -- the probability the process has crossed a
+  distance by time ``t`` -- and everything expressible in terms of that
+  CDF (``ff``/``sf``, the hazard identities, the bracket-and-``brentq``
+  quantile, ``predict_rul``, serialisation) had been written out twice,
+  verbatim. The density, mean, sampling and repr stay per class: those
+  genuinely differ.
+
+  ``ARA``, ``ARI`` and ``GeneralizedRenewal`` shared their entire
+  fitting spine -- multi-start Nelder-Mead over ``[restoration, *dist
+  params]`` in the unconstrained transform space -- as three copies that
+  the near-match pass scored at 0.84-0.94 similarity: already drifting.
+  It is now ``RenewalFitMixin._fit_restoration_ml``; each family
+  supplies its restoration parameter's name, bounds and start grid.
+  ``GeneralizedOneRenewal`` keeps its own optimiser call deliberately:
+  its likelihood needs only ``q > -1``, so it runs under box bounds
+  rather than a transform.
+
+  Two five-way wrapper stacks collapsed to dispatchers:
+  ``ParametricRegressionModel``'s ``sf``/``ff``/``df``/``hf``/``Hf``
+  carried the same coerce-resolve-evaluate body five times (now
+  ``_eval``), and ``DegradationModel``'s five carried the same
+  accelerated-or-plain dispatch (now ``_life_fn``). The named methods
+  and their docstrings remain. The four regression fitters' ``__init__``
+  blocks mirrored the same six distribution attributes verbatim; that is
+  now ``_fit_skeleton.mirror_distribution``.
+
+  Investigated and left where they are: ``hpp.fit`` and the NHPP
+  fitter's ``fit`` (identical one-call wrappers over genuinely different
+  fitting routines), the forest and tree prediction methods (already
+  two-line delegations to each class's dispatcher -- the end state, not
+  duplication), and the renewal ``fit``/``_refit`` wrappers (two-line
+  delegations whose docstrings carry the per-family defaults).
+
+  Behaviour was checked rather than assumed: 82 fingerprints -- the 47
+  from the previous sweeps plus both process models' full surface
+  (fit, all distribution functions, quantiles, RUL, seeded sampling and
+  a serialisation round trip), all four renewal fits, and the regression
+  and degradation models' five prediction functions -- are bit-identical
+  before and after, with the baseline verified to import the pre-change
+  code.
+
+- **A second duplication sweep, this time by function body.** The first
+  sweep matched helper names; this one normalised every function and
+  method in the package at the AST level -- identifiers abstracted,
+  docstrings stripped -- and compared the 1,483 non-trivial bodies for
+  exact and near matches. Three findings were acted on; the rest are
+  either deliberate parallels (the distribution API restates ``hf`` and
+  ``Hf`` per class, each with its own closed-form docstring) or
+  structural refactors queued with their areas (the renewal family's
+  triplicated fitting loop, the two process-model classes sharing
+  verbatim ``predict_rul``/``qf``/``ff``).
+
+  **The legacy AFT fitter was dead code, and two of its methods lived on
+  as orphans.** ``accelerated_failure_time/accelerated_failure_time.py``
+  -- the pre-skeleton ``AcceleratedFailureTimeFitter``, 220 lines --
+  was imported by nothing: the package ``__init__`` re-exports from
+  ``aft_fitter``, and no test touches it. It carried the only *live*
+  copy of ``_parameter_initialiser_dist``; the verbatim copies on the
+  proportional-hazards fitter and the accelerated-life
+  parameter-substitution fitter had no callers at all. All three are
+  deleted along with the module.
+
+  **The Bernoulli / FixedEventProbability split had copied its
+  estimation machinery wholesale.** The 0.20.0 split gave each class its
+  own verbatim ``fit``, ``from_params``, ``entropy`` and ``random`` --
+  the largest exact duplicate in the package. They now share
+  ``SingleProbabilityMixin`` (``distributions/_single_probability.py``,
+  ratcheted from birth): one probability in ``(0, 1)`` fitted from 0/1
+  data by a weighted mean is the same estimation problem for both
+  models, while everything distributional -- ``sf``, ``ff``, supports
+  and each model's own convention docstrings -- stays on the classes.
+  Consolidating also fixed a copy-paste artifact:
+  ``FixedEventProbability.from_params``'s docstring said "Create a
+  Bernoulli model".
+
+  **The support-respecting Wald transform existed twice.** The
+  four-branch core of ``param_cb`` -- generalised logit for an
+  interval-bounded parameter, log distance for one-sided, natural scale
+  otherwise -- was verbatim between the recurrent-event inference mixin
+  and the parametric regression model, each wrapped in its own parameter
+  lookup. It is now ``utils.linalg.wald_bound_on_support``; both
+  ``param_cb``\ s keep their lookup and delegate.
+
+  Two hash matches were investigated and deliberately left: ``sf_tvc``
+  and ``_prepare_Z`` are five-line and one-line wrappers over machinery
+  that is already shared (``Hf_tvc`` genuinely differs per family;
+  ``prepare_Z`` is common), and their docstrings carry per-family
+  content worth keeping.
+
+  Behaviour was checked rather than assumed: 47 fingerprints -- the 37
+  from the previous consolidation plus ``param_cb`` on both a bounded
+  distribution parameter and an unbounded coefficient, and the
+  Bernoulli / FixedEventProbability ``fit``/``from_params``/``entropy``
+  and seeded ``random`` -- are bit-identical against ``develop``, with
+  the baseline run verified to import the pre-change code.
+
+- **The duplicated numeric helpers are consolidated into two new utils
+  modules.** A sweep of every module-level helper in the package found
+  the same functions written repeatedly, three of them verbatim.
+
+  ``surpyval.utils.linalg`` now holds the single copy of each:
+  ``numerical_hessian``, ``delta_method_se``, ``bound_signs`` and
+  ``log_transformed_cb`` were duplicated wholesale between
+  ``recurrent.inference`` and ``univariate.regression._bounds`` -- the
+  drift-prone verbatim-copy pattern that produced <#288> -- with two
+  *further* hand-rolled Hessians (a different step rule, ``1e-5`` against
+  cube-root-of-epsilon) on ``royston_parmar`` and the frailty fitter,
+  which now pass their step explicitly. The ``inv``-then-``pinv``
+  fallback, written out at seven call sites, is ``safe_inv`` and
+  ``safe_quadform`` (the latter the ``u'V^{-1}u`` test-statistic shape
+  shared by the log-rank and Gray's tests). The eigenvalue-surgery family
+  from the degradation package -- symmetrise, ``eigh``, repair the
+  spectrum, reconstruct, five sites in three flavours -- is
+  ``psd_project``, ``psd_floor``, ``psd_precision`` and ``psd_root``,
+  with each call site's own floor convention preserved as arguments.
+
+  ``surpyval.utils.ipcw`` holds the censoring-distribution Kaplan-Meier
+  (``censoring_survival``) and the right-continuous step lookup
+  (``step_at``) that Gray's test, Fine-Gray and the prediction metrics
+  each carried privately -- three copies of each, under three names
+  (``_G_at``/``_step``/``_g_at`` for the same four lines). The copies had
+  begun to drift: the metrics copy silently ignored count weights,
+  consistent with its callers today but a trap for the next reuse. The
+  shared implementation is weighted, with no ``n`` as the unweighted
+  case. ``utils.validate_1d`` joins the wrangling helpers for the 1-D
+  float coercion the metrics module had as ``_as_1d``.
+
+  The bodies are transplants, not rewrites, and behaviour was checked
+  rather than assumed: 37 fingerprints across every touched path --
+  Gray's test (both ``rho``), Fine-Gray coefficients/covariance/CIF, the
+  competing-risks PH wrapper, Brier/IBS/AUC, a three-group log-rank, Cox
+  ``check_ph`` and dfbeta residuals, additive-hazards fit, Royston-Parmar
+  and frailty covariances, Crow-AMSAA/HPP standard errors and bounds,
+  WeibullPH ``sf``/``hf`` bounds, the degradation fit with its corrected
+  life covariance, REML, and the seeded induced-life sample -- are
+  bit-identical before and after. One caller-facing rename:
+  ``delta_method_std_errors`` (the ``recurrent.inference`` spelling) is
+  now ``delta_method_se`` everywhere, matching the regression package's
+  name for the identical function.
+
+  Both new modules are fully annotated and under the mypy ratchet
+  (<#143>) from birth, so the coming ``utils`` typing pass types each of
+  these once instead of three times.
+
+- **A behavioural consistency sweep across the base distributions.** The
+  previous sweep compared annotations; this one compares what the
+  distributions actually compute. Every identity that should hold for all
+  of them -- ``sf + ff == 1``, ``Hf == -ln sf``, ``log_df == ln df``,
+  ``hf == df/R(k-1)``, ``qf(ff(x)) == x``, ``mean == moment(1)`` -- was
+  evaluated across all twenty-three, and the disagreements chased down.
+
+  **Six discrete distributions returned nonsense below their support.**
+  Geometric, DiscreteWeibull, BetaGeometric and NegativeBinomial live on
+  :math:`\{1, 2, 3, \dots\}`; Poisson and Binomial on
+  :math:`\{0, 1, 2, \dots\}`. Their closed forms are algebraic and did not
+  know where the support started, so evaluating one step below it gave
+  ``Geometric.df(0) == 0.43`` -- a positive probability outside the
+  distribution, growing without bound as ``k`` decreases --
+  ``BetaGeometric.sf(-1) == 2.0``, a survival above one that ``hf``
+  divided by, ``DiscreteWeibull.df(0) == 0.0355+0.5468j``, a *complex
+  number* from a negative base to a fractional power, and NaN from the
+  incomplete gamma and beta forms in Poisson and NegativeBinomial. The
+  pmf now sums to one whether or not the sum starts below the support;
+  it did not for three of them before.
+
+  The fitter's interior check kept these values out of a likelihood,
+  which is why nothing failed, but ``df`` and ``sf`` are public: anyone
+  plotting a pmf from zero got them. Each is now guarded at the first
+  mass point. The guards clamp the *input*, not just the result, so the
+  discarded branch of the ``np.where`` never evaluates the invalid
+  expression -- otherwise it still computes the NaN and warns before
+  throwing it away.
+
+  **Three quantile functions did not invert their own CDF.**
+  ``Geometric``, ``DiscreteWeibull`` and ``BetaGeometric`` answered
+  ``k + 1`` for a ``u`` that came straight out of their own ``ff``.
+  :math:`F(k) = 1 - R(k)` is formed by cancellation, so recovering ``k``
+  from it lands a few ulp above the integer and ``ceil`` rounds away from
+  it. The first two snap a near-integer before the ceiling; the third
+  compares with a relative slack in its bisection.
+
+  **``BetaGeometric.moment`` reported finite values for moments that do
+  not exist.** The survival decays as :math:`k^{-a}`, so
+  :math:`E[T^m]` converges only for :math:`a > m` -- the condition
+  ``mean`` already applied at :math:`m = 1`. A truncated sum cannot see
+  divergence; at ``a = 2, b = 3`` it returned about 25 for a second
+  moment that is infinite. It now returns ``inf``, and ``moment(1)``
+  uses the closed form, so it agrees with ``mean`` exactly rather than
+  to three decimal places.
+
+  **Two distributions were missing methods that are well defined.**
+  ``FixedEventProbability`` had no ``Hf``, so ``log_sf`` and ``log_ff``
+  -- which the base class writes in terms of it -- raised
+  ``AttributeError`` instead of returning constants. Its ``df``, ``hf``,
+  ``qf`` and ``mean`` remain absent deliberately: ``F`` is flat, so the
+  mass is an atom rather than a density. ``Hf`` is the exception,
+  exactly as for :class:`ExactEventTime`, whose ``Hf`` exists while its
+  ``hf`` does not. ``ExactEventTime`` itself gained ``qf``, ``mean`` and
+  ``moment``: a point mass has no density, but its quantile is ``T`` for
+  every ``u``, its mean is ``T`` and its m-th moment is ``T**m``.
+
+  **Binomial's support excluded two of its own outcomes.** ``support`` is
+  a pair of *exclusive* bounds -- ``_validate_fit_inputs`` rejects
+  ``x <= support[0]`` and ``x >= support[1]`` -- so a distribution
+  declares them one step outside its first and last mass points, which is
+  why ``Poisson`` declares ``-1`` and ``Geometric`` declares ``0``.
+  ``Binomial`` had ``Geometric``'s lower bound with ``Poisson``'s first
+  mass point: ``0``, saying that zero events in n trials lies outside the
+  distribution when its probability is 0.168 at n = 5, p = 0.3. ``fit``
+  and ``from_params`` set ``[0, n]``, excluding n events as well. The
+  bounds are now ``(-1, n + 1)``.
+
+  Nothing had observed this: the check lives on ``OptimisedFitMixin``,
+  which ``Binomial`` does not inherit -- it is one of the three
+  closed-form distributions that validate their own inputs -- so the
+  field was inert metadata that would have become live the moment
+  anything else read it. All of its values are unchanged, which was
+  checked: 18 fingerprints across both constructors are bit-identical.
+
+  Behaviour *on* the support is unchanged and was checked rather than
+  assumed: 58 fingerprints -- every function over its support for all six
+  discrete distributions, plus each one's fitted parameters and
+  ``neg_ll`` fitted plain and right-censored -- are bit-identical before
+  and after. The only intended change is ``BetaGeometric.moment``. Nine
+  new tests -- 37 cases once parametrised across the distributions --
+  cover the below-support behaviour, the pmf total, the quantile round
+  trip, the divergence rule and the support bounds.
+
+- **A consistency sweep across the base distributions.** With every
+  distribution now annotated, the annotations themselves could be read
+  as data and compared. Ten argument slots and thirteen returns
+  disagreed across the twenty-two modules -- drift from having typed
+  them a batch at a time rather than a deliberate difference.
+
+  Most of it was cosmetic and is now uniform. The three ``mpp_*``
+  transforms take an ``npt.NDArray``: every call site in the package
+  passes one, eight of the fifteen implementations index their
+  argument, and probability plotting is a least-squares regression on
+  plotting positions that is never differentiated, so the input is
+  never an autograd box and never a scalar. Their returns stay
+  ``Boxable``, because the bodies delegate to ``qf``; narrowing them
+  would mean changing code to suit a type hint, which is the wrong way
+  round. ``random`` returns an ``npt.NDArray`` everywhere --
+  ``Geometric`` and ``DiscreteWeibull`` returned ``self.qf(...)``
+  straight through, and now wrap it, which is honest for the same
+  reason in reverse: ``qf`` is ``Boxable`` because a fit differentiates
+  it, and sampling never does. ``_mom`` is ``tuple[float, float]``
+  throughout.
+
+  One difference was a real error rather than an inconsistency.
+  ``Numeric`` and ``Boxable`` both exclude ``list``, and ``fit`` and
+  ``from_params`` were typed with them on four distributions -- yet
+  every one of those accepts a list, as their own docstring examples
+  show (``Binomial.from_params([5, 0.3])``). These are the entry points
+  a user reaches for with whatever data they have. They are now
+  ``npt.ArrayLike``, which is the correct type here precisely because
+  the value is converted with ``np.asarray`` on the first line rather
+  than used in arithmetic. ``Binomial.from_params`` already had it
+  right; ``Bernoulli``, ``FixedEventProbability`` and
+  ``ExactEventTime`` did not.
+
+  Eight differences remain and each is deliberate:
+  ``ExactEventTime``'s ``sf``, ``ff``, ``df``, ``hf`` and ``Hf`` return
+  the narrower ``npt.NDArray``, which is a stronger promise rather than
+  a broken one -- they are step functions built with ``np.atleast_1d``
+  and provably return a real array -- and ``ExpoWeibull.unpack_rr``
+  returns three values where the two-parameter distributions return
+  two.
+
+  Five tests were added to the shared-signature guard, so a future
+  distribution cannot reintroduce any of this: the distribution
+  functions take a ``Numeric`` and return a ``Boxable``, parameters are
+  ``Boxable``, the ``mpp_*`` family takes arrays, ``random`` returns
+  one, and the user entry points accept array-likes. Twenty-two tests
+  in that file now. No behaviour changed -- annotations are erased at
+  runtime, and the two ``np.asarray`` wraps were checked to produce
+  identical samples.
+
+- **Type-hint ratchet: ``univariate.parametric`` is finished.** Coverage
+  moves from 869/1760 (49%) to 995/1771 (56%), tracked in <#143>. Every
+  module in the package -- the fitters, the model, the base class and
+  the mixture -- is now under ``disallow_untyped_defs``.
+
+  Two structural additions came out of it, both of the same kind. A
+  ``TYPE_CHECKING`` block on ``ParametricFitter`` now declares the
+  distribution functions its own methods call -- ``cs`` divides two
+  ``sf``\ s, ``log_sf`` negates ``Hf``, ``random`` inverts ``qf``, and
+  the four ``ll_*`` methods are written in terms of ``hf``, ``Hf`` and
+  the log densities. The class docstring already stated that contract in
+  prose ("a distribution needs only ``hf`` and ``Hf``, or ``sf``, ``ff``
+  and ``df``"); this is the same statement in a form the checker reads,
+  and it mirrors the block ``OptimisedFitMixin`` already carried for the
+  estimation machinery. Declared rather than defined, so a distribution
+  that forgets one still gets the ``AttributeError`` that names it
+  instead of a silently wrong inherited implementation.
+
+  ``MixtureModel``'s fitted state -- ``data``, ``params``, ``w``, ``p``
+  and ``loglike`` -- is annotated where it is initialised to ``None``.
+
+  Three annotations had to follow the code rather than the reverse, each
+  a small fact: ``probability_plot_data``'s ``ff`` is the failure
+  *function*, not an array of values; ``bounds_convert`` returns five
+  things, not three; and ``fallback_minimize``'s ``jac`` and ``hess`` are
+  declared optional but are supplied by every caller.
+
+  Where a value comes back from scipy or autograd and genuinely has no
+  narrower type -- the confidence-bound closures, the mixture's
+  prediction inputs -- it is ``Any`` rather than ``npt.ArrayLike``. That
+  is the same trap the ``Numeric``/``Boxable`` comment in
+  ``parametric_fitter`` already documents: ``ArrayLike`` admits ``str``
+  and ``bytes``, so arithmetic on it does not type check, and the
+  ``np.asarray`` that clears the error destroys an autograd box.
+
+  Behaviour is unchanged and was checked rather than assumed: four
+  distributions fitted plain, right- and left-censored, interval
+  censored, truncated, with a limited-failure population and with zero
+  inflation, plus ``neg_ll``, ``aic`` and a two-component mixture fit --
+  bit-identical before and after.
+
+- **Type-hint ratchet: the remaining eleven distributions.** Coverage
+  moves from 665/1760 (38%) to 869/1760 (49%), tracked in <#143>. Every
+  distribution module is now under ``disallow_untyped_defs`` except
+  ``general_log_linear``'s counterpart concerns (<#345>).
+
+  ``rayleigh``, ``beta``, ``beta4``, ``gamma``, ``gumbel``,
+  ``gumbel_lev``, ``loglogistic``, ``exponential``, ``uniform``,
+  ``degenerate`` and ``expo_weibull`` -- 202 signatures. The bulk was
+  mechanical, generated from each distribution's own ``param_names`` so
+  that ``x`` is a ``Numeric``, a parameter is a ``Boxable`` and the
+  return follows the method. What was not mechanical were the places the
+  generated guess was wrong, and each of those is a small fact about the
+  code:
+
+  - ``Rayleigh.mpp`` and ``Exponential.mpp`` treat the output of
+    ``mpp_y_transform`` as an array -- indexing it, and passing it to
+    ``np.polyfit`` and ``np.linalg.lstsq`` -- while the transform is
+    declared to return a ``Boxable``. Wrapped at the call site rather
+    than widening the transform, which is shared.
+  - ``Gamma._moment_estimate`` and the two ``_mom`` helpers return
+    2-tuples, not arrays.
+  - ``Exponential._closed_form_mle`` and ``Uniform._closed_form_mle``
+    return ``None`` when the closed form does not apply to the data, so
+    they are ``npt.NDArray | None``.
+  - ``ExpoWeibull.unpack_rr`` returns *three* values where every other
+    distribution's returns two.
+  - ``degenerate``'s classes inherit ``Distribution``, not
+    ``ParametricFitter``, and its signatures have to match that
+    supertype rather than the distribution convention.
+  - ``ExpoWeibull._gumbel_seed`` reads ``gumb.res``, which a
+    ``Parametric`` only carries after an MLE fit -- the branch that
+    reads it is the one that asked for MLE, so it is annotated as
+    deliberate rather than made unconditional.
+
+  Behaviour is unchanged, and checked rather than assumed: every one of
+  the eleven distributions was fitted by MLE, MPP, MSE and MOM, and its
+  ``entropy`` and second moment evaluated, before and after. All 66
+  results are bit-identical.
+
+- **``Logistic`` ratcheted, and ``mgf`` made private.** ``Logistic`` was
+  the only distribution with a public ``mgf``, which read as a method
+  the other twenty-two were missing.
+
+  It is not an orphan and is not removed: ``Logistic.moment``
+  differentiates it ``m`` times with autograd to get the m-th raw
+  moment, and the results are exact --
+
+  .. code-block:: text
+
+      Logistic(mu=3, sigma=2)
+        moment(1) =   3.0000000000    exact  mu               = 3
+        moment(2) =  22.1594725348    exact  mu^2 + s^2 pi^2/3
+        moment(3) = 145.4352528131    exact  mu^3 + 3 mu s^2 pi^2/3
+
+  The general closed form for a logistic raw moment needs Bernoulli
+  numbers, so differentiating the MGF is both shorter and exact. What was
+  wrong was its visibility: it is machinery for ``moment``, not part of
+  the distribution surface. It is ``_mgf`` now, alongside the other
+  private helpers on distributions (``_closed_form_mle``,
+  ``_moment_estimate``, ``_gumbel_seed``). Nothing outside the class ever
+  referenced it.
+
+  The module is now fully annotated and added to the ratchet (#143).
+  Two annotations had to follow the code rather than the other way
+  round: ``mpp_y_transform`` indexes ``y``, so it takes an
+  ``npt.NDArray`` rather than a ``Numeric`` that includes ``float``, and
+  ``unpack_rr`` returns a *tuple* of two values, not an array -- both
+  matching how ``Weibull`` already declares them.
+
+  New tests pin the three low-order Logistic moments against the algebra
+  rather than against another numerical method, check the variance comes
+  out as :math:`\sigma^2\pi^2/3`, and assert that no distribution
+  exposes a public ``mgf``.
+
+- **Type-hint ratchet: the accelerated-life package, plus nine modules
+  that were already complete.** Coverage across the package moves from
+  611/1755 (35%) to 646/1760 (37%), tracked in
+  <#143>.
+
+  Nine modules were fully annotated but not listed under
+  ``disallow_untyped_defs``, so nothing stopped them slipping back. They
+  are listed now: ``fit_best``, ``utils.recurrent_utils``,
+  ``utils.score``, ``recurrent.tests``,
+  ``recurrent.parametric.counting_process``,
+  ``univariate.regression.regression_data``,
+  ``univariate.regression.tvc_fit``, ``univariate.regression.frailty``
+  and ``distributions.fixed_event_probability``. Only
+  ``counting_process`` needed work -- four ``*params`` that an AST scan
+  counts as annotated and mypy does not.
+
+  Eleven of the twelve accelerated-life modules follow, and locking them
+  in turned up four real problems that annotations made visible:
+
+  - **``GeneralLogLinear``'s constructor arguments were swapped.** The
+    bounds lambda sat in the ``phi_param_map`` slot and the param-map
+    lambda in the ``phi_bounds`` slot. Nothing consumed either, so it had
+    no observable effect, but it would have bitten whoever finished the
+    model. That module stays out of the ratchet: its ``phi_param_map``
+    and ``phi_bounds`` are callables of the covariate dimension rather
+    than the ``dict`` and ``tuple`` ``LifeModel`` declares, which is why
+    it is already excluded from ``LIFE_MODELS`` (<#345>).
+
+  - **``LifeModel.phi_bounds`` was annotated as a one-element tuple**
+    while every caller passes two or three. Now variadic.
+
+  - **Two dead branches around ``phi_init``.** The fitter chose between
+    three shapes -- a ``"(Z)"``-only signature selected by comparing
+    ``str(inspect.signature(...))``, the two-argument form, and a
+    non-callable ``phi_init``. All ten life models are callable with
+    ``(life, Z)``, so only one branch could ever run.
+
+  - **``AcceleratedLife`` deserialisation accepted a distribution it
+    cannot fit.** The guard established a ``ParametricFitter``, which
+    admits ``Bernoulli``, ``Binomial`` and ``ExactEventTime`` -- none of
+    them fittable. Since the dict is untrusted input, such a name got
+    through and failed deep inside the fitter on a missing attribute; it
+    now raises where the mistake is.
+
+  ``hf`` is also declared in ``OptimisedFitMixin``'s ``TYPE_CHECKING``
+  block, where ``sf``, ``ff``, ``df``, ``Hf`` and ``qf`` already were.
+  Its absence was invisible until a typed caller reached for it.
+
+  Behaviour is unchanged throughout: the accelerated-life fit,
+  prediction, ``random`` and serialisation round-trip all produce
+  bit-identical results before and after.
+
+- **``Bernoulli.qf``.** The quantile function, added after the rest of
+  the distribution::
+
+      Bernoulli.qf([0.1, 0.7, 0.75, 0.99], 0.3)  ->  array([0., 0., 1., 1.])
+
+  It inverts :math:`P(X \leq x)` -- the ordinary CDF -- stepping from 0
+  to 1 at ``u = 1 - p``. On the open interval it matches
+  ``Binomial.qf(u, 1, p)`` and ``scipy.stats.binom.ppf`` exactly. At
+  ``u = 0`` those answer ``-1``, one below the support; this answers 0,
+  the smallest outcome there is.
+
+  It is deliberately *not* the inverse of this class's ``ff``, and that
+  follows from the survival convention rather than being an oversight.
+  ``R(x) = P(X \geq x)`` forces ``F(x) = P(X < x)`` if the two are to
+  sum to one, and ``P(X < x)`` never exceeds ``1 - p`` anywhere on
+  ``{0, 1}`` -- so once ``u`` passes ``1 - p`` no ``x`` in the support
+  satisfies ``F(x) >= u``. The other discrete distributions, whose
+  ``R(k)`` is ``P(X > k)``, do not have this split, and the usual
+  ``ff(qf(u)) >= u`` check still holds for them. A test pins the
+  difference in both directions so it stays a known consequence rather
+  than becoming a surprise.
+
+  What the definition does buy is the property worth having: ``qf(U)``
+  for uniform ``U`` reproduces the distribution, which is how
+  ``ParametricFitter.random`` samples. Tested at 200,000 draws, and at
+  the degenerate ends ``p = 0`` and ``p = 1``.
+
+- **BREAKING: ``Bernoulli`` is now a Bernoulli distribution.**
+  It was not one. ``F(x)`` returned ``p`` at every ``x`` -- including
+  ``x = -100`` -- which is a flat curve with no time axis, not a coin
+  flip. Meanwhile ``moment``, ``entropy``, ``random`` and ``fit`` all
+  described a genuine ``{0, 1}`` variable: ``E[X^m] = p``, the binary
+  entropy, draws of 0 and 1, and a fit that rejects anything else. The
+  class was two models at once, and ``df``, ``hf``, ``Hf`` and ``mean``
+  were missing because they are the four places the contradiction
+  cannot be papered over.
+
+  ``Bernoulli`` is now the coin flip the name promises. ``x`` is the
+  outcome, so 0 and 1 are the only values accepted and anything else
+  raises::
+
+      Bernoulli.sf([0, 1], 0.3)  ->  array([1. , 0.3])
+      Bernoulli.df([0, 1], 0.3)  ->  array([0.7, 0.3])
+      Bernoulli.hf([0, 1], 0.3)  ->  array([0.7, 1. ])
+      Bernoulli.sf(37.5, 0.3)    ->  ValueError
+
+  The survival function is :math:`R(x) = P(X \geq x)`, so ``R(0) = 1``
+  and ``R(1) = p``: read as a one-shot device, ``p`` is the probability
+  it works when demanded. ``df``, ``hf``, ``Hf`` and ``mean`` are added
+  and every internal identity now holds -- the mass sums to one,
+  ``h = f/R``, ``H = -ln R``, and ``E[X]`` from the mass equals both
+  ``mean`` and ``moment(1)``. ``moment``, ``entropy``, ``random`` and
+  ``fit`` are unchanged, because they already described this model.
+
+  **``p`` has changed direction.** It was documented as the probability
+  of *failure*; it is now the probability of the ``1`` outcome, which
+  under the survival reading is the probability of *surviving*. Code
+  that coded failures as 1 now fits the survival probability and wants
+  ``1 - p``.
+
+  ``log_df`` is defined on the class rather than inherited. Neither base
+  relation fits: ``DiscreteParametricFitter`` uses
+  ``f(k) = h(k) R(k - 1)``, which assumes ``R(k) = P(X > k)``, and here
+  the at-risk set at ``x`` is ``R(x)`` itself.
+
+  **The flat model is not gone.** It survives unchanged as
+  :data:`FixedEventProbability`, which until now was a second instance
+  of the same class and is now its own. It is the two-point mixture of
+  ``InstantlyOccurs`` (weight ``p``) and ``NeverOccurs`` (weight
+  ``1 - p``) -- which is why ``degenerate.py`` already described those
+  two as its limits at ``p = 1`` and ``p = 0``. Its ``df``, ``hf``,
+  ``qf`` and ``mean`` remain absent, correctly: a constant ``F`` has no
+  density, no invertible quantile and no time to average.
+
+  Both names serialise and round-trip under their own identities, so
+  stored models keep pointing at the model they were fitted with -- but
+  a stored ``Bernoulli`` fitted before 0.20.0 will now be read with the
+  new semantics, and its ``p`` reinterpreted as above.
+
+  ``binomial.py`` claimed Bernoulli was "the special case ``n = 1``".
+  That was false of the old model and is now true of the mass function:
+  ``Bernoulli.df`` and ``Binomial.df(..., 1, p)`` agree exactly. The
+  survival functions remain offset by one by convention, and the
+  docstring now says so.
+
+- **``ExpoWeibull.moment``.** It was the only continuous distribution
+  without a public ``moment``, while already having ``mean`` and
+  ``entropy``.
+
+  The exponentiated Weibull has a closed form -- an infinite series in
+  :math:`\binom{\mu-1}{i}(-1)^{i}(i+1)^{-(1+m/\beta)}` -- but it only
+  terminates when :math:`\mu` is a positive integer. For other
+  :math:`\mu` it is alternating and slow to converge, losing
+  significance to cancellation as :math:`\mu` grows. The integral is
+  quadrature either way, so ``moment`` takes it directly, as ``entropy``
+  already does and as ``mean`` already did. ``mean`` now delegates to
+  ``moment(1)`` rather than repeating the integral.
+
+  Checked against two references with no integration in them: at
+  :math:`\mu = 1` the distribution collapses to the Weibull, whose
+  m-th moment is :math:`\alpha^{m}\Gamma(1 + m/\beta)` exactly; and
+  for integer :math:`\mu` the series terminates and can be summed. Both
+  agree to about 1e-14. The exponentiated-exponential case
+  (:math:`\alpha = \beta = 1`) is also pinned against the harmonic
+  number :math:`H_{\mu}`, which is its mean.
+
+  ``ExpoWeibull`` joins the ``moment`` comparison against quantile-bounded
+  numerical integration in ``test_distributions_math.py``, which had
+  excluded it by name. That check is not circular despite both sides
+  integrating: the reference integrates between quantiles with
+  breakpoints, ``moment`` integrates from zero to infinity.
+
+  This does not change fitting. ``ParametricFitter._moment`` already had
+  a quadrature fallback for distributions without a ``moment``, so
+  ``how="MOM"`` worked for ``ExpoWeibull`` before this and still does.
+  What was missing was the public method.
+
+- **Fixed: ``Binomial.log_df`` returned the wrong mass, and
+  ``ExactEventTime`` answered ``df`` and ``hf`` with ``inf``.**
+
+  Two consequences of continuous-distribution assumptions reaching
+  distributions that are not continuous.
+
+  ``ParametricFitter.log_df`` is ``log(hf) - Hf``, which encodes the
+  continuous identity :math:`f = h R(x)`. On the integers the mass at
+  ``k`` is :math:`P(T = k) = h(k) R(k - 1)` -- the hazard there times
+  the survival to just *before* it. The two differ by a factor
+  :math:`R(k)/R(k-1)`, which is not a rounding difference::
+
+      Binomial.log_df(3, 10, 0.3)  ->  -1.887   (was)
+      log(Binomial.df(3, 10, 0.3)) ->  -1.321
+
+  Across ``k = 1..7`` the returned mass ran from 0.88 of the truth down
+  to 0.15. Five of the six discrete distributions override ``log_df``
+  with a closed-form log-pmf and were unaffected; Binomial did not, and
+  reached the continuous identity. ``DiscreteParametricFitter`` now
+  supplies the discrete relation, so Binomial is correct and any future
+  discrete distribution inherits the right one. The class already
+  documented the convention -- ``hf`` is ``P(T = k) / R(k - 1)`` -- it
+  simply had no ``log_df`` to match it.
+
+  The bug was latent rather than live: ``Binomial.fit`` is analytic
+  (``p`` is the observed mean over the trial count) and never evaluates
+  a log-density, so no fit was affected. ``Binomial.log_df`` is public,
+  though, and generic code that calls it got the wrong numbers.
+
+  Separately, ``ExactEventTime`` is a point mass, so its density is a
+  Dirac delta: zero everywhere, infinite at one point, integrating to
+  one. There is no function of ``x`` that represents it. ``df`` returned
+  ``inf`` at ``T`` and 0 elsewhere, which integrates to ``inf`` rather
+  than 1; ``hf`` returned ``inf`` at ``T`` *and at every x after it*;
+  and the inherited ``log_df`` computed ``log(inf) - inf`` and returned
+  ``nan``. All three now raise ``NotImplementedError`` explaining why
+  and pointing at the functions that are defined. An ``inf`` propagates
+  into a plot, a likelihood or a mixture weight and surfaces far from
+  its cause; a raise stops at the call site. ``Bernoulli`` already
+  omitted ``df``, ``hf`` and ``Hf`` for the same reason.
+
+  ``ExactEventTime.Hf`` is kept and is unchanged in value -- it is
+  :math:`-\log R(x)`, stepping from 0 to infinity at ``T``, which is
+  well defined. It had been written as an alias for ``hf``, which
+  happened to take the same two values; it is now written as itself.
+  ``sf``, ``ff``, ``qf`` and fitting are untouched.
+
+  New tests cover the discrete mass identity for all six distributions,
+  Binomial's log-pmf against scipy, that the discrete hazard is a
+  probability (a continuous-convention hazard can exceed one, which is
+  how the mix-up shows itself), that ``Hf`` accumulates as
+  :math:`-\sum \log(1 - h)` rather than :math:`\sum h`, and the
+  degenerate refusals alongside proof that fitting and serialisation
+  still work.
+
+- **``Beta.mpp`` and ``Beta4.mpp`` removed as unreachable.**
+  Both bodies were a single ``raise NotImplementedError``, and neither
+  could ever run. Refusing probability plotting is declarative --
+  ``supports_mpp = False``, checked in ``fit`` before the fitter is
+  dispatched -- and both distributions already set it, so the guard
+  raised a ``ValueError`` naming the distribution and the alternatives
+  three frames before the method was reachable.
+
+  Deleting them changes no behaviour. ``Beta``, ``Beta4``, ``Gamma`` and
+  ``ExpoWeibull`` all still refuse ``how="MPP"`` from the same guard,
+  with the same message. ``mpp`` is now defined only by ``Exponential``
+  and ``Rayleigh``, which is where the hook means something: absence of
+  ``mpp`` sends a distribution to the *generic* plotting path, so the
+  method is an override for a closed form, never a way to decline.
+
+  Two invariants in ``test_shared_signatures.py`` keep the two
+  mechanisms from drifting back together: no distribution may declare
+  ``supports_mpp = False`` and define ``mpp`` as well, and every
+  distribution that refuses must refuse through the shared guard rather
+  than an exception of its own. The second covers nine distributions and
+  is scoped to those whose ``fit`` takes a ``how`` at all -- ``Bernoulli``,
+  ``Binomial`` and ``ExactEventTime`` override ``fit`` with a narrow
+  signature that has none, so asking them for MPP is a ``TypeError``
+  from argument binding. That is the separate ``fit`` divergence, still
+  open.
+
+- **``cs`` is inherited rather than restated on every distribution,
+  and Gamma's ``cs`` documentation no longer describes the exponential.**
+  Twelve distributions defined a conditional survival function. Eleven
+  of the twelve had the same body as ``ParametricFitter.cs``, differing
+  only in spelling the parameters out instead of taking ``*params``::
+
+      return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
+
+  The duplication had already rotted. ``Gamma.cs`` carried
+
+  .. math::
+      R(x) = e^{-\lambda x}
+
+  which is the *exponential* survival function -- copy-pasted from
+  ``exponential.py``, where both methods sat at line 136. The body
+  computed the ratio correctly, so the code was right and the
+  documentation above it described a different distribution. Gamma is
+  not memoryless and its conditional survival is not its survival.
+
+  The eleven pass-through overrides are removed (395 lines), and
+  ``ParametricFitter.cs`` -- which had no docstring at all, so ``cs``
+  was undocumented anywhere the override was absent -- now carries the
+  definition, the parameter descriptions and a worked example. The
+  wrong Gamma formula goes with the override it lived on, and Gamma
+  inherits the correct generic statement.
+
+  ``Exponential.cs`` is kept. The exponential is memoryless, so
+  :math:`R(x, X) = R(x)`, which is one ``exp`` rather than two and a
+  division, and avoids the cancellation the ratio suffers far into the
+  tail.
+
+  Ten of the removed docstrings carried doctested examples, and those
+  were the only per-distribution numerical check on ``cs``. Their values
+  are preserved in
+  ``surpyval/tests/univariate/parametric/test_conditional_survival.py``,
+  alongside tests that each distribution's ``cs`` equals the survival
+  ratio (which is what checks Exponential's shortcut against the long
+  way), that ``cs(0, X) == 1``, that the exponential is memoryless for
+  any conditioning time, and that the discrete distributions reach a
+  working inherited ``cs``.
+
+- **BREAKING: shared methods now have one signature across every
+  distribution.**
+  A distribution is reached through a ``ParametricFitter`` reference
+  all over the package -- ``fit_best`` iterates a list of them,
+  ``Discretize`` and ``MixtureModel`` wrap one, the regression fitters
+  hold one as ``self.dist`` -- so code written against that reference
+  has to work for every member. Three shared methods disagreed about
+  what their leading argument was called, which made a keyword call
+  correct for a subset and a ``TypeError`` for the rest::
+
+      Weibull.qf(p=0.5, alpha=10, beta=2)   worked
+      Poisson.qf(p=0.5, mu=3)               TypeError
+      Poisson.qf(u=0.5, mu=3)               worked
+      Weibull.moment(n=2, alpha=10, beta=2) worked
+      Poisson.moment(n=2, mu=3)             TypeError
+
+  This is the defect that made the narrow ``from_params`` overrides on
+  ``Bernoulli``, ``Binomial`` and ``ExactEventTime`` worth fixing
+  earlier in this release, applied to the rest of the surface.
+
+  - ``qf``'s first argument is ``u`` in all 22 implementations. It was
+    ``p`` in 14, ``u`` in 7 and ``q`` in ``Binomial``. ``p`` cannot be
+    the shared name because it is an actual parameter of ``Bernoulli``,
+    ``Binomial``, ``Geometric`` and ``NegativeBinomial``, and ``q`` is
+    one of ``DiscreteWeibull``'s -- which is why the two obvious
+    choices had been avoided piecemeal in the first place.
+  - ``moment``'s first argument is ``m`` in all 21. It was ``n`` in 13,
+    and ``n`` is ``Binomial``'s trial count.
+  - ``mpp_x_transform`` takes ``x`` alone in all 15. Eleven of them
+    also took a ``gamma`` they subtracted, and the other four did not.
+    No caller ever passed it: the MPP fitter subtracts the offset from
+    ``x`` before calling (``fitters/mpp.py``), so a caller that did
+    pass it would have subtracted the offset twice. Removed rather
+    than added to the other four.
+
+  Positional calls -- which is what every docstring example, every call
+  inside the package, and every notebook uses -- are unaffected. No
+  keyword call to any of the three exists in the package, its tests or
+  its documentation. There is no deprecation shim: keeping the old name
+  as an alias would preserve exactly the ambiguity the change removes.
+
+  ``moment`` is also now typed ``m: int`` uniformly, and nine
+  docstrings that promised "integer or numpy array of integers" are
+  narrowed to "integer". Only six of the twenty implementations
+  actually accepted an array of orders; the rest raised, because they
+  delegate to ``scipy.stats``::
+
+      LogNormal.moment(np.array([1, 2]), 3., 4.)  ->  [5.99e+04, 3.19e+16]
+      Normal.moment(np.array([1, 2]), 3., 4.)     ->  ValueError
+
+  ``surpyval/tests/univariate/parametric/test_shared_signatures.py``
+  reads the signatures rather than asserting a list of names, so a
+  distribution added later is covered without touching the test, and
+  an open-ended guard fails on *any* method implemented by five or
+  more distributions whose leading data argument disagrees. Parameter
+  names are excluded from that guard: ``Weibull.mean(alpha, beta)``
+  against ``Poisson.mean(mu)`` is not a divergence, it is what the
+  distributions are.
+
+- **API reference pages for the surfaces that only had narrative docs.**
+  The multivariate copulas and the beta survival tree and forest had no
+  autodoc coverage at all, and the degradation page stopped at the path
+  models. Closes the second half of #141.
+
+  New: ``surpyval.multivariate`` (the ``Copula`` base, the five copula
+  classes, ``CopulaModel`` and ``MultivariateSurpyvalData``) and
+  ``surpyval.beta`` (``RandomSurvivalForest``, ``SurvivalTree`` and the
+  node classes a serialised tree is built from). The degradation page
+  gains the Wiener and gamma stochastic-process models, ``ProcessRUL``
+  and destructive degradation. ``_bounds`` and ``population`` are
+  deliberately left out: neither is exported from the package's
+  ``__init__``, so both are internal rather than API.
+
+  Two surfaces the issue did not name but which fit its description
+  also had no autodoc, and now have pages: shared frailty models and
+  Buckley-James. And ``surpyval.regression`` had two headings --
+  "Accelerated Time Models" and "Accelerated Life Models" -- with
+  nothing underneath them, rendering as empty sections while the
+  content sat in ``regression/parametric``; that page is reorganised
+  into semi-parametric, parametric and correlated-observations.
+
+  Three ``automethod`` directives on the NHPP regression page pointed at
+  ``cif``, ``iif`` and ``inv_cif`` on the *fitter*, where they do not
+  exist -- they are on the model the fit returns. Those were three of
+  the 18 warnings standing between the build and ``-W``. All 138
+  autodoc targets across the documentation now resolve.
+
+- **The estimation machinery moved off the distribution base class.**
+  ``ParametricFitter.fit`` takes 18 named arguments -- ``how``,
+  ``offset``, ``zi``, ``lfp``, ``fixed``, the truncation and interval
+  bounds -- and three distributions cannot honour any of them.
+  ``Bernoulli``, ``Binomial`` and ``ExactEventTime`` estimate their
+  parameters in closed form and accept only ``x`` and at most ``c``,
+  ``n`` and ``t``. They overrode ``fit`` with a narrower signature,
+  which is a real divergence and not a typing nicety::
+
+      Bernoulli.fit([0, 1], c=[0, 0])              TypeError
+      Bernoulli.fit([0, 1], how="MLE")             TypeError
+      Binomial.fit([1, 2], n_trials=3, how="MLE")  TypeError
+
+  Code written against a ``ParametricFitter`` therefore broke on
+  exactly those three, and nothing said so until it ran.
+
+  ``fit`` and the twelve methods it needs now live on a new
+  ``OptimisedFitMixin``, which the 21 distributions that have them
+  inherit alongside ``ParametricFitter``. Nothing was removed and no
+  behaviour changed: every distribution is still a ``ParametricFitter``,
+  which is what the ``isinstance`` checks in the model, mixture,
+  regression, frailty and renewal code test, and what carries the
+  distribution functions, the likelihood and ``from_params``.
+
+  The point of the split is that the wrong thing is now unwriteable
+  rather than merely undocumented. ``fit_best``'s candidate list is
+  typed ``list[OptimisedFitMixin]``, so adding one of the three to it is
+  a type error instead of a runtime one.
+
+  Annotate a parameter ``OptimisedFitMixin`` when it must be fittable by
+  a chosen method, and ``ParametricFitter`` when only the distribution
+  functions are needed.
+
+- **BREAKING:** ``Bernoulli.from_params`` and
+  ``ExactEventTime.from_params`` **renamed their first argument to**
+  ``params``. It was ``p`` and ``T`` respectively, while the base calls
+  it ``params``, so positional calls worked and keyword calls raised::
+
+      Bernoulli.from_params(0.5)          OK
+      Bernoulli.from_params(params=0.5)   TypeError
+
+  That is the shape of bug a test suite never catches, because every
+  internal call and every docstring example passes positionally.
+
+  Bernoulli's was worse than a rename. The base's ``p`` is the
+  proportion that *never fails*, so ``p=0.5`` meant the never-fails
+  fraction on twenty-four distributions and the event probability on
+  Bernoulli -- the same keyword, sibling classes, unrelated meanings,
+  and no error either way.
+
+  ``Bernoulli.from_params(p=...)`` and ``ExactEventTime.from_params(T=...)``
+  now raise ``TypeError``. Positional calls are unaffected, and no call
+  changes meaning silently: ``params`` has no default, so the old
+  keyword forms fail loudly rather than being reinterpreted.
+
+  All three also accept ``gamma``, ``p`` and ``f0`` now, and reject them
+  with a ``ValueError`` naming the distribution. Accepting-and-rejecting
+  rather than omitting is what makes the signatures match the base, so
+  these can be called through a ``ParametricFitter`` reference at all --
+  and it removes the last two ``# type: ignore[override]`` markers.
+
+- **Every distribution now exports its own type.** The 17 that read
+  ``Weibull: ParametricFitter = Weibull_("Weibull")`` erased the
+  concrete class, and since the base declares none of ``sf``, ``ff``,
+  ``df``, ``hf``, ``Hf``, ``qf`` or ``mean``, the example in each
+  distribution's own docstring did not type check for anyone whose
+  checker honours ``py.typed``::
+
+      Weibull.sf(x, 3, 4)
+      error: "ParametricFitter" has no attribute "sf"
+
+  The annotation cannot simply be dropped: the regression subpackages
+  and ``fit_best`` import these names, and without an explicit type
+  mypy cannot resolve them through that cycle. They name the concrete
+  class instead.
+
+- **``Normal`` and ``Gumbel`` ignored their own documented default.**
+  ``ParametricFitter`` documents the initialiser signature as
+  ``(self, x, c=None, n=None, t=None, offset=False)``, but ``Normal``
+  tested ``2 in c`` and indexed ``x[c != -1]``, and ``Gumbel`` tested
+  ``(2 in c) or (-1 in c)``, before either defaulted ``c``. Calling
+  either as documented raised ``TypeError: argument of type 'NoneType'
+  is not iterable``. Every caller inside the package passes ``c`` and
+  ``n``, which is why it went unnoticed; ``GumbelLEV`` is unaffected
+  because it forwards ``c`` to ``fit`` without inspecting it. A sweep of
+  all nineteen distributions found these two and no others.
+
+- **BREAKING: ``_parameter_initialiser`` takes a ``SurpyvalData``.**
+  The signature was ``(self, x, c=None, n=None, t=None, offset=False)``,
+  and every one of the 21 implementations spent its opening lines
+  re-establishing conventions that had already been established --
+  inconsistently, and in some cases wrongly. ``Normal`` defaulted
+  ``c`` and ``n``; ``Gumbel`` guarded ``c`` with ``is not None``;
+  ``Beta`` tested ``(c is not None) and (c == 0).all()``; ``Beta4``
+  tested both ``c`` and ``n``; ``LogLogistic`` ran a whole
+  ``xcnt_handler`` round trip in its offset branch. Two of those checks
+  were absent until this release and raised ``TypeError`` for the
+  documented call.
+
+  None of it was ever needed. The one production caller,
+  ``_initial_guess``, is reached from ``fit_from_surpyval_data``, which
+  is *handed* a ``SurpyvalData`` -- an object whose entire purpose is to
+  guarantee that ``x``, ``c``, ``n`` and ``t`` are present, validated
+  and in xcnt form -- and destructured it into loose arrays on the first
+  line of its body. The convention was rebuilt three layers below the
+  object that had already established it.
+
+  The signature is now ``(self, data: SurpyvalData, offset: bool =
+  False)``. ``offset`` stays a separate argument because it describes
+  the model being requested, not the data. ``_initial_guess`` and
+  ``_fit_numerically`` take the object rather than loose arrays for the
+  same reason. Seven defaulting checks are gone, along with 63 optional
+  data parameters (27 of them explicitly annotated ``| None``), and the
+  initialisers that used to
+  round-trip their arrays back through ``fit`` (re-running
+  ``xcnt_handler`` and rebuilding the object the caller already held)
+  now call ``fit_from_surpyval_data`` directly.
+
+  ``t`` is not passed to the initialisers, and never was: no caller has
+  ever supplied it. ``_initial_guess`` imputes interval- and
+  left-censored points to midpoints before seeding, which can put an
+  observation at or before its own left-truncation bound -- data
+  ``xcnt_handler`` rejects outright (#260) -- so the working copy it
+  builds is deliberately untruncated. That is what every initialiser has
+  always received; it is now explicit rather than accidental.
+
+  This is a breaking change for anyone who has written their own
+  distribution class. There is no shim: a bare array now fails at the
+  first attribute access rather than being half-accepted. Every one of
+  the 38 seeds -- each distribution, plain and offset -- is identical
+  before and after.
+
+- **Every ``_parameter_initialiser`` now returns the same thing.**
+  The initial-guess seed a distribution hands the optimiser came back in
+  four different containers across the 21 implementations: a tuple in
+  nine, a numpy array in six, a Python list in one, a fitted model's
+  ``.params`` in five -- and a bare scalar in ``Rayleigh``. Two files
+  disagreed with *themselves*: ``exponential`` returned a tuple in its
+  offset branch and an array in the other, ``rayleigh`` a tuple and a
+  scalar.
+
+  It worked because the one caller, ``_initial_guess``, does
+  ``np.array(init)``, which flattens tuple, list and array alike. It
+  stopped working at the scalar, because ``np.array`` of a scalar is
+  0-dimensional rather than length-1, and the ``lfp`` and ``zi`` paths
+  concatenate onto the seed.
+
+  All 28 return statements now construct a 1-D float array explicitly,
+  so the shape is decided where the values are known rather than
+  inferred downstream, and a 0-dimensional seed is no longer
+  expressible. No seed changed: all 38 -- every distribution, plain and
+  offset -- were compared before and after and are identical.
+
+  The seed itself is unchanged in layout, and it is flat rather than
+  nested: ``[gamma]`` when an offset is requested, then the ``k``
+  distribution parameters, then ``[p]`` for a limited failure population
+  and ``[f0]`` for zero inflation, appended by the caller. The arity
+  therefore depends on both ``k`` and the structural flags.
+
+- **Limited-failure and zero-inflated Rayleigh models could not be fit.**
+  ``Rayleigh.fit(x, lfp=True)`` and ``Rayleigh.fit(x, zi=True)`` both
+  raised ``ValueError: zero-dimensional arrays cannot be concatenated``.
+
+  Rayleigh is the only single-parameter distribution here, and its
+  ``_parameter_initialiser`` returned the sigma seed as a bare scalar
+  rather than a sequence. ``np.array(init)`` in ``_initial_guess`` then
+  produced a 0-dimensional array instead of a length-1 one, and the
+  ``lfp`` and ``zi`` paths append their ``p`` and ``f0`` seeds with
+  ``np.concatenate``, which a 0-d array cannot take. The seed is now a
+  one-tuple. Plain and offset fits are unchanged.
+
+  Found by surveying every ``_parameter_initialiser`` in the library
+  after the type-hint work turned up three different return shapes; a
+  sweep of all fourteen continuous distributions across both paths
+  confirmed Rayleigh was the only one affected.
+
+- **Type-hint coverage is now enforced, for twenty-one modules (#143).**
+  ``surpyval.distribution``, ``surpyval.serialisation``,
+  ``surpyval.metrics``, ``surpyval.univariate.information_criteria``,
+  ``surpyval.datasets``, the Weibull, the Normal, the LogNormal, the
+  eight discrete distributions, ``CustomDistribution`` and
+  ``ExactEventTime``, and
+  all of ``surpyval.univariate.nonparametric``,
+  ``surpyval.recurrent.nonparametric`` and
+  ``surpyval.univariate.regression.frailty`` have
+  ``disallow_untyped_defs`` set in ``pyproject.toml``, so an
+  unannotated function in any of them is a mypy error. That covers the
+  abstract base classes every model inherits from, the Kaplan-Meier,
+  Nelson-Aalen, Fleming-Harrington and Turnbull estimators, the
+  log-rank test, the plotting positions, the non-parametric MCF, the
+  shared-frailty fitter, the bundled datasets and thirteen of the 25
+  parametric distributions.
+
+  ``LogNormal.moment`` is annotated ``n: Numeric`` where ``Normal``'s
+  is ``n: int``, and the difference is real rather than an oversight.
+  Both docstrings promise "integer or numpy array of integers".
+  LogNormal's closed form is vectorised and delivers that;
+  ``Normal``, ``GumbelLEV`` and ``LogLogistic`` delegate to
+  ``scipy.stats``, which raises ``ValueError: The truth value of an
+  array ... is ambiguous`` on an array of orders. The annotations now
+  say which is which; the three docstrings that overpromise are not
+  yet corrected.
+
+  ``CustomDistribution`` needed restructuring rather than only
+  annotating. It assigned its distribution functions onto the
+  instance -- ``self.Hf = fun``, then lambdas for ``hf``, ``sf``,
+  ``ff`` and ``df`` -- which stopped being possible once
+  ``OptimisedFitMixin`` declared those names for its own use, because
+  a subclass inherits the declarations and assigning to an inherited
+  method is an error. The function is stored as ``_fun`` and the five
+  are real methods delegating to it. Equivalent by construction: the
+  old ``self.Hf = fun`` was an unbound instance attribute, so
+  ``self.Hf(x, *params)`` called ``fun(x, *params)`` either way. The
+  autograd-derived ``hf`` and ``df`` were checked numerically against
+  the previous implementation, gradients included.
+
+  Its ``_parameter_initialiser`` returns a *list*, where Weibull
+  returns a tuple and the discrete distributions return an array --
+  three shapes for one contract the base never pinned down. Noted in
+  the signatures rather than unified, since every caller coerces.
+
+  ``handle_xicn`` gained ``@overload`` declarations as part of this.
+  Its return shape is decided by ``as_recurrent_data``, but its
+  signature only said "one or the other", so all nine callers taking
+  the default were handed a union to narrow themselves. The overloads
+  say which argument decides, once, for all seventeen call sites.
+
+  The package ships ``py.typed``, which tells a user's type checker
+  that the annotations are there to be trusted, and mypy already ran in
+  CI -- but nothing required an annotation to exist, so mypy checked
+  only the ones that happened to be written. That made ``py.typed`` a
+  promise the package kept unevenly.
+
+  This is deliberately a ratchet rather than a target. A module is
+  added to the list once it is clean, and from then on it cannot
+  regress; the remaining ~1350 unannotated functions do not have to be
+  finished first for the enforced part to start holding.
+
+  Turning it on immediately found something. ``SerialisableMixin.to_json``
+  and ``from_json`` call ``self.to_dict()`` and ``cls.from_dict()``,
+  which the mixin never declares -- every class using it supplies them,
+  but that contract existed only in the docstring, and mypy skips the
+  bodies of unannotated functions, so the calls had never been checked.
+  They are now declared under ``TYPE_CHECKING``: a real stub raising
+  ``NotImplementedError`` would read better, but it would be inherited,
+  and ``copula_model`` decides whether a margin is serialisable with
+  ``hasattr(m, "to_dict")`` -- which an inherited stub would answer
+  True for every time.
+
+  The non-parametric package turned up a second one. Its
+  ``ESTIMATOR_FUNCS`` table was built from ``nonp.nelson_aalen`` and its
+  two siblings, each of which shares its name with the submodule that
+  defines it -- so the attribute is the function only after the package
+  ``__init__`` has bound it over the submodule, and that table is built
+  while the ``__init__`` is still running. It worked because the
+  ``__init__`` happens to import the estimators first, which is a load
+  order rather than a guarantee. mypy resolved the names to the modules
+  and reported the table as not callable. The three are now imported
+  from the modules that define them; the other uses of the package
+  namespace in that file are inside functions, so they resolve after
+  initialisation and are left alone.
+
+  Annotating a function makes mypy check its body, and that found a
+  real inconsistency the ratchet had been hiding behind an over-wide
+  annotation. ``turnbull``, ``rank_adjust`` and
+  ``NonParametricCounting.from_xrd`` declare array-like parameters and
+  then index, slice and divide them directly -- which array-like does
+  not support, because it also covers ``str``, ``bytes`` and scalars.
+  Each now takes its arguments as arrays before using them as arrays,
+  so the signature and the body agree. ``_logrank_z_v`` likewise
+  declared ``c`` and ``n`` as arrays while handling ``None`` for both
+  internally, and ``NonParametricCounting.fit`` declared ``windows``
+  as array-like when it is the ``{item: [(start, end), ...]}``
+  dictionary its own docstring describes.
+
+  ``success_run`` was the same shape of problem in its argument
+  handling: it tested ``confidence`` and ``alpha`` for truthiness, so
+  passing both with either set to zero skipped the "only one of" raise,
+  and ``confidence=0`` fell through every branch and left ``alpha``
+  unset. Both are now tested against ``None``.
+
+  The distributions needed a vocabulary before any of them could be
+  annotated, and ``parametric_fitter`` now defines it. A distribution
+  function deals in two kinds of value, and only one of them can be an
+  autograd box: ``Numeric`` is what the function is evaluated at (times,
+  or probabilities for ``qf``), always real data; ``Boxable`` is a
+  parameter, or anything computed from one. Maximum likelihood
+  differentiates these functions, so during a fit autograd substitutes
+  an ``ArrayBox`` for each parameter to carry the derivative. A box is
+  neither a float nor an ndarray, which is why ``Boxable`` is not
+  narrowed to a numpy type -- and why the "array-like in, array out"
+  convention used elsewhere in the package must not be applied here.
+
+  ``np.asarray`` on a box does not reject it. It wraps the box in a
+  0-d object-dtype array, which still computes the right *value*,
+  because object arrays dispatch arithmetic back to the box. Only the
+  derivative is damaged, and how depends on the arithmetic: an
+  operation whose backward pass needs a ufunc the box does not
+  implement raises a ``TypeError``, but a plain product silently
+  returns a zero gradient for that parameter. A zero gradient is not an
+  error to an optimiser -- it means "this parameter does not affect the
+  likelihood" -- so the fit leaves the parameter at its initial guess
+  and reports success.
+
+  ``Boxable`` names ``ArrayBox`` rather than being ``Any``, which is
+  what makes the parameter positions checkable rather than merely
+  annotated: under ``Any``, ``Weibull.Hf(1.0, "not a number", 4.0)`` was
+  accepted in silence. autograd ships no type information, so
+  ``stubs/autograd/numpy/numpy_boxes.pyi`` describes the one type of its
+  that appears in surpyval's own signatures. Supplying any stub for a
+  package makes mypy consider the whole package described, so the
+  ``__getattr__`` stubs beside it keep the rest of autograd as untyped
+  as it was.
+
+  ``Weibull`` and the eight discrete distributions -- ``Bernoulli``,
+  ``BetaGeometric``, ``Binomial``, ``DiscreteWeibull``, ``Geometric``,
+  ``NegativeBinomial``, ``Poisson`` and the ``Discretize`` wrapper --
+  are annotated against that vocabulary and are on the enforced list.
+
+  Checking their bodies turned up three things about the base class.
+
+  ``Weibull`` was exported as ``Weibull: ParametricFitter``, which
+  erases the concrete type; since the base declares none of ``sf``,
+  ``ff``, ``df``, ``hf``, ``Hf``, ``qf`` or ``mean``, and the package
+  ships ``py.typed``, the example in ``sf``'s own docstring did not type
+  check for a user::
+
+      Weibull.sf(x, 3, 4)
+      error: "ParametricFitter" has no attribute "sf"
+
+  It is now exported as ``Weibull_``. Sixteen other distributions carry
+  the same erasure and are corrected as each is annotated.
+  ``Discretize`` hits the same gap from the other side: it must hold the
+  distribution it wraps as ``Any``, because every delegation would
+  otherwise be an error against the declared type.
+
+  ``Bernoulli.fit`` and ``Binomial.fit`` do not honour
+  ``ParametricFitter.fit``, and the divergence is real rather than a
+  typing artefact -- ``Bernoulli.fit(x, c=...)`` and
+  ``Binomial.fit(x, n_trials=k, how=...)`` raise ``TypeError``. Both
+  have closed-form maximum likelihood estimates and support neither
+  censoring nor an alternative estimation method. Generic code written
+  against ``ParametricFitter`` will fail on them. This is recorded at
+  each site rather than changed here.
+
+  ``_parameter_initialiser`` is also inconsistent across the base's
+  implementations: ``Weibull`` returns a tuple, the discrete
+  distributions return an array. Callers coerce either, so nothing is
+  broken, but the signatures now say which is which.
+
+- **The lint job had been failing on a single over-long line.**
+  The ``:class:`` cross-reference added to ``RandomSurvivalForest``'s
+  docstring while clearing the documentation build warnings pushed the
+  line to 80 characters. flake8 runs before mypy in the lint job, so
+  from that commit on mypy was skipped rather than run, and the type
+  errors described above reached CI unchecked. The line is rewrapped
+  and the errors are fixed.
+
+- **The survival tree's log-rank split statistic was wrong (#287).**
+  ``kind="non-parametric"`` trees, and any ``RandomSurvivalForest``
+  built from them, selected splits on a statistic off by factors of
+  several -- and not merely inflated, but *reordered*: of the two cases
+  in the issue, the weaker separation scored 1.856 against a true 0.276
+  while the stronger scored 0.276 against a true 1.225. Trees were
+  choosing the wrong split.
+
+  The log-rank statistic sums over the *pooled* event times of both
+  children, so the left child's at-risk count is needed at times where
+  the left child itself has no observation. Those were filled in by
+  carrying its own risk ladder forward, which was wrong twice: the
+  carried value did not subtract the deaths and censorings that occurred
+  *at* the time it was carried from, and the tail past the last
+  observation subtracted only deaths, so a child ending in a censored
+  observation kept someone at risk for ever. Both inflate the count,
+  which biases the numerator and the variance.
+
+  The at-risk count is now computed directly -- at each pooled time
+  :math:`t`, the observations with :math:`t_l < t \leq x`, which is the
+  ``(entry, exit]`` convention ``xcnt_to_xrd`` already uses, so the
+  left child's :math:`Y_L` and the pooled :math:`Y` agree about what
+  "at risk" means. There is nothing to extrapolate, so both the leading
+  and trailing special cases disappear along with the forward fill.
+
+  Tests check the statistic against a deliberately naive implementation
+  of its definition: the two cases from the issue, a censored tail, left
+  truncation, ties shared across children, a child starting after the
+  other's first event, and 200 random partitions. One test pins
+  ``at_risk_on_grid`` against ``xcnt_to_xrd`` directly, since a
+  disagreement between them is what makes :math:`Y_L / Y` stop being a
+  proportion.
+
+- **The documentation build fails on any warning.** ``-W --keep-going``
+  in the CI docs job, and ``fail_on_warning`` in ``.readthedocs.yaml``.
+  They are set together deliberately: if only one has it, that one goes
+  green while the other publishes a broken page.
+
+  A Sphinx warning is rarely cosmetic. A broken cross-reference renders
+  as plain text, a mistyped ``autoclass`` path drops the class from the
+  page altogether, a page missing from every toctree is published and
+  unreachable. In each case the build reports success and ships
+  something wrong, and the only evidence is a line in a log nobody
+  reads. That is precisely how the three broken ``ProportionalIntensityNHPP``
+  autodoc targets survived -- three methods absent from the rendered
+  documentation, behind a "build succeeded, 18 warnings".
+
+  Warnings-as-errors only works from zero, so the sixteen were cleared
+  first:
+
+  - Twelve duplicate labels, from ``autosectionlabel`` minting a
+    cross-reference target for every heading while the changelog
+    necessarily repeats "Serialisation", "Degradation" and so on once
+    per release. ``autosectionlabel_maxdepth = 1`` keeps the labels a
+    ``:ref:`` between pages actually wants and stops minting the rest.
+  - The ``sphinx_rtd_theme`` ``get_html_theme_path`` deprecation, whose
+    own message said the call was safe to remove.
+  - A title-level inconsistency in the non-parametric page, reported by
+    docutils as ``CRITICAL`` rather than a warning.
+  - ``RandomSurvivalForest``'s docstring, which was not valid
+    reStructuredText -- and which nothing surfaced until the new API
+    page began rendering it.
+  - The interval-censored Turnbull example, whose EM ran out of
+    iterations. It converges at ``max_iter=10000``; the example now
+    passes it and the prose explains why, rather than marking the
+    warning expected and hiding a usable answer.
+
+- **``scripts/check_all_pythons.py`` runs the CI checks locally on every
+  supported interpreter.** With the suite no longer running on pull
+  requests into ``develop`` (below), this is the other half of the
+  trade: one command runs the test suite and both doctest passes on
+  3.11, 3.12 and 3.13, and refuses to say "passed" unless all of them
+  did.
+
+  It keeps its environments in a git-ignored ``.venvs/`` and reuses
+  them, so only the first run pays for the installs; it uses ``uv``
+  when available and falls back to ``venv`` and ``pip`` when not, and
+  reports an interpreter that is not installed rather than failing on
+  it. The command list is deliberately a copy of the workflow's, so
+  what it runs is what CI would have run.
+
+- **The test suite runs on the release pull request, not on every one.**
+  Pull requests into ``develop`` now run lint only, about a minute
+  against the nine the suite takes across three interpreters. The suite
+  still runs in full on the release pull request into ``master`` and on
+  pushes to ``master``.
+
+  The reason is the edit-review loop: with a single maintainer running
+  the suite locally before pushing, the pull-request run was mostly
+  confirming what was already known, and it was the slowest part of
+  working on the package.
+
+  What this gives up is stated rather than glossed: a failure that
+  appears on only one interpreter is now found when the release is
+  prepared, with a release's worth of commits to search rather than one.
+  That is not hypothetical -- the doctest numeric comparison two entries
+  below landed green on 3.11 and failed on 3.12 and 3.13, and it was the
+  pull-request run that caught it. ``Contributing.rst`` now says which
+  jobs run on which event, and what to run locally to compensate.
+
+- **The documentation build runs in CI on the release pull request.**
+  The docs execute every ``.. jupyter-execute::`` cell as they build, so
+  they are a second test suite that exercises the public API for real --
+  and one that a change touching no documentation file at all can break,
+  as the Gamma entry below did. Read the Docs builds only ``master`` and
+  tags, so until now that break would have surfaced as a failed hosted
+  build *after* a release.
+
+  The new job is conditioned on ``github.base_ref == 'master'``, which
+  is set only for pull requests, so it runs on the ``develop`` ->
+  ``master`` release pull request and nowhere else. It is not run on
+  pushes to ``master`` either: Read the Docs rebuilds there anyway, and
+  by then the gate has nothing left to gate. It matches
+  ``.readthedocs.yaml`` rather than the test jobs -- Python 3.12, the
+  package installed via its own ``docs`` extra -- because its purpose is
+  to reproduce the hosted build, and it uploads the rendered HTML as an
+  artifact.
+
+  It does not build with ``-W``; the build currently emits 18 warnings,
+  mostly duplicate labels from ``autosectionlabel`` meeting the
+  changelog's repeated section headings. Clearing those and then failing
+  on warning here and in ``.readthedocs.yaml`` together is worth doing
+  separately.
+
+  The residual gap is deliberate: a documentation break introduced on a
+  pull request into ``develop`` is caught when the release is prepared,
+  not when it lands. Building on every pull request would cost minutes
+  on each, and a path filter would not have helped here -- the change
+  that broke the build was in ``gamma.py``, not under ``docs/``.
+
+- **Fixed a documentation build broken by the Gamma MPP removal.** The
+  offset-threshold section of *Parametric SurPyval Modelling* ran a
+  ``jupyter-execute`` cell looping over
+  ``['MPP', 'MOM', 'MSE', 'MPS', 'MLE']`` for a shifted Gamma. Since
+  ``Gamma.fit(how="MPP")`` now raises, that cell raised, and because
+  documentation cells are executed during the build the whole build
+  failed.
+
+  Nothing caught it: continuous integration does not build the
+  documentation, and Read the Docs builds only ``master`` and tags, so
+  it would have surfaced as a failed hosted build at the next release
+  rather than on the change that caused it. It was found by running a
+  build to validate the ``docs`` extra below.
+
+  The prose around the cell had gone stale the same way -- it described
+  the multi-start probability-plotting search that the removal deleted,
+  and quoted an ``MPP`` tolerance from ``test_offset_divergence.py``
+  that no longer exists. It now explains why the Gamma has no
+  probability plot at all: the shape sits inside the regularised
+  incomplete gamma rather than outside as an exponent, so the only
+  straight-line axis is the inverse incomplete gamma, which needs the
+  very shape being estimated. ``Gamma.plot()`` is unaffected, since by
+  then the parameters are known.
+
+- **The documentation toolchain is a ``docs`` extra.**
+  ``pip install -e ".[docs]"`` now installs everything needed to build
+  the documentation, alongside the ``tests`` extra that was already
+  there. ``docs/requirements.txt`` is gone: its pins moved into
+  ``pyproject.toml`` verbatim, and Read the Docs installs the extra
+  directly via ``extra_requirements``. Keeping both would have meant two
+  copies of the same pinned toolchain, which is the arrangement that
+  drifts.
+
+  The pins are unchanged, including the ``ipykernel==6.31.0`` cap and
+  the reason for it -- jupyter-sphinx notebook execution dies against
+  the ipykernel 7 line. ``matplotlib`` is not repeated in the extra; it
+  is a runtime dependency of the package, which is installed alongside.
+
+  Part of #141.
+
+- **CI now runs the docstring examples.** ``pytest --doctest-modules``
+  over the package is a new step in the deployment workflow, and every
+  one of the 229 docstring examples passes. It was 59 failing tests
+  when the flag was first turned on.
+
+  A docstring example is a promise about what the library prints, and
+  it is the one users and coding agents reach for first --
+  ``help(Weibull.fit)`` is faster than opening the docs. Nothing was
+  checking it, so it drifted: examples recorded the output of an
+  optimiser two rewrites ago, of numpy 1's scalar repr, of a module
+  that has since moved.
+
+  What the run found, beyond the cosmetic drift:
+
+  - Twelve examples could not run at all. Six regression docstrings
+    (``PH``, ``AH``, ``PO``, ``AFT``, ``AcceleratedLife``, ``Frailty``)
+    were sketches -- ``model = PH(Weibull).fit(x, Z=covariates, c=c)``
+    with ``x``, ``covariates`` and ``c`` never defined. Four more used
+    ``>>>`` on the continuation lines of a multi-line call, so pasting
+    them raised ``SyntaxError``. ``plotting_positions`` imported from
+    ``surpyval.nonparametric``, which moved to
+    ``surpyval.univariate.nonparametric`` several releases ago.
+    ``ParametricFitter.fit`` demonstrated ``how='MPP'`` on
+    interval-censored input, which now (correctly) requires the Turnbull
+    heuristic and raises without it. All are now runnable, with data.
+
+  - The five ``ParametricRegressionModel`` prediction examples
+    (``sf``, ``ff``, ``df``, ``hf``, ``Hf``) had been copied from the
+    univariate ``Parametric`` class and never adapted: they built a
+    ``Weibull.from_params([10, 3])`` and called it with no covariates at
+    all, documenting a signature the method does not have. They now fit
+    a ``WeibullPH`` and pass ``Z``.
+
+  - ``Parametric.var()`` claimed 11.229 for a Weibull(10, 3). The
+    variance is 10.533 (``100 Gamma(5/3) - (10 Gamma(4/3))^2``); the
+    code was right.
+
+  - Several examples fitted unseeded random data and then recorded
+    specific digits, which cannot be reproducible. They now seed.
+
+  ``Parametric.hf`` and ``Parametric.Hf`` returned a 0-d array
+  (``array(0.012)``) for scalar input where ``sf``, ``ff``, ``df`` and
+  ``qf`` all returned a numpy scalar, and ``cs`` did the same; their
+  own ``Returns`` sections promised "the scalar value ... if a scalar
+  was passed". That is now true. The 0-d array came from ``np.where``,
+  which does not collapse.
+
+  **The numbers in the examples are compared as numbers.** doctest
+  compares printed output as text, which is the wrong test for a library
+  whose examples end in an optimiser: the same ``Duane`` fit lands on
+  ``b = 4.1995e-05`` under Python 3.11 and ``4.2032e-05`` under 3.12,
+  and numpy prints eight significant digits either way. Sixteen of the
+  229 examples disagree between those two Pythons somewhere in their
+  digits.
+
+  The obvious workaround -- trimming each documented number back to the
+  digits that agree everywhere -- makes the docstring show something the
+  reader's own session will not produce, which is precisely what these
+  examples exist to avoid. So the examples record the real output, in
+  full, and ``conftest.py`` installs a fallback comparison that runs
+  only after the ordinary text comparison has failed. It fires when the
+  two outputs are identical apart from their numeric literals -- same
+  words, same brackets, same integer-versus-float shape, so ``1`` never
+  matches ``1.`` and a dtype change is still a failure -- and then
+  compares the numbers with ``rel_tol=1e-3``, set by the loosest genuine
+  disagreement between supported Pythons with no margin beyond it, and
+  ``abs_tol=1e-12`` for a restoration factor whose true value is zero
+  and which surfaces as ``1e-16`` with whatever mantissa the optimiser
+  stopped on.
+
+  What that forgives is a value drifting inside the tolerance. What it
+  still catches is every defect listed above: a stale value from another
+  parameterisation, the wrong function being called, the wrong shape, an
+  exception, a missing import. ``surpyval/tests/test_doctest_checker.py``
+  pins both halves of that, using the real output pairs observed on
+  different Pythons.
+
+  The fallback only runs when an example has actually drifted, which on
+  any one machine is a handful of them -- and a different handful on
+  each. A gap in it is therefore invisible locally and surfaces in CI,
+  on whichever Python computed a different last digit. So the doctest
+  step runs twice: once normally, and once under
+  ``--doctest-force-numeric``, which routes every example whose output
+  contains a number through the numeric comparison. Fifteen seconds, and
+  the fallback is exercised against all 229 examples rather than
+  today's accidental few.
+
+  ``NORMALIZE_WHITESPACE`` is set in ``pyproject.toml`` for the same
+  reason: numpy picks its own line breaks and column padding for an
+  array and both move with the width of the widest element.
+
+  This closes #158.
+
+- **The distribution docstring examples now show what you actually see.**
+  ``pytest --doctest-modules`` over ``distributions/`` is green: 139
+  examples, no failures. Previously 39 failed.
+
+  Most were the numpy 2 scalar repr. ``Weibull.mean(3, 4)`` prints
+  ``np.float64(2.7192074311664314)``, where the docstring recorded the
+  bare ``2.7192074311664314`` that numpy 1 used to print. The examples
+  now record the wrapper, because that is what appears at a prompt --
+  the alternative was ``np.set_printoptions(legacy="1.25")`` in a test
+  fixture, which would have kept the docstrings prettier by showing
+  readers something their own session will not produce.
+
+  Four ``qf`` examples printed wider than the 79-column limit once the
+  real output was recorded, numpy having rewrapped the arrays. Rather
+  than hand-wrap them into something numpy would not emit, those
+  examples take fewer probabilities: what is shown is exactly what that
+  input produces.
+
+  Two scalar examples had drifted in the last digit, and are re-recorded.
+
+  With the examples now true, ``--doctest-modules`` is worth running in
+  CI, which is what stops this recurring; it is turned on above.
+
+- **``Gamma`` no longer offers probability plotting as a fit method.**
+  ``Gamma.fit(x, how="MPP")`` now raises, joining ``Beta`` and
+  ``ExpoWeibull``, which already declined for the same reason.
+
+  A probability plot works by rearranging the survival function so some
+  transform of the data falls on a straight line. For a Weibull,
+  ``log(-log S) = beta log x - beta log alpha`` — the axes do not depend
+  on the answer, so you can draw them before knowing anything. The
+  Gamma has no such rearrangement: its CDF is the regularised incomplete
+  gamma function and the shape sits *inside* that special function
+  rather than outside as an exponent. The only straight-line y-axis is
+  the inverse incomplete gamma, which needs the shape. To draw the axis
+  you need the answer; to get the answer you need the axis.
+
+  The code broke the circle by guessing the shape from moments, drawing
+  the plot on that guess, and regressing. When the guess was off, the
+  axis was the wrong axis, the points were no longer straight on it, and
+  the regression fitted a line through a curve — returning a confident
+  wrong estimate rather than an error. An offset made it worse: the
+  shift distorts the low-``x`` end hardest, which is exactly where the
+  shape information lives.
+
+  ``plot()`` is unaffected. It transforms with the *fitted* parameters,
+  so by the time the plot is drawn the axis is the right one — the
+  probability plot of an MLE-fitted Gamma remains a valid diagnostic.
+  Fitting is unchanged for MLE (the default), MSE and MOM.
+
+  The 118-line ``Gamma.mpp`` override is deleted with it, which removes
+  the ``rr="x"`` mis-inversion and the censored-data ``LinAlgError`` from
+  #257 by making both paths unreachable. The MPP sweep in ``test_fit.py``
+  now gates on each distribution's ``supports_mpp`` flag instead of a
+  hardcoded exclusion list, so it stays correct without editing.
+
+- **Nine wrong examples in the distribution docstrings.** Running
+  ``pytest --doctest-modules`` over ``distributions/`` gives 39 failures.
+  Thirty are the numpy-2 scalar repr (``np.float64(2.719...)`` against a
+  recorded ``2.719...``) and are cosmetic. Nine were not.
+
+  Five documented outputs were simply wrong. ``Uniform.ff``'s example
+  called ``Uniform.sf``, and ``ExpoWeibull.cs``'s called
+  ``ExpoWeibull.sf`` -- in both the printed values were right for the
+  function being documented and wrong for the one being called, so the
+  example read as if the two were the same. ``LogLogistic.sf`` carried
+  values from some other parameterisation entirely (0.622 where the
+  answer is 0.988), ``LogLogistic.mean(3, 4)`` claimed ``3`` against
+  ``3.3322`` (the closed form is ``alpha (pi/beta) / sin(pi/beta)``), and
+  ``Exponential.qf`` had stale digits.
+
+  The other four were the ``CustomDistribution`` example -- the Gompertz
+  walkthrough -- whose multi-line ``def`` used ``>>>`` where doctest
+  needs ``...``, so pasting it raised ``IndentationError``.
+
+  In every case the code was right and the documentation was wrong, which
+  is the reassuring direction, but a reader checking their understanding
+  against these would have been misled. They accumulated precisely
+  because the doctests were not run, which is addressed above.
+
+- **Documented why a Turnbull fit does not equal a Kaplan-Meier fit.**
+  ``Turnbull.fit`` defaults to ``turnbull_estimator="Fleming-Harrington"``
+  while ``KaplanMeier.fit`` is, unsurprisingly, KM. The Turnbull EM
+  recovers the same ``r`` and ``d`` either way; the three estimator
+  options then differ in how those become a survival curve. Comparing the
+  default against ``KaplanMeier`` and reading the gap as a defect is an
+  easy mistake — it is the one #260 was filed on, and the one made again
+  while checking whether #260 was still open.
+
+  On ``x=[2,3,3,4,5,6], tl=[0,0,1,1,2,2]`` the survival at 2 is 0.750
+  under KM, 0.765 under FH and 0.779 under NA. With the estimator matched,
+  Turnbull agrees with ``KaplanMeier`` to around 1e-9 on both ``sf`` and
+  ``cb``, across right-censored and left-truncated data.
+
+  Only the KM option is the non-parametric MLE. Maximising the truncated
+  likelihood directly over the mass vector gives 0.750; FH's 0.765 scores
+  worse on that same likelihood, as an ``exp(-H)`` construction should.
+  FH is the default because it behaves better in the far tails and on
+  zero-inflated data (v0.8.0), not because it maximises anything. The
+  docstring now says all of this, and a test pins the three figures and
+  the NPMLE identity against a brute-force maximisation.
+
+  No behaviour change.
+
 v0.19.0 (4 August 2026)
 -----------------------
 

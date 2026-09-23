@@ -64,7 +64,7 @@ def needs_full_likelihood_split(data: SurpyvalData) -> bool:
     )
 
 
-def _exp_neg_ll_parts(data: SurpyvalData):
+def _exp_neg_ll_parts(data: SurpyvalData) -> tuple:
     """
     Pre-extract the arrays the exponential negative log-likelihood needs,
     so the optimiser's objective is pure vectorised arithmetic.
@@ -86,7 +86,7 @@ def _exp_neg_ll_parts(data: SurpyvalData):
     )
 
 
-def _exp_neg_ll(theta: float, parts) -> float:
+def _exp_neg_ll(theta: float, parts: tuple) -> float:
     """
     Negative log-likelihood of an exponential distribution with rate
     ``lambda = exp(theta)`` under the full data model (all censoring
@@ -221,7 +221,7 @@ def _exp_max_ll(
 _LOG_BETA_BOUNDS = (-3.0, 3.0)
 
 
-def _wei_neg_ll(theta: NDArray, parts) -> float:
+def _wei_neg_ll(theta: NDArray, parts: tuple) -> float:
     """
     Negative log-likelihood of a Weibull distribution with scale
     ``alpha = exp(theta[0])`` and shape ``beta = exp(theta[1])`` under
@@ -247,7 +247,7 @@ def _wei_neg_ll(theta: NDArray, parts) -> float:
     log_alpha, log_beta = float(theta[0]), float(theta[1])
     beta = np.exp(log_beta)
 
-    def z(x):
+    def z(x: NDArray) -> NDArray:
         # (x / alpha) ** beta on the log scale; z(0) = 0
         with np.errstate(all="ignore"):
             return np.where(x > 0, np.exp(beta * (np.log(x) - log_alpha)), 0.0)
@@ -420,14 +420,14 @@ def deviance_split(
             data, box, np.array([log_alpha0, 0.0])
         )
 
-        def child_ll(child_data):
+        def child_ll(child_data: SurpyvalData) -> float:
             return _wei_max_ll(child_data, box, parent_theta)[0]
 
     else:
         bounds = (theta0 - 15.0, theta0 + 15.0)
         parent_ll = _exp_max_ll(data, bounds)
 
-        def child_ll(child_data):
+        def child_ll(child_data: SurpyvalData) -> float:
             return _exp_max_ll(child_data, bounds)
 
     for u in feature_indices_in:

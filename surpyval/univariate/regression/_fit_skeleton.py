@@ -10,9 +10,10 @@ family supplies only its optimiser strategy and covariate-link object
 separate: its life-model parameter juggling does not fit this shape.
 """
 
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
+import numpy.typing as npt
 from autograd import jacobian
 from scipy.optimize import minimize
 
@@ -20,6 +21,7 @@ from surpyval.univariate.parametric.fitters import (
     bounds_convert,
     preconditioned_bfgs,
 )
+from surpyval.univariate.parametric.parametric_fitter import Boxable, Numeric
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .parametric_regression_model import ParametricRegressionModel
@@ -34,21 +36,72 @@ class LogLinearPhi:
     constructor argument.
     """
 
-    def __init__(self, name: str, phi_param_map: dict):
+    #: The two historical serialisation names for this link: PH models
+    #: are serialised with ``e^``, AFT and PO with ``exp``. Both spell
+    #: the same function.
+    NAME_E = "Log Linear [e^(beta'Z)]"
+    NAME_EXP = "Log Linear [exp(beta'Z)]"
+
+    def __init__(self, name: str, phi_param_map: dict) -> None:
         self.name = name
         self.phi_param_map = phi_param_map
 
     @staticmethod
-    def phi(Z, *params):
+    def phi(Z: Numeric, *params: Boxable) -> Boxable:
         return np.exp(np.dot(Z, np.array(params)))
 
     @staticmethod
-    def phi_bounds(Z):
+    def phi_bounds(Z: npt.NDArray) -> tuple:
         return ((None, None),) * Z.shape[1]
 
     @staticmethod
-    def make_param_map(Z):
+    def make_param_map(Z: npt.NDArray) -> dict[str, int]:
         return {"beta_" + str(i): i for i in range(Z.shape[1])}
+
+
+def make_objective(
+    fitter: Any, data: SurpyvalData, inv_trans: Callable, const: Callable
+) -> Callable:
+    """The optimiser objective every regression fitter used to build
+    inline: the fitter's negative log-likelihood evaluated in the
+    transformed (unconstrained, fixed-parameters-removed) search space.
+    """
+
+    def fun(params: npt.NDArray) -> Boxable:
+        return fitter.neg_ll(data, *inv_trans(const(params)))
+
+    return fun
+
+
+class MirroredDistributionAttrs:
+    """Class-level declarations for the attributes
+    :func:`mirror_distribution` sets, so a fitter that inherits this
+    alongside its other mixins has them visible to the type checker."""
+
+    dist: Any
+    k_dist: int
+    bounds: tuple
+    support: tuple
+    param_names: list
+    param_map: dict
+
+
+def mirror_distribution(fitter: Any, distribution: Any) -> None:
+    """Copy a distribution's metadata onto a regression fitter.
+
+    Every parametric regression fitter starts by mirroring the same six
+    attributes of its underlying distribution -- ``dist``, ``k_dist``,
+    ``bounds``, ``support``, ``param_names`` and the name-to-index
+    ``param_map`` -- and each family's ``__init__`` carried the block
+    verbatim. The ``*_dist`` method aliases stay with each family: which
+    ones it needs depends on which identities it implements.
+    """
+    fitter.dist = distribution
+    fitter.k_dist = len(distribution.param_names)
+    fitter.bounds = distribution.bounds
+    fitter.support = distribution.support
+    fitter.param_names = distribution.param_names
+    fitter.param_map = {v: i for i, v in enumerate(distribution.param_names)}
 
 
 class HazardIdentitiesMixin:
@@ -64,38 +117,50 @@ class HazardIdentitiesMixin:
     point — the fit fails rather than returning an invalid model.
     """
 
-    def sf(self, x, Z, *params):
+    def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
+        # Probability-plot x axis: a location shift is the only x
+        # transform any of these hazard-based fitters uses.
+        return x - gamma
+
+    if TYPE_CHECKING:
+        # The host class supplies these; declared rather than defined so
+        # a fitter that forgets one gets the AttributeError that names
+        # it (the same pattern as ParametricFitter's contract block).
+        def Hf(self, x: Any, Z: Any, *params: Any) -> Any: ...
+        def hf(self, x: Any, Z: Any, *params: Any) -> Any: ...
+
+    def sf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         return np.exp(-self.Hf(x, Z, *params))
 
-    def ff(self, x, Z, *params):
+    def ff(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         return -np.expm1(-self.Hf(x, Z, *params))
 
-    def df(self, x, Z, *params):
+    def df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         return self.hf(x, Z, *params) * np.exp(-self.Hf(x, Z, *params))
 
-    def log_sf(self, x, Z, *params):
+    def log_sf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         return -self.Hf(x, Z, *params)
 
-    def log_ff(self, x, Z, *params):
+    def log_ff(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         return np.log(self.ff(x, Z, *params))
 
-    def log_df(self, x, Z, *params):
+    def log_df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         return np.log(self.hf(x, Z, *params)) - self.Hf(x, Z, *params)
 
 
 def prepare_regression_fit(
     fitter: Any,
-    x,
-    Z,
-    c,
-    n,
-    t,
-    init,
-    fixed,
-    phi_bounds,
-    phi_param_map,
-    phi_init=None,
-):
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+    t: "npt.ArrayLike | None",
+    init: "npt.ArrayLike | None",
+    fixed: "dict[str, float] | None",
+    phi_bounds: "Callable[[npt.NDArray], tuple] | tuple",
+    phi_param_map: "Callable[[npt.NDArray], dict] | dict",
+    phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
+) -> tuple[SurpyvalData, tuple]:
     """Common head of every parametric-regression ``fit``.
 
     Returns ``(data, fun_builder_inputs)`` where the second element is the
@@ -148,8 +213,8 @@ def assemble_regression_model(
     reg_model: Any,
     data: SurpyvalData,
     res: Any,
-    params,
-    bounds,
+    params: npt.ArrayLike,
+    bounds: tuple,
     pmap: dict,
     fixed: dict,
     neg_ll: "float | None" = None,
@@ -162,9 +227,10 @@ def assemble_regression_model(
     model.reg_model = reg_model
     model.kind = kind
     model.distribution = fitter.dist
-    model.params = np.array(params)
-    model.dist_params = np.array(params[: fitter.k_dist])
-    model.phi_params = np.array(params[fitter.k_dist :])
+    params_arr = np.array(params)
+    model.params = params_arr
+    model.dist_params = np.array(params_arr[: fitter.k_dist])
+    model.phi_params = np.array(params_arr[fitter.k_dist :])
     model.res = res
     model._neg_ll = float(res.fun) if neg_ll is None else neg_ll
     model.fixed = fixed
@@ -174,7 +240,7 @@ def assemble_regression_model(
     return model
 
 
-def optimise_ph(fun: Callable, init_t):
+def optimise_ph(fun: Callable, init_t: npt.NDArray) -> Any:
     """Preconditioned BFGS on the analytic gradient, TNC as the fallback.
 
     The historical ladder was ``minimize(fun, init_t)`` followed by TNC
@@ -234,7 +300,7 @@ def optimise_ph(fun: Callable, init_t):
     return best
 
 
-def optimise_nm_tnc(fun: Callable, init_t):
+def optimise_nm_tnc(fun: Callable, init_t: npt.NDArray) -> Any:
     """AFT/PO's historical ladder: Nelder-Mead, then TNC kept only on
     success."""
     res = minimize(

@@ -1,5 +1,10 @@
 import warnings
+from typing import TYPE_CHECKING, Any, Callable
 
+if TYPE_CHECKING:
+    from ..parametric import Parametric
+
+import numpy.typing as npt
 from autograd import hessian, jacobian
 
 from surpyval import np
@@ -7,7 +12,18 @@ from surpyval import np
 from . import fallback_minimize
 
 
-def mps_fun(params, dist, x, inv_trans, const, c, n, tl, tr, offset):
+def mps_fun(
+    params: npt.NDArray,
+    dist: Any,
+    x: npt.NDArray,
+    inv_trans: Callable[..., Any],
+    const: Callable[..., Any],
+    c: npt.NDArray | None,
+    n: npt.NDArray,
+    tl: npt.NDArray | None,
+    tr: npt.NDArray | None,
+    offset: bool,
+) -> Any:
     if offset:
         gamma = inv_trans(const(params))[0]
         x_new = x - gamma
@@ -37,7 +53,7 @@ def mps_fun(params, dist, x, inv_trans, const, c, n, tl, tr, offset):
     return D
 
 
-def mps(model):
+def mps(model: "Parametric") -> Any:
     """
     MPS: Maximum Product Spacing
 

@@ -1,4 +1,7 @@
+from typing import Any, Callable
+
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
 from surpyval import Weibull
@@ -60,25 +63,25 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     =========================
     Distribution        : Weibull
     Fitted by           : MLE
-    Restoration Factor  : -0.1730179893443181
+    Restoration Factor  : -0.1730184624683848
     Parameters          :
-        alpha: 1.3919016662855024
-         beta: 5.008872636271443
+         alpha: 1.3919045968817332
+          beta: 5.008861189641614
     >>>
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
     >>> np_model.mcf(np.array([1, 2, 3, 4, 5, 6]))
-    array([0.1696    , 1.181     , 2.287     , 3.6696    , 5.58237921,
-           8.54474127])
+    array([0.1696    , 1.181     , 2.287     , 3.6694    , 5.58237925,
+           8.54474531])
     """
 
     @staticmethod
-    def _build_sampler(model):
+    def _build_sampler(model: Any) -> Callable:
         base_params = model.model.params
         q = model.q
         j = 0
 
-        def sample(ui):
+        def sample(ui: float) -> float:
             nonlocal j
             # The jth interarrival is the base lifetime scaled by (1 + q) ** j,
             # so its quantiles are the base quantiles multiplied by the same
@@ -89,7 +92,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
 
         return sample
 
-    def _make_model(self, underlying_model, q):
+    def _make_model(self, underlying_model: Any, q: float) -> "RenewalModel":
         return RenewalModel(
             underlying_model,
             q,
@@ -100,7 +103,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             restoration_bounds=(-1, None),
         )
 
-    def _rescaled_increments(self, model, data):
+    def _rescaled_increments(self, model: Any, data: Any) -> np.ndarray:
         """
         Per-interval cumulative-hazard increments (time-rescaling residuals)
         for a fitted G1 renewal model. The ``j``-th interarrival of an item is
@@ -119,13 +122,20 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         )
         return np.asarray(model.model.Hf(scaled), dtype=float)
 
-    def _refit(self, model, data):
+    def _refit(self, model: Any, data: Any) -> Any:
         """Refit this model family on ``data`` with the same lifetime
         distribution; used by the Cramer-von Mises bootstrap."""
         return self.fit_from_recurrent_data(data, dist=model.model.dist)
 
-    def create_negll_func(self, x, i, c, n, dist):
-        def negll_func(params):
+    def create_negll_func(
+        self,
+        x: np.ndarray,
+        i: np.ndarray,
+        c: np.ndarray,
+        n: np.ndarray,
+        dist: Any,
+    ) -> Callable:
+        def negll_func(params: np.ndarray) -> float:
             ll = 0
             q = params[0]
             dist_params = params[1:]
@@ -154,7 +164,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         return negll_func
 
     @staticmethod
-    def _check_dist_eligible(dist):
+    def _check_dist_eligible(dist: Any) -> None:
         """
         The G1 renewal process scales interarrival times by ``(1 + q) ** j``.
         For the scaled times to remain valid the base distribution must be a
@@ -169,7 +179,12 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                 "LogNormal).".format(dist.name, dist.support)
             )
 
-    def fit_from_recurrent_data(self, data, dist=Weibull, init=None):
+    def fit_from_recurrent_data(
+        self,
+        data: Any,
+        dist: Any = Weibull,
+        init: "ArrayLike | None" = None,
+    ) -> "RenewalModel":
         """
         Fit the generalized renewal model from recurrent data.
 
@@ -208,10 +223,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Restoration Factor  : 0.4270960618530103
+        Restoration Factor  : 0.3402789091696592
         Parameters          :
-            alpha: 1.3494830373118245
-             beta: 2.7838386997223212
+             alpha: 1.4115217370254167
+              beta: 3.5499343659245564
         """
         self._check_dist_eligible(dist)
         validate_renewal_censoring(data.c, type(self).__name__)
@@ -225,7 +240,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         # The G1 likelihood only needs ``q > -1``, so it is optimised directly
         # under simple box bounds rather than an unconstrained transform.
         # result is sensitive to the initial value of q.
-        def fit_once(x0):
+        def fit_once(x0: np.ndarray) -> Any:
             return minimize(
                 neg_ll,
                 np.asarray(x0, dtype=float),
@@ -248,7 +263,15 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         self._attach_inference(out, neg_ll, res.x, len(data.x), res, data)
         return out
 
-    def fit(self, x, i=None, c=None, n=None, dist=Weibull, init=None):
+    def fit(
+        self,
+        x: ArrayLike,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        n: "ArrayLike | None" = None,
+        dist: Any = Weibull,
+        init: "ArrayLike | None" = None,
+    ) -> "RenewalModel":
         """
         Fit the generalized renewal model.
 
@@ -290,15 +313,17 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Restoration Factor  : 0.4270960618530103
+        Restoration Factor  : 0.3402789091696592
         Parameters          :
-            alpha: 1.3494830373118245
-             beta: 2.7838386997223212
+             alpha: 1.4115217370254167
+              beta: 3.5499343659245564
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist=dist, init=init)
 
-    def fit_from_parameters(self, params, q, dist=Weibull):
+    def fit_from_parameters(
+        self, params: ArrayLike, q: float, dist: Any = Weibull
+    ) -> "RenewalModel":
         """
         Fit the generalized renewal model from given parameters.
 
@@ -325,10 +350,10 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         >>> from surpyval.recurrent import GeneralizedOneRenewal
         >>>
         >>> model = GeneralizedOneRenewal.fit_from_parameters(
-            [10, 2],
-            0.2,
-            dist=Weibull
-        )
+        ...     [10, 2],
+        ...     0.2,
+        ...     dist=Weibull
+        ... )
         >>> model
         G1 Renewal SurPyval Model
         =========================

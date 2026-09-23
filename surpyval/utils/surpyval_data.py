@@ -1,6 +1,7 @@
 import json
 from numbers import Number
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -246,7 +247,7 @@ class SurpyvalData:
             self.tr_unique = np.array([])
             self.n_t_unique = np.array([])
 
-    def to_xrd(self, estimator="Nelson-Aalen") -> tuple:
+    def to_xrd(self, estimator: str = "Nelson-Aalen") -> tuple:
         """
         Converts the data into the xrd format. If the data has right truncated
         observations or left or interval censored observations, the data is
@@ -296,7 +297,7 @@ class SurpyvalData:
         x = self.x[mask] if self.x.ndim == 1 else self.x[mask, 0]
         return x, self.n[mask]
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: Any) -> "SurpyvalData":
         # A scalar index on interval-censored (2-D) data used to flatten
         # one [xl, xr] row into two 1-D observations and crash the type
         # split; keep the row structure instead (#282).
@@ -326,7 +327,7 @@ class SurpyvalData:
     def __len__(self) -> int:
         return len(self.x)
 
-    def __iter__(self):
+    def __iter__(self) -> Any:
         return zip(self.x, self.c, self.n, self.t)
 
     def __repr__(self) -> str:

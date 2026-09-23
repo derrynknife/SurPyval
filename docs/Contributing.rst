@@ -22,10 +22,55 @@ documentation build from running on every change:
 
 Continuous integration (``.github/workflows/actions.yml``) therefore runs on
 **pull requests into develop or master** and on **pushes to master**, rather
-than on every push to every branch. Read the Docs is configured to build
-``master`` and tags only. The net effect is that the full test suite and the
-documentation build run once per pull request and once per release, instead of
-once per intermediate commit.
+than on every push to every branch. Not every job runs on every event:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Event
+     - Jobs
+   * - Pull request into ``develop``
+     - lint only (about a minute)
+   * - Pull request into ``master`` (the release)
+     - lint, the test suite across three interpreters, and the
+       documentation build (about ten minutes)
+   * - Push to ``master`` / tag
+     - lint and the test suite; Read the Docs rebuilds the hosted
+       documentation
+
+The test suite and the documentation build are both gated at the release
+rather than on every pull request because of what they cost: the suite is
+roughly nine minutes across the three interpreters and the documentation build
+around three from cold, against about one for lint. Paying that on every
+feature pull request made the edit-review loop the slowest part of working on
+the package, and with a single maintainer running the suite locally before
+pushing, the pull-request run was mostly confirming what was already known.
+
+The trade-off is real and worth understanding before you rely on it. A failure
+that appears on only one interpreter, or a change that breaks a documentation
+example, is now found when the release pull request is opened -- with a
+release's worth of commits to search through rather than one. So:
+
+* Run the suite locally before pushing, and across more than one interpreter
+  when you have touched anything numerical. ``scripts/check_all_pythons.py``
+  does exactly that -- it runs what continuous integration would have run, on
+  3.11, 3.12 and 3.13:
+
+  .. code-block:: bash
+
+      python scripts/check_all_pythons.py                 # all three
+      python scripts/check_all_pythons.py 3.12            # just one
+      python scripts/check_all_pythons.py --skip-install  # reuse as-is
+
+  It keeps its environments in ``.venvs/`` (git-ignored) and reuses them, so
+  only the first run pays for the installs. It uses ``uv`` when that is
+  available and falls back to ``venv`` and ``pip`` when it is not.
+
+* Build the documentation locally when you change the behaviour of a public
+  function, since documentation cells call the real API.
+* On a long-running branch, open the release pull request early and let it sit,
+  so the full run has somewhere to fail before the release itself.
 
 Documentation
 -------------
@@ -41,9 +86,15 @@ To build the documentation locally:
 
 .. code-block:: bash
 
-    pip install -e .
-    pip install -r docs/requirements.txt
-    sphinx-build -b html docs docs/_build/html
+    pip install -e ".[docs]"
+    sphinx-build -b html -W --keep-going docs docs/_build/html
+
+``-W`` turns warnings into errors, which is how continuous integration and
+Read the Docs both build. A Sphinx warning is rarely cosmetic -- a broken
+cross-reference silently renders as plain text, a mistyped ``autoclass`` path
+drops the class from the page entirely -- so the build is kept at zero
+warnings rather than at "succeeded, N warnings". ``--keep-going`` reports all
+of them instead of stopping at the first.
 
 When writing documentation, prefer ``.. jupyter-execute::`` over static
 ``.. code-block:: python`` blocks with pasted outputs or screenshots. All

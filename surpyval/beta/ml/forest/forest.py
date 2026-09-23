@@ -3,19 +3,27 @@ from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.beta.ml.forest.tree import SurvivalTree
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils.score import score
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class RandomSurvivalForest(SerialisableMixin):
-    """Random Survival Forest
+    """Random survival forest: an ensemble of survival trees.
 
-    Specs:
-    - n_trees `Tree`'s trained, each given independently bootstrapped samples
-    - Each tree is trained
-    - Each predicition is evaluated for each tree, the Weibull models are
-      collected, then averaged
+    ``n_trees`` instances of
+    :class:`~surpyval.beta.ml.forest.tree.SurvivalTree` are fitted, each
+    to an independently bootstrapped sample of the data and each
+    considering a random subset of the features at every split. A
+    prediction evaluates all of them and averages the fitted models
+    their leaves return, which trades the variance of one deep tree for
+    the bias of an average.
+
+    Constructed by :meth:`fit` rather than directly.
     """
 
     def __init__(
@@ -29,7 +37,7 @@ class RandomSurvivalForest(SerialisableMixin):
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
         kind: str = "weibull",
-    ):
+    ) -> None:
         self.data: SurpyvalData = data
         Z = np.asarray(Z)
         if Z.ndim == 1:
@@ -85,7 +93,7 @@ class RandomSurvivalForest(SerialisableMixin):
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
         kind: str = "weibull",
-    ):
+    ) -> "RandomSurvivalForest":
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
         data = SurpyvalData(
@@ -210,11 +218,9 @@ class RandomSurvivalForest(SerialisableMixin):
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RandomSurvivalForest":
         """Reconstruct a fitted forest from a :meth:`to_dict` dictionary."""
-        if model_dict.get("model") != "RandomSurvivalForest":
-            raise ValueError(
-                "Must create a RandomSurvivalForest from a "
-                "RandomSurvivalForest model dict"
-            )
+        require_model_tag(
+            model_dict, "RandomSurvivalForest", "a random survival forest"
+        )
         forest = cls.__new__(cls)
         forest.kind = model_dict["kind"]
         forest.n_trees = model_dict["n_trees"]

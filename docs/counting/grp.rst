@@ -5,8 +5,8 @@ The generalized renewal (Kijima virtual-age) process; ``kijima="i"`` or ``"ii"``
 
 .. class:: GeneralizedRenewal
 
-   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal_.fit
-   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal_.fit_from_recurrent_data
-   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal_.fit_from_parameters
-   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal_.kijima_i
-   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal_.kijima_ii
+   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.fit
+   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.fit_from_recurrent_data
+   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.fit_from_parameters
+   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.kijima_i
+   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.kijima_ii

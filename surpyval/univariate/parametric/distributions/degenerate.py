@@ -1,3 +1,7 @@
+from typing import Any
+
+import numpy.typing as npt
+
 """The two degenerate lifetime distributions.
 
 ``InstantlyOccurs`` is the point mass at zero (every unit has already
@@ -26,43 +30,43 @@ class NeverOccurs(Distribution):
     name = "NeverOccurs"
 
     @classmethod
-    def sf(cls, x):
+    def sf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.ones_like(x).astype(float)
 
     @classmethod
-    def ff(cls, x):
+    def ff(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(x).astype(float)
 
     @classmethod
-    def df(cls, x):
+    def df(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(x).astype(float)
 
     @classmethod
-    def hf(cls, x):
+    def hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(x).astype(float)
 
     @classmethod
-    def Hf(cls, x):
+    def Hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(x).astype(float)
 
     @classmethod
-    def qf(cls, u):
+    def qf(cls, u: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.full_like(np.asarray(u, dtype=float), np.inf)
 
     @classmethod
-    def mean(cls):
+    def mean(cls, *args: Any, **kwargs: Any) -> float:
         return np.inf
 
     @classmethod
-    def random(cls, size):
+    def random(cls, size: int, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.ones(size) * np.inf
 
     @classmethod
-    def to_dict(cls):
+    def to_dict(cls) -> dict[str, Any]:
         return stamp_schema({"model": cls.name})
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict[str, Any]) -> type["Distribution"]:
         return cls
 
 
@@ -72,43 +76,43 @@ class InstantlyOccurs(Distribution):
     name = "InstantlyOccurs"
 
     @classmethod
-    def sf(cls, x):
+    def sf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(x).astype(float)
 
     @classmethod
-    def ff(cls, x):
+    def ff(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.ones_like(x).astype(float)
 
     @classmethod
-    def df(cls, x):
+    def df(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         # Point mass at zero: the "density" is the degenerate spike there.
         x = np.asarray(x, dtype=float)
         return np.where(x == 0, np.inf, 0.0)
 
     @classmethod
-    def hf(cls, x):
+    def hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.full_like(np.asarray(x, dtype=float), np.inf)
 
     @classmethod
-    def Hf(cls, x):
+    def Hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.full_like(x, np.inf, dtype=float)
 
     @classmethod
-    def qf(cls, u):
+    def qf(cls, u: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(np.asarray(u, dtype=float))
 
     @classmethod
-    def mean(cls):
+    def mean(cls, *args: Any, **kwargs: Any) -> float:
         return 0.0
 
     @classmethod
-    def random(cls, size):
+    def random(cls, size: int, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros(size)
 
     @classmethod
-    def to_dict(cls):
+    def to_dict(cls) -> dict[str, Any]:
         return stamp_schema({"model": cls.name})
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict[str, Any]) -> type["Distribution"]:
         return cls

@@ -1,9 +1,17 @@
+import numpy.typing as npt
+
 from surpyval import np
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+    OptimisedFitMixin,
+    ParametricFitter,
+)
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
-class Uniform_(ParametricFitter):
-    def __init__(self, name):
+class Uniform_(OptimisedFitMixin, ParametricFitter):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -19,10 +27,13 @@ class Uniform_(ParametricFitter):
             y_ticks=np.linspace(0, 1, 21)[1:-1],
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
-        return np.min(x) - 1.0, np.max(x) + 1.0
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
+        x = data.x
+        return np.array([np.min(x) - 1.0, np.max(x) + 1.0], dtype=float)
 
-    def sf(self, x, a, b):
+    def sf(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""
 
         Survival (or Reliability) function for the Uniform Distribution:
@@ -56,41 +67,7 @@ class Uniform_(ParametricFitter):
         """
         return 1 - self.ff(x, a, b)
 
-    def cs(self, x, X, a, b):
-        r"""
-
-        Survival (or Reliability) function for the Uniform Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        a : numpy array or scalar
-            The lower parameter for the Uniform distribution
-        b : numpy array or scalar
-            The upper parameter for the Uniform distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Uniform
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Uniform.cs(x, 4, 0, 10)
-        array([0.83333333, 0.66666667, 0.5       , 0.33333333, 0.16666667])
-        """
-        return self.sf(x + X, a, b) / self.sf(X, a, b)
-
-    def ff(self, x, a, b):
+    def ff(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the Uniform Distribution:
@@ -119,7 +96,7 @@ class Uniform_(ParametricFitter):
         >>> import numpy as np
         >>> from surpyval import Uniform
         >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Uniform.sf(x, 0, 6)
+        >>> Uniform.ff(x, 0, 6)
         array([0.16666667, 0.33333333, 0.5       , 0.66666667, 0.83333333])
         """
         f = np.zeros_like(x)
@@ -128,7 +105,7 @@ class Uniform_(ParametricFitter):
         f = np.where(((x <= b) & (x >= a)), (x - a) / (b - a), f)
         return f
 
-    def df(self, x, a, b):
+    def df(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the Uniform Distribution:
@@ -166,7 +143,7 @@ class Uniform_(ParametricFitter):
         d = np.where(((x <= b) & (x >= a)), 1.0 / (b - a), d)
         return d
 
-    def hf(self, x, a, b):
+    def hf(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Uniform Distribution:
@@ -200,7 +177,7 @@ class Uniform_(ParametricFitter):
         """
         return self.df(x, a, b) / self.sf(x, a, b)
 
-    def log_df(self, x, a, b):
+    def log_df(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""Log density, :math:`-\ln(b - a)` on the support.
 
         Defined directly rather than through the generic
@@ -215,7 +192,7 @@ class Uniform_(ParametricFitter):
         inside = (x >= a) & (x <= b)
         return np.where(inside, -np.log(b - a), -np.inf)
 
-    def Hf(self, x, a, b):
+    def Hf(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Uniform Distribution:
@@ -249,18 +226,18 @@ class Uniform_(ParametricFitter):
         """
         return -np.log(self.sf(x, a, b))
 
-    def qf(self, p, a, b):
+    def qf(self, u: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Uniform Distribution:
 
         .. math::
-            q(p) = a + p(b - a)
+            q(u) = a + u(b - a)
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
@@ -271,19 +248,19 @@ class Uniform_(ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Uniform distribution at each value p.
+            The quantiles for the Uniform distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Uniform
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Uniform.qf(p, 0, 6)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Uniform.qf(u, 0, 6)
         array([0.6, 1.2, 1.8, 2.4, 3. ])
         """
-        return a + p * (b - a)
+        return a + u * (b - a)
 
-    def mean(self, a, b):
+    def mean(self, a: Boxable, b: Boxable) -> Boxable:
         r"""
 
         Mean of the Uniform distribution
@@ -313,18 +290,18 @@ class Uniform_(ParametricFitter):
         """
         return 0.5 * (a + b)
 
-    def moment(self, n, a, b):
+    def moment(self, m: int, a: Boxable, b: Boxable) -> Boxable:
         r"""
 
-        n-th (non central) moment of the Uniform distribution
+        m-th (non central) moment of the Uniform distribution
 
         .. math::
-            M(n) = \frac{1}{n +1} \sum_{i=0}^{n}a^ib^{n-i}
+            M(m) = \frac{1}{m +1} \sum_{i=0}^{m}a^ib^{m-i}
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         a : numpy array or scalar
             The lower parameter for the Uniform distribution
@@ -341,17 +318,17 @@ class Uniform_(ParametricFitter):
         --------
         >>> from surpyval import Uniform
         >>> Uniform.moment(2, 0, 6)
-        12.0
+        np.float64(12.0)
         """
-        if n == 0:
+        if m == 0:
             return 1
         else:
-            out = np.zeros(n + 1)
-            for i in range(n + 1):
-                out[i] = a**i * b ** (n - i)
-            return np.sum(out) / (n + 1)
+            out = np.zeros(m + 1)
+            for i in range(m + 1):
+                out[i] = a**i * b ** (m - i)
+            return np.sum(out) / (m + 1)
 
-    def entropy(self, a, b):
+    def entropy(self, a: Boxable, b: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the Uniform distribution.
@@ -377,11 +354,11 @@ class Uniform_(ParametricFitter):
         --------
         >>> from surpyval import Uniform
         >>> Uniform.entropy(0, 6)
-        1.791759469228055
+        np.float64(1.791759469228055)
         """
         return np.log(b - a)
 
-    def _closed_form_mle(self, data):
+    def _closed_form_mle(self, data: SurpyvalData) -> npt.NDArray | None:
         if np.asarray(data.x).ndim == 2 or (data.c == 2).any():
             # The closed-form min/max estimator is not the MLE with
             # interval-censored rows (an interval term favours shrinking
@@ -421,16 +398,18 @@ class Uniform_(ParametricFitter):
 
         return np.array([np.min(data.x), np.max(data.x)])
 
-    def mpp_x_transform(self, x):
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return y
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return y
 
-    def unpack_rr(self, params, rr):
+    def unpack_rr(
+        self, params: npt.NDArray, rr: str
+    ) -> tuple[Boxable, Boxable]:
         if rr == "y":
             a = -params[1] / params[0]
             b = (1 - params[1]) / params[0]
@@ -440,7 +419,7 @@ class Uniform_(ParametricFitter):
 
         return a, b
 
-    def _mom(self, x):
+    def _mom(self, x: npt.NDArray) -> tuple[float, float]:
         mu_1 = np.mean(x)
         mu_2 = np.mean(x**2)
 
@@ -449,8 +428,10 @@ class Uniform_(ParametricFitter):
         b = mu_1 + d
         return a, b
 
-    def _plot_x_bounds(self, x, params):
+    def _plot_x_bounds(
+        self, x: npt.NDArray, params: npt.NDArray
+    ) -> tuple[float, float] | None:
         return float(np.min(params)), float(np.max(params))
 
 
-Uniform: ParametricFitter = Uniform_("Uniform")
+Uniform: Uniform_ = Uniform_("Uniform")

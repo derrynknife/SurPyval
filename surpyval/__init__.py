@@ -1,4 +1,4 @@
-__version__ = "0.19.0"
+__version__ = "0.20.0"
 
 from autograd import numpy as np
 
@@ -39,6 +39,7 @@ from surpyval.univariate.parametric import (
     Geometric,
     Gumbel,
     GumbelLEV,
+    Hypoexponential,
     InstantlyOccurs,
     Logistic,
     LogLogistic,

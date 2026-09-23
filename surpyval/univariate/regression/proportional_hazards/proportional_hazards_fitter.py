@@ -1,11 +1,22 @@
 import inspect
-from typing import Any
+from typing import Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
+
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+)
+from surpyval.utils.surpyval_data import SurpyvalData
+
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
+    LogLinearPhi,
+    MirroredDistributionAttrs,
     assemble_regression_model,
+    make_objective,
+    mirror_distribution,
     optimise_ph,
     prepare_regression_fit,
 )
@@ -23,30 +34,37 @@ class Phi:
 
 
 class ProportionalHazardsFitter(
-    HazardIdentitiesMixin, TVCFitMixin, DataFrameRegressionMixin
+    MirroredDistributionAttrs,
+    HazardIdentitiesMixin,
+    TVCFitMixin,
+    DataFrameRegressionMixin,
 ):
     def __init__(
         self,
-        name,
-        dist,
-        phi,
-        phi_name,
-        phi_bounds,
-        phi_param_map,
-        phi_init=None,
-    ):
-        if str(inspect.signature(phi)) != "(Z, *params)":
+        name: str,
+        dist: Any,
+        phi: Callable,
+        phi_name: str,
+        phi_bounds: "Callable[[npt.NDArray], tuple] | tuple",
+        phi_param_map: "Callable[[npt.NDArray], dict] | dict",
+        phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
+    ) -> None:
+        # Compare names and kinds rather than the signature's string
+        # form so an annotated phi (e.g. ``LogLinearPhi.phi``) passes.
+        phi_sig = list(inspect.signature(phi).parameters.values())
+        if not (
+            len(phi_sig) == 2
+            and phi_sig[0].name == "Z"
+            and phi_sig[0].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+            and phi_sig[1].name == "params"
+            and phi_sig[1].kind is inspect.Parameter.VAR_POSITIONAL
+        ):
             raise ValueError(
                 "PH function must have the signature '(Z, *params)'"
             )
 
         self.name = name
-        self.dist = dist
-        self.k_dist = len(self.dist.param_names)
-        self.bounds = self.dist.bounds
-        self.support = self.dist.support
-        self.param_names = self.dist.param_names
-        self.param_map = {v: i for i, v in enumerate(self.dist.param_names)}
+        mirror_distribution(self, dist)
         self.phi = phi
         self.phi_name = phi_name
         self.Hf_dist = self.dist.Hf
@@ -58,42 +76,27 @@ class ProportionalHazardsFitter(
         self.phi_bounds = phi_bounds
         self.phi_param_map = phi_param_map
 
-    def Hf(self, x, Z, *params):
+    def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         Hf_raw = self.Hf_dist(x, *dist_params)
         return self.phi(Z, *phi_params) * Hf_raw
 
-    def hf(self, x, Z, *params):
+    def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         hf_raw = self.hf_dist(x, *dist_params)
         return self.phi(Z, *phi_params) * hf_raw
 
-    def _parameter_initialiser_dist(self, x, c=None, n=None, t=None):
-        out = []
-        for low, high in self.bounds:
-            if (low is None) and (high is None):
-                out.append(0)
-            elif high is None:
-                out.append(low + 1.0)
-            elif low is None:
-                out.append(high - 1.0)
-            else:
-                out.append((high + low) / 2.0)
-
-        return out
-
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: Numeric, *params: Boxable) -> Numeric:
         return y
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
-
-    def random(self, size, Z, *params):
+    def random(
+        self, size: int, Z: npt.ArrayLike, *params: float
+    ) -> tuple[npt.NDArray, npt.NDArray]:
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         Z_arr = np.atleast_2d(np.asarray(Z, dtype=float))
@@ -108,11 +111,11 @@ class ProportionalHazardsFitter(
             Z_out.append(np.tile(row, (size, 1)))
         return np.concatenate(x), np.vstack(Z_out)
 
-    def neg_ll(self, data, *params):
+    def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
 
     @staticmethod
-    def create(distribution):
+    def create(distribution: Any) -> "ProportionalHazardsFitter":
         """
         Create a Proportional Hazards fitter for the given distribution using
         exp(beta'Z) as the hazard multiplier.
@@ -133,16 +136,16 @@ class ProportionalHazardsFitter(
         )
 
     @classmethod
-    def create_general_log_linear_fitter(cls, name, distribution):
+    def create_general_log_linear_fitter(
+        cls, name: str, distribution: Any
+    ) -> "ProportionalHazardsFitter":
         return cls(
             name,
             distribution,
-            lambda Z, *params: np.exp(np.dot(Z, np.array(params))),
-            "Log Linear [e^(beta'Z)]",
-            lambda Z: (((None, None),) * Z.shape[1]),
-            phi_param_map=lambda Z: {
-                "beta_" + str(i): i for i in range(Z.shape[1])
-            },
+            LogLinearPhi.phi,
+            LogLinearPhi.NAME_E,
+            LogLinearPhi.phi_bounds,
+            phi_param_map=LogLinearPhi.make_param_map,
             phi_init=lambda Z: np.zeros(Z.shape[1]),
         )
 
@@ -188,17 +191,13 @@ class ProportionalHazardsFitter(
 
         >>> from surpyval import WeibullPH
         >>> from surpyval.datasets import load_tires_data
-        >>> from autograd import numpy as anp
-        >>> import numpy as np
-        >>>
         >>> data = load_tires_data()
-        >>>
         >>> x = data['Survival'].values
         >>> c = data['Censoring'].values
         >>> Z = data[[
-            'Wedge gauge', 'Interbelt gauge', 'Peel force',
-            'Wedge gauge×peel force'
-        ]].values
+        ...     'Wedge gauge', 'Interbelt gauge', 'Peel force',
+        ...     'Wedge gauge×peel force'
+        ... ]].values
         >>> model = WeibullPH.fit(x=x, Z=Z, c=c)
         >>> model
         Parametric Regression SurPyval Model
@@ -208,13 +207,13 @@ class ProportionalHazardsFitter(
         Regression Model    : Log Linear [e^(beta'Z)]
         Fitted by           : MLE
         Distribution        :
-            alpha: 0.24255054642143947
-            beta: 16.057791674515805
+             alpha: 0.2425513627560218
+              beta: 16.057785182711932
         Regression Model    :
-            beta_0: -9.165062641226692
-            beta_1: -7.998599877425742
-            beta_2: -27.503283340963034
-            beta_3: 18.38550143851751
+            beta_0: -9.165062726518311
+            beta_1: -7.998573055929788
+            beta_2: -27.50318580568538
+            beta_3: 18.385445332039488
         >>> model = WeibullPH.fit(x=x, Z=Z, c=c, fixed={"beta": 15})
         >>> model
         Parametric Regression SurPyval Model
@@ -224,13 +223,13 @@ class ProportionalHazardsFitter(
         Regression Model    : Log Linear [e^(beta'Z)]
         Fitted by           : MLE
         Distribution        :
-            alpha: 0.23772915681951018
-            beta: 15.0
+             alpha: 0.237729668424067
+              beta: 15.0
         Regression Model    :
-            beta_0: -8.628333861229965
-            beta_1: -7.617541980158942
-            beta_2: -25.952407717383302
-            beta_3: 17.270173771235655
+            beta_0: -8.62832691738283
+            beta_1: -7.617529362323243
+            beta_2: -25.952367249502934
+            beta_3: 17.270148387391387
         """
         data, prep = prepare_regression_fit(
             self,
@@ -249,8 +248,7 @@ class ProportionalHazardsFitter(
 
         with np.errstate(all="ignore"):
 
-            def fun(params):
-                return self.neg_ll(data, *inv_trans(const(params)))
+            fun = make_objective(self, data, inv_trans, const)
 
             res = optimise_ph(fun, init_t)
 

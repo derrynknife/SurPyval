@@ -1,8 +1,10 @@
 import numpy as np
+import numpy.typing as npt
 from scipy.stats import chi2
 
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
 from surpyval.utils import xcnt_handler
+from surpyval.utils.linalg import safe_quadform
 
 
 class LogRankResult:
@@ -22,14 +24,21 @@ class LogRankResult:
         The weighting used for the test.
     """
 
-    def __init__(self, statistic, dof, p_value, weighting, strata=None):
+    def __init__(
+        self,
+        statistic: float,
+        dof: int,
+        p_value: float,
+        weighting: str,
+        strata: int | None = None,
+    ) -> None:
         self.statistic = statistic
         self.dof = dof
         self.p_value = p_value
         self.weighting = weighting
         self.strata = strata
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         header = "Stratified Log-Rank Test" if self.strata else "Log-Rank Test"
         out = (
             header
@@ -47,7 +56,16 @@ class LogRankResult:
         return out
 
 
-def _logrank_z_v(x, Z, c, n, groups, weighting, rho, gamma):
+def _logrank_z_v(
+    x: npt.NDArray,
+    Z: npt.NDArray,
+    c: npt.NDArray | None,
+    n: npt.NDArray | None,
+    groups: npt.NDArray,
+    weighting: str,
+    rho: float,
+    gamma: float,
+) -> tuple[npt.NDArray, npt.NDArray]:
     """Per-stratum (or whole-sample) weighted log-rank ``(z, V)``.
 
     Returns the length-``k`` vector of weighted observed-minus-expected
@@ -130,8 +148,15 @@ def _logrank_z_v(x, Z, c, n, groups, weighting, rho, gamma):
 
 
 def logrank(
-    x, Z, c=None, n=None, weighting="log-rank", rho=0, gamma=0, strata=None
-):
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    c: npt.ArrayLike | None = None,
+    n: npt.ArrayLike | None = None,
+    weighting: str = "log-rank",
+    rho: float = 0,
+    gamma: float = 0,
+    strata: npt.ArrayLike | None = None,
+) -> "LogRankResult":
     r"""
     The k-sample (weighted) log-rank test for the equality of survival
     distributions of right censored data.
@@ -260,10 +285,7 @@ def logrank(
     # last group
     z_r = z[:-1]
     V_r = V[:-1, :-1]
-    try:
-        statistic = float(z_r @ np.linalg.solve(V_r, z_r))
-    except np.linalg.LinAlgError:
-        statistic = float(z_r @ np.linalg.pinv(V_r) @ z_r)
+    statistic = safe_quadform(V_r, z_r)
 
     dof = k - 1
     p_value = float(chi2.sf(statistic, dof))

@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 
@@ -48,7 +50,16 @@ class RecurrentEventData:
     array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
     """
 
-    def __init__(self, x, i, c, n, e=None, tl=None, tr=None):
+    def __init__(
+        self,
+        x: npt.ArrayLike,
+        i: npt.ArrayLike,
+        c: npt.ArrayLike,
+        n: npt.ArrayLike,
+        e: "npt.ArrayLike | None" = None,
+        tl: "npt.ArrayLike | None" = None,
+        tr: "npt.ArrayLike | None" = None,
+    ) -> None:
         self.x = np.atleast_1d(x)
         self.i = np.atleast_1d(i)
         self.c = np.atleast_1d(c)
@@ -82,7 +93,9 @@ class RecurrentEventData:
             x_midpoints[self.c == -1, 0] = x_midpoints.min()
             self.midpoints = x_midpoints.mean(axis=1)
 
-    def to_xrd(self, estimator="Nelson-Aalen"):
+    def to_xrd(
+        self, estimator: str = "Nelson-Aalen"
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Convert the recurrent event data to xrd format.
 
@@ -145,7 +158,7 @@ class RecurrentEventData:
         return self.xrd
 
     @property
-    def event_types(self):
+    def event_types(self) -> list:
         """
         The distinct event types (marks) present in the data, excluding the
         ``None`` mark used for censored / end-of-observation rows. Returns an
@@ -155,7 +168,9 @@ class RecurrentEventData:
             return []
         return sorted({e for e in self.e if e is not None})
 
-    def to_cause_specific_xrd(self, cause):
+    def to_cause_specific_xrd(
+        self, cause: Any
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Convert the recurrent event data to xrd format for a single event
         type (cause). The at-risk set ``r`` is shared across all causes (an
@@ -204,7 +219,7 @@ class RecurrentEventData:
         )
         return x_unique, r, d_cause
 
-    def get_interarrival_times(self):
+    def get_interarrival_times(self) -> npt.NDArray:
         """
         Finds the interarrival times between events for each item. The class
         assumes that the time of the event is cumulative, sometimes it is
@@ -222,7 +237,7 @@ class RecurrentEventData:
         interarrival_times = [np.diff(arr, prepend=0) for arr in arrival_times]
         return np.concatenate(interarrival_times)
 
-    def get_previous_x(self, min_x=0):
+    def get_previous_x(self, min_x: float = 0) -> npt.NDArray:
         """
         Finds the previous event time for each event. This is useful for
         calculating the time since the last event. This method returns the
@@ -259,7 +274,7 @@ class RecurrentEventData:
 
         return np.concatenate(x_previous)
 
-    def split_for_nhpp_likelihood(self):
+    def split_for_nhpp_likelihood(self) -> dict:
         """Split the data into the pieces every NHPP-style likelihood
         needs: per-censoring-type event and previous-event times, the
         right-truncation window close, and the row masks (so regression
@@ -278,7 +293,13 @@ class RecurrentEventData:
             x_prev if x_prev.ndim == 1 else x_prev[:, 0]
         )  # not x[:, 0] (#288)
         x_prev_r = x_prev[:, 1] if x_prev.ndim == 2 else None
-        prev = x_prev_r if has_interval else x_prev_l
+        # ``has_interval`` implies 2-D data, so the right columns exist;
+        # assert the link for the type checker.
+        if has_interval:
+            assert x_r is not None and x_prev_r is not None
+            prev = x_prev_r
+        else:
+            prev = x_prev_l
 
         mask_o = c == 0
         mask_right = c == 1
@@ -294,7 +315,9 @@ class RecurrentEventData:
             "x_left": x_l[mask_left] if mask_left.any() else empty,
             "n_left": n[mask_left] if mask_left.any() else empty,
             "x_i_l": x_l[mask_i] if mask_i.any() else empty,
-            "x_i_r": x_r[mask_i] if mask_i.any() else empty,
+            "x_i_r": (
+                x_r[mask_i] if (mask_i.any() and x_r is not None) else empty
+            ),
             "n_i": n[mask_i] if mask_i.any() else empty,
             "mask_o": mask_o,
             "mask_right": mask_right,
@@ -312,7 +335,9 @@ class RecurrentEventData:
         ) = self.get_right_truncation_close()
         return out
 
-    def get_right_truncation_close(self):
+    def get_right_truncation_close(
+        self,
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Per-item integration bounds for the NHPP likelihood's right
         window-close.
@@ -357,7 +382,9 @@ class RecurrentEventData:
             np.array(rep_idx, dtype=int),
         )
 
-    def get_events_for_item(self, item):
+    def get_events_for_item(
+        self, item: Any
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Get all events for a specific item or subject.
 
@@ -375,7 +402,7 @@ class RecurrentEventData:
         mask = self.i == item
         return self.x[mask], self.c[mask], self.n[mask]
 
-    def get_times_to_first_events(self):
+    def get_times_to_first_events(self) -> "SurpyvalData":
         """
         Get the times to the first events for each item or subject. In the
         estimation of recurrent or renewal events it can be helpful to know
@@ -394,7 +421,7 @@ class RecurrentEventData:
         n_ttff = np.array([self.n[self.i == item][0] for item in self.items])
         return SurpyvalData(x_ttff, c_ttff, n_ttff)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: Any) -> "RecurrentEventData":
         return RecurrentEventData(
             self.x[index],
             self.i[index],
@@ -405,12 +432,12 @@ class RecurrentEventData:
             tr=self.tr[index],
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Any:
         # A stateless iterator: the old hand-rolled _index version broke
         # nested iteration over the same object.
         return zip(self.x, self.i, self.c, self.n)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"""
             RecurrentEventData(
     x={self.x},

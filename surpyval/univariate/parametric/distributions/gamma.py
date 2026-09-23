@@ -1,20 +1,22 @@
-import warnings
-
+import numpy.typing as npt
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
-from scipy.optimize import minimize
 from scipy.special import digamma, gammaincinv
-from scipy.stats import pearsonr
 
 from surpyval import np
-from surpyval.univariate.nonparametric import plotting_positions
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+    OptimisedFitMixin,
+    ParametricFitter,
+)
 from surpyval.utils.autograd_gamma_compat import gammainc as agammainc
 from surpyval.utils.autograd_gamma_compat import gammainccln as agammainccln
 from surpyval.utils.autograd_gamma_compat import gammaincln as agammaincln
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
-class Gamma_(ParametricFitter):
+class Gamma_(OptimisedFitMixin, ParametricFitter):
     r"""
 
     Class used to generate the Gamma class.
@@ -25,7 +27,7 @@ class Gamma_(ParametricFitter):
 
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
@@ -35,9 +37,29 @@ class Gamma_(ParametricFitter):
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="linear",
         )
+        # The Gamma has no linearising probability plot, for the same
+        # reason as the Beta above it: the CDF is the regularised
+        # incomplete gamma function, and the shape sits *inside* that
+        # special function rather than outside it as an exponent. The
+        # only straight-line y-axis is the inverse incomplete gamma,
+        # which needs the shape -- so to draw the axis you need the
+        # answer, and to get the answer you need the axis.
+        #
+        # MPP broke the circle by guessing the shape from moments,
+        # drawing the plot on that guess and regressing. When the guess
+        # is off the axis is the wrong axis, the points are no longer
+        # straight on it, and the regression fits a line through a
+        # curve -- returning a confident, wrong estimate rather than an
+        # error. An offset makes it worse: the shift distorts the low-x
+        # end hardest, which is exactly where the shape information is.
+        #
+        # Fit by MLE (the default), MSE or MOM instead. ``plot()`` still
+        # works, because it transforms with the *fitted* parameters, so
+        # the axis is the right one by the time it is drawn.
+        self.supports_mpp = False
 
     @staticmethod
-    def _moment_estimate(x):
+    def _moment_estimate(x: npt.NDArray) -> tuple[float, float]:
         """Closed-form approximation to the Gamma MLE.
 
         The shape solves ``log(alpha) - digamma(alpha) = s`` with
@@ -59,7 +81,10 @@ class Gamma_(ParametricFitter):
         beta = x.sum() / (len(x) * alpha)
         return alpha, 1.0 / beta
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
+        x = data.x
         if offset:
             # ``gamma`` leads the vector, as it does for every other
             # offset-capable distribution. Returning it last put the
@@ -75,10 +100,10 @@ class Gamma_(ParametricFitter):
             # silent nonsense.
             gamma_init = np.min(x) - 1.0
             alpha, beta = self._moment_estimate(x - gamma_init)
-            return gamma_init, alpha, beta
-        return self._moment_estimate(x)
+            return np.array([gamma_init, alpha, beta], dtype=float)
+        return np.asarray(self._moment_estimate(x), dtype=float)
 
-    def sf(self, x, alpha, beta):
+    def sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Survival (or Reliability) function for the Gamma Distribution:
@@ -114,44 +139,7 @@ class Gamma_(ParametricFitter):
         """
         return 1 - self.ff(x, alpha, beta)
 
-    def cs(self, x, X, alpha, beta):
-        r"""
-
-        Conditional survival function for the Gamma Distribution:
-
-        .. math::
-            R(x) = e^{-\lambda x}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The value(s) at which the function will be calculated
-        X : numpy array or scalar
-            The value(s) at which each value(s) in x was known to have survived
-        alpha : numpy array or scalar
-            The shape parameter for the Gamma distribution
-        beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            the conditional survival probability.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import Gamma
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> Gamma.cs(x, 5, 3, 4)
-        array([2.59402488e-02, 6.39048747e-04, 1.51519143e-05, 3.48776510e-07,
-               7.79933496e-09])
-        """
-        return self.sf(x + X, alpha, beta) / self.sf(X, alpha, beta)
-
-    def ff(self, x, alpha, beta):
+    def ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         CDF (or unreliability or failure) function for the Gamma Distribution:
@@ -188,7 +176,7 @@ class Gamma_(ParametricFitter):
         x = np.array(x)
         return agammainc(alpha, beta * x)
 
-    def df(self, x, alpha, beta):
+    def df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Density function for the Gamma Distribution:
@@ -229,7 +217,7 @@ class Gamma_(ParametricFitter):
             / (agamma(alpha))
         )
 
-    def hf(self, x, alpha, beta):
+    def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the Gamma Distribution:
@@ -266,7 +254,7 @@ class Gamma_(ParametricFitter):
         """
         return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
 
-    def Hf(self, x, alpha, beta):
+    def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Cumulative hazard rate for the Gamma Distribution:
@@ -302,18 +290,18 @@ class Gamma_(ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta))
 
-    def qf(self, p, alpha, beta):
+    def qf(self, u: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Gamma Distribution:
 
         .. math::
-            q(p) = \frac{-\ln\left ( p \right )}{\lambda}
+            q(u) = \frac{-\ln\left ( u \right )}{\lambda}
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
@@ -324,19 +312,19 @@ class Gamma_(ParametricFitter):
         -------
 
         q : scalar or numpy array
-            The quantiles for the Gamma distribution at each value p.
+            The quantiles for the Gamma distribution at each value u.
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import Gamma
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> Gamma.qf(p, 3, 4)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> Gamma.qf(u, 3, 4)
         array([0.27551633, 0.38376105, 0.47844395, 0.57126923, 0.66851508])
         """
-        return gammaincinv(alpha, p) / beta
+        return gammaincinv(alpha, u) / beta
 
-    def mean(self, alpha, beta):
+    def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Calculates the mean of the Gamma distribution with given parameters.
@@ -366,20 +354,20 @@ class Gamma_(ParametricFitter):
         """
         return alpha / beta
 
-    def moment(self, n, alpha, beta):
+    def moment(self, m: int, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
-        Calculates the n-th moment of the Gamma distribution with
+        Calculates the m-th moment of the Gamma distribution with
         given parameters.
 
         .. math::
-            E = \frac{\Gamma \left ( n + \alpha \right )}{\beta^{n}\Gamma
+            E = \frac{\Gamma \left ( m + \alpha \right )}{\beta^{m}\Gamma
             \left ( \alpha \right )}
 
         Parameters
         ----------
 
-        n : integer or numpy array of integers
+        m : integer
             The ordinal of the moment to calculate
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
@@ -396,11 +384,11 @@ class Gamma_(ParametricFitter):
         --------
         >>> from surpyval import Gamma
         >>> Gamma.moment(3, 3, 4)
-        0.9375
+        np.float64(0.9375)
         """
-        return agamma(n + alpha) / (beta**n * agamma(alpha))
+        return agamma(m + alpha) / (beta**m * agamma(alpha))
 
-    def entropy(self, alpha, beta):
+    def entropy(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the Gamma distribution.
@@ -430,7 +418,7 @@ class Gamma_(ParametricFitter):
         --------
         >>> from surpyval import Gamma
         >>> Gamma.entropy(3, 4)
-        0.46128414924312033
+        np.float64(0.46128414924312033)
         """
         return (
             alpha
@@ -439,7 +427,7 @@ class Gamma_(ParametricFitter):
             + (1 - alpha) * digamma(alpha)
         )
 
-    def log_df(self, x, alpha, beta):
+    def log_df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
 
         Calculates the log of the density function of the Gamma distribution
@@ -473,138 +461,22 @@ class Gamma_(ParametricFitter):
             - agammaln(alpha)
         )
 
-    def log_ff(self, x, alpha, beta):
+    def log_ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return agammaincln(alpha, beta * x)
 
-    def log_sf(self, x, alpha, beta):
+    def log_sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return agammainccln(alpha, beta * x)
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         alpha = params[0]
         return gammaincinv(alpha, y)
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         alpha = params[0]
         return agammainc(alpha, y)
 
-    def mpp_x_transform(self, x, gamma=0):
-        return x - gamma
-
-    def mpp(
-        self,
-        x,
-        c=None,
-        n=None,
-        t=None,
-        heuristic="Nelson-Aalen",
-        rr="y",
-        on_d_is_0=False,
-        offset=False,
-    ):
-        # Forward the truncation windows (previously dropped, #280).
-        x_pp, r, d, F = plotting_positions(
-            x, c=c, n=n, t=t, heuristic=heuristic
-        )
-
-        results = {}
-
-        if on_d_is_0:
-            pass
-        else:
-            F = F[d > 0]
-            x_pp = x_pp[d > 0]
-
-        if (F == 1).any():
-            mask = F != 1
-            warnings.warn(
-                "Some heuristic values for CDF = 1 have been "
-                "encountered in plotting points and have been "
-                "ignored.",
-                stacklevel=2,
-            )
-            F = F[mask]
-            x_pp = x_pp[mask]
-
-        init = self._parameter_initialiser(x_pp, c, n)
-
-        mask = np.isfinite(F)
-        if not mask.all():
-            warnings.warn(
-                "Some Infinite values encountered in plotting "
-                "points and have been ignored.",
-                stacklevel=2,
-            )
-            F = F[mask]
-            x_pp = x_pp[mask]
-
-        if offset:
-
-            def fun(a):
-                return -pearsonr(x_pp, self.mpp_y_transform(F, a, 1.0))[0]
-
-            # The moment-based init is computed from the *unshifted* data,
-            # which diverges for strongly offset data (tiny relative spread
-            # -> huge alpha) and strands the correlation search at a bad
-            # local optimum. Try several starts and keep the best (#257).
-            starts = {float(init[0]), 0.5, 1.0, 2.0, 5.0}
-            best = None
-            for a0 in starts:
-                res = minimize(fun, [a0], bounds=((1e-8, None),))
-                if best is None or res.fun < best.fun:
-                    best = res
-            alpha = best.x[0]
-
-            y_pp = self.mpp_y_transform(F, alpha)
-
-            if rr == "y":
-                # y = beta * (x - gamma): slope is beta, intercept is
-                # -beta * gamma.
-                params = np.polyfit(x_pp, y_pp, 1)
-                beta = params[0]
-                gamma = -params[1] / beta
-            elif rr == "x":
-                # x = y / beta + gamma: slope is 1/beta and the intercept
-                # IS gamma (#257).
-                params = np.polyfit(y_pp, x_pp, 1)
-                beta = 1.0 / params[0]
-                gamma = params[1]
-
-            results["gamma"] = gamma
-            results["params"] = np.array([alpha, beta])
-
-            return results
-        else:
-            if rr == "y":
-                x_pp = x_pp[:, np.newaxis]
-
-                def fun(alpha):
-                    y_pp = self.mpp_y_transform(F, alpha, 1.0)
-                    return np.linalg.lstsq(x_pp, y_pp)[1]
-
-                res = minimize(fun, init[0], bounds=((0, None),))
-                alpha = res.x[0]
-                y_pp = self.mpp_y_transform(F, alpha, 1.0)
-                beta, residuals, _, _ = np.linalg.lstsq(x_pp, y_pp)
-                beta = beta[0]
-            else:
-                # Regress against the same filtered plotting positions used
-                # everywhere else — the raw ``x`` argument has a different
-                # length whenever any point was filtered (#257).
-
-                def fun(a):
-                    y = self.mpp_y_transform(F, a, 1.0)[:, np.newaxis]
-                    return np.linalg.lstsq(y, x_pp)[1]
-
-                res = minimize(fun, init[0], bounds=((0, None),))
-                alpha = res.x[0]
-                beta = np.linalg.lstsq(
-                    self.mpp_y_transform(F, alpha, 1.0)[:, np.newaxis], x_pp
-                )[0][0]
-                beta = 1.0 / beta
-
-            results["params"] = np.array([alpha, beta])
-
-            return results
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
+        return x
 
 
-Gamma: ParametricFitter = Gamma_("Gamma")
+Gamma: Gamma_ = Gamma_("Gamma")

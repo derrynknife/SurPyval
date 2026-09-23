@@ -5,7 +5,7 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class Linear_(LifeModel):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             "Linear",
             {"a": 0, "b": 1},

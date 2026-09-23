@@ -1,4 +1,5 @@
-from .bernoulli import Bernoulli, FixedEventProbability
+from .bernoulli import Bernoulli
+from .fixed_event_probability import FixedEventProbability
 from .beta import Beta
 from .beta4 import Beta4
 from .beta_geometric import BetaGeometric
@@ -14,6 +15,7 @@ from .gamma import Gamma
 from .geometric import Geometric
 from .gumbel import Gumbel
 from .gumbel_lev import GumbelLEV
+from .hypoexponential import Hypoexponential
 from .logistic import Logistic
 from .loglogistic import LogLogistic
 from .lognormal import Galton, LogNormal

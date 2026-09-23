@@ -17,10 +17,10 @@ import numpy as np
 import pytest
 
 from surpyval.recurrent import (
+    HPP,
     CoxLewis,
     CrowAMSAA,
     Duane,
-    HPP,
     NonParametricCounting,
     ProportionalIntensityHPP,
     ProportionalIntensityNHPP,

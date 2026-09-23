@@ -53,3 +53,55 @@ Path Models
    :members:
 
 .. autofunction:: surpyval.degradation.path_models.get_path_model
+
+Stress-Dependent Path Parameters
+--------------------------------
+
+For accelerated degradation tests whose *mechanism* depends on stress
+(``links`` in :meth:`DegradationAnalysis.fit`): the path parameters are
+modelled on a link scale, ``eta_i = D(z_i) gamma + u_i``, so a
+log-linked rate with ``Z = 1/T`` follows the Arrhenius relationship.
+
+.. autoclass:: surpyval.degradation.stress.LinkedPathModel
+   :members:
+
+.. autofunction:: surpyval.degradation.stress.stress_design
+
+Stochastic Process Models
+-------------------------
+
+Where a path model treats degradation as a deterministic curve with
+noise, these treat it as a stochastic process in its own right: the
+Wiener process for degradation that can go down as well as up, and the
+gamma process for monotone accumulation such as wear or crack growth.
+Both give a first-passage distribution to the threshold in closed form,
+and so a remaining-useful-life prediction with bounds.
+
+.. autoclass:: surpyval.degradation.process_models.WienerProcess
+   :members:
+
+.. autoclass:: surpyval.degradation.process_models.WienerProcessModel
+   :members:
+
+.. autoclass:: surpyval.degradation.process_models.GammaProcess
+   :members:
+
+.. autoclass:: surpyval.degradation.process_models.GammaProcessModel
+   :members:
+
+.. autoclass:: surpyval.degradation.process_models.ProcessRUL
+   :members:
+
+Destructive Degradation
+-----------------------
+
+For tests that destroy the unit being measured, so each unit yields one
+observation at one time rather than a path. The degradation
+distribution at each time is modelled directly, and the failure
+distribution follows from the threshold crossing.
+
+.. autoclass:: surpyval.degradation.destructive.DestructiveDegradation_
+   :members:
+
+.. autoclass:: surpyval.degradation.destructive.DestructiveDegradationModel
+   :members:

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from functools import cached_property
+from typing import Any
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -46,7 +47,7 @@ class IntermediateNode(Node):
         split_feature_value: float,
         feature_indices_in: NDArray,
         kind: str = "weibull",
-    ):
+    ) -> None:
         # Set split attributes
         self.split_feature_index = split_feature_index
         self.split_feature_value = split_feature_value
@@ -118,11 +119,11 @@ class IntermediateNode(Node):
 
 
 class TerminalNode(Node):
-    def __init__(self, data: SurpyvalData, kind: str = "weibull"):
+    def __init__(self, data: SurpyvalData, kind: str = "weibull") -> None:
         self.data = deepcopy(data)
         self.kind = kind
 
-    def _nonparametric_model(self):
+    def _nonparametric_model(self) -> Any:
         # Nelson-Aalen is a risk-set estimator, so it is only defined for
         # observed / right-censored (optionally left-truncated) data; the
         # Turnbull NPMLE covers the full data model. The tree entry point
@@ -136,7 +137,7 @@ class TerminalNode(Node):
             self.data.x, self.data.c, self.data.n, self.data.t
         )
 
-    def _crude_exponential(self):
+    def _crude_exponential(self) -> Any:
         # Last-resort parametric leaf: the crude event-weight / exposure
         # rate. Always computable when the leaf carries any event
         # information, so a parametric tree stays parametric all the way
@@ -148,7 +149,7 @@ class TerminalNode(Node):
         return Exponential.from_params([float(np.exp(theta0))])
 
     @cached_property
-    def model(self):
+    def model(self) -> Any:
         if self.kind == "non-parametric":
             return self._nonparametric_model()
 

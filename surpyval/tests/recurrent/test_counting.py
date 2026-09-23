@@ -83,7 +83,9 @@ def test_renewal_rejects_unsupported_censoring(model):
         ),
         (
             GeneralizedRenewal,
-            "surpyval.recurrent.renewal.generalized_renewal",
+            # The optimiser call for GeneralizedRenewal (like ARA and
+            # ARI) lives in the shared RenewalFitMixin driver.
+            "surpyval.recurrent.renewal.fit_mixin",
         ),
     ],
 )
@@ -122,7 +124,9 @@ def test_renewal_raises_when_no_start_converges(
         ),
         (
             GeneralizedRenewal,
-            "surpyval.recurrent.renewal.generalized_renewal",
+            # The optimiser call for GeneralizedRenewal (like ARA and
+            # ARI) lives in the shared RenewalFitMixin driver.
+            "surpyval.recurrent.renewal.fit_mixin",
         ),
     ],
 )

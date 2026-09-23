@@ -22,9 +22,10 @@ the core univariate families are identified by their
 """
 
 import json
+import os
 from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -119,6 +120,22 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 SCHEMA_VERSION = 1
 
 
+def require_model_tag(model_dict: dict, tag: str, human: str) -> None:
+    """Reject a ``from_dict`` dictionary whose ``model`` tag is not ``tag``.
+
+    Every serialisable model's ``from_dict`` starts with this check;
+    each used to write out the three-line guard itself. ``human`` is the
+    phrase for the thing being built ("a renewal model", "an MCF
+    estimate", ...); the raised message always contains ``tag`` so a
+    caller can match on the model name.
+    """
+    if model_dict.get("model") != tag:
+        article = "an" if tag[0] in "AEIOU" else "a"
+        raise ValueError(
+            "Must create {} from {} {} dict".format(human, article, tag)
+        )
+
+
 def stamp_schema(model_dict: dict) -> dict:
     """Stamp the serialisation schema version into a ``to_dict`` output."""
     model_dict["schema"] = SCHEMA_VERSION
@@ -152,13 +169,25 @@ class SerialisableMixin:
     models: every class keeps only its ``to_dict`` / ``from_dict``
     pair (this used to be copy-pasted into ~20 classes)."""
 
-    def to_json(self, fp):
+    if TYPE_CHECKING:
+        # The contract every user of this mixin fulfils, declared for
+        # the type checker but deliberately *not* defined. A stub
+        # raising NotImplementedError would read better, but it would
+        # also be inherited -- and ``copula_model`` decides whether a
+        # margin is serialisable with ``hasattr(m, "to_dict")``, which
+        # an inherited stub would answer True for every time.
+        def to_dict(self) -> dict: ...
+
+        @classmethod
+        def from_dict(cls, model_dict: dict) -> Any: ...
+
+    def to_json(self, fp: str | os.PathLike) -> None:
         """Write :meth:`to_dict` to ``fp`` as JSON."""
         with open(fp, "w+") as f:
             json.dump(self.to_dict(), f)
 
     @classmethod
-    def from_json(cls, fp):
+    def from_json(cls, fp: str | os.PathLike) -> Any:
         """Load a model from a JSON file written by :meth:`to_json`."""
         with open(fp, "r") as f:
             return cls.from_dict(json.load(f))

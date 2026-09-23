@@ -5,7 +5,7 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class DualPower_(LifeModel):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             "DualPower",
             {"c": 0, "m": 1, "n": 2},

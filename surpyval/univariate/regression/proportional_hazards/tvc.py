@@ -16,9 +16,24 @@ intervals with the same covariates gives the same fit as the unsplit subject.
 """
 
 import numpy as np
+import numpy.typing as npt
 
 
-def handle_tvc(i, xl, xr, c, Z, n=None):
+def handle_tvc(
+    i: npt.ArrayLike,
+    xl: npt.ArrayLike,
+    xr: npt.ArrayLike,
+    c: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    n: "npt.ArrayLike | None" = None,
+) -> tuple[
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+]:
     """
     Validate start-stop time-varying-covariate data and map it to the arrays
     the Cox partial likelihood fits.
@@ -138,7 +153,20 @@ def handle_tvc(i, xl, xr, c, Z, n=None):
     return x, c, n, tl, Z, ident
 
 
-def handle_tvc_timeline(i, x, Z, c, n=None):
+def handle_tvc_timeline(
+    i: npt.ArrayLike,
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    c: npt.ArrayLike,
+    n: "npt.ArrayLike | None" = None,
+) -> tuple[
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+]:
     """
     Convert a per-subject covariate *timeline* into the start-stop intervals
     that :func:`handle_tvc` (and ``CoxPH.fit_tvc``) consume.

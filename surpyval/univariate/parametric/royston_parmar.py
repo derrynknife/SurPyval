@@ -1,3 +1,5 @@
+import numpy.typing as npt
+
 """
 Royston-Parmar flexible parametric survival models.
 
@@ -42,7 +44,13 @@ from scipy.optimize import brentq, minimize
 from scipy.special import ndtri as _ndtri
 from scipy.stats import norm
 
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+    to_native,
+)
+from surpyval.utils.linalg import numerical_hessian
 
 _SCALES = ("hazard", "odds", "normal")
 
@@ -89,7 +97,7 @@ def _place_knots(x_events: np.ndarray, n_internal: int) -> np.ndarray:
     return np.quantile(lx, qs)
 
 
-def _scale_terms(eta: np.ndarray, scale: str):
+def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
     """``(log S, log(-dS/deta))`` at linear predictor ``eta`` for a scale."""
     if scale == "hazard":
         log_S = -np.exp(eta)
@@ -113,7 +121,7 @@ def _sf_from_eta(eta: np.ndarray, scale: str) -> np.ndarray:
 
 def _sf_at(
     times: np.ndarray, knots: np.ndarray, gamma: np.ndarray, scale: str
-):
+) -> npt.NDArray:
     """Survival at arbitrary times, with the boundary conventions the
     censoring/truncation likelihoods need: ``S = 1`` at times ``<= 0`` (and
     ``-inf``) and ``S = 0`` at ``+inf``. Finite positive times go through the
@@ -311,8 +319,9 @@ class RoystonParmarModel(SerialisableMixin):
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RoystonParmarModel":
-        if model_dict.get("model") != "RoystonParmarModel":
-            raise ValueError("Must create a RoystonParmarModel from its dict")
+        require_model_tag(
+            model_dict, "RoystonParmarModel", "a Royston-Parmar model"
+        )
         out = cls()
         out.scale = model_dict["scale"]
         out.knots = np.array(model_dict["knots"], dtype=float)
@@ -323,30 +332,6 @@ class RoystonParmarModel(SerialisableMixin):
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)
         return out
-
-
-def _numerical_hessian(f, x, eps=1e-5):
-    n = len(x)
-    H = np.zeros((n, n))
-    steps = np.maximum(np.abs(x), 1.0) * eps
-    for i in range(n):
-        for j in range(i, n):
-            xpp = x.copy()
-            xpp[i] += steps[i]
-            xpp[j] += steps[j]
-            xpm = x.copy()
-            xpm[i] += steps[i]
-            xpm[j] -= steps[j]
-            xmp = x.copy()
-            xmp[i] -= steps[i]
-            xmp[j] += steps[j]
-            xmm = x.copy()
-            xmm[i] -= steps[i]
-            xmm[j] -= steps[j]
-            H[i, j] = H[j, i] = (f(xpp) - f(xpm) - f(xmp) + f(xmm)) / (
-                4 * steps[i] * steps[j]
-            )
-    return H
 
 
 class RoystonParmar_:
@@ -480,7 +465,7 @@ class RoystonParmar_:
         B_il = _rcs_basis(np.log(x_il), knots) if x_il.size else None
         B_ir = _rcs_basis(np.log(x_ir), knots) if x_ir.size else None
 
-        def neg_ll(g):
+        def neg_ll(g: npt.NDArray) -> Any:
             ll = 0.0
             if B_o is not None:  # events: log f = log(-dS) + log s' - log t
                 eta = B_o @ g
@@ -530,7 +515,10 @@ class RoystonParmar_:
         covariance = None
         with np.errstate(all="ignore"):
             try:
-                cov = np.linalg.inv(_numerical_hessian(neg_ll, gamma))
+                steps = 1e-05 * np.maximum(np.abs(gamma), 1.0)
+                cov = np.linalg.inv(
+                    numerical_hessian(neg_ll, gamma, step=steps)
+                )
                 if np.all(np.isfinite(cov)):
                     covariance = cov
             except np.linalg.LinAlgError:

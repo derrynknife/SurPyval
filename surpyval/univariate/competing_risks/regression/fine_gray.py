@@ -30,49 +30,33 @@ already had the event of interest, leave the risk set. The partial likelihood
 is the Breslow form of this weighted risk set.
 """
 
+from typing import Any
+
 import numpy as np
+import numpy.typing as npt
 from autograd import grad, hessian
 from autograd import numpy as anp
 from scipy.optimize import minimize
 from scipy.stats import norm
 
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils import validate_fine_gray_inputs
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.utils.ipcw import censoring_survival, step_at
+from surpyval.utils.linalg import safe_inv
 
 
-def _censoring_survival(x, c, n):
-    """
-    Kaplan-Meier estimate of the censoring survival ``G(t) = P(C > t)``.
-
-    The roles are reversed relative to an ordinary survival fit: right-censored
-    rows (``c == 1``) are the "events" for the censoring distribution and
-    observed events (``c == 0``) are treated as censored. Returns the sorted
-    unique times and the right-continuous ``G`` evaluated at each.
-    """
-    times = np.unique(x)
-    G = np.ones(times.shape[0])
-    surv = 1.0
-    for k, t in enumerate(times):
-        at_risk = n[x >= t].sum()
-        censored = n[(x == t) & (c == 1)].sum()
-        if at_risk > 0:
-            surv = surv * (1.0 - censored / at_risk)
-        G[k] = surv
-    return times, G
-
-
-def _step(times, values, query, before):
-    """
-    Right-continuous step function: the value carried by the largest ``times``
-    entry ``<= query``; ``before`` is returned where ``query`` precedes the
-    first time.
-    """
-    idx = np.searchsorted(times, query, side="right") - 1
-    out = np.where(idx < 0, before, values[np.clip(idx, 0, len(values) - 1)])
-    return out
-
-
-def _fit_cause(x, Z, e, c, n, cause):
+def _fit_cause(
+    x: npt.NDArray,
+    Z: npt.NDArray,
+    e: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    cause: Any,
+) -> dict:
     """
     Fit the Fine-Gray subdistribution-hazard model for a single ``cause``.
 
@@ -86,14 +70,14 @@ def _fit_cause(x, Z, e, c, n, cause):
     is_competing = (c == 0) & (e != cause)
 
     # Censoring-survival for the IPCW weights.
-    g_times, g_vals = _censoring_survival(x, c, n)
+    g_times, g_vals = censoring_survival(x, c == 1, n)
     # G is >= its last positive value; guard the ratio against division by a
     # zero tail (times beyond the last censoring-KM step).
     g_floor = g_vals[g_vals > 0].min() if np.any(g_vals > 0) else 1.0
-    G_x = np.maximum(_step(g_times, g_vals, x, before=1.0), g_floor)
+    G_x = np.maximum(step_at(g_times, g_vals, x, before=1.0), g_floor)
 
     event_times = x[is_event]
-    G_t = _step(g_times, g_vals, event_times, before=1.0)
+    G_t = step_at(g_times, g_vals, event_times, before=1.0)
 
     # Subdistribution risk-set weight matrix W (n_events x N), independent of
     # beta: 1 for the ordinary risk set (x_i >= t_j); G(t_j)/G(x_i) for a
@@ -110,7 +94,7 @@ def _fit_cause(x, Z, e, c, n, cause):
     n_event = n[is_event]
     Z_event = Z[is_event]
 
-    def neg_ll(beta):
+    def neg_ll(beta: Any) -> Any:
         eta = anp.dot(Z, beta)
         weighted_exp = n * anp.exp(eta)
         denom = anp.dot(W, weighted_exp)
@@ -124,10 +108,7 @@ def _fit_cause(x, Z, e, c, n, cause):
 
     # Standard errors from the inverse observed information.
     H = hessian(neg_ll)(beta)
-    try:
-        cov = np.linalg.inv(H)
-    except np.linalg.LinAlgError:
-        cov = np.linalg.pinv(H)
+    cov = safe_inv(H)
     var = np.diag(cov)
     with np.errstate(invalid="ignore"):
         se = np.sqrt(np.where(var > 0, var, np.nan))
@@ -167,7 +148,7 @@ class FineGrayModel(SerialisableMixin):
     hazard ratios.
     """
 
-    def __init__(self, fit):
+    def __init__(self, fit: dict) -> None:
         self.cause = fit["cause"]
         self.coefficients = fit["beta"]
         self.beta = fit["beta"]
@@ -181,7 +162,7 @@ class FineGrayModel(SerialisableMixin):
 
     # -- serialisation -----------------------------------------------------
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """
         Serialise this fitted Fine-Gray model to a plain, JSON-serialisable
         dict.
@@ -210,12 +191,9 @@ class FineGrayModel(SerialisableMixin):
         )
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict) -> "FineGrayModel":
         """Rebuild a Fine-Gray model from a :meth:`to_dict` dictionary."""
-        if model_dict.get("model") != "FineGrayModel":
-            raise ValueError(
-                "Must create a Fine-Gray model from a FineGrayModel dict"
-            )
+        require_model_tag(model_dict, "FineGrayModel", "a Fine-Gray model")
         return cls(
             {
                 "cause": model_dict["cause"],
@@ -234,10 +212,10 @@ class FineGrayModel(SerialisableMixin):
             }
         )
 
-    def phi(self, Z):
+    def phi(self, Z: npt.ArrayLike) -> npt.NDArray:
         return np.exp(np.asarray(Z, dtype=float) @ self.beta)
 
-    def cif(self, x, Z):
+    def cif(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """
         Cumulative incidence of the cause of interest at times ``x`` for a
         single covariate vector ``Z``: ``1 - exp(-Lambda0(x) * exp(beta'Z))``.
@@ -246,15 +224,15 @@ class FineGrayModel(SerialisableMixin):
         """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.asarray(Z, dtype=float).ravel()
-        H0 = _step(self._times, self._cumhaz, x, before=0.0)
+        H0 = step_at(self._times, self._cumhaz, x, before=0.0)
         return 1.0 - np.exp(-H0 * np.exp(Z @ self.beta))
 
-    def sf(self, x, Z):
+    def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """One minus the cumulative incidence (the cause-of-interest-free
         probability under the subdistribution)."""
         return 1.0 - self.cif(x, Z)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         lines = [
             "Fine-Gray Subdistribution Hazard Model",
             "======================================",
@@ -267,7 +245,15 @@ class FineGrayModel(SerialisableMixin):
 
 
 class FineGray_:
-    def fit(self, x, Z, e, c=None, n=None, cause=None):
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        e: npt.ArrayLike,
+        c: "npt.ArrayLike | None" = None,
+        n: "npt.ArrayLike | None" = None,
+        cause: Any = None,
+    ) -> FineGrayModel:
         """
         Fit the Fine-Gray model for a cause of interest.
 

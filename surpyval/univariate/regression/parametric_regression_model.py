@@ -4,22 +4,21 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
-from scipy.stats import norm
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
-
-from ._bounds import (
-    bound_signs,
+from surpyval.utils.linalg import (
     delta_method_se,
     log_transformed_cb,
-    logit_sf_bound,
     numerical_hessian,
+    wald_bound_on_support,
 )
+
+from ._bounds import logit_sf_bound
 from .regression_data import (
-    model_spec_to_meta,
     prepare_Z,
-    rebuild_model_spec,
+    restore_covariate_meta,
+    serialise_covariate_meta,
 )
 
 if TYPE_CHECKING:
@@ -95,6 +94,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     fun: Any
     _neg_ll: float
     _bic: float
+    #: Set by the AFT time-varying-covariate fit; absent otherwise.
+    is_tvc: bool
+    n_subjects: int
     _aic: float
     _aic_c: float
 
@@ -193,15 +195,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out["gamma"] = float(getattr(self, "gamma", 0.0))
         out["p"] = float(getattr(self, "p", 1.0))
         out["f0"] = float(getattr(self, "f0", 0.0))
-        if self.feature_names is not None:
-            out["feature_names"] = list(self.feature_names)
-        if self.formula is not None:
-            out["formula"] = str(self.formula)
-            # Persist the categorical levels / numeric columns needed to
-            # rebuild the formula's design-matrix transformer on load, so a
-            # restored model expands raw covariates the same way (#244).
-            if self._model_spec is not None:
-                out["formula_meta"] = model_spec_to_meta(self._model_spec)
+        serialise_covariate_meta(self, out)
 
         # Store the parameter covariance so the restored model can produce
         # confidence bounds without the original data: from the fit when
@@ -238,6 +232,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         """
         import surpyval
         from surpyval.univariate.parametric.parametric_fitter import (
+            OptimisedFitMixin,
             ParametricFitter,
         )
 
@@ -274,6 +269,19 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                     "Cannot deserialise Accelerated Life model with life "
                     "model {!r}".format(life_name)
                 )
+            # The guard above only establishes a ParametricFitter, which
+            # admits Bernoulli, Binomial and ExactEventTime -- none of
+            # them fittable, and an accelerated life model needs a
+            # distribution it can fit. The dict is untrusted input, so a
+            # name like that would otherwise get this far and fail deep
+            # inside the fitter on a missing attribute.
+            if not isinstance(dist, OptimisedFitMixin):
+                raise ValueError(
+                    "Cannot deserialise Accelerated Life model with "
+                    "distribution {!r}: it has no fitting machinery.".format(
+                        model_dict["distribution"]
+                    )
+                )
             reg_model = LIFE_MODELS[life_name]
             fitter = AcceleratedLife(dist, reg_model)
         elif kind in _SERIALISABLE_KINDS:
@@ -288,8 +296,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 phi_param_map=phi_param_map,
             )
             if phi_kind == "exp":
-                # the log-linear multiplier exp(beta'Z), matching the fitters
-                reg_model.phi = lambda Z, *p: np.exp(np.dot(Z, np.array(p)))
+                # The log-linear multiplier exp(beta'Z), matching the
+                # fitters. Imported here because _fit_skeleton imports
+                # this module at load time.
+                from ._fit_skeleton import LogLinearPhi
+
+                reg_model.phi = LogLinearPhi.phi
         else:
             raise ValueError(
                 "Cannot deserialise regression kind {!r}".format(kind)
@@ -312,15 +324,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
-        out.feature_names = model_dict.get("feature_names")
-        out.formula = model_dict.get("formula")
-
-        # Rebuild the formula's design-matrix transformer so the restored
-        # model expands raw covariates (e.g. categoricals) at prediction time
-        # exactly as the original did (#244).
-        formula_meta = model_dict.get("formula_meta")
-        if out.formula is not None and formula_meta is not None:
-            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
+        restore_covariate_meta(out, model_dict)
 
         if "covariance" in model_dict:
             out._restored_covariance = np.array(
@@ -404,6 +408,21 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
         return self.reg_model.phi(Z, *self.phi_params)
 
+    def _eval(
+        self,
+        fn: Any,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+    ) -> npt.NDArray:
+        # The shared body of the five distribution functions below: coerce
+        # ``x``, resolve DataFrame covariates against the fit-time design,
+        # and evaluate the family's function at the fitted parameters. Each
+        # named method carried this verbatim.
+        if isinstance(x, list):
+            x = np.array(x)
+        Z = self._prepare_Z(Z)
+        return fn(x, Z, *self.params)
+
     def sf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
@@ -430,17 +449,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         Examples
         --------
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
-        >>> model.sf(2)
-        0.9920319148370607
-        >>> model.sf([1, 2, 3, 4, 5])
-        array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.sf([1, 2, 3], [[0], [0], [1]]).round(4)
+        array([0.9812, 0.9382, 0.7429])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.sf(x, Z, *self.params)
+        return self._eval(self.model.sf, x, Z)
 
     # Families whose survival along a step-valued covariate path has an exact
     # closed form. Proportional and additive hazards accumulate a *cumulative
@@ -455,7 +473,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         "Accelerated Failure Time",
     )
 
-    def _tvc_segments(self, schedule, t_max):
+    def _tvc_segments(
+        self, schedule: Any, t_max: float
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Materialise ``schedule`` to ``t_max`` with the first segment held back
         to the time origin (survival measured from ``0``).
@@ -464,7 +484,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         return segments_from_origin(schedule, t_max)
 
-    def _to_schedule(self, Z, xl):
+    def _to_schedule(self, Z: Any, xl: "npt.ArrayLike | None") -> Any:
         """
         Coerce the ``sf_tvc`` covariate argument into a
         :class:`~...tvc_schedule.StepSchedule` and check its covariate count
@@ -540,7 +560,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             return self._tvc_hf_additive(xq, starts, ends, Zseg)
         return self._tvc_hf_aft(xq, starts, ends, Zseg)
 
-    def _tvc_hf_additive(self, xq, starts, ends, Zseg):
+    def _tvc_hf_additive(
+        self,
+        xq: npt.NDArray,
+        starts: npt.NDArray,
+        ends: npt.NDArray,
+        Zseg: npt.NDArray,
+    ) -> npt.NDArray:
         """
         Cumulative hazard along a step path for the additive-cumulative-hazard
         families (PH, AH): telescoping sum of the model's ``Hf`` increment on
@@ -559,7 +585,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             H = H + (hi - lo)
         return H
 
-    def _tvc_hf_aft(self, xq, starts, ends, Zseg):
+    def _tvc_hf_aft(
+        self,
+        xq: npt.NDArray,
+        starts: npt.NDArray,
+        ends: npt.NDArray,
+        Zseg: npt.NDArray,
+    ) -> npt.NDArray:
         r"""
         Cumulative hazard along a step path for accelerated failure time.
 
@@ -669,17 +701,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Examples
         --------
 
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
-        >>> model.ff(2)
-        0.007968085162939342
-        >>> model.ff([1, 2, 3, 4, 5])
-        array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.ff([1, 2, 3], [[0], [0], [1]]).round(4)
+        array([0.0188, 0.0618, 0.2571])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.ff(x, Z, *self.params)
+        return self._eval(self.model.ff, x, Z)
 
     def df(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -708,17 +739,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Examples
         --------
 
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
-        >>> model.df(2)
-        0.01190438297804473
-        >>> model.df([1, 2, 3, 4, 5])
-        array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.df([1, 2, 3], [[0], [0], [1]]).round(4)
+        array([0.0326, 0.0524, 0.1289])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.df(x, Z, *self.params)
+        return self._eval(self.model.df, x, Z)
 
     def hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -748,17 +778,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Examples
         --------
 
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
-        >>> model.hf(2)
-        0.012000000000000002
-        >>> model.hf([1, 2, 3, 4, 5])
-        array([0.003, 0.012, 0.027, 0.048, 0.075])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.hf([1, 2, 3], [[0], [0], [1]]).round(4)
+        array([0.0332, 0.0559, 0.1735])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.hf(x, Z, *self.params)
+        return self._eval(self.model.hf, x, Z)
 
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -789,17 +818,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Examples
         --------
 
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
-        >>> model.Hf(2)
-        0.008000000000000002
-        >>> model.Hf([1, 2, 3, 4, 5])
-        array([0.001, 0.008, 0.027, 0.064, 0.125])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.Hf([1, 2, 3], [[0], [0], [1]]).round(4)
+        array([0.0189, 0.0638, 0.2972])
         """
-        if isinstance(x, list):
-            x = np.array(x)
-        Z = self._prepare_Z(Z)
-        return self.model.Hf(x, Z, *self.params)
+        return self._eval(self.model.Hf, x, Z)
 
     def random(
         self, size: int, Z: "npt.ArrayLike | pd.DataFrame"
@@ -826,15 +854,22 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         Examples
         --------
-        >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3])
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
         >>> np.random.seed(1)
-        >>> model.random(1)
-        array([8.14127103])
-        >>> from surpyval import WeibullPH
-        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
         >>> model = WeibullPH.fit(x, Z)
-        >>> x_rand, Z_rand = model.random(10, Z[:1])
+        >>> np.random.seed(1)
+        >>> x_rand, Z_rand = model.random(5, Z[:1])
+        >>> x_rand.round(3)
+        array([ 8.919,  5.095, 33.929, 10.666, 13.97 ])
+        >>> Z_rand
+        array([[0.],
+               [0.],
+               [0.],
+               [0.],
+               [0.]])
         """
         # Dispatch to the regression fitter's own covariate-aware sampler
         # (#261): the previous implementation ignored ``Z`` entirely and
@@ -848,11 +883,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         )
 
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin.
-    def _ic_counts(self):
+    def _ic_counts(self) -> tuple[int, int]:
         n, c = self.data.n, self.data.c
         return n[c == 0].sum(), n.sum()
 
-    def _ic_k_aic_c(self):
+    def _ic_k_aic_c(self) -> int:
         # Regression models have historically used the full parameter-
         # vector length here (which can differ from ``self.k`` when
         # parameters are fixed); preserved as-is (#298).
@@ -977,21 +1012,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         n_phi = len(names) - self.k_dist
         all_bounds = dist_bounds + [(None, None)] * n_phi
         lower, upper = all_bounds[idx]
-
-        alpha, signs = bound_signs(alpha_ci, bound)
-        offsets = signs * norm.ppf(1.0 - alpha) * np.sqrt(var)
-
-        if lower is not None and upper is not None:
-            width = upper - lower
-            frac = (p_hat - lower) / width
-            u_hat = np.log(frac / (1.0 - frac))
-            du = offsets / (width * frac * (1.0 - frac))
-            return lower + width / (1.0 + np.exp(-(u_hat + du)))
-        elif lower is not None:
-            return lower + (p_hat - lower) * np.exp(offsets / (p_hat - lower))
-        elif upper is not None:
-            return upper - (upper - p_hat) * np.exp(-offsets / (upper - p_hat))
-        return p_hat + offsets
+        return wald_bound_on_support(p_hat, var, lower, upper, alpha_ci, bound)
 
     def cb(
         self,

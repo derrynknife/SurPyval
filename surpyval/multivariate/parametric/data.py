@@ -15,6 +15,7 @@ truncation window ``t`` apply to the whole row.
 """
 
 import numpy as np
+import numpy.typing as npt
 
 
 class MultivariateSurpyvalData:
@@ -37,7 +38,15 @@ class MultivariateSurpyvalData:
         Interval-censoring bounds, required where ``c == 2``.
     """
 
-    def __init__(self, x, c=None, n=None, t=None, xl=None, xr=None):
+    def __init__(
+        self,
+        x: npt.ArrayLike,
+        c: "npt.ArrayLike | None" = None,
+        n: "npt.ArrayLike | None" = None,
+        t: "npt.ArrayLike | None" = None,
+        xl: "npt.ArrayLike | None" = None,
+        xr: "npt.ArrayLike | None" = None,
+    ) -> None:
         x = self._as_2d(x)
         N, D = x.shape
 
@@ -87,7 +96,7 @@ class MultivariateSurpyvalData:
         self.D = D
 
     @staticmethod
-    def _as_2d(x):
+    def _as_2d(x: npt.ArrayLike) -> npt.NDArray:
         # A list/tuple is read as a sequence of per-dimension (column)
         # vectors; an ndarray is taken as already row-by-dimension.
         if isinstance(x, (list, tuple)):
@@ -98,7 +107,7 @@ class MultivariateSurpyvalData:
                 x = x.reshape(-1, 1)
         return x
 
-    def dimension(self, d):
+    def dimension(self, d: int) -> tuple:
         """Return ``(x, c, xl, xr, tl, tr)`` arrays for series ``d``."""
         return (
             self.x[:, d],

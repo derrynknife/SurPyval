@@ -1,3 +1,7 @@
+from typing import Any, Callable
+
+import numpy.typing as npt
+
 """
 Shared probability plot construction for parametric models.
 
@@ -17,7 +21,9 @@ from surpyval.utils import _round_vals
 CB_COLOUR = "#e94c54"
 
 
-def adjust_heuristic(c, t, heuristic):
+def adjust_heuristic(
+    c: npt.NDArray, t: npt.NDArray | None, heuristic: str
+) -> str:
     """
     Force the Turnbull heuristic when the data is interval censored or
     truncated, warning that the requested heuristic was changed.
@@ -42,17 +48,17 @@ def adjust_heuristic(c, t, heuristic):
 
 
 def probability_plot_data(
-    dist,
-    ff,
-    x,
-    c,
-    n,
-    t,
-    heuristic="Nelson-Aalen",
-    gamma=0.0,
-    params=None,
-    cb_func=None,
-):
+    dist: Any,
+    ff: Callable[..., Any],
+    x: npt.NDArray,
+    c: npt.NDArray | None,
+    n: npt.NDArray,
+    t: npt.NDArray,
+    heuristic: str = "Nelson-Aalen",
+    gamma: float = 0.0,
+    params: npt.NDArray | None = None,
+    cb_func: Callable[..., Any] | None = None,
+) -> Any:
     """
     Compute everything needed to draw a probability plot of the data
     against the fitted CDF ``ff``.
@@ -178,13 +184,13 @@ def probability_plot_data(
 
 
 def draw_probability_plot(
-    ax,
-    d,
-    y_transform,
-    inv_y_transform,
-    title,
-    plot_bounds=False,
-):
+    ax: Any,
+    d: Any,
+    y_transform: Callable[..., Any],
+    inv_y_transform: Callable[..., Any],
+    title: str,
+    plot_bounds: Any = False,
+) -> Any:
     """
     Draw the probability plot described by the ``probability_plot_data``
     dictionary ``d`` onto the matplotlib axes ``ax``.

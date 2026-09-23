@@ -3,13 +3,17 @@ from typing import TYPE_CHECKING, Any, Callable
 import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils import _get_idx
 
 from .regression_data import (
-    model_spec_to_meta,
     prepare_Z,
-    rebuild_model_spec,
+    restore_covariate_meta,
+    serialise_covariate_meta,
 )
 
 if TYPE_CHECKING:
@@ -44,10 +48,12 @@ class SemiParametricRegressionModel(SerialisableMixin):
     H0: npt.NDArray
     phi: Callable[..., npt.NDArray]
     p_values: npt.NDArray
-    jac: npt.NDArray
-    hess: npt.NDArray
+    #: The fit's score/Hessian and negative-partial-log-likelihood
+    #: closures (the scalar value is ``_neg_log_like``).
+    jac: Callable
+    hess: Callable
     res: Any
-    neg_ll: float
+    neg_ll: Callable
     _neg_log_like: float
     tie_method: str
     baseline_method: str
@@ -131,14 +137,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
             out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
         if getattr(self, "_neg_log_like", None) is not None:
             out["_neg_log_like"] = float(self._neg_log_like)
-        if self.feature_names is not None:
-            out["feature_names"] = list(self.feature_names)
-        if self.formula is not None:
-            out["formula"] = str(self.formula)
-            # Persist the transformer state so a restored model expands raw
-            # covariates (e.g. categoricals) the same way (#244).
-            if self._model_spec is not None:
-                out["formula_meta"] = model_spec_to_meta(self._model_spec)
+        serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
     @classmethod
@@ -150,11 +149,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
         --------
         to_dict, to_json, from_json
         """
-        if model_dict.get("model") != "SemiParametricRegressionModel":
-            raise ValueError(
-                "Must create a Cox model from a "
-                "SemiParametricRegressionModel dict"
-            )
+        require_model_tag(
+            model_dict, "SemiParametricRegressionModel", "a Cox model"
+        )
         out = cls(model_dict["kind"], model_dict["parameterization"])
         beta = np.array(model_dict["beta"], dtype=float)
         out.beta = beta
@@ -178,14 +175,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
             out.p_values = np.array(model_dict["p_values"], dtype=float)
         if "_neg_log_like" in model_dict:
             out._neg_log_like = float(model_dict["_neg_log_like"])
-        out.feature_names = model_dict.get("feature_names")
-        out.formula = model_dict.get("formula")
-
-        # Rebuild the formula's design-matrix transformer so the restored
-        # model expands raw covariates the same way (#244).
-        formula_meta = model_dict.get("formula_meta")
-        if out.formula is not None and formula_meta is not None:
-            out._model_spec = rebuild_model_spec(out.formula, formula_meta)
+        restore_covariate_meta(out, model_dict)
         return out
 
     def _baseline_arrays(
@@ -285,7 +275,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
 
         return check_ph(self, transform)
 
-    def robust_covariance(self, cluster=None) -> npt.NDArray:
+    def robust_covariance(
+        self, cluster: "npt.ArrayLike | None" = None
+    ) -> npt.NDArray:
         """
         Cluster-robust ("sandwich") covariance of the coefficients.
 
@@ -298,7 +290,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
 
         return robust_covariance(self, cluster)
 
-    def robust_summary(self, cluster=None) -> dict:
+    def robust_summary(self, cluster: "npt.ArrayLike | None" = None) -> dict:
         """
         Cluster-robust standard errors, z-scores and p-values for the
         coefficients. See :func:`~surpyval.univariate.regression.
@@ -377,7 +369,12 @@ class SemiParametricRegressionModel(SerialisableMixin):
         Hf = self._tvc_cumhaz(query, xl_a, Z_a)
         return query, np.exp(-Hf), Hf
 
-    def _tvc_cumhaz(self, query, starts, Zseg):
+    def _tvc_cumhaz(
+        self,
+        query: npt.NDArray,
+        starts: npt.NDArray,
+        Zseg: npt.NDArray,
+    ) -> npt.NDArray:
         r"""
         Cumulative hazard of the fitted baseline at each ``query`` time for a
         covariate that takes value ``Zseg[i]`` on the segment starting at

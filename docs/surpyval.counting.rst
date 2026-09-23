@@ -51,3 +51,11 @@ Recurrent Event Regression Models
     counting/proportional_intensity_models.rst
     counting/hpp_pi.rst
     counting/nhpp_pi.rst
+
+Trend Tests and Diagnostics
+---------------------------
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/trend_tests

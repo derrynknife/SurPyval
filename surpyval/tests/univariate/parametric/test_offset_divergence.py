@@ -13,6 +13,7 @@ test now asserts parameter recovery as well.)
 """
 
 import numpy as np
+import pytest
 from scipy.stats import wasserstein_distance
 
 from surpyval import Gamma, Rayleigh
@@ -64,19 +65,29 @@ def _summary(dist, true_params, how, seed=0):
     }
 
 
-def test_mpp_offset_gamma_parameters_recovered():
+def test_mpp_offset_gamma_is_refused():
     """MPP offset on Gamma used to land on an absurd parameter tuple
     (huge shape, gamma far off) that merely mimicked the true
     distribution. This was the divergence this module existed to pin
-    down; #257 fixed the initialiser (multi-started shape search) and
-    the rr="x" inversion, so the *parameters* are now recovered too."""
-    s = _summary(Gamma, (3.0, 2.0), how="MPP")
+    down. #257 fixed the initialiser and the rr="x" inversion, which
+    recovered the parameters, but the underlying circularity remained:
+    the plot's y-axis is the inverse incomplete gamma, so it has to be
+    drawn from a guess at the very shape being estimated. Gamma now
+    declines MPP outright (#158) rather than returning a confident
+    answer off a wrong axis."""
+    x = Gamma.random(500, 3.0, 2.0) + TRUE_GAMMA
+    with pytest.raises(ValueError, match="does not work with probability"):
+        Gamma.fit(x, how="MPP", offset=True)
 
-    # The parameters are now close to the truth.
+
+def test_mle_offset_gamma_parameters_recovered():
+    """The recovery the MPP test above was really protecting, under an
+    estimator Gamma supports."""
+    s = _summary(Gamma, (3.0, 2.0), how="MLE")
+
     assert abs(s["fit"].gamma - TRUE_GAMMA) < 1.0, s["fit"].gamma
     assert s["max_param_rel_err"] < 0.20  # within 20%
 
-    # ...and the distribution remains essentially exact.
     assert s["mean_rel_err"] < 0.01  # mean within 1%
     assert s["median_rel_err"] < 0.03  # median within 3%
     assert s["std_rel_err"] < 0.10  # spread within 10%

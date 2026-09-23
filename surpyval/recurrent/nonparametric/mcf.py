@@ -1,20 +1,44 @@
+from typing import TYPE_CHECKING
+
 import numpy as np
+import numpy.typing as npt
 from matplotlib import pyplot as plt
 from scipy.stats import norm
 
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 
 @singleton_fitter
 class NonParametricCounting(SerialisableMixin):
+    # Set on the instance the fit returns, not in __init__ -- the
+    # singleton fitter is called on a bare class and hands back a
+    # populated one. Annotated (not assigned) so the attributes have
+    # declared types without becoming class-level defaults shared by
+    # every instance.
+    x: npt.NDArray
+    r: npt.NDArray
+    d: npt.NDArray
+    mcf_hat: npt.NDArray
+    #: ``None`` on simulated models, which carry no variance.
+    var: "npt.NDArray | None"
+    data: RecurrentEventData
+
     # -- serialisation -----------------------------------------------------
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """
         Serialise this fitted MCF (mean cumulative function) estimate to a
         plain, JSON-serialisable dict.
@@ -38,7 +62,7 @@ class NonParametricCounting(SerialisableMixin):
         )
 
     @classmethod
-    def from_dict(cls, model_dict):
+    def from_dict(cls, model_dict: dict) -> "NonParametricCounting":
         """
         Rebuild an MCF estimate from a :meth:`to_dict` dictionary.
 
@@ -46,17 +70,16 @@ class NonParametricCounting(SerialisableMixin):
         --------
         to_dict, to_json, from_json
         """
-        if model_dict.get("model") != "NonParametricCounting":
-            raise ValueError(
-                "Must create an MCF estimate from a NonParametricCounting dict"
-            )
+        require_model_tag(
+            model_dict, "NonParametricCounting", "an MCF estimate"
+        )
         out = cls()
         out.x = np.array(model_dict["x"], dtype=float)
         out.mcf_hat = np.array(model_dict["mcf_hat"], dtype=float)
         out.var = np.array(model_dict["var"], dtype=float)
         return out
 
-    def mcf(self, x, interp="step"):
+    def mcf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         x = np.atleast_1d(x)
         # Let's not assume we can predict above the highest measurement
         if interp == "step":
@@ -77,13 +100,13 @@ class NonParametricCounting(SerialisableMixin):
 
     def mcf_cb(
         self,
-        x,
-        bound="two-sided",
-        interp="step",
-        confidence=0.95,
-        bound_type="exp",
-        dist="z",
-    ):
+        x: npt.ArrayLike,
+        bound: str = "two-sided",
+        interp: str = "step",
+        confidence: float = 0.95,
+        bound_type: str = "exp",
+        dist: str = "z",
+    ) -> npt.NDArray:
         """
         Confidence bounds for the MCF at the query times ``x``.
 
@@ -120,6 +143,11 @@ class NonParametricCounting(SerialisableMixin):
             # parametric cif_cb (#285).
             stat = np.array([1, -1]).reshape(2, 1) * stat
 
+        if self.var is None:
+            raise ValueError(
+                "This model carries no variance (a simulated MCF), so "
+                "confidence bounds are unavailable."
+            )
         if bound_type == "exp":
             # Exponential Greenwood confidence
             mcf_cb = self.mcf_hat * np.exp(
@@ -157,7 +185,13 @@ class NonParametricCounting(SerialisableMixin):
             mcf_cb[np.where(x > self.x.max())] = np.nan
         return mcf_cb
 
-    def plot(self, confidence=0.95, plot_bounds=True, ax=None, start=0.0):
+    def plot(
+        self,
+        confidence: float = 0.95,
+        plot_bounds: bool = True,
+        ax: "Axes | None" = None,
+        start: float = 0.0,
+    ) -> "Axes":
         if ax is None:
             ax = plt.gcf().gca()
 
@@ -188,11 +222,14 @@ class NonParametricCounting(SerialisableMixin):
         return ax
 
     @classmethod
-    def from_xrd(cls, x, r, d):
+    def from_xrd(
+        cls, x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
+    ) -> "NonParametricCounting":
         """Build the Nelson-Aalen MCF and its Lawless-Nadeau variance
         from an ``(x, r, d)`` triple; the single home of the estimator
         (cause-specific MCF used to carry a drifted copy)."""
         out = cls()
+        x, r, d = np.asarray(x), np.asarray(r), np.asarray(d)
         out.x, out.r, out.d = x, r, d
         out.mcf_hat = np.cumsum(d / r)
         var = (
@@ -204,13 +241,24 @@ class NonParametricCounting(SerialisableMixin):
         out.var = np.cumsum(var)
         return out
 
-    def fit_from_recurrent_data(self, data):
+    def fit_from_recurrent_data(
+        self, data: RecurrentEventData
+    ) -> "NonParametricCounting":
         reject_unsupported_nonparametric(data, "NonParametricCounting")
         out = type(self).from_xrd(*data.to_xrd())
         out.data = data
         return out
 
-    def fit(self, x, i=None, c=None, n=None, tl=None, tr=None, windows=None):
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        i: npt.ArrayLike | None = None,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | float | None = None,
+        tr: npt.ArrayLike | float | None = None,
+        windows: dict | None = None,
+    ) -> "NonParametricCounting":
         """
         Fit a nonparametric (Nelson-Aalen) MCF.
 

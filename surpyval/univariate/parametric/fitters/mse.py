@@ -1,3 +1,9 @@
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from ..parametric import Parametric
+
+import numpy.typing as npt
 from autograd import hessian, jacobian
 
 from surpyval import np
@@ -7,7 +13,15 @@ from surpyval.utils import xcnt_to_xrd
 from . import fallback_minimize
 
 
-def mse_fun(params, dist, x, F, inv_trans, const, offset):
+def mse_fun(
+    params: npt.NDArray,
+    dist: Any,
+    x: npt.NDArray,
+    F: npt.NDArray,
+    inv_trans: Callable[..., Any],
+    const: Callable[..., Any],
+    offset: bool,
+) -> Any:
     params = inv_trans(const(params))
     if offset:
         x = x - params[0]
@@ -15,7 +29,7 @@ def mse_fun(params, dist, x, F, inv_trans, const, offset):
     return np.sum((dist.ff(x, *params) - F) ** 2)
 
 
-def mse(model):
+def mse(model: "Parametric") -> Any:
     """
     MSE: Mean Square Error
     This is simply fitting the curve to the best estimate from a non-parametric

@@ -24,9 +24,9 @@ from surpyval import (
     Exponential,
     Gamma,
     Gumbel,
+    Logistic,
     LogLogistic,
     LogNormal,
-    Logistic,
     Normal,
     Weibull,
 )

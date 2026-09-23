@@ -1,7 +1,13 @@
+from typing import TYPE_CHECKING, Any, Callable
+
 import numpy as np
-from scipy.optimize import brentq, minimize
+from numpy.typing import ArrayLike
+from scipy.optimize import brentq
 
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
+
+if TYPE_CHECKING:
+    from surpyval.recurrent.renewal.renewal_model import RenewalModel
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
@@ -13,7 +19,9 @@ from surpyval.utils.recurrent_utils import (
 )
 
 
-def ari_reduction(failure_intensities, rho, m):
+def ari_reduction(
+    failure_intensities: np.ndarray, rho: float, m: "int | float"
+) -> "np.ndarray | float":
     """
     Intensity reduction ``R_n`` in force just after the most recent failure for
     the Arithmetic Reduction of Intensity model with memory ``m`` (Doyen &
@@ -37,7 +45,12 @@ def ari_reduction(failure_intensities, rho, m):
     return rho * np.sum(weights * recent)
 
 
-def _reduction_sequence(failure_intensities, position, rho, m):
+def _reduction_sequence(
+    failure_intensities: np.ndarray,
+    position: int,
+    rho: float,
+    m: "int | float",
+) -> np.ndarray:
     """``R_n`` after every failure at once, for failures from many items.
 
     ``failure_intensities`` holds ``lambda_0`` at each *observed* failure
@@ -68,7 +81,7 @@ def _reduction_sequence(failure_intensities, position, rho, m):
     return rho * total
 
 
-def _event_layout(data):
+def _event_layout(data: Any) -> tuple:
     """Per-row bookkeeping shared by the likelihood and the residuals.
 
     ``prev`` is the previous event time, restarting at 0 for each item.
@@ -142,7 +155,7 @@ class ARI(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model):
+    def _build_sampler(model: Any) -> Callable:
         dist = model.model.dist
         dp = model.model.params
         rho = model.rho
@@ -151,12 +164,12 @@ class ARI(RenewalFitMixin):
         running = [0.0]
         reduction = [0.0]
 
-        def sample(ui):
+        def sample(ui: float) -> float:
             t0 = running[0]
             red = reduction[0]
             energy = -np.log(ui)
 
-            def g(x):
+            def g(x: float) -> float:
                 delta = dist.cif(t0 + x, *dp) - dist.cif(t0, *dp)
                 return delta - red * x - energy
 
@@ -169,15 +182,23 @@ class ARI(RenewalFitMixin):
 
             running[0] = t0 + xi
             history_iif.append(dist.iif(running[0], *dp))
-            reduction[0] = ari_reduction(history_iif, rho, m)
+            reduction[0] = float(
+                ari_reduction(np.asarray(history_iif), rho, m)
+            )
             return xi
 
         return sample
 
-    def _make_model(self, baseline_dist, dist_params, rho, m):
+    def _make_model(
+        self,
+        baseline_dist: Any,
+        dist_params: ArrayLike,
+        rho: float,
+        m: "int | float",
+    ) -> "RenewalModel":
         from surpyval.recurrent.renewal.renewal_model import RenewalModel
 
-        model = baseline_dist.from_params(list(dist_params))
+        model = baseline_dist.from_params(np.asarray(dist_params).tolist())
         out = RenewalModel(
             model,
             rho,
@@ -191,7 +212,7 @@ class ARI(RenewalFitMixin):
         out.m = m
         return out
 
-    def _rescaled_increments(self, model, data):
+    def _rescaled_increments(self, model: Any, data: Any) -> np.ndarray:
         """
         Per-interval compensator increments (time-rescaling residuals) for a
         fitted ARI model: the integral of the reduced intensity over each
@@ -212,20 +233,22 @@ class ARI(RenewalFitMixin):
         delta_cif = np.asarray(dist.cif(x) - dist.cif(prev), dtype=float)
         return delta_cif - active * (x - prev)
 
-    def _refit(self, model, data):
+    def _refit(self, model: Any, data: Any) -> Any:
         """Refit this model family on ``data`` with the same baseline
         intensity and memory; used by the Cramer-von Mises bootstrap."""
         return self.fit_from_recurrent_data(
             data, dist=model.model.dist, m=model.m
         )
 
-    def create_negll_func(self, data, dist, m):
+    def create_negll_func(
+        self, data: Any, dist: Any, m: "int | float"
+    ) -> Callable:
         x = np.asarray(data.x, dtype=float)
         prev, observed, failure_pos, in_force = _event_layout(data)
         gap = x - prev
         x_failures = x[observed]
 
-        def negll_func(params):
+        def negll_func(params: np.ndarray) -> float:
             rho = params[0]
             dist_params = params[1:]
 
@@ -253,7 +276,13 @@ class ARI(RenewalFitMixin):
 
         return negll_func
 
-    def fit_from_recurrent_data(self, data, dist=CrowAMSAA, m=1, init=None):
+    def fit_from_recurrent_data(
+        self,
+        data: Any,
+        dist: Any = CrowAMSAA,
+        m: "int | float" = 1,
+        init: "ArrayLike | None" = None,
+    ) -> "RenewalModel":
         """
         Fit the ARI model from recurrent data.
 
@@ -283,25 +312,20 @@ class ARI(RenewalFitMixin):
         reject_gapped_observation(data, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, m)
-        transform, inv_trans = self._bounds_transform(
-            data.x, [(0, 1), *dist.bounds], ["rho", *dist.param_names]
+        base_params0 = (
+            self._initial_baseline_params(data, dist) if init is None else None
         )
-
-        def fit_once(x0):
-            return minimize(
-                lambda p: neg_ll(inv_trans(p)),
-                transform(np.asarray(x0, dtype=float)),
-                method="Nelder-Mead",
-            )
-
-        if init is None:
-            base_params = self._initial_baseline_params(data, dist)
-            inits = [[rho_init, *base_params] for rho_init in (0.1, 0.5, 0.9)]
-        else:
-            inits = None
-        res = self._multistart(fit_once, inits, init)
-
-        rho, *dist_params = inv_trans(res.x)
+        res, params = self._fit_restoration_ml(
+            data,
+            neg_ll,
+            (0, 1),
+            "rho",
+            dist,
+            (0.1, 0.5, 0.9),
+            base_params0,
+            init,
+        )
+        rho, *dist_params = params
         out = self._make_model(dist, dist_params, rho, m)
         # Only the observed failures (c == 0) contribute an intensity term, so
         # they are the events that enter the BIC sample size.
@@ -316,7 +340,7 @@ class ARI(RenewalFitMixin):
         return out
 
     @staticmethod
-    def _initial_baseline_params(data, dist):
+    def _initial_baseline_params(data: Any, dist: Any) -> np.ndarray:
         """
         Initial parameters for the baseline intensity model: the plain NHPP fit
         of that baseline if it succeeds, otherwise its own parameter
@@ -333,7 +357,16 @@ class ARI(RenewalFitMixin):
             base_params = np.asarray(dist.parameter_initialiser(data.x))
         return base_params
 
-    def fit(self, x, i=None, c=None, n=None, dist=CrowAMSAA, m=1, init=None):
+    def fit(
+        self,
+        x: ArrayLike,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        n: "ArrayLike | None" = None,
+        dist: Any = CrowAMSAA,
+        m: "int | float" = 1,
+        init: "ArrayLike | None" = None,
+    ) -> "RenewalModel":
         """
         Fit the ARI model.
 
@@ -365,7 +398,13 @@ class ARI(RenewalFitMixin):
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, m, init=init)
 
-    def fit_from_parameters(self, dist_params, rho, m=1, dist=CrowAMSAA):
+    def fit_from_parameters(
+        self,
+        dist_params: ArrayLike,
+        rho: float,
+        m: "int | float" = 1,
+        dist: Any = CrowAMSAA,
+    ) -> "RenewalModel":
         """
         Build an ARI model from given parameters.
 

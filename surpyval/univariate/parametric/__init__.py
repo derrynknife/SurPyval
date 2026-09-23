@@ -32,6 +32,7 @@ from .distributions import (
     Geometric,
     Gumbel,
     GumbelLEV,
+    Hypoexponential,
     InstantlyOccurs,
     Logistic,
     LogLogistic,
@@ -46,5 +47,5 @@ from .distributions import (
 )
 from .mixture_model import MixtureModel
 from .parametric import Parametric
-from .parametric_fitter import ParametricFitter
+from .parametric_fitter import OptimisedFitMixin, ParametricFitter
 from .royston_parmar import RoystonParmar, RoystonParmarModel

@@ -11,9 +11,12 @@ a fitter class rather than a class that is only ever instantiated once.
 """
 
 import sys
+from typing import TypeVar
+
+T = TypeVar("T")
 
 
-def singleton_fitter(cls):
+def singleton_fitter(cls: type[T]) -> T:
     """Bind the decorated class' name to a single configured instance.
 
     Use on a fitter whose ``__init__`` takes no required arguments. The name is

@@ -1,7 +1,10 @@
 import numpy as np
+import numpy.typing as npt
 
 
-def rank_adjust(t, c=None):
+def rank_adjust(
+    t: npt.ArrayLike, c: npt.ArrayLike | None = None
+) -> npt.NDArray:
     """
     Currently limited to only Mean Order Number
     Room to expand to:
@@ -13,13 +16,13 @@ def rank_adjust(t, c=None):
     Above reference provides excellent explanation of how this method is
     derived this function currently assumes good input
     """
+    t = np.asarray(t)
     # Total items in test/population
     N = len(t)
     # Preallocate adjusted ranks array
     ranks = np.zeros(N)
 
-    if c is None:
-        c = np.zeros(N)
+    c = np.zeros(N) if c is None else np.asarray(c)
 
     # Rank adjustment for [right] censored data
     # PMON - "Previous Mean Order Number"

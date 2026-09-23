@@ -1,26 +1,22 @@
 from collections import namedtuple
 from copy import copy, deepcopy
 from math import comb
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any, Callable
 
 import matplotlib.pyplot as plt
 import numpy.typing as npt
 from autograd import jacobian
+from matplotlib.axes import Axes
 from scipy.optimize import NonlinearConstraint, brentq, minimize
 from scipy.special import ndtri as z
 from scipy.stats import uniform
 
 import surpyval as surv
 from surpyval import ParametricDistribution, np
-from surpyval.utils import fsli_to_xcnt
-
-if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-
-    from surpyval.utils.surpyval_data import SurpyvalData
-
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 from surpyval.univariate.information_criteria import InformationCriteriaMixin
+from surpyval.utils import fsli_to_xcnt
+from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -142,6 +138,9 @@ class Parametric(
             raise ValueError(
                 f"Unknown distribution '{model_dict['distribution']}'"
             )
+        # A variable-arity distribution supplies the instance sized to
+        # these parameters; every other distribution returns itself.
+        dist = dist._for_params(model_dict["params"])
         how = model_dict["how"]
         if "data" in model_dict:
             # Coerce the JSON lists back to arrays so downstream users
@@ -360,7 +359,7 @@ class Parametric(
         info = getattr(self, "fitting_info", None) or {}
         return set(info.get("fixed_idx", []) or [])
 
-    def _profile_neg_ll(self, idx: int, value: float) -> float:
+    def _profile_neg_ll(self, idx: int, value: Any) -> float:
         """Profile negative log-likelihood with core parameter ``idx`` fixed.
 
         Holds the ``idx``-th distribution parameter at ``value`` and minimises
@@ -380,7 +379,7 @@ class Parametric(
             j for j in range(len(fixed)) if j != idx and j not in user_fixed
         ]
 
-        def neg_ll(theta):
+        def neg_ll(theta: npt.NDArray) -> Any:
             return float(
                 self.dist._neg_ll_func(
                     self.surv_data, *theta, self.gamma, self.f0, self.p
@@ -391,7 +390,7 @@ class Parametric(
             # Single-parameter distribution: nothing left to profile over.
             return neg_ll(fixed)
 
-        def obj(free_vals):
+        def obj(free_vals: npt.NDArray) -> Any:
             theta = fixed.copy()
             theta[free_idx] = free_vals
             return neg_ll(theta)
@@ -482,10 +481,10 @@ class Parametric(
         else:
             se = 0.5 * abs(theta_hat) if theta_hat != 0 else 1.0
 
-        def deviance(v):
+        def deviance(v: npt.NDArray) -> Any:
             return 2.0 * (self._profile_neg_ll(idx, v) - nll_hat)
 
-        def solve_side(direction):
+        def solve_side(direction: Any) -> Any:
             limit = hi_b if direction > 0 else lo_b
             below = theta_hat  # deviance(below) ~ 0 < crit
             step = se
@@ -549,7 +548,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.sf(2)
-        0.9920319148370607
+        np.float64(0.9920319148370607)
         >>> model.sf([1, 2, 3, 4, 5])
         array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
         """
@@ -591,7 +590,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.ff(2)
-        0.007968085162939342
+        np.float64(0.007968085162939372)
         >>> model.ff([1, 2, 3, 4, 5])
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
@@ -632,7 +631,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.df(2)
-        0.01190438297804473
+        np.float64(0.01190438297804473)
         >>> model.df([1, 2, 3, 4, 5])
         array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
         """
@@ -679,7 +678,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.hf(2)
-        0.012000000000000002
+        np.float64(0.012000000000000002)
         >>> model.hf([1, 2, 3, 4, 5])
         array([0.003, 0.012, 0.027, 0.048, 0.075])
         """
@@ -687,7 +686,12 @@ class Parametric(
         if (self.p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
-            return np.where(xg < s0, 0.0, self.dist.hf(xg, *self.params))
+            out = np.where(xg < s0, 0.0, self.dist.hf(xg, *self.params))
+            # ``np.where`` hands back a 0-d array for scalar input, so a
+            # scalar argument used to come out as ``array(0.012)`` while
+            # every sibling method returned a numpy scalar. ``[()]`` is a
+            # no-op on a real array and unwraps the 0-d case.
+            return out[()]
         else:
             return self.df(x) / self.sf(x)
 
@@ -719,7 +723,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.Hf(2)
-        0.008000000000000002
+        np.float64(0.008000000000000002)
         >>> model.Hf([1, 2, 3, 4, 5])
         array([0.001, 0.008, 0.027, 0.064, 0.125])
         """
@@ -728,7 +732,8 @@ class Parametric(
         if (self.p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
             s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
-            return np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
+            out = np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
+            return out[()]
         else:
             return -np.log(self.sf(x))
 
@@ -757,7 +762,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.qf(0.2)
-        6.06542793124108
+        np.float64(6.06542793124108)
         >>> model.qf([.1, .2, .3, .4, .5])
         array([4.72308719, 6.06542793, 7.09181722, 7.99387877, 8.84997045])
 
@@ -823,21 +828,21 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.cs(11, 10)
-        0.00025840046151723767
+        np.float64(0.00025840046151723767)
         """
         x = np.asarray(x)
         X = np.asarray(X)
         Xg = X - self.gamma  # type: ignore[operator]
         cs = np.array(self.dist.cs(x, Xg, *self.params))
         cs[cs > 1.0] = 1
-        return cs
+        return cs[()]
 
     def random(
         self,
         size: int | tuple[int, ...],
         a: float | None = None,
         b: float | None = None,
-    ) -> npt.NDArray:
+    ) -> "npt.NDArray | tuple":
         r"""
 
         A method to draw random samples from the distributions using the
@@ -856,9 +861,13 @@ class Parametric(
 
         Returns
         -------
-        random : numpy array
-            Returns a numpy array of size ``size`` with random values
-            drawn from the distribution.
+        random : numpy array, or tuple of numpy arrays
+            For a plain model, a numpy array of size ``size`` with random
+            values drawn from the distribution. A limited-failure-population
+            or zero-inflated model instead returns the draw as xcnt-format
+            ``(x, c, n, t)`` arrays, because some of its draws are
+            never-failing (right-censored) units that a bare array of
+            failure times cannot represent.
 
         Examples
         --------
@@ -972,7 +981,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.mean()
-        8.929795115692489
+        np.float64(8.929795115692489)
         """
         if not hasattr(self, "_mean"):
             # Defective mean: the zero-inflated mass f0 sits at 0 and
@@ -998,7 +1007,7 @@ class Parametric(
         >>> from surpyval import Weibull
         >>> model = Weibull.from_params([10, 3])
         >>> model.var()
-        11.229...
+        np.float64(10.533288486847923)
         """
         m1 = self.dist._moment(1, *self.params)
         m2 = self.dist._moment(2, *self.params)
@@ -1071,7 +1080,7 @@ class Parametric(
         >>> from surpyval import Normal
         >>> model = Normal.from_params([10, 3])
         >>> model.entropy()
-        2.5175508218727822
+        np.float64(2.5175508218727822)
 
         Notes
         -----
@@ -1189,7 +1198,7 @@ class Parametric(
 
         return cb
 
-    def _cb_lr_on_func(self, on):
+    def _cb_lr_on_func(self, on: str) -> Any:
         """Return ``g(t, theta)`` for the requested ``on`` function.
 
         Evaluates the chosen distribution function at a single time for a
@@ -1200,7 +1209,7 @@ class Parametric(
         if on not in valid:
             raise ValueError(f"'on' must be one of {valid}")
 
-        def g(t, theta):
+        def g(t: Any, theta: npt.NDArray) -> Any:
             xt = np.atleast_1d(t) - self.gamma
             if on in ("sf", "R"):
                 return self.dist.sf(xt, *theta)[0]
@@ -1214,7 +1223,7 @@ class Parametric(
 
         return g
 
-    def _cb_lr(self, t, on, alpha_ci, bound):
+    def _cb_lr(self, t: Any, on: str, alpha_ci: float, bound: str) -> Any:
         """Profile-likelihood (likelihood-ratio) band on a model function.
 
         At each time the bound is the extreme value of the ``on`` function over
@@ -1247,7 +1256,7 @@ class Parametric(
             )
         )
 
-        def deviance(theta):
+        def deviance(theta: npt.NDArray) -> Any:
             return 2.0 * (
                 float(
                     self.dist._neg_ll_func(
@@ -1280,7 +1289,7 @@ class Parametric(
         order = np.argsort(t)
         t_sorted = t[order]
 
-        def extreme(time, sign, warm):
+        def extreme(time: Any, sign: Any, warm: Any) -> Any:
             # sign = +1 minimises g (lower bound); -1 maximises g (upper).
             res = minimize(
                 lambda th: sign * g(time, th),
@@ -1317,7 +1326,7 @@ class Parametric(
         else:
             return hi_vals[inv]
 
-    def _cb_context(self):
+    def _cb_context(self) -> Any:
         """Assemble the parameter vector and covariance used by ``cb``.
 
         The variance is computed over the extended parameter vector
@@ -1349,7 +1358,7 @@ class Parametric(
 
         return _CBContext(phi_hat=phi_hat, cov=cov, n_core=n_core)
 
-    def _cb_unpack(self, phi, ctx):
+    def _cb_unpack(self, phi: npt.NDArray, ctx: Any) -> Any:
         """Split an extended parameter vector into ``(core, p, f0)``."""
         core = phi[: ctx.n_core]
         i = ctx.n_core
@@ -1361,7 +1370,7 @@ class Parametric(
         f0 = phi[i] if self.zi else 0.0
         return core, p, f0
 
-    def _cb_full_sf(self, x, phi, ctx):
+    def _cb_full_sf(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
         """Survival function including the LFP and zero-inflation mass.
 
         Points below the (offset) support are clamped *before* the base sf is
@@ -1380,12 +1389,14 @@ class Parametric(
         base_sf = np.where(below, 1.0, self.dist.sf(xg, *core))
         return 1 - p + (p - f0) * base_sf
 
-    def _cb_delta_var(self, func, ctx):
+    def _cb_delta_var(self, func: Callable[..., Any], ctx: Any) -> Any:
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
         jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
         return np.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
 
-    def _cb_sf_bound(self, x, ctx, alpha_ci, bound):
+    def _cb_sf_bound(
+        self, x: npt.ArrayLike, ctx: Any, alpha_ci: float, bound: str
+    ) -> Any:
         """Confidence bound on the survival function via a logit transform.
 
         Working on the logit of R keeps the bound within ``(0, 1)``. The
@@ -1393,7 +1404,7 @@ class Parametric(
         layout the public ``cb`` method expects.
         """
 
-        def sf_func(phi):
+        def sf_func(phi: npt.NDArray) -> Any:
             return self._cb_full_sf(x, phi, ctx)
 
         var_R = self._cb_delta_var(sf_func, ctx)
@@ -1418,7 +1429,9 @@ class Parametric(
         R_cb = np.where(np.broadcast_to(R_hat == 0.0, R_cb.shape), 0.0, R_cb)
         return R_cb.T
 
-    def _cb_rate_bound(self, t, ctx, alpha_ci, bound, on):
+    def _cb_rate_bound(
+        self, t: Any, ctx: Any, alpha_ci: float, bound: str, on: str
+    ) -> Any:
         """Confidence bound on the hazard (``hf``) or density (``df``).
 
         Both are non-negative, so the bound is computed on the log scale to
@@ -1426,13 +1439,13 @@ class Parametric(
         rate function rather than differentiating the ``Hf`` bound curve.
         """
 
-        def density(phi):
+        def density(phi: npt.NDArray) -> Any:
             core, p, f0 = self._cb_unpack(phi, ctx)
             return (p - f0) * self.dist.df(t - self.gamma, *core)
 
         if on == "hf":
 
-            def func(phi):
+            def func(phi: npt.NDArray) -> Any:
                 return density(phi) / self._cb_full_sf(t, phi, ctx)
 
         else:
@@ -1456,7 +1469,7 @@ class Parametric(
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin. The aic_c
     # correction uses the same parameter count as the aic() penalty it
     # corrects — including gamma / p / f0 when fitted (#256).
-    def _ic_counts(self):
+    def _ic_counts(self) -> Any:
         n, c = self.data["n"], self.data["c"]
         return n[c == 0].sum(), n.sum()
 
@@ -1501,7 +1514,7 @@ class Parametric(
             and (self.hess_inv is not None)
         ):
 
-            def _cb_func(x_model):
+            def _cb_func(x_model: npt.NDArray) -> Any:
                 return self.cb(x_model, on="ff", alpha_ci=alpha_ci)
 
             cb_func = _cb_func
@@ -1556,16 +1569,19 @@ class Parametric(
         Returns
         -------
 
-        plot : list
-            list of a matplotlib plot object
+        plot : matplotlib.axes.Axes
+            the axes the probability plot was drawn onto
 
         Examples
         --------
 
+        >>> import numpy as np
         >>> from surpyval import Weibull
+        >>> np.random.seed(1)
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)
         >>> model.plot()
+        <Axes: title={'center': 'Weibull Probability Plot'}, ylabel='CDF'>
         """
         if ax is None:
             ax = plt.gcf().gca()

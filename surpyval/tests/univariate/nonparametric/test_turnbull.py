@@ -367,3 +367,67 @@ def test_max_iter_zero_raises():
         surpyval.Turnbull.fit(
             np.array([1.0, 2.0, 3.0]), c=np.array([0, 1, 0]), max_iter=0
         )
+
+
+def test_only_the_km_option_is_the_npmle():
+    # The three turnbull_estimator options are not three ways of computing
+    # one number: the EM recovers the same r and d, and they then differ in
+    # how those become a survival curve. Only Kaplan-Meier is the
+    # non-parametric MLE; Nelson-Aalen and Fleming-Harrington are exp(-H)
+    # constructions that are not maximising anything.
+    #
+    # This pins the figures quoted in the ``turnbull_estimator`` docstring,
+    # which exist because comparing a default (FH) Turnbull fit against
+    # KaplanMeier and reading the gap as a defect is an easy mistake -- it
+    # is the mistake #260 was originally filed on.
+    from scipy.optimize import minimize
+
+    x = np.array([2.0, 3.0, 3.0, 4.0, 5.0, 6.0])
+    tl = np.array([0.0, 0.0, 1.0, 1.0, 2.0, 2.0])
+    support = np.array([2.0, 3.0, 4.0, 5.0, 6.0])
+
+    def neg_ll(u):
+        # masses on the support, softmax-parameterised so they stay simplex
+        p = np.exp(u - u.max())
+        p = p / p.sum()
+        total = 0.0
+        for xi, ti in zip(x, tl):
+            mass = p[support == xi].sum()
+            at_risk = p[support > ti].sum()  # (entry, exit]
+            if mass <= 0 or at_risk <= 0:
+                return 1e6
+            total += np.log(mass) - np.log(at_risk)
+        return -total
+
+    best = None
+    for seed in range(6):
+        res = minimize(
+            neg_ll,
+            np.random.default_rng(seed).normal(size=support.size),
+            method="Nelder-Mead",
+            options={"maxiter": 40000, "fatol": 1e-14, "xatol": 1e-12},
+        )
+        if best is None or res.fun < best.fun:
+            best = res
+
+    p = np.exp(best.x - best.x.max())
+    p = p / p.sum()
+    npmle_sf2 = p[support > 2.0].sum()
+    assert npmle_sf2 == pytest.approx(0.75, abs=1e-5)
+
+    got = {
+        est: float(
+            np.ravel(
+                surpyval.Turnbull.fit(x, tl=tl, turnbull_estimator=est).sf(2.0)
+            )[0]
+        )
+        for est in ("Kaplan-Meier", "Fleming-Harrington", "Nelson-Aalen")
+    }
+
+    # KM reaches the NPMLE; the other two are elsewhere, and are ordered.
+    assert got["Kaplan-Meier"] == pytest.approx(npmle_sf2, abs=1e-5)
+    assert got["Fleming-Harrington"] == pytest.approx(0.7652, abs=1e-3)
+    assert got["Nelson-Aalen"] == pytest.approx(0.7788, abs=1e-3)
+    assert (
+        got["Kaplan-Meier"] < got["Fleming-Harrington"] < got["Nelson-Aalen"]
+    )

@@ -7,7 +7,11 @@ from surpyval.beta.ml.forest.deviance_split import (
     needs_full_likelihood_split,
 )
 from surpyval.beta.ml.forest.node import build_tree, node_from_dict
-from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -47,7 +51,7 @@ class SurvivalTree(SerialisableMixin):
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         kind: str = "weibull",
-    ):
+    ) -> None:
         self.data = data
         self.Z = Z
 
@@ -87,7 +91,7 @@ class SurvivalTree(SerialisableMixin):
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         kind: str = "weibull",
-    ):
+    ) -> "SurvivalTree":
         """
         Fit a survival tree from data in the full xcnt(+truncation) data
         model.
@@ -176,10 +180,7 @@ class SurvivalTree(SerialisableMixin):
     @classmethod
     def from_dict(cls, model_dict: dict) -> "SurvivalTree":
         """Reconstruct a fitted tree from a :meth:`to_dict` dictionary."""
-        if model_dict.get("model") != "SurvivalTree":
-            raise ValueError(
-                "Must create a SurvivalTree from a SurvivalTree model dict"
-            )
+        require_model_tag(model_dict, "SurvivalTree", "a survival tree")
         tree = cls.__new__(cls)
         tree.kind = model_dict["kind"]
         tree.n_features_split = model_dict["n_features_split"]

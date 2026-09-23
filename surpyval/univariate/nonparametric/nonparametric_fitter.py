@@ -38,7 +38,9 @@ class NonParametricFitter:
         out.greenwood = self._compute_var(estimator, r, d)
         return out
 
-    def _compute_var(self, estimator, r, d):
+    def _compute_var(
+        self, estimator: str, r: npt.ArrayLike, d: npt.ArrayLike
+    ) -> npt.NDArray:
         # Variance of the cumulative hazard estimate using the formula
         # appropriate to the estimator, e.g. Greenwood's formula for
         # Kaplan-Meier. See VAR_FUNCS for each.
@@ -116,6 +118,26 @@ class NonParametricFitter:
             If using the Turnbull heuristic, you can elect to use either the
             KM, NA, or FH estimator with the Turnbull estimates of r, and d.
             Defaults to FH.
+
+            **This default is why a Turnbull fit does not equal a
+            KaplanMeier fit on data both can handle.** The Turnbull EM
+            recovers the same ``r`` and ``d``; the three options then differ
+            in how they turn those into a survival curve, so the difference
+            is the estimator, not the data or the EM. On
+            ``x=[2,3,3,4,5,6], tl=[0,0,1,1,2,2]`` the survival at 2 is
+            0.750 under KM, 0.765 under FH and 0.779 under NA. Pass
+            ``turnbull_estimator='Kaplan-Meier'`` to compare like with like
+            -- it then agrees with :code:`KaplanMeier` to around 1e-9 on
+            both ``sf`` and ``cb``, on right-censored and left-truncated
+            data alike.
+
+            Only the KM option is the non-parametric MLE. NA and FH are
+            ``exp(-H)`` constructions and are not trying to maximise the
+            likelihood: on the data above the direct NPMLE of the truncated
+            likelihood is 0.750, and FH's 0.765 scores worse on it by
+            design. FH is the default because it behaves better than KM in
+            the far tails and on zero-inflated data (see the v0.8.0 notes),
+            not because it is the maximum likelihood answer.
 
         tol : float, optional
             Turnbull only. The EM stops once the largest change in any

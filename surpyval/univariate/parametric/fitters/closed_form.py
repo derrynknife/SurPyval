@@ -1,3 +1,9 @@
+from typing import Any
+
+import numpy.typing as npt
+
+from surpyval.utils.surpyval_data import SurpyvalData
+
 """Closed-form maximum likelihood estimation.
 
 A few distributions have an exact analytic MLE for particular data
@@ -28,14 +34,16 @@ from numpy.linalg import LinAlgError, inv, pinv
 from surpyval import np
 
 
-def _neg_ll_at(dist, data, params):
+def _neg_ll_at(dist: Any, data: SurpyvalData, params: npt.NDArray) -> float:
     """The model's negative log-likelihood at ``params`` (no offset,
     zero-inflation or limited-failure component -- the closed-form gate
     excludes all three)."""
     return dist._neg_ll_func(data, *params, 0.0, 0.0, 1.0)
 
 
-def parameter_covariance(dist, data, params):
+def parameter_covariance(
+    dist: Any, data: SurpyvalData, params: npt.NDArray
+) -> npt.NDArray | None:
     """Asymptotic parameter covariance, the inverse observed information.
 
     Computed directly in the natural parameter space: the closed-form
@@ -46,7 +54,7 @@ def parameter_covariance(dist, data, params):
     """
     params = onp.asarray(params, dtype=float)
 
-    def fun(p):
+    def fun(p: npt.NDArray) -> Any:
         return _neg_ll_at(dist, data, p)
 
     with onp.errstate(all="ignore"):
@@ -75,7 +83,9 @@ def parameter_covariance(dist, data, params):
     return cov
 
 
-def closed_form_results(dist, data, params):
+def closed_form_results(
+    dist: Any, data: SurpyvalData, params: npt.NDArray
+) -> Any:
     """Complete a closed-form parameter vector into a full results dict.
 
     Mirrors what the optimiser path returns, so a closed-form fit
@@ -116,7 +126,7 @@ def closed_form_results(dist, data, params):
     }
 
 
-def entry_times(data):
+def entry_times(data: SurpyvalData) -> npt.NDArray:
     """Left-truncation times with non-finite entries replaced by 0.
 
     ``-inf`` marks "not truncated"; for a lifetime distribution supported
@@ -127,7 +137,7 @@ def entry_times(data):
     return onp.where(onp.isfinite(tl), tl, 0.0)
 
 
-def is_uncensored_and_untruncated(data):
+def is_uncensored_and_untruncated(data: SurpyvalData) -> bool:
     """Every observation exact, with no truncation of either kind."""
     return bool(
         (onp.asarray(data.c) == 0).all()
@@ -136,7 +146,9 @@ def is_uncensored_and_untruncated(data):
     )
 
 
-def weighted_mean_and_std(values, n):
+def weighted_mean_and_std(
+    values: npt.NDArray, n: npt.NDArray
+) -> npt.NDArray | None:
     """MLE mean and standard deviation (dividing by the total weight, not
     by ``total - 1``), or ``None`` if the spread is degenerate."""
     values = onp.asarray(values, dtype=float)

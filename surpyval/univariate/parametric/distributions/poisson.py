@@ -1,3 +1,4 @@
+import numpy.typing as npt
 from autograd.scipy.special import gammainc, gammaincc, gammaln
 from scipy.stats import poisson
 
@@ -5,9 +6,15 @@ from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
 )
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+    OptimisedFitMixin,
+)
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
-class Poisson_(DiscreteParametricFitter):
+class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
     r"""
 
     The Poisson distribution as a discrete count model on the non-negative
@@ -28,7 +35,7 @@ class Poisson_(DiscreteParametricFitter):
         from surpyval import Poisson
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=1,
@@ -43,56 +50,69 @@ class Poisson_(DiscreteParametricFitter):
             plot_x_scale="linear",
         )
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
         # The Poisson mean is mu, so the sample mean is the moment seed.
+        x = data.x
         finite = x[np.isfinite(x)]
         mu = finite.mean() if finite.size else 1.0
         return np.array([max(float(mu), 1e-3)])
 
-    def sf(self, x, mu):
+    def sf(self, x: Numeric, mu: Boxable) -> Boxable:
         r"""Survival function :math:`R(k) = P(T > k)`."""
         # P(X > k) = P(X >= k + 1) is the regularised lower incomplete gamma
         # ``gammainc(k + 1, mu)``.
-        return gammainc(np.floor(x) + 1.0, mu)
+        #
+        # The first mass point is k = 0, so R = 1 below it. The gamma form
+        # only reaches that far by accident: its first argument is
+        # floor(k) + 1, which is 0 at k = -1 (where gammainc returns 1) but
+        # negative below that, where it returns NaN.
+        safe_a = np.where(x < 0.0, 1.0, np.floor(x) + 1.0)
+        return np.where(x < 0.0, 1.0, gammainc(safe_a, mu))
 
-    def ff(self, x, mu):
+    def ff(self, x: Numeric, mu: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = P(T \le k)`."""
-        return gammaincc(np.floor(x) + 1.0, mu)
+        safe_a = np.where(x < 0.0, 1.0, np.floor(x) + 1.0)
+        return np.where(x < 0.0, 0.0, gammaincc(safe_a, mu))
 
-    def df(self, x, mu):
+    def df(self, x: Numeric, mu: Boxable) -> Boxable:
         r"""PMF :math:`P(T = k) = \mu^{k} e^{-\mu} / k!`."""
         return np.exp(self.log_df(x, mu))
 
-    def hf(self, x, mu):
+    def hf(self, x: Numeric, mu: Boxable) -> Boxable:
         r"""Discrete hazard :math:`h(k) = P(T = k)/R(k - 1)`."""
         return self.df(x, mu) / self.sf(x - 1.0, mu)
 
-    def Hf(self, x, mu):
+    def Hf(self, x: Numeric, mu: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -\ln R(k)`."""
         return -self.log_sf(x, mu)
 
-    def qf(self, u, mu):
+    def qf(self, u: Numeric, mu: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
         return poisson.ppf(u, mu)
 
-    def mean(self, mu):
+    def mean(self, mu: Boxable) -> Boxable:
         return mu
 
-    def moment(self, m, mu):
+    def moment(self, m: int, mu: Boxable) -> Boxable:
         # Non-central moment E[T^m] by a truncated sum over the pmf out to a
         # far quantile (no simple closed form for general m).
         upper = int(poisson.ppf(1.0 - 1e-9, mu))
         k = np.arange(0, upper + 1, dtype=float)
         return np.sum(k**m * self.df(k, mu))
 
-    def random(self, size, mu):
+    def random(self, size: int | tuple[int, ...], mu: Boxable) -> npt.NDArray:
         return poisson.rvs(mu, size=size).astype(float)
 
-    def log_df(self, x, mu):
-        return x * np.log(mu) - mu - gammaln(x + 1.0)
+    def log_df(self, x: Numeric, mu: Boxable) -> Boxable:
+        return np.where(
+            x < 0.0, -np.inf, x * np.log(mu) - mu - gammaln(x + 1.0)
+        )
 
-    def log_sf(self, x, mu):
-        return np.log(gammainc(np.floor(x) + 1.0, mu))
+    def log_sf(self, x: Numeric, mu: Boxable) -> Boxable:
+        safe_a = np.where(x < 0.0, 1.0, np.floor(x) + 1.0)
+        return np.where(x < 0.0, 0.0, np.log(gammainc(safe_a, mu)))
 
 
 Poisson = Poisson_("Poisson")

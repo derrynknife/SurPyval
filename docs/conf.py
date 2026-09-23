@@ -79,6 +79,20 @@ html_logo = "_static/logo.png"
 
 autosectionlabel_prefix_document = True  # prevent label clashes across pages
 
+# ``autosectionlabel`` mints a cross-reference target from every section
+# heading. Prefixing by document stops two *pages* colliding, but not two
+# headings within one page -- and the changelog necessarily repeats
+# "Serialisation", "Degradation", "Regression" and so on once per
+# release. That produced a dozen duplicate-label warnings per build,
+# which is most of the noise that hid three genuinely broken autodoc
+# targets for who knows how long.
+#
+# Depth 1 keeps labels for page titles, which is what a ``:ref:`` into
+# another page actually wants, and stops minting them for the
+# subsections underneath. Nothing referenced those subsection labels
+# (the changelog has no inbound ``:ref:`` at all), so nothing breaks.
+autosectionlabel_maxdepth = 1
+
 autoclass_content = "both"  # include both class docstring and __init__
 autodoc_default_options = {
     "members": True,
@@ -95,10 +109,9 @@ html_theme_options = {
 }
 
 
-on_rtd = os.environ.get("READTHEDOCS", None) == "True"
-
-if not on_rtd:  # only import and set the theme if we're building docs locally
-    import sphinx_rtd_theme
-
-    html_theme = "sphinx_rtd_theme"
-    html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+# ``html_theme`` is set above and that is all a modern sphinx_rtd_theme
+# needs -- it registers itself as an entry point. The block that used to
+# live here re-set the theme and computed ``html_theme_path`` from
+# ``sphinx_rtd_theme.get_html_theme_path()``, which the theme has since
+# deprecated: it emitted a warning on every build, and its own message
+# says the call is safe to remove.

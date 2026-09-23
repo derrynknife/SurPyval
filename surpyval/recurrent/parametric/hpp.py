@@ -1,14 +1,21 @@
+from typing import Any, Callable
+
 import numpy as np
 from autograd import hessian, jacobian
 from autograd import numpy as anp
+from numpy.typing import ArrayLike
 from scipy.optimize import root
 from scipy.special import gammaln
 
-from surpyval.recurrent.parametric.counting_process import CountingProcess
+from surpyval.recurrent.parametric.counting_process import (
+    Boxable,
+    CountingProcess,
+)
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -34,27 +41,31 @@ class HPP(CountingProcess):
     Process             : Homogeneous Poisson Process
     Fitted by           : MLE
     Parameters          :
-        lambda: 0.000498450145693719
+        lambda: 0.0023047023327236213
     >>> model.cif([1, 2, 3, 4, 5, 6])
-    array([0.00049845, 0.0009969 , 0.00149535, 0.0019938 , 0.00249225,
-           0.0029907 ])
+    array([0.0023047 , 0.0046094 , 0.00691411, 0.00921881, 0.01152351,
+           0.01382821])
     >>>
     >>> model.iif([1, 2, 3, 4, 5, 6])
-    array([0.00049845, 0.00049845, 0.00049845, 0.00049845, 0.00049845,
-           0.00049845])
+    array([0.0023047, 0.0023047, 0.0023047, 0.0023047, 0.0023047, 0.0023047])
     >>>
     >>> model.inv_cif([1, 2, 3, 4, 5, 6])
-    array([ 2006.21869336,  4012.43738672,  6018.65608009,  8024.87477345,
-           10031.09346681, 12037.31216017])
+    array([ 433.89551258,  867.79102516, 1301.68653774, 1735.58205032,
+           2169.4775629 , 2603.37307548])
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.param_names = ["lambda"]
         self.bounds = ((0, None),)
         self.support = (0.0, np.inf)
         self.name = "Homogeneous Poisson Process"
 
-    def iif(self, x, rate):
+    # The base contract is variadic (*params); HPP's one parameter
+    # is named for clarity, which the checker flags as a narrower
+    # override. The runtime call sites all pass positionally.
+    def iif(  # type: ignore[override]
+        self, x: Boxable, rate: Boxable
+    ) -> Boxable:
         """
         Instantaneous intensity function (IIF) or the failure rate of the
         HPP model.
@@ -73,7 +84,12 @@ class HPP(CountingProcess):
         """
         return np.ones_like(x) * rate
 
-    def log_iif(self, x, rate):
+    # The base contract is variadic (*params); HPP's one parameter
+    # is named for clarity, which the checker flags as a narrower
+    # override. The runtime call sites all pass positionally.
+    def log_iif(  # type: ignore[override]
+        self, x: Boxable, rate: Boxable
+    ) -> Boxable:
         """
         Natural logarithm of the instantaneous intensity function (IIF) of
         the HPP model.
@@ -92,7 +108,12 @@ class HPP(CountingProcess):
         """
         return np.log(rate) * np.ones_like(x)
 
-    def cif(self, x, rate):
+    # The base contract is variadic (*params); HPP's one parameter
+    # is named for clarity, which the checker flags as a narrower
+    # override. The runtime call sites all pass positionally.
+    def cif(  # type: ignore[override]
+        self, x: Boxable, rate: Boxable
+    ) -> Boxable:
         """
         Cumulative intensity function (CIF) of the HPP model.
 
@@ -110,7 +131,7 @@ class HPP(CountingProcess):
         """
         return rate * np.array(x)
 
-    def inv_cif(self, cif, rate):
+    def inv_cif(self, cif: Boxable, rate: Boxable) -> Boxable:
         """
         Inverse of the cumulative intensity function (CIF) of the HPP model.
 
@@ -128,7 +149,7 @@ class HPP(CountingProcess):
         """
         return np.array(cif) / rate
 
-    def create_negll_func(self, data):
+    def create_negll_func(self, data: RecurrentEventData) -> Callable:
         x, c, n = data.x, data.c, data.n
         x_prev = data.get_previous_x()
 
@@ -162,7 +183,7 @@ class HPP(CountingProcess):
             len_observed = len(x_o)
             observed_time = (x_prev_o - x_o).sum()
         else:
-            len_observed = 0.0
+            len_observed = 0
             observed_time = 0.0
 
         if has_left_censoring:
@@ -198,6 +219,8 @@ class HPP(CountingProcess):
         right_truncation_time = (x_close_last - x_close_tr).sum()
 
         if has_interval_censoring:
+            # interval data implies 2-D x, so the right column exists
+            assert x_r is not None
             interval_mask = c == 2
             x_i_l = x_l[interval_mask]
             x_i_r = x_r[interval_mask]
@@ -218,7 +241,7 @@ class HPP(CountingProcess):
             n_log_x_interval_sum = 0.0
             n_i_factorial_sum = 0.0
 
-        def negll_func(log_rate):
+        def negll_func(log_rate: np.ndarray) -> float:
             rate = anp.exp(log_rate)
             ll = len_observed * log_rate + rate * observed_time
             ll += rate * right_censored_time
@@ -240,7 +263,9 @@ class HPP(CountingProcess):
 
         return negll_func
 
-    def fit_from_recurrent_data(self, data, init=None):
+    def fit_from_recurrent_data(
+        self, data: RecurrentEventData, init: "ArrayLike | None" = None
+    ) -> Any:
         """
         Fits the HPP model to recurrent data and returns the fitted model.
 
@@ -289,16 +314,16 @@ class HPP(CountingProcess):
 
     def fit(
         self,
-        x,
-        i=None,
-        c=None,
-        n=None,
-        t=None,
-        tl=None,
-        tr=None,
-        init=None,
-        windows=None,
-    ):
+        x: ArrayLike,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        n: "ArrayLike | None" = None,
+        t: "ArrayLike | None" = None,
+        tl: "ArrayLike | None" = None,
+        tr: "ArrayLike | None" = None,
+        init: "ArrayLike | None" = None,
+        windows: "dict | None" = None,
+    ) -> Any:
         """
         Fits the HPP model to the provided data and returns the fitted model.
 

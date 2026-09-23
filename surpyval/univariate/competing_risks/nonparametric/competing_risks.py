@@ -8,10 +8,18 @@ Copyright 2022 Cartiga LLC
 """
 
 import textwrap
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 import surpyval as surv
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+    to_native,
+)
 from surpyval.univariate.competing_risks.aalen_johansen import (
     aalen_johansen_iif,
 )
@@ -24,10 +32,12 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 
 
 class CompetingRisks(SerialisableMixin):
+    #: The source DataFrame when fitted via ``fit_from_df`` (named so it
+    #: does not shadow the density method ``df``, #253).
+    source_df: Any
     # Attributes populated by ``fit`` / ``from_dict``; declared for the type
     # checker.
     event_idx_map: dict
@@ -83,11 +93,9 @@ class CompetingRisks(SerialisableMixin):
     @classmethod
     def from_dict(cls, model_dict: dict) -> "CompetingRisks":
         """Rebuild a nonparametric competing-risks model from a dict."""
-        if model_dict.get("model") != "CompetingRisks":
-            raise ValueError(
-                "Must create a competing-risks model from a CompetingRisks "
-                "dict"
-            )
+        require_model_tag(
+            model_dict, "CompetingRisks", "a competing-risks model"
+        )
         out = cls()
         out.event_idx_map = {k: int(v) for k, v in model_dict["event_idx_map"]}
         out.n_event_types = int(model_dict["n_event_types"])
@@ -95,14 +103,14 @@ class CompetingRisks(SerialisableMixin):
             setattr(out, name, np.array(model_dict[name], dtype=float))
         return out
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         out = """\
         Competing Risk model with events:
         {events}
         """.format(events=list(self.event_idx_map.keys()))
         return textwrap.dedent(out)
 
-    def _f(self, f, x, event):
+    def _f(self, f: str, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         validate_event(self.event_idx_map, event)
         idx, rev = _get_idx(self.x, x)
 
@@ -126,16 +134,16 @@ class CompetingRisks(SerialisableMixin):
         # first event time.
         return np.where(idx[rev] < 0, 0.0, out)
 
-    def hf(self, x, event=None):
+    def hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         return self._f("h", x, event)
 
-    def Hf(self, x, event=None):
+    def Hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         return self._f("H", x, event)
 
-    def sf(self, x, event=None):
+    def sf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         return np.exp(-self.Hf(x, event=event))
 
-    def ff(self, x, event=None):
+    def ff(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
         A lot of commentary about this being difficult to interpret.
         In engineering this is not the case, eliminating the failure
@@ -143,17 +151,17 @@ class CompetingRisks(SerialisableMixin):
         """
         return 1 - np.exp(-self.Hf(x, event=event))
 
-    def df(self, x, event=None):
+    def df(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         return self.hf(x, event=event) * self.sf(x, event=event)
 
-    def iif(self, x, event):
+    def iif(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         """
         Instantaneous Incidence Function
         """
         validate_cif_event(event)
         return self._f("IIF", x, event)
 
-    def cif(self, x, event):
+    def cif(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         """
         Cumulative Incidence Function
         """
@@ -163,8 +171,14 @@ class CompetingRisks(SerialisableMixin):
 
     @classmethod
     def fit_from_df(
-        cls, df, x_col, e_col, c_col=None, n_col=None, method="Nelson-Aalen"
-    ):
+        cls,
+        df: Any,
+        x_col: str,
+        e_col: str,
+        c_col: "str | None" = None,
+        n_col: "str | None" = None,
+        method: str = "Nelson-Aalen",
+    ) -> "CompetingRisks":
         x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
         model = cls.fit(x, e, c, n, method)
         # Keep the source frame without shadowing the ``df`` (density)
@@ -173,7 +187,14 @@ class CompetingRisks(SerialisableMixin):
         return model
 
     @classmethod
-    def fit(cls, x, e, c=None, n=None, method="Nelson-Aalen"):
+    def fit(
+        cls,
+        x: npt.ArrayLike,
+        e: npt.ArrayLike,
+        c: "npt.ArrayLike | None" = None,
+        n: "npt.ArrayLike | None" = None,
+        method: str = "Nelson-Aalen",
+    ) -> "CompetingRisks":
         """
         Need to check that causes is the same length
         TODO: FlemingHarrington baseline.

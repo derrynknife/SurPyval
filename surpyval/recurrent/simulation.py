@@ -1,7 +1,9 @@
 import warnings
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 from matplotlib import pyplot as plt
+from numpy.typing import ArrayLike
 from scipy.stats import uniform
 
 from surpyval.recurrent.nonparametric import NonParametricCounting
@@ -29,7 +31,17 @@ class RecurrenceSimulationMixin:
     declare those via ``_cif_args`` rather than reimplementing the sampler.
     """
 
-    def _set_simulation_seed(self, seed):
+    if TYPE_CHECKING:
+        # The host model supplies these; declared rather than defined so a
+        # model that forgets one still gets the AttributeError naming it.
+        data: Any
+        dist: Any
+        params: Any
+
+        def cif(self, x: Any, *args: Any) -> Any: ...
+        def inv_cif(self, x: Any, *args: Any) -> Any: ...
+
+    def _set_simulation_seed(self, seed: "int | None") -> None:
         # ``None`` defers to numpy's global RNG (so ``np.random.seed`` still
         # controls the stream); an int/Generator gives a reproducible stream
         # that is independent of global state.
@@ -37,23 +49,23 @@ class RecurrenceSimulationMixin:
             None if seed is None else np.random.default_rng(seed)
         )
 
-    def initialize_simulation(self):
+    def initialize_simulation(self) -> None:
         self.us = uniform.rvs(
             size=100_000,
             random_state=getattr(self, "_sim_random_state", None),
         ).tolist()
 
-    def clear_simulation(self):
+    def clear_simulation(self) -> None:
         del self.us
 
-    def get_uniform_random_number(self):
+    def get_uniform_random_number(self) -> float:
         try:
             return self.us.pop()
         except IndexError:
             self.initialize_simulation()
             return self.us.pop()
 
-    def _cif_args(self):
+    def _cif_args(self) -> tuple:
         """
         Extra positional arguments threaded into ``cif``/``inv_cif`` for each
         simulated sequence. Empty for unconditional models; the covariate
@@ -61,7 +73,7 @@ class RecurrenceSimulationMixin:
         """
         return ()
 
-    def _new_sequence_sampler(self):
+    def _new_sequence_sampler(self) -> Callable:
         """
         Return a callable ``sample(ui) -> xi`` that draws the next interarrival
         time from a uniform random number, maintaining per-sequence state
@@ -76,7 +88,7 @@ class RecurrenceSimulationMixin:
         cif_args = self._cif_args()
         x_prev = 0.0
 
-        def sample(ui):
+        def sample(ui: float) -> float:
             nonlocal x_prev
             u_adj = ui * np.exp(-self.cif(x_prev, *cif_args))
             xi = self.inv_cif(-np.log(u_adj), *cif_args) - x_prev
@@ -85,7 +97,7 @@ class RecurrenceSimulationMixin:
 
         return sample
 
-    def _postprocess_simulated_model(self, model):
+    def _postprocess_simulated_model(self, model: Any) -> Any:
         """
         Adjust the fitted ``NonParametricCounting`` model in place before it is
         returned. A CoxLewis (log-linear) intensity has a non-zero baseline
@@ -100,7 +112,9 @@ class RecurrenceSimulationMixin:
         # exact, so the simulated MCF needs no baseline offset (#288).
         return model
 
-    def _simulate_count_xicn(self, events, items, seed):
+    def _simulate_count_xicn(
+        self, events: int, items: int, seed: "int | None"
+    ) -> dict:
         """
         Simulate ``items`` count-terminated sequences and return the raw event
         data as an ``xicn`` dict (``events + 1`` exact events per sequence).
@@ -108,7 +122,7 @@ class RecurrenceSimulationMixin:
         self._set_simulation_seed(seed)
         self.initialize_simulation()
 
-        xicn = {"x": [], "i": [], "c": [], "n": []}
+        xicn: dict = {"x": [], "i": [], "c": [], "n": []}
 
         for i in range(0, items):
             running = 0
@@ -124,7 +138,14 @@ class RecurrenceSimulationMixin:
         self.clear_simulation()
         return xicn
 
-    def _simulate_time_xicn(self, T, items, tol, max_events, seed):
+    def _simulate_time_xicn(
+        self,
+        T: float,
+        items: int,
+        tol: float,
+        max_events: int,
+        seed: "int | None",
+    ) -> dict:
         """
         Simulate ``items`` time-terminated sequences and return the raw event
         data as an ``xicn`` dict. Each sequence ends in a right-censored (c=1)
@@ -136,7 +157,7 @@ class RecurrenceSimulationMixin:
         stalled = False
         hit_max_events = False
 
-        xicn = {"x": [], "i": [], "c": [], "n": []}
+        xicn: dict = {"x": [], "i": [], "c": [], "n": []}
 
         for i in range(0, items):
             running = 0
@@ -176,7 +197,9 @@ class RecurrenceSimulationMixin:
 
         return xicn
 
-    def count_terminated_simulation_data(self, events, items=1, seed=None):
+    def count_terminated_simulation_data(
+        self, events: int, items: int = 1, seed: "int | None" = None
+    ) -> Any:
         """
         Simulate count-terminated recurrence data and return the raw events.
 
@@ -223,8 +246,13 @@ class RecurrenceSimulationMixin:
         return handle_xicn(**xicn)
 
     def time_terminated_simulation_data(
-        self, T, items=1, tol=1e-8, max_events=10_000, seed=None
-    ):
+        self,
+        T: float,
+        items: int = 1,
+        tol: float = 1e-8,
+        max_events: int = 10_000,
+        seed: "int | None" = None,
+    ) -> Any:
         """
         Simulate time-terminated recurrence data and return the raw events.
 
@@ -260,7 +288,9 @@ class RecurrenceSimulationMixin:
         xicn = self._simulate_time_xicn(T, items, tol, max_events, seed)
         return handle_xicn(**xicn)
 
-    def count_terminated_simulation(self, events, items=1, seed=None):
+    def count_terminated_simulation(
+        self, events: int, items: int = 1, seed: "int | None" = None
+    ) -> Any:
         """
         Simulate count-terminated recurrence data based on the fitted model.
 
@@ -292,8 +322,13 @@ class RecurrenceSimulationMixin:
         return model
 
     def time_terminated_simulation(
-        self, T, items=1, tol=1e-8, max_events=10_000, seed=None
-    ):
+        self,
+        T: float,
+        items: int = 1,
+        tol: float = 1e-8,
+        max_events: int = 10_000,
+        seed: "int | None" = None,
+    ) -> Any:
         """
         Simulate time-terminated recurrence data based on the fitted model.
 
@@ -336,7 +371,9 @@ class RecurrenceSimulationMixin:
         model.var = None
         return model
 
-    def mcf(self, x, items=1000, seed=None):
+    def mcf(
+        self, x: ArrayLike, items: int = 1000, seed: "int | None" = None
+    ) -> Any:
         """
         Estimate the mean cumulative function (MCF) at ``x``.
 
@@ -367,7 +404,9 @@ class RecurrenceSimulationMixin:
         )
         return np_model.mcf(x)
 
-    def plot(self, ax=None, items=1000, seed=None):
+    def plot(
+        self, ax: Any = None, items: int = 1000, seed: "int | None" = None
+    ) -> Any:
         """
         Overlay the simulated MCF on the empirical MCF of the fitted data.
 

@@ -40,7 +40,10 @@ moves), the standard destructive-degradation / degradation-distribution model
 (Meeker & Escobar).
 """
 
+from typing import Any
+
 import numpy as np
+import numpy.typing as npt
 from scipy.optimize import minimize
 
 from surpyval.serialisation import stamp_schema
@@ -63,7 +66,7 @@ _LOG_RESPONSE = {"LogNormal", "LogLogistic"}
 _DIST_BY_NAME = {"Normal": Normal, "LogNormal": LogNormal}
 
 
-def _resolve_distribution(distribution):
+def _resolve_distribution(distribution: Any) -> Any:
     if isinstance(distribution, str):
         if distribution not in _DIST_BY_NAME:
             raise ValueError(
@@ -87,16 +90,16 @@ class DestructiveDegradationModel:
 
     def __init__(
         self,
-        distribution,
-        transform,
-        direction,
-        beta,
-        sigma,
-        threshold,
-        data,
-        neg_ll,
-        transform_scores=None,
-    ):
+        distribution: Any,
+        transform: str,
+        direction: str,
+        beta: npt.NDArray,
+        sigma: float,
+        threshold: float,
+        data: "dict | None",
+        neg_ll: float,
+        transform_scores: "dict | None" = None,
+    ) -> None:
         self.distribution = distribution
         self.transform = transform  # name
         self._phi = _TRANSFORMS[transform][0]
@@ -111,11 +114,13 @@ class DestructiveDegradationModel:
 
     # -- degradation distribution over time -------------------------------
 
-    def _loc(self, t):
+    def _loc(self, t: npt.ArrayLike) -> npt.NDArray:
         t = np.atleast_1d(np.asarray(t, dtype=float))
         return self.beta[0] + self.beta[1] * self._phi(t)
 
-    def degradation_quantile(self, q, t):
+    def degradation_quantile(
+        self, q: npt.ArrayLike, t: npt.ArrayLike
+    ) -> npt.NDArray:
         """
         The ``q``-quantile of the destructive measurement at time ``t`` (the
         fitted degradation distribution ``dist(loc(t), sigma)``).
@@ -124,13 +129,13 @@ class DestructiveDegradationModel:
         out = np.asarray(self.distribution.qf(q, loc, self.sigma), dtype=float)
         return out[0] if np.ndim(t) == 0 else out
 
-    def median_degradation(self, t):
+    def median_degradation(self, t: npt.ArrayLike) -> npt.NDArray:
         """Median destructive measurement at time ``t``."""
         return self.degradation_quantile(0.5, t)
 
     # -- induced lifetime distribution at the threshold -------------------
 
-    def ff(self, t):
+    def ff(self, t: npt.ArrayLike) -> npt.NDArray:
         """Failure (CDF) of the lifetime induced by crossing the threshold."""
         loc = self._loc(t)
         thr = self.threshold
@@ -145,15 +150,15 @@ class DestructiveDegradationModel:
             )
         return out[0] if np.ndim(t) == 0 else out
 
-    def sf(self, t):
+    def sf(self, t: npt.ArrayLike) -> npt.NDArray:
         """Reliability of the induced lifetime distribution."""
         return 1.0 - self.ff(t)
 
-    def Hf(self, t):
+    def Hf(self, t: npt.ArrayLike) -> npt.NDArray:
         """Cumulative hazard of the induced lifetime distribution."""
         return -np.log(np.maximum(self.sf(t), np.finfo(float).tiny))
 
-    def df(self, t):
+    def df(self, t: npt.ArrayLike) -> npt.NDArray:
         """
         Density of the induced lifetime distribution (finite-difference of the
         CDF; the closed form depends on the time transform).
@@ -168,13 +173,13 @@ class DestructiveDegradationModel:
 
     def cb(
         self,
-        t,
-        on="sf",
-        alpha_ci=0.05,
-        bound="two-sided",
-        n_boot=200,
-        seed=None,
-    ):
+        t: npt.ArrayLike,
+        on: str = "sf",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        n_boot: int = 200,
+        seed: "int | None" = None,
+    ) -> npt.NDArray:
         """
         Bootstrap confidence bounds on the induced lifetime function ``on``.
 
@@ -202,6 +207,11 @@ class DestructiveDegradationModel:
             raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
         t = np.atleast_1d(np.asarray(t, dtype=float))
         rng = np.random.default_rng(seed)
+        if self.data is None:
+            raise ValueError(
+                "Bootstrap bounds need the fit data, which this "
+                "deserialised model does not carry."
+            )
         x, y, c = self.data["x"], self.data["y"], self.data["c"]
         n = x.shape[0]
 
@@ -223,19 +233,19 @@ class DestructiveDegradationModel:
             draws.append(getattr(m, on)(t))
         if not draws:
             raise RuntimeError("every bootstrap resample failed to fit")
-        draws = np.vstack(draws)
+        draws_arr = np.vstack(draws)
 
         if bound == "lower":
-            return np.quantile(draws, alpha_ci, axis=0)
+            return np.quantile(draws_arr, alpha_ci, axis=0)
         if bound == "upper":
-            return np.quantile(draws, 1.0 - alpha_ci, axis=0)
-        lo = np.quantile(draws, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(draws, 1.0 - alpha_ci / 2.0, axis=0)
+            return np.quantile(draws_arr, 1.0 - alpha_ci, axis=0)
+        lo = np.quantile(draws_arr, alpha_ci / 2.0, axis=0)
+        hi = np.quantile(draws_arr, 1.0 - alpha_ci / 2.0, axis=0)
         return np.stack([lo, hi], axis=-1)
 
     # -- serialisation ----------------------------------------------------
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """Serialise to a plain JSON-safe dict."""
         return stamp_schema(
             {
@@ -250,7 +260,7 @@ class DestructiveDegradationModel:
         )
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: dict) -> "DestructiveDegradationModel":
         """Rebuild a model from :meth:`to_dict`."""
         if d.get("model") != "DestructiveDegradationModel":
             got = d.get("model")
@@ -270,7 +280,7 @@ class DestructiveDegradationModel:
             neg_ll=np.nan,
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             "Destructive Degradation Model"
             "\n============================="
@@ -298,7 +308,14 @@ class DestructiveDegradation_:
     unit). Use the module-level singleton :data:`DestructiveDegradation`.
     """
 
-    def _neg_ll(self, dist, phi_t, y, c, params):
+    def _neg_ll(
+        self,
+        dist: Any,
+        phi_t: npt.NDArray,
+        y: npt.NDArray,
+        c: npt.NDArray,
+        params: npt.NDArray,
+    ) -> float:
         beta0, beta1, log_sigma = params
         sigma = np.exp(log_sigma)
         loc = beta0 + beta1 * phi_t
@@ -314,7 +331,14 @@ class DestructiveDegradation_:
             ll = ll + dist.log_ff(y[lc], loc[lc], sigma).sum()
         return -ll
 
-    def _fit_one(self, dist, transform, x, y, c):
+    def _fit_one(
+        self,
+        dist: Any,
+        transform: str,
+        x: npt.NDArray,
+        y: npt.NDArray,
+        c: npt.NDArray,
+    ) -> tuple:
         phi = _TRANSFORMS[transform][0]
         phi_t = phi(x)
         # OLS initial values (on the log response for positive-support dists).
@@ -331,7 +355,7 @@ class DestructiveDegradation_:
 
         with np.errstate(all="ignore"):
 
-            def fun(p):
+            def fun(p: npt.NDArray) -> float:
                 return self._neg_ll(dist, phi_t, y, c, p)
 
             res = minimize(fun, init, method="Nelder-Mead")
@@ -344,14 +368,14 @@ class DestructiveDegradation_:
 
     def fit(
         self,
-        x,
-        y,
-        threshold,
-        c=None,
-        distribution=LogNormal,
-        transform="linear",
-        direction="auto",
-    ):
+        x: npt.ArrayLike,
+        y: npt.ArrayLike,
+        threshold: float,
+        c: "npt.ArrayLike | None" = None,
+        distribution: Any = LogNormal,
+        transform: str = "linear",
+        direction: str = "auto",
+    ) -> "DestructiveDegradationModel":
         r"""
         Fit a destructive degradation model.
 
@@ -432,7 +456,7 @@ class DestructiveDegradation_:
                 fits[name] = (beta, sigma, nll)
             if not fits:
                 raise RuntimeError("no time transform could be fit")
-            best = min(scores, key=scores.get)
+            best = min(scores, key=lambda k: scores[k])
             beta, sigma, nll = fits[best]
             transform = best
             transform_scores = scores

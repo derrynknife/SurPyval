@@ -1,5 +1,10 @@
 from copy import copy
+from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    from ..parametric import Parametric
+
+import numpy.typing as npt
 from scipy.optimize import minimize
 from scipy.stats import pearsonr
 
@@ -7,7 +12,7 @@ from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 
 
-def _rr_fit(a, b):
+def _rr_fit(a: npt.NDArray, b: npt.NDArray) -> Any:
     """
     Least-squares line of ``b`` on ``a``, guarding the degenerate case.
 
@@ -43,9 +48,11 @@ def _rr_fit(a, b):
     return np.array([1.0, intercept])
 
 
-def mpp_from_ecfd(dist, x, F):
-    x_pp = copy(x)
-    y_pp = copy(F)
+def mpp_from_ecfd(
+    dist: Any, x: npt.ArrayLike, F: npt.ArrayLike
+) -> dict[str, Any]:
+    x_pp = np.asarray(copy(x))
+    y_pp = np.asarray(copy(F))
 
     mask = (y_pp != 0) & (y_pp != 1)
     y_pp = y_pp[mask]
@@ -63,7 +70,7 @@ def mpp_from_ecfd(dist, x, F):
     return results
 
 
-def mpp(model):
+def mpp(model: "Parametric") -> dict[str, Any]:
     """
     MPP: Method of Probability Plotting
 
@@ -132,7 +139,7 @@ def mpp(model):
     if offset:
         x_min = np.min(x_pp)
 
-        def fun(gamma):
+        def fun(gamma: float) -> Any:
             g = x_min - np.exp(-gamma)
             out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
             return out

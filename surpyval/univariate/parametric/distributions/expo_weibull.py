@@ -1,13 +1,20 @@
+import numpy.typing as npt
 from scipy import integrate
 from scipy.special import xlogy
 
 from surpyval import np
 from surpyval.univariate import parametric as para
-from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
+from surpyval.univariate.parametric.parametric_fitter import (
+    Boxable,
+    Numeric,
+    OptimisedFitMixin,
+    ParametricFitter,
+)
+from surpyval.utils.surpyval_data import SurpyvalData
 
 
-class ExpoWeibull_(ParametricFitter):
-    def __init__(self, name):
+class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
+    def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=3,
@@ -23,7 +30,13 @@ class ExpoWeibull_(ParametricFitter):
         )
         self.supports_mpp = False
 
-    def _gumbel_seed(self, x, c, n, refine):
+    def _gumbel_seed(
+        self,
+        x: npt.NDArray,
+        c: npt.NDArray | None,
+        n: npt.NDArray | None,
+        refine: bool,
+    ) -> tuple[float, float]:
         """
         Seed alpha and beta from a Gumbel fit to log(x).
 
@@ -43,7 +56,9 @@ class ExpoWeibull_(ParametricFitter):
         log_x = np.log(x)
         log_x[np.isnan(log_x)] = 0
         gumb = para.Gumbel.fit(log_x, c, n, how="MLE" if refine else "MPP")
-        if refine and not gumb.res.success:
+        # ``res`` is the optimiser result, present only on an MLE
+        # fit -- which is the only branch that sets refine.
+        if refine and not gumb.res.success:  # type: ignore[attr-defined]
             gumb = para.Gumbel.fit(log_x, c, n, how="MPP")
         mu, sigma = gumb.params
         alpha, beta = np.exp(mu), 1.0 / sigma
@@ -53,7 +68,10 @@ class ExpoWeibull_(ParametricFitter):
             beta = 1.0
         return alpha, beta
 
-    def _parameter_initialiser(self, x, c=None, n=None, t=None, offset=False):
+    def _parameter_initialiser(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> npt.NDArray:
+        x, c, n = data.x, data.c, data.n
         if offset:
             # Estimate the offset first and seed alpha and beta from the
             # shifted data. Taking logs before removing the shift reads
@@ -69,10 +87,15 @@ class ExpoWeibull_(ParametricFitter):
             # actually installed defeats the point of shifting at all.
             gamma = np.min(x) - 1.0
             alpha, beta = self._gumbel_seed(x - gamma, c, n, refine=True)
-            return gamma, alpha, beta, 1.0
-        return (*self._gumbel_seed(x, c, n, refine=False), 1.0)
+            return np.array([gamma, alpha, beta, 1.0], dtype=float)
+        return np.array(
+            [*self._gumbel_seed(x, c, n, refine=False), 1.0],
+            dtype=float,
+        )
 
-    def sf(self, x, alpha, beta, mu):
+    def sf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Survival (or reliability) function for the ExpoWeibull Distribution:
@@ -114,7 +137,9 @@ class ExpoWeibull_(ParametricFitter):
         # inf/-inf for representable tail probabilities (#257).
         return -np.expm1(mu * np.log1p(-np.exp(-((x / alpha) ** beta))))
 
-    def ff(self, x, alpha, beta, mu):
+    def ff(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Failure (CDF or unreliability) function for the ExpoWeibull
@@ -152,45 +177,9 @@ class ExpoWeibull_(ParametricFitter):
         """
         return np.power(1 - np.exp(-((x / alpha) ** beta)), mu)
 
-    def cs(self, x, X, alpha, beta, mu):
-        r"""
-
-        Conditional survival (or reliability) function for the ExpoWeibull
-        Distribution:
-
-        .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
-
-        Parameters
-        ----------
-
-        x : numpy array or scalar
-            The values at which the function will be calculated
-        alpha : numpy array or scalar
-            scale parameter for the ExpoWeibull distribution
-        beta : numpy array or scalar
-            shape parameter for the ExpoWeibull distribution
-        mu : numpy array or scalar
-            shape parameter for the ExpoWeibull distribution
-
-        Returns
-        -------
-
-        cs : scalar or numpy array
-            The value(s) of the conditional survival function at x.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from surpyval import ExpoWeibull
-        >>> x = np.array([1, 2, 3, 4, 5])
-        >>> ExpoWeibull.sf(x, 1, 3, 4, 1.2)
-        array([8.77367129e-01, 4.25451775e-01, 5.09266354e-02, 5.37452200e-04,
-               1.35732908e-07])
-        """
-        return self.sf(x + X, alpha, beta, mu) / self.sf(X, alpha, beta, mu)
-
-    def df(self, x, alpha, beta, mu):
+    def df(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Density function for the ExpoWeibull Distribution:
@@ -234,7 +223,9 @@ class ExpoWeibull_(ParametricFitter):
             * np.exp(-((x / alpha) ** beta))
         )
 
-    def hf(self, x, alpha, beta, mu):
+    def hf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the ExpoWeibull Distribution:
@@ -270,7 +261,9 @@ class ExpoWeibull_(ParametricFitter):
         """
         return self.df(x, alpha, beta, mu) / self.sf(x, alpha, beta, mu)
 
-    def Hf(self, x, alpha, beta, mu):
+    def Hf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the ExpoWeibull Distribution:
@@ -307,18 +300,20 @@ class ExpoWeibull_(ParametricFitter):
         """
         return -np.log(self.sf(x, alpha, beta, mu))
 
-    def qf(self, p, alpha, beta, mu):
+    def qf(
+        self, u: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         r"""
 
         Instantaneous hazard rate for the ExpoWeibull Distribution:
 
         .. math::
-            q(p) =
+            q(u) =
 
         Parameters
         ----------
 
-        p : numpy array or scalar
+        u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
             scale parameter for the ExpoWeibull distribution
@@ -331,19 +326,21 @@ class ExpoWeibull_(ParametricFitter):
         -------
 
         Q : scalar or numpy array
-            The quantiles for the Weibull distribution at each value p
+            The quantiles for the Weibull distribution at each value u
 
         Examples
         --------
         >>> import numpy as np
         >>> from surpyval import ExpoWeibull
-        >>> p = np.array([.1, .2, .3, .4, .5])
-        >>> ExpoWeibull.qf(p, 3, 4, 1.2)
+        >>> u = np.array([.1, .2, .3, .4, .5])
+        >>> ExpoWeibull.qf(u, 3, 4, 1.2)
         array([1.89361341, 2.2261045 , 2.46627621, 2.66992747, 2.85807988])
         """
-        return alpha * (-np.log1p(-(p ** (1.0 / mu)))) ** (1 / beta)
+        return alpha * (-np.log1p(-(u ** (1.0 / mu)))) ** (1 / beta)
 
-    def log_df(self, x, alpha, beta, mu):
+    def log_df(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         return (
             np.log(beta)
             + np.log(mu)
@@ -353,23 +350,72 @@ class ExpoWeibull_(ParametricFitter):
             - ((x / alpha) ** beta)
         )
 
-    def log_ff(self, x, alpha, beta, mu):
+    def log_ff(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         return mu * np.log1p(-np.exp(-((x / alpha) ** beta)))
 
-    def log_sf(self, x, alpha, beta, mu):
+    def log_sf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
         # log of the cancellation-free sf form; the naive log1p(-(...)^mu)
         # returns -inf once the inner power rounds to 1 (#257).
         return np.log(
             -np.expm1(mu * np.log1p(-np.exp(-((x / alpha) ** beta))))
         )
 
-    def mean(self, alpha, beta, mu):
-        def func(x):
-            return x * self.df(x, alpha, beta, mu)
+    def moment(
+        self, m: int, alpha: Boxable, beta: Boxable, mu: Boxable
+    ) -> Boxable:
+        r"""
+
+        m-th (non central) moment of the ExpoWeibull distribution.
+
+        .. math::
+            E = \int_{0}^{\infty} x^{m} f(x) dx
+
+        There is a closed form -- an infinite series in
+        :math:`\binom{\mu - 1}{i}(-1)^{i}(i + 1)^{-(1 + m/\beta)}` -- but
+        it only terminates when :math:`\mu` is a positive integer, and
+        for other :math:`\mu` it is alternating and slow to converge,
+        losing significance to cancellation as :math:`\mu` grows. The
+        integral is quadrature either way, so this takes it directly, as
+        ``entropy`` does for the same reason.
+
+        Parameters
+        ----------
+
+        m : integer
+            The ordinal of the moment to calculate
+        alpha : numpy array or scalar
+            scale parameter for the ExpoWeibull distribution
+        beta : numpy array or scalar
+            shape parameter for the ExpoWeibull distribution
+        mu : numpy array or scalar
+            shape parameter for the ExpoWeibull distribution
+
+        Returns
+        -------
+
+        moment : scalar or numpy array
+            The moment(s) of the ExpoWeibull distribution
+
+        Examples
+        --------
+        >>> from surpyval import ExpoWeibull
+        >>> ExpoWeibull.moment(2, 3, 4, 1.2)
+        8.598425613605164
+        """
+
+        def func(x: float) -> float:
+            return float(x**m * self.df(x, alpha, beta, mu))
 
         return integrate.quad(func, 0, np.inf)[0]
 
-    def entropy(self, alpha, beta, mu):
+    def mean(self, alpha: Boxable, beta: Boxable, mu: Boxable) -> Boxable:
+        return self.moment(1, alpha, beta, mu)
+
+    def entropy(self, alpha: Boxable, beta: Boxable, mu: Boxable) -> Boxable:
         r"""
 
         Calculates the entropy of the ExpoWeibull distribution.
@@ -403,16 +449,16 @@ class ExpoWeibull_(ParametricFitter):
         1.8227536487527594
         """
 
-        def func(x):
+        def func(x: float) -> float:
             f = self.df(x, alpha, beta, mu)
-            return xlogy(f, f)
+            return float(xlogy(f, f))
 
         return -integrate.quad(func, 0, np.inf)[0]
 
-    def mpp_x_transform(self, x, gamma=0):
-        return np.log(x - gamma)
+    def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
+        return np.log(x)
 
-    def mpp_y_transform(self, y, *params):
+    def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         mu = params[-1]
         mask = (y == 0) | (y == 1)
         out = np.zeros_like(y)
@@ -420,12 +466,14 @@ class ExpoWeibull_(ParametricFitter):
         out[mask] = np.nan
         return out
 
-    def mpp_inv_y_transform(self, y, *params):
+    def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         i = len(params)
         mu = params[i - 1]
         return (1 - np.exp(-np.exp(y))) ** mu
 
-    def unpack_rr(self, params, rr):
+    def unpack_rr(
+        self, params: npt.NDArray, rr: str
+    ) -> tuple[Boxable, Boxable, float]:
         if rr == "y":
             beta = params[0]
             alpha = np.exp(params[1] / -beta)
@@ -435,4 +483,4 @@ class ExpoWeibull_(ParametricFitter):
         return alpha, beta, 1.0
 
 
-ExpoWeibull: ParametricFitter = ExpoWeibull_("ExpoWeibull")
+ExpoWeibull: ExpoWeibull_ = ExpoWeibull_("ExpoWeibull")

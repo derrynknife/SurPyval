@@ -7,9 +7,12 @@ those copies went wrong (#278). It now lives here once.
 """
 
 import numpy as np
+import numpy.typing as npt
 
 
-def aalen_johansen_iif(S, hazard_increments):
+def aalen_johansen_iif(
+    S: npt.NDArray, hazard_increments: npt.NDArray
+) -> npt.NDArray:
     """Instantaneous incidence increments.
 
     The cause-specific hazard increment at ``t_i`` acts on the

@@ -1,3 +1,5 @@
+from typing import Any
+
 """Shared helpers for serialising fitted recurrent-event models.
 
 The recurrence intensity models (``HPP``, ``CrowAMSAA``, ``Duane``,
@@ -9,7 +11,7 @@ an explicit name map here.
 """
 
 
-def intensity_dist_by_name(name):
+def intensity_dist_by_name(name: str) -> Any:
     """
     Resolve a recurrence intensity model from its display ``name``.
 

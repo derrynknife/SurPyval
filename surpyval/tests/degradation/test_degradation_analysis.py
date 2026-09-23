@@ -221,7 +221,7 @@ def test_noise_correction_recovers_between_unit_covariance():
 
 
 def test_clip_psd():
-    from surpyval.degradation.degradation_analysis import _clip_psd
+    from surpyval.utils.linalg import psd_project as _clip_psd
 
     # eigenvalues 3 and -1: must be clipped
     clipped_matrix, clipped = _clip_psd(np.array([[1.0, 2.0], [2.0, 1.0]]))

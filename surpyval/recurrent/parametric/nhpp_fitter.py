@@ -1,4 +1,7 @@
+from typing import Callable
+
 from autograd import numpy as np
+from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
@@ -6,11 +9,15 @@ from surpyval.recurrent.parametric.counting_process import IntensityModel
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
+from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
 class NHPPFitter(IntensityModel):
-    def create_negll_func(self, data):
+    #: Natural-space parameter bounds, set by each concrete intensity model.
+    bounds: tuple
+
+    def create_negll_func(self, data: RecurrentEventData) -> Callable:
         s = data.split_for_nhpp_likelihood()
         x_o, x_o_prev = s["x_o"], s["x_o_prev"]
         x_right, x_right_prev = s["x_right"], s["x_right_prev"]
@@ -23,18 +30,18 @@ class NHPPFitter(IntensityModel):
         # will not encounter any invalid values since taking the log of 0
         # will not occur.
 
-        def negll_func(params):
+        def negll_func(params: np.ndarray) -> float:
             # ll of directly observed
-            ll = (
+            ll = np.sum(
                 self.log_iif(x_o, *params)
                 + self.cif(x_o_prev, *params)
                 - self.cif(x_o, *params)
-            ).sum()
+            )
 
             # ll of right censored
-            ll += (
+            ll += np.sum(
                 self.cif(x_right_prev, *params) - self.cif(x_right, *params)
-            ).sum()
+            )
 
             # ll of left censored
             left_delta_cif = self.cif(x_left, *params)
@@ -58,15 +65,20 @@ class NHPPFitter(IntensityModel):
             # extend the integral from each item's last in-window time to its
             # right-truncation time tr (zero when tr is infinite or already
             # coincides with a right-censoring row)
-            ll += (
+            ll += np.sum(
                 self.cif(x_close_last, *params) - self.cif(x_close_tr, *params)
-            ).sum()
+            )
 
             return -ll
 
         return negll_func
 
-    def fit_from_recurrent_data(self, data, how="MLE", init=None):
+    def fit_from_recurrent_data(
+        self,
+        data: RecurrentEventData,
+        how: str = "MLE",
+        init: "ArrayLike | None" = None,
+    ) -> ParametricRecurrenceModel:
         """
         Fit the NHPP model from recurrent data using either Maximum Likelihood
         Estimation (MLE) or Mean Square Error (MSE) methods.
@@ -98,7 +110,7 @@ class NHPPFitter(IntensityModel):
         x_unqiue, r, d = data.to_xrd()
         mcf_hat = np.cumsum(d / r)
 
-        def fun(params):
+        def fun(params: np.ndarray) -> float:
             return np.sum((self.cif(x_unqiue, *params) - mcf_hat) ** 2)
 
         res = minimize(fun, param_init, bounds=self.bounds)
@@ -137,17 +149,17 @@ class NHPPFitter(IntensityModel):
 
     def fit(
         self,
-        x,
-        i=None,
-        c=None,
-        n=None,
-        t=None,
-        tl=None,
-        tr=None,
-        how="MLE",
-        init=None,
-        windows=None,
-    ):
+        x: ArrayLike,
+        i: "ArrayLike | None" = None,
+        c: "ArrayLike | None" = None,
+        n: "ArrayLike | None" = None,
+        t: "ArrayLike | None" = None,
+        tl: "ArrayLike | None" = None,
+        tr: "ArrayLike | None" = None,
+        how: str = "MLE",
+        init: "ArrayLike | None" = None,
+        windows: "dict | None" = None,
+    ) -> ParametricRecurrenceModel:
         """
         Fit the NHPP model from the provided data. This function prepares the
         data to ensure that it is in the correct format for the fitting.
@@ -206,7 +218,7 @@ class NHPPFitter(IntensityModel):
         )
         return self.fit_from_recurrent_data(data, how, init)
 
-    def from_params(self, params):
+    def from_params(self, params: ArrayLike) -> ParametricRecurrenceModel:
         """
         Create a model instance directly from parameters without fitting.
 
@@ -224,7 +236,7 @@ class NHPPFitter(IntensityModel):
             the provided parameters.
         """
         model = ParametricRecurrenceModel()
-        model.params = params
+        model.params = np.asarray(params)
         model.dist = self
         model.how = "from_params"
         return model
