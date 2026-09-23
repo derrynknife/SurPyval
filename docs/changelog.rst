@@ -2,7 +2,7 @@ Changelog
 =========
 
 v0.20.0 (23 September 2026)
---------------------
+---------------------------
 
 - **New distribution: Hypoexponential.** The sum of independent
   Exponential stages with distinct rates (the generalised Erlang),
