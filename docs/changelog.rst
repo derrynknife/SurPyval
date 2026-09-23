@@ -263,7 +263,7 @@ v0.20.0 (23 September 2026)
   deleted along with the module.
 
   **The Bernoulli / FixedEventProbability split had copied its
-  estimation machinery wholesale.** The 0.19.1 split gave each class its
+  estimation machinery wholesale.** The 0.20.0 split gave each class its
   own verbatim ``fit``, ``from_params``, ``entropy`` and ``random`` --
   the largest exact duplicate in the package. They now share
   ``SingleProbabilityMixin`` (``distributions/_single_probability.py``,
@@ -721,7 +721,7 @@ v0.20.0 (23 September 2026)
 
   Both names serialise and round-trip under their own identities, so
   stored models keep pointing at the model they were fitted with -- but
-  a stored ``Bernoulli`` fitted before 0.19.1 will now be read with the
+  a stored ``Bernoulli`` fitted before 0.20.0 will now be read with the
   new semantics, and its ``p`` reinterpreted as above.
 
   ``binomial.py`` claimed Bernoulli was "the special case ``n = 1``".

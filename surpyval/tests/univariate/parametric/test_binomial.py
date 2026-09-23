@@ -94,7 +94,7 @@ def test_fit_with_counts():
 
 
 def test_reduces_to_bernoulli_at_n_one():
-    # At n = 1 the binomial *is* the Bernoulli, and since 0.19.1 the two
+    # At n = 1 the binomial *is* the Bernoulli, and since 0.20.0 the two
     # agree exactly on the probability mass:
     binomial = Binomial.from_params([1, P])
     bernoulli = Bernoulli.from_params(P)
@@ -112,7 +112,7 @@ def test_reduces_to_bernoulli_at_n_one():
     for x in (0, 1):
         assert np.isclose(bernoulli.sf(x), binomial.sf(x - 1))
 
-    # Before 0.19.1 Bernoulli was a flat "fixed event probability" model
+    # Before 0.20.0 Bernoulli was a flat "fixed event probability" model
     # with F(x) = p at every x, which lined up with neither. That model
     # still exists under its own name and is unchanged.
     fixed = FixedEventProbability.from_params(P)

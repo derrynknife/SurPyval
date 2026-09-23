@@ -6,7 +6,7 @@ coin flip over ``{0, 1}`` against a flat ``F(x) = p`` -- but their
 *estimation* is the same problem: one probability ``p`` in ``(0, 1)``,
 fitted from 0/1 observations by a weighted mean, with no offset,
 limited-failure or zero-inflation structure. When the classes were split
-in 0.19.1 that machinery was copied into both files verbatim; this mixin
+in 0.20.0 that machinery was copied into both files verbatim; this mixin
 is the single copy. Everything distributional -- ``sf``, ``ff``, the
 supports, the docstrings that state each model's own convention -- stays
 on the classes themselves.

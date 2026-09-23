@@ -421,7 +421,7 @@ def test_cumulative_hazard_accumulates_the_discrete_way():
 
 
 # ---------------------------------------------------------------------------
-# Bernoulli: a true coin flip since 0.19.1
+# Bernoulli: a true coin flip since 0.20.0
 # ---------------------------------------------------------------------------
 
 P_BERN = 0.3
@@ -437,7 +437,7 @@ def test_bernoulli_functions_at_the_two_outcomes():
 
 
 def test_bernoulli_rejects_anything_but_zero_and_one():
-    # x is the outcome of the flip, not a time. Before 0.19.1 every x
+    # x is the outcome of the flip, not a time. Before 0.20.0 every x
     # returned the same number, so nothing marked 37.5 as meaningless.
     for bad in (0.5, 2, -1, 37.5):
         for method in (
