@@ -6,7 +6,7 @@ never do, with nothing said about *when*. It is the two-point mixture of
 ``1 - p``), which is why ``degenerate.py`` describes those two as this
 model's limits at ``p = 1`` and ``p = 0``.
 
-This was exported as ``Bernoulli`` as well until 0.19.1, when
+This was exported as ``Bernoulli`` as well until 0.20.0, when
 ``Bernoulli`` became a true Bernoulli -- a coin flip over ``{0, 1}``
 whose survival steps at the outcome. The two are different models and
 now different classes; this one is unchanged.

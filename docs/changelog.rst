@@ -1,8 +1,19 @@
 Changelog
 =========
 
-v0.19.1 (unreleased)
---------------------
+v0.20.0 (23 September 2026)
+---------------------------
+
+- **Offset moments are exact.** ``ParametricFitter._moment`` with an
+  offset -- what the method-of-moments fit and ``Parametric.var`` use
+  -- computed :math:`E[(\gamma + X)^n]` by integrating the shifted
+  density to infinity with ``quad``, even for distributions whose
+  moments have closed forms. It now takes the binomial expansion of
+  the un-offset raw moments, as ``Parametric.moment`` already did: no
+  quadrature for closed-form distributions, and no ``IntegrationWarning``
+  on machines where the shifted integral hit ``quad``'s roundoff limit
+  (which failed the warnings-as-errors documentation build for this
+  release).
 
 - **New distribution: Hypoexponential.** The sum of independent
   Exponential stages with distinct rates (the generalised Erlang),
@@ -263,7 +274,7 @@ v0.19.1 (unreleased)
   deleted along with the module.
 
   **The Bernoulli / FixedEventProbability split had copied its
-  estimation machinery wholesale.** The 0.19.1 split gave each class its
+  estimation machinery wholesale.** The 0.20.0 split gave each class its
   own verbatim ``fit``, ``from_params``, ``entropy`` and ``random`` --
   the largest exact duplicate in the package. They now share
   ``SingleProbabilityMixin`` (``distributions/_single_probability.py``,
@@ -721,7 +732,7 @@ v0.19.1 (unreleased)
 
   Both names serialise and round-trip under their own identities, so
   stored models keep pointing at the model they were fitted with -- but
-  a stored ``Bernoulli`` fitted before 0.19.1 will now be read with the
+  a stored ``Bernoulli`` fitted before 0.20.0 will now be read with the
   new semantics, and its ``p`` reinterpreted as above.
 
   ``binomial.py`` claimed Bernoulli was "the special case ``n = 1``".

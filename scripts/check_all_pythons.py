@@ -9,7 +9,7 @@ other half of that trade: it runs what CI would have run, on all three
 interpreters, before you push.
 
 It exists because the failure it guards against is not hypothetical.
-The doctest numeric comparison added in 0.19.1 passed on 3.11 -- the
+The doctest numeric comparison added in 0.20.0 passed on 3.11 -- the
 interpreter it was written on -- and failed on 3.12 and 3.13, because an
 optimiser landed on a different last digit. Nothing short of actually
 running the other interpreters would have found it.

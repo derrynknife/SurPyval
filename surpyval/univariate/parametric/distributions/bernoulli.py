@@ -22,7 +22,7 @@ class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
     works when demanded.
 
     .. note::
-       ``p`` is the probability of the ``1`` outcome. Before 0.19.1 this
+       ``p`` is the probability of the ``1`` outcome. Before 0.20.0 this
        distribution had ``F(x) = p`` at every ``x`` -- a flat curve with
        no time axis, where ``p`` was documented as the probability of
        *failure*. The parameter has therefore changed direction: code

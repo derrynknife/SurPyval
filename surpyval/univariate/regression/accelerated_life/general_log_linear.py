@@ -8,7 +8,7 @@ class GeneralLogLinear_(LifeModel):
     def __init__(self) -> None:
         super().__init__(
             "GeneralLogLinear",
-            # Swapped until 0.19.1: the bounds lambda sat in the
+            # Swapped until 0.20.0: the bounds lambda sat in the
             # phi_param_map slot and vice versa. LifeModel takes
             # (name, phi_param_map, phi_bounds).
             #
