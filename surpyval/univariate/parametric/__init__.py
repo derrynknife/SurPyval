@@ -32,6 +32,7 @@ from .distributions import (
     Geometric,
     Gumbel,
     GumbelLEV,
+    Hypoexponential,
     InstantlyOccurs,
     Logistic,
     LogLogistic,

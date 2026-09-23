@@ -4,6 +4,29 @@ Changelog
 v0.19.1 (unreleased)
 --------------------
 
+- **New distribution: Hypoexponential.** The sum of independent
+  Exponential stages with distinct rates (the generalised Erlang),
+  which is the lifetime of a load-sharing group or a warm/hot standby
+  system -- anything that passes through several memoryless stages in
+  series. ``Hypoexponential.from_params([r1, r2, ...])`` takes any
+  number of stage rates and returns an ordinary ``Parametric`` model
+  with that many parameters (``lambda_1 ... lambda_m``), so ``sf``,
+  ``ff``, ``df``, ``hf``, ``Hf``, ``qf`` (bisection between exact
+  exponential brackets), ``mean``, ``var``, ``moment``, ``entropy``,
+  ``random`` (one exponential draw per stage), offsets, limited-failure
+  and zero-inflated variants and ``to_dict``/``from_dict`` all come with
+  it. The distribution functions also take the rates directly,
+  ``Hypoexponential.sf(x, r1, r2, ...)``. Rates must be strictly
+  positive and distinct: the partial-fraction coefficients blow up with
+  alternating signs as two rates approach, so near-equal rates raise a
+  clear error pointing at ``Gamma`` (equal rates are the Erlang). There
+  is no ``fit``; construct it from known stage rates.
+
+  To make a variable-parameter-count distribution deserialisable,
+  ``ParametricFitter`` gained a ``_for_params`` hook (returns ``self``
+  for every fixed-arity distribution) that ``Parametric.from_dict``
+  consults, so the restored model reports the right ``k``.
+
 - **Accelerated degradation, Stage 2: stress-dependent path
   parameters** (<#155>, first half). ``DegradationAnalysis.fit`` takes
   ``links`` alongside ``Z`` to model the degradation *mechanism*

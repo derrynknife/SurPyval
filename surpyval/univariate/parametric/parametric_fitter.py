@@ -518,6 +518,18 @@ class ParametricFitter:
 
         model.support = np.array([left, right])
 
+    def _for_params(self, params: Any) -> "ParametricFitter":
+        """The fitter instance that models ``params``.
+
+        ``self`` for every distribution with a fixed number of
+        parameters. A distribution whose parameter count is set by the
+        parameters themselves (``Hypoexponential``: one rate per stage)
+        overrides this to return an instance with the matching ``k``,
+        ``param_names`` and ``bounds``, so a model built from a
+        serialised dictionary reports the right parameter count.
+        """
+        return self
+
     def from_params(
         self, params: Any, gamma: Any = None, p: Any = None, f0: Any = None
     ) -> Any:
