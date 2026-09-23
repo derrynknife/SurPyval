@@ -1,7 +1,7 @@
 Changelog
 =========
 
-v0.19.1 (unreleased)
+v0.20.0 (23 September 2026)
 --------------------
 
 - **New distribution: Hypoexponential.** The sum of independent
