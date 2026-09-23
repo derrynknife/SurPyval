@@ -4,6 +4,17 @@ Changelog
 v0.20.0 (23 September 2026)
 ---------------------------
 
+- **Offset moments are exact.** ``ParametricFitter._moment`` with an
+  offset -- what the method-of-moments fit and ``Parametric.var`` use
+  -- computed :math:`E[(\gamma + X)^n]` by integrating the shifted
+  density to infinity with ``quad``, even for distributions whose
+  moments have closed forms. It now takes the binomial expansion of
+  the un-offset raw moments, as ``Parametric.moment`` already did: no
+  quadrature for closed-form distributions, and no ``IntegrationWarning``
+  on machines where the shifted integral hit ``quad``'s roundoff limit
+  (which failed the warnings-as-errors documentation build for this
+  release).
+
 - **New distribution: Hypoexponential.** The sum of independent
   Exponential stages with distinct rates (the generalised Erlang),
   which is the lifetime of a load-sharing group or a warm/hot standby

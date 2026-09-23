@@ -1,3 +1,4 @@
+from math import comb
 from numbers import Number
 from typing import TYPE_CHECKING, Any
 
@@ -471,24 +472,34 @@ class ParametricFitter:
         return -self._log_likelihood(data, *params)
 
     def _moment(self, n: Any, *params: Any, offset: bool = False) -> Any:
+        """The ``n``-th raw moment, used by the method-of-moments fit and
+        by ``Parametric.var``.
+
+        With an offset the moment of ``gamma + X`` is the binomial
+        expansion of the un-offset raw moments,
+        :math:`\\sum_k \\binom{n}{k} \\gamma^{n-k} E[X^k]` -- exactly as
+        ``Parametric.moment`` computes it. This used to integrate
+        ``x**n * df(x - gamma)`` from ``gamma`` to infinity by quadrature
+        even for distributions with closed-form moments, which was both
+        slower and, on some machines, tripped ``quad``'s roundoff warning
+        (and with it the warnings-as-errors documentation build).
+        """
         if offset:
             gamma = params[0]
             params = params[1::]
+            base = [1.0] + [
+                float(self._moment(k, *params)) for k in range(1, n + 1)
+            ]
+            return sum(
+                comb(n, k) * gamma ** (n - k) * base[k] for k in range(n + 1)
+            )
+        if hasattr(self, "moment"):
+            return self.moment(n, *params)
 
-            def fun(x: Numeric) -> Any:
-                return x**n * self.df((x - gamma), *params)
+        def fun(x: Numeric) -> Any:
+            return x**n * self.df(x, *params)
 
-            m = quad(fun, gamma, np.inf)[0]
-        else:
-            if hasattr(self, "moment"):
-                m = self.moment(n, *params)
-            else:
-
-                def fun(x: Numeric) -> Any:
-                    return x**n * self.df(x, *params)
-
-                m = quad(fun, *self.support)[0]
-        return m
+        return quad(fun, *self.support)[0]
 
     def _set_support(self, model: Any, offset: bool) -> Any:
         """Resolve and assign the fitted model's support interval.
