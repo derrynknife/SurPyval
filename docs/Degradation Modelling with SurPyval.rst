@@ -381,9 +381,11 @@ non-increasing slope, say). Those contribute an ``inf`` failure time — a
 defective *"never fails"* mass reported as ``prob_never_fails`` — and once the
 quantiles reach into that mass they, and the ``mean``, become ``inf``. This is
 the correct behaviour: if a fraction of the population genuinely never fails,
-the population has no finite mean life. Finally, ``induced_life`` is defined for
-the plain (non-accelerated) population; an accelerated (covariate) model's path
-parameters are not yet stress-conditional, so it is refused there.
+the population has no finite mean life. Finally, ``induced_life`` needs a
+single population of paths: an accelerated (covariate) model pools every
+stress level, so it is refused there unless the path parameters are modelled
+against stress (``links``, below), in which case it takes the stress ``Z`` to
+induce the life at.
 
 Confidence bounds
 -----------------
@@ -508,6 +510,72 @@ required for a covariate model (and ``model.cb`` needs the stress ``Z``). The
 first-stage-only regression bounds — which ignore the extrapolation
 uncertainty — remain available directly through ``model.life_model.cb(x, Z,
 ...)``.
+
+Modelling the degradation mechanism against stress
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The fit above lets stress act only on the pseudo failure times. It never says
+*why* life shortens, and its population of path parameters pools every stress
+level, so it describes no unit actually tested. Passing ``links`` alongside
+``Z`` models the degradation **mechanism** instead: the named path parameters
+depend on stress, on an ``"identity"`` or ``"log"`` link, and the others are
+common to every unit. Here the degradation rate ``b`` is log-linear in stress
+(with ``Z = 1/T`` that is the Arrhenius relationship) and the starting level
+``a`` is not:
+
+.. jupyter-execute::
+
+    mech = DegradationAnalysis.fit(xd, yd, idd, threshold=100.0, Z=Zd,
+                                   links={'b': 'log'})
+    dict(zip(mech.path_param_fixed_names,
+             mech.path_param_fixed.round(3).tolist()))
+
+The data were simulated with ``log b = log 0.5 + 0.8 * stress``, and the fixed
+effects recover it: ``log(b)`` is the log-rate intercept and ``log(b):Z0`` the
+stress coefficient. ``path_param_link_cov`` holds the unit-to-unit scatter left
+once the stress effect is removed, estimated by the same two-stage or REML
+route as the plain population. The life model is still the covariate
+regression on the pseudo failure times, so ``sf``, ``qf``, ``mean`` and the
+bootstrap bounds all work exactly as above.
+
+What the mechanism adds is a population of paths *at each stress*.
+``path_param_median(Z)`` gives the typical unit's path parameters there, and
+``induced_life(Z=...)`` pushes the whole stress-conditional population through
+the threshold crossing. Inside the tested range it agrees with the regression
+life fit; outside it — here at ``-0.5``, below every tested level, as use
+conditions usually are — it is the mechanism rather than a curve through the
+pseudo failure times that carries the extrapolation:
+
+.. jupyter-execute::
+
+    for stress in [-0.5, 0.0, 1.0]:
+        rate = mech.path_param_median([stress])[1]
+        induced = mech.induced_life(Z=[stress], random_state=0)
+        regression = float(np.ravel(model.qf(0.5, Z=[stress]))[0])
+        print(f'stress {stress:+.1f}: median rate {rate:.3f}, '
+              f'median life induced {induced.median():6.1f} '
+              f'/ regression {regression:6.1f}')
+
+Remaining useful life becomes stress-aware in the same way.
+``predict_rul(x, y, Z=...)`` updates a new unit's trajectory against the
+population of units at *its* stress, rather than against a mixture of every
+stress tested; the posterior is taken on the link scale, so a log-linked rate
+stays positive. With only a couple of measurements the stress matters a great
+deal, and as measurements accumulate the prediction converges on the unit's
+own trend whatever the stress:
+
+.. jupyter-execute::
+
+    new_x, new_y = [5.0, 10.0], [13.0, 16.0]
+    for stress in [0.0, 1.5]:
+        pred = mech.predict_rul(new_x, new_y, Z=[stress], random_state=0)
+        lower, upper = pred.rul_interval
+        print(f'stress {stress}: RUL {pred.rul:5.1f}  '
+              f'(95% interval {lower:5.1f} to {upper:5.1f})')
+
+A model fitted without ``links`` refuses ``Z`` in ``predict_rul`` and
+``induced_life``, since it has no stress-conditional population to condition
+on; a model fitted with ``links`` requires it.
 
 Stochastic-process degradation models
 -------------------------------------

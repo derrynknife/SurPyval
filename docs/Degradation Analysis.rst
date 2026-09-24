@@ -139,6 +139,50 @@ reach the population life two different ways, and close agreement is reassuring
 while a large gap warns that the path model or the Gaussian population
 assumption is off.
 
+Accelerated degradation: stress-dependent path parameters
+---------------------------------------------------------
+
+In an **accelerated degradation test** units are run at elevated stress so
+they degrade fast enough to measure, and life is extrapolated back to use
+conditions. The simplest treatment keeps the path fits as they are and lets
+stress act only on the pseudo failure times, through a regression life model
+(an accelerated-failure-time fit, say). That predicts life at a stress, but it
+never models *why* life changes: the population of path parameters is pooled
+across the stress levels, so it describes no unit actually tested.
+
+The mechanistic alternative models the degradation **rate itself** as a
+function of stress [Meeker1998]_. Each path parameter is placed on a *link
+scale* — the identity, or the log for a parameter that must stay positive and
+whose stress effect is multiplicative — and the link-scale parameters of unit
+:math:`i`, tested at stress :math:`z_i`, are
+
+.. math::
+
+    \eta_i = D(z_i)\,\gamma + u_i, \qquad u_i \sim \mathrm{MVN}(0, \Sigma),
+    \qquad \theta_i = h(\eta_i).
+
+The design :math:`D(z)` gives each stress-dependent parameter an intercept and a
+coefficient per covariate, and every other parameter an intercept only;
+:math:`\gamma` holds those fixed effects and :math:`\Sigma` the unit-to-unit
+scatter that remains *after* the stress effect is removed. A log-linked rate
+with the covariate :math:`z = 1/T` is exactly the **Arrhenius** relationship,
+:math:`\log b = \gamma_0 + \gamma_1 / T`. For a path that is linear in its
+parameters with identity links this is still a linear mixed model, so the
+two-stage (Lu-Meeker) and REML estimators above apply with a wider
+fixed-effects design; a log link makes the path nonlinear in :math:`\eta`, and
+the Lindstrom-Bates linearisation handles it as for any nonlinear path.
+
+Modelling the mechanism buys two things the pooled population cannot give.
+First, a **stress-conditional prior** for remaining-useful-life prediction: a
+new unit running at stress :math:`z` is updated against
+:math:`N(D(z)\gamma, \Sigma)`, the population of units at *its* stress, rather
+than against a mixture of every stress tested. Second, a **stress-conditional
+induced life**: drawing :math:`\eta \sim N(D(z)\gamma, \Sigma)` and pushing
+each draw through the threshold crossing gives the failure-time distribution
+at any stress — including stresses outside the tested range, where the
+mechanism, not a curve fitted to the pseudo failure times, carries the
+extrapolation.
+
 Stochastic-process degradation models
 --------------------------------------
 

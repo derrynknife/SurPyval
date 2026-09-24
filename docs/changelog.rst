@@ -1,6 +1,37 @@
 Changelog
 =========
 
+v0.21.0 (unreleased)
+--------------------
+
+- **Accelerated degradation, Stage 2: stress-conditional predictions**
+  (<#155>, second half). A model fitted with ``links`` now uses its
+  stress-conditional path population, ``eta ~ N(D(z) gamma, Sigma)``
+  on the link scale, for prediction:
+
+  - ``predict_rul(x, y, Z=...)`` updates a new unit's trajectory
+    against the population of units at *its* stress rather than the
+    pooled population that mixes every tested stress. The posterior is
+    taken on the link scale, so a log-linked rate stays positive, and
+    ``posterior_mean``/``posterior_cov`` are reported there.
+  - ``induced_life(Z=...)`` gives the Lu-Meeker induced failure-time
+    distribution at any stress -- until now it was refused for every
+    accelerated model. Outside the tested range the mechanism, not a
+    curve through the pseudo failure times, carries the extrapolation.
+    The induced distribution records the stress it was taken at
+    (``stress``, serialised and shown in its ``repr``).
+  - ``path_param_link_mean(Z)`` and ``path_param_median(Z)`` expose the
+    population at a stress, the latter on the natural scale (the median
+    of each parameter, exactly, since each link is monotone).
+
+  A linked model requires ``Z`` in these calls and a model without
+  ``links`` refuses it, each with a message naming the fix. Everything
+  without ``links`` is bit-identical to before (66 fingerprinted
+  outputs across ``predict_rul`` and ``induced_life`` on plain,
+  nonlinear and Stage-1 accelerated models). The degradation theory
+  page gains a section on the stress-dependent model and the how-to a
+  worked example.
+
 v0.20.0 (23 September 2026)
 ---------------------------
 
