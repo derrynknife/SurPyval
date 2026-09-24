@@ -110,7 +110,11 @@ class RULPrediction:
         Posterior probability that the unit's path never reaches the
         threshold.
     posterior_mean, posterior_cov : ndarray
-        The Gaussian posterior of the unit's path parameters.
+        The Gaussian posterior of the unit's path parameters. For a model
+        whose path parameters were modelled against stress (``links``)
+        these are on the *link* scale, in the order of the model's
+        ``path_param_fixed_names`` intercepts (``"log(b)"`` for a
+        log-linked ``b``); otherwise on the natural scale.
     alpha_ci : float
         The interval significance level used.
     samples : ndarray
@@ -162,14 +166,23 @@ class InducedFailureDistribution(SerialisableMixin):
         The degradation failure threshold used.
     path_name : str
         Name of the degradation path model.
+    stress : list of float, optional
+        The stress row the distribution was induced at, for a model whose
+        path parameters depend on stress; ``None`` for the plain
+        population.
     """
 
     def __init__(
-        self, samples: npt.NDArray, threshold: float, path_name: str
+        self,
+        samples: npt.NDArray,
+        threshold: float,
+        path_name: str,
+        stress: "list[float] | None" = None,
     ) -> None:
         self.samples = np.asarray(samples, dtype=float)
         self.threshold = float(threshold)
         self.path_name = path_name
+        self.stress = None if stress is None else [float(z) for z in stress]
         self.prob_never_fails = float(np.mean(~np.isfinite(self.samples)))
 
     def to_dict(self) -> dict:
@@ -183,14 +196,15 @@ class InducedFailureDistribution(SerialisableMixin):
         samples = [
             None if not np.isfinite(s) else float(s) for s in self.samples
         ]
-        return stamp_schema(
-            {
-                "model": "InducedFailureDistribution",
-                "samples": samples,
-                "threshold": self.threshold,
-                "path_name": self.path_name,
-            }
-        )
+        out = {
+            "model": "InducedFailureDistribution",
+            "samples": samples,
+            "threshold": self.threshold,
+            "path_name": self.path_name,
+        }
+        if self.stress is not None:
+            out["stress"] = list(self.stress)
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "InducedFailureDistribution":
@@ -204,7 +218,12 @@ class InducedFailureDistribution(SerialisableMixin):
             [np.inf if s is None else s for s in model_dict["samples"]],
             dtype=float,
         )
-        return cls(samples, model_dict["threshold"], model_dict["path_name"])
+        return cls(
+            samples,
+            model_dict["threshold"],
+            model_dict["path_name"],
+            stress=model_dict.get("stress"),
+        )
 
     def ff(self, x: npt.ArrayLike) -> "float | npt.NDArray":
         """Failure probability ``P(T <= x)`` from the Monte-Carlo draws."""
@@ -245,10 +264,12 @@ class InducedFailureDistribution(SerialisableMixin):
         return rng.choice(self.samples, size=size)
 
     def __repr__(self) -> str:
+        at = "" if self.stress is None else ", Z={}".format(self.stress)
         return (
-            "InducedFailureDistribution({} path, threshold={:.6g}, "
+            "InducedFailureDistribution({} path{}, threshold={:.6g}, "
             "median={:.6g}, prob_never_fails={:.4g})".format(
                 self.path_name,
+                at,
                 self.threshold,
                 self.median(),
                 self.prob_never_fails,
@@ -589,6 +610,105 @@ class DegradationModel(SerialisableMixin):
         idx = self._unit_index[unit]
         return self.path_model.path(x, *self.path_params[idx])
 
+    # -- the stress-conditional path population (``links``) ----------------
+
+    def _stress_row(self, Z: Any) -> npt.NDArray:
+        """Validate one stress row for the stress-conditional population."""
+        if (
+            self.links is None
+            or self.path_param_fixed is None
+            or self.Z is None
+        ):
+            raise ValueError(
+                "This model's path parameters were not modelled against "
+                "stress, so there is no stress-conditional path population; "
+                "fit with links (e.g. links={'b': 'log'}) alongside Z to get "
+                "one."
+            )
+        if Z is None:
+            raise ValueError(
+                "This model's path parameters depend on stress; pass the "
+                "stress vector Z at which to predict."
+            )
+        z = np.asarray(Z, dtype=float)
+        if z.ndim == 2 and z.shape[0] == 1:
+            z = z[0]
+        z = np.atleast_1d(z)
+        n_cov = self.Z.shape[1]
+        if z.shape != (n_cov,):
+            raise ValueError(
+                "Z must be a single stress row with {} covariate(s), like one "
+                "row of the Z the model was fitted with; got shape {}".format(
+                    n_cov, z.shape
+                )
+            )
+        if not np.isfinite(z).all():
+            raise ValueError("Z must contain only finite values")
+        return z
+
+    def _stress_prior(
+        self, Z: Any
+    ) -> tuple[LinkedPathModel, npt.NDArray, npt.NDArray]:
+        """The link-scale path population at stress ``Z``: the linked path
+        model, the mean ``D(z) gamma`` and the covariance ``Sigma``."""
+        z = self._stress_row(Z)
+        assert self.links is not None and self.path_param_fixed is not None
+        design = stress_design(z, self.links, self.path_model.param_names)
+        mean = design @ np.asarray(self.path_param_fixed, dtype=float)
+        cov = np.asarray(self.path_param_link_cov, dtype=float)
+        return LinkedPathModel(self.path_model, self.links), mean, cov
+
+    def path_param_link_mean(self, Z: Any) -> npt.NDArray:
+        r"""
+        Mean of the path parameters at stress ``Z``, on the link scale.
+
+        For a model fitted with ``links`` this is
+        :math:`D(z)\,\gamma` -- the population mean of the link-scale
+        path parameters ``eta`` for a unit tested at stress ``Z``. The
+        parameters are in path order, named like the intercepts in
+        ``path_param_fixed_names`` (``"log(b)"`` for a log-linked
+        ``b``). The between-unit covariance around it is
+        ``path_param_link_cov``, the same at every stress.
+
+        Parameters
+        ----------
+        Z : array like
+            One stress row, with as many covariates as the model was
+            fitted with.
+
+        Returns
+        -------
+        ndarray
+            The link-scale mean path parameters at ``Z``.
+        """
+        return self._stress_prior(Z)[1]
+
+    def path_param_median(self, Z: Any) -> npt.NDArray:
+        r"""
+        Median path parameters at stress ``Z``, on their natural scale.
+
+        Each link is monotone and each link-scale parameter is normal,
+        so mapping the link-scale mean through the links gives every
+        parameter's population median exactly: :math:`h(D(z)\,\gamma)`.
+        For a log-linked rate that is the geometric-mean rate at ``Z``
+        (the rate's population mean is larger, by the log-normal
+        factor). Evaluate the typical path at a stress with
+        ``model.path_model.path(t, *model.path_param_median(Z))``.
+
+        Parameters
+        ----------
+        Z : array like
+            One stress row, with as many covariates as the model was
+            fitted with.
+
+        Returns
+        -------
+        ndarray
+            The median path parameters at ``Z``, in path order.
+        """
+        linked, mean, _ = self._stress_prior(Z)
+        return linked.to_natural(mean)
+
     def predict_failure_time(
         self, x: npt.ArrayLike, y: npt.ArrayLike
     ) -> float:
@@ -653,6 +773,7 @@ class DegradationModel(SerialisableMixin):
         alpha_ci: float = 0.05,
         n_samples: int = 10_000,
         random_state: "int | None" = None,
+        Z: Any = None,
     ) -> RULPrediction:
         """
         Bayesian remaining-useful-life prediction for a new unit.
@@ -690,6 +811,16 @@ class DegradationModel(SerialisableMixin):
         random_state : optional
             Seed passed to ``numpy.random.default_rng`` for
             reproducible sampling.
+        Z : array like, optional
+            The stress the new unit runs at. Required for a model whose
+            path parameters were modelled against stress (fitted with
+            ``links``): the prior is then the *stress-conditional*
+            population, ``eta ~ N(D(z) gamma, Sigma)`` on the link
+            scale, rather than the pooled population that mixes the
+            stress levels. The posterior is taken on the link scale (so a
+            log-linked rate stays positive) and pushed through the
+            threshold crossing in the same way. Refused for a model
+            without ``links``.
 
         Returns
         -------
@@ -720,12 +851,29 @@ class DegradationModel(SerialisableMixin):
             raise ValueError("x and y must contain only finite values")
         self.path_model.check_data(x_arr, y_arr)
 
-        posterior_mean, posterior_cov = self._path_posterior(x_arr, y_arr)
+        linked: "LinkedPathModel | None" = None
+        if Z is None and self.links is None:
+            posterior_mean, posterior_cov = self._path_posterior(
+                x_arr,
+                y_arr,
+                self.path_model,
+                self.path_param_mean,
+                self.path_param_cov,
+            )
+        else:
+            # the stress-conditional population is the prior; the update
+            # runs on the link scale
+            linked, prior_mean, prior_cov = self._stress_prior(Z)
+            posterior_mean, posterior_cov = self._path_posterior(
+                x_arr, y_arr, linked, prior_mean, prior_cov
+            )
 
         rng = np.random.default_rng(random_state)
         theta_samples = rng.multivariate_normal(
             posterior_mean, posterior_cov, size=n_samples
         )
+        if linked is not None:
+            theta_samples = linked.to_natural(theta_samples)
         try:
             failure_times = np.asarray(
                 self.path_model.inv_path(self.threshold, *theta_samples.T),
@@ -765,29 +913,37 @@ class DegradationModel(SerialisableMixin):
         )
 
     def _path_posterior(
-        self, x: npt.NDArray, y: npt.NDArray
+        self,
+        x: npt.NDArray,
+        y: npt.NDArray,
+        path_model: PathModel,
+        prior_mean: npt.NDArray,
+        prior_cov: npt.NDArray,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
-        Gaussian posterior of a new unit's path parameters given the
-        population prior and the unit's measurements.
+        Gaussian posterior of a new unit's path parameters given a
+        population prior ``N(prior_mean, prior_cov)`` and the unit's
+        measurements.
 
-        Exact for linear-in-parameter path models (one Gauss-Newton
-        step is the conjugate update); iterated linearisation to the
-        MAP otherwise.
+        ``path_model`` is the model the prior is expressed in: the plain
+        path model for the pooled population, or its link-scale
+        :class:`LinkedPathModel` for a stress-conditional one. Exact for
+        linear-in-parameter path models (one Gauss-Newton step is the
+        conjugate update); iterated linearisation to the MAP otherwise.
         """
-        prior_mean = self.path_param_mean
+        prior_mean = np.asarray(prior_mean, dtype=float)
         # floor the prior covariance's eigenvalues so a clipped
         # (rank-deficient) covariance still gives a proper, very tight
         # prior in the deficient directions
-        prior_precision = psd_precision(self.path_param_cov, 1e-8, 0.0)
+        prior_precision = psd_precision(prior_cov, 1e-8, 0.0)
         noise_var = self.measurement_var
 
         theta = prior_mean.copy()
         precision = prior_precision
-        max_iter = 1 if self.path_model.linear_in_parameters else 100
+        max_iter = 1 if path_model.linear_in_parameters else 100
         for _ in range(max_iter):
-            jacobian = self.path_model.jacobian(x, *theta)
-            fitted = self.path_model.path(x, *theta)
+            jacobian = path_model.jacobian(x, *theta)
+            fitted = path_model.path(x, *theta)
             precision = prior_precision + jacobian.T @ jacobian / noise_var
             rhs = (
                 prior_precision @ prior_mean
@@ -798,7 +954,7 @@ class DegradationModel(SerialisableMixin):
                 raise ValueError(
                     "The linearised posterior update diverged for this "
                     "trajectory; the {} path model could not be updated "
-                    "against the population prior".format(self.path_model.name)
+                    "against the population prior".format(path_model.name)
                 )
             if np.allclose(theta_new, theta, rtol=1e-10, atol=1e-12):
                 theta = theta_new
@@ -918,7 +1074,10 @@ class DegradationModel(SerialisableMixin):
         return np.asarray(self.life_model.random(size))
 
     def induced_life(
-        self, n_samples: int = 10_000, random_state: "int | None" = None
+        self,
+        n_samples: int = 10_000,
+        random_state: "int | None" = None,
+        Z: Any = None,
     ) -> InducedFailureDistribution:
         """
         The population failure-time distribution induced by the path model
@@ -939,27 +1098,42 @@ class DegradationModel(SerialisableMixin):
             Number of Monte-Carlo path-parameter draws. Default 10000.
         random_state : int or numpy.random.Generator, optional
             Seed for a reproducible result.
+        Z : array like, optional
+            The stress to induce the life at. Required for a model whose
+            path parameters were modelled against stress (fitted with
+            ``links``): the draws are then ``eta ~ N(D(z) gamma, Sigma)``
+            on the link scale, mapped through the links to path
+            parameters. Refused for a model without ``links``.
 
         Returns
         -------
         InducedFailureDistribution
             The Monte-Carlo induced failure-time distribution.
         """
-        if self.is_accelerated:
+        linked: "LinkedPathModel | None" = None
+        stress: "list[float] | None" = None
+        if Z is not None or self.links is not None:
+            linked, mean, cov = self._stress_prior(Z)
+            stress = self._stress_row(Z).tolist()
+        elif self.is_accelerated:
             raise ValueError(
-                "induced_life uses the (non-accelerated) population "
-                "path-parameter distribution; an accelerated (covariate) "
-                "model's path parameters are not yet stress-conditional, so "
-                "there is no single population to induce a life from."
+                "induced_life needs a single population of path parameters, "
+                "but this accelerated (covariate) model's population pools "
+                "every stress level. Fit with links (e.g. "
+                "links={'b': 'log'}) alongside Z to model the path "
+                "parameters against stress, then pass the stress Z here."
             )
+        else:
+            mean = np.asarray(self.path_param_mean, dtype=float)
+            cov = np.asarray(self.path_param_cov, dtype=float)
         rng = np.random.default_rng(random_state)
-        mean = np.asarray(self.path_param_mean, dtype=float)
-        cov = np.asarray(self.path_param_cov, dtype=float)
         # Robust MVN sampling: symmetrise and clip the (possibly PSD-clipped)
         # covariance's eigenvalues to be non-negative before taking its root.
         root = psd_root(cov)
         z = rng.standard_normal((n_samples, mean.size))
         theta = mean + z @ root.T
+        if linked is not None:
+            theta = linked.to_natural(theta)
 
         columns = [theta[:, k] for k in range(theta.shape[1])]
         with np.errstate(all="ignore"):
@@ -971,7 +1145,7 @@ class DegradationModel(SerialisableMixin):
         # at a positive time; otherwise the unit never fails (inf).
         t = np.where(np.isfinite(t) & (t > 0), t, np.inf)
         return InducedFailureDistribution(
-            t, self.threshold, self.path_model.name
+            t, self.threshold, self.path_model.name, stress=stress
         )
 
     def _reg_qf(self, p: npt.ArrayLike, Z: Any) -> npt.NDArray:

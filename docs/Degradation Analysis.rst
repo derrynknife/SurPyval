@@ -139,6 +139,50 @@ reach the population life two different ways, and close agreement is reassuring
 while a large gap warns that the path model or the Gaussian population
 assumption is off.
 
+Accelerated degradation: stress-dependent path parameters
+---------------------------------------------------------
+
+In an **accelerated degradation test** units are run at elevated stress so
+they degrade fast enough to measure, and life is extrapolated back to use
+conditions. The simplest treatment keeps the path fits as they are and lets
+stress act only on the pseudo failure times, through a regression life model
+(an accelerated-failure-time fit, say). That predicts life at a stress, but it
+never models *why* life changes: the population of path parameters is pooled
+across the stress levels, so it describes no unit actually tested.
+
+The mechanistic alternative models the degradation **rate itself** as a
+function of stress [Meeker1998]_. Each path parameter is placed on a *link
+scale* — the identity, or the log for a parameter that must stay positive and
+whose stress effect is multiplicative — and the link-scale parameters of unit
+:math:`i`, tested at stress :math:`z_i`, are
+
+.. math::
+
+    \eta_i = D(z_i)\,\gamma + u_i, \qquad u_i \sim \mathrm{MVN}(0, \Sigma),
+    \qquad \theta_i = h(\eta_i).
+
+The design :math:`D(z)` gives each stress-dependent parameter an intercept and a
+coefficient per covariate, and every other parameter an intercept only;
+:math:`\gamma` holds those fixed effects and :math:`\Sigma` the unit-to-unit
+scatter that remains *after* the stress effect is removed. A log-linked rate
+with the covariate :math:`z = 1/T` is exactly the **Arrhenius** relationship,
+:math:`\log b = \gamma_0 + \gamma_1 / T`. For a path that is linear in its
+parameters with identity links this is still a linear mixed model, so the
+two-stage (Lu-Meeker) and REML estimators above apply with a wider
+fixed-effects design; a log link makes the path nonlinear in :math:`\eta`, and
+the Lindstrom-Bates linearisation handles it as for any nonlinear path.
+
+Modelling the mechanism buys two things the pooled population cannot give.
+First, a **stress-conditional prior** for remaining-useful-life prediction: a
+new unit running at stress :math:`z` is updated against
+:math:`N(D(z)\gamma, \Sigma)`, the population of units at *its* stress, rather
+than against a mixture of every stress tested. Second, a **stress-conditional
+induced life**: drawing :math:`\eta \sim N(D(z)\gamma, \Sigma)` and pushing
+each draw through the threshold crossing gives the failure-time distribution
+at any stress — including stresses outside the tested range, where the
+mechanism, not a curve fitted to the pseudo failure times, carries the
+extrapolation.
+
 Stochastic-process degradation models
 --------------------------------------
 
@@ -184,6 +228,42 @@ therefore always non-negative, so the path is non-decreasing by construction.
 Like the Wiener process, its failure-time distribution is the first-passage time
 to the threshold, obtained from the process parameters. Gamma processes are a
 standard tool in maintenance modelling; see [vanNoortwijk2009]_ for a survey.
+
+Stress and time-varying stress
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In an accelerated degradation test the stress — temperature, voltage, load — is
+raised to make degradation happen faster, and in a **step-stress** test it is
+raised part way through the test on the same units. Both process models handle
+this through an **acceleration of the clock** (the cumulative-exposure idea of
+[WhitmoreSchenkelberg1997]_): a unit held at stress :math:`z` ages at
+
+.. math::
+
+    \mathrm{AF}(z) = \exp\!\bigl(\gamma^\top (z - z_{\text{ref}})\bigr)
+
+times the rate it would at the reference (use) stress :math:`z_{\text{ref}}`,
+and under a stress profile :math:`z(s)` its **operational time** is
+
+.. math::
+
+    \tau(t) = \int_0^t \mathrm{AF}\bigl(z(s)\bigr)\, ds.
+
+The process runs on :math:`\tau` instead of :math:`t`. Over a measurement interval
+the Wiener increment becomes :math:`N(\mu\,\Delta\tau, \sigma^2\,\Delta\tau)` and
+the Gamma increment :math:`\mathrm{Gamma}(\alpha\,\Delta\tau, \beta)`, so the
+parameters :math:`(\mu, \sigma)` or :math:`(\alpha, \beta)` describe degradation at
+the reference stress and :math:`\gamma` how strongly stress speeds it up. With
+:math:`z = 1/T` (absolute temperature) the acceleration factor is Arrhenius, with
+:math:`\gamma = -E_a / k`; with :math:`z = \log V` it is an inverse power law.
+
+Because stress only changes the speed of the clock, the life under any stress
+history is the reference life read at the operational time,
+:math:`F(t) = F_0\bigl(\tau(t)\bigr)` — closed form for both processes, and a
+simple rescaling of time, :math:`F(t) = F_0(\mathrm{AF}(z)\,t)`, at a constant
+stress. For the Wiener process this assumes the stress scales the diffusion
+along with the drift (the ratio :math:`\mu/\sigma^2` is stress-free), which is
+what makes the time-scale model identifiable and the life closed form.
 
 For worked examples of all of the above — fitting general-path and
 stochastic-process models, predicting remaining useful life, the Lu-Meeker
@@ -238,6 +318,10 @@ References
 .. [vanNoortwijk2009] van Noortwijk, J.M., 2009. A survey of the application of
    gamma processes in maintenance. *Reliability Engineering & System Safety*,
    94(1), pp.2-21.
+
+.. [WhitmoreSchenkelberg1997] Whitmore, G.A. and Schenkelberg, F., 1997.
+   Modelling accelerated degradation data using Wiener diffusion with a time
+   scale transformation. *Lifetime Data Analysis*, 3(1), pp.27-45.
 
 .. [LindstromBates1990] Lindstrom, M.J. and Bates, D.M., 1990. Nonlinear
    mixed effects models for repeated measures data. *Biometrics*, 46(3),

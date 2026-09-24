@@ -1,6 +1,65 @@
 Changelog
 =========
 
+v0.21.0 (unreleased)
+--------------------
+
+- **Accelerated degradation, Stage 2: stress-conditional predictions**
+  (<#155>, second half). A model fitted with ``links`` now uses its
+  stress-conditional path population, ``eta ~ N(D(z) gamma, Sigma)``
+  on the link scale, for prediction:
+
+  - ``predict_rul(x, y, Z=...)`` updates a new unit's trajectory
+    against the population of units at *its* stress rather than the
+    pooled population that mixes every tested stress. The posterior is
+    taken on the link scale, so a log-linked rate stays positive, and
+    ``posterior_mean``/``posterior_cov`` are reported there.
+  - ``induced_life(Z=...)`` gives the Lu-Meeker induced failure-time
+    distribution at any stress -- until now it was refused for every
+    accelerated model. Outside the tested range the mechanism, not a
+    curve through the pseudo failure times, carries the extrapolation.
+    The induced distribution records the stress it was taken at
+    (``stress``, serialised and shown in its ``repr``).
+  - ``path_param_link_mean(Z)`` and ``path_param_median(Z)`` expose the
+    population at a stress, the latter on the natural scale (the median
+    of each parameter, exactly, since each link is monotone).
+
+  A linked model requires ``Z`` in these calls and a model without
+  ``links`` refuses it, each with a message naming the fix. Everything
+  without ``links`` is bit-identical to before (66 fingerprinted
+  outputs across ``predict_rul`` and ``induced_life`` on plain,
+  nonlinear and Stage-1 accelerated models). The degradation theory
+  page gains a section on the stress-dependent model and the how-to a
+  worked example.
+
+- **Accelerated degradation, Stage 3: step-stress process models**
+  (<#155>). ``WienerProcess.fit`` and ``GammaProcess.fit`` take ``Z``
+  (one stress row per measurement, the stress applied over the interval
+  ending there) and ``stress_ref``, so constant-stress *and*
+  step-stress accelerated tests can be fitted. Stress accelerates the
+  process clock, ``AF(z) = exp(gamma'(z - z_ref))``: the process runs on
+  the operational time ``tau(t) = integral of AF(z(s)) ds``
+  (Whitmore & Schenkelberg, 1997), the fitted process parameters are
+  the reference-stress values and the new ``gamma`` coefficients how
+  strongly stress speeds degradation up (``z = 1/T`` gives Arrhenius).
+
+  - ``ff``, ``sf``, ``df``, ``hf``, ``Hf``, ``qf``, ``mean``, ``random``
+    and ``predict_rul`` take ``Z``: a single stress row, or a
+    ``StepSchedule`` for a stress that changes over time. The life
+    under any profile is closed form, ``F(t) = F0(tau(t))``, for both
+    processes; for ``predict_rul`` the schedule starts now.
+  - ``acceleration_factor(Z)`` and ``is_accelerated``; ``gamma`` and
+    ``stress_ref`` are serialised and shown in the ``repr``.
+  - For the Wiener process stress scales the diffusion along with the
+    drift, the assumption that makes the model identifiable and the
+    life closed form.
+
+  A stressed model requires ``Z`` for predictions and a stress-free one
+  refuses it. Fits and predictions without ``Z`` are bit-identical to
+  before (84 fingerprinted outputs). The degradation theory page gains
+  a section on time-varying stress and the how-to a step-stress worked
+  example.
+
 v0.20.0 (23 September 2026)
 ---------------------------
 

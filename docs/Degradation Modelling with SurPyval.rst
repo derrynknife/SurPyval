@@ -381,9 +381,11 @@ non-increasing slope, say). Those contribute an ``inf`` failure time — a
 defective *"never fails"* mass reported as ``prob_never_fails`` — and once the
 quantiles reach into that mass they, and the ``mean``, become ``inf``. This is
 the correct behaviour: if a fraction of the population genuinely never fails,
-the population has no finite mean life. Finally, ``induced_life`` is defined for
-the plain (non-accelerated) population; an accelerated (covariate) model's path
-parameters are not yet stress-conditional, so it is refused there.
+the population has no finite mean life. Finally, ``induced_life`` needs a
+single population of paths: an accelerated (covariate) model pools every
+stress level, so it is refused there unless the path parameters are modelled
+against stress (``links``, below), in which case it takes the stress ``Z`` to
+induce the life at.
 
 Confidence bounds
 -----------------
@@ -508,6 +510,72 @@ required for a covariate model (and ``model.cb`` needs the stress ``Z``). The
 first-stage-only regression bounds — which ignore the extrapolation
 uncertainty — remain available directly through ``model.life_model.cb(x, Z,
 ...)``.
+
+Modelling the degradation mechanism against stress
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The fit above lets stress act only on the pseudo failure times. It never says
+*why* life shortens, and its population of path parameters pools every stress
+level, so it describes no unit actually tested. Passing ``links`` alongside
+``Z`` models the degradation **mechanism** instead: the named path parameters
+depend on stress, on an ``"identity"`` or ``"log"`` link, and the others are
+common to every unit. Here the degradation rate ``b`` is log-linear in stress
+(with ``Z = 1/T`` that is the Arrhenius relationship) and the starting level
+``a`` is not:
+
+.. jupyter-execute::
+
+    mech = DegradationAnalysis.fit(xd, yd, idd, threshold=100.0, Z=Zd,
+                                   links={'b': 'log'})
+    dict(zip(mech.path_param_fixed_names,
+             mech.path_param_fixed.round(3).tolist()))
+
+The data were simulated with ``log b = log 0.5 + 0.8 * stress``, and the fixed
+effects recover it: ``log(b)`` is the log-rate intercept and ``log(b):Z0`` the
+stress coefficient. ``path_param_link_cov`` holds the unit-to-unit scatter left
+once the stress effect is removed, estimated by the same two-stage or REML
+route as the plain population. The life model is still the covariate
+regression on the pseudo failure times, so ``sf``, ``qf``, ``mean`` and the
+bootstrap bounds all work exactly as above.
+
+What the mechanism adds is a population of paths *at each stress*.
+``path_param_median(Z)`` gives the typical unit's path parameters there, and
+``induced_life(Z=...)`` pushes the whole stress-conditional population through
+the threshold crossing. Inside the tested range it agrees with the regression
+life fit; outside it — here at ``-0.5``, below every tested level, as use
+conditions usually are — it is the mechanism rather than a curve through the
+pseudo failure times that carries the extrapolation:
+
+.. jupyter-execute::
+
+    for stress in [-0.5, 0.0, 1.0]:
+        rate = mech.path_param_median([stress])[1]
+        induced = mech.induced_life(Z=[stress], random_state=0)
+        regression = float(np.ravel(model.qf(0.5, Z=[stress]))[0])
+        print(f'stress {stress:+.1f}: median rate {rate:.3f}, '
+              f'median life induced {induced.median():6.1f} '
+              f'/ regression {regression:6.1f}')
+
+Remaining useful life becomes stress-aware in the same way.
+``predict_rul(x, y, Z=...)`` updates a new unit's trajectory against the
+population of units at *its* stress, rather than against a mixture of every
+stress tested; the posterior is taken on the link scale, so a log-linked rate
+stays positive. With only a couple of measurements the stress matters a great
+deal, and as measurements accumulate the prediction converges on the unit's
+own trend whatever the stress:
+
+.. jupyter-execute::
+
+    new_x, new_y = [5.0, 10.0], [13.0, 16.0]
+    for stress in [0.0, 1.5]:
+        pred = mech.predict_rul(new_x, new_y, Z=[stress], random_state=0)
+        lower, upper = pred.rul_interval
+        print(f'stress {stress}: RUL {pred.rul:5.1f}  '
+              f'(95% interval {lower:5.1f} to {upper:5.1f})')
+
+A model fitted without ``links`` refuses ``Z`` in ``predict_rul`` and
+``induced_life``, since it has no stress-conditional population to condition
+on; a model fitted with ``links`` requires it.
 
 Stochastic-process degradation models
 -------------------------------------
@@ -669,7 +737,7 @@ distance. ``predict_rul`` returns its median and an interval:
 
     rul = model.predict_rul(current_degradation=7.0)
     print("median remaining life :", round(rul.rul, 2))
-    print("90% interval          :", tuple(round(v, 2) for v in rul.rul_interval))
+    print("95% interval          :", tuple(round(v, 2) for v in rul.rul_interval))
 
 The interval widths tell you how much uncertainty remains: a unit close to the
 threshold has a short, tight remaining-life estimate; a fresh unit has a long,
@@ -818,6 +886,116 @@ and they give the failure-time distribution **directly from the fitted process**
 rather than through noisy per-unit pseudo failure times. The general-path models
 remain the better choice when each unit truly follows a smooth deterministic
 trend observed with error, or when you need a specific parametric path shape.
+
+Accelerated and step-stress tests
+---------------------------------
+
+Degradation at use conditions is often too slow to watch, so tests raise the
+stress. In a **step-stress** test the *same* units are held at one stress for a
+while, then stepped up, and up again — every unit sees several stresses, and
+each measurement interval ran at whatever stress was applied over it. Both
+``WienerProcess`` and ``GammaProcess`` take that stress through ``Z``: one row
+per measurement, giving the stress applied over the interval that *ends* at that
+measurement.
+
+The model is an **accelerated clock** [WhitmoreSchenkelberg1997]_. Stress
+``z`` makes a unit age :math:`\mathrm{AF}(z) = \exp(\gamma^\top (z - z_{\text{ref}}))`
+times faster than at the reference stress, so an interval ``dt`` at stress ``z``
+contributes :math:`\mathrm{AF}(z)\,dt` of operational time and the process runs
+on that clock. The process parameters describe degradation at the reference
+stress ``stress_ref`` (pass the use condition), and the new ``gamma``
+coefficients describe how strongly stress speeds it up. With ``z = 1/T`` in
+kelvin this is Arrhenius, :math:`\gamma = -E_a/k`.
+
+Here 40 units run for 300 hours: 100 hours at 50 °C, 100 at 75 °C, then 100 at
+100 °C, with a true :math:`\gamma = -5000` (an activation energy of about
+0.43 eV), inspected every 5 hours. The use condition is 50 °C.
+
+.. jupyter-execute::
+
+    from surpyval import StepSchedule
+
+    rng = np.random.default_rng(2)
+    temps = np.array([323.0, 348.0, 373.0])  # kelvin
+    z_levels = 1 / temps
+    z_use = z_levels[0]
+    g_true, mu_true, sigma_true, threshold = -5000.0, 0.05, 0.12, 12.0
+
+    times = np.arange(5.0, 300.0 + 1e-9, 5.0)
+    z = np.select([times <= 100, times <= 200], z_levels[:2], z_levels[2])
+    af = np.exp(g_true * (z - z_use))
+
+    xs, ys, ids, Zs = [], [], [], []
+    for unit in range(40):
+        dtau = af * 5.0  # operational time in each interval
+        increments = rng.normal(mu_true * dtau, sigma_true * np.sqrt(dtau))
+        xs.append(np.r_[0.0, times])
+        ys.append(np.r_[0.0, np.cumsum(increments)])
+        ids.append(np.full(times.size + 1, unit))
+        Zs.append(np.r_[z_levels[0], z])
+    x, y, i, Z = (np.concatenate(a) for a in (xs, ys, ids, Zs))
+
+    model = WienerProcess.fit(x, y, i, threshold=threshold, Z=Z, stress_ref=[z_use])
+    model
+
+The drift and diffusion are close to the 50 °C values (``0.05`` and ``0.12``),
+and the stress coefficient is close to ``-5000``. The ``Mean life (ref.)`` line is the mean
+life at the reference stress. Every life method now needs a stress, passed as
+``Z``: a single row for a constant stress,
+
+.. jupyter-execute::
+
+    print("acceleration factor at 100 C :", round(model.acceleration_factor([z_levels[2]]), 1))
+    print("mean life at 50 C            :", round(model.mean(Z=[z_use]), 1))
+    print("mean life at 100 C           :", round(model.mean(Z=[z_levels[2]]), 1))
+
+or a :class:`~surpyval.StepSchedule` for a stress that changes over time. Because
+stress only changes the speed of the clock, the life under a profile is still
+closed form: :math:`F(t) = F_0(\tau(t))` with :math:`\tau` the operational time.
+Here is the life of a fresh unit on the test profile itself, next to the life at
+the two ends of it:
+
+.. jupyter-execute::
+
+    profile = StepSchedule.from_changepoints([0, 100, 200], z_levels)
+
+    t = np.linspace(0, 300, 301)
+    plt.plot(t, model.ff(t, Z=[z_use]), label="constant 50 C")
+    plt.plot(t, model.ff(t, Z=profile), label="step profile")
+    plt.plot(t, model.ff(t, Z=[z_levels[2]]), label="constant 100 C")
+    plt.xlabel("Time (h)")
+    plt.ylabel("Probability of failure  F(t)")
+    plt.legend()
+
+    print("median life on the profile:", round(model.qf(0.5, Z=profile), 1), "h")
+
+``ff``, ``sf``, ``df``, ``hf``, ``qf``, ``mean`` and ``random`` all take ``Z``
+this way. For remaining life, ``Z`` is the stress *from now on*, and a schedule
+starts at time zero = now. A unit currently at degradation ``6`` that will run
+another 20 hours at 75 °C before going to 100 °C:
+
+.. jupyter-execute::
+
+    plan = StepSchedule.from_changepoints([0, 20], [[z_levels[1]], [z_levels[2]]])
+    rul = model.predict_rul(6.0, Z=plan)
+    print("median remaining life :", round(rul.rul, 1), "h")
+    print("95% interval          :", tuple(round(v, 1) for v in rul.rul_interval))
+
+A few practical points:
+
+* The same ``Z`` argument covers a **constant-stress** accelerated test, where
+  each unit stays at one stress and different units run at different stresses.
+  Either way, ``Z`` needs at least two distinct stress levels, or the stress
+  coefficients cannot be estimated and the fit says so.
+* ``Z`` can carry several stresses (e.g. ``[1/T, log V]``); ``gamma`` then has one
+  coefficient per column.
+* ``GammaProcess`` works identically; its ``alpha`` (the shape accrual) and
+  ``beta`` are the reference-stress values.
+* For the Wiener process the stress scales the diffusion along with the drift.
+  That is the assumption that makes the life closed form under any profile.
+* A model fitted without ``Z`` is unchanged and refuses a ``Z`` argument. A
+  model fitted with ``Z`` refuses to predict without one, because its life
+  depends on the stress.
 
 Destructive degradation
 -----------------------
