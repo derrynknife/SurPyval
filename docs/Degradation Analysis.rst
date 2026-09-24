@@ -229,6 +229,42 @@ Like the Wiener process, its failure-time distribution is the first-passage time
 to the threshold, obtained from the process parameters. Gamma processes are a
 standard tool in maintenance modelling; see [vanNoortwijk2009]_ for a survey.
 
+Stress and time-varying stress
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In an accelerated degradation test the stress — temperature, voltage, load — is
+raised to make degradation happen faster, and in a **step-stress** test it is
+raised part way through the test on the same units. Both process models handle
+this through an **acceleration of the clock** (the cumulative-exposure idea of
+[WhitmoreSchenkelberg1997]_): a unit held at stress :math:`z` ages at
+
+.. math::
+
+    \mathrm{AF}(z) = \exp\!\bigl(\gamma^\top (z - z_{\text{ref}})\bigr)
+
+times the rate it would at the reference (use) stress :math:`z_{\text{ref}}`,
+and under a stress profile :math:`z(s)` its **operational time** is
+
+.. math::
+
+    \tau(t) = \int_0^t \mathrm{AF}\bigl(z(s)\bigr)\, ds.
+
+The process runs on :math:`\tau` instead of :math:`t`. Over a measurement interval
+the Wiener increment becomes :math:`N(\mu\,\Delta\tau, \sigma^2\,\Delta\tau)` and
+the Gamma increment :math:`\mathrm{Gamma}(\alpha\,\Delta\tau, \beta)`, so the
+parameters :math:`(\mu, \sigma)` or :math:`(\alpha, \beta)` describe degradation at
+the reference stress and :math:`\gamma` how strongly stress speeds it up. With
+:math:`z = 1/T` (absolute temperature) the acceleration factor is Arrhenius, with
+:math:`\gamma = -E_a / k`; with :math:`z = \log V` it is an inverse power law.
+
+Because stress only changes the speed of the clock, the life under any stress
+history is the reference life read at the operational time,
+:math:`F(t) = F_0\bigl(\tau(t)\bigr)` — closed form for both processes, and a
+simple rescaling of time, :math:`F(t) = F_0(\mathrm{AF}(z)\,t)`, at a constant
+stress. For the Wiener process this assumes the stress scales the diffusion
+along with the drift (the ratio :math:`\mu/\sigma^2` is stress-free), which is
+what makes the time-scale model identifiable and the life closed form.
+
 For worked examples of all of the above — fitting general-path and
 stochastic-process models, predicting remaining useful life, the Lu-Meeker
 diagnostic, and serialising a fitted model — see the
@@ -282,6 +318,10 @@ References
 .. [vanNoortwijk2009] van Noortwijk, J.M., 2009. A survey of the application of
    gamma processes in maintenance. *Reliability Engineering & System Safety*,
    94(1), pp.2-21.
+
+.. [WhitmoreSchenkelberg1997] Whitmore, G.A. and Schenkelberg, F., 1997.
+   Modelling accelerated degradation data using Wiener diffusion with a time
+   scale transformation. *Lifetime Data Analysis*, 3(1), pp.27-45.
 
 .. [LindstromBates1990] Lindstrom, M.J. and Bates, D.M., 1990. Nonlinear
    mixed effects models for repeated measures data. *Biometrics*, 46(3),

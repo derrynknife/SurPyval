@@ -19,14 +19,30 @@ degradation:
   path is *strictly monotone increasing*. It suits genuinely irreversible
   damage (wear, corrosion, crack growth, fatigue). Its first-passage
   distribution comes from the (regularised) incomplete gamma function.
+
+Accelerated and step-stress tests
+---------------------------------
+Both fitters take an optional stress ``Z``, one row per measurement, which may
+change *during* a unit's test (a step-stress profile) as well as between units.
+Stress acts by speeding up the process clock -- the cumulative-exposure
+principle: with the acceleration factor ``AF(z) = exp(gamma' (z - z_ref))``,
+the process runs on the effective time ``tau(t) = integral of AF(z(s)) ds``, so
+an increment over ``dt`` at stress ``z`` is an increment over ``AF(z) dt`` at
+the reference stress ``z_ref``. For the Wiener process this is the time-scale
+transformation of Whitmore and Schenkelberg (1997) -- drift and variance both
+scale with ``AF`` -- and for the gamma process the shape accrues at
+``alpha * AF(z)``. Because only the clock changes, the life under *any*
+piecewise-constant stress profile is the reference-stress first-passage law
+evaluated at ``tau(t)``: closed form for both processes. With ``z = 1/T`` the
+acceleration factor is the Arrhenius relationship.
 """
 
-from typing import TYPE_CHECKING
+from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
 from scipy.integrate import quad
-from scipy.optimize import brentq, minimize_scalar
+from scipy.optimize import brentq, minimize, minimize_scalar
 from scipy.special import gammaincc, gammaln
 from scipy.stats import norm
 
@@ -34,6 +50,10 @@ from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
+)
+from surpyval.univariate.regression.tvc_schedule import (
+    StepSchedule,
+    segments_from_origin,
 )
 
 __all__ = [
@@ -55,6 +75,22 @@ def _increments(
     consecutive (time-ordered) measurements within each unit, pooled across
     units. Requires strictly increasing times within a unit.
     """
+    dt, dy, _ = _increments_and_stress(x, y, i, None)
+    return dt, dy
+
+
+def _increments_and_stress(
+    x: npt.ArrayLike, y: npt.ArrayLike, i: npt.ArrayLike, Z: Any
+) -> tuple[npt.NDArray, npt.NDArray, "npt.NDArray | None"]:
+    """
+    :func:`_increments`, plus the stress in force over each increment.
+
+    ``Z`` has one row per measurement (or is ``None``). The stress over the
+    interval ``(x[j-1], x[j]]`` is the row of the measurement that ends it --
+    the stress applied since the previous measurement -- so a step change
+    taken just after a measurement is exact. Returns ``(dt, dy, z)`` with
+    ``z`` one row per increment, or ``None`` without ``Z``.
+    """
     x = np.atleast_1d(np.asarray(x, dtype=float))
     y = np.atleast_1d(np.asarray(y, dtype=float))
     i = np.atleast_1d(np.asarray(i))
@@ -66,8 +102,24 @@ def _increments(
         raise ValueError("x, y, and i must not be empty")
     if not (np.isfinite(x).all() and np.isfinite(y).all()):
         raise ValueError("x and y must contain only finite values")
+    Z_arr = None
+    if Z is not None:
+        Z_arr = np.asarray(Z, dtype=float)
+        if Z_arr.ndim == 1:
+            Z_arr = Z_arr.reshape(-1, 1)
+        if Z_arr.ndim != 2 or len(Z_arr) != len(x):
+            raise ValueError(
+                "Z must have one row per measurement (same length as x, y "
+                "and i); got shape {} for {} measurements".format(
+                    np.shape(Z), len(x)
+                )
+            )
+        if Z_arr.shape[1] == 0 or not np.isfinite(Z_arr).all():
+            raise ValueError(
+                "Z must have at least one column and only finite values"
+            )
 
-    dts, dys = [], []
+    dts, dys, zs = [], [], []
     for unit in np.unique(i):
         mask = i == unit
         xu, yu = x[mask], y[mask]
@@ -75,6 +127,8 @@ def _increments(
         xu, yu = xu[order], yu[order]
         if len(xu) < 2:
             continue
+        if Z_arr is not None:
+            zs.append(Z_arr[mask][order][1:])
         dt = np.diff(xu)
         dy = np.diff(yu)
         if np.any(dt <= 0):
@@ -91,7 +145,147 @@ def _increments(
             "no unit has two or more measurements; at least one increment "
             "is required to fit a process model"
         )
-    return np.concatenate(dts), np.concatenate(dys)
+    z_int = None if Z_arr is None else np.concatenate(zs)
+    return np.concatenate(dts), np.concatenate(dys), z_int
+
+
+def _stress_row(Z: Any, q: int) -> npt.NDArray:
+    """Validate one constant stress row with ``q`` covariates."""
+    z = np.asarray(Z, dtype=float)
+    if z.ndim == 2 and z.shape[0] == 1:
+        z = z[0]
+    z = np.atleast_1d(z)
+    if z.shape != (q,):
+        raise ValueError(
+            "Z must be a single stress row with {} covariate(s), or a "
+            "StepSchedule for a stress profile; got shape {}".format(
+                q, z.shape
+            )
+        )
+    if not np.isfinite(z).all():
+        raise ValueError("Z must contain only finite values")
+    return z
+
+
+def _stress_design(
+    z_int: npt.NDArray, stress_ref: Any
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """
+    Centre and scale the per-increment stresses for the optimiser.
+
+    Returns ``(s, z_ref, scale)`` with ``s = (z - z_ref) / scale``, so the
+    fitted coefficient on the original scale is ``g / scale``. The reference
+    stress defaults to the mean stress over the increments. Raises when the
+    coefficients are not identifiable: with a single stress level (or a
+    covariate that is constant, or a combination of the others) the stress
+    effect is confounded with the reference-stress parameters.
+    """
+    q = z_int.shape[1]
+    design = np.column_stack([np.ones(len(z_int)), z_int])
+    if np.linalg.matrix_rank(design) < q + 1:
+        raise ValueError(
+            "the stress coefficients cannot be estimated: Z needs at least "
+            "two distinct stress levels across the measurement intervals, "
+            "and no covariate may be constant or a combination of the others"
+        )
+    if stress_ref is None:
+        z_ref = z_int.mean(axis=0)
+    else:
+        z_ref = _stress_row(stress_ref, q)
+    scale = z_int.std(axis=0)
+    return (z_int - z_ref) / scale, z_ref, scale
+
+
+def _minimise(fun: Callable, x0: npt.NDArray) -> npt.NDArray:
+    """BFGS, falling back to (and polishing with) Nelder-Mead."""
+    best = minimize(fun, x0, method="BFGS")
+    if not (best.success and np.isfinite(best.fun)):
+        nm = minimize(
+            fun,
+            best.x if np.isfinite(best.fun) else x0,
+            method="Nelder-Mead",
+            options={"xatol": 1e-10, "fatol": 1e-12, "maxiter": 20_000},
+        )
+        if np.isfinite(nm.fun) and (
+            not np.isfinite(best.fun) or nm.fun <= best.fun
+        ):
+            best = nm
+    if not np.isfinite(best.fun):
+        raise ValueError(
+            "the stress-dependent process fit did not converge to a finite "
+            "likelihood"
+        )
+    return np.asarray(best.x, dtype=float)
+
+
+class _Clock:
+    """
+    The process clock under a stress path, ``tau(t) = int_0^t AF(z(s)) ds``.
+
+    ``Z`` is one constant stress row (``tau`` is then ``AF * t``) or a
+    :class:`~surpyval.StepSchedule` describing a piecewise-constant profile,
+    in which case ``tau`` is piecewise linear with slope ``AF`` of the stress
+    in force.
+    """
+
+    def __init__(self, model: "FirstPassageProcessModel", Z: Any) -> None:
+        self.model = model
+        self.schedule: "StepSchedule | None" = None
+        self.rate: "float | None" = None
+        if isinstance(Z, StepSchedule):
+            assert model.gamma is not None
+            if Z.p != model.gamma.size:
+                raise ValueError(
+                    "the StepSchedule has {} covariate(s) but the model was "
+                    "fitted with {}".format(Z.p, model.gamma.size)
+                )
+            self.schedule = Z
+        else:
+            self.rate = model.acceleration_factor(Z)
+
+    def _knots(self, horizon: float) -> tuple[npt.NDArray, npt.NDArray]:
+        assert self.schedule is not None
+        finite_edges = self.schedule.edges[np.isfinite(self.schedule.edges)]
+        horizon = max(horizon, float(finite_edges.max()) + 1.0, 1.0)
+        starts, ends, Zs = segments_from_origin(self.schedule, horizon)
+        af = np.array([self.model.acceleration_factor(z) for z in Zs])
+        knots_t = np.concatenate([[starts[0]], ends])
+        knots_tau = np.concatenate([[0.0], np.cumsum(af * (ends - starts))])
+        return knots_t, knots_tau
+
+    def tau(self, t: npt.NDArray) -> npt.NDArray:
+        if self.rate is not None:
+            return self.rate * t
+        finite = t[np.isfinite(t)]
+        knots_t, knots_tau = self._knots(float(finite.max(initial=0.0)))
+        out = np.interp(t, knots_t, knots_tau)
+        return np.where(np.isposinf(t), np.inf, out)
+
+    def rate_at(self, t: npt.NDArray) -> npt.NDArray:
+        if self.rate is not None:
+            return np.full_like(t, self.rate, dtype=float)
+        finite = t[np.isfinite(t)]
+        knots_t, knots_tau = self._knots(float(finite.max(initial=0.0)))
+        slopes = np.diff(knots_tau) / np.diff(knots_t)
+        idx = np.searchsorted(knots_t, t, side="right") - 1
+        return slopes[np.clip(idx, 0, len(slopes) - 1)]
+
+    def inverse(self, tau: npt.NDArray) -> npt.NDArray:
+        """The calendar time at which the clock reads ``tau``."""
+        tau = np.asarray(tau, dtype=float)
+        if self.rate is not None:
+            return tau / self.rate
+        finite = tau[np.isfinite(tau)]
+        target = float(finite.max(initial=0.0))
+        horizon = 1.0
+        knots_t, knots_tau = self._knots(horizon)
+        for _ in range(200):
+            if knots_tau[-1] >= target:
+                break
+            horizon = 2.0 * float(knots_t[-1])
+            knots_t, knots_tau = self._knots(horizon)
+        out = np.interp(tau, knots_tau, knots_t)
+        return np.where(np.isposinf(tau), np.inf, out)
 
 
 class ProcessRUL:
@@ -163,15 +357,35 @@ class FirstPassageProcessModel(SerialisableMixin):
 
     param_names: list
     threshold: float
+    #: Stress coefficients and the reference stress, for a model fitted
+    #: with ``Z``; both ``None`` otherwise.
+    gamma: "npt.NDArray | None"
+    stress_ref: "npt.NDArray | None"
 
-    if TYPE_CHECKING:
-        # The density is each subclass's own (closed form vs numeric).
-        def df(self, t: npt.ArrayLike) -> "npt.NDArray | float": ...
-
-    def __init__(self, *params_then_threshold: float) -> None:
+    def __init__(
+        self,
+        *params_then_threshold: float,
+        gamma: Any = None,
+        stress_ref: Any = None,
+    ) -> None:
         # Subclasses define their own named-parameter __init__; this
         # signature exists so ``from_dict`` type-checks against the base.
         raise NotImplementedError
+
+    def _init_stress(self, gamma: Any, stress_ref: Any) -> None:
+        if (gamma is None) != (stress_ref is None):
+            raise ValueError("gamma and stress_ref must be given together")
+        if gamma is None:
+            self.gamma = None
+            self.stress_ref = None
+            return
+        self.gamma = np.atleast_1d(np.asarray(gamma, dtype=float))
+        self.stress_ref = np.atleast_1d(np.asarray(stress_ref, dtype=float))
+        if self.gamma.shape != self.stress_ref.shape or self.gamma.ndim != 1:
+            raise ValueError(
+                "gamma and stress_ref must be one-dimensional and the same "
+                "length"
+            )
 
     def _ff_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
         raise NotImplementedError
@@ -180,12 +394,91 @@ class FirstPassageProcessModel(SerialisableMixin):
         """Starting upper bracket for the quantile search."""
         raise NotImplementedError
 
+    def _df0(self, t: npt.NDArray) -> npt.NDArray:
+        """First-passage density at the reference stress (clock time)."""
+        raise NotImplementedError
+
+    def _mean0(self) -> float:
+        """Mean first-passage time at the reference stress."""
+        raise NotImplementedError
+
+    def _random0(self, size: int, rng: np.random.Generator) -> npt.NDArray:
+        """First-passage draws at the reference stress (clock time)."""
+        raise NotImplementedError
+
+    # -- stress -------------------------------------------------------------
+
+    @property
+    def is_accelerated(self) -> bool:
+        """True for a model fitted with a stress ``Z``."""
+        return self.gamma is not None
+
+    def acceleration_factor(self, Z: Any) -> float:
+        """
+        How much faster the process runs at stress ``Z`` than at the
+        reference stress: ``exp(gamma' (z - stress_ref))``.
+
+        A life at the reference stress divides by this to give the life
+        at ``Z``, and a unit at ``Z`` accumulates degradation this many
+        times faster.
+
+        Parameters
+        ----------
+        Z : array like
+            One stress row.
+        """
+        if self.gamma is None or self.stress_ref is None:
+            raise ValueError(
+                "This process model was fitted without stress, so it has no "
+                "acceleration factor"
+            )
+        z = _stress_row(Z, self.gamma.size)
+        return float(np.exp(self.gamma @ (z - self.stress_ref)))
+
+    def _clock(self, Z: Any) -> "_Clock | None":
+        """The clock for stress ``Z``, validating the argument."""
+        if not self.is_accelerated:
+            if Z is not None:
+                raise ValueError(
+                    "This process model was fitted without stress; do not "
+                    "pass Z."
+                )
+            return None
+        if Z is None:
+            raise ValueError(
+                "This process model depends on stress; pass Z -- one stress "
+                "row for a constant stress, or a StepSchedule for a stress "
+                "profile."
+            )
+        return _Clock(self, Z)
+
+    def _stress_repr(self) -> str:
+        if self.gamma is None or self.stress_ref is None:
+            return ""
+        return (
+            "Stress coefficients : {}\n"
+            "Reference stress    : {}\n".format(
+                np.array2string(self.gamma, precision=6),
+                np.array2string(self.stress_ref, precision=6),
+            )
+        )
+
+    def _mean_label(self) -> str:
+        if self.is_accelerated:
+            return "Mean life (ref.)    : {:.6g}".format(self._mean0())
+        return "Mean time to failure: {:.6g}".format(self._mean0())
+
+    # -- serialisation ------------------------------------------------------
+
     def to_dict(self) -> dict:
         """Serialise this fitted process model to a plain dict."""
         out: dict = {"model": self._model_tag}
         for name in self.param_names:
             out[name] = getattr(self, name)
         out["threshold"] = self.threshold
+        if self.gamma is not None and self.stress_ref is not None:
+            out["gamma"] = self.gamma.tolist()
+            out["stress_ref"] = self.stress_ref.tolist()
         return stamp_schema(out)
 
     @classmethod
@@ -199,33 +492,100 @@ class FirstPassageProcessModel(SerialisableMixin):
         return cls(
             *(model_dict[name] for name in cls.param_names),
             model_dict["threshold"],
+            gamma=model_dict.get("gamma"),
+            stress_ref=model_dict.get("stress_ref"),
         )
 
-    def ff(self, t: npt.ArrayLike) -> "npt.NDArray | float":
-        """Failure (CDF) of the first-passage time to the threshold."""
+    # -- the failure-time distribution --------------------------------------
+
+    def ff(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
+        """
+        Failure (CDF) of the first-passage time to the threshold.
+
+        For a model fitted with stress, ``Z`` is required: one stress row
+        for a constant stress, or a :class:`~surpyval.StepSchedule` for a
+        stress profile. The same applies to every method below.
+        """
+        clock = self._clock(Z)
         scalar = np.isscalar(t)
-        res = self._ff_distance(np.atleast_1d(t), self.threshold)
+        tt = np.atleast_1d(t)
+        if clock is not None:
+            tt = clock.tau(np.asarray(tt, dtype=float))
+        res = self._ff_distance(tt, self.threshold)
         return float(res[0]) if scalar else res
 
-    def sf(self, t: npt.ArrayLike) -> "npt.NDArray | float":
+    def sf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
         """Survival function of the first-passage time."""
+        clock = self._clock(Z)
         scalar = np.isscalar(t)
-        res = 1.0 - self._ff_distance(np.atleast_1d(t), self.threshold)
+        tt = np.atleast_1d(t)
+        if clock is not None:
+            tt = clock.tau(np.asarray(tt, dtype=float))
+        res = 1.0 - self._ff_distance(tt, self.threshold)
         return float(res[0]) if scalar else res
 
-    def hf(self, t: npt.ArrayLike) -> "npt.NDArray | float":
+    def df(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
+        """
+        Density of the first-passage time. Under a stress path it is the
+        reference-stress density at the clock time ``tau(t)`` times the
+        clock's rate, ``AF`` of the stress in force at ``t``.
+        """
+        clock = self._clock(Z)
+        scalar = np.isscalar(t)
+        tt = np.atleast_1d(np.asarray(t, dtype=float))
+        if clock is None:
+            res = self._df0(tt)
+        else:
+            res = self._df0(clock.tau(tt)) * clock.rate_at(tt)
+        return float(res[0]) if scalar else res
+
+    def hf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
         """Hazard function of the first-passage time."""
-        return self.df(t) / self.sf(t)
+        return self.df(t, Z) / self.sf(t, Z)
 
-    def Hf(self, t: npt.ArrayLike) -> "npt.NDArray | float":
+    def Hf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
         """Cumulative hazard of the first-passage time."""
-        return -np.log(self.sf(t))
+        return -np.log(self.sf(t, Z))
 
-    def qf(self, p: npt.ArrayLike) -> "npt.NDArray | float":
+    def qf(self, p: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
         """Quantile (inverse CDF) of the first-passage time."""
+        clock = self._clock(Z)
         p = np.atleast_1d(np.asarray(p, dtype=float))
         out = np.array([self._quantile(pi, self.threshold) for pi in p])
+        if clock is not None:
+            out = clock.inverse(out)
         return float(out[0]) if out.shape == (1,) else out
+
+    def mean(self, Z: Any = None) -> float:
+        """
+        Mean time to failure. At a constant stress it is the
+        reference-stress mean divided by the acceleration factor; under a
+        stress profile it is the integral of the survival function.
+        """
+        clock = self._clock(Z)
+        if clock is None:
+            return self._mean0()
+        if clock.rate is not None:
+            return self._mean0() / clock.rate
+        val, _ = quad(
+            lambda t: float(np.ravel(self.sf(t, Z))[0]),
+            0.0,
+            np.inf,
+            limit=200,
+        )
+        return val
+
+    def random(
+        self,
+        size: int,
+        random_state: "int | None" = None,
+        Z: Any = None,
+    ) -> npt.NDArray:
+        """Draw first-passage (failure) times from the fitted model."""
+        clock = self._clock(Z)
+        rng = np.random.default_rng(random_state)
+        draws = self._random0(size, rng)
+        return draws if clock is None else clock.inverse(draws)
 
     def _quantile(self, p: float, distance: float) -> float:
         if not (0.0 < p < 1.0):
@@ -244,7 +604,10 @@ class FirstPassageProcessModel(SerialisableMixin):
         )
 
     def predict_rul(
-        self, current_degradation: float, alpha_ci: float = 0.05
+        self,
+        current_degradation: float,
+        alpha_ci: float = 0.05,
+        Z: Any = None,
     ) -> ProcessRUL:
         """
         Remaining useful life given the current degradation level.
@@ -260,13 +623,22 @@ class FirstPassageProcessModel(SerialisableMixin):
             The unit's current degradation level.
         alpha_ci : float, optional
             Tail probability of the returned interval. Default ``0.05``.
+        Z : array like or StepSchedule, optional
+            For a model fitted with stress: the stress the unit will run
+            at from now on -- one row for a constant stress, or a
+            :class:`~surpyval.StepSchedule` whose time zero is *now*.
         """
+        clock = self._clock(Z)
         distance = self.threshold - float(current_degradation)
         if distance <= 0:
             return ProcessRUL(0.0, (0.0, 0.0), 1.0, alpha_ci)
         med = self._quantile(0.5, distance)
         lo = self._quantile(alpha_ci / 2.0, distance)
         hi = self._quantile(1.0 - alpha_ci / 2.0, distance)
+        if clock is not None:
+            med, lo, hi = (
+                float(v) for v in clock.inverse(np.array([med, lo, hi]))
+            )
         return ProcessRUL(med, (lo, hi), 0.0, alpha_ci)
 
 
@@ -293,17 +665,30 @@ class WienerProcessModel(FirstPassageProcessModel):
         Fitted diffusion (volatility) coefficient.
     threshold : float
         The degradation level defining failure.
+    gamma, stress_ref : array like, optional
+        For a model fitted with stress ``Z``: the stress coefficients and
+        the reference stress at which ``mu`` and ``sigma`` apply. At stress
+        ``z`` the process clock runs ``exp(gamma' (z - stress_ref))`` times
+        faster, scaling both the drift and the variance per unit time.
     """
 
     _model_tag = "WienerProcessModel"
     _human_name = "Wiener-process"
     param_names = ["mu", "sigma"]
 
-    def __init__(self, mu: float, sigma: float, threshold: float) -> None:
+    def __init__(
+        self,
+        mu: float,
+        sigma: float,
+        threshold: float,
+        gamma: Any = None,
+        stress_ref: Any = None,
+    ) -> None:
         self.mu = float(mu)
         self.sigma = float(sigma)
         self.threshold = float(threshold)
         self.params = np.array([self.mu, self.sigma])
+        self._init_stress(gamma, stress_ref)
 
     def _ig(self, distance: float) -> tuple[float, float]:
         # Inverse-Gaussian (mean nu, shape lam) parameters for first passage
@@ -326,10 +711,8 @@ class WienerProcessModel(FirstPassageProcessModel):
         out[pos] = cdf
         return out
 
-    def df(self, t: npt.ArrayLike) -> "npt.NDArray | float":
-        """Density of the first-passage (Inverse-Gaussian) time."""
-        scalar = np.isscalar(t)
-        t = np.atleast_1d(np.asarray(t, dtype=float))
+    def _df0(self, t: npt.NDArray) -> npt.NDArray:
+        # Density of the first-passage (Inverse-Gaussian) time.
         nu, lam = self._ig(self.threshold)
         out = np.zeros_like(t)
         pos = t > 0
@@ -337,21 +720,17 @@ class WienerProcessModel(FirstPassageProcessModel):
         out[pos] = np.sqrt(lam / (2.0 * np.pi * tp**3)) * np.exp(
             -lam * (tp - nu) ** 2 / (2.0 * nu**2 * tp)
         )
-        return float(out[0]) if scalar else out
+        return out
 
-    def mean(self) -> float:
-        """Mean time to failure (``threshold / mu``)."""
+    def _mean0(self) -> float:
+        # Mean time to failure, ``threshold / mu``.
         return self.threshold / self.mu
 
     def _quantile_hi0(self, distance: float) -> float:
         # bracket around the first-passage mean
         return distance / self.mu
 
-    def random(
-        self, size: int, random_state: "int | None" = None
-    ) -> npt.NDArray:
-        """Draw first-passage (failure) times from the fitted model."""
-        rng = np.random.default_rng(random_state)
+    def _random0(self, size: int, rng: np.random.Generator) -> npt.NDArray:
         nu, lam = self._ig(self.threshold)
         return rng.wald(nu, lam, size=size)
 
@@ -362,8 +741,12 @@ class WienerProcessModel(FirstPassageProcessModel):
             "Drift (mu)          : {:.6g}\n"
             "Diffusion (sigma)   : {:.6g}\n"
             "Threshold           : {:.6g}\n"
-            "Mean time to failure: {:.6g}".format(
-                self.mu, self.sigma, self.threshold, self.mean()
+            "{}{}".format(
+                self.mu,
+                self.sigma,
+                self.threshold,
+                self._stress_repr(),
+                self._mean_label(),
             )
         )
 
@@ -379,6 +762,8 @@ class WienerProcess:
         y: npt.ArrayLike,
         i: npt.ArrayLike,
         threshold: float,
+        Z: npt.ArrayLike | None = None,
+        stress_ref: npt.ArrayLike | None = None,
     ) -> "WienerProcessModel":
         """
         Fit a Wiener-process degradation model by maximum likelihood.
@@ -393,17 +778,63 @@ class WienerProcess:
             Unit identifier for each measurement.
         threshold : float
             The degradation level defining failure.
+        Z : array_like, optional
+            Stress covariates, one row per measurement, for an accelerated
+            or step-stress test. The stress may differ between units and
+            change during a unit's test: the stress on a measurement is the
+            stress applied since the previous one. Stress speeds up the
+            process clock by ``exp(gamma' (z - stress_ref))``, scaling the
+            drift and the variance per unit time together (the time-scale
+            transformation of Whitmore and Schenkelberg, 1997); ``gamma``
+            is estimated with ``mu`` and ``sigma`` by maximum likelihood.
+            At least two distinct stress levels are needed.
+        stress_ref : array_like, optional
+            The reference stress at which the fitted ``mu`` and ``sigma``
+            apply. Defaults to the mean stress over the measurement
+            intervals; pass the use conditions to read the model at them.
 
         Returns
         -------
         WienerProcessModel
         """
-        dt, dy = _increments(x, y, i)
-        # Increments dy | dt ~ Normal(mu*dt, sigma**2 * dt), independent.
-        # Closed-form MLE:
-        mu = dy.sum() / dt.sum()
-        sigma2 = np.mean((dy - mu * dt) ** 2 / dt)
-        sigma = np.sqrt(sigma2)
+        if Z is None:
+            if stress_ref is not None:
+                raise ValueError("stress_ref is only meaningful with Z")
+            dt, dy = _increments(x, y, i)
+            # Increments dy | dt ~ Normal(mu*dt, sigma**2 * dt), independent.
+            # Closed-form MLE:
+            mu = dy.sum() / dt.sum()
+            sigma2 = np.mean((dy - mu * dt) ** 2 / dt)
+            sigma = np.sqrt(sigma2)
+            cls._check_drift(mu)
+            return WienerProcessModel(mu, sigma, threshold)
+
+        dt, dy, z_int = _increments_and_stress(x, y, i, Z)
+        assert z_int is not None
+        s, z_ref, scale = _stress_design(z_int, stress_ref)
+
+        def profile(g: npt.NDArray) -> tuple[float, float, float]:
+            # dy ~ Normal(mu * dtau, sigma**2 * dtau) with dtau = AF * dt;
+            # mu and sigma**2 have closed forms given the clock.
+            dtau = dt * np.exp(s @ g)
+            mu = dy.sum() / dtau.sum()
+            sigma2 = np.mean((dy - mu * dtau) ** 2 / dtau)
+            neg = 0.5 * (np.sum(np.log(dtau)) + len(dy) * np.log(sigma2))
+            return float(neg), float(mu), float(sigma2)
+
+        g = _minimise(lambda v: profile(v)[0], np.zeros(z_int.shape[1]))
+        _, mu, sigma2 = profile(g)
+        cls._check_drift(mu)
+        return WienerProcessModel(
+            mu,
+            np.sqrt(sigma2),
+            threshold,
+            gamma=g / scale,
+            stress_ref=z_ref,
+        )
+
+    @staticmethod
+    def _check_drift(mu: float) -> None:
         if mu <= 0:
             raise ValueError(
                 "fitted drift mu = {:.4g} is not positive, so the process "
@@ -411,7 +842,6 @@ class WienerProcess:
                 "life distribution is defective. Check the sign of the "
                 "degradation / threshold, or use a monotone model.".format(mu)
             )
-        return WienerProcessModel(mu, sigma, threshold)
 
 
 # --------------------------------------------------------------------------
@@ -438,17 +868,29 @@ class GammaProcessModel(FirstPassageProcessModel):
         Fitted rate parameter of the increments.
     threshold : float
         The degradation level defining failure.
+    gamma, stress_ref : array like, optional
+        For a model fitted with stress ``Z``: the stress coefficients and
+        the reference stress at which ``alpha`` applies. At stress ``z``
+        the shape accrues at ``alpha * exp(gamma' (z - stress_ref))``.
     """
 
     _model_tag = "GammaProcessModel"
     _human_name = "gamma-process"
     param_names = ["alpha", "beta"]
 
-    def __init__(self, alpha: float, beta: float, threshold: float) -> None:
+    def __init__(
+        self,
+        alpha: float,
+        beta: float,
+        threshold: float,
+        gamma: Any = None,
+        stress_ref: Any = None,
+    ) -> None:
         self.alpha = float(alpha)
         self.beta = float(beta)
         self.threshold = float(threshold)
         self.params = np.array([self.alpha, self.beta])
+        self._init_stress(gamma, stress_ref)
 
     def _ff_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
         # P(T <= t) = P(W(t) >= distance) with W(t) ~ Gamma(alpha t, beta).
@@ -458,10 +900,8 @@ class GammaProcessModel(FirstPassageProcessModel):
         out[pos] = gammaincc(self.alpha * t[pos], self.beta * distance)
         return out
 
-    def df(self, t: npt.ArrayLike) -> "npt.NDArray | float":
-        """Density of the first-passage time (numeric derivative of ``ff``)."""
-        scalar = np.isscalar(t)
-        t = np.atleast_1d(np.asarray(t, dtype=float))
+    def _df0(self, t: npt.NDArray) -> npt.NDArray:
+        # Density of the first-passage time (numeric derivative of ``ff``).
         h = 1e-6
         out = np.zeros_like(t)
         pos = t > 0
@@ -471,10 +911,10 @@ class GammaProcessModel(FirstPassageProcessModel):
         f_lo = self._ff_distance(np.maximum(tp - step, 1e-12), self.threshold)
         out[pos] = (f_hi - f_lo) / ((tp + step) - np.maximum(tp - step, 1e-12))
         out = np.clip(out, 0.0, None)
-        return float(out[0]) if scalar else out
+        return out
 
-    def mean(self) -> float:
-        """Mean time to failure, ``integral of the survival function``."""
+    def _mean0(self) -> float:
+        # Mean time to failure, the integral of the survival function.
         val, _ = quad(
             lambda t: self._sf_distance_scalar(t, self.threshold),
             0.0,
@@ -493,11 +933,8 @@ class GammaProcessModel(FirstPassageProcessModel):
         rate = self.alpha / self.beta  # mean degradation per unit time
         return max(distance / rate, 1.0)
 
-    def random(
-        self, size: int, random_state: "int | None" = None
-    ) -> npt.NDArray:
-        """Draw first-passage (failure) times via inverse-CDF sampling."""
-        rng = np.random.default_rng(random_state)
+    def _random0(self, size: int, rng: np.random.Generator) -> npt.NDArray:
+        # Inverse-CDF sampling.
         u = rng.uniform(size=size)
         return np.array([self._quantile(ui, self.threshold) for ui in u])
 
@@ -508,8 +945,12 @@ class GammaProcessModel(FirstPassageProcessModel):
             "Shape rate (alpha)  : {:.6g}\n"
             "Rate (beta)         : {:.6g}\n"
             "Threshold           : {:.6g}\n"
-            "Mean time to failure: {:.6g}".format(
-                self.alpha, self.beta, self.threshold, self.mean()
+            "{}{}".format(
+                self.alpha,
+                self.beta,
+                self.threshold,
+                self._stress_repr(),
+                self._mean_label(),
             )
         )
 
@@ -525,6 +966,8 @@ class GammaProcess:
         y: npt.ArrayLike,
         i: npt.ArrayLike,
         threshold: float,
+        Z: npt.ArrayLike | None = None,
+        stress_ref: npt.ArrayLike | None = None,
     ) -> "GammaProcessModel":
         """
         Fit a Gamma-process degradation model by maximum likelihood.
@@ -543,18 +986,73 @@ class GammaProcess:
             Unit identifier for each measurement.
         threshold : float
             The degradation level defining failure.
+        Z : array_like, optional
+            Stress covariates, one row per measurement, for an accelerated
+            or step-stress test. The stress may differ between units and
+            change during a unit's test: the stress on a measurement is the
+            stress applied since the previous one. Stress speeds up the
+            process clock, so the shape accrues at ``alpha * exp(gamma'
+            (z - stress_ref))`` per unit time with ``beta`` unchanged;
+            ``gamma`` is estimated with ``alpha`` and ``beta`` by maximum
+            likelihood. At least two distinct stress levels are needed.
+        stress_ref : array_like, optional
+            The reference stress at which the fitted ``alpha`` applies.
+            Defaults to the mean stress over the measurement intervals.
 
         Returns
         -------
         GammaProcessModel
         """
-        dt, dy = _increments(x, y, i)
+        if Z is None:
+            if stress_ref is not None:
+                raise ValueError("stress_ref is only meaningful with Z")
+            dt, dy = _increments(x, y, i)
+            cls._check_monotone(dy)
+            alpha, beta = cls._profile_fit(dt, dy)
+            return GammaProcessModel(alpha, beta, threshold)
+
+        dt, dy, z_int = _increments_and_stress(x, y, i, Z)
+        assert z_int is not None
+        cls._check_monotone(dy)
+        s, z_ref, scale = _stress_design(z_int, stress_ref)
+        dy = np.where(dy <= 0, 1e-12, dy)
+        sum_dy = dy.sum()
+        log_dy = np.log(dy)
+
+        def neg_ll(v: npt.NDArray) -> float:
+            # v = [log alpha, g]; beta profiled out given the clock
+            alpha = np.exp(v[0])
+            dtau = dt * np.exp(s @ v[1:])
+            beta = alpha * dtau.sum() / sum_dy
+            k = alpha * dtau
+            ll = np.sum(
+                k * np.log(beta) + (k - 1.0) * log_dy - beta * dy - gammaln(k)
+            )
+            return float(-ll)
+
+        # the stress-free fit is the starting point (g = 0)
+        alpha0, _ = cls._profile_fit(dt, dy)
+        v0 = np.concatenate([[np.log(alpha0)], np.zeros(z_int.shape[1])])
+        v = _minimise(neg_ll, v0)
+        alpha = float(np.exp(v[0]))
+        g = v[1:]
+        beta = alpha * float((dt * np.exp(s @ g)).sum()) / sum_dy
+        return GammaProcessModel(
+            alpha, beta, threshold, gamma=g / scale, stress_ref=z_ref
+        )
+
+    @staticmethod
+    def _check_monotone(dy: npt.NDArray) -> None:
         if np.any(dy < 0):
             raise ValueError(
                 "the degradation decreases over at least one interval, but a "
                 "Gamma process is monotone increasing. Use WienerProcess for "
                 "non-monotone / noisy signals."
             )
+
+    @staticmethod
+    def _profile_fit(dt: npt.NDArray, dy: npt.NDArray) -> tuple[float, float]:
+        """The stationary (stress-free) fit: ``(alpha, beta)``."""
         # Guard against exact-zero increments (log 0) by nudging.
         dy = np.where(dy <= 0, 1e-12, dy)
 
@@ -574,4 +1072,4 @@ class GammaProcess:
         res = minimize_scalar(neg_ll, bounds=(1e-6, 1e6), method="bounded")
         alpha = float(res.x)
         beta = alpha * sum_dt / sum_dy
-        return GammaProcessModel(alpha, beta, threshold)
+        return alpha, beta
