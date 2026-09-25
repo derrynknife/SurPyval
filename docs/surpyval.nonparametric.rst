@@ -30,9 +30,9 @@ Non-Parametric Estimators
 -------------------------
 
 Kaplan-Meier, Nelson-Aalen and Fleming-Harrington handle observed,
-right-censored and truncated data, and raise a ``ValueError`` on left-
-or interval-censored data; Turnbull handles every combination of
-censoring and truncation.
+right-censored and left-truncated data, and raise a ``ValueError`` on
+left- or interval-censored or right-truncated data; Turnbull handles
+every combination of censoring and truncation.
 
 .. toctree::
    :maxdepth: 1

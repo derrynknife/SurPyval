@@ -21,7 +21,12 @@ class LogRankResult:
     p_value : float
         The p-value of the test.
     weighting : str
-        The weighting used for the test.
+        The weighting used for the test; for the Fleming-Harrington
+        weights it includes ``rho`` and ``gamma``, e.g.
+        ``'fleming-harrington(rho=1, gamma=0)'``.
+    strata : int or None
+        The number of strata of a stratified test; None for an
+        unstratified one.
     """
 
     def __init__(
@@ -216,7 +221,16 @@ def logrank(
 
     result : LogRankResult
         Object with the chi-squared ``statistic``, the degrees of
-        freedom ``dof``, and the ``p_value``.
+        freedom ``dof``, the ``p_value``, the ``weighting`` and the number
+        of ``strata``.
+
+    Raises
+    ------
+
+    ValueError
+        If there are fewer than two groups, ``Z`` or ``strata`` does not
+        have one label per value, the weighting is unknown, or the data
+        have left or interval censoring.
 
     Examples
     --------
@@ -229,6 +243,15 @@ def logrank(
     >>> res = logrank(x, Z, c=c)
     >>> print(round(res.statistic, 2), round(res.p_value, 4))
     3.4 0.0653
+
+    These are the AML maintenance data (``aml`` in R's ``survival``
+    package), for which R's ``survdiff`` also gives 3.4 on 1 degree of
+    freedom. The Gehan-Breslow weights put more weight on the early
+    failures:
+
+    >>> res = logrank(x, Z, c=c, weighting="gehan")
+    >>> print(round(res.statistic, 3), round(res.p_value, 4))
+    2.723 0.0989
 
     References
     ----------

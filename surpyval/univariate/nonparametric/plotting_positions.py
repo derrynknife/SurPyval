@@ -112,13 +112,21 @@ def plotting_positions(
     -------
 
     x : numpy array
-        x values for the plotting points
+        x values for the plotting points. The rank heuristics and
+        ``'Filliben'`` return one row per item (a value with ``n = 3``
+        appears three times); the estimator heuristics return the ``x``
+        of the corresponding fitted model (one row per distinct value, or
+        for ``'Turnbull'`` the endpoints of the Turnbull pieces).
     r : numpy array
         risk set at each x
     d : numpy array
-        death set at each x
+        death set at each x (for the rank heuristics, 1 for a failure and
+        0 for a censored item)
     F : numpy array
-        estimate of F to use in plotting positions.
+        estimate of F to use in plotting positions. Only the rows with
+        ``d > 0`` are meant to be plotted: for the rank heuristics a
+        censored row carries the previous failure's value (0 before the
+        first failure), and for ``'Filliben'`` it is NaN.
 
     Examples
     --------

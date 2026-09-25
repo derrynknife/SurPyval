@@ -279,7 +279,12 @@ A fitted model can be written to a plain dictionary (or a JSON file) and read ba
     restored = surv.from_dict(json.loads(json.dumps(model_dict)))
     print(restored.model, restored.sf([1.5, 3]), model.sf([1.5, 3]))
 
-``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
+    # Keep the data too, so the restored model can bootstrap
+    with_data = surv.from_dict(json.loads(json.dumps(model.to_dict(with_data=True))))
+    print(with_data.bootstrap_cb([3], B=50, random_state=0),
+          model.bootstrap_cb([3], B=50, random_state=0))
+
+``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). ``to_json`` has no such option, so to keep the data in a file write the dictionary yourself, ``json.dump(model.to_dict(with_data=True), f)``, and read it back with ``surv.from_json``. For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
 
 
 Right Censored Data
@@ -763,6 +768,9 @@ Nearly all of the mass has been pushed into the region before the later entry ti
 raises one item's likelihood at no cost to the others, and the survival curve has collapsed. Raising
 ``max_iter`` would not help: the likelihood has no interior maximum. With a common entry time the
 same data fit without complaint. Treat any Turnbull estimate that came with a warning with suspicion.
+The ``exploitable_mass`` screen is a heuristic, though, and can also fire on data that do identify
+the curve (exact failures with right truncation, for instance); the section *What the data cannot
+tell you* of :doc:`Non-Parametric Estimation` says how to tell the two apart.
 
 Some Issues with the Turnbull Estimate
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -599,6 +599,22 @@ class Turnbull_(NonParametricFitter):
     mass falls below ``tol`` or ``max_iter`` iterations have run (with a
     warning in the latter case); both can be passed to :code:`fit()`.
 
+    Besides the attributes every non-parametric model has, a Turnbull
+    model carries:
+
+    - ``bounds``: the endpoints of the Turnbull pieces, including
+      :math:`\pm\infty`; ``x`` is ``bounds[1:-1]``, so an exactly observed
+      time appears twice, and ``d[k]`` is the expected number of failures
+      in the piece ending at ``x[k]``;
+    - ``R_upper`` and ``R_lower``: the survival at the start and end of
+      each piece, the range any curve through it could take;
+    - ``turnbull_estimator``, ``converged`` and ``iters``;
+    - ``degenerate``: True if the estimate collapsed (with a warning);
+    - ``exploitable_mass``: the share of the fitted mass in pieces that
+      some observation could have failed in but that lie outside another
+      observation's truncation window; above 0.9 a warning says the
+      estimate may not be identifiable.
+
     Examples
     --------
     >>> import numpy as np

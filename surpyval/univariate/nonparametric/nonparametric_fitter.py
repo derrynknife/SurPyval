@@ -76,7 +76,8 @@ class NonParametricFitter:
         ----------
 
         x : array like, optional
-            Array of observations of the random variables. If x is
+            Array of observations of the random variables, or (Turnbull
+            only) a 2-D array of ``[left, right]`` intervals. If x is
             :code:`None`, xl and xr must be provided.
 
         c : array like, optional
@@ -94,17 +95,6 @@ class NonParametricFitter:
             respective observation was truncated. If not provided it assumes
             that no truncation occurs.
 
-        tl : array like or scalar, optional
-            Values of left truncation for observations. If it is a scalar
-            value assumes each observation is left truncated at the value.
-            If an array, it is the respective 'late entry' of the observation.
-
-        tr : array like or scalar, optional
-            Values of right truncation for observations. If it is a scalar
-            value assumes each observation is right truncated at the value.
-            If an array, it is the respective right truncation value for each
-            observation.
-
         xl : array like, optional
             Array like of the left array for 2-dimensional input of x. This is
             useful for data that is all intervally censored. Must be used with
@@ -114,6 +104,19 @@ class NonParametricFitter:
             Array like of the right array for 2-dimensional input of x. This is
             useful for data that is all intervally censored. Must be used with
             the :code:`xl` input.
+
+        tl : array like or scalar, optional
+            Values of left truncation for observations. If it is a scalar
+            value assumes each observation is left truncated at the value.
+            If an array, it is the respective 'late entry' of the observation.
+            An item is at risk at times in ``(tl, x]``, so each ``tl`` must be
+            strictly less than its value.
+
+        tr : array like or scalar, optional
+            Values of right truncation for observations. If it is a scalar
+            value assumes each observation is right truncated at the value.
+            If an array, it is the respective right truncation value for each
+            observation. Turnbull only.
 
         turnbull_estimator : str, optional
             Turnbull only: one of ``'Fleming-Harrington'`` (the default),
@@ -143,7 +146,8 @@ class NonParametricFitter:
             Pass ``turnbull_estimator='Kaplan-Meier'`` to compare like with
             like -- it then agrees with :code:`KaplanMeier` to around 1e-9
             on both ``sf`` and ``cb``, on right-censored and left-truncated
-            data alike.
+            data alike. (The agreement is to the EM's tolerance, not to the
+            last digit.)
 
             Only the KM option is the non-parametric MLE. NA and FH are
             ``exp(-H)`` constructions and are not trying to maximise the
@@ -157,7 +161,8 @@ class NonParametricFitter:
             Not used by Turnbull. If given, a point is prepended at this
             value with no deaths (and the risk set of the first time), so
             the estimate starts at ``R = 1`` from this value, typically 0,
-            rather than from the first observed time.
+            rather than from the first observed time. It must be below
+            the smallest observed value (this is not checked).
 
         tol : float, optional
             Turnbull only. The EM stops once the largest change in any
@@ -174,27 +179,44 @@ class NonParametricFitter:
 
         model : NonParametric
             The fitted non-parametric model, with the survival, hazard and
-            quantile functions, confidence bounds and plotting.
+            quantile functions, confidence bounds and plotting. A Turnbull
+            model also carries ``bounds``, ``R_upper``, ``R_lower``,
+            ``turnbull_estimator``, ``converged``, ``iters``, ``degenerate``
+            and ``exploitable_mass`` (see
+            :class:`~surpyval.univariate.nonparametric.turnbull.Turnbull_`).
 
         Raises
         ------
 
         ValueError
             If the data has left- (``c=-1``) or interval- (``c=2``) censored
-            observations and the estimator is not ``Turnbull``, or if a
-            ``Turnbull`` fit is given an unknown ``turnbull_estimator``.
+            or right truncated observations and the estimator is not
+            ``Turnbull``, or if a ``Turnbull`` fit is given an unknown
+            ``turnbull_estimator``.
 
         Examples
         --------
-        >>> from surpyval import NelsonAalen, Weibull, Turnbull
-        >>> import numpy as np
-        >>> x = Weibull.random(100, 10, 4)
-        >>> model = NelsonAalen.fit(x)
-        >>> print(model)
+        >>> from surpyval import KaplanMeier, NelsonAalen, Turnbull
+        >>> model = KaplanMeier.fit([2, 3, 3, 4, 5, 6], c=[0, 1, 0, 0, 1, 0])
+        >>> model.r
+        array([6, 5, 3, 2, 1])
+        >>> model.d
+        array([1, 1, 1, 0, 1])
+        >>> model.R
+        array([0.83333333, 0.66666667, 0.44444444, 0.44444444, 0.        ])
+
+        With delayed entry the risk set can grow:
+
+        >>> model = KaplanMeier.fit([2, 3, 3, 4, 5, 6], tl=[0, 0, 1, 1, 2, 2])
+        >>> model.r
+        array([4, 5, 3, 2, 1])
+        >>> model.sf([2, 4])
+        array([0.75, 0.3 ])
+        >>> print(NelsonAalen.fit([2, 3, 3, 4, 5, 6]))
         Non-Parametric SurPyval Model
         =============================
         Model            : Nelson-Aalen
-        >>> Turnbull.fit(x, turnbull_estimator='Kaplan-Meier')
+        >>> Turnbull.fit([2, 3, 3, 4, 5, 6], turnbull_estimator='Kaplan-Meier')
         Non-Parametric SurPyval Model
         =============================
         Model            : Turnbull
@@ -274,7 +296,9 @@ class NonParametricFitter:
         ----------
 
         x : array like
-            The distinct event times.
+            The distinct event times, in increasing order (the order is
+            not checked, and ``r`` and ``d`` are paired with ``x`` as
+            given).
 
         r : array like
             Array of at risk items. For each value of x the r array is
@@ -304,6 +328,9 @@ class NonParametricFitter:
         Non-Parametric SurPyval Model
         =============================
         Model            : Nelson-Aalen
+        >>> model.R
+        array([0.81873075, 0.72252735, 0.6116062 , 0.47631939, 0.34129776,
+               0.20700755])
         """
         if self.how == "Turnbull":
             raise ValueError("Can't use from_xrd with Turnbull estimator")

@@ -134,7 +134,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         x : array like or scalar
             The values of the random variables at which
-            the survival function will be calculated.
+            the failure function will be calculated.
 
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
@@ -171,12 +171,19 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         a jump size, not an instantaneous rate, so it depends on how finely
         ``x`` is spaced; for a rate, use ``smoothed_hf``.
 
+        Two conventions apply to an array ``x`` (taken in sorted order and
+        returned in the order given): the first point has nothing before
+        it to difference from and repeats the second point's value, and a
+        zero increment (a gap in ``x`` with no failure) is replaced by the
+        previous non-zero one. Where there is no previous non-zero
+        increment, e.g. before the first failure, the result is NaN.
+
         Parameters
         ----------
 
         x : array like or scalar
             The values of the random variables at which
-            the survival function will be calculated
+            the hazard increments will be calculated
 
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
@@ -189,7 +196,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         -------
 
         hf : scalar or numpy array
-            The value(s) of the failure function at each x
+            The increment of the cumulative hazard at each x
 
 
         Examples
@@ -244,12 +251,17 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         .. math::
             f(x) = h(x)e^{-H(x)}
 
+        with :math:`h` the discrete hazard of ``hf``, so it inherits that
+        method's dependence on the spacing of ``x``: it is roughly the
+        probability of failing in each step of ``x``, not a density per
+        unit of time.
+
         Parameters
         ----------
 
         x : array like or scalar
             The values of the random variables at which the
-            survival function will be calculated
+            density will be calculated
 
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
@@ -278,12 +290,15 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     def Hf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
-        Cumulative hazard rate with the non-parametric estimates
-        from the data. This is calculated using the relationship
-        between the hazard function and the density:
+        Cumulative hazard with the non-parametric estimates
+        from the data. This is calculated from the survival estimate:
 
         .. math::
             H(x) = -\ln (R(x))
+
+        For the Nelson-Aalen and Fleming-Harrington estimators, which
+        report :math:`R = e^{-H}`, this is exactly their summed hazard.
+        For the Kaplan-Meier it is infinite once the estimate reaches zero.
 
         Parameters
         ----------
@@ -303,7 +318,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         -------
 
         Hf : scalar or numpy array
-            The value(s) of the density function at x
+            The value(s) of the cumulative hazard at x
 
         Examples
         --------
@@ -329,16 +344,24 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     ) -> npt.NDArray:
         r"""
 
-        Confidence bounds of the ``on`` function at the
+        Pointwise confidence bounds of the ``on`` function at the
         ``alpha_ci`` level of significance. Can be the upper,
         lower, or two-sided confidence by changing value of ``bound``.
-        Can change the bound type to be regular (normal) or exponential
-        using either the 't' or 'z' statistic.
+        The bound type can be the plain normal interval or the
+        exponential (log(-log) transformed) one, using the normal ('z')
+        statistic.
 
         The variance used is the one appropriate to the estimator with
         which the model was fitted: Greenwood's formula for Kaplan-Meier,
         Aalen's (Poisson) variance for Nelson-Aalen, and the tie-corrected
-        variance for Fleming-Harrington.
+        variance for Fleming-Harrington. A Turnbull model uses the formula
+        of its ``turnbull_estimator``, on the observed counts for exact,
+        right censored and truncated data and on the EM's expected counts
+        for left or interval censored data (an approximation; prefer
+        ``bootstrap_cb`` there).
+
+        The bounds hold at each ``x`` separately; for a band that holds
+        over the whole curve at once use ``band``.
 
         Parameters
         ----------
@@ -348,18 +371,26 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             will be calculated
         on : ('sf', 'ff', 'Hf'), optional
             The function on which the confidence bound will be calculated.
+            Defaults to 'sf'. The bounds on 'ff' are one minus those on
+            'sf', and those on 'Hf' are minus their logarithm; a two-sided
+            result is always ``[lower, upper]`` for the function asked
+            about.
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Compute either the two-sided, upper or lower confidence bound(s).
-            Defaults to two-sided.
+            Defaults to two-sided. A one-sided bound puts all of
+            ``alpha_ci`` on one side, so it equals the corresponding end
+            of the two-sided interval at ``2 * alpha_ci``.
         interp : ('step', 'linear', 'cubic'), optional
             How to interpolate the values between observations. Survival
             statistics traditionally uses step functions, but can use
             interpolated values if desired. Defaults to step.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
+            Defaults to 0.05.
         bound_type : ('exp', 'normal'), str, optional
             The method with which the bounds will be calculated. Using
-            'normal' (i.e. the plain Greenwood-style interval) will allow
+            'normal' (i.e. the plain Greenwood-style interval,
+            :math:`\hat{R} \pm z \hat{R}\hat{\sigma}`) will allow
             for the bounds to exceed 1 or be less than 0 and tends to
             undercover in small samples. Defaults to 'exp' (the
             log(-log) transformed interval) as this ensures the bounds
@@ -386,7 +417,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         censoring) the Kaplan-Meier variance is undefined at, and after,
         that point. The bounds there are filled with the last finite
         upper bound and 0 for the lower bound, rather than NaN, so that
-        bounds can be drawn up to the last observation.
+        bounds can be drawn up to the last observation. If no value has a
+        finite bound (a single exact observation) the upper bound is the
+        estimate itself, 0.
+
+        Where the variance is zero (before the first failure) the bounds
+        are the estimate, 1. Below the first and above the last observed
+        value the bounds are NaN.
 
         Examples
         --------
@@ -403,6 +440,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         References
         ----------
+
+        Klein, J. P. and Moeschberger, M. L. (2003), "Survival
+        Analysis", 2nd ed., Sections 4.2 and 4.3.
 
         http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
 
@@ -454,6 +494,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         bound_type: str = "exp",
         dist: str = "z",
     ) -> npt.NDArray:
+        r"""
+        Confidence bounds of the survival function, as used by ``cb`` and
+        ``plot``. Takes the same arguments as ``cb`` (without ``on``), but
+        a two-sided result has the columns in ``[upper, lower]`` order;
+        ``cb(x, on='sf')`` returns them as ``[lower, upper]`` and is the
+        method to call.
+        """
         if bound_type not in ["exp", "normal"]:
             raise ValueError("'bound_type' must be in ['exp', 'normal']")
         if dist != "z":
@@ -573,6 +620,14 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         random : numpy array
             The random samples drawn from the observed values.
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
+        ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
+        >>> model.random(5, random_state=0)
+        array([6., 3., 1., 1., 7.])
         """
         with np.errstate(all="ignore"):
             p = -np.diff(np.hstack([[1.0], self.R]))
@@ -663,6 +718,21 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             interval of the quantile for each p. The upper limit is NaN
             where the relevant bound of the survival function never
             crosses 1 - p (i.e. the interval is open to the right).
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
+        ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
+        >>> model.quantile_cb([0.25, 0.5])
+        array([[ 1.,  6.],
+               [ 1., nan]])
+
+        References
+        ----------
+
+        Brookmeyer, R. and Crowley, J. (1982), "A confidence interval for
+        the median survival time", Biometrics 38, 29-41.
         """
         p = np.atleast_1d(p).astype(float)
         if ((p <= 0) | (p > 1)).any():
@@ -773,6 +843,14 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         cb : numpy array
             The ``[lower, upper]`` interval of the (restricted) mean.
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
+        ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
+        >>> model.mean_cb(tau=6)
+        array([3.36776153, 5.92390514])
         """
         r = self.rmst(tau=tau, alpha_ci=alpha_ci)
         return np.array([r["lower"], r["upper"]])
@@ -808,16 +886,28 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         return float(np.sum(terms))
 
     def rmst(self, tau: float | None = None, alpha_ci: float = 0.05) -> dict:
-        """
+        r"""
         Restricted mean survival time up to ``tau`` with inference.
 
-        Returns the RMST (area under the survival curve to ``tau``), its
-        standard error, and a two-sided confidence interval.
+        Returns the RMST (area under the survival curve to ``tau``, as
+        ``mean(tau)``), its standard error, and the two-sided normal
+        confidence interval ``rmst +- z se``. The variance is
+
+        .. math::
+            \widehat{Var}(\hat{\mu}) = \sum_{i: x_i \leq \tau} A_i^2 v_i
+
+        with :math:`A_i` the area under the curve from :math:`x_i` to
+        :math:`\tau` and :math:`v_i` the increment of the estimator's
+        variance of the cumulative hazard at :math:`x_i` (Greenwood's for
+        the Kaplan-Meier). For a Turnbull model with left or interval
+        censoring those increments come from the EM's expected counts, so
+        the standard error is approximate.
 
         Parameters
         ----------
         tau : scalar, optional
-            Integration horizon; defaults to the largest observed value.
+            Integration horizon; defaults to the largest observed value. A
+            ``tau`` beyond it holds the curve at its final value.
         alpha_ci : scalar, optional
             Significance level for the interval (default 0.05).
 
@@ -825,6 +915,15 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         -------
         dict
             ``{"rmst", "se", "lower", "upper", "tau"}``.
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
+        ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
+        >>> res = model.rmst(tau=6)
+        >>> print(round(res["rmst"], 4), round(res["se"], 4))
+        4.6458 0.6521
 
         See Also
         --------
@@ -887,7 +986,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             The number of bootstrap resamples. Defaults to 200. Larger
             values give smoother bounds at a linear cost in runtime;
             note that refitting the Turnbull estimator is relatively
-            expensive.
+            expensive. A Turnbull model refits each resample with its own
+            ``turnbull_estimator``, ``tol`` and ``max_iter``.
         random_state : int or numpy.random.Generator, optional
             Seed or generator for reproducible resampling.
 
@@ -898,6 +998,24 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             For two-sided bounds an array of shape (len(x), 2) with
             ``[lower, upper]`` columns; otherwise an array of the
             requested bound at each x.
+
+        Raises
+        ------
+
+        ValueError
+            If the model does not hold the data it was fitted with: a
+            model from ``from_xrd`` or ``fit_from_ecdf``, or one restored
+            from a dictionary written without ``with_data=True``.
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
+        ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
+        >>> model.bootstrap_cb([2, 4, 6], B=100, random_state=1)
+        array([[0.625     , 1.        ],
+               [0.19739583, 0.875     ],
+               [0.        , 0.75      ]])
         """
         if getattr(self, "data", None) is None or "x" not in self.data:
             raise ValueError(
@@ -1064,6 +1182,26 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             Array of shape (len(x), 2) with the ``[lower, upper]`` band
             values for the survival function at each x.
 
+        Raises
+        ------
+
+        ValueError
+            If no value has a positive, finite variance with an estimate
+            strictly between 0 and 1 (e.g. no failures), or the model has
+            no variance estimate (``fit_from_ecdf``).
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
+        ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
+        >>> model.band([4, 6]).round(4)
+        array([[0.0689, 0.8971],
+               [0.0098, 0.8245]])
+        >>> model.cb([4, 6]).round(4)
+        array([[0.1802, 0.8441],
+               [0.063 , 0.7242]])
+
         References
         ----------
 
@@ -1183,14 +1321,25 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         bandwidth : scalar, optional
             The kernel bandwidth in the units of x. Defaults to a rough
             rule of thumb (one eighth of the observed range); for
-            serious use choose by inspection or cross-validation.
+            serious use choose by inspection or cross-validation. (A
+            model with a single distinct value has no range to smooth
+            over: the default raises and any bandwidth gives NaN.)
 
         Returns
         -------
 
         hf : numpy array
             The estimated hazard rate at each x. NaN outside the
-            observed range.
+            observed range. An infinite jump (a Kaplan-Meier falling to
+            zero at the last failure) is left out of the sum.
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
+        ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
+        >>> model.smoothed_hf([3, 4, 5], bandwidth=2)
+        array([0.13112971, 0.13495677, 0.17679619])
 
         References
         ----------
@@ -1232,6 +1381,12 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         return h
 
     def get_plot_data(self, **kwargs: Any) -> dict:
+        r"""
+        The values ``plot`` draws: the axis limits, the observed values
+        ``x_``, the estimates ``R`` and ``F`` there, and the confidence
+        bounds ``cbs`` from ``R_cb`` (the keyword arguments are passed to
+        it). Returned as a dictionary for custom plotting.
+        """
         y_scale_min = 0
         y_scale_max = 1
 
@@ -1357,6 +1512,41 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     def fit_from_ecdf(
         cls, x: npt.ArrayLike, R: npt.ArrayLike
     ) -> "NonParametric":
+        r"""
+        Wrap an existing survival curve, given as its values and the
+        survival at each, as a non-parametric model, so that ``sf``,
+        ``ff``, ``Hf``, ``qf``, ``mean`` and so on can be used with it.
+
+        Without the numbers at risk and failing there is no variance, so
+        the model has no ``cb``, ``band``, ``rmst`` or ``mean_cb`` (they
+        raise a ``ValueError``), and no data for ``bootstrap_cb``. The
+        inputs are not checked: ``x`` must be increasing and ``R``
+        non-increasing.
+
+        Parameters
+        ----------
+
+        x : array like
+            The values at which the survival is known, in increasing
+            order.
+        R : array like
+            The survival at each value of ``x``.
+
+        Returns
+        -------
+
+        model : NonParametric
+            A model whose ``model`` attribute is ``'from_ecdf'``.
+
+        Examples
+        --------
+        >>> from surpyval import NonParametric
+        >>> model = NonParametric.fit_from_ecdf([1, 2, 3], [0.8, 0.5, 0.1])
+        >>> model.sf([1.5, 2.5])
+        array([0.8, 0.5])
+        >>> model.qf(0.5)
+        array([2.])
+        """
         out = cls()
         out.model = "from_ecdf"
         out.R = np.asarray(R)
@@ -1390,13 +1580,27 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         with_data : bool, optional
             Also store the raw ``x``/``c``/``n``/``t`` data the model was
             fitted with (needed to reconstruct a model that can call
-            :meth:`bootstrap_cb`). Defaults to False.
+            :meth:`bootstrap_cb`). Defaults to False. ``to_json(path)``
+            writes the dictionary without the data; to keep the data in a
+            file, ``json.dump(model.to_dict(with_data=True), f)``.
 
         Returns
         -------
 
         model_dict : dict
-            The serialized model.
+            The serialized model. The Turnbull fitting diagnostics
+            (``converged``, ``iters``, ``degenerate``,
+            ``exploitable_mass``) and the ``bounds``, ``R_upper`` and
+            ``R_lower`` arrays are not stored.
+
+        Examples
+        --------
+        >>> import surpyval
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5], c=[0, 1, 0, 0, 1])
+        >>> restored = surpyval.from_dict(model.to_dict())
+        >>> restored.sf([2, 4])
+        array([0.8       , 0.26666667])
         """
         out: dict[str, Any] = {"parameterization": "non-parametric"}
         out["model"] = self.model
@@ -1425,7 +1629,22 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     def from_dict(cls, model_dict: dict) -> "NonParametric":
         r"""
         Reconstruct a fitted non-parametric model from a dictionary
-        produced by :meth:`to_dict`.
+        produced by :meth:`to_dict`. ``surpyval.from_dict`` does the same
+        without needing to know which class wrote the dictionary.
+
+        Parameters
+        ----------
+
+        model_dict : dict
+            A dictionary written by :meth:`to_dict`.
+
+        Returns
+        -------
+
+        model : NonParametric
+            The restored model. Its curve, bounds, bands, quantiles and
+            restricted mean match the original's; ``bootstrap_cb`` needs a
+            dictionary written with ``with_data=True``.
         """
         if model_dict.get("parameterization") != "non-parametric":
             raise ValueError(
@@ -1488,9 +1707,10 @@ def rmst_diff(
         group). They must carry a variance estimate (Greenwood).
     tau : scalar, optional
         Common horizon. Defaults to the smaller of the two groups' largest
-        observed times, so both survival curves are defined up to ``tau``
-        (the standard choice; a ``tau`` beyond a group's support extrapolates
-        that curve at its final value and is flagged is left to the caller).
+        observed times, so both survival curves are supported by data up to
+        ``tau`` (the standard choice). A larger ``tau`` is accepted without
+        a warning: a curve is then held at its final value beyond its last
+        observation, an extrapolation that is left to the caller to judge.
     alpha_ci : scalar, optional
         Significance level for the interval and test (default 0.05).
 
@@ -1498,8 +1718,16 @@ def rmst_diff(
     -------
     dict
         ``{"difference", "se", "lower", "upper", "p_value", "ratio",
-        "rmst_a", "rmst_b", "tau"}``. ``difference`` is ``RMST_a - RMST_b``;
-        ``p_value`` is the two-sided z-test of ``difference == 0``.
+        "rmst_a", "rmst_b", "tau"}``. ``difference`` is ``RMST_a - RMST_b``
+        and ``ratio`` is ``RMST_a / RMST_b``; ``se`` is the square root of
+        the sum of the two groups' variances (the groups are independent);
+        ``lower`` and ``upper`` are ``difference +- z se``; ``p_value`` is
+        the two-sided z-test of ``difference == 0``.
+
+    Raises
+    ------
+    ValueError
+        If either model has no variance estimate (``fit_from_ecdf``).
 
     Examples
     --------
@@ -1507,8 +1735,10 @@ def rmst_diff(
     >>> a = sp.KaplanMeier.fit([2, 3, 4, 5, 6, 7])
     >>> b = sp.KaplanMeier.fit([1, 2, 2, 3, 4, 5])
     >>> res = sp.rmst_diff(a, b)
-    >>> round(res["difference"], 3) > 0
-    True
+    >>> print(res["tau"], round(res["difference"], 4), round(res["se"], 4))
+    5.0 1.1667 0.7233
+    >>> print(round(res["p_value"], 4))
+    0.1067
     """
     if tau is None:
         tau = float(min(np.max(model_a.x), np.max(model_b.x)))
