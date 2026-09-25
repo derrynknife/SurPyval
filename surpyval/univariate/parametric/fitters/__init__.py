@@ -194,15 +194,22 @@ def add_to_funcs(
         D = 10
         funcs.append(lambda x: D * np.arctanh((2 * x) - 1))
         inv_f.append(lambda x: (np.tanh(x / D) + 1) / 2)
+    elif (low is not None) and (upp is not None):
+        # Any other finite interval: the same scaled arctanh map on
+        # (x - low) / (upp - low). Previously this fell through to the
+        # identity, so the bound was silently not enforced.
+        D = 10
+        lo, width = float(low), float(upp) - float(low)
+        funcs.append(
+            lambda x: D * np.arctanh((2 * (x - lo) / width) - 1)
+        )
+        inv_f.append(lambda x: lo + width * (np.tanh(x / D) + 1) / 2)
     elif upp is None:
         funcs.append(lambda x: (inv_adj_relu(x - np.copy(low))))
         inv_f.append(lambda x: (adj_relu(x) + np.copy(low)))
     elif low is None:
         funcs.append(lambda x: inv_rev_adj_relu(x - np.copy(upp)))
         inv_f.append(lambda x: np.copy(upp) + rev_adj_relu(x))
-    else:
-        funcs.append(lambda x: x)
-        inv_f.append(lambda x: x)
 
 
 def bounds_convert(

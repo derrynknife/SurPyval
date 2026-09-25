@@ -771,8 +771,8 @@ class Parametric(
         For a model with a limited-failure (cure) fraction the failure
         function only reaches ``p`` in the limit, so any quantile at or above
         ``p`` is infinite (that proportion of the population never fails). For
-        a zero-inflated model the mass ``f0`` sits at the offset, so quantiles
-        at or below ``f0`` return the offset.
+        a zero-inflated model the mass ``f0`` sits at 0 (not at the offset),
+        so quantiles at or below ``f0`` return 0.
         """
         if isinstance(p, list):
             p = np.array(p)
@@ -782,7 +782,7 @@ class Parametric(
 
         # Invert the mixture failure function
         #   F(x) = f0 + (p - f0) F0(x - gamma):
-        #   u <= f0    -> the zero-inflation mass, which sits at the offset
+        #   u <= f0    -> the zero-inflation mass, which sits at 0
         #   f0 < u < p -> gamma + F0^{-1}((u - f0) / (p - f0))
         #   u >= p     -> beyond the attainable proportion (cure), so infinite
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -863,8 +863,11 @@ class Parametric(
         -------
         random : numpy array, or tuple of numpy arrays
             For a plain model, a numpy array of size ``size`` with random
-            values drawn from the distribution. A limited-failure-population
-            or zero-inflated model instead returns the draw as xcnt-format
+            values drawn from the distribution; a zero-inflated model
+            without a limited failure population also returns a plain
+            array, whose zero-inflated draws are exactly 0. A
+            limited-failure-population model (with or without zero
+            inflation) instead returns the draw as xcnt-format
             ``(x, c, n, t)`` arrays, because some of its draws are
             never-failing (right-censored) units that a bare array of
             failure times cannot represent.
@@ -1469,7 +1472,17 @@ class Parametric(
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin. The aic_c
     # correction uses the same parameter count as the aic() penalty it
     # corrects — including gamma / p / f0 when fitted (#256).
+    def _require_data(self, what: str) -> None:
+        if self.data is None:
+            raise ValueError(
+                "{} needs the data the model was fitted to, which this model "
+                "does not have (it was built from parameters, or restored "
+                "from a dict saved without its data -- save it with "
+                "to_dict(with_data=True) to keep them)".format(what)
+            )
+
     def _ic_counts(self) -> Any:
+        self._require_data("This information criterion")
         n, c = self.data["n"], self.data["c"]
         return n[c == 0].sum(), n.sum()
 
@@ -1601,6 +1614,7 @@ class Parametric(
                 f"{self.dist.name} does not support probability plotting"
             )
 
+        self._require_data("plot()")
         heuristic = adjust_heuristic(self.data["c"], self.data["t"], heuristic)
 
         d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)

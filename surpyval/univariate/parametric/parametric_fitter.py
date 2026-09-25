@@ -559,9 +559,11 @@ class ParametricFitter:
             regular, unshifted/not offset, distribution.
 
         p : scalar, optional
-            The proportion of the population that will never die or fail. If
-            used it must be a value between 0 and 1. If None will assume 1,
-            i.e. no proportion of the population will never die or fail.
+            The proportion of the population that is susceptible -- the
+            proportion that will *ever* die or fail (a limited failure
+            population); ``1 - p`` never fails. If used it must be a value
+            between 0 and 1. If None will assume 1, i.e. every unit
+            eventually fails.
 
         f0 : scalar, optional
             The proportion of the population that will die or fail at time 0.
@@ -1141,12 +1143,12 @@ class OptimisedFitMixin:
             point is minimised.
 
         on_d_is_0 : boolean, optional
-            For the case when using MPP and the highest value is right
-            censored, you can choose to include this value into the
-            regression analysis or not. That is, if :code:`False`, all values
-            where there are 0 deaths are excluded from the regression. If
-            :code:`True` all values regardless of whether there is a death
-            or not are included in the regression.
+            For MPP: whether to keep the points at which nothing failed (a
+            time with only censored units, such as a right-censored highest
+            value) in the regression. If :code:`False` (the default), every
+            point where there are 0 deaths is excluded from the regression;
+            if :code:`True` all points are included, whether or not there
+            was a death there.
 
         turnbull_estimator : {'Nelson-Aalen', 'Kaplan-Meier', or\
             'Fleming-Harrington'), str, optional
@@ -1496,6 +1498,85 @@ class OptimisedFitMixin:
 
         return init
 
+    def _alternative_base_starts(
+        self, data: SurpyvalData, offset: bool
+    ) -> "list[npt.NDArray]":
+        """
+        Further starting points for the distribution's own parameters
+        (leading with the offset when ``offset``), tried in addition to the
+        default one when fitting by maximum likelihood; none by default.
+        """
+        return []
+
+    def _alternative_starts(
+        self,
+        surv_data: SurpyvalData,
+        offset: bool,
+        zi: bool,
+        lfp: bool,
+        heuristic: str,
+    ) -> "list[npt.NDArray]":
+        """
+        Complete alternative starting vectors for a maximum-likelihood fit:
+        the distribution's own alternatives, with the default's ``p`` /
+        ``f0`` seeds appended, and for a limited failure population a start
+        from the failures alone.
+        """
+        bases = self._alternative_base_starts(surv_data, offset)
+        starts: list = []
+        if bases:
+            with np.errstate(all="ignore"):
+                default = np.atleast_1d(
+                    self._initial_guess(surv_data, offset, zi, lfp, heuristic)
+                )
+            tail = default[len(default) - int(lfp) - int(zi) :]
+            starts += [np.concatenate([np.asarray(b), tail]) for b in bases]
+        if lfp and not zi:
+            failures = self._lfp_failures_start(surv_data, offset)
+            if failures is not None:
+                starts.append(failures)
+        return starts
+
+    def _lfp_failures_start(
+        self, surv_data: SurpyvalData, offset: bool
+    ) -> "npt.NDArray | None":
+        """
+        A limited-failure-population starting point from the failures
+        alone: the distribution's own initialiser on the observed failures
+        (treated as a complete sample of the susceptible units), and ``p``
+        at the observed failure fraction. ``None`` when there are too few
+        distinct failures to seed from.
+        """
+        x = np.asarray(surv_data.x, dtype=float)
+        c = np.asarray(surv_data.c)
+        n = np.asarray(surv_data.n, dtype=float)
+        if x.ndim != 1:
+            return None
+        observed = c == 0
+        if n[observed].sum() < 2 or np.unique(x[observed]).size < 2:
+            return None
+        with np.errstate(all="ignore"):
+            try:
+                base = np.array(
+                    self._parameter_initialiser(
+                        _imputed_data(
+                            x[observed],
+                            np.zeros(int(observed.sum()), dtype=int),
+                            n[observed],
+                        ),
+                        offset=offset,
+                    ),
+                    dtype=float,
+                )
+            except Exception:
+                return None
+        if offset:
+            base[0] = float(x.min()) - 1.0
+        if not np.all(np.isfinite(base)):
+            return None
+        p0 = float(np.clip(n[observed].sum() / n.sum(), 1e-3, 0.999))
+        return np.concatenate([base, [p0]])
+
     def fit_from_surpyval_data(
         self,
         surv_data: SurpyvalData,
@@ -1584,6 +1665,47 @@ class OptimisedFitMixin:
                 on_d_is_0,
                 turnbull_estimator,
             )
+            # Some likelihoods have more than one optimum, and the default
+            # start can lead to the worse one: a limited failure population
+            # (p and the failure distribution trade off), or a custom
+            # distribution whose default start is a grid choice. With a
+            # default start, the optimiser is also run from the
+            # alternatives each offers, and the best likelihood is kept.
+            if (
+                how == "MLE"
+                and not fixed
+                and (init is None or len(np.atleast_1d(init)) == 0)
+            ):
+                for start in self._alternative_starts(
+                    surv_data, offset, zi, lfp, heuristic
+                ):
+                    alt_model = Parametric(self, how, data, offset, lfp, zi)
+                    alt_model.surv_data = surv_data
+                    alt_info: dict = {}
+                    alt = self._fit_numerically(
+                        alt_model,
+                        alt_info,
+                        surv_data,
+                        tl,
+                        tr,
+                        how,
+                        offset,
+                        zi,
+                        lfp,
+                        fixed,
+                        heuristic,
+                        start,
+                        rr,
+                        on_d_is_0,
+                        turnbull_estimator,
+                    )
+                    best = results.get("_neg_ll", np.inf)
+                    value = alt.get("_neg_ll", np.inf)
+                    if np.isfinite(value) and value < best - 1e-9 * max(
+                        1.0, abs(value)
+                    ):
+                        results = alt
+                        model.fitting_info = alt_info
         else:
             model.fitting_info = fitting_info
 

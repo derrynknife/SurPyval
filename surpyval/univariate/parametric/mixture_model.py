@@ -57,6 +57,8 @@ class MixtureModel(SerialisableMixin, Distribution):
         self.params: Any = None
         self.w: Any = None
         self.p: Any = None
+        #: The observed-data *negative* log-likelihood at the current
+        #: parameters (despite the name), which the EM iteration tracks.
         self.loglike: Any = None
 
     # -- serialisation -----------------------------------------------------

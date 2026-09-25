@@ -61,6 +61,10 @@ class InformationCriteriaMixin:
         >>> model.neg_ll()
         262.52685642390634
         """
+        # A model restored from a dict keeps its fitted negative
+        # log-likelihood even when the data were not saved with it.
+        if getattr(self, "_neg_ll", None) is not None:
+            return self._neg_ll
         if getattr(self, "data", None) is None:
             raise ValueError("Must have been fit with data")
 

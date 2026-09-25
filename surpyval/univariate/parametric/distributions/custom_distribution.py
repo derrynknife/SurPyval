@@ -1,4 +1,5 @@
 import inspect
+import itertools
 from typing import Callable
 
 import numpy.typing as npt
@@ -51,11 +52,12 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     >>> name = 'Gompertz'
     >>>
     >>> def Hf(x, *params):
-    ...     return params[0] * np.exp(params[1] * x - 1)
+    ...     # the Gompertz cumulative hazard nu (e^{b x} - 1), zero at x = 0
+    ...     return params[0] * (np.exp(params[1] * x) - 1)
     ...
     >>> param_names = ['nu', 'b']
     >>> bounds = ((0, None), (0, None))
-    >>> support = (-np.inf, np.inf)
+    >>> support = (0, np.inf)
     >>> Gompertz = surv.CustomDistribution(
     ...     name, Hf, param_names, bounds, support
     ... )
@@ -140,16 +142,103 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
-        out: list[float] = []
-        for low, high in self.bounds:
-            if low is None:
-                out.append(0.0 if high is None else float(high) - 1.0)
-            elif high is None:
-                out.append(float(low) + 1.0)
-            else:
-                out.append((float(high) + float(low)) / 2.0)
+        """
+        A starting point for the fit, chosen by likelihood from a coarse
+        grid of magnitudes.
 
-        return np.array(out, dtype=float)
+        A custom distribution knows nothing about its parameters beyond
+        their bounds, and a fixed start (1 for a positive parameter) can sit
+        so far from the data's scale that the likelihood is flat to machine
+        precision there -- a mortality rate of 1e-4 started at 1 gives
+        ``exp(1 * 70)`` terms -- and the optimiser stops at once, reporting
+        success. So each parameter gets a handful of candidate values
+        spanning many orders of magnitude (and the data's own scale), and
+        the combination with the best log-likelihood is the start (the
+        fixed default is tried as a second start, see
+        :meth:`_alternative_base_starts`). With an offset the returned
+        vector leads with the offset.
+        """
+        x = np.asarray(data.x, dtype=float)
+        finite = np.abs(x[np.isfinite(x)])
+        positive = finite[finite > 0]
+        scale = float(np.median(positive)) if positive.size else 1.0
+
+        grids = [
+            self._start_candidates(low, high, scale)
+            for low, high in self.bounds
+        ]
+        default = [g[0] for g in grids]
+
+        def neg_ll(params: "list[float]") -> float:
+            with np.errstate(all="ignore"):
+                try:
+                    value = float(
+                        self._neg_ll_func(data, *params, 0.0, 0.0, 1.0)
+                    )
+                except (ValueError, FloatingPointError, OverflowError):
+                    return np.inf
+            return value if np.isfinite(value) else np.inf
+
+        n_combinations = int(np.prod([len(g) for g in grids]))
+        if n_combinations <= 512:
+            best, best_value = default, neg_ll(default)
+            for candidate in itertools.product(*grids):
+                value = neg_ll(list(candidate))
+                if value < best_value:
+                    best, best_value = list(candidate), value
+        else:
+            # too many to enumerate: coordinate-wise sweeps from the default
+            best, best_value = list(default), neg_ll(default)
+            for _ in range(3):
+                for k, grid in enumerate(grids):
+                    for value_k in grid:
+                        candidate = list(best)
+                        candidate[k] = value_k
+                        value = neg_ll(candidate)
+                        if value < best_value:
+                            best, best_value = candidate, value
+
+        out = np.array(best, dtype=float)
+        if offset:
+            gamma = float(np.min(x[np.isfinite(x)])) - 1.0
+            out = np.concatenate([[gamma], out])
+        return out
+
+    def _alternative_base_starts(
+        self, data: SurpyvalData, offset: bool = False
+    ) -> "list[npt.NDArray]":
+        """
+        The fixed default start (1 above a lower bound, the midpoint of a
+        finite interval, 0 when unbounded) is also tried: the grid's best
+        starting likelihood can sit on a plateau -- a spline knot below
+        every data point, say -- that the optimiser cannot leave.
+        """
+        fixed = np.array(
+            [self._start_candidates(lo, hi, 1.0)[0] for lo, hi in self.bounds],
+            dtype=float,
+        )
+        if offset:
+            x = np.asarray(data.x, dtype=float)
+            gamma = float(np.min(x[np.isfinite(x)])) - 1.0
+            fixed = np.concatenate([[gamma], fixed])
+        return [fixed]
+
+    @staticmethod
+    def _start_candidates(
+        low: "float | None", high: "float | None", scale: float
+    ) -> "list[float]":
+        """Candidate starting values for one parameter within its bounds;
+        the first is the old fixed default (1 above a lower bound, the
+        midpoint of a finite interval, 0 when unbounded)."""
+        magnitudes = [1.0, 1e-6, 1e-4, 1e-2, 1e2, 1.0 / scale, scale]
+        if low is None and high is None:
+            return [0.0] + [m for m in (1.0, -1.0, scale, -scale)]
+        if high is None:
+            return [float(low) + m for m in magnitudes]
+        if low is None:
+            return [float(high) - m for m in magnitudes]
+        lo, hi = float(low), float(high)
+        return [lo + (hi - lo) * f for f in (0.5, 0.1, 0.9, 0.01, 0.99)]
 
     def mpp_inv_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return y

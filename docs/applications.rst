@@ -120,13 +120,12 @@ In the test, 4,156 integrated circuits were run for 1,370 hours, and 28 of them 
     s = [1370.] * 4128
 
     x, c, n, _ = surv.fs_to_xcnt(f, s)
-    # Start the search near the observed failure fraction, 28 / 4156.
-    model = surv.Weibull.fit(x, c, n, lfp=True, init=[25, 0.5, 0.0067])
+    model = surv.Weibull.fit(x, c, n, lfp=True)
     print(model)
     print("negative log-likelihood:", model.neg_ll())
     model.plot()
 
-LFP likelihoods can be awkward to optimise: the proportion :math:`p` and the shape of the failure distribution trade off against each other, and the likelihood can have more than one optimum. So it is worth giving the fit a sensible starting point with ``init`` (the Weibull :math:`\alpha` and :math:`\beta`, then :math:`p`), and sanity-checking the answer. Here the fitted :math:`p` is essentially the observed failure fraction of :math:`28/4156 \approx 0.67\%`, as it should be, since the fitted Weibull says nearly all the susceptible units have failed long before 1,370 hours. A fit that reported a :math:`p` far above the observed fraction, with a worse (higher) negative log-likelihood, would be one to distrust.
+LFP likelihoods can be awkward to optimise: the proportion :math:`p` and the shape of the failure distribution trade off against each other, and the likelihood can have more than one optimum. So an LFP fit with no ``init`` starts the optimiser twice -- from the distribution's usual starting point and from a fit to the failures alone (under an LFP the failed units *are* the susceptible subpopulation, and :math:`p` starts at the observed failure fraction) -- and keeps the better likelihood. You can still pass ``init`` (the Weibull :math:`\alpha` and :math:`\beta`, then :math:`p`), and it is always worth sanity-checking the answer. Here the fitted :math:`p` is essentially the observed failure fraction of :math:`28/4156 \approx 0.67\%`, as it should be, since the fitted Weibull says nearly all the susceptible units have failed long before 1,370 hours. A fit that reported a :math:`p` far above the observed fraction, with a worse (higher) negative log-likelihood, would be one to distrust.
 
 We can see from these results that at maximum we will have approximately 0.67% fail. If the company accepts a 0.1% probability of their products failing in the field then we can calculate the interval at which the difference between the total population and the proportion failed in the test is 0.1%. That is, we need the burn-in duration :math:`T` with :math:`p - F(T) = 0.001`, or :math:`T = F^{-1}(p - 0.001)`, which is the quantile function of the model:
 
@@ -194,11 +193,11 @@ We now have a GM distribution object that can be used to fit data. But we need s
 
 The parameters for the distribution come from [Gavrilov]_, specifically the parameters for the lifespans of the 1974-1978 data. So in this case we have (simulated) data on the lifespans of almost 10,000 people and we need to determine the GM parameters. This can be compared to the historic parameters to see if the age related mortality has changed or has remained roughly constant. To do so, all we need do with surpyval is to put the data to the ``fit()`` method.
 
-One practical point: a ``CustomDistribution`` knows nothing about its parameters beyond their bounds, so its default starting point for the optimiser puts every parameter bounded below by zero at 1. Mortality rates are of the order of :math:`10^{-3}` to :math:`10^{-5}` per year, far from 1, so we give the optimiser a starting point of the right order of magnitude with ``init``. Without it the fit can stop far from the optimum. Always check that the fitted parameters of a custom distribution are sensible.
+One practical point: a ``CustomDistribution`` knows nothing about its parameters beyond their bounds. Mortality rates are of the order of :math:`10^{-3}` to :math:`10^{-5}` per year, and started at 1 the likelihood of human lifetimes is so astronomically poor that it is flat to machine precision. So the default starting point is chosen by likelihood from a coarse grid of magnitudes for each parameter (:math:`10^{-6}` to :math:`10^{2}`, and the data's own scale), which lands in the right basin here. You can still pass ``init`` when you know the right order of magnitude, and it is always worth checking that the fitted parameters of a custom distribution are sensible.
 
 .. jupyter-execute::
 
-    model = GompertzMakeham.fit(x, init=[1e-3, 1e-4, 0.1])
+    model = GompertzMakeham.fit(x)
     model.plot(alpha_ci=0.99, heuristic='Nelson-Aalen')
     model
 

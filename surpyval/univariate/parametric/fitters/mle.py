@@ -160,7 +160,9 @@ def mle(model: "Parametric") -> Any:
 
         elif (not res.success) or (np.isnan(res.x).any()):
             warnings.warn(
-                "MLE Failed, using MPP results instead. "
+                "MLE Failed; returning the optimiser's starting point "
+                "(a probability-plot fit, or a rougher initial guess where "
+                "the distribution has none) instead. "
                 "Try making the values of the data closer to "
                 "1 by dividing or multiplying by some constant."
                 "\n\nAlternately try setting the `init` keyword in"
@@ -169,7 +171,7 @@ def mle(model: "Parametric") -> Any:
                 "A good way to do this is to set any shape parameter to 1. "
                 "and any scale parameter to be the mean of the data "
                 "(or it's inverse)"
-                "\n\nModel returned with inital guesses (MPP)"
+                "\n\nModel returned with the initial guesses."
             )
 
             use_initial = True

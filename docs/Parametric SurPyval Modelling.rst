@@ -201,12 +201,13 @@ a Royston-Parmar model or any other SurPyval model (see
     model.to_json(path)
     print(surv.from_json(path).params)
 
-The dictionary holds the parameters and their covariance but, by default, not
-the data. So a restored model can still give Wald confidence bounds, but it
-cannot report its ``neg_ll`` or information criteria, and it cannot compute
-likelihood-ratio bounds, which need the data. Pass ``with_data=True`` to
-``to_dict`` to keep the data and the information criteria; for
-likelihood-ratio bounds, refit.
+The dictionary holds the parameters, their covariance and the fitted
+negative log-likelihood but, by default, not the data. So a restored model can
+still give Wald confidence bounds, ``neg_ll()`` and ``aic()``, but not the
+criteria that need the sample size (``bic()``, ``aic_c()``), ``plot()``, or
+likelihood-ratio bounds -- each says so if asked. Pass ``with_data=True`` to
+``to_dict`` to keep the data, which restores ``plot()`` and every information
+criterion; for likelihood-ratio bounds, refit.
 
 Using censored data
 -------------------
@@ -745,7 +746,7 @@ The other important use case is when, for some reason, an alternate estimation m
     print(str(caught[0].message).splitlines()[0])
     model.plot()
 
-This shows, that the Maximum Likelihood Estimation has failed for this data: SurPyval warns and hands back the optimiser's starting point instead. The message speaks of "MPP results" because for many distributions the starting point is a probability-plot fit; for an offset LogLogistic it is only a rough guess, which is why the fitted curve misses the points. The warning is captured and printed above; in your own code it simply appears as a ``UserWarning``. However, because we have access to other methods, we can use an alternate estimation method:
+This shows, that the Maximum Likelihood Estimation has failed for this data: SurPyval warns and hands back the optimiser's starting point instead. For many distributions that starting point is a probability-plot fit; for an offset LogLogistic it is only a rough guess, which is why the fitted curve misses the points. The warning is captured and printed above; in your own code it simply appears as a ``UserWarning``. However, because we have access to other methods, we can use an alternate estimation method:
 
 .. jupyter-execute::
 
