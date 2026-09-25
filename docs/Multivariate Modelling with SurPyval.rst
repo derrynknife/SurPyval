@@ -177,12 +177,15 @@ supplies the starting values: its parameters are re-estimated jointly.)
 Choosing a copula family
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-With complete (uncensored) data the log-likelihood of a fitted model is
-simply the sum of the log joint density over the rows, which ``pdf`` gives.
-Under IFM every family shares the same fitted margins, so the comparison is
-purely about the dependence structure; and every family here has one parameter
-(the Independence copula has none), so ranking by log-likelihood is the same as
-ranking by AIC:
+A fitted model reports the maximised joint log-likelihood of its data as
+``log_likelihood`` (``neg_ll()`` is its negative), and the information
+criteria ``aic()`` and ``bic()``. The likelihood is the full joint one the fit
+maximised, with every row's censoring, truncation and count, so it serves for
+censored data too (with complete data it is the sum of the log joint density
+``pdf`` over the rows). ``k``, the number of estimated parameters, counts the
+copula parameter and the margin parameters the fit estimated, so every model
+below has ``k = 5`` except the Independence copula (``k = 4``); AIC charges the
+extra parameter:
 
 .. jupyter-execute::
 
@@ -193,13 +196,12 @@ ranking by AIC:
         fits[fam.name] = fam.fit(data, margins=[surv.Weibull, surv.LogNormal])
 
     for name, m in fits.items():
-        loglik = np.sum(np.log(m.pdf(data)))
-        print("%-12s params=%-22s tau=%.3f  tails=%s  loglik=%.1f" % (
+        print("%-12s params=%-22s tau=%.3f  tails=%s  loglik=%.1f  AIC=%.1f" % (
             name, np.round(m.params, 3), m.kendall_tau(),
-            np.round(m.tail_dependence(), 3), loglik))
+            np.round(m.tail_dependence(), 3), m.log_likelihood, m.aic()))
 
-The Clayton copula, which generated the data, has the highest likelihood by a
-wide margin, even though Gaussian and Frank reach a similar Kendall's tau: the
+The Clayton copula, which generated the data, has the highest likelihood (and
+lowest AIC) by a wide margin, even though Gaussian and Frank reach a similar Kendall's tau: the
 data carry strong *lower-tail* dependence (joint early failures) that only
 Clayton can express. A picture tells the same story. Transforming each series
 to ranks in :math:`(0, 1)` (pseudo-observations) removes the margins and shows
@@ -246,7 +248,7 @@ Here is that failure on purpose, with data simulated from a Frank copula with
     for fam in [Independence, Clayton, Gumbel, Frank, Gaussian]:
         m = fam.fit(neg, margins=[surv.Weibull, surv.LogNormal])
         print("%-12s params=%-24s loglik=%.1f" % (
-            fam.name, np.round(m.params, 3), np.sum(np.log(m.pdf(neg)))))
+            fam.name, np.round(m.params, 3), m.log_likelihood))
 
 Clayton and Gumbel collapse onto independence, with exactly its
 log-likelihood; Frank recovers :math:`\theta` and fits far better, with the
@@ -658,14 +660,11 @@ simulation. As an example, the Ali-Mikhail-Haq copula
         def cdf(self, u, v, theta):
             return u * v / (1 - theta * (1 - u) * (1 - v))
 
-        def _init_theta(self, dims):
-            # the default starting value, 1, is on this family's bound
-            return np.array([0.0])
-
     AMH = AliMikhailHaq()
     amh_truth = AMH.from_params(0.6, margins=truth.margins)
     amh_data = amh_truth.random(1000, random_state=0)
-    amh_fit = AMH.fit(amh_data, margins=[surv.Weibull, surv.LogNormal])
+    # init (optional) starts the search at a value strictly inside the bounds
+    amh_fit = AMH.fit(amh_data, margins=[surv.Weibull, surv.LogNormal], init=0.5)
     print(amh_fit)
     print("Kendall's tau (simulated): %.3f" % amh_fit.kendall_tau())
 
@@ -675,10 +674,12 @@ tau agrees with the family's closed form,
 :math:`1 - 2\{\theta + (1 - \theta)^2 \ln(1 - \theta)\}/(3\theta^2) = 0.145`
 at the fitted :math:`\theta`, to within the simulation error.
 
-Two cautions. The fit starts the search at :math:`\theta = 1` unless the
-subclass overrides ``_init_theta``, as here; for a family whose bounds exclude
-1 the override is required, otherwise the search starts outside the allowed
-range and returns a meaningless value. And a model of a custom family cannot
-be restored with ``from_dict``, which rebuilds a copula from its name and so
-only knows the five built-in families.
+Two notes. Without ``init`` the search starts from a point strictly inside
+the ``bounds``: :math:`\theta = 1` when that is inside them, otherwise the
+midpoint of a finite range (0 here) or one unit inside a one-sided bound. The
+built-in families start from the value matching the data's Kendall's tau; pass
+``init`` (one value per parameter, strictly inside the bounds, or a
+``ValueError`` explains the problem) when you have a better guess, as above.
+And a model of a custom family cannot be restored with ``from_dict``, which
+rebuilds a copula from its name and so only knows the five built-in families.
 

@@ -43,6 +43,7 @@ from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
+    to_native,
 )
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.ipcw import censoring_survival, step_at
@@ -175,7 +176,8 @@ class FineGrayModel(SerialisableMixin):
         return stamp_schema(
             {
                 "model": "FineGrayModel",
-                "cause": self.cause,
+                # native type: a numpy scalar label breaks JSON/BSON
+                "cause": to_native(self.cause),
                 "beta": np.asarray(self.beta, dtype=float).tolist(),
                 "se": np.asarray(self.se, dtype=float).tolist(),
                 "p_values": np.asarray(self.p_values, dtype=float).tolist(),

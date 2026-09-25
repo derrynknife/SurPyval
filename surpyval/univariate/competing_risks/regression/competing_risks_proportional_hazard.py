@@ -12,10 +12,20 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+    to_native,
+)
 from surpyval.univariate.competing_risks.aalen_johansen import (
     aalen_johansen_iif,
 )
 from surpyval.univariate.regression import CoxPH
+from surpyval.univariate.regression.regression_data import (
+    restore_covariate_meta,
+    serialise_covariate_meta,
+)
 from surpyval.utils import (
     _get_idx,
     validate_fine_gray_inputs,
@@ -23,10 +33,10 @@ from surpyval.utils import (
 )
 from surpyval.utils.ipcw import step_at as _step
 
-from .fine_gray import FineGray
+from .fine_gray import FineGray, FineGrayModel
 
 
-class CompetingRisksProportionalHazards:
+class CompetingRisksProportionalHazards(SerialisableMixin):
     """
     Competing-risks proportional-hazards regression.
 
@@ -38,13 +48,18 @@ class CompetingRisksProportionalHazards:
 
     Call the class method ``CompetingRisksProportionalHazards.fit`` (or
     ``fit_from_df``); it returns a fitted instance. Every prediction takes
-    the covariates ``Z`` and, for one cause, its label ``event``.
+    the covariates ``Z`` and, for one cause, its label ``event``. A fitted
+    model can be saved with ``to_dict``/``to_json`` and restored with
+    ``from_dict``/``from_json`` (or ``surpyval.from_dict``).
     """
 
     # Populated by ``fit``; declared for the type checker.
     how: str
     x: "npt.NDArray"
-    results: list
+    #: Each cause's optimiser result, in ``event_idx_map`` order (``None``
+    #: for a model restored from a dict: the optimiser objects are not
+    #: serialised).
+    results: "list | None"
     betas: "npt.NDArray"
     beta: "npt.NDArray"
     event_idx_map: dict
@@ -54,9 +69,107 @@ class CompetingRisksProportionalHazards:
     phi: Any
     phi_e: Any
     _fg_models: dict
-    feature_names: "list | None"
-    formula: Any
-    _model_spec: Any
+    # Covariate metadata, set by ``fit_from_df``; ``None`` after ``fit``.
+    feature_names: "list | None" = None
+    formula: Any = None
+    _model_spec: Any = None
+
+    # -- serialisation -----------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """
+        Serialise this fitted model to a plain, JSON-serialisable dict.
+
+        Stores the causes (``event_idx_map``), the per-cause coefficients
+        ``betas`` and the per-cause baseline step arrays on the shared time
+        grid ``x``; for ``how="Fine-Gray"`` also each cause's
+        :class:`FineGrayModel` (its own ``to_dict``), from which the
+        Fine-Gray predictions come. The reloaded model reproduces every
+        prediction (``cif``, ``sf``, ``ff``, ``Hf``, ``hf``, ``df``) for any
+        ``Z``. The optimiser results (``results``) are not stored.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval
+        >>> from surpyval.univariate.competing_risks import (
+        ...     CompetingRisksProportionalHazards,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> Z = [[0], [1], [0], [1], [0], [1], [0], [1], [0], [1]]
+        >>> e = ["a", "b", "a", None, "b", "a", "a", None, "b", "a"]
+        >>> model = CompetingRisksProportionalHazards.fit(x, Z, e)
+        >>> restored = surpyval.from_dict(model.to_dict())
+        >>> bool(np.allclose(restored.cif([5, 9], [1], "a"),
+        ...                  model.cif([5, 9], [1], "a")))
+        True
+        """
+        out: dict = {
+            "model": "CompetingRisksProportionalHazards",
+            "how": self.how,
+            # list of [event, index] pairs to preserve the event key types
+            "event_idx_map": [
+                [to_native(k), int(v)] for k, v in self.event_idx_map.items()
+            ],
+            "n_event_types": int(self.n_event_types),
+            "x": np.asarray(self.x, dtype=float).tolist(),
+            "betas": np.asarray(self.betas, dtype=float).tolist(),
+            "h0_e": np.asarray(self.h0_e, dtype=float).tolist(),
+        }
+        if self.how == "Fine-Gray":
+            # The Fine-Gray predictions come from the per-cause models (the
+            # shared grid only mirrors their baselines), so store them whole,
+            # in ``event_idx_map`` order.
+            out["fg_models"] = [
+                self._fg_models[event].to_dict()
+                for event in self.event_idx_map
+            ]
+        serialise_covariate_meta(self, out)
+        return stamp_schema(out)
+
+    @classmethod
+    def from_dict(
+        cls, model_dict: dict
+    ) -> "CompetingRisksProportionalHazards":
+        """Rebuild a competing-risks proportional-hazards model from a
+        :meth:`to_dict` dictionary."""
+        require_model_tag(
+            model_dict,
+            "CompetingRisksProportionalHazards",
+            "a competing-risks proportional-hazards model",
+        )
+        model = cls()
+        model.how = model_dict["how"]
+        model.event_idx_map = {
+            k: int(v) for k, v in model_dict["event_idx_map"]
+        }
+        model.n_event_types = int(model_dict["n_event_types"])
+        model.x = np.array(model_dict["x"], dtype=float)
+        if model.how == "Fine-Gray":
+            model._fg_models = {
+                event: FineGrayModel.from_dict(fg)
+                for event, fg in zip(
+                    model.event_idx_map, model_dict["fg_models"]
+                )
+            }
+        model.results = None
+        model._finish(
+            np.array(model_dict["betas"], dtype=float),
+            np.array(model_dict["h0_e"], dtype=float),
+        )
+        restore_covariate_meta(model, model_dict)
+        return model
+
+    def _finish(self, betas: npt.NDArray, baselines: npt.NDArray) -> None:
+        # The attributes derived from the per-cause coefficients and baseline
+        # increments, shared by ``fit`` and ``from_dict`` so a reloaded model
+        # is rebuilt exactly as the fitted one was.
+        self.betas = betas
+        self.beta = betas.sum(axis=0)
+        self.phi_e = lambda Z, e_i: np.exp(Z @ self.betas[e_i, :])
+        self.phi = lambda Z: np.exp(Z @ self.beta)
+        self.h0_e = baselines
+        self.H0_e = baselines.cumsum(axis=1)
 
     def _fg_model(self, event: Any) -> Any:
         # Resolve the per-cause Fine-Gray subdistribution model, requiring an
@@ -466,11 +579,6 @@ class CompetingRisksProportionalHazards:
             raise ValueError("`how` must be either 'Cox' or 'Fine-Gray")
 
         model.results = results
-        model.betas = betas
-        model.beta = betas.sum(axis=0)
-        model.phi_e = lambda Z, e_i: np.exp(Z @ model.betas[e_i, :])
-        model.phi = lambda Z: np.exp(Z @ model.beta)
-        model.h0_e = baselines
-        model.H0_e = baselines.cumsum(axis=1)
+        model._finish(betas, baselines)
         model.x = unique_x
         return model

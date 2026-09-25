@@ -51,23 +51,40 @@ class IndependenceCopula(Copula):
         how: str = "IFM",
         xl: "npt.ArrayLike | None" = None,
         xr: "npt.ArrayLike | None" = None,
+        init: "npt.ArrayLike | None" = None,
     ) -> Any:
         """
         Fit the margins only (the independence copula has no parameter);
-        arguments as for :meth:`Copula.fit`, with ``how`` ignored.
+        arguments as for :meth:`Copula.fit`, with ``how`` ignored (``init``,
+        if given, must be empty).
         """
         # No parameter to estimate; only the margins are fitted.
         return super().fit(
-            x, c=c, n=n, t=t, margins=margins, how="IFM", xl=xl, xr=xr
+            x,
+            c=c,
+            n=n,
+            t=t,
+            margins=margins,
+            how="IFM",
+            xl=xl,
+            xr=xr,
+            init=init,
         )
 
-    def _fit_theta(  # type: ignore[override]
-        self, margin_models: list, data: Any
+    def _fit_theta(
+        self,
+        margin_models: list,
+        data: Any,
+        init: "npt.NDArray | None" = None,
     ) -> npt.NDArray:
         return onp.asarray([], dtype=float)
 
     def _fit_joint(
-        self, margins: Any, margin_models: list, data: Any
+        self,
+        margins: Any,
+        margin_models: list,
+        data: Any,
+        init: "npt.NDArray | None" = None,
     ) -> tuple:
         return onp.asarray([], dtype=float), margin_models
 

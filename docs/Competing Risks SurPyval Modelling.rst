@@ -435,12 +435,13 @@ the long-run share of wear-out failures?
 Saving and loading competing-risks models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``CompetingRisks``, ``ParametricCompetingRisks`` and the Fine-Gray model
-returned by ``FineGray.fit`` can be serialised with ``to_dict``/``to_json`` and
-restored with the class's ``from_dict``/``from_json`` or with the package-level
-``surpyval.from_dict``/``surpyval.from_json``, which work out the class from
-the dictionary. The restored model reproduces every prediction exactly
-(``CompetingRisksProportionalHazards`` is not serialisable):
+Every competing-risks model -- ``CompetingRisks``,
+``ParametricCompetingRisks``, the Fine-Gray model returned by ``FineGray.fit``
+and ``CompetingRisksProportionalHazards`` -- can be serialised with
+``to_dict``/``to_json`` and restored with the class's ``from_dict``/``from_json``
+or with the package-level ``surpyval.from_dict``/``surpyval.from_json``, which
+work out the class from the dictionary. The restored model reproduces every
+prediction exactly:
 
 .. jupyter-execute::
 
@@ -469,16 +470,10 @@ Reach for it when the clinical or engineering question is "how many fail of this
 cause", not "how fast".
 
 Pass the observed times ``x``, the per-observation cause label ``e``, the group
-label, and the ``cause`` of interest; optional ``n`` gives row counts. Mark
-censored rows either with ``c`` (``1`` censored) or, when ``c`` is omitted,
-with a ``None`` cause.
-
-.. warning::
-
-    Unlike the model classes, ``gray_test`` does not read a ``NaN`` cause as
-    censored when ``c`` is omitted: such a row is counted as a failure from a
-    competing cause. With data from a DataFrame (where a missing cause is
-    ``NaN``), pass ``c`` explicitly or convert the missing causes to ``None``.
+label, and the ``cause`` of interest; optional ``n`` gives row counts.
+Censored rows follow the same rules as for the model classes (see
+`Competing-risks data format`_): a missing cause (``None`` or ``NaN``) marks a
+censored row, and an optional ``c`` must agree with it.
 
 Here two groups have genuinely different cause-1 incidence:
 
@@ -813,6 +808,19 @@ The Fine-Gray coefficients for cause 1 match ``FineGray.fit`` above. For cause
 2 they have the opposite sign to cause 1, even though the covariates were only
 built into the cause-1 incidence: whatever raises the incidence of one cause
 necessarily lowers the incidence of the other.
+
+Both kinds of fit can be saved and restored like the other competing-risks
+models. The dictionary holds the per-cause coefficients and baselines (and,
+for ``how="Fine-Gray"``, each cause's Fine-Gray model); the optimiser results
+in ``results`` are not stored, so a restored model has ``results = None``:
+
+.. jupyter-execute::
+
+    for fitted in [csph, fg_all]:
+        reloaded = surv.from_dict(json.loads(json.dumps(fitted.to_dict())))
+        print(fitted.how, type(reloaded).__name__,
+              np.array_equal(reloaded.cif(times, Z=z, event=1),
+                             fitted.cif(times, Z=z, event=1)))
 
 Fitting from a DataFrame
 ~~~~~~~~~~~~~~~~~~~~~~~~

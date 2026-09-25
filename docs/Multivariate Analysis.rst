@@ -286,9 +286,10 @@ Choosing a family
   SurPyval; fitted to negatively dependent data they are pushed to their
   independence boundary, so check the sign of the empirical Kendall's tau
   first.
-- With complete data, compare fitted families by their log-likelihood (or AIC —
-  every family here has one parameter, so the comparison is the same) and by
-  plotting simulated samples against the data. The how-to page shows both.
+- Compare fitted families by their log-likelihood or AIC (the fitted model's
+  ``log_likelihood`` and ``aic()``, which use the full censored and truncated
+  joint likelihood below) and by plotting simulated samples against the data.
+  The how-to page shows both.
 
 Estimation
 ----------
@@ -451,8 +452,8 @@ How SurPyval fits
 ~~~~~~~~~~~~~~~~~
 
 Every family has the same ``fit(x, c=None, n=None, t=None, margins=None,
-how="IFM", xl=None, xr=None)``; ``margins`` (one per series) is required and
-exactly two series are supported. With ``how="IFM"`` [JoeXu1996mv]_:
+how="IFM", xl=None, xr=None, init=None)``; ``margins`` (one per series) is
+required and exactly two series are supported. With ``how="IFM"`` [JoeXu1996mv]_:
 
 1. each margin is fitted by the usual univariate maximum likelihood to its own
    series, honouring that series' censoring codes (interval-censored entries
@@ -465,7 +466,8 @@ exactly two series are supported. With ``how="IFM"`` [JoeXu1996mv]_:
    transformation of the parameter (for the Gaussian copula,
    :math:`\rho = \tanh(\cdot)`). It starts from the value that matches the
    empirical Kendall's tau of the rows where both series are observed (or
-   from near-independence if fewer than three such rows exist).
+   from near-independence if fewer than three such rows exist), unless a
+   starting value is passed as ``init``.
 
 With ``how="MLE"`` the IFM solution is the starting point for a joint
 Nelder-Mead search over the copula parameter and every margin parameter,
@@ -512,9 +514,13 @@ Some further points worth knowing:
 - The copula parameter is estimated on the scale :math:`u_j = F_j(x_j)`, so a
   poorly chosen margin distorts it. Check the margins with the univariate
   tools first (see :doc:`Parametric SurPyval Modelling`).
-- The fitted model reports the point estimates; no standard errors or
-  likelihood values are attached to it. With complete data the
-  log-likelihood is the sum of the log joint density, which ``pdf`` gives.
+- The fitted model reports the point estimates, without standard errors. Its
+  ``log_likelihood`` (``neg_ll()``) is the full joint log-likelihood above at
+  those estimates, and ``aic()``/``bic()`` count as parameters the copula's and
+  those of every margin the fit estimated (a margin passed already fitted is
+  not re-estimated under IFM, so it does not count); ``bic()`` uses the number
+  of rows. A ``from_params`` model has no likelihood and raises a
+  ``ValueError``.
 - Margin probabilities are kept a tiny distance (:math:`10^{-10}`) inside
   :math:`(0, 1)` to keep the Archimedean formulas finite.
 - Only bivariate models are supported; more than two series raise a

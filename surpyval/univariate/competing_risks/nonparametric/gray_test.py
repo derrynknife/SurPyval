@@ -24,6 +24,7 @@ from scipy.stats import chi2
 from surpyval.univariate.competing_risks.aalen_johansen import (
     aalen_johansen_iif,
 )
+from surpyval.utils import check_c_and_e, resolve_cr_censoring
 from surpyval.utils.ipcw import censoring_survival, step_at
 from surpyval.utils.linalg import safe_quadform
 
@@ -54,15 +55,18 @@ def gray_test(
     x : array_like
         Event/censoring times.
     e : array_like
-        Cause label per observation; ``None`` (or matching ``c == 1``) marks a
-        censored observation.
+        Cause label per observation; a missing value (``None``, ``NaN`` or
+        pandas ``NA``) marks a right-censored observation, as for the
+        competing-risks model classes.
     group : array_like
         Group label per observation (two or more groups).
     cause : scalar
         The cause whose cumulative incidence is compared across groups.
     c : array_like, optional
-        Censoring flag (``0`` event, ``1`` censored). If omitted it is inferred
-        from ``e`` being ``None``.
+        Censoring flag (``0`` event, ``1`` censored). If omitted it is derived
+        from ``e`` (a missing cause is censored). If given, every row with
+        ``c == 1`` must have a missing cause and every other row a cause,
+        otherwise a ``ValueError`` is raised.
     n : array_like, optional
         Count weight per observation (default 1).
     rho : float, optional
@@ -102,11 +106,13 @@ def gray_test(
     N = x.size
     n = np.ones(N) if n is None else np.asarray(n, dtype=float)
 
-    e_arr = np.asarray(e, dtype=object)
-    if c is None:
-        censored = np.array([ei is None for ei in e_arr])
-    else:
-        censored = np.asarray(c).astype(int) == 1
+    # The same missing-cause rule as every other competing-risks class: a
+    # missing cause (None, NaN or pandas NA) is a censored row, and a given
+    # ``c`` must agree with it. Testing only for ``None`` read a NaN cause
+    # (as a DataFrame column holds it) as a failure from a competing cause.
+    e_arr, c_arr = resolve_cr_censoring(e, c)
+    check_c_and_e(c_arr, e_arr)
+    censored = c_arr.astype(int) == 1
 
     is_cause = (~censored) & (e_arr == cause)
     is_competing = (~censored) & (~is_cause)

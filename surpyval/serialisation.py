@@ -49,6 +49,10 @@ _TAGGED_MODELS: dict[str, str] = {
     "FineGrayModel": (
         "surpyval.univariate.competing_risks.regression.fine_gray"
     ),
+    "CompetingRisksProportionalHazards": (
+        "surpyval.univariate.competing_risks.regression"
+        ".competing_risks_proportional_hazard"
+    ),
     "ParametricCompetingRisks": (
         "surpyval.univariate.competing_risks.parametric"
         ".parametric_competing_risks"

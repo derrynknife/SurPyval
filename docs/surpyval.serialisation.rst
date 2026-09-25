@@ -29,12 +29,9 @@ is known up front; each rejects a dictionary written by a different class
 with a ``ValueError``. The readers belong to the *model* classes, not to
 the fitters: ``Weibull.from_dict`` and ``CoxPH.from_dict`` do not exist.
 
-Two exceptions: ``CompetingRisksProportionalHazards`` cannot be
-serialised (fit and save a ``FineGray`` or ``CoxPH`` model per cause
-instead if you need to store the fit), and
-``DestructiveDegradationModel`` has ``to_dict`` / ``from_dict`` but no
-``to_json`` / ``from_json`` -- write its dictionary with ``json.dump``
-and read it back with ``surpyval.from_dict``.
+``CompetingRisksProportionalHazards`` serialises the same way, for both
+``how="Cox"`` and ``how="Fine-Gray"``; its per-cause optimiser results
+(``results``) are not stored.
 
 .. autofunction:: surpyval.serialisation.from_dict
 

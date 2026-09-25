@@ -286,6 +286,7 @@ class Copula:
         how: str = "IFM",
         xl: "npt.ArrayLike | None" = None,
         xr: "npt.ArrayLike | None" = None,
+        init: "npt.ArrayLike | None" = None,
     ) -> Any:
         """Fit the copula and its margins to multivariate survival data.
 
@@ -301,13 +302,19 @@ class Copula:
             ``"IFM"`` (default) fits each margin independently then the
             single copula parameter (robust two-stage estimation).
             ``"MLE"`` jointly optimises copula parameter + margin parameters.
+        init : array like, optional
+            Starting value of the copula parameter(s) for the search, one per
+            entry of ``param_names``, each strictly inside the family's
+            ``bounds``. By default each family starts from its own guess
+            (the built-in families match the empirical Kendall's tau).
 
         Returns
         -------
         CopulaModel
             The fitted model: the copula parameter(s) ``params`` and the
             fitted ``margins``, with the joint ``sf``/``cdf``/``pdf``,
-            sampling and dependence measures.
+            sampling, dependence measures and the likelihood-based
+            ``log_likelihood``/``neg_ll``/``aic``/``bic``.
 
         Examples
         --------
@@ -342,17 +349,28 @@ class Copula:
         if len(margins) != data.D:
             raise ValueError("need one margin per dimension")
 
+        if how not in ("IFM", "MLE"):
+            raise ValueError("how must be 'IFM' or 'MLE'")
+        if init is not None:
+            init = self._check_init(init)
+
         margin_models = self._fit_margins(margins, data)
         if how == "IFM":
-            theta = self._fit_theta(margin_models, data)
-        elif how == "MLE":
-            theta, margin_models = self._fit_joint(
-                margins, margin_models, data
-            )
+            theta = self._fit_theta(margin_models, data, init)
+            # A margin passed already fitted is used as it is, so only the
+            # margins fitted here count as estimated parameters.
+            fitted = [hasattr(m, "fit") for m in margins]
         else:
-            raise ValueError("how must be 'IFM' or 'MLE'")
+            theta, margin_models = self._fit_joint(
+                margins, margin_models, data, init
+            )
+            # The joint search re-estimates every margin parameter.
+            fitted = [True] * len(margin_models)
+        k = len(self.param_names) + sum(
+            len(m.params) for m, f in zip(margin_models, fitted) if f
+        )
 
-        return CopulaModel(self, theta, margin_models, data=data, how=how)
+        return CopulaModel(self, theta, margin_models, data=data, how=how, k=k)
 
     def from_params(self, params: Any, margins: Any) -> Any:
         """
@@ -431,7 +449,12 @@ class Copula:
         )
         return to_unbounded, to_bounded
 
-    def _fit_theta(self, margin_models: list, data: Any) -> npt.NDArray:
+    def _fit_theta(
+        self,
+        margin_models: list,
+        data: Any,
+        init: "npt.NDArray | None" = None,
+    ) -> npt.NDArray:
         dims = [
             self._prepare_dim(margin_models[d], *data.dimension(d))
             for d in range(data.D)
@@ -442,17 +465,34 @@ class Copula:
             params = to_bounded(phi)
             return self.neg_ll(params, dims, data.n)
 
-        init = to_unbounded(self._init_theta(dims))
-        res = minimize(obj, init, method="Nelder-Mead")
+        if init is None:
+            init = self._init_theta(dims)
+        # A start on (or outside) a bound maps to +-inf or NaN in the
+        # unbounded space, from which Nelder-Mead never moves: the fit would
+        # silently return the starting value. Refuse it instead (the
+        # transform's own warning would only restate the error).
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            start = onp.asarray(to_unbounded(init), dtype=float)
+        if not onp.all(onp.isfinite(start)):
+            raise ValueError(
+                f"The starting value {onp.asarray(init).tolist()} of the "
+                f"{self.name} copula is not strictly inside its bounds "
+                f"{self.bounds}; pass `init` to fit."
+            )
+        res = minimize(obj, start, method="Nelder-Mead")
         return onp.asarray(to_bounded(res.x), dtype=float)
 
     def _fit_joint(
-        self, margins: Any, margin_models: list, data: Any
+        self,
+        margins: Any,
+        margin_models: list,
+        data: Any,
+        init: "npt.NDArray | None" = None,
     ) -> tuple:
         # Start from the IFM solution, then refine copula + margin params
         # jointly. Margins are re-evaluated from their parameter vectors at
         # each step via ``from_params``.
-        theta0 = self._fit_theta(margin_models, data)
+        theta0 = self._fit_theta(margin_models, data, init)
         dist_classes = [m.dist for m in margin_models]
         splits = onp.cumsum([len(m.params) for m in margin_models])[:-1]
         to_unbounded, to_bounded = self._bounds_transforms()
@@ -487,8 +527,51 @@ class Copula:
         return onp.asarray(theta, dtype=float), models
 
     def _init_theta(self, dims: list) -> npt.NDArray:
-        """Initial parameter guess. Override per family for robustness."""
-        return onp.asarray([1.0])
+        """Initial parameter guess, strictly inside ``bounds``.
+
+        Per parameter: 1 when that is strictly inside its bounds (the
+        historical default), otherwise the midpoint of a finite interval or
+        one unit inside a single finite bound. A fixed 1 sat on the bound of
+        a family such as ``(-1, 1)``, where the bounds transform gives an
+        infinite start and the search never moved. The built-in families
+        override this with a data-driven guess; a user can pass ``init`` to
+        :meth:`fit`.
+        """
+        starts = []
+        for low, high in self.bounds:
+            if (low is None or low < 1.0) and (high is None or 1.0 < high):
+                starts.append(1.0)
+            elif low is not None and high is not None:
+                starts.append(0.5 * (low + high))
+            elif low is not None:
+                starts.append(low + 1.0)
+            else:
+                starts.append(high - 1.0)
+        return onp.asarray(starts, dtype=float)
+
+    def _check_init(self, init: npt.ArrayLike) -> npt.NDArray:
+        """Validate a user's ``init``: one value per parameter, each
+        strictly inside its bounds (a start on a bound cannot move)."""
+        init = onp.atleast_1d(onp.asarray(init, dtype=float))
+        if init.shape != (len(self.param_names),):
+            raise ValueError(
+                f"init must have one value per copula parameter "
+                f"{self.param_names}, got {init.tolist()}"
+            )
+        for name, value, (low, high) in zip(
+            self.param_names, init, self.bounds
+        ):
+            inside = (
+                bool(onp.isfinite(value))
+                and (low is None or value > low)
+                and (high is None or value < high)
+            )
+            if not inside:
+                raise ValueError(
+                    f"init for {name} must be strictly inside its bounds "
+                    f"({low}, {high}), got {value}"
+                )
+        return init
 
     @staticmethod
     def _emp_tau(dims: list) -> float:
