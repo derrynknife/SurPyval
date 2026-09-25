@@ -172,12 +172,46 @@ class CompetingRisksProportionalHazards:
         # all-cause survival. Index and reverse index in case x is unordered.
         idx, rev = _get_idx(self.x, x)
 
-        lambda_e = self.hf(self.x, Z, event)
-        S = self.sf(self.x, Z)
-        cif = aalen_johansen_iif(S, lambda_e).cumsum()
+        S, shares = self._product_limit_survival(Z)
+        e_i = self.event_idx_map[event]
+        cif = aalen_johansen_iif(S, shares[e_i]).cumsum()
 
         # Times before the first event would wrap to the last value (#253).
         return np.where(idx[rev] < 0, 0.0, cif[idx][rev])
+
+    def _product_limit_survival(
+        self, Z: npt.ArrayLike
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        All-cause survival at the event times as a product limit, and each
+        cause's share of the hazard increment, for the incidence weights.
+
+        Only the product-limit survival ``prod (1 - dH(t_j))`` satisfies the
+        telescoping identity ``sum_j S(t_j-) dH(t_j) = 1 - S(t)``, so weighting
+        the cause-specific increments with ``exp(-H)`` inflated the incidence
+        and let the causes sum past 1 (#278). A Breslow increment can also
+        exceed 1 at a covariate value far from the data (a small risk set
+        times a large multiplier); such a step exhausts the survivors, and
+        each cause takes its proportional share of them. The causes'
+        incidences then sum to exactly ``1 - S``.
+
+        Returns ``(S, shares)`` with ``shares[e]`` cause ``e``'s effective
+        hazard increments.
+        """
+        increments = np.array(
+            [
+                np.broadcast_to(
+                    self.h0_e[e_i] * self.phi_e(Z, e_i), self.x.shape
+                )
+                for e_i in range(self.n_event_types)
+            ],
+            dtype=float,
+        )
+        total = increments.sum(axis=0)
+        scale = np.where(total > 1.0, 1.0 / np.where(total > 0, total, 1), 1.0)
+        shares = increments * scale
+        S = np.cumprod(1.0 - shares.sum(axis=0))
+        return np.clip(S, 0.0, 1.0), shares
 
     @classmethod
     def fit_from_df(
@@ -217,8 +251,10 @@ class CompetingRisksProportionalHazards:
         how : {'Cox', 'Fine-Gray'}, optional
             Cause-specific proportional hazards or Fine-Gray subdistribution
             hazards. Default 'Cox'.
-        tie_method : {'efron', 'breslow'}, optional
-            Tie handling for the ``how='Cox'`` path. Default 'efron'.
+        tie_method : str, optional
+            Tie handling for the ``how='Cox'`` path, passed to
+            :meth:`CoxPH.fit`: ``'efron'`` (default), ``'breslow'``,
+            ``'exact'`` or ``'kalbfleisch-prentice'`` (alias ``'kp'``).
 
         Returns
         -------
@@ -287,17 +323,26 @@ class CompetingRisksProportionalHazards:
             this can be provided. If :code:`None` will assume each
             observation is 1.
 
-        method : str, optional
-            String which declares method which is used to estimate the
-            baseline survival function. Can be either 'Nelson-Aalen' or
-            'Kaplan-Meier'. Default is 'Nelson-Aalen'.
+        how : {'Cox', 'Fine-Gray'}, optional
+            ``'Cox'`` (default) fits cause-specific proportional hazards --
+            one Cox model per cause, the other causes treated as censored;
+            ``'Fine-Gray'`` fits one subdistribution-hazards model per cause.
+
+        tie_method : str, optional
+            Tie handling for the ``'Cox'`` path, passed to
+            :meth:`CoxPH.fit` as its ``method``. Default ``'efron'``.
 
         Returns
         -------
 
         model : CompetingRisksProportionalHazards
-            A competing-risks proportional-hazards model with fitted params
-            and helper methods using the fitted params.
+            A competing-risks proportional-hazards model. ``betas`` holds one
+            row of coefficients per cause, in the order of ``event_idx_map``
+            (causes sorted); ``phi_e(Z, i)`` is cause ``i``'s hazard
+            multiplier. ``beta`` and ``phi`` (the sum of the per-cause
+            coefficients and its multiplier) are kept for backward
+            compatibility but are not a model quantity: every prediction
+            uses the per-cause coefficients.
 
         Examples
         --------
@@ -311,10 +356,16 @@ class CompetingRisksProportionalHazards:
         unique_e = set(e)
         if None in unique_e:
             unique_e.remove(None)
+        # A fixed order for the causes (a set's iteration order depends on
+        # the hash seed for strings), so ``betas`` rows are reproducible.
+        try:
+            causes = sorted(unique_e)
+        except TypeError:
+            causes = sorted(unique_e, key=lambda v: (type(v).__name__, str(v)))
 
-        n_event_types = len(unique_e)
+        n_event_types = len(causes)
 
-        event_idx_map = {state: i for i, state in enumerate(unique_e)}
+        event_idx_map = {state: i for i, state in enumerate(causes)}
 
         betas = np.zeros((len(unique_e), Z.shape[1]))
         unique_x = np.unique(x)
@@ -332,7 +383,7 @@ class CompetingRisksProportionalHazards:
             # Cause-specific proportional hazards: one Cox model per cause,
             # treating every other cause (and censoring) as right-censored.
             results = []
-            for i, event in enumerate(unique_e):
+            for i, event in enumerate(causes):
                 c_e = np.where(e == event, 0, 1)
                 cox_model = CoxPH.fit(x, Z, c_e, n, method=tie_method)
 
@@ -354,7 +405,7 @@ class CompetingRisksProportionalHazards:
             # subdistribution hazard for a coherent ``H0_e``.
             fg_models = {}
             results = []
-            for i, event in enumerate(unique_e):
+            for i, event in enumerate(causes):
                 fg = FineGray.fit(x, Z, e, c=c, n=n, cause=event)
                 fg_models[event] = fg
                 results.append(fg.res)

@@ -171,3 +171,50 @@ def test_fit_from_df_formula():
     )
     assert "age" in m.feature_names and "dose" in m.feature_names
     assert np.all(np.isfinite(m.cif([1.0, 2.0], [0.2, -0.1], 1)))
+
+
+def _two_cause_sample(seed, n=15, labels=("wear", "shock")):
+    rng = np.random.default_rng(seed)
+    Z = rng.normal(size=(n, 1))
+    t1 = rng.exponential(1 / np.exp(0.8 * Z[:, 0]))
+    t2 = rng.exponential(1 / np.exp(-0.5 * Z[:, 0]))
+    x = np.minimum(t1, t2)
+    e = np.where(t1 < t2, labels[0], labels[1]).astype(object)
+    return x, Z, e
+
+
+def test_cause_specific_incidences_sum_to_one_minus_survival():
+    # #278 was fixed for the nonparametric CIF but not this path, where
+    # the incidence weighted the hazard increments with exp(-H): total
+    # incidence reached 1.07-1.18 in small samples, and far more where a
+    # Breslow increment times a large multiplier exceeds 1.
+    from surpyval.univariate.competing_risks import (
+        CompetingRisksProportionalHazards,
+    )
+
+    for seed in range(20):
+        x, Z, e = _two_cause_sample(seed)
+        m = CompetingRisksProportionalHazards.fit(x, Z, e)
+        for z in ([-1.5], [0.0], [1.5]):
+            total = m.cif(m.x, z, "wear") + m.cif(m.x, z, "shock")
+            S, _ = m._product_limit_survival(z)
+            assert total.max() <= 1.0 + 1e-12
+            assert np.allclose(total, 1.0 - S)
+
+
+def test_cause_order_is_sorted_and_reproducible():
+    from surpyval.univariate.competing_risks import (
+        CompetingRisksProportionalHazards,
+    )
+
+    x, Z, e = _two_cause_sample(0, n=60)
+    m = CompetingRisksProportionalHazards.fit(x, Z, e)
+    assert list(m.event_idx_map) == ["shock", "wear"]
+    single = {}
+    for cause in ("shock", "wear"):
+        from surpyval import CoxPH
+
+        c_e = np.where(e == cause, 0, 1)
+        single[cause] = CoxPH.fit(x, Z, c_e, method="efron").res.x
+    assert np.allclose(m.betas[0], single["shock"])
+    assert np.allclose(m.betas[1], single["wear"])

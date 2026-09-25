@@ -14,6 +14,9 @@ competing risks:
 
 .. autofunction:: surpyval.univariate.competing_risks.nonparametric.gray_test.gray_test
 
+.. autoclass:: surpyval.univariate.competing_risks.nonparametric.gray_test.GrayTestResult
+   :members:
+
 Restricted mean survival time
 -----------------------------
 

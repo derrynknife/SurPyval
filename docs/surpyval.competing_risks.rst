@@ -31,5 +31,8 @@ Regression
 .. autoclass:: surpyval.univariate.competing_risks.regression.fine_gray.FineGray_
    :members:
 
+.. autoclass:: surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel
+   :members:
+
 .. autoclass:: surpyval.univariate.competing_risks.regression.competing_risks_proportional_hazard.CompetingRisksProportionalHazards
    :members:

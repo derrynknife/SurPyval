@@ -70,3 +70,33 @@ def test_fit_from_df_does_not_shadow_density_method():
     # ``df`` must still be the density method.
     vals = model.df(np.array([2.5]))
     assert np.isfinite(vals).all()
+
+
+def test_the_requested_survival_estimator_is_reported():
+    # method only changed the stored S array; sf/ff/Hf always used exp(-H)
+    import json
+
+    from surpyval import KaplanMeier, NelsonAalen
+    from surpyval.univariate.competing_risks import CompetingRisks
+
+    rng = np.random.default_rng(0)
+    t1 = rng.exponential(2.0, 60)
+    t2 = rng.exponential(3.0, 60)
+    x = np.minimum(t1, t2).round(1)
+    e = np.where(t1 < t2, 1, 2)
+    q = np.array([0.5, 1.0, 2.0])
+
+    km = CompetingRisks.fit(x, e, method="Kaplan-Meier")
+    na = CompetingRisks.fit(x, e)
+    assert np.allclose(km.sf(q), KaplanMeier.fit(x).sf(q))
+    assert np.allclose(na.sf(q), NelsonAalen.fit(x).sf(q))
+    assert np.allclose(km.ff(q), 1 - km.sf(q))
+    assert np.allclose(km.sf(q), np.exp(-km.Hf(q)))
+    # one cause's (net) survival: product limit of its own increments
+    d1 = np.array([(x[e == 1] == t).sum() for t in km.x])
+    net = np.cumprod(1 - d1 / km.r)
+    assert np.allclose(km.sf(km.x, 1), net)
+
+    restored = CompetingRisks.from_dict(json.loads(json.dumps(km.to_dict())))
+    assert restored.method == "Kaplan-Meier"
+    assert np.allclose(restored.sf(q, 2), km.sf(q, 2))

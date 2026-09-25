@@ -53,6 +53,9 @@ class CompetingRisks(SerialisableMixin):
     H0_e: np.ndarray
     IIF: np.ndarray
     CIF: np.ndarray
+    #: The survival estimator ``sf``/``ff``/``Hf`` report:
+    #: ``"Nelson-Aalen"`` (``exp(-H)``) or ``"Kaplan-Meier"`` (product limit).
+    method: str = "Nelson-Aalen"
 
     # -- serialisation -----------------------------------------------------
 
@@ -85,6 +88,7 @@ class CompetingRisks(SerialisableMixin):
                 [to_native(k), int(v)] for k, v in self.event_idx_map.items()
             ],
             "n_event_types": int(self.n_event_types),
+            "method": self.method,
         }
         for name in self._SERIALISED_ARRAYS:
             out[name] = np.asarray(getattr(self, name), dtype=float).tolist()
@@ -99,6 +103,8 @@ class CompetingRisks(SerialisableMixin):
         out = cls()
         out.event_idx_map = {k: int(v) for k, v in model_dict["event_idx_map"]}
         out.n_event_types = int(model_dict["n_event_types"])
+        # dicts written before the method was stored reported exp(-H)
+        out.method = model_dict.get("method", "Nelson-Aalen")
         for name in cls._SERIALISED_ARRAYS:
             setattr(out, name, np.array(model_dict[name], dtype=float))
         return out
@@ -138,18 +144,50 @@ class CompetingRisks(SerialisableMixin):
         return self._f("h", x, event)
 
     def Hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """
+        Cumulative hazard, all causes (``event=None``) or one cause. With the
+        Nelson-Aalen method it is the sum of the hazard increments
+        ``d / r``; with Kaplan-Meier it is ``-log`` of the product-limit
+        survival, so that ``sf == exp(-Hf)`` either way.
+        """
+        if self.method == "Kaplan-Meier":
+            with np.errstate(divide="ignore"):
+                return -np.log(self.sf(x, event=event))
         return self._f("H", x, event)
 
+    def _product_limit(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
+        """The product-limit survival, all causes or one cause's (net)."""
+        validate_event(self.event_idx_map, event)
+        if event is None:
+            increments = self.h0
+        else:
+            increments = self.h0_e[self.event_idx_map[event]]
+        S = np.cumprod(1.0 - increments)
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        idx = np.searchsorted(self.x, x, side="right") - 1
+        return np.where(idx >= 0, S[np.maximum(idx, 0)], 1.0)
+
     def sf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
-        return np.exp(-self.Hf(x, event=event))
+        """
+        Survival, all causes (``event=None``) or the net survival from one
+        cause, by the estimator the model was fitted with: ``exp(-H)``
+        (Nelson-Aalen, the default) or the product limit (Kaplan-Meier).
+        The one-cause survival treats the other causes as censoring, so it
+        is *not* the probability of escaping that cause in the presence of
+        the others -- use :meth:`cif` for that.
+        """
+        if self.method == "Kaplan-Meier":
+            return self._product_limit(x, event)
+        return np.exp(-self._f("H", x, event))
 
     def ff(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
-        A lot of commentary about this being difficult to interpret.
-        In engineering this is not the case, eliminating the failure
-        will result in the ff being gone.
+        ``1 - sf``: all causes, or the net failure probability from one
+        cause with the others removed (treated as censoring). For the
+        probability of failing *from* a cause while the others still act,
+        use :meth:`cif`.
         """
-        return 1 - np.exp(-self.Hf(x, event=event))
+        return 1 - self.sf(x, event=event)
 
     def df(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         return self.hf(x, event=event) * self.sf(x, event=event)
@@ -233,6 +271,7 @@ class CompetingRisks(SerialisableMixin):
 
         # Useful object to return to user
         model = cls()
+        model.method = method
         model.n_event_types = n_event_types
         model.event_idx_map = event_idx_map
 

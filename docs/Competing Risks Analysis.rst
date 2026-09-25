@@ -509,18 +509,25 @@ hazards:
         \Delta\hat{\Lambda}_{k,0}(x_j)\, e^{Z\hat{\beta}_k}\,
         \hat{S}(x_{j-1} \mid Z),
     \qquad
-    \hat{S}(t \mid Z) = \exp\Big(-\sum_{l=1}^{m}
-        \hat{\Lambda}_{l,0}(t)\, e^{Z\hat{\beta}_l}\Big).
+    \hat{S}(t \mid Z) = \prod_{x_j \leq t}\Big(1 - \sum_{l=1}^{m}
+        \Delta\hat{\Lambda}_{l,0}(x_j)\, e^{Z\hat{\beta}_l}\Big).
 
 The formula shows the catch in interpreting cause-specific coefficients: the
 incidence of cause :math:`k` depends on *every* cause's coefficients through
 :math:`\hat{S}(t \mid Z)`. A covariate can raise the hazard of cause :math:`k`
 (:math:`\beta_k > 0`) and yet lower its incidence, if it raises a competing
-cause's hazard even more. Because this survival weight is the exponential of
-the summed cumulative hazards rather than a product-limit estimate, the
-cause-specific CIFs from this model are not forced to sum to exactly
-:math:`1 - \hat{S}(t \mid Z)`, and in small samples their total can slightly
-exceed one.
+cause's hazard even more.
+
+The survival weight is a *product limit*, for the same reason as in the
+Aalen-Johansen estimator: only then do the increments telescope, so that the
+cause-specific CIFs sum to exactly :math:`1 - \hat{S}(t \mid Z)` and never
+exceed one. At a covariate value far from the data a step's total hazard
+increment :math:`\sum_l \Delta\hat{\Lambda}_{l,0}\, e^{Z\hat{\beta}_l}` can
+exceed one (a small risk set times a large multiplier); such a step exhausts
+the survivors, and each cause takes its proportional share of them. The model's
+``sf`` is the Cox survival :math:`\exp(-\sum_l \hat{\Lambda}_{l,0}(t)
+e^{Z\hat{\beta}_l})`, which is very close to the product limit when the
+increments are small.
 
 The Fine-Gray model in detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

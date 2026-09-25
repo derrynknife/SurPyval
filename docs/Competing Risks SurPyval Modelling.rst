@@ -200,9 +200,11 @@ one, for ``sf``) before the first observed time.
    * - ``Hf(x, event=None)``
      - Cumulative (cause-specific) hazard :math:`\hat{H}_k(x)`.
    * - ``sf(x, event=None)`` / ``ff(x, event=None)``
-     - :math:`e^{-\hat{H}_k(x)}` and :math:`1 - e^{-\hat{H}_k(x)}`. With an
+     - The survival and ``1 - sf``, by the ``method`` the model was fitted
+       with: :math:`e^{-\hat{H}_k(x)}` (Nelson-Aalen, the default) or the
+       product limit :math:`\prod (1 - d_{k,j}/r_j)` (Kaplan-Meier). With an
        ``event`` these are the *net* quantities (the cause acting alone);
-       with ``event=None`` they use the summed hazard of all causes.
+       with ``event=None`` they are all-cause.
    * - ``df(x, event=None)``
      - ``hf * sf``.
 
@@ -222,17 +224,21 @@ one, for ``sf``) before the first observed time.
     failure from cause ``k``?" always use ``cif``.
 
 The ``method`` argument (``"Nelson-Aalen"``, the default, or
-``"Kaplan-Meier"``) selects which estimate of the all-cause survival is
-stored on the fitted model as ``model.S`` (evaluated at the distinct observed
-times ``model.x``). It does not change ``cif``: the Aalen-Johansen weights are
-always the Kaplan-Meier survival.
+``"Kaplan-Meier"``) selects the survival estimator that ``sf``, ``ff`` and
+``Hf`` report (``Hf`` is ``-log sf``, so the three stay consistent); the
+all-cause estimate is also stored as ``model.S`` at the distinct observed
+times ``model.x``. It does not change ``cif``: the Aalen-Johansen weights are
+always the product-limit (Kaplan-Meier) survival, the only one for which the
+CIFs sum to the all-cause failure probability.
 
 .. jupyter-execute::
 
     km_model = CompetingRisks.fit(x, e, method="Kaplan-Meier")
-    print("same CIFs:", np.allclose(km_model.cif(t, "wear"), model.cif(t, "wear")))
-    print("last stored S (Kaplan-Meier):", np.round(km_model.S[-3:], 4))
-    print("last stored S (Nelson-Aalen):", np.round(model.S[-3:], 4))
+    print("same CIFs          :", np.allclose(km_model.cif(t, "wear"), model.cif(t, "wear")))
+    print("sf (Kaplan-Meier)  :", np.round(km_model.sf(t), 4))
+    print("sf (Nelson-Aalen)  :", np.round(model.sf(t), 4))
+    print("CIFs sum to 1 - KM :", np.allclose(
+        km_model.cif(t, "wear") + km_model.cif(t, "shock"), km_model.ff(t)))
 
 Data held in a pandas DataFrame can be passed with ``fit_from_df``, naming the
 time and cause columns (and optionally ``c_col`` and ``n_col``). The frame is
@@ -704,7 +710,8 @@ one covariate vector ``Z`` and an optional ``event``:
 
 - ``cif(x, Z, event)`` -- the cumulative incidence of ``event`` at ``Z``,
   :math:`\sum_{x_j \le x} \Delta\hat{\Lambda}_{k,0}(x_j) e^{Z\hat\beta_k}
-  \hat{S}(x_{j-1} \mid Z)`;
+  \hat{S}(x_{j-1} \mid Z)` with :math:`\hat{S}` the product-limit all-cause
+  survival at ``Z``;
 - ``Hf``/``hf`` -- the cause-specific cumulative hazard and its increment at
   the most recent event time; with ``event=None`` they are summed over causes,
   each cause with its own coefficients;
@@ -724,11 +731,10 @@ one covariate vector ``Z`` and an optional ``event``:
     print("sum of CIFs          :", np.round(cif1 + cif2, 4))
     print("1 - all-cause sf     :", np.round(1 - csph.sf(times, Z=z), 4))
 
-The CIFs add up to (almost exactly) the all-cause failure probability. They
-are not forced to agree exactly, because the survival weight in the
-cause-specific CIF is the exponential of the summed cumulative hazards rather
-than a product-limit estimate; with small samples the total can even exceed
-one, so check it when the risk sets get small.
+The CIFs add up to the all-cause failure probability. Exactly, in fact, for
+the product-limit survival the CIFs are built on (so their total never exceeds
+one); ``sf`` reports the Cox survival :math:`e^{-H}`, which is very slightly
+higher, so ``1 - sf`` sits just below the sum.
 
 With ``how="Fine-Gray"``, ``cif``, ``sf`` (``1 - cif``), ``ff`` and ``Hf`` need
 an ``event`` and come from each cause's Fine-Gray model; ``hf`` and ``df``

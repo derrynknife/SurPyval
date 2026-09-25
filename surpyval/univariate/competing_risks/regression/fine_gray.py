@@ -266,8 +266,10 @@ class FineGray_:
         e : array_like
             Event-type (cause) labels; ``None`` for a censored observation.
         c : array_like, optional
-            Censoring flags (0 observed, 1 right-censored). Defaults to all
-            observed. Left/interval censoring is not supported.
+            Censoring flags (0 observed, 1 right-censored). Defaults to
+            deriving them from ``e``: a missing event (``None``/``NaN``) is
+            right-censored, any other is observed. Left/interval censoring is
+            not supported.
         n : array_like, optional
             Counts per observation. Defaults to 1.
         cause : optional
