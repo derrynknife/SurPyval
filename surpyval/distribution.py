@@ -25,12 +25,15 @@ class Distribution(ABC):
     """
 
     @abstractmethod
-    def sf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike: ...
+    def sf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike:
+        """The survival (reliability) function at ``x``."""
 
     @abstractmethod
-    def ff(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike: ...
+    def ff(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike:
+        """The failure (cumulative distribution) function at ``x``."""
 
     def Hf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike:
+        """The cumulative hazard, ``-log sf(x)`` unless overridden."""
         # Cumulative hazard derived from the survival function. Models
         # with a closed-form cumulative hazard override this.
         return -np.log(self.sf(x, *args, **kwargs))
@@ -46,16 +49,20 @@ class ParametricDistribution(Distribution):
     @abstractmethod
     def random(
         self, size: int | tuple[int, ...], *args: Any, **kwargs: Any
-    ) -> ArrayLike: ...
+    ) -> ArrayLike:
+        """Draw random samples from the model."""
 
     @abstractmethod
-    def moment(self, n: int, *args: Any, **kwargs: Any) -> ArrayLike: ...
+    def moment(self, n: int, *args: Any, **kwargs: Any) -> ArrayLike:
+        """The ``n``-th raw moment."""
 
     @abstractmethod
-    def entropy(self, *args: Any, **kwargs: Any) -> ArrayLike: ...
+    def entropy(self, *args: Any, **kwargs: Any) -> ArrayLike:
+        """The differential entropy."""
 
     @abstractmethod
-    def to_dict(self) -> dict: ...
+    def to_dict(self) -> dict:
+        """Serialise the model to a plain dictionary."""
 
 
 class NonParametricDistribution(Distribution):
@@ -66,13 +73,13 @@ class NonParametricDistribution(Distribution):
     """
 
     @abstractmethod
-    def random(self, size: int, *args: Any, **kwargs: Any) -> ArrayLike: ...
+    def random(self, size: int, *args: Any, **kwargs: Any) -> ArrayLike:
+        """Draw random samples from the fitted estimate."""
 
 
 class MultivariateDistribution(ABC):
     """
-    A jointly-specified model of several correlated event-time series
-    (the ``multivariate`` outcome-dimension axis of ``MODEL_ATLAS.md``).
+    A jointly-specified model of several correlated event-time series.
 
     Unlike :class:`Distribution`, whose functions take a single random
     variable, the multivariate interface is evaluated at a *point in
@@ -88,15 +95,19 @@ class MultivariateDistribution(ABC):
     """
 
     @abstractmethod
-    def cdf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike: ...
+    def cdf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike:
+        """The joint CDF at each row of ``x``."""
 
     @abstractmethod
-    def sf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike: ...
+    def sf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike:
+        """The joint survival function at each row of ``x``."""
 
     @abstractmethod
-    def pdf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike: ...
+    def pdf(self, x: ArrayLike, *args: Any, **kwargs: Any) -> ArrayLike:
+        """The joint density at each row of ``x``."""
 
     @abstractmethod
     def random(
         self, size: int | tuple[int, ...], *args: Any, **kwargs: Any
-    ) -> ArrayLike: ...
+    ) -> ArrayLike:
+        """Draw correlated samples, one row per realisation."""

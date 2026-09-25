@@ -254,6 +254,14 @@ class MixtureModel(SerialisableMixin, Distribution):
         xr: npt.ArrayLike | None = None,
     ) -> Any:
         """
+        Fit the mixture to data, in place.
+
+        Unlike the single-distribution fitters, this does not return a new
+        model: it sets the fitted ``params`` (one row per sub-distribution)
+        and mixing weights ``w`` on this object, which is then used as the
+        model. Untruncated data is fitted by the EM algorithm; truncated
+        data by direct maximisation of the truncated likelihood.
+
         Parameters
         ----------
 
@@ -293,6 +301,12 @@ class MixtureModel(SerialisableMixin, Distribution):
             Array like of the right array for 2-dimensional input of x. This
             is useful for data that is all intervally censored. Must be used
             with the :code:`xl` input.
+
+        Returns
+        -------
+
+        None
+            The fit is stored on this object.
 
         Examples
         --------

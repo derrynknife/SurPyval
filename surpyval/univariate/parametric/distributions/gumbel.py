@@ -44,7 +44,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         Survival (or Reliability) function for the Gumbel Distribution:
 
         .. math::
-            R(x) = 1 - e^{e^{-\left ( x - \mu \right ) / \sigma}}
+            R(x) = e^{-e^{\left ( x - \mu \right ) / \sigma}}
 
         Parameters
         ----------
@@ -83,7 +83,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         CDF (or Failure) function for the Gumbel Distribution:
 
         .. math::
-            F(x) = e^{e^{-\left ( x - \mu \right )/\sigma}}
+            F(x) = 1 - e^{-e^{\left ( x - \mu \right )/\sigma}}
 
         Parameters
         ----------

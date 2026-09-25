@@ -52,6 +52,10 @@ class IndependenceCopula(Copula):
         xl: "npt.ArrayLike | None" = None,
         xr: "npt.ArrayLike | None" = None,
     ) -> Any:
+        """
+        Fit the margins only (the independence copula has no parameter);
+        arguments as for :meth:`Copula.fit`, with ``how`` ignored.
+        """
         # No parameter to estimate; only the margins are fitted.
         return super().fit(
             x, c=c, n=n, t=t, margins=margins, how="IFM", xl=xl, xr=xr

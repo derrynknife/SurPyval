@@ -317,7 +317,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         m-th (non central) moment of the LogNormal distribution
 
         .. math::
-            E = ... complicated.
+            E\left [ X^{m} \right ] = e^{m\mu + \frac{m^{2}\sigma^{2}}{2}}
 
         Parameters
         ----------

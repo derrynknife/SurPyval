@@ -122,18 +122,35 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         self._fun = fun
 
     def Hf(self, x: Numeric, *params: Boxable) -> Boxable:
+        """
+        Cumulative hazard: the user-supplied function ``fun(x, *params)``.
+        """
         return self._fun(x, *params)
 
     def hf(self, x: Numeric, *params: Boxable) -> Boxable:
+        """
+        Hazard rate, :math:`h(x) = dH(x)/dx`, differentiated from ``Hf``
+        with autograd.
+        """
         return elementwise_grad(self.Hf)(x, *params)
 
     def sf(self, x: Numeric, *params: Boxable) -> Boxable:
+        """
+        Survival function, :math:`R(x) = e^{-H(x)}`.
+        """
         return np.exp(-self.Hf(x, *params))
 
     def ff(self, x: Numeric, *params: Boxable) -> Boxable:
+        """
+        Failure (CDF) function, :math:`F(x) = 1 - e^{-H(x)}`.
+        """
         return -np.expm1(-self.Hf(x, *params))
 
     def df(self, x: Numeric, *params: Boxable) -> Boxable:
+        """
+        Density, :math:`f(x) = dF(x)/dx`, differentiated from ``ff`` with
+        autograd.
+        """
         return elementwise_grad(self.ff)(x, *params)
 
     # Returns a list, where Weibull returns a tuple and the discrete

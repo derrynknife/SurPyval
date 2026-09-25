@@ -30,6 +30,29 @@ def _round_vals(x: npt.NDArray) -> npt.NDArray:
 
 
 def round_sig(points: npt.NDArray, sig: int = 2) -> list:
+    """
+    Round each value to ``sig`` significant figures (used for the tick
+    labels of probability plots).
+
+    Parameters
+    ----------
+    points : array
+        The (non-zero) values to round.
+    sig : int, optional
+        The number of significant figures. Defaults to 2.
+
+    Returns
+    -------
+    list
+        The rounded values.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import round_sig
+    >>> round_sig(np.array([1234.5, 0.012345]), 2)
+    [np.float64(1200.0), np.float64(0.012)]
+    """
     # Used to round to sig significant figures.
     places = sig - np.floor(np.log10(np.abs(points))) - 1
     output = []
@@ -178,6 +201,17 @@ def group_xcnt(
 def xcnt_sort(
     x: npt.NDArray, c: npt.NDArray, n: npt.NDArray, t: npt.NDArray
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    """
+    Sort ``xcnt`` arrays by ``x`` (the interval midpoint for 2-D ``x``),
+    breaking ties by the lower truncation bound and then by the censoring
+    flag (so at a tied time left-censored rows come first, then observed,
+    then right-censored, then interval-censored).
+
+    Returns
+    -------
+    x, c, n, t : arrays
+        The same arrays, reordered together.
+    """
     idx_c = np.argsort(c, kind="stable")
     x = x[idx_c]
     c = c[idx_c]
@@ -781,6 +815,32 @@ def xcn_to_fs(
     c: "npt.ArrayLike | None" = None,
     n: "npt.ArrayLike | None" = None,
 ) -> tuple[npt.NDArray, npt.NDArray]:
+    """
+    Convert observed and right-censored ``xcn`` data to the ``fs`` format:
+    one array of failure times and one of suspension (right-censored)
+    times, each time repeated by its count.
+
+    Parameters
+    ----------
+    x : array like
+        The times.
+    c : array like, optional
+        Censoring flags: 0 observed, 1 right-censored. Other values are
+        dropped. Defaults to all observed.
+    n : array like, optional
+        The count at each time. Defaults to 1.
+
+    Returns
+    -------
+    f, s : arrays
+        The failure times and the suspension times.
+
+    Examples
+    --------
+    >>> from surpyval import xcn_to_fs
+    >>> xcn_to_fs([1, 2, 5], [0, 1, 0], [2, 1, 1])
+    (array([1, 1, 5]), array([2]))
+    """
     x = np.array(x)
     if c is None:
         c = np.zeros_like(x)
@@ -1101,6 +1161,33 @@ def fsl_to_xcnt(
     s: "npt.ArrayLike | None" = None,
     l: "npt.ArrayLike | None" = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    """
+    Convert failure (``f``), suspension (right-censored, ``s``) and
+    left-censored (``l``) times to the ``xcnt`` format, counting repeated
+    times.
+
+    Parameters
+    ----------
+    f : array like, optional
+        Observed failure times.
+    s : array like, optional
+        Right-censored (suspension) times.
+    l : array like, optional
+        Left-censored times.
+
+    Returns
+    -------
+    x, c, n, t : arrays
+        The distinct times, censoring flags, counts and (untruncated)
+        truncation bounds, sorted.
+
+    Examples
+    --------
+    >>> from surpyval import fsl_to_xcnt
+    >>> x, c, n, t = fsl_to_xcnt([4, 6], [8], [2])
+    >>> x, c, n
+    (array([2, 4, 6, 8]), array([-1,  0,  0,  1]), array([1, 1, 1, 1]))
+    """
     if f is None:
         f = []
     if s is None:
@@ -1130,6 +1217,19 @@ def fsl_to_xcnt(
 def fs_to_xcnt(
     f: "npt.ArrayLike | None" = None, s: "npt.ArrayLike | None" = None
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    """
+    Convert failure (``f``) and suspension (right-censored, ``s``) times to
+    the ``xcnt`` format, counting repeated times; see :func:`fsl_to_xcnt`.
+
+    Examples
+    --------
+    >>> from surpyval import fs_to_xcnt
+    >>> x, c, n, t = fs_to_xcnt([1, 3, 3, 7], [5, 9])
+    >>> x
+    array([1., 3., 5., 7., 9.])
+    >>> c, n
+    (array([0, 0, 1, 0, 1]), array([1, 2, 1, 1, 1]))
+    """
     return fsl_to_xcnt(f, s, None)
 
 

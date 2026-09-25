@@ -406,6 +406,33 @@ class DestructiveDegradation_:
         Returns
         -------
         DestructiveDegradationModel
+            The fitted model, whose life-distribution methods (``sf``,
+            ``ff``, ...) give the probability of having crossed
+            ``threshold`` by each time.
+
+        Examples
+        --------
+        Six units broken at each of four ages; strength falls
+        log-linearly with age, and a unit has failed once its strength
+        is below 20:
+
+        >>> import numpy as np
+        >>> from surpyval.degradation import DestructiveDegradation
+        >>> rng = np.random.default_rng(1)
+        >>> x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+        >>> y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+        >>> model = DestructiveDegradation.fit(x, y, threshold=20)
+        >>> model
+        Destructive Degradation Model
+        =============================
+        Response distribution : LogNormal
+        Time transform        : t
+        Direction             : decreasing
+        Threshold             : 20
+        Location              : 4.02814 + -0.0206616*t
+        Scale (sigma)         : 0.0612395
+        >>> model.sf([50, 80]).round(4)
+        array([0.4956, 0.    ])
         """
         dist = _resolve_distribution(distribution)
         x = np.atleast_1d(np.asarray(x, dtype=float))

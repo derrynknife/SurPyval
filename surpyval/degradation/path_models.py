@@ -42,9 +42,10 @@ class PathModel(ABC):
     A path model is a deterministic function of time with a small
     number of parameters that is fitted, per unit, to that unit's
     degradation measurements. Subclass this (implementing ``path``,
-    ``inv_path``, ``fit`` and the ``name``/``param_names`` attributes)
-    to use a custom degradation path with
-    :class:`~surpyval.degradation.DegradationAnalysis`.
+    ``inv_path`` and the ``name``/``param_names`` attributes, and either
+    a ``_initial_guess(x, y)`` starting point for the default
+    least-squares ``fit`` or ``fit`` itself) to use a custom degradation
+    path with ``DegradationAnalysis``.
     """
 
     name: str
@@ -106,6 +107,24 @@ class PathModel(ABC):
         """
         Fit the path parameters to one unit's measurements by
         (nonlinear) least squares.
+
+        Parameters
+        ----------
+        x : array_like
+            The unit's measurement times.
+        y : array_like
+            Its degradation measurements.
+
+        Returns
+        -------
+        numpy array
+            The fitted parameters, in the order of ``param_names``.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import LinearPath
+        >>> LinearPath.fit([1, 2, 3, 4], [10.5, 12.1, 13.4, 15.2]).round(4)
+        array([8.95, 1.54])
         """
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)

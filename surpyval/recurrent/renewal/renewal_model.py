@@ -18,11 +18,11 @@ class RenewalModel(
     A fitted renewal / imperfect-repair recurrence model.
 
     This is the model object returned by the renewal-family fitters
-    (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``), in the same
-    way that the intensity fitters (``CrowAMSAA``, ``Duane``, ...) return a
-    ``ParametricRecurrenceModel``. It holds the fitted underlying lifetime
-    distribution and the restoration parameter, and provides the simulation
-    (``mcf``, ``plot``, ``count_terminated_simulation``,
+    (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``, ``ARI``), in
+    the same way that the intensity fitters (``CrowAMSAA``, ``Duane``, ...)
+    return a ``ParametricRecurrenceModel``. It holds the fitted underlying
+    lifetime distribution and the restoration parameter, and provides the
+    simulation (``mcf``, ``plot``, ``count_terminated_simulation``,
     ``time_terminated_simulation``) and likelihood-inference
     (``log_likelihood``, ``aic``, ``bic``, ``standard_errors``) behaviour via
     the shared mixins.
@@ -36,7 +36,7 @@ class RenewalModel(
         The fitted underlying lifetime distribution.
     restoration : float
         The fitted restoration / repair parameter (``q`` for the generalized
-        and G1 renewal processes, ``rho`` for ARA).
+        and G1 renewal processes, ``rho`` for ARA and ARI).
     restoration_name : str
         The attribute/label name of the restoration parameter (e.g. ``"q"`` or
         ``"rho"``); it is also exposed as an attribute of that name.

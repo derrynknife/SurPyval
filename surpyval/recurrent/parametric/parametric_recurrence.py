@@ -27,7 +27,7 @@ class ParametricRecurrenceModel(
     SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
 ):
     """
-    A class for holding the parameters, data, and usefult methods for a
+    A class for holding the parameters, data, and useful methods for a
     fitted parametric recurrence model. This is the result of the ``fit`` calls
     from the counting distributions.
 
@@ -195,6 +195,22 @@ class ParametricRecurrenceModel(
         return self.dist.iif(x, *self.params)
 
     def inv_cif(self, x: ArrayLike) -> np.ndarray:
+        """
+        The inverse of the cumulative intensity function: the time by which
+        ``x`` events are expected.
+
+        Parameters
+        ----------
+
+        x: array_like
+            Expected numbers of events.
+
+        Returns
+        -------
+
+        array_like
+            The times at which the cumulative intensity reaches ``x``.
+        """
         x = np.array(x)
         if hasattr(self.dist, "inv_cif"):
             return self.dist.inv_cif(x, *self.params)

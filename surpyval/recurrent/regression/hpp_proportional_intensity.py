@@ -14,16 +14,26 @@ from .proportional_intensity import ProportionalIntensityModel
 @singleton_fitter
 class ProportionalIntensityHPP:
     """
-    A class representing the Proportional Intensity Homogeneous Poisson Process
-    (HPP).
+    Proportional-intensity regression on a homogeneous Poisson process:
+    each item's events occur at the constant rate
+    :math:`\\lambda e^{\\beta' Z}`, so its expected number of events by
+    time ``x`` is :math:`\\lambda e^{\\beta' Z} x`.
 
-    The class contains methods to perform various calculations related to the
-    HPP, such as instantaneous intensity function, cumulative intensity
-    function and its inverse, as well as creating the negative log-likelihood
-    function and fitting the model.
+    ``ProportionalIntensityHPP`` is an instance of this class. Its
+    ``fit`` returns a
+    :class:`~surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel`,
+    which carries the prediction methods (``cif``, ``iif``, ``inv_cif``,
+    ``mcf``, simulation, inference). The ``iif``, ``cif`` and ``inv_cif``
+    methods of this class are the *baseline* functions of time and rate,
+    without covariates, that the fitted model calls.
 
     Examples
     --------
+
+    One event (or censoring) per subject, so the fit is an exponential
+    regression. In the bundled copy of the Rossi data ``arrest`` is 1 for
+    a subject still free at the end of follow-up, so it is already the
+    censoring flag ``c``:
 
     >>> import numpy as np
     >>> from surpyval.datasets import load_rossi_static
@@ -31,8 +41,7 @@ class ProportionalIntensityHPP:
     >>>
     >>> data = load_rossi_static()
     >>> x = data['week'].values
-    >>> # 'arrest' == 1 is an observed event (c=0); 0 is right-censored (c=1)
-    >>> c = np.where(data['arrest'].values == 1, 0, 1)
+    >>> c = data['arrest'].values
     >>> i = np.arange(len(data))
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
     >>> model = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
@@ -44,17 +53,19 @@ class ProportionalIntensityHPP:
     Parameterization    : Parametric
     Hazard Rate Model   : Constant
     Base Rate Parameters:
-        lambda  :  0.012395105741757225
+        lambda  :  0.017410386679243283
     <BLANKLINE>
     Covariate Coefficients:
-       beta_0  :  0.06397367067847898
-       beta_1  :  0.011491178797116433
-       beta_2  :  -0.02147901865302258
-       beta_3  :  -0.014676664859873595
-       beta_4  :  0.04738275470382102
-       beta_5  :  0.019109337775930837
-       beta_6  :  -0.01905662860143533
+       beta_0  :  -0.36626406174463233
+       beta_1  :  -0.05559822615498945
+       beta_2  :  0.30493957739153305
+       beta_3  :  -0.14674549077957214
+       beta_4  :  -0.4269861228181052
+       beta_5  :  -0.08264790408652863
+       beta_6  :  0.08565920858626697
     <BLANKLINE>
+    >>> model.cif(52, Z[:1])
+    array([0.32584698])
     """
 
     # Display name of the (constant) baseline hazard rate model, used by
@@ -228,15 +239,22 @@ class ProportionalIntensityHPP:
         ----------
 
         x : array_like
-            Input data.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``).
         Z : array_like
-            Covariate matrix.
+            Covariate matrix, one row per row of ``x``. Each row's
+            covariates apply over the interval from the item's previous row
+            to this one.
         i : array_like, optional
-            identity of the item.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            Censoring indicators.
+            Censoring indicators: 0 an observed event, 1 the right-censored
+            end of an item's observation, -1 left-censored and 2
+            interval-censored counts (with ``n``). Defaults to all observed.
         n : array_like, optional
-            Number of events.
+            Number of events in each row (for left- and interval-censored
+            counts). Defaults to 1.
         t : array_like, optional
             (N, 2) array of [left, right] truncation bounds per observation.
         tl : array_like or scalar, optional
@@ -247,7 +265,8 @@ class ProportionalIntensityHPP:
             so the intensity is integrated out to ``tr`` even without an
             explicit right-censoring (``c=1``) row.
         init : array_like, optional
-            Initial parameter estimates.
+            Initial parameter estimates: the baseline rate followed by the
+            covariate coefficients.
 
         Returns
         -------
@@ -266,9 +285,28 @@ class ProportionalIntensityHPP:
         init: "ArrayLike | None" = None,
     ) -> Any:
         """
-        Fit from a prepared ``RecurrentEventData``. ``dist`` is accepted for a
-        uniform interface with the NHPP fitter but is ignored: the homogeneous
-        baseline is this fitter's own constant-rate model.
+        Fit from a prepared
+        :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`
+        (with covariates attached), as built by ``surpyval.handle_xicn``.
+        :meth:`fit` builds one from its arrays and calls this.
+
+        Parameters
+        ----------
+
+        data : RecurrentEventData
+            The recurrent event data, including ``Z``.
+        dist : optional
+            Accepted for a uniform interface with the NHPP fitter but
+            ignored: the homogeneous baseline is this fitter's own
+            constant-rate model.
+        init : array_like, optional
+            Initial parameter estimates, as for :meth:`fit`.
+
+        Returns
+        -------
+
+        ProportionalIntensityModel
+            The fitted model.
         """
         out = ProportionalIntensityModel()
         out.data = data

@@ -276,6 +276,18 @@ def from_json(fp: str | Path) -> Any:
     Returns
     -------
     The restored model, of whichever class serialised the file.
+
+    Examples
+    --------
+    >>> import os, tempfile
+    >>> import surpyval
+    >>> from surpyval import Weibull
+    >>> model = Weibull.fit([3.0, 4.0, 5.0, 6.0, 7.0])
+    >>> path = os.path.join(tempfile.mkdtemp(), "weibull.json")
+    >>> model.to_json(path)
+    >>> restored = surpyval.from_json(path)
+    >>> restored.params
+    array([5.53092634, 4.04187535])
     """
     with open(fp, "r") as f:
         return from_dict(json.load(f))

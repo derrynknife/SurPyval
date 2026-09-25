@@ -58,6 +58,10 @@ class SurpyvalData:
         tr : array-like or scalar, optional
             Right truncation bounds. Cannot be used with 't'. May be given
             alone (the left bound is then minus infinity) or with 'tl'.
+        Z : array-like, optional
+            Covariates, one row per value of x (see also
+            :meth:`add_covariates`). Giving ``Z`` turns ``group_and_sort``
+            off, so the rows stay aligned with x.
         group_and_sort : bool, default=True
             Whether to group and sort the data. Set False when using covariates
             to maintain data order.

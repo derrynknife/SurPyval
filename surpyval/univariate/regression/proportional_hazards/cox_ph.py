@@ -470,6 +470,21 @@ def cox_at_risk_mask(
 
 
 class CoxPH_:
+    """
+    The Cox proportional hazards model: a baseline hazard left entirely
+    to the data, multiplied by :math:`e^{\\beta' Z}`,
+
+    .. math::
+        h(x \\mid Z) = h_0(x)\\, e^{\\beta' Z}.
+
+    The coefficients are estimated from the partial likelihood (with a
+    choice of tie handling) and the baseline by the Breslow estimator.
+    Supports right censoring, left truncation (delayed entry),
+    stratification and time-varying covariates in start-stop form.
+    ``CoxPH`` is an instance of this class; its fit methods return a
+    :class:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel`.
+    """
+
     # Best reference I can find that covers all the
     # possibilities for estimating betas
     # http://www-personal.umich.edu/~yili/lect4notes.pdf
@@ -924,10 +939,10 @@ class CoxPH_:
         x: array-like
             The observed times of the events.
         Z: array-like
-            The covariates of the model.
+            The covariates of the model, one row per observation.
         c: array-like, optional
             The censoring indicator. 0 if observed (event),
-            1 if right-censored.
+            1 if right-censored. Defaults to all observed.
         n: array-like, optional
             The number of observations at each time point.
         tl: array-like, optional
@@ -957,8 +972,28 @@ class CoxPH_:
         Returns
         -------
 
-        model: SemiParametricProportionalHazardsModel
-            The fitted model.
+        model: SemiParametricRegressionModel
+            The fitted model: ``params`` (also ``beta``) are the
+            coefficients and ``p_values`` their Wald p-values.
+
+        Examples
+        --------
+        In the bundled copy of the Rossi recidivism data ``arrest`` is 1
+        for a subject still free at week 52, so it is already the
+        censoring flag:
+
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, df["arrest"].values
+        >>> Z = df[["fin", "age", "prio"]].values
+        >>> model = CoxPH.fit(x, Z, c=c)
+        >>> model.params.round(4)
+        array([-0.3464, -0.0669,  0.0965])
+        >>> model.p_values.round(4)
+        array([0.0686, 0.0013, 0.0004])
+        >>> model.sf([20, 52], [1, 25, 3]).round(4)
+        array([0.9327, 0.7968])
         """
         func_generator = self._resolve_func_generator(method)
 
@@ -1143,7 +1178,7 @@ class CoxPH_:
         Returns
         -------
 
-        model: SemiParametricProportionalHazardsModel
+        model: SemiParametricRegressionModel
             The fitted model.
         """
         x, c, n, Z, form, feature_names, model_spec = validate_coxph_df_inputs(

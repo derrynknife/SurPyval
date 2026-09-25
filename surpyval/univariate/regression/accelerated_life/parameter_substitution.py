@@ -23,6 +23,20 @@ from .lifemodel import LifeModel
 class ParameterSubstitutionFitter(
     HazardIdentitiesMixin, DataFrameRegressionMixin
 ):
+    """
+    Accelerated life fitter: the life parameter of a distribution is
+    replaced by a function of the stress, :math:`L(Z)`, given by a life
+    model (``Power``, ``Eyring``, ...), while the other distribution
+    parameters are shared by every stress level.
+
+    Which parameter carries the life, and how, depends on the
+    distribution: :math:`\\alpha = L(Z)` for Weibull, :math:`\\mu = L(Z)`
+    for Normal, Gumbel and Logistic, :math:`\\mu = \\ln L(Z)` for LogNormal,
+    and the rate is :math:`1 / L(Z)` for Exponential (``failure_rate``)
+    and Gamma (``beta``). Create one with
+    ``AcceleratedLife(distribution, life_model)`` rather than directly.
+    """
+
     def __init__(
         self,
         kind: str,
@@ -189,6 +203,58 @@ class ParameterSubstitutionFitter(
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
     ) -> ParametricRegressionModel:
+        """
+        Fit the accelerated life model by maximum likelihood.
+
+        Parameters
+        ----------
+
+        x : array_like
+            The observed event times.
+        Z : array_like
+            The stress of each observation: a 1-D array for a one-stress
+            life model, or one column per stress (two for ``DualPower``,
+            ``DualExponential``, ``PowerExponential``). Designed for a few
+            controlled stress levels: without ``init`` the starting point
+            comes from fitting the distribution at each distinct stress
+            level, so at least two levels are needed.
+        c : array_like, optional
+            The censoring indicators (0 observed, 1 right, -1 left, 2
+            interval). Defaults to all observed.
+        n : array_like, optional
+            The count of observations at each time. Defaults to 1.
+        t : array_like, optional
+            Truncation bounds: an (N, 2) array of the left and right
+            truncation times of each observation.
+        init : array_like, optional
+            Initial parameter values: the distribution parameters (with any
+            value in the life parameter's slot) followed by the life-model
+            parameters.
+        fixed : dict, optional
+            Parameters to hold fixed, by name (a distribution parameter or
+            a life-model parameter such as ``"n"``).
+
+        Returns
+        -------
+
+        ParametricRegressionModel
+            The fitted model. The life parameter's slot in ``params`` and
+            ``dist_params`` holds a placeholder value of 1 (it is replaced
+            by the life model at each stress); the life-model parameters
+            are in ``phi_params``.
+
+        Examples
+        --------
+
+        >>> import numpy as np
+        >>> from surpyval import Weibull, AcceleratedLife, Power
+        >>> np.random.seed(1)
+        >>> stress = np.repeat([20.0, 30.0, 40.0], 40)
+        >>> x = Weibull.random(120, 10, 3) * (100.0 / stress)
+        >>> model = AcceleratedLife(Weibull, Power).fit(x, Z=stress)
+        >>> model.params.round(3)
+        array([  1.   ,   2.831, 558.686,  -0.828])
+        """
         x_arr: npt.NDArray = np.asarray(x)
         data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
         # A 1-D stress vector (one stress variable) becomes a single column

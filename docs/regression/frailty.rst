@@ -28,8 +28,17 @@ Factory::
 Pre-built instances: ``ExponentialFrailty``, ``WeibullFrailty``,
 ``LogNormalFrailty``, ``GammaFrailty``.
 
-.. autoclass:: surpyval.univariate.regression.frailty.FrailtyFitter
-    :members:
+The frailty is Gamma-distributed (the only family currently available),
+so it integrates out of each group's likelihood in closed form. Only
+observed and right-censored data are supported, and at least two groups
+are needed. The fitted model predicts the *marginal* (population) curve
+by default, or the curve conditional on an observed group's posterior
+frailty (``group=``) or on a given frailty (``frailty=``).
+
+.. autofunction:: surpyval.univariate.regression.frailty.Frailty
+
+.. autoclass:: surpyval.univariate.regression.frailty.frailty_fitter.FrailtyFitter
+    :members: fit, fit_from_df
 
 .. autoclass:: surpyval.univariate.regression.frailty.frailty_model.FrailtyModel
     :members:

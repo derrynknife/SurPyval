@@ -303,6 +303,62 @@ def handle_xicn(
     RecurrentEventData
     | tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]
 ):
+    """
+    Validate recurrent-event data given as arrays and assemble it into a
+    :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`, the
+    object every recurrent fitter's ``fit_from_recurrent_data`` takes.
+
+    Each row is one event (or the right-censored end of observation) of
+    the item named in ``i``, at time ``x`` measured from the start of that
+    item's life.
+
+    Parameters
+    ----------
+    x : array like
+        The event times (a 2-D ``[left, right]`` row for an
+        interval-censored count).
+    i : array like, optional
+        The item each row belongs to. Defaults to one item.
+    c : array like, optional
+        Censoring flags: 0 an observed event, 1 the right-censored end of
+        observation, -1 left-censored and 2 interval-censored counts.
+        Defaults to all observed.
+    n : array like, optional
+        The number of events in each row. Defaults to 1.
+    t : array like, optional
+        (N, 2) truncation bounds per row. Use ``tl`` / ``tr`` for per-item
+        bounds instead.
+    tl, tr : array like or scalar, optional
+        Left-truncation (start of observation) and right-truncation (end
+        of observation) times.
+    Z : array like or dict, optional
+        Covariates: one row per row of ``x``, or a ``{item: covariates}``
+        mapping applied to every row of that item.
+    as_recurrent_data : bool, optional
+        If :code:`True` (the default) return a ``RecurrentEventData``;
+        otherwise return the validated ``(x, i, c, n)`` arrays.
+    windows : dict, optional
+        Gapped observation: ``{item: [(start, end), ...]}``. Every row must
+        then be an observed event; the windows supply the censoring rows.
+        Not combinable with ``t``/``tl``/``tr``, ``Z`` or ``e``.
+    e : array like, optional
+        The event type (mark) of each row, for the cause-specific models;
+        a missing value marks a row with no cause (such as the censoring
+        row).
+
+    Returns
+    -------
+    RecurrentEventData or tuple
+        The assembled data, or ``(x, i, c, n)``.
+
+    Examples
+    --------
+    >>> from surpyval import handle_xicn
+    >>> data = handle_xicn([2, 5, 8, 3, 9], i=[1, 1, 1, 2, 2],
+    ...                    c=[0, 0, 1, 0, 1])
+    >>> data.items
+    [1, 2]
+    """
     x = coerce_xcnt_x(x)
 
     if x.shape[0] == 0:

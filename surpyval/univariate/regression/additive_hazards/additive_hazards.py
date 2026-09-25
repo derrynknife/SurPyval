@@ -248,6 +248,11 @@ class AdditiveHazardsModel(SerialisableMixin):
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
+        """
+        Cumulative hazard ``H0(x) + x * beta'Z`` at ``x`` for covariates
+        ``Z`` (one row, or one row per ``x``), with ``H0`` the step
+        baseline (0 before the first event time).
+        """
         Z = self._prepare_Z(Z)
         x = np.atleast_1d(np.asarray(x, dtype=float))
         idx = self._h0_at(x)
@@ -258,16 +263,19 @@ class AdditiveHazardsModel(SerialisableMixin):
     def sf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
+        """Survival ``exp(-Hf(x, Z))``."""
         return np.exp(-self.Hf(x, Z))
 
     def ff(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
+        """Failure probability ``1 - sf(x, Z)``."""
         return -np.expm1(-self.Hf(x, Z))
 
     def df(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
+        """Density ``hf(x, Z) * sf(x, Z)``, with the smoothed hazard."""
         return self.hf(x, Z) * self.sf(x, Z)
 
     def standard_errors(self) -> npt.NDArray:
@@ -280,6 +288,21 @@ class AdditiveHazardsModel(SerialisableMixin):
 
 
 class AdditiveHazards_:
+    """
+    The Lin & Ying semi-parametric additive hazards model: the covariates
+    *add* a constant risk difference to a baseline hazard that is left to
+    the data,
+
+    .. math::
+        h(x \\mid Z) = h_0(x) + \\beta' Z.
+
+    The coefficients have a closed-form estimate (no iteration) with a
+    sandwich variance. ``AdditiveHazards`` is an instance of this class;
+    its ``fit`` returns an
+    :class:`~surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel`.
+    For a parametric baseline see the ``AH`` family.
+    """
+
     def fit(
         self,
         x: npt.ArrayLike,
@@ -309,6 +332,21 @@ class AdditiveHazards_:
         AdditiveHazardsModel
             The fitted model, carrying ``beta``, standard errors, the
             coefficient covariance, p-values, and the baseline hazard.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import AdditiveHazards
+        >>> rng = np.random.default_rng(3)
+        >>> Z = rng.binomial(1, 0.5, (300, 1)).astype(float)
+        >>> x = rng.exponential(1 / (0.1 + 0.05 * Z[:, 0]))
+        >>> c = (x > 15).astype(int)  # follow-up ends at 15
+        >>> x = np.minimum(x, 15)
+        >>> model = AdditiveHazards.fit(x, Z, c=c)
+        >>> model.beta.round(4), model.se.round(4)
+        (array([0.0291]), array([0.0162]))
+        >>> model.sf([5, 10], [[1]]).round(4)
+        array([0.4464, 0.2382])
         """
         x, c, n, Z = _validate(x, Z, c, n)
         p = Z.shape[1]

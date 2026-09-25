@@ -65,10 +65,12 @@ class NonParametricFitter:
     ) -> NonParametric:
         r"""
 
-        The central feature to SurPyval's capability. This function aimed to
-        have an API to mimic the simplicity of the scipy API. That is, to use a
-        simple :code:`fit()` call, with as many or as few parameters as are
-        needed.
+        Estimate the survival function of the data non-parametrically.
+
+        The estimator is the one this instance was created for
+        (``KaplanMeier``, ``NelsonAalen``, ``FlemingHarrington`` or
+        ``Turnbull``). Pass as many or as few of the arguments as the data
+        needs; only ``x`` (or ``xl`` and ``xr``) is required.
 
         Parameters
         ----------
@@ -83,7 +85,7 @@ class NonParametricFitter:
             assume all values are observed.
 
         n : array like, optional
-            Array of counts for each x. If data is proivded as counts, then
+            Array of counts for each x. If data is provided as counts, then
             this can be provided. If :code:`None` will assume each
             observation is 1.
 
@@ -113,11 +115,11 @@ class NonParametricFitter:
             useful for data that is all intervally censored. Must be used with
             the :code:`xl` input.
 
-        turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier', or
-        'Fleming-Harrington'), str, optional
-            If using the Turnbull heuristic, you can elect to use either the
-            KM, NA, or FH estimator with the Turnbull estimates of r, and d.
-            Defaults to FH.
+        turnbull_estimator : str, optional
+            Turnbull only: one of ``'Fleming-Harrington'`` (the default),
+            ``'Nelson-Aalen'`` or ``'Kaplan-Meier'``, the estimator used with
+            the Turnbull estimates of r and d. Ignored by the other
+            estimators.
 
             **This default is why a Turnbull fit does not equal a
             KaplanMeier fit on data both can handle.** The option is used
@@ -142,6 +144,12 @@ class NonParametricFitter:
             the far tails and on zero-inflated data (see the v0.8.0 notes),
             not because it is the maximum likelihood answer.
 
+        set_lower_limit : float, optional
+            Not used by Turnbull. If given, a point is prepended at this
+            value with no deaths (and the risk set of the first time), so
+            the estimate starts at ``R = 1`` from this value, typically 0,
+            rather than from the first observed time.
+
         tol : float, optional
             Turnbull only. The EM stops once the largest change in any
             interval's probability mass falls below this. Defaults to 1e-10.
@@ -154,8 +162,15 @@ class NonParametricFitter:
         -------
 
         model : NonParametric
-            A parametric model with the fitted parameters and methods for all
-            functions of the distribution using the fitted parameters.
+            The fitted non-parametric model, with the survival, hazard and
+            quantile functions, confidence bounds and plotting.
+
+        Raises
+        ------
+
+        ValueError
+            If the data has left- (``c=-1``) or interval- (``c=2``) censored
+            observations and the estimator is not ``Turnbull``.
 
         Examples
         --------
@@ -217,24 +232,25 @@ class NonParametricFitter:
         self, x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
     ) -> NonParametric:
         r"""
-        The central feature to SurPyval's capability. This function aimed to
-        have an API to mimic the simplicity of the scipy API. That is, to use a
-        simple :code:`fit()` call, with as many or as few parameters as are
-        needed.
+        Build the estimate from data already reduced to risk and death
+        sets, the ``xrd`` format: the distinct times, the number at risk
+        just before each and the number of deaths at each.
+
+        Not available for ``Turnbull``, which needs the full ``xcnt`` data
+        to redistribute censored observations.
 
         Parameters
         ----------
 
-        x : array like, optional
-            Array of observations of the random variables. If x is
-            :code:`None`, xl and xr must be provided.
+        x : array like
+            The distinct event times.
 
-        r : array like, optional
+        r : array like
             Array of at risk items. For each value of x the r array is
             the number of at risk items immediately prior to the failures
             at x.
 
-        d : array like, optional
+        d : array like
             Array of counts of deaths/failures at each x. For each value of x
             the d array is the number of deaths at x (can be zero).
 
@@ -242,7 +258,7 @@ class NonParametricFitter:
         -------
 
         model : NonParametric
-            A non-parametric model with the survival curved estimated
+            A non-parametric model with the survival curve estimated
             using the selected method.
 
         Examples

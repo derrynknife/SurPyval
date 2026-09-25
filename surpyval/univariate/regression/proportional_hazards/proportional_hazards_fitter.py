@@ -41,6 +41,24 @@ class ProportionalHazardsFitter(
     TVCFitMixin,
     DataFrameRegressionMixin,
 ):
+    """
+    Parametric proportional hazards fitter: a parametric baseline hazard
+    multiplied by a covariate function,
+
+    .. math::
+        h(x \\mid Z) = \\phi(Z)\\, h_0(x), \\qquad
+        H(x \\mid Z) = \\phi(Z)\\, H_0(x),
+
+    with :math:`\\phi(Z) = e^{\\beta' Z}` for the pre-built instances
+    (``WeibullPH``, ``ExponentialPH``, ...) and for ``PH(dist)``. A positive
+    coefficient raises the hazard (shortens life).
+
+    Use the pre-built instances or the ``PH`` factory rather than building
+    this class directly; the constructor exists for a custom ``phi(Z,
+    *params)`` with its own bounds and parameter names. ``fit`` returns a
+    :class:`~surpyval.univariate.regression.parametric_regression_model.ParametricRegressionModel`.
+    """
+
     def __init__(
         self,
         name: str,
@@ -79,12 +97,21 @@ class ProportionalHazardsFitter(
         self.phi_param_map = phi_param_map
 
     def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Cumulative hazard :math:`\\phi(Z) H_0(x)` at ``x`` for covariates
+        ``Z``; ``params`` are the distribution parameters followed by the
+        covariate coefficients.
+        """
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         Hf_raw = self.Hf_dist(x, *dist_params)
         return self.phi(Z, *phi_params) * Hf_raw
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Hazard rate :math:`\\phi(Z) h_0(x)` at ``x`` for covariates ``Z``;
+        ``params`` as for :meth:`Hf`.
+        """
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         hf_raw = self.hf_dist(x, *dist_params)
@@ -216,11 +243,15 @@ class ProportionalHazardsFitter(
         n : array_like, optional
             The number of observations at each time.
         t : array_like, optional
-            The time intervals.
+            Truncation bounds: an (N, 2) array of the left and right
+            truncation times of each observation.
         init : array_like, optional
-            The initial values for the parameters.
+            The initial values for the parameters: the distribution
+            parameters followed by the covariate coefficients.
         fixed : dict, optional
-            A dictionary of parameters to fix to a specific value.
+            A dictionary of parameters to fix to a specific value, by name
+            (a distribution parameter such as ``"beta"``, or a coefficient
+            ``"beta_0"``, ``"beta_1"``, ...).
 
         Returns
         -------

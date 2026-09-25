@@ -130,6 +130,11 @@ def load_heart_transplants() -> pd.DataFrame:
     Data on the survival of patients who may or may not have received a
     heart transplant, from [5]_.
 
+    Start-stop form: each patient (``id``) has one row before a
+    transplant and, if transplanted, one after (``transplant`` 1), over
+    ``(start, stop]``; ``event`` is 1 for a death at ``stop`` (so
+    ``c = 1 - event``).
+
     References
     ----------
     .. [5] Crowley, J. and Hu, M. (1977) Covariance analysis of heart
@@ -145,6 +150,10 @@ def load_lung() -> pd.DataFrame:
     """
 
     Data on the survival of patients with advanced lung cancer from [6]_.
+
+    ``time`` is the survival time in days. ``status`` is coded as
+    SurPyval's censoring flag -- 0 for a death, 1 for a patient censored
+    (alive at last follow-up) -- so use it directly as ``c``.
 
     References
     ----------
@@ -231,6 +240,17 @@ def load_rossi_static() -> pd.DataFrame:
     Data on the recidivism of released prisoners from [8]_. Uses only
     static covariates.
 
+    One row per prisoner (432): ``week`` is the week of first arrest after
+    release, or 52 for those not arrested in the year of follow-up, and
+    the covariates are ``fin`` (financial aid), ``age``, ``race``,
+    ``wexp`` (work experience), ``mar`` (married), ``paro`` (released on
+    parole) and ``prio`` (number of prior convictions).
+
+    Note that in this copy ``arrest`` is coded as SurPyval's censoring
+    flag -- 1 for a prisoner *not* arrested (right-censored at week 52),
+    0 for an arrest -- the reverse of the original data. Use it directly
+    as ``c``. (The two leading ``Unnamed`` columns are row indices.)
+
     References
     ----------
 
@@ -250,6 +270,13 @@ def load_rossi_time_varying() -> pd.DataFrame:
     """
     Data on the recidivism of released prisoners from [9]_. Includes time
     varying covariates.
+
+    Start-stop (counting-process) form: one row per prisoner-week, with
+    ``id`` the prisoner, ``start`` and ``stop`` the week's interval,
+    ``event`` 1 if the prisoner was arrested at the end of that week (so
+    ``c = 1 - event``), and ``employed`` the time-varying covariate. Here
+    ``arrest`` keeps the original coding (1 = arrested during follow-up),
+    unlike :func:`load_rossi_static`.
 
     References
     ----------

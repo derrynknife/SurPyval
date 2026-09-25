@@ -116,9 +116,13 @@ class FlemingHarrington_(NonParametricFitter):
 
     .. math::
 
-        R = e^{-\sum_{i:x_{i} \leq x} \sum_{i=0}^{d_x-1} \frac{1}{r_x - i}}
+        R(x) = e^{-\sum_{i:x_{i} \leq x} \sum_{j=0}^{d_i-1}
+            \frac{1}{r_i - j}}
 
-    See 'NonParametric section for detailed estimate of how H is computed.'
+    That is, the ``d_i`` deaths tied at ``x_i`` are counted one after
+    another, each removing one unit from the risk set before the next
+    (a fractional expected count, from the Turnbull EM, contributes its
+    remainder pro rata). With no ties this is the Nelson-Aalen estimate.
 
     The variance of the cumulative hazard used for confidence bounds is
     estimated with the same tie correction as the estimator itself

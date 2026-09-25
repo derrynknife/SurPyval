@@ -40,8 +40,8 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         Survival (or reliability) function for the Logistic Distribution:
 
         .. math::
-            R(x) = 1 - \\frac{1}{1 + e^{- \\left (
-                x - \\mu \\right )/ \\sigma}}
+            R(x) = 1 - \frac{1}{1 + e^{- \left (
+                x - \mu \right )/ \sigma}}
 
         Parameters
         ----------
@@ -76,7 +76,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         Failure (CDF or unreliability) function for the Logistic Distribution:
 
         .. math::
-            F(x) = \\frac{1}{1 + e^{- \\left ( x - \\mu \\right )/ \\sigma}}
+            F(x) = \frac{1}{1 + e^{- \left ( x - \mu \right )/ \sigma}}
 
         Parameters
         ----------
@@ -111,8 +111,8 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         Failure (CDF or unreliability) function for the Logistic Distribution:
 
         .. math::
-            f(x) = \\frac{e^{-\\left ( x - \\mu \\right ) / \\sigma}}{\\sigma
-            \\left ( 1 + e^{-\\left ( x - \\mu \\right )/ \\sigma}\\right )^2}
+            f(x) = \frac{e^{-\left ( x - \mu \right ) / \sigma}}{\sigma
+            \left ( 1 + e^{-\left ( x - \mu \right )/ \sigma}\right )^2}
 
         Parameters
         ----------
@@ -148,7 +148,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         Instantaneous hazard rate for the Logistic Distribution:
 
         .. math::
-            h(x) = \\frac{f(x)}{R(x)}
+            h(x) = \frac{f(x)}{R(x)}
 
         Parameters
         ----------
@@ -182,7 +182,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         Cumulative hazard rate for the Logistic distribution:
 
         .. math::
-            H(x) = -\\ln \\left( R(x) \\right)
+            H(x) = -\ln \left( R(x) \right)
 
         Parameters
         ----------
@@ -216,7 +216,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
         Quantile function for the Logistic distribution:
 
         .. math::
-            q(u) = \\mu + \\sigma \\ln \\left ( \\frac{u}{1 - u} \\right)
+            q(u) = \mu + \sigma \ln \left ( \frac{u}{1 - u} \right)
 
         Parameters
         ----------

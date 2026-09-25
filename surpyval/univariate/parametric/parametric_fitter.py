@@ -1060,10 +1060,12 @@ class OptimisedFitMixin:
     ) -> Parametric:
         """
 
-        The central feature to SurPyval's capability. This function aimed to
-        have an API to mimic the simplicity of the scipy API. That is, to use
-        a simple :code:`fit()` call, with as many or as few parameters as
-        is needed.
+        Fit the distribution to data and return the fitted model.
+
+        This is the central call of SurPyval. Pass as many or as few of the
+        arguments as the data needs: the event times ``x`` (or ``xl`` and
+        ``xr``) are the only required input, and any mix of censoring,
+        counts and truncation can be added to them.
 
         Parameters
         ----------
@@ -1086,16 +1088,33 @@ class OptimisedFitMixin:
         how : {'MLE', 'MPP', 'MOM', 'MSE', 'MPS'}, optional
             Method to estimate parameters, these are:
 
-                - MLE, Maximum Likelihood Estimation
+                - MLE, Maximum Likelihood Estimation (the default)
                 - MPP, Method of Probability Plotting
                 - MOM, Method of Moments
-                - MSE, Mean Square Error
+                - MSE, Mean Square Error between the fitted CDF and a
+                  non-parametric estimate
                 - MPS, Maximum Product Spacing
+
+            Only MLE supports every kind of censoring and truncation, and
+            only MLE can fit ``zi`` and ``lfp`` models; MOM and MSE do not
+            support truncation.
 
         offset : boolean, optional
             If :code:`True` finds the shifted distribution. If not provided
             assumes not a shifted distribution. Only works with distributions
             that are supported on the half-real line.
+
+        zi : boolean, optional
+            If :code:`True` fits a zero-inflated model: an extra parameter
+            ``f0``, the proportion of the population that fails at time 0.
+            MLE only, and only for distributions supported from 0. Defaults
+            to :code:`False`.
+
+        lfp : boolean, optional
+            If :code:`True` fits a limited-failure-population model: an
+            extra parameter ``p``, the proportion of the population that
+            will ever fail (``1 - p`` never fails). MLE only. Defaults to
+            :code:`False`.
 
         tl : array like or scalar, optional
             Values of left truncation for observations. If it is a scalar
@@ -1122,13 +1141,12 @@ class OptimisedFitMixin:
             Dictionary of parameters and their values to fix. Fixes parameter
             by name.
 
-        heuristic : {"Blom", "Median", "ECDF", "Modal", "Midpoint", "Mean",\
-            "Weibull", "Benard", "Beard", "Hazen", "Gringorten",\
-            "None", "Tukey", "DPW", "Fleming-Harrington",\
-            "Kaplan-Meier", "Nelson-Aalen", "Filliben",\
-            "Larsen", "Turnbull"}, str, optional.
+        heuristic : str, optional
             Plotting method to use, if using the probability plotting,
-            MPP, method.
+            MPP, method. One of the heuristics accepted by
+            ``plotting_positions`` (``"Blom"``, ``"Median"``,
+            ``"Kaplan-Meier"``, ``"Turnbull"``, ...). Defaults to
+            ``"Nelson-Aalen"``.
 
         init : array like, optional
             initial guess of parameters. Instead of finding an initial guess
@@ -1150,11 +1168,10 @@ class OptimisedFitMixin:
             if :code:`True` all points are included, whether or not there
             was a death there.
 
-        turnbull_estimator : {'Nelson-Aalen', 'Kaplan-Meier', or\
-            'Fleming-Harrington'), str, optional
-            If using the Turnbull heuristic, you can elect to use either the
-            KM, NA, or FH estimator with the Turnbull estimates of r, and d.
-            Defaults to FH.
+        turnbull_estimator : str, optional
+            If using the Turnbull heuristic, the estimator used with the
+            Turnbull estimates of r and d: ``'Fleming-Harrington'`` (the
+            default), ``'Nelson-Aalen'`` or ``'Kaplan-Meier'``.
 
         Returns
         -------
@@ -1240,10 +1257,11 @@ class OptimisedFitMixin:
         **fit_options: Any,
     ) -> Parametric:
         r"""
-        The central feature to SurPyval's capability. This function aimed to
-        have an API to mimic the simplicity of the scipy API. That is, to use
-        a simple :code:`fit()` call, with as many or as few parameters as
-        is needed.
+        Fit the distribution to data held in the columns of a
+        :class:`pandas.DataFrame`.
+
+        The column names are passed in place of the arrays :meth:`fit`
+        takes; every other :meth:`fit` option can be passed as a keyword.
 
         Parameters
         ----------
@@ -1593,19 +1611,21 @@ class OptimisedFitMixin:
     ) -> Parametric:
         """
 
-        The central feature to SurPyval's capability. This function aimed to
-        have an API to mimic the simplicity of the scipy API. That is, to use
-        a simple :code:`fit()` call, with as many or as few parameters as
-        is needed.
+        Fit the distribution to data already held in a
+        :class:`~surpyval.utils.surpyval_data.SurpyvalData` object.
+
+        :meth:`fit` builds a ``SurpyvalData`` from its arrays and calls this
+        method; call it directly to reuse one prepared data object across
+        several fits.
 
         Parameters
         ----------
 
         surv_data : SurpyvalData
             Survival data in the SurpyvalData class.
-
-
-        For other input options see :code:`fit` method.
+        how, offset, zi, lfp, fixed, heuristic, init, rr, on_d_is_0, \
+turnbull_estimator
+            As for :meth:`fit`.
 
         Returns
         -------
@@ -1614,6 +1634,13 @@ class OptimisedFitMixin:
             A parametric model with the fitted parameters and methods for
             all functions of the distribution using the fitted parameters.
 
+        Examples
+        --------
+        >>> from surpyval import Weibull, SurpyvalData
+        >>> data = SurpyvalData(x=[1, 3, 4, 7, 9], c=[0, 0, 0, 0, 1])
+        >>> model = Weibull.fit_from_surpyval_data(data)
+        >>> model.params.round(3)
+        array([6.022, 1.351])
         """
         x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
         # Clamp the truncation values to the (possibly finite) support edges

@@ -27,6 +27,20 @@ from .fine_gray import FineGray
 
 
 class CompetingRisksProportionalHazards:
+    """
+    Competing-risks proportional-hazards regression.
+
+    Fits either a cause-specific proportional-hazards model (``how="Cox"``,
+    one Cox model per cause with the other causes treated as censored) or a
+    Fine-Gray subdistribution-hazards model (``how="Fine-Gray"``). The naming
+    follows the package convention (compare ``CompetingRisks`` and
+    ``ProportionalHazards``).
+
+    Call the class method ``CompetingRisksProportionalHazards.fit`` (or
+    ``fit_from_df``); it returns a fitted instance. Every prediction takes
+    the covariates ``Z`` and, for one cause, its label ``event``.
+    """
+
     # Populated by ``fit``; declared for the type checker.
     how: str
     x: "npt.NDArray"
@@ -43,18 +57,6 @@ class CompetingRisksProportionalHazards:
     feature_names: "list | None"
     formula: Any
     _model_spec: Any
-
-    """
-    Competing-risks proportional-hazards regression.
-
-    Fits either a cause-specific proportional-hazards model (``how="Cox"``,
-    one Cox model per cause with the other causes treated as censored) or a
-    Fine-Gray subdistribution-hazards model (``how="Fine-Gray"``). The naming
-    follows the package convention (compare ``CompetingRisks`` and
-    ``ProportionalHazards``).
-
-    TODO: Time-Varying Implementation
-    """
 
     def _fg_model(self, event: Any) -> Any:
         # Resolve the per-cause Fine-Gray subdistribution model, requiring an
@@ -104,6 +106,11 @@ class CompetingRisksProportionalHazards:
         event: Any = None,
         interp: str = "step",
     ) -> npt.NDArray:
+        """
+        Cause-specific hazard increments at ``x`` for covariates ``Z``: one
+        cause's (``event``) or the sum over causes (``event=None``). Not
+        available for a Fine-Gray model.
+        """
         if self.how == "Fine-Gray":
             raise ValueError(
                 "The Fine-Gray subdistribution hazard has no pointwise "
@@ -118,6 +125,12 @@ class CompetingRisksProportionalHazards:
         event: Any = None,
         interp: str = "step",
     ) -> npt.NDArray:
+        """
+        Cumulative hazard at ``x`` for covariates ``Z``: one cause's
+        cause-specific cumulative hazard (``event``) or the all-cause sum
+        (``event=None``). For a Fine-Gray model, the cumulative
+        subdistribution hazard of ``event``.
+        """
         if self.how == "Fine-Gray":
             # Cumulative subdistribution hazard H0_k(x) * exp(beta'Z) = -log S.
             return -np.log(self.sf(x, Z, event=event))
@@ -130,6 +143,11 @@ class CompetingRisksProportionalHazards:
         event: Any = None,
         interp: str = "step",
     ) -> npt.NDArray:
+        """
+        :math:`e^{-H}` at ``x`` for covariates ``Z``: the all-cause survival
+        (``event=None``) or one cause's net survival (the other causes
+        treated as censoring). For a Fine-Gray model, ``1 - cif``.
+        """
         if self.how == "Fine-Gray":
             return self._fg_model(event).sf(x, Z)
         return np.exp(-self.Hf(x, Z, event=event, interp=interp))
@@ -141,6 +159,10 @@ class CompetingRisksProportionalHazards:
         event: Any = None,
         interp: str = "step",
     ) -> npt.NDArray:
+        """
+        ``1 - sf`` at ``x`` for covariates ``Z``. For a Fine-Gray model,
+        the cumulative incidence of ``event``.
+        """
         if self.how == "Fine-Gray":
             return self.cif(x, Z, event)
         return 1 - self.sf(x, Z, event=event, interp=interp)
@@ -152,6 +174,10 @@ class CompetingRisksProportionalHazards:
         event: Any = None,
         interp: str = "step",
     ) -> npt.NDArray:
+        """
+        ``hf * sf`` at ``x`` for covariates ``Z``. Not available for a
+        Fine-Gray model.
+        """
         if self.how == "Fine-Gray":
             raise ValueError(
                 "The Fine-Gray subdistribution density has no pointwise form "
@@ -164,6 +190,14 @@ class CompetingRisksProportionalHazards:
     def cif(
         self, x: npt.ArrayLike, Z: npt.ArrayLike, event: Any
     ) -> npt.NDArray:
+        """
+        Cumulative incidence of cause ``event`` at ``x`` for covariates
+        ``Z``: the probability of failing from that cause by ``x`` with the
+        other causes acting. The cause-specific (``how="Cox"``) model
+        integrates the cause's hazard against the all-cause product-limit
+        survival; the Fine-Gray model evaluates the subdistribution
+        directly.
+        """
         if self.how == "Fine-Gray":
             # Direct subdistribution CIF: 1 - exp(-H0_k(x) exp(beta'Z)).
             return self._fg_model(event).cif(x, Z)
@@ -294,32 +328,28 @@ class CompetingRisksProportionalHazards:
         tie_method: str = "efron",
     ) -> "CompetingRisksProportionalHazards":
         r"""
-        This function aimed to have an API to mimic the simplicity
-        of the scipy API. That is, to use a simple :code:`fit()` call,
-        with as many or as few parameters as are needed.
-
-        API is plaigiarised from surpyval (which I also authored :) )
+        Fit the competing-risks proportional-hazards model.
 
         Parameters
         ----------
 
         x : array like
-            Array of observations of the random variables.
+            Failure or censoring times.
 
         Z : ndarray like
-            Array of covariates for each random variable, x.
+            Covariate matrix, one row per observation.
 
         e : array like
-            Array of events that corresponds to each x.
+            The cause of each failure; ``None`` (or ``NaN``) for a
+            right-censored observation.
 
         c : array like, optional
-            Array of censoring flag. -1 is left censored, 0 is observed, 1 is
-            right censored, and 2 is intervally censored. Only right censored
-            data is implemented in FineGray. In not provided assumes each x
-            was fully observed, i.e. c is automatically set to 0 for all x.
+            Censoring flags: 0 a failure, 1 right-censored. Derived from
+            ``e`` if not given (a missing cause is censored). Left and
+            interval censoring are not supported.
 
         n : array like, optional
-            Array of counts for each x. If data is proivded as counts, then
+            Array of counts for each x. If data is provided as counts, then
             this can be provided. If :code:`None` will assume each
             observation is 1.
 
@@ -346,10 +376,27 @@ class CompetingRisksProportionalHazards:
 
         Examples
         --------
+        Two causes; the covariate doubles cause ``a``'s hazard and leaves
+        cause ``b``'s alone:
+
         >>> from surpyval.univariate.competing_risks import (
         ...     CompetingRisksProportionalHazards,
         ... )
-
+        >>> import numpy as np
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.binomial(1, 0.5, (200, 1)).astype(float)
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+        >>> t_b = rng.exponential(1 / 0.05, 200)
+        >>> t_c = rng.uniform(0, 20, 200)  # censoring times
+        >>> x = np.minimum(np.minimum(t_a, t_b), t_c).round(3)
+        >>> first = np.where(t_a < t_b, "a", "b")
+        >>> e = np.where(t_c < np.minimum(t_a, t_b), None, first)
+        >>> model = CompetingRisksProportionalHazards.fit(x, Z, e)
+        >>> model.betas.round(3)
+        array([[0.985],
+               [0.005]])
+        >>> model.cif([5, 10], [[1]], "a").round(4)
+        array([0.5922, 0.7401])
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 

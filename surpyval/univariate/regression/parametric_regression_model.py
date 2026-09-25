@@ -51,13 +51,31 @@ _SERIALISABLE_REG_NAMES = {
 
 class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     """
-    Result of ``.fit()`` or ``.from_params()`` method for parametric
-    regression modelling.
+    The fitted model returned by every parametric regression fitter: the
+    proportional hazards (``WeibullPH``, ``PH(dist)``), accelerated failure
+    time (``AFT``), proportional odds (``PO``), parametric additive hazards
+    (``AH``) and accelerated life (``AcceleratedLife``) families.
 
-    Instances of this class are very useful when a user needs the other
-    functions of a distribution for plotting, optimizations, monte carlo
-    analysis and numeric integration.
+    ``params`` holds the distribution parameters followed by the covariate
+    coefficients (``dist_params`` and ``phi_params`` split them). The
+    survival functions take the covariates as a second argument,
+    ``sf(x, Z)``; ``sf_tvc`` / ``Hf_tvc`` evaluate them along a
+    time-varying covariate path. The model also provides parameter
+    standard errors and confidence bounds, information criteria, plotting
+    and serialisation.
 
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import Weibull, WeibullPH
+    >>> np.random.seed(1)
+    >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+    >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    >>> model = WeibullPH.fit(x, Z)
+    >>> model.params.round(3)
+    array([9.629, 1.751, 0.829])
+    >>> model.sf(5, [[0], [1]]).round(4)
+    array([0.728 , 0.4833])
     """
 
     # Covariate metadata populated when the model is fit from a pandas
@@ -427,7 +445,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
         r"""
-        Surival (or Reliability) function for a distribution using the
+        Survival (or Reliability) function for a distribution using the
         parameters found in the ``.params`` attribute.
 
         Parameters
@@ -436,6 +454,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x : array like or scalar
             The values of the random variables at which the survival function
             will be calculated
+
+        Z : array like or DataFrame
+            The covariates: one row per value of ``x`` (or a single row,
+            broadcast to every ``x``), in the column order used in the fit. A
+            model fitted with ``fit_from_df`` also accepts a DataFrame with
+            the named (or formula) columns.
 
         Returns
         -------
@@ -688,6 +712,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The values of the random variables at which the failure function
             (CDF) will be calculated
 
+        Z : array like or DataFrame
+            The covariates: one row per value of ``x`` (or a single row,
+            broadcast to every ``x``), in the column order used in the fit. A
+            model fitted with ``fit_from_df`` also accepts a DataFrame with
+            the named (or formula) columns.
+
         Returns
         -------
 
@@ -726,6 +756,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The values of the random variables at which the density function
             will be calculated
 
+        Z : array like or DataFrame
+            The covariates: one row per value of ``x`` (or a single row,
+            broadcast to every ``x``), in the column order used in the fit. A
+            model fitted with ``fit_from_df`` also accepts a DataFrame with
+            the named (or formula) columns.
+
         Returns
         -------
 
@@ -763,6 +799,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x : array like or scalar
             The values of the random variables at which the instantaneous
             hazard function will be calculated
+
+        Z : array like or DataFrame
+            The covariates: one row per value of ``x`` (or a single row,
+            broadcast to every ``x``), in the column order used in the fit. A
+            model fitted with ``fit_from_df`` also accepts a DataFrame with
+            the named (or formula) columns.
 
         Returns
         -------
@@ -803,6 +845,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x : array like or scalar
             The values of the random variables at which the cumulative hazard
             function will be calculated
+
+        Z : array like or DataFrame
+            The covariates: one row per value of ``x`` (or a single row,
+            broadcast to every ``x``), in the column order used in the fit. A
+            model fitted with ``fit_from_df`` also accepts a DataFrame with
+            the named (or formula) columns.
 
         Returns
         -------

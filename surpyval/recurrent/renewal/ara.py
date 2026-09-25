@@ -197,7 +197,7 @@ class ARA(RenewalFitMixin):
         Parameters
         ----------
 
-        data : RecurrentData
+        data : RecurrentEventData
             Data containing the recurrence details.
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
@@ -257,13 +257,17 @@ class ARA(RenewalFitMixin):
         ----------
 
         x : array_like
-            An array of event times.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``), measured from the start of each item's life.
         i : array_like, optional
-            An array of item indices.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            An array of censoring indicators.
+            Censoring indicators: 0 an observed failure, 1 the
+            right-censored end of an item's observation. Other codes raise
+            a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            An array of counts.
+            Count of events at each row. Defaults to 1.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
         m : int or float, optional
@@ -277,6 +281,24 @@ class ARA(RenewalFitMixin):
 
         RenewalModel
             A fitted renewal model.
+
+        Examples
+        --------
+        Two systems observed to t = 60 (the ``c=1`` rows). The fitted
+        repair efficiency is 0 -- as bad as old -- so the model reduces to
+        a power-law NHPP, with the same Weibull parameters as
+        ``CrowAMSAA`` fitted to these data:
+
+        >>> import numpy as np
+        >>> from surpyval.recurrent import ARA
+        >>> x = np.array([3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60])
+        >>> i = np.array([1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
+        >>> c = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+        >>> model = ARA.fit(x, i, c=c, m=2)
+        >>> model.model.params.round(3)
+        array([7.824, 0.738])
+        >>> round(float(model.rho), 3)
+        0.0
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, m, init=init)
@@ -307,8 +329,8 @@ class ARA(RenewalFitMixin):
         Returns
         -------
 
-        ARA
-            An ARA object built from the supplied parameters.
+        RenewalModel
+            A model built from the supplied parameters, for simulation.
         """
         validate_memory(m)
         model = dist.from_params(params)

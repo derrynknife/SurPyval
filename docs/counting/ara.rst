@@ -7,7 +7,8 @@ The ``ARA`` imperfect-repair model reduces a *virtual age* by a fraction
 ``rho = 0`` is as-bad-as-old. It returns a
 :doc:`Renewal Model <renewal_model>`.
 
-.. class:: ARA
+.. autodata:: surpyval.recurrent.renewal.ara.ARA
+   :no-value:
 
    .. automethod:: surpyval.recurrent.renewal.ara.ARA.fit
    .. automethod:: surpyval.recurrent.renewal.ara.ARA.fit_from_recurrent_data

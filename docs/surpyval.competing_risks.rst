@@ -14,6 +14,9 @@ other hypothesis tests in :doc:`comparison_and_validation`.
 Non-Parametric (Aalen-Johansen)
 -------------------------------
 
+The cumulative incidence of each cause estimated without a model, and
+the incidence-increment helper it (and Gray's test) is built on.
+
 .. autoclass:: surpyval.univariate.competing_risks.nonparametric.competing_risks.CompetingRisks
    :members:
 
@@ -22,11 +25,20 @@ Non-Parametric (Aalen-Johansen)
 Parametric
 ----------
 
+One distribution per cause, combined into cumulative incidence
+functions.
+
 .. autoclass:: surpyval.univariate.competing_risks.parametric.parametric_competing_risks.ParametricCompetingRisks
    :members:
 
 Regression
 ----------
+
+Covariate models for competing risks: the Fine-Gray subdistribution
+hazards model (``FineGray`` is an instance of ``FineGray_`` below; its
+``fit`` returns a ``FineGrayModel``), and
+``CompetingRisksProportionalHazards``, which fits either a cause-specific
+Cox model per cause or a Fine-Gray model per cause.
 
 .. autoclass:: surpyval.univariate.competing_risks.regression.fine_gray.FineGray_
    :members:

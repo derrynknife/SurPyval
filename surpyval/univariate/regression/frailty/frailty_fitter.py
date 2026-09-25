@@ -229,6 +229,30 @@ class FrailtyFitter:
             The group (cluster) label of each observation. Required.
         init : array_like, optional
             Optional initial natural parameters ``[*dist, *beta, theta]``.
+
+        Returns
+        -------
+        FrailtyModel
+            The fitted model: the baseline ``dist_params``, the coefficients
+            ``beta``, the frailty variance ``theta`` and each group's
+            posterior frailty.
+
+        Examples
+        --------
+        Thirty groups of six units, each group with its own gamma frailty
+        (mean 1, variance 0.5):
+
+        >>> import numpy as np
+        >>> from surpyval import WeibullFrailty
+        >>> rng = np.random.default_rng(4)
+        >>> groups = np.repeat(np.arange(30), 6)
+        >>> u = rng.gamma(2.0, 0.5, 30)[groups]
+        >>> Z = rng.binomial(1, 0.5, (180, 1))
+        >>> H = rng.exponential(1, 180) / (u * np.exp(0.5 * Z[:, 0]))
+        >>> x = 10 * H**0.5  # Weibull baseline, alpha 10 and beta 2
+        >>> model = WeibullFrailty.fit(x, Z=Z, groups=groups)
+        >>> model.beta.round(3), round(model.theta, 3)
+        (array([0.399]), 0.432)
         """
         x = np.asarray(x, dtype=float).ravel()
         n_obs = x.shape[0]
@@ -361,6 +385,29 @@ class FrailtyFitter:
         for a no-covariate frailty model); ``group_col`` names the cluster
         column. Covariate names / the formula transformer are retained so the
         fitted model predicts from raw-covariate DataFrames.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The data.
+        x_col : str
+            The column of times.
+        group_col : str
+            The column of group (cluster) labels.
+        Z_cols : str or list of str, optional
+            The covariate columns.
+        c_col, n_col : str, optional
+            The censoring-flag and count columns.
+        formula : str, optional
+            A formula (formulaic syntax) for the covariates, instead of
+            ``Z_cols``.
+        init : array_like, optional
+            As for :meth:`fit`.
+
+        Returns
+        -------
+        FrailtyModel
+            The fitted model.
         """
         x = df[x_col].values
         c = None if c_col is None else df[c_col].values

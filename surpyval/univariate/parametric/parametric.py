@@ -121,6 +121,30 @@ class Parametric(
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "Parametric":
+        """
+        Rebuild a model from the dictionary written by :meth:`to_dict`.
+
+        Parameters
+        ----------
+        model_dict : dict
+            A dictionary produced by :meth:`to_dict` (for example read
+            back from JSON or a document store).
+
+        Returns
+        -------
+        Parametric
+            The restored model. Methods that need the original data
+            (``plot``, ``bic``, likelihood-ratio bounds) work only if the
+            dictionary was written with ``with_data=True``.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.univariate.parametric.parametric import Parametric
+        >>> model = Weibull.from_params([10, 2])
+        >>> Parametric.from_dict(model.to_dict()).params
+        array([10,  2])
+        """
         # Imported here since parametric_fitter imports this module
         from surpyval.univariate.parametric.parametric_fitter import (
             ParametricFitter,
@@ -181,6 +205,35 @@ class Parametric(
         return out
 
     def to_dict(self, with_data: bool = False) -> dict:
+        """
+        Serialise the model to a dictionary of plain Python types.
+
+        The dictionary holds the distribution name, the parameters, the
+        offset / LFP / ZI settings and, if available, the parameter
+        covariance and fitted negative log-likelihood, so a restored model
+        can compute confidence bounds and ``aic``. Restore it with
+        :meth:`from_dict` or ``surpyval.from_dict``.
+
+        Parameters
+        ----------
+        with_data : bool, optional
+            If :code:`True`, also store the ``x``, ``c``, ``n``, ``t`` data
+            the model was fitted to, which ``plot``, ``bic``, ``aic_c``
+            and likelihood-ratio bounds need. Defaults to :code:`False`.
+
+        Returns
+        -------
+        dict
+            A JSON-serialisable dictionary.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([10, 2])
+        >>> d = model.to_dict()
+        >>> d["distribution"], d["params"]
+        ('Weibull', [10, 2])
+        """
         out: dict[str, Any] = {}
         out["parameterization"] = "parametric"
         out["distribution"] = self.dist.name
@@ -280,6 +333,34 @@ class Parametric(
           the estimate -- usually better small-sample coverage than Wald, and
           the reliability-engineering default. Aliases: ``"likelihood"``,
           ``"likelihood-ratio"``, ``"profile"``.
+
+        Parameters
+        ----------
+        name : str
+            The parameter, by name (e.g. ``"alpha"``; ``"p"`` for a
+            limited-failure model, ``"f0"`` for a zero-inflated one).
+        alpha_ci : float, optional
+            The significance level: 0.05 (the default) gives a 95% bound.
+        bound : str, optional
+            ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
+        method : str, optional
+            ``"wald"`` (the default) or ``"lr"``, as above.
+
+        Returns
+        -------
+        numpy array
+            ``[lower, upper]`` for a two-sided bound, else the one bound.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(30, 10, 3))
+        >>> model.param_cb("alpha")
+        array([ 7.83345374, 10.56940099])
+        >>> model.param_cb("beta", method="lr")
+        array([1.82826755, 3.27740643])
         """
         if method.lower() in (
             "lr",
@@ -1116,14 +1197,14 @@ class Parametric(
         method: str = "wald",
     ) -> npt.NDArray:
         r"""
-        Confidence bounds of the ``on`` function at the ``alpa_ci`` level of
+        Confidence bounds of the ``on`` function at the ``alpha_ci`` level of
         significance. Can be the upper, lower, or two-sided confidence by
         changing value of ``bound``.
 
         Parameters
         ----------
 
-        x : array like or scalar
+        t : array like or scalar
             The values of the random variables at which the confidence bounds
             will be calculated
         on : ('sf', 'ff', 'Hf', 'hf', 'df'), optional
@@ -1151,8 +1232,21 @@ class Parametric(
 
         cb : scalar or numpy array
             The value(s) of the upper, lower, or both confidence bound(s) of
-            the selected function at x
+            the selected function at t. A two-sided bound has one row per
+            ``t`` holding the ``[lower, upper]`` pair.
 
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> x = Weibull.random(30, 10, 3)
+        >>> model = Weibull.fit(x)
+        >>> model.cb([5, 10], on="sf")
+        array([[0.65821001, 0.89149672],
+               [0.17231083, 0.4256438 ]])
+        >>> model.cb([5, 10], on="sf", bound="lower")
+        array([0.68394304, 0.18735771])
         """
         t = np.atleast_1d(t)
         if self.method != "MLE":

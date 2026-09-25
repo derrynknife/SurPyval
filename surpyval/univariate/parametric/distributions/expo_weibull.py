@@ -305,10 +305,11 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
     ) -> Boxable:
         r"""
 
-        Instantaneous hazard rate for the ExpoWeibull Distribution:
+        Quantile function for the ExpoWeibull Distribution:
 
         .. math::
-            q(u) =
+            q(u) = \alpha \left ( -\ln \left ( 1 - u^{1/\mu} \right )
+            \right )^{1/\beta}
 
         Parameters
         ----------
@@ -326,7 +327,7 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         -------
 
         Q : scalar or numpy array
-            The quantiles for the Weibull distribution at each value u
+            The quantiles for the ExpoWeibull distribution at each value u
 
         Examples
         --------

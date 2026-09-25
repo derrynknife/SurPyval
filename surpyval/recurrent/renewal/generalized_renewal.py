@@ -235,7 +235,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         Parameters
         ----------
 
-        data : RecurrentData
+        data : RecurrentEventData
             Data containing the recurrence details.
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
@@ -319,13 +319,17 @@ class GeneralizedRenewal(RenewalFitMixin):
         ----------
 
         x : array_like
-            An array of event times.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``), measured from the start of each item's life.
         i : array_like, optional
-            An array of item indices.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            An array of censoring indicators.
+            Censoring indicators: 0 an observed failure, 1 the
+            right-censored end of an item's observation. Other codes raise
+            a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            An array of counts.
+            Count of events at each row. Defaults to 1.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
         kijima : str, optional

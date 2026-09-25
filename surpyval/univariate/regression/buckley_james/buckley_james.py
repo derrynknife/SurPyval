@@ -293,9 +293,13 @@ class BuckleyJamesModel(SerialisableMixin):
         return self._resid_sf(r)
 
     def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
+        """Failure probability ``1 - sf(x, Z)`` for a single covariate
+        vector ``Z``."""
         return 1.0 - self.sf(x, Z)
 
     def Hf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
+        """Cumulative hazard ``-log sf(x, Z)`` for a single covariate
+        vector ``Z``."""
         with np.errstate(divide="ignore"):
             return -np.log(self.sf(x, Z))
 
@@ -353,6 +357,21 @@ class BuckleyJamesModel(SerialisableMixin):
 
 
 class BuckleyJames_:
+    """
+    The Buckley-James semi-parametric accelerated failure time estimator:
+    a least-squares regression of :math:`\\log x` on the covariates in
+    which each right-censored time is replaced by its conditional
+    expectation under the Kaplan-Meier estimate of the residual
+    distribution, iterated to convergence. No baseline distribution is
+    assumed.
+
+    Coefficients are reported with the package's AFT sign: a *positive*
+    coefficient shortens life (the textbook ``log T = gamma'Z + eps``
+    slope is ``-beta``). ``BuckleyJames`` is an instance of this class;
+    its ``fit`` returns a
+    :class:`~surpyval.univariate.regression.buckley_james.buckley_james.BuckleyJamesModel`.
+    """
+
     def fit(
         self,
         x: npt.ArrayLike,
@@ -384,7 +403,28 @@ class BuckleyJames_:
         Returns
         -------
         BuckleyJamesModel
-            The fitted model.
+            The fitted model. A warning is raised if the iteration did not
+            converge within ``max_iter``.
+
+        Examples
+        --------
+        Log-life falls by 0.5 per unit of the covariate; follow-up ends at
+        12:
+
+        >>> import numpy as np
+        >>> from surpyval import BuckleyJames
+        >>> rng = np.random.default_rng(2)
+        >>> Z = rng.normal(size=(100, 1))
+        >>> t = np.exp(2.0 - 0.5 * Z[:, 0] + rng.normal(0, 0.5, 100))
+        >>> c = (t > 12).astype(int)
+        >>> x = np.minimum(t, 12)
+        >>> model = BuckleyJames.fit(x, Z, c=c)
+        >>> model.beta.round(3)
+        array([0.435])
+        >>> model.bootstrap_ci(seed=1).round(3)
+        array([[0.33 , 0.541]])
+        >>> model.sf([5, 10], [0.0]).round(4)
+        array([0.7366, 0.2693])
         """
         x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
         Z_arr, mask = wrangle_Z(Z)
@@ -435,6 +475,27 @@ class BuckleyJames_:
         """
         Fit a Buckley-James model from a pandas DataFrame. See :meth:`fit` for
         the estimator; ``Z_cols`` or ``formula`` selects the covariates.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The data.
+        x_col : str
+            The column of times.
+        Z_cols : str or list of str, optional
+            The covariate columns. Give either this or ``formula``.
+        c_col, n_col : str, optional
+            The censoring-flag and count columns.
+        formula : str, optional
+            A formula (formulaic syntax) for the covariates.
+        tol, max_iter : optional
+            As for :meth:`fit`.
+
+        Returns
+        -------
+        BuckleyJamesModel
+            The fitted model, which keeps the covariate names (or formula)
+            so it predicts from DataFrame rows.
         """
         Z, mask, form, feature_names, model_spec = (
             wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)

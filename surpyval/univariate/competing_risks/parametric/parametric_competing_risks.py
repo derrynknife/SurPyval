@@ -411,6 +411,20 @@ class ParametricCompetingRisks(SerialisableMixin):
         -------
         ParametricCompetingRisks
             The fitted model.
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = ParametricCompetingRisks.fit(x, e, dist=Exponential)
+        >>> model.cif([5, 10], 'a').round(4)
+        array([0.323 , 0.4791])
+        >>> round(model.probability_of_cause('a'), 4)
+        0.625
         """
         x, c, n, e = _validate(x, c, n, e)
 
@@ -442,8 +456,25 @@ class ParametricCompetingRisks(SerialisableMixin):
         dist: Any = Weibull,
         how: str = "MLE",
     ) -> "ParametricCompetingRisks":
-        """Fit from a DataFrame; see :meth:`fit`. ``x_col`` / ``e_col`` name
-        the time and cause columns, with optional ``c_col`` / ``n_col``."""
+        """
+        Fit from the columns of a :class:`pandas.DataFrame`; see :meth:`fit`.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The data.
+        x_col, e_col : str
+            The time and cause columns.
+        c_col, n_col : str, optional
+            The censoring-flag and count columns.
+        dist, how : optional
+            As for :meth:`fit`.
+
+        Returns
+        -------
+        ParametricCompetingRisks
+            The fitted model.
+        """
         x = df[x_col].to_numpy()
         e = df[e_col].to_numpy(dtype=object)
         c = None if c_col is None else df[c_col].to_numpy()

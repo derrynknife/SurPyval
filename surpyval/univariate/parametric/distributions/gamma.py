@@ -120,7 +120,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
 
         Returns
@@ -156,7 +156,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
 
         Returns
@@ -193,7 +193,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
 
         Returns
@@ -235,7 +235,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
 
         Returns
@@ -271,7 +271,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
 
         Returns
@@ -296,7 +296,10 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         Quantile function for the Gamma Distribution:
 
         .. math::
-            q(u) = \frac{-\ln\left ( u \right )}{\lambda}
+            q(u) = \frac{P^{-1} \left ( \alpha, u \right )}{\beta}
+
+        where :math:`P^{-1}` inverts the regularised lower incomplete gamma
+        function :math:`P(\alpha, z) = \gamma(\alpha, z) / \Gamma(\alpha)`.
 
         Parameters
         ----------
@@ -306,7 +309,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
         Returns
         -------
@@ -338,7 +341,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
         Returns
         -------
@@ -372,7 +375,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
         Returns
         -------
@@ -434,8 +437,8 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         at x.
 
         .. math::
-            \log f(x) = \log \left ( \frac{\lambda^{\alpha}}{\Gamma(\alpha)}
-            x^{\alpha - 1}e^{-\lambda x} \right )
+            \log f(x) = \log \left ( \frac{\beta^{\alpha}}{\Gamma(\alpha)}
+            x^{\alpha - 1}e^{-\beta x} \right )
 
         Parameters
         ----------
@@ -445,7 +448,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
         Returns
         -------

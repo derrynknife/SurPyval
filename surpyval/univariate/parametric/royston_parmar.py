@@ -172,19 +172,24 @@ class RoystonParmarModel(SerialisableMixin):
     # -- distribution functions -------------------------------------------
 
     def sf(self, t: Any) -> np.ndarray:
+        """Survival function at ``t``."""
         with np.errstate(all="ignore"):
             return _sf_from_eta(self._eta(t), self.scale)
 
     def ff(self, t: Any) -> np.ndarray:
+        """Failure (CDF) function ``1 - sf(t)``."""
         return 1.0 - self.sf(t)
 
     def Hf(self, t: Any) -> np.ndarray:
+        """Cumulative hazard ``-log sf(t)``."""
         return -np.log(self.sf(t))
 
     def hf(self, t: Any) -> np.ndarray:
+        """Hazard rate ``df(t) / sf(t)``."""
         return self.df(t) / self.sf(t)
 
     def df(self, t: Any) -> np.ndarray:
+        """Density at ``t``, from the derivative of the spline."""
         t = np.asarray(t, dtype=float)
         with np.errstate(all="ignore"):
             eta = self._eta(t)
@@ -212,6 +217,8 @@ class RoystonParmarModel(SerialisableMixin):
         return out[0] if scalar_in else out
 
     def random(self, size: int) -> np.ndarray:
+        """Draw ``size`` random lifetimes (by inverting ``ff``), using
+        NumPy's global random state."""
         return self.qf(np.random.uniform(0, 1, size))
 
     def mean(self) -> float:
@@ -274,15 +281,20 @@ class RoystonParmarModel(SerialisableMixin):
         return len(self.params)
 
     def neg_ll(self) -> float:
+        """The negative log-likelihood at the fitted coefficients."""
         return self._neg_ll
 
     def aic(self) -> float:
+        """Akaike's information criterion, ``2k + 2 neg_ll``."""
         return 2 * self.k + 2 * self._neg_ll
 
     def bic(self) -> float:
+        """The Bayesian information criterion, ``k log(n) + 2 neg_ll``."""
         return self.k * np.log(self.n) + 2 * self._neg_ll
 
     def summary(self) -> str:
+        """A text summary of the fit: link scale, knots, likelihood and
+        coefficients."""
         lines = [
             "Royston-Parmar Flexible Parametric Model",
             "========================================",
@@ -304,6 +316,8 @@ class RoystonParmarModel(SerialisableMixin):
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self) -> dict:
+        """Serialise the fitted model to a plain dictionary; restore it
+        with :meth:`from_dict` or ``surpyval.from_dict``."""
         out: dict[str, Any] = {
             "model": "RoystonParmarModel",
             "scale": self.scale,
@@ -319,6 +333,7 @@ class RoystonParmarModel(SerialisableMixin):
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RoystonParmarModel":
+        """Rebuild a model from a :meth:`to_dict` dictionary."""
         require_model_tag(
             model_dict, "RoystonParmarModel", "a Royston-Parmar model"
         )

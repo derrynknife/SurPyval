@@ -707,6 +707,32 @@ class WienerProcess:
         Returns
         -------
         WienerProcessModel
+            The fitted model, whose life-distribution methods (``sf``,
+            ``ff``, ``mean``, ...) give the first-passage time to
+            ``threshold``.
+
+        Examples
+        --------
+        Five units whose degradation drifts upwards at 0.5 per unit time
+        with Brownian noise:
+
+        >>> import numpy as np
+        >>> from surpyval.degradation import WienerProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 5)  # 5 units, 11 readings
+        >>> i = np.repeat(np.arange(5), 11)
+        >>> steps = rng.normal(0.5 * 10, 1.0 * np.sqrt(10), size=(5, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> model = WienerProcess.fit(t, y, i, threshold=100)
+        >>> model
+        Wiener Process Degradation Model
+        ================================
+        Drift (mu)          : 0.488591
+        Diffusion (sigma)   : 0.88113
+        Threshold           : 100
+        Mean time to failure: 204.67
+        >>> model.sf([150, 200]).round(4)
+        array([0.9922, 0.548 ])
         """
         if Z is None:
             if stress_ref is not None:
@@ -913,6 +939,32 @@ class GammaProcess:
         Returns
         -------
         GammaProcessModel
+            The fitted model, whose life-distribution methods (``sf``,
+            ``ff``, ``mean``, ...) give the first-passage time to
+            ``threshold``.
+
+        Examples
+        --------
+        Five units whose wear accumulates in non-negative gamma-distributed
+        increments (mean 0.5 per unit time):
+
+        >>> import numpy as np
+        >>> from surpyval.degradation import GammaProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 5)  # 5 units, 11 readings
+        >>> i = np.repeat(np.arange(5), 11)
+        >>> steps = rng.gamma(shape=2.0 * 10, scale=0.25, size=(5, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> model = GammaProcess.fit(t, y, i, threshold=100)
+        >>> model
+        Gamma Process Degradation Model
+        ===============================
+        Shape rate (alpha)  : 2.61045
+        Rate (beta)         : 5.45561
+        Threshold           : 100
+        Mean time to failure: 209.183
+        >>> model.sf([150, 200]).round(4)
+        array([1.    , 0.8477])
         """
         if Z is None:
             if stress_ref is not None:

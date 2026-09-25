@@ -128,7 +128,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         .. math::
             f(x) = \frac{\left ( \beta / \alpha \right ) \left ( x / \alpha
             \right )^{\beta - 1}}{\left ( 1 + \left ( x / \alpha
-            \right )^{-\beta} \right )^2}
+            \right )^{\beta} \right )^2}
 
         Parameters
         ----------

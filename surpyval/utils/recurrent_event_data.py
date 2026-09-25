@@ -7,19 +7,14 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class RecurrentEventData:
-    # Optional covariate matrix, attached by ``handle_xicn`` for regression.
-    Z: npt.NDArray | None = None
-    # Gapped (multi-window) observation metadata, attached by ``handle_xicn``
-    # when ``windows`` is supplied: ``window_map`` maps each synthetic
-    # single-window sub-item id to its ``(real_item, (start, end))`` and
-    # ``observation_windows`` keeps the user's original per-item windows. Both
-    # stay ``None`` for ordinary single-window data.
-    window_map: dict | None = None
-    observation_windows: dict | None = None
-
     """
     A class to handle and manipulate recurrent event data. Recurrent events are
     those that can occur more than once for each subject or item.
+
+    The recurrent fitters build one from their ``x``, ``i``, ``c``, ``n``
+    arrays with ``surpyval.handle_xicn``, which validates the input; build
+    one that way to pass to a fitter's ``fit_from_recurrent_data``. The
+    constructor itself does no validation.
 
     Examples
     --------
@@ -42,13 +37,24 @@ class RecurrentEventData:
     )
     >>> data.get_times_to_first_events()
     SurpyvalData(
-    x=[1.],
-    c=[0],
-    n=[2],
-    t=[[-inf  inf]])
+        x=array([1.]),
+        c=array([0]),
+        n=array([2]),
+        t=array([[-inf,  inf]])
+    )
     >>> data.get_interarrival_times()
     array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
     """
+
+    # Optional covariate matrix, attached by ``handle_xicn`` for regression.
+    Z: npt.NDArray | None = None
+    # Gapped (multi-window) observation metadata, attached by ``handle_xicn``
+    # when ``windows`` is supplied: ``window_map`` maps each synthetic
+    # single-window sub-item id to its ``(real_item, (start, end))`` and
+    # ``observation_windows`` keeps the user's original per-item windows. Both
+    # stay ``None`` for ordinary single-window data.
+    window_map: dict | None = None
+    observation_windows: dict | None = None
 
     def __init__(
         self,

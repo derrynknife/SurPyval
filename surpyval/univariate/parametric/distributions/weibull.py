@@ -112,8 +112,9 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         Density function for the Weibull Distribution:
 
         .. math::
-            f(x) = \frac{\beta}{\alpha} \frac{x}{\alpha}^{\beta - 1} e^{-\left
-            ( \frac{x}{\alpha} \right )^\beta}
+            f(x) = \frac{\beta}{\alpha} \left ( \frac{x}{\alpha}
+            \right )^{\beta - 1} e^{-\left ( \frac{x}{\alpha}
+            \right )^\beta}
 
         Parameters
         ----------
@@ -186,7 +187,7 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         Cumulative hazard rate for the Weibull Distribution:
 
         .. math::
-            h(x) = \frac{x}{\alpha}^{\beta}
+            H(x) = \left ( \frac{x}{\alpha} \right )^{\beta}
 
         Parameters
         ----------

@@ -86,8 +86,9 @@ class NHPPFitter(IntensityModel):
         Parameters
         ----------
 
-        data: Recurrent
-            Recurrent data object containing properties x, c, and n.
+        data: RecurrentEventData
+            The recurrent event data, as built by ``surpyval.handle_xicn``.
+            :meth:`fit` builds one from its arrays and calls this.
         how: str, optional
             Specifies the fitting method to use, either 'MLE' for Maximum
             Likelihood Estimation or 'MSE' for Mean Square Error. Default
@@ -168,13 +169,19 @@ class NHPPFitter(IntensityModel):
         ----------
 
         x: array_like
-            The input data.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``), measured from the start of each item's life.
         i: array_like, optional
-            Identity of each observation.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c: array_like, optional
-            Censoring indicator.
+            Censoring indicators: 0 an observed event, 1 the right-censored
+            end of an item's observation (the time it was last seen), -1
+            left-censored and 2 interval-censored counts (with ``n``).
+            Defaults to all observed.
         n: array_like, optional
-            Counts for each observation.
+            Number of events in each row (for left- and interval-censored
+            counts). Defaults to 1.
         t: array_like, optional
             (N, 2) array of [left, right] truncation bounds per observation.
         tl: array_like or scalar, optional
@@ -184,8 +191,10 @@ class NHPPFitter(IntensityModel):
             Right truncation time per item.
         how: str, optional
             Specifies the fitting method to use, either 'MLE' for Maximum
-            Likelihood Estimation or 'MSE' for Mean Square Error.
-            Default is 'MLE'.
+            Likelihood Estimation or 'MSE' for Mean Square Error (least
+            squares between the model's cumulative intensity and the
+            non-parametric MCF of the data). Default is 'MLE'; the MLE
+            search starts from the MSE fit.
         init: array_like, optional
             Initial parameters for optimization.
         windows: dict, optional
@@ -202,8 +211,22 @@ class NHPPFitter(IntensityModel):
         -------
 
         ParametricRecurrenceModel
-            An object of fitted model returned by the fit_from_recurrent_data
-            method.
+            The fitted model.
+
+        Examples
+        --------
+        Two systems, each observed to t = 60 (the ``c=1`` rows), whose
+        failures become less frequent over time (``beta < 1``):
+
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+        >>> i = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+        >>> model = CrowAMSAA.fit(x, i=i, c=c)
+        >>> model.params
+        array([7.82428586, 0.73833691])
+        >>> model.cif(60)
+        np.float64(4.49998940938965)
         """
         data = handle_xicn(
             x,
@@ -234,6 +257,13 @@ class NHPPFitter(IntensityModel):
         ParametricRecurrenceModel
             An instance of the ParametricRecurrenceModel class initialized with
             the provided parameters.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> model = CrowAMSAA.from_params([10, 1.5])
+        >>> model.cif([10, 20])
+        array([1.        , 2.82842712])
         """
         model = ParametricRecurrenceModel()
         model.params = np.asarray(params)

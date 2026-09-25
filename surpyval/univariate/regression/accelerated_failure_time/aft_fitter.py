@@ -30,14 +30,20 @@ class AFTFitter(
     DataFrameRegressionMixin,
 ):
     """
-    Accelerated Failure Time fitter using exp(beta'Z) as the acceleration
-    factor.
+    Accelerated Failure Time fitter using :math:`e^{\\beta' Z}` as the
+    acceleration factor. The covariates rescale time:
 
-    The cumulative hazard is:
-        H(x | Z) = H_0(exp(beta'Z) * x)
+    .. math::
+        H(x \\mid Z) = H_0\\left(e^{\\beta' Z} x\\right), \\qquad
+        R(x \\mid Z) = R_0\\left(e^{\\beta' Z} x\\right).
 
     A positive beta coefficient means higher covariate values accelerate
-    failure (shorter life), consistent with the PH sign convention.
+    failure (shorter life), consistent with the PH sign convention. (Many
+    texts write the AFT model with :math:`e^{-\\beta' Z}`, so their
+    coefficients have the opposite sign.)
+
+    Use the pre-built instances (``WeibullAFT``, ``LogNormalAFT``, ...) or
+    the ``AFT`` factory.
     """
 
     def __init__(self, distribution: Any) -> None:
@@ -51,6 +57,11 @@ class AFTFitter(
         return LogLinearPhi.phi(Z, *phi_params)
 
     def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Cumulative hazard :math:`H_0(e^{\\beta' Z} x)` at ``x`` for
+        covariates ``Z``; ``params`` are the distribution parameters
+        followed by the covariate coefficients.
+        """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.atleast_2d(np.asarray(Z, dtype=float))
         dist_params = params[: self.k_dist]
@@ -58,6 +69,10 @@ class AFTFitter(
         return self.Hf_dist(self._phi(Z, *phi_params) * x, *dist_params)
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Hazard rate :math:`e^{\\beta' Z} h_0(e^{\\beta' Z} x)` at ``x`` for
+        covariates ``Z``; ``params`` as for :meth:`Hf`.
+        """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.atleast_2d(np.asarray(Z, dtype=float))
         dist_params = params[: self.k_dist]
@@ -78,6 +93,50 @@ class AFTFitter(
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
     ) -> ParametricRegressionModel:
+        """
+        Fit the accelerated failure time model by maximum likelihood.
+
+        Parameters
+        ----------
+
+        x : array_like
+            The observed event times.
+        Z : array_like
+            The covariate matrix, one row per observation (a 1-D array is
+            read as a single covariate).
+        c : array_like, optional
+            The censoring indicators (0 observed, 1 right, -1 left, 2
+            interval). Defaults to all observed.
+        n : array_like, optional
+            The count of observations at each time. Defaults to 1.
+        t : array_like, optional
+            Truncation bounds: an (N, 2) array of the left and right
+            truncation times of each observation.
+        init : array_like, optional
+            Initial parameter values: the distribution parameters followed
+            by the covariate coefficients.
+        fixed : dict, optional
+            Parameters to hold fixed, by name (a distribution parameter
+            such as ``"beta"``, or a coefficient ``"beta_0"``, ...).
+
+        Returns
+        -------
+
+        ParametricRegressionModel
+            The fitted model.
+
+        Examples
+        --------
+
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullAFT
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullAFT.fit(x, Z)
+        >>> model.params.round(3)
+        array([9.629, 1.751, 0.473])
+        """
         data, prep = prepare_regression_fit(
             self,
             x,

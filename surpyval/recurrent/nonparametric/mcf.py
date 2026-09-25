@@ -23,6 +23,23 @@ if TYPE_CHECKING:
 
 @singleton_fitter
 class NonParametricCounting(SerialisableMixin):
+    """
+    The non-parametric (Nelson-Aalen) estimate of the mean cumulative
+    function (MCF), the expected number of events per item by time
+    :math:`t`:
+
+    .. math::
+        \\hat{M}(t) = \\sum_{t_j \\le t} \\frac{d_j}{r_j},
+
+    with :math:`d_j` the events at :math:`t_j` and :math:`r_j` the number of
+    items under observation then. Its variance is the Lawless-Nadeau robust
+    estimate, which does not assume the items share one Poisson process.
+
+    ``NonParametricCounting`` is an instance of this class; its ``fit``
+    returns a new, fitted instance, which carries ``mcf``, ``mcf_cb`` and
+    ``plot``.
+    """
+
     # Set on the instance the fit returns, not in __init__ -- the
     # singleton fitter is called on a bare class and hands back a
     # populated one. Annotated (not assigned) so the attributes have
@@ -44,7 +61,7 @@ class NonParametricCounting(SerialisableMixin):
         plain, JSON-serialisable dict.
 
         Stores the step arrays that ``mcf``/``mcf_cb`` read: the event times
-        ``x``, the estimate ``mcf_hat`` and its Greenwood variance ``var``.
+        ``x``, the estimate ``mcf_hat`` and its variance ``var``.
         The raw ``data`` is not stored (it is only needed to re-fit or to plot
         raw counts).
 
@@ -80,6 +97,25 @@ class NonParametricCounting(SerialisableMixin):
         return out
 
     def mcf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
+        """
+        The estimated mean cumulative function at ``x``.
+
+        Parameters
+        ----------
+        x : array like
+            The times at which to evaluate the MCF.
+        interp : str, optional
+            ``"step"`` (the default) for the right-continuous step estimate,
+            or ``"linear"`` to interpolate linearly between event times
+            (from 0 at time 0).
+
+        Returns
+        -------
+        numpy array
+            The MCF at each ``x``: 0 before the first event time and NaN
+            beyond the last observed time (and, for ``"step"``, at
+            negative times).
+        """
         x = np.atleast_1d(x)
         # Let's not assume we can predict above the highest measurement
         if interp == "step":
@@ -115,6 +151,35 @@ class NonParametricCounting(SerialisableMixin):
         bounds return a 1-D array. Queries below the first observed time
         return 0; queries above the last observed time (or negative)
         return NaN, mirroring :meth:`mcf`.
+
+        Parameters
+        ----------
+        x : array like
+            The times at which to compute the bounds.
+        bound : str, optional
+            ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
+        interp : str, optional
+            ``"step"`` (the default) or ``"linear"``, as for :meth:`mcf`.
+        confidence : float, optional
+            The confidence level. Defaults to 0.95.
+        bound_type : str, optional
+            ``"exp"`` (the default) for bounds on the log scale,
+            :math:`\\hat{M} e^{\\pm z \\sqrt{V} / \\hat{M}}`, which stay
+            positive; or ``"normal"`` for Wald bounds
+            :math:`\\hat{M} \\pm z \\sqrt{V}`.
+        dist : str, optional
+            Only ``"z"``, the normal critical value.
+
+        Returns
+        -------
+        numpy array
+            The bound(s) at each ``x``.
+
+        Raises
+        ------
+        ValueError
+            If the model carries no variance (an MCF built from simulated
+            data).
         """
         # Greenwood's variance with a normal (z) critical value. Ref found:
         # http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
@@ -202,6 +267,26 @@ class NonParametricCounting(SerialisableMixin):
         ax: "Axes | None" = None,
         start: float = 0.0,
     ) -> "Axes":
+        """
+        Plot the MCF as a step function, with its confidence bounds.
+
+        Parameters
+        ----------
+        confidence : float, optional
+            The confidence level of the bounds. Defaults to 0.95.
+        plot_bounds : bool, optional
+            Whether to draw the bounds (skipped if the model has no
+            variance). Defaults to :code:`True`.
+        ax : matplotlib Axes, optional
+            The axes to draw on. Defaults to the current axes.
+        start : float, optional
+            The time the step plot starts from, at an MCF of 0. Defaults
+            to 0.
+
+        Returns
+        -------
+        matplotlib Axes
+        """
         if ax is None:
             ax = plt.gcf().gca()
 
@@ -263,6 +348,18 @@ class NonParametricCounting(SerialisableMixin):
     def fit_from_recurrent_data(
         self, data: RecurrentEventData
     ) -> "NonParametricCounting":
+        """
+        Fit the MCF from a prepared
+        :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`,
+        as built by ``surpyval.handle_xicn``. :meth:`fit` builds one from
+        its arrays and calls this; the same restrictions on censoring and
+        truncation apply.
+
+        Returns
+        -------
+        NonParametricCounting
+            The fitted estimate.
+        """
         reject_unsupported_nonparametric(data, "NonParametricCounting")
         out = type(self).from_xrd(*data.to_xrd())
         out.var = _lawless_nadeau_var(data, out.x, out.r, out.d)
@@ -289,7 +386,10 @@ class NonParametricCounting(SerialisableMixin):
         i : array like, optional
             Item / subject id for each row. Defaults to a single item.
         c : array like, optional
-            Censoring flag for each row (0 observed, 1 right censored).
+            Censoring flag for each row: 0 an observed event, 1 the
+            right-censored end of an item's observation. Left- (-1) and
+            interval- (2) censored rows are not supported and raise a
+            ``ValueError``.
         n : array like, optional
             Count of events at each row. Defaults to 1.
         tl : array like or scalar, optional
@@ -297,7 +397,8 @@ class NonParametricCounting(SerialisableMixin):
             enters the at-risk set once observation begins at ``tl``, so
             earlier event times are estimated over a smaller risk set.
         tr : array like or scalar, optional
-            Right-truncation time per item.
+            Right-truncation time per item. Not yet supported: a finite
+            value raises a ``ValueError``.
         windows : dict, optional
             Gapped (multi-window) observation: a mapping ``{item: [(start,
             end), ...]}`` giving each item's disjoint observation windows.
@@ -309,6 +410,23 @@ class NonParametricCounting(SerialisableMixin):
         Returns
         -------
         NonParametricCounting
+            The fitted estimate.
+
+        Examples
+        --------
+        Two systems observed to t = 60 (the ``c=1`` rows):
+
+        >>> from surpyval.recurrent import NonParametricCounting
+        >>> x = [3, 9, 20, 35, 56, 60, 11, 44, 60]
+        >>> i = [1, 1, 1, 1, 1, 1, 2, 2, 2]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 1]
+        >>> model = NonParametricCounting.fit(x, i=i, c=c)
+        >>> model.mcf([10, 30, 60])
+        array([1. , 2. , 3.5])
+        >>> model.mcf_cb([10, 30, 60])
+        array([[0.25009765, 3.99843816],
+               [1.00019529, 3.999219  ],
+               [1.93248007, 6.33900458]])
         """
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, windows=windows)
         return self.fit_from_recurrent_data(data)

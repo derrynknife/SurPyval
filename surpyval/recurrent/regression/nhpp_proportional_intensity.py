@@ -16,13 +16,21 @@ from .proportional_intensity import ProportionalIntensityModel
 @singleton_fitter
 class ProportionalIntensityNHPP:
     """
-    A class representing the Proportional Intensity Non-Homogeneous Poisson
-    Process (NHPP).
+    Proportional-intensity regression on a non-homogeneous Poisson
+    process: each item's intensity is a parametric baseline intensity
+    scaled by its covariates,
 
-    The class contains methods to perform various calculations related to the
-    NHPP, such as instantaneous intensity function, cumulative intensity
-    function and its inverse, as well as creating the negative log-likelihood
-    function and fitting the model.
+    .. math::
+        \\lambda(t \\mid Z) = \\lambda_0(t)\\, e^{\\beta' Z},
+
+    with the baseline any NHPP model -- ``Duane`` (the default),
+    ``CrowAMSAA`` or ``CoxLewis`` -- chosen with ``dist``.
+
+    ``ProportionalIntensityNHPP`` is an instance of this class. Its
+    ``fit`` returns a
+    :class:`~surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel`,
+    which carries the prediction methods (``cif``, ``iif``, ``inv_cif``,
+    ``mcf``), simulation and inference.
 
     Examples
     --------
@@ -187,6 +195,29 @@ class ProportionalIntensityNHPP:
         dist: Any,
         init: "ArrayLike | None" = None,
     ) -> Any:
+        """
+        Fit from a prepared
+        :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`
+        (with covariates attached), as built by
+        ``surpyval.handle_xicn``. :meth:`fit` builds one from its arrays and
+        calls this.
+
+        Parameters
+        ----------
+
+        data : RecurrentEventData
+            The recurrent event data, including ``Z``.
+        dist : CountingProcess
+            The baseline intensity model, as for :meth:`fit`.
+        init : array_like, optional
+            Initial parameter estimates, as for :meth:`fit`.
+
+        Returns
+        -------
+
+        ProportionalIntensityModel
+            The fitted model.
+        """
         if not isinstance(dist, CountingProcess):
             raise TypeError(
                 "`dist` must be a CountingProcess instance "
@@ -282,15 +313,22 @@ class ProportionalIntensityNHPP:
         ----------
 
         x : array_like
-            Input data.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``).
         Z : array_like
-            Covariate matrix.
+            Covariate matrix, one row per row of ``x``. Each row's
+            covariates apply over the interval from the item's previous row
+            to this one.
         i : array_like, optional
-            identity of the item.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            Censoring indicators.
+            Censoring indicators: 0 an observed event, 1 the right-censored
+            end of an item's observation, -1 left-censored and 2
+            interval-censored counts (with ``n``). Defaults to all observed.
         n : array_like, optional
-            Number of events.
+            Number of events in each row (for left- and interval-censored
+            counts). Defaults to 1.
         t : array_like, optional
             (N, 2) array of [left, right] truncation bounds per observation.
         tl : array_like or scalar, optional
@@ -300,10 +338,12 @@ class ProportionalIntensityNHPP:
             Right truncation time per item; the observation window closes here,
             so the baseline intensity is integrated out to ``tr`` even without
             an explicit right-censoring (``c=1``) row.
-        dist : surpyval.recurrent.regression.NHPPFitter, optional
-            The parametric model to use for the hazard rate.
+        dist : CountingProcess, optional
+            The baseline intensity model: ``Duane`` (the default),
+            ``CrowAMSAA`` or ``CoxLewis`` from ``surpyval.recurrent``.
         init : array_like, optional
-            Initial parameter estimates.
+            Initial parameter estimates: the baseline parameters followed by
+            the covariate coefficients.
 
         Returns
         -------

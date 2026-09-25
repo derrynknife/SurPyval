@@ -35,6 +35,28 @@ from surpyval.utils import (
 
 
 class CompetingRisks(SerialisableMixin):
+    """
+    Non-parametric competing-risks estimate: the Aalen-Johansen cumulative
+    incidence function (CIF) of each cause, and the all-cause and
+    cause-specific (net) hazards and survival.
+
+    Each unit fails from one of several causes ``e`` (or is right-censored,
+    with no cause). The cumulative incidence of cause :math:`j` is the
+    probability of failing *from that cause* by time :math:`t` while the
+    others still act,
+
+    .. math::
+        F_j(t) = \\sum_{t_i \\le t} S(t_{i-1}) \\frac{d_{ij}}{r_i},
+
+    with :math:`S` the all-cause Kaplan-Meier survival, :math:`d_{ij}` the
+    failures from cause :math:`j` at :math:`t_i` and :math:`r_i` the number
+    at risk. The CIFs of all causes add up to the all-cause failure
+    probability.
+
+    Call the class method ``CompetingRisks.fit`` (or ``fit_from_df``); it
+    returns a fitted instance.
+    """
+
     #: The source DataFrame when fitted via ``fit_from_df`` (named so it
     #: does not shadow the density method ``df``, #253).
     source_df: Any
@@ -141,6 +163,10 @@ class CompetingRisks(SerialisableMixin):
         return np.where(idx[rev] < 0, 0.0, out)
 
     def hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """
+        Hazard (the Nelson-Aalen increment ``d / r`` at each event time, 0
+        between them), all causes (``event=None``) or one cause.
+        """
         return self._f("h", x, event)
 
     def Hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
@@ -190,18 +216,26 @@ class CompetingRisks(SerialisableMixin):
         return 1 - self.sf(x, event=event)
 
     def df(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
+        """
+        ``hf * sf``: the probability mass at each event time, all causes
+        (``event=None``) or from one cause's net survival.
+        """
         return self.hf(x, event=event) * self.sf(x, event=event)
 
     def iif(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         """
-        Instantaneous Incidence Function
+        Instantaneous incidence of cause ``event``: the step of the
+        cumulative incidence at each event time,
+        :math:`S(t_{i-1}) d_{ij} / r_i` (0 between event times).
         """
         validate_cif_event(event)
         return self._f("IIF", x, event)
 
     def cif(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         """
-        Cumulative Incidence Function
+        Cumulative incidence of cause ``event`` at ``x``: the probability of
+        having failed from that cause by ``x``, with the other causes still
+        acting. ``event`` is required.
         """
         validate_cif_event(event)
 
@@ -217,6 +251,30 @@ class CompetingRisks(SerialisableMixin):
         n_col: "str | None" = None,
         method: str = "Nelson-Aalen",
     ) -> "CompetingRisks":
+        """
+        Fit from the columns of a :class:`pandas.DataFrame`.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The data.
+        x_col : str
+            The column of failure / censoring times.
+        e_col : str
+            The column of causes (missing for a censored row).
+        c_col : str, optional
+            The column of censoring flags; derived from ``e_col`` if not
+            given.
+        n_col : str, optional
+            The column of counts.
+        method : str, optional
+            As for :meth:`fit`.
+
+        Returns
+        -------
+        CompetingRisks
+            The fitted model; the frame is kept as ``source_df``.
+        """
         x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
         model = cls.fit(x, e, c, n, method)
         # Keep the source frame without shadowing the ``df`` (density)
@@ -234,8 +292,43 @@ class CompetingRisks(SerialisableMixin):
         method: str = "Nelson-Aalen",
     ) -> "CompetingRisks":
         """
-        Need to check that causes is the same length
-        TODO: FlemingHarrington baseline.
+        Fit the non-parametric competing-risks model.
+
+        Parameters
+        ----------
+        x : array_like
+            Failure or censoring times.
+        e : array_like
+            The cause of each failure: any hashable labels. A missing
+            value (``None``, ``NaN``) marks a right-censored row.
+        c : array_like, optional
+            Censoring flags: 0 a failure (with a cause in ``e``), 1
+            right-censored (with ``e`` missing). Derived from ``e`` if not
+            given. Left and interval censoring are not supported.
+        n : array_like, optional
+            Counts. Defaults to 1.
+        method : str, optional
+            The all-cause survival estimator that ``sf``, ``ff`` and ``Hf``
+            report: ``"Nelson-Aalen"`` (the default, ``exp(-H)``) or
+            ``"Kaplan-Meier"``. The cumulative incidence always uses the
+            Kaplan-Meier survival, so the CIFs add up to the Kaplan-Meier
+            failure probability either way.
+
+        Returns
+        -------
+        CompetingRisks
+            The fitted model.
+
+        Examples
+        --------
+        >>> from surpyval.univariate.competing_risks import CompetingRisks
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = CompetingRisks.fit(x, e)
+        >>> model.cif([5, 10], 'a').round(4)
+        array([0.3167, 0.6083])
+        >>> model.cif([5, 10], 'b').round(4)
+        array([0.1   , 0.3917])
         """
         x, c, n, e = validate_cr_inputs(x, c, n, e, method)
 

@@ -1,8 +1,21 @@
 Degradation Analysis
 ====================
 
+Models for measurements of a unit's condition over time -- wear, crack
+length, capacity loss -- from which the time to failure is inferred as
+the time the degradation crosses a threshold. Import everything on this
+page from ``surpyval.degradation``. There are three approaches: a
+*path model* fitted to each unit's measurements (``DegradationAnalysis``,
+which returns a ``DegradationModel``); a *stochastic process* (the
+Wiener and gamma processes); and *destructive* degradation, where each
+unit is measured once (``DestructiveDegradation``). The theory is in
+:doc:`Degradation Analysis` and worked examples are in
+:doc:`Degradation Modelling with SurPyval`.
+
 Degradation Analysis Fitter
 ---------------------------
+
+``DegradationAnalysis`` is an instance of the class below.
 
 .. autoclass:: surpyval.degradation.degradation_analysis.DegradationAnalysis_
    :members:
@@ -21,6 +34,16 @@ Degradation Model
 
 Path Models
 -----------
+
+The shape of each unit's degradation over time. Pass one to
+``DegradationAnalysis.fit`` by name (``path="linear"``) or as an
+instance (``path=LinearPath``); the instances ``LinearPath``,
+``QuadraticPath``, ``ExponentialPath``, ... are of the classes below,
+and ``PATH_MODELS`` maps each accepted name (``"linear"``,
+``"quadratic"``, ``"exponential"``, ``"offset-exponential"``,
+``"power"``, ``"logarithmic"``, ``"lloyd-lipow"``, ``"gompertz"``,
+``"michaelis-menten"``) to its instance. Subclass ``PathModel`` for a
+new shape.
 
 .. autoclass:: surpyval.degradation.path_models.PathModel
    :members:
@@ -58,7 +81,7 @@ Stress-Dependent Path Parameters
 --------------------------------
 
 For accelerated degradation tests whose *mechanism* depends on stress
-(``links`` in :meth:`DegradationAnalysis.fit`): the path parameters are
+(``links`` in :meth:`DegradationAnalysis.fit <surpyval.degradation.degradation_analysis.DegradationAnalysis_.fit>`): the path parameters are
 modelled on a link scale, ``eta_i = D(z_i) gamma + u_i``, so a
 log-linked rate with ``Z = 1/T`` follows the Arrhenius relationship.
 
@@ -73,13 +96,13 @@ Step-Stress: the Accelerated Clock
 ----------------------------------
 
 For tests whose stress changes *during* a unit's test
-(``acceleration="clock"`` in :meth:`DegradationAnalysis.fit`): stress
+(``acceleration="clock"`` in :meth:`DegradationAnalysis.fit <surpyval.degradation.degradation_analysis.DegradationAnalysis_.fit>`): stress
 speeds up the clock of every unit's path, ``AF(z) = exp(gamma' (z -
 stress_ref))``, and the path is the ordinary path model on the
 reference-stress time the unit has aged. The fitted
 :class:`~surpyval.degradation.degradation_analysis.DegradationModel` then
 carries ``gamma`` and ``stress_ref``, its life methods take the stress as
-one row or a :class:`~surpyval.StepSchedule`, and its trajectory methods
+one row or a :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`, and its trajectory methods
 take the unit's stress history ``Z`` and a planned ``Z_future``. How the
 stress coefficients are estimated:
 

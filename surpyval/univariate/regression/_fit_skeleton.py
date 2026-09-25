@@ -130,12 +130,30 @@ class HazardIdentitiesMixin:
         def hf(self, x: Any, Z: Any, *params: Any) -> Any: ...
 
     def sf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Survival function at ``x`` for covariates ``Z``,
+        :math:`R(x \\mid Z) = e^{-H(x \\mid Z)}`.
+
+        ``params`` are the distribution parameters followed by the
+        covariate coefficients, in the order of a fitted model's
+        ``params``. A fitted model's own ``sf(x, Z)`` supplies them.
+        """
         return np.exp(-self.Hf(x, Z, *params))
 
     def ff(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Failure (CDF) function at ``x`` for covariates ``Z``,
+        :math:`F(x \\mid Z) = 1 - e^{-H(x \\mid Z)}`. ``params`` as for
+        :meth:`sf`.
+        """
         return -np.expm1(-self.Hf(x, Z, *params))
 
     def df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Density at ``x`` for covariates ``Z``,
+        :math:`f(x \\mid Z) = h(x \\mid Z) e^{-H(x \\mid Z)}`. ``params`` as
+        for :meth:`sf`.
+        """
         return self.hf(x, Z, *params) * np.exp(-self.Hf(x, Z, *params))
 
     def log_sf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:

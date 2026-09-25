@@ -245,6 +245,22 @@ class FineGrayModel(SerialisableMixin):
 
 
 class FineGray_:
+    """
+    The Fine-Gray subdistribution-hazards regression for one cause of a
+    competing-risks problem: the covariates act proportionally on the
+    *subdistribution* hazard of the cause of interest, so a coefficient
+    describes its effect on that cause's cumulative incidence directly,
+
+    .. math::
+        F_k(t \\mid Z) = 1 - \\exp\\left(-\\Lambda_{k0}(t)\\,
+        e^{\\beta' Z}\\right).
+
+    Estimated by inverse-probability-of-censoring weighting (IPCW).
+    ``FineGray`` (from ``surpyval.univariate.competing_risks``) is an
+    instance of this class; its ``fit`` returns a
+    :class:`~surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel`.
+    """
+
     def fit(
         self,
         x: npt.ArrayLike,
@@ -280,6 +296,24 @@ class FineGray_:
         -------
         FineGrayModel
             The fitted model, with :meth:`~FineGrayModel.cif` prediction.
+
+        Examples
+        --------
+        >>> from surpyval.univariate.competing_risks import FineGray
+        >>> import numpy as np
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.binomial(1, 0.5, (200, 1)).astype(float)
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * Z[:, 0])))
+        >>> t_b = rng.exponential(1 / 0.05, 200)
+        >>> t_c = rng.uniform(0, 20, 200)  # censoring times
+        >>> x = np.minimum(np.minimum(t_a, t_b), t_c).round(3)
+        >>> first = np.where(t_a < t_b, "a", "b")
+        >>> e = np.where(t_c < np.minimum(t_a, t_b), None, first)
+        >>> model = FineGray.fit(x, Z, e, cause="a")
+        >>> model.beta.round(3)
+        array([0.907])
+        >>> model.cif([5, 10], [[1]]).round(4)
+        array([0.5808, 0.7394])
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 

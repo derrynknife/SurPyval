@@ -96,16 +96,26 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
 
     # -- dependence summaries --------------------------------------------
     def kendall_tau(self) -> float:
+        """Kendall's rank correlation implied by the fitted copula."""
         return self.copula.kendall_tau(*self.params)
 
     def spearman_rho(self) -> float:
+        """Spearman's rank correlation implied by the fitted copula."""
         return self.copula.spearman_rho(*self.params)
 
     def tail_dependence(self) -> tuple:
+        """The lower and upper tail-dependence coefficients
+        ``(lambda_L, lambda_U)`` of the fitted copula."""
         return self.copula.tail_dependence(*self.params)
 
     # -- serialisation ----------------------------------------------------
     def to_dict(self) -> dict:
+        """
+        Serialise to a plain dictionary: the copula family, its
+        parameter(s), the fit method and each margin's own ``to_dict``.
+        The data is not stored. Restore with :meth:`from_dict` or
+        ``surpyval.from_dict``.
+        """
         margins = []
         for m in self.margins:
             margins.append(m.to_dict() if hasattr(m, "to_dict") else None)
@@ -121,6 +131,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "CopulaModel":
+        """Rebuild a copula model from a :meth:`to_dict` dictionary."""
         import surpyval
 
         from .archimedean import Clayton, Frank, Gumbel, Independence

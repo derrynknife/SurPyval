@@ -70,6 +70,22 @@ class AdditiveHazardsFitter(
     TVCFitMixin,
     DataFrameRegressionMixin,
 ):
+    """
+    Parametric additive hazards fitter: the covariates add a constant
+    risk difference to a parametric baseline hazard,
+
+    .. math::
+        h(x \\mid Z) = h_0(x) + \\beta' Z, \\qquad
+        H(x \\mid Z) = H_0(x) + x\\, \\beta' Z.
+
+    Use the pre-built instances (``WeibullAH``, ``ExponentialAH``, ...) or
+    the ``AH`` factory. Nothing keeps the hazard positive: if the fitted
+    hazard would be non-positive at an observed event the fit fails
+    rather than return an invalid model. When covariate effects are
+    strongly protective, a proportional hazards model, which keeps the
+    hazard positive by construction, is the safer choice.
+    """
+
     def __init__(self, name: str, dist: Any) -> None:
         self.name = name
         mirror_distribution(self, dist)
@@ -82,11 +98,20 @@ class AdditiveHazardsFitter(
         return np.dot(Z, np.array(beta))
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Hazard rate :math:`h_0(x) + \\beta' Z` at ``x`` for covariates
+        ``Z``; ``params`` are the distribution parameters followed by the
+        coefficients.
+        """
         dist_params = np.array(params[: self.k_dist])
         beta = params[self.k_dist :]
         return self.hf_dist(x, *dist_params) + self._beta_Z(Z, beta)
 
     def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Cumulative hazard :math:`H_0(x) + x \\beta' Z` at ``x`` for
+        covariates ``Z``; ``params`` as for :meth:`hf`.
+        """
         # H(x | Z) = H_0(x) + integral_0^x beta'Z ds = H_0(x) + x * beta'Z.
         dist_params = np.array(params[: self.k_dist])
         beta = params[self.k_dist :]
@@ -190,7 +215,8 @@ class AdditiveHazardsFitter(
         n : array_like, optional
             The count of observations at each time.
         t : array_like, optional
-            The truncation matrix.
+            Truncation bounds: an (N, 2) array of the left and right
+            truncation times of each observation.
         init : array_like, optional
             Initial parameter values (baseline parameters followed by the
             covariate coefficients).

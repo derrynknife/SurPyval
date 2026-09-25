@@ -9,7 +9,8 @@ stages is not fixed: ``from_params`` takes any number of rates and the
 model carries that many parameters, ``lambda_1 ... lambda_m``. Equal
 rates are the Erlang case and belong to ``Gamma``; rates too close to
 each other are refused, since the closed form is ill-conditioned there.
-There is no ``fit`` -- build it from known stage rates.
+It is not fitted from data (``fit`` raises ``NotImplementedError``) --
+build it from known stage rates.
 
 .. autoclass:: surpyval.univariate.parametric.distributions.hypoexponential.Hypoexponential_
    :members:

@@ -7,7 +7,8 @@ times (with ``m = numpy.inf`` the infinite-memory limit). It differs from
 ``ARA`` whenever the baseline intensity varies with time, and returns a
 :doc:`Renewal Model <renewal_model>`.
 
-.. class:: ARI
+.. autodata:: surpyval.recurrent.renewal.ari.ARI
+   :no-value:
 
    .. automethod:: surpyval.recurrent.renewal.ari.ARI.fit
    .. automethod:: surpyval.recurrent.renewal.ari.ARI.fit_from_recurrent_data

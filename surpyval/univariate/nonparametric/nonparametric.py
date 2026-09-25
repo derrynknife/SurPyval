@@ -74,15 +74,22 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     def sf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
-        Surival (or Reliability) function with the
+        Survival (or Reliability) function with the
         non-parametric estimates from the data.
 
         Parameters
         ----------
 
         x : array like or scalar
-            The values of the random variables at which t
-            he survival function will be calculated.
+            The values of the random variables at which the survival
+            function will be calculated.
+
+        interp : str, optional
+            How to evaluate between the estimate's time points: ``"step"``
+            (the default, the right-continuous step function), ``"linear"``,
+            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
+            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
+            forms return NaN outside the range of the data.
 
         Returns
         -------
@@ -129,6 +136,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             The values of the random variables at which
             the survival function will be calculated.
 
+        interp : str, optional
+            How to evaluate between the estimate's time points: ``"step"``
+            (the default, the right-continuous step function), ``"linear"``,
+            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
+            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
+            forms return NaN outside the range of the data.
+
         Returns
         -------
 
@@ -163,6 +177,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         x : array like or scalar
             The values of the random variables at which
             the survival function will be calculated
+
+        interp : str, optional
+            How to evaluate between the estimate's time points: ``"step"``
+            (the default, the right-continuous step function), ``"linear"``,
+            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
+            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
+            forms return NaN outside the range of the data.
 
         Returns
         -------
@@ -230,6 +251,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             The values of the random variables at which the
             survival function will be calculated
 
+        interp : str, optional
+            How to evaluate between the estimate's time points: ``"step"``
+            (the default, the right-continuous step function), ``"linear"``,
+            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
+            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
+            forms return NaN outside the range of the data.
+
         Returns
         -------
 
@@ -263,6 +291,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         x : array like or scalar
             The values of the random variables at which the
             function will be calculated.
+
+        interp : str, optional
+            How to evaluate between the estimate's time points: ``"step"``
+            (the default, the right-continuous step function), ``"linear"``,
+            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
+            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
+            forms return NaN outside the range of the data.
 
         Returns
         -------

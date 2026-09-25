@@ -50,6 +50,7 @@ class Copula:
 
     # -- the four copula primitives ---------------------------------------
     def cdf(self, u: Any, v: Any, *params: Any) -> Any:
+        """The copula :math:`C(u, v)`; defined by each family."""
         raise NotImplementedError
 
     def du(self, u: Any, v: Any, *params: Any) -> Any:
@@ -271,6 +272,7 @@ class Copula:
         }
 
     def neg_ll(self, params: Any, dims: list, weights: npt.NDArray) -> float:
+        """The copula-stage negative log-likelihood (used by the fit)."""
         ll = self._pair_loglik(params, dims[0], dims[1])
         return -float(onp.sum(weights * ll))
 
@@ -299,6 +301,31 @@ class Copula:
             ``"IFM"`` (default) fits each margin independently then the
             single copula parameter (robust two-stage estimation).
             ``"MLE"`` jointly optimises copula parameter + margin parameters.
+
+        Returns
+        -------
+        CopulaModel
+            The fitted model: the copula parameter(s) ``params`` and the
+            fitted ``margins``, with the joint ``sf``/``cdf``/``pdf``,
+            sampling and dependence measures.
+
+        Examples
+        --------
+        Simulate from a Clayton copula with Weibull margins, then recover
+        it:
+
+        >>> from surpyval import Weibull
+        >>> from surpyval.multivariate import Clayton
+        >>> margins = [
+        ...     Weibull.from_params([10, 2]),
+        ...     Weibull.from_params([20, 3]),
+        ... ]
+        >>> X = Clayton.from_params([2.0], margins).random(300, random_state=0)
+        >>> model = Clayton.fit(X, margins=[Weibull, Weibull])
+        >>> model.params.round(3)
+        array([2.293])
+        >>> round(float(model.kendall_tau()), 3)
+        0.534
         """
         from surpyval.multivariate.parametric.copula.copula_model import (
             CopulaModel,
@@ -328,7 +355,37 @@ class Copula:
         return CopulaModel(self, theta, margin_models, data=data, how=how)
 
     def from_params(self, params: Any, margins: Any) -> Any:
-        """Build a :class:`CopulaModel` from a known parameter and margins."""
+        """
+        Build a
+        :class:`~surpyval.multivariate.parametric.copula.copula_model.CopulaModel`
+        from a known parameter and margins, without fitting.
+
+        Parameters
+        ----------
+        params : array like
+            The copula parameter(s), e.g. ``[theta]`` (empty for the
+            independence copula).
+        margins : sequence of length 2
+            Fitted (or ``from_params``) univariate models, one per
+            dimension.
+
+        Returns
+        -------
+        CopulaModel
+            The model, for evaluation and simulation.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.multivariate import Clayton
+        >>> margins = [
+        ...     Weibull.from_params([10, 2]),
+        ...     Weibull.from_params([20, 3]),
+        ... ]
+        >>> model = Clayton.from_params([2.0], margins)
+        >>> round(float(model.kendall_tau()), 3)
+        0.5
+        """
         from surpyval.multivariate.parametric.copula.copula_model import (
             CopulaModel,
         )

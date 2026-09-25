@@ -77,22 +77,39 @@ class LikelihoodInferenceMixin:
 
     @property
     def parameter_names(self) -> list:
+        """
+        The names of the fitted parameters, in the order used by
+        :meth:`covariance`, :meth:`standard_errors` and :meth:`param_cb`.
+        """
         self._check_fitted()
         return list(self._parameter_names())
 
     @property
     def log_likelihood(self) -> float:
+        """
+        The maximised log-likelihood of the fit. Raises ``ValueError`` for a
+        model with no likelihood (built from parameters, or fitted by MSE).
+        """
         self._check_fitted()
         return -float(self._neg_ll(self._mle))
 
     @property
     def aic(self) -> float:
+        """
+        Akaike's information criterion, :math:`2k - 2\\ln L`, with ``k`` the
+        number of fitted parameters. Lower is better.
+        """
         self._check_fitted()
         k = self._mle.size
         return 2.0 * k - 2.0 * self.log_likelihood
 
     @property
     def bic(self) -> float:
+        """
+        The Bayesian information criterion, :math:`k \\ln n - 2\\ln L`,
+        with ``n`` the number of rows of data the model was fitted to
+        (events and end-of-observation rows). Lower is better.
+        """
         self._check_fitted()
         k = self._mle.size
         return k * np.log(self._n_obs) - 2.0 * self.log_likelihood

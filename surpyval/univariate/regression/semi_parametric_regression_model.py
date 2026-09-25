@@ -20,6 +20,20 @@ if TYPE_CHECKING:
 
 
 class SemiParametricRegressionModel(SerialisableMixin):
+    """
+    The fitted Cox proportional hazards model returned by ``CoxPH.fit``,
+    ``fit_from_df``, ``fit_tvc`` and ``fit_tvc_timeline``.
+
+    ``params`` (also ``beta``) are the coefficients, ``p_values`` their
+    Wald p-values, and ``x``, ``h0``, ``H0`` the Breslow baseline hazard
+    and cumulative hazard at the event times. The survival functions take
+    the covariates as a second argument, ``sf(x, Z)`` (and a ``stratum``
+    for a stratified fit); ``sf_tvc`` / ``Hf_tvc`` follow a time-varying
+    covariate path. The model also provides residuals, the
+    proportional-hazards test (``check_ph``), cluster-robust standard
+    errors and serialisation.
+    """
+
     # Covariate metadata populated when the model is fit from a pandas
     # DataFrame via ``CoxPH.fit_from_df``.
     feature_names: list[str] | None = None
@@ -252,6 +266,11 @@ class SemiParametricRegressionModel(SerialisableMixin):
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
     ) -> npt.NDArray:
+        """
+        Survival :math:`e^{-H_0(x) e^{\\beta' Z}}` at ``x`` for covariates
+        ``Z`` (one row, or one row per ``x``); ``stratum`` selects the
+        baseline of a stratified fit.
+        """
         return np.exp(-self.Hf(x, Z, stratum))
 
     def ff(
@@ -260,6 +279,10 @@ class SemiParametricRegressionModel(SerialisableMixin):
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
     ) -> npt.NDArray:
+        """
+        Failure probability ``1 - sf`` at ``x`` for covariates ``Z``;
+        arguments as for :meth:`sf`.
+        """
         return -np.expm1(-self.Hf(x, Z, stratum))
 
     def df(
@@ -268,6 +291,11 @@ class SemiParametricRegressionModel(SerialisableMixin):
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
     ) -> npt.NDArray:
+        """
+        ``hf * sf`` at ``x`` for covariates ``Z``: the probability mass at
+        each baseline event time (the baseline is a step function);
+        arguments as for :meth:`sf`.
+        """
         return self.hf(x, Z, stratum) * self.sf(x, Z, stratum)
 
     def compute_residuals(self, kind: str = "martingale") -> npt.NDArray:

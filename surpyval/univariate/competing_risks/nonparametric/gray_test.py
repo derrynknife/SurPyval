@@ -76,6 +76,26 @@ def gray_test(
         ``(statistic, df, p_value, cause, groups)``; ``df`` is
         ``n_groups - 1`` and a small ``p_value`` is evidence the groups'
         cumulative incidence functions differ.
+
+    Examples
+    --------
+    Group 1 has twice group 0's hazard of cause ``a``:
+
+    >>> import numpy as np
+    >>> from surpyval import gray_test
+    >>> rng = np.random.default_rng(0)
+    >>> group = rng.binomial(1, 0.5, 200)
+    >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * group)))
+    >>> t_b = rng.exponential(1 / 0.05, 200)
+    >>> t_c = rng.uniform(0, 20, 200)  # censoring times
+    >>> x = np.minimum(np.minimum(t_a, t_b), t_c).round(3)
+    >>> first = np.where(t_a < t_b, "a", "b")
+    >>> e = np.where(t_c < np.minimum(t_a, t_b), None, first)
+    >>> res = gray_test(x, e, group, cause="a")
+    >>> round(res.statistic, 3), res.df
+    (19.878, 1)
+    >>> bool(res.p_value < 0.001)
+    True
     """
     x = np.asarray(x, dtype=float)
     group = np.asarray(group)
