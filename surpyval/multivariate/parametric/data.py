@@ -26,9 +26,9 @@ class MultivariateSurpyvalData:
     x : array-like, shape (N, D) or sequence of D length-N arrays
         Point values per dimension. For an interval-censored entry
         (``c == 2``) the point value is ignored and ``xl``/``xr`` are used.
-    c : array-like, shape (N, D), optional
-        Per-dimension censoring codes in ``{0, 1, -1, 2}``. Defaults to all
-        observed.
+    c : array-like, shape (N, D) or (D,), optional
+        Per-dimension censoring codes in ``{0, 1, -1, 2}``. A single row of
+        ``D`` codes applies to every row. Defaults to all observed.
     n : array-like, shape (N,), optional
         Integer weight (count) of each row. Defaults to all ones.
     t : array-like, shape (N, D, 2), optional
@@ -53,9 +53,12 @@ class MultivariateSurpyvalData:
         if c is None:
             c = np.zeros((N, D), dtype=int)
         else:
-            c = self._as_2d(c).astype(int)
-            if c.shape == (D,):
-                c = np.broadcast_to(c, (N, D)).copy()
+            raw = np.asarray(c)
+            if D > 1 and raw.shape in ((D,), (1, D)):
+                # one code per dimension, shared by every row
+                c = np.broadcast_to(raw.reshape(1, D), (N, D)).astype(int)
+            else:
+                c = self._as_2d(c).astype(int)
             if c.shape != (N, D):
                 raise ValueError(f"c must have shape {(N, D)}, got {c.shape}")
             if not np.isin(c, (0, 1, -1, 2)).all():
@@ -70,10 +73,17 @@ class MultivariateSurpyvalData:
 
         # Interval bounds: fall back to the point value where not given so the
         # arrays are always well shaped; only the c == 2 entries are read.
-        xl = x.copy() if xl is None else self._as_2d(xl)
-        xr = x.copy() if xr is None else self._as_2d(xr)
+        # Without bounds an interval entry would be the zero-width interval
+        # [x, x] and contribute zero likelihood, so that is an error.
         if (c == 2).any() and (xl is None or xr is None):
             raise ValueError("interval-censored rows (c == 2) need xl and xr")
+        xl = x.copy() if xl is None else self._as_2d(xl)
+        xr = x.copy() if xr is None else self._as_2d(xr)
+        for name, bound in (("xl", xl), ("xr", xr)):
+            if bound.shape != (N, D):
+                raise ValueError(
+                    f"{name} must have shape {(N, D)}, got {bound.shape}"
+                )
 
         if t is None:
             t = np.empty((N, D, 2))

@@ -197,15 +197,39 @@ class Copula:
             ll = ll - self._trunc_logmass(params, d0, d1)
         return ll
 
+    def _boundary_cdf(self, u: Any, v: Any, params: Any) -> Any:
+        """``C(u, v)`` with the boundary values every copula shares.
+
+        ``C(0, v) = C(u, 0) = 0``, ``C(u, 1) = u`` and ``C(1, v) = v``.
+        The truncation window's untruncated sides sit exactly on that
+        boundary, where a family's formula can divide by zero (Clayton's
+        ``u ** -theta`` at ``u = 0``); only interior points reach it.
+        """
+        u = onp.asarray(u, dtype=float)
+        v = onp.asarray(v, dtype=float)
+        u, v = onp.broadcast_arrays(u, v)
+        zero = (u <= 0) | (v <= 0)
+        u_one = u >= 1
+        v_one = v >= 1
+        interior = ~(zero | u_one | v_one)
+        out = onp.where(v_one, u, onp.where(u_one, v, 0.0))
+        out = onp.where(zero, 0.0, out)
+        if interior.any():
+            out = out.copy()
+            out[interior] = onp.asarray(
+                self.cdf(u[interior], v[interior], *params)
+            )
+        return out
+
     def _trunc_logmass(self, params: Any, d0: Any, d1: Any) -> Any:
         """Log copula mass over the per-row truncation rectangle."""
         ul0, ur0 = d0["ul"], d0["ur"]
         ul1, ur1 = d1["ul"], d1["ur"]
         mass = (
-            onp.asarray(self.cdf(ur0, ur1, *params))
-            - onp.asarray(self.cdf(ul0, ur1, *params))
-            - onp.asarray(self.cdf(ur0, ul1, *params))
-            + onp.asarray(self.cdf(ul0, ul1, *params))
+            self._boundary_cdf(ur0, ur1, params)
+            - self._boundary_cdf(ul0, ur1, params)
+            - self._boundary_cdf(ur0, ul1, params)
+            + self._boundary_cdf(ul0, ul1, params)
         )
         return onp.log(onp.clip(mass, _TINY, None))
 
@@ -222,13 +246,19 @@ class Copula:
     ) -> dict:
         """Transform one dimension's data into copula (u-space) arrays."""
         u = onp.clip(onp.asarray(margin.ff(x), dtype=float), _EPS, 1 - _EPS)
-        ulo = onp.clip(onp.asarray(margin.ff(xl), dtype=float), _EPS, 1 - _EPS)
-        uhi = onp.clip(onp.asarray(margin.ff(xr), dtype=float), _EPS, 1 - _EPS)
+        # An interval may start at the edge of a margin's support (0 for a
+        # LogNormal, whose ff takes log(0) = -inf on the way to the correct
+        # value 0); that is not an error, so it is not reported as one.
+        with onp.errstate(divide="ignore"):
+            ulo = onp.asarray(margin.ff(xl), dtype=float)
+            uhi = onp.asarray(margin.ff(xr), dtype=float)
+        ulo = onp.clip(ulo, _EPS, 1 - _EPS)
+        uhi = onp.clip(uhi, _EPS, 1 - _EPS)
         with onp.errstate(divide="ignore"):
             logf = onp.log(onp.clip(onp.asarray(margin.df(x)), _TINY, None))
         has_trunc = bool(onp.isfinite(tl).any() or onp.isfinite(tr).any())
-        ul = onp.where(onp.isfinite(tl), onp.asarray(margin.ff(tl)), 0.0)
-        ur = onp.where(onp.isfinite(tr), onp.asarray(margin.ff(tr)), 1.0)
+        ul = _ff_where_finite(margin, tl, 0.0)
+        ur = _ff_where_finite(margin, tr, 1.0)
         return {
             "c": onp.asarray(c, dtype=int),
             "u": u,
@@ -315,16 +345,24 @@ class Copula:
             # Reuse the univariate fitter, honouring each margin's own
             # censoring. Interval entries (c == 2) are passed via xl/xr,
             # exactly as the univariate API expects.
-            xd, cd, xld, xrd, _, _ = data.dimension(d)
+            # Each margin is fitted with the rows' counts and its own
+            # dimension's truncation window (a margin fitted without them
+            # is biased, and the copula stage inherits the bias).
+            xd, cd, xld, xrd, tld, trd = data.dimension(d)
+            kwargs: dict = {"c": cd, "n": data.n}
+            if onp.isfinite(tld).any():
+                kwargs["tl"] = tld
+            if onp.isfinite(trd).any():
+                kwargs["tr"] = trd
             if (cd == 2).any():
                 # surpyval mixes interval and point data in one 2-column x:
                 # point rows have equal columns, interval rows carry [xl, xr].
                 x2 = onp.column_stack(
                     [onp.where(cd == 2, xld, xd), onp.where(cd == 2, xrd, xd)]
                 )
-                models.append(margin.fit(x=x2, c=cd))
+                models.append(margin.fit(x=x2, **kwargs))
             else:
-                models.append(margin.fit(x=xd, c=cd))
+                models.append(margin.fit(x=xd, **kwargs))
         return models
 
     def _bounds_transforms(self) -> tuple:
@@ -405,3 +443,18 @@ class Copula:
             return 0.0
         tau = kendalltau(dims[0]["u"][both], dims[1]["u"][both]).statistic
         return 0.0 if not onp.isfinite(tau) else float(tau)
+
+
+def _ff_where_finite(margin: Any, t: Any, fill: float) -> npt.NDArray:
+    """``margin.ff(t)`` at finite ``t``, ``fill`` at the infinite defaults.
+
+    Evaluating a margin at +-inf warns (``log(-inf)`` for a LogNormal), so
+    the infinite entries -- "no truncation on this side" -- are never
+    passed to it.
+    """
+    t = onp.asarray(t, dtype=float)
+    finite = onp.isfinite(t)
+    out = onp.full(t.shape, fill, dtype=float)
+    if finite.any():
+        out[finite] = onp.asarray(margin.ff(t[finite]), dtype=float)
+    return out

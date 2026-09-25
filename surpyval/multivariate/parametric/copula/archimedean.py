@@ -75,14 +75,28 @@ class ClaytonCopula(Copula):
     bounds = ((0, None),)
     param_names = ("theta",)
 
+    # Everything is computed through ``log(base)`` with
+    # ``base - 1 = expm1(-theta log u) + expm1(-theta log v)``. The direct
+    # ``u ** -theta + v ** -theta - 1`` rounds to exactly 1 once theta is
+    # below ~1e-16, so C became 1 and the density 1 / (u v): a spurious
+    # likelihood maximum that negatively dependent data ran the fit into.
+    # In log form every expression tends to the independence copula.
+    @staticmethod
+    def _log_base(u: Any, v: Any, theta: Any) -> Any:
+        return np.log1p(
+            np.expm1(-theta * np.log(u)) + np.expm1(-theta * np.log(v))
+        )
+
     # Named single parameter narrows the variadic base contract.
     def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
-        return (u ** (-theta) + v ** (-theta) - 1.0) ** (-1.0 / theta)
+        return np.exp(-self._log_base(u, v, theta) / theta)
 
     # Named single parameter narrows the variadic base contract.
     def du(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
-        base = u ** (-theta) + v ** (-theta) - 1.0
-        return u ** (-theta - 1.0) * base ** (-1.0 / theta - 1.0)
+        return np.exp(
+            (-theta - 1.0) * np.log(u)
+            + (-1.0 / theta - 1.0) * self._log_base(u, v, theta)
+        )
 
     # Named single parameter narrows the variadic base contract.
     def dv(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
@@ -90,11 +104,10 @@ class ClaytonCopula(Copula):
 
     # Named single parameter narrows the variadic base contract.
     def pdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
-        base = u ** (-theta) + v ** (-theta) - 1.0
-        return (
-            (1.0 + theta)
-            * (u * v) ** (-theta - 1.0)
-            * base ** (-1.0 / theta - 2.0)
+        return np.exp(
+            np.log1p(theta)
+            + (-theta - 1.0) * (np.log(u) + np.log(v))
+            + (-1.0 / theta - 2.0) * self._log_base(u, v, theta)
         )
 
     def kendall_tau(self, theta: float) -> float:  # type: ignore[override]

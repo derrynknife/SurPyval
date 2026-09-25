@@ -33,12 +33,6 @@ recovers it:
 
 .. jupyter-execute::
 
-    import warnings
-    # The copula likelihood evaluates log() and powers at the edges of the
-    # unit square (e.g. at the default infinite truncation bounds), which
-    # numpy reports as harmless RuntimeWarnings; silence them for this page.
-    warnings.filterwarnings("ignore", category=RuntimeWarning)
-
     import numpy as np
     import surpyval as surv
     from matplotlib import pyplot as plt
@@ -133,10 +127,11 @@ searches over every parameter at once:
             how, fit.params[0], np.round(fit.margins[0].params, 3),
             np.round(fit.margins[1].params, 3), time.perf_counter() - start))
 
-Prefer ``"MLE"`` when the data carry row counts ``n`` or truncation ``t``: in
-the current implementation the IFM first stage fits each margin to its values
-and censoring codes only, so counts and truncation reach the margins only
-through the joint MLE refinement (see `Truncated observation`_ below).
+The IFM first stage fits each margin with everything that belongs to it: its
+values and censoring codes, the row counts ``n`` and that series' own
+truncation window. What it cannot see is how truncation of *one* series
+changes the rows seen for the *other*; for that, use ``"MLE"`` (see
+`Truncated observation`_ below).
 
 Margins can also be passed **already fitted**, in which case they are used as
 they are and only the copula parameter is estimated. This is useful when a
@@ -207,8 +202,8 @@ early) is reproduced by Clayton and missing from the Gaussian copula.
     Clayton (:math:`\theta > 0`) and Gumbel (:math:`\theta \geq 1`) can only
     express positive dependence. If the empirical Kendall's tau of your data is
     negative, use Frank or Gaussian: a Clayton or Gumbel fit is pushed to its
-    independence boundary and its likelihood there is not a meaningful basis
-    for comparison.
+    independence boundary (:math:`\theta \to 0` or :math:`1`), where it *is*
+    the independence copula, with the same likelihood.
 
 Censoring and truncation
 ------------------------
@@ -301,11 +296,18 @@ is given per row and per series as ``t[i, j] = [lower, upper]``, with
             how, fit.params[0], np.round(fit.margins[0].params, 3)))
 
 The burn-in removes the earliest failures, which are exactly where Clayton's
-dependence lives. With ``how="IFM"`` the Weibull margin is fitted without the
-truncation (its shape comes back well above 2) and :math:`\theta` is biased; the
-joint ``how="MLE"`` fit uses the truncated likelihood for everything and
-recovers both. Row counts ``n`` behave the same way: give them with
-``how="MLE"``.
+dependence lives. With ``how="IFM"`` the Weibull margin is fitted with its
+left truncation at 3 and comes back close to the truth, but :math:`\theta` is
+still biased. The reason is the *other* series: the rows that survived the
+burn-in are a selected sample of series 2 as well (with positive dependence,
+a unit whose bearing 1 lasted past 3 tends to have a long-lived bearing 2),
+and series 2 has no truncation window of its own, so its IFM margin is fitted
+to that selected sample as if it were the population. The copula stage then
+explains the distorted margin with too little dependence. The joint
+``how="MLE"`` fit divides every row by the probability of passing the
+burn-in, computed from the copula and both margins together, and recovers
+:math:`\theta` as well. Use ``how="MLE"`` whenever truncation of one series
+selects the rows of another.
 
 Working with a fitted model
 ---------------------------

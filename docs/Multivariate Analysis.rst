@@ -372,8 +372,8 @@ exactly two series are supported. With ``how="IFM"`` [JoeXu1996mv]_:
 
 1. each margin is fitted by the usual univariate maximum likelihood to its own
    series, honouring that series' censoring codes (interval-censored entries
-   through ``xl``/``xr``); margins passed as already-fitted models are used
-   as they are;
+   through ``xl``/``xr``), the row counts ``n`` and that series' truncation
+   window; margins passed as already-fitted models are used as they are;
 2. with the margins fixed, the copula parameter is chosen to maximise the
    copula log-likelihood above. The search runs on an unconstrained
    transformation of the parameter (for the Gaussian copula,
@@ -386,13 +386,14 @@ likelihood.
 
 Some consequences worth knowing:
 
-- In the current implementation the IFM first stage fits each margin to its
-  values and censoring codes only; the row counts ``n`` and the truncation
-  windows ``t`` enter the copula stage but not the marginal fits. When the data
-  carry counts or truncation, use ``how="MLE"``, whose joint search refines the
-  margins with the full likelihood. (Because one-sided truncation acts only
-  through the margins, an IFM fit of truncated data is essentially an IFM fit
-  that ignores the truncation.)
+- The IFM first stage truncates each margin by its own series' window only.
+  When the observation rule is joint -- a row is seen only if series 1
+  passed a burn-in, say -- the rows are also a selected sample of the other
+  series, which its margin cannot know about, and both that margin and the
+  copula parameter come out biased. ``how="MLE"`` divides each row by the
+  copula mass of the whole truncation rectangle and so accounts for the
+  selection; use it whenever truncation of one series selects the rows of
+  another.
 - The copula parameter is estimated on the scale :math:`u_j = F_j(x_j)`, so a
   poorly chosen margin distorts it. Check the margins with the univariate
   tools first (see :doc:`Parametric SurPyval Modelling`).
