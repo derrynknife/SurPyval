@@ -362,8 +362,11 @@ class FrailtyFitter:
         model.frailties = {str(lab): float(u) for lab, u in zip(labels, post)}
         model.covariance = covariance
         model.param_names = param_names
+        model.k = len(param_names)
         model.n_obs = n_obs
         model.n_events = int((c == 0).sum())
+        model.n_events_weighted = float(w[c == 0].sum())
+        model.n_obs_weighted = float(w.sum())
         model.n_groups = n_groups
         model._neg_ll = float(res.fun)
         return model

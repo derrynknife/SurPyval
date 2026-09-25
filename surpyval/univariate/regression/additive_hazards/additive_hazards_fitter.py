@@ -21,15 +21,19 @@ version of what the semi-parametric ``AdditiveHazards`` estimates.
 
 A caveat inherent to additive hazards: nothing constrains
 :math:`h_0(x;\\theta) + \\beta' Z > 0`. The likelihood needs :math:`\\log h`
-for every observed event, so if the fitted hazard is driven non-positive at
-an observed time the log-likelihood becomes ``nan`` and the fit fails rather
-than returning a silently invalid model. This is deliberate: an additive
-hazards model that cannot keep the hazard positive over the data is not a
-valid description of it. When covariate effects are strongly protective a
-proportional hazards model, whose exponential form keeps the hazard positive
-by construction, is the safer choice.
+at every observed failure, so the optimiser only accepts parameters that keep
+the hazard positive there: a non-positive hazard at a failure is a barrier,
+not a failure of the fit. When the data would prefer a negative hazard -- a
+strongly protective covariate -- the fit ends pressed against that barrier,
+with the hazard nearly zero at one failure, ``beta`` held there and the
+baseline distorted to compensate. Such a fit is returned with a warning (the
+fit raises only if the optimiser cannot end at a finite likelihood at all).
+Positivity is not checked between the observed times. When covariate effects
+are strongly protective a proportional hazards model, whose exponential form
+keeps the hazard positive by construction, is the safer choice.
 """
 
+import warnings
 from typing import Any
 
 import autograd.numpy as np
@@ -79,11 +83,13 @@ class AdditiveHazardsFitter(
         H(x \\mid Z) = H_0(x) + x\\, \\beta' Z.
 
     Use the pre-built instances (``WeibullAH``, ``ExponentialAH``, ...) or
-    the ``AH`` factory. Nothing keeps the hazard positive: if the fitted
-    hazard would be non-positive at an observed event the fit fails
-    rather than return an invalid model. When covariate effects are
-    strongly protective, a proportional hazards model, which keeps the
-    hazard positive by construction, is the safer choice.
+    the ``AH`` factory. Nothing keeps the hazard positive except the
+    likelihood itself, which needs ``log h`` at every observed failure:
+    the fit keeps the hazard positive at the failures, and when a strongly
+    protective covariate pushes it to that limit the fit ends on the
+    boundary -- the hazard nearly zero at one failure, the baseline
+    distorted -- and warns. A proportional hazards model, which keeps the
+    hazard positive by construction, is then the safer choice.
     """
 
     def __init__(self, name: str, dist: Any) -> None:
@@ -137,14 +143,40 @@ class AdditiveHazardsFitter(
         self, size: int, Z: npt.ArrayLike, *params: float
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
-        Draw ``size`` samples for a single covariate vector ``Z`` by
-        numerically inverting the (monotone) cumulative hazard. Requires the
-        additive hazard to stay positive over the sampled range.
+        Draw ``size`` samples for each covariate row of ``Z`` by numerically
+        inverting the (monotone) cumulative hazard. Requires the additive
+        hazard to stay positive over the sampled range.
+
+        Returns the draws and a 2-D array of the covariate row each was
+        drawn at, row by row -- the same contract as the proportional
+        hazards ``random``.
         """
         dist_params = np.array(params[: self.k_dist])
         beta = np.array(params[self.k_dist :])
-        Z = np.asarray(Z, dtype=float).ravel()
-        bz = float(np.dot(Z, beta))
+        # One row per covariate vector, as in the PH sampler. This used to
+        # ravel ``Z`` into a single vector, so several rows failed with a
+        # shape mismatch and one row came back as a 1-D ``Z``.
+        Z_arr = np.atleast_2d(np.asarray(Z, dtype=float))
+        x = []
+        Z_out = []
+        for row in Z_arr:
+            x.append(
+                self._invert_cumulative_hazard(size, row, dist_params, beta)
+            )
+            Z_out.append(np.tile(row, (size, 1)))
+        return np.concatenate(x), np.vstack(Z_out)
+
+    def _invert_cumulative_hazard(
+        self,
+        size: int,
+        row: npt.NDArray,
+        dist_params: npt.NDArray,
+        beta: npt.NDArray,
+    ) -> npt.NDArray:
+        """``size`` draws at one covariate row: the times at which
+        ``H_0(x) + x beta'Z`` reaches ``-log U``, found by bracketing and
+        bisection."""
+        bz = float(np.dot(row, beta))
         target = -np.log(np.random.uniform(0, 1, size))
 
         def cum_haz(xv: npt.NDArray) -> npt.NDArray:
@@ -162,9 +194,73 @@ class AdditiveHazardsFitter(
             below = cum_haz(mid) < target
             lo = np.where(below, mid, lo)
             hi = np.where(below, hi, mid)
-        x = 0.5 * (lo + hi)
-        Z_out = np.ones_like(x)[:, None] * Z
-        return x.flatten(), Z_out.flatten()
+        return 0.5 * (lo + hi)
+
+    # -- positivity boundary ------------------------------------------------
+
+    #: The share of the information about ``beta`` a single failure must
+    #: carry, and the fraction of its baseline hazard its hazard must be
+    #: below, for the fit to count as held at the positivity boundary (see
+    #: ``_warn_if_on_positivity_boundary``).
+    BOUNDARY_INFORMATION_SHARE = 0.5
+    BOUNDARY_HAZARD_FRACTION = 0.25
+
+    def _warn_if_on_positivity_boundary(
+        self, data: SurpyvalData, params: npt.NDArray
+    ) -> None:
+        """Warn when the fit is held at the positivity boundary.
+
+        Each failure contributes ``log h`` to the likelihood, so a hazard
+        driven towards zero at one of them is a barrier: with a strongly
+        protective covariate the optimiser stops against it, with ``beta``
+        pinned by the one failure whose hazard it may not cross and the
+        baseline bent to compensate. That result has a finite likelihood
+        and used to be returned silently.
+
+        The barrier shows in the observed information. ``H`` is linear in
+        ``beta``, so the information about ``beta`` is the sum over failures
+        of ``Z Z' / h^2``; at an interior optimum it is spread over many
+        failures, while at the barrier the failure whose hazard is nearly
+        zero supplies most of it. In simulations boundary fits put well over
+        half of it on one failure, and fits to genuinely additive data with
+        a positive hazard a small fraction (below a third at a hundred
+        failures, falling as the sample grows). In a handful of failures
+        one of them can carry half the information anyway, so the failure
+        must also have had most of its baseline hazard cancelled -- the
+        boundary fits simulated kept at most a seventh of it.
+        """
+        event = np.asarray(data.c) == 0
+        x = np.asarray(data.x)
+        x = (x[:, 0] if x.ndim == 2 else x)[event]
+        Z = np.asarray(data.Z)[event]
+        with np.errstate(all="ignore"):
+            h = np.asarray(self.hf(x, Z, *params), dtype=float)
+            h0 = np.asarray(
+                self.hf_dist(x, *params[: self.k_dist]), dtype=float
+            )
+            info = np.where(h > 0, (Z**2).sum(axis=1) / h**2, 0.0)
+        # Only a failure whose hazard the covariates pushed well below the
+        # baseline can be pressed against zero.
+        protected = (h > 0) & (h < self.BOUNDARY_HAZARD_FRACTION * h0)
+        total = info.sum()
+        if not np.any(protected) or not np.isfinite(total) or total <= 0:
+            return
+        i = int(np.argmax(np.where(protected, info, -np.inf)))
+        if info[i] / total > self.BOUNDARY_INFORMATION_SHARE:
+            warnings.warn(
+                "The additive hazards fit ended on the positivity boundary: "
+                "the fitted hazard h_0(x) + beta'Z at the observed failure "
+                "x = {:.4g} is {:.3g}, {:.2%} of the baseline hazard there, "
+                "and that one failure carries {:.0%} of the information "
+                "about beta. The covariate effect is too protective for the "
+                "additive model to fit without the hazard nearly vanishing, "
+                "so beta sits at the boundary and the baseline is "
+                "distorted. A proportional hazards model (e.g. {}PH) keeps "
+                "the hazard positive by construction.".format(
+                    x[i], h[i], h[i] / h0[i], info[i] / total, self.dist.name
+                ),
+                stacklevel=3,
+            )
 
     # -- factory ----------------------------------------------------------
 
@@ -227,8 +323,9 @@ class AdditiveHazardsFitter(
         -------
 
         ParametricRegressionModel
-            The fitted model. Raises if the additive hazard cannot be kept
-            positive over the data (the log-likelihood is then non-finite).
+            The fitted model. Warns if the fit ends on the positivity
+            boundary (the hazard nearly zero at an observed failure), and
+            raises if the optimiser cannot reach a finite likelihood.
 
         Examples
         --------
@@ -289,6 +386,7 @@ class AdditiveHazardsFitter(
                 "positive by construction and may be more appropriate for "
                 "this data.".format(self.dist.name)
             )
+        self._warn_if_on_positivity_boundary(data, params)
 
         reg_model = _AdditiveReg()
         reg_model.name = "Additive [beta'Z]"

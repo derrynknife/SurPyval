@@ -13,7 +13,12 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from .._fit_skeleton import HazardIdentitiesMixin, make_objective
+from .._fit_skeleton import (
+    HazardIdentitiesMixin,
+    finite_start,
+    make_objective,
+    require_finite_fit,
+)
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
@@ -156,18 +161,27 @@ class ParameterSubstitutionFitter(
         return y
 
     def random(
-        self, size: int, Z: Numeric | tuple[float, float], *params: Boxable
+        self, size: int, Z: Numeric, *params: Boxable
     ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` samples at each distinct stress in ``Z``.
+
+        ``Z`` is a scalar stress, a 1-D array of stresses (one stress
+        variable), or one row per stress for a multi-stress life model.
+        Returns the draws and the stress row each was drawn at.
+        """
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
 
         x = []
         Z_out = []
-        if isinstance(Z, tuple):
-            # A (low, high) pair draws the stresses uniformly.
-            Z = np.random.uniform(*Z, size)
-        Z_arr = np.asarray(Z)
-        if Z_arr.ndim == 1:
+        # A scalar or 1-D stress is one stress variable: make it a column,
+        # as ``Hf``/``hf`` do. (A former ``(low, high)`` tuple option that
+        # drew the stresses uniformly was unreachable through the fitted
+        # model, whose ``random`` converts ``Z`` to an array first, and
+        # returned ``size`` draws per random stress -- ``size**2`` in all.)
+        Z_arr = np.asarray(Z, dtype=float)
+        if Z_arr.ndim <= 1:
             Z_arr = Z_arr.reshape(-1, 1)
 
         for stress in np.unique(Z_arr, axis=0):
@@ -266,7 +280,10 @@ class ParameterSubstitutionFitter(
         life_parameter_idx = self.param_map[self.life_parameter]
         if fixed is None:
             fixed = {}
-        if init is None or len(init) == 0:  # type: ignore[arg-type]
+
+        def default_init() -> npt.NDArray:
+            # The distribution fitted at each distinct stress, with the life
+            # model fitted through the per-stress life parameters.
             stress_data = []
             params_at_Z = []
 
@@ -297,8 +314,8 @@ class ParameterSubstitutionFitter(
 
             if len(params_at_Z) < 2:
                 raise ValueError(
-                    "Insufficient data at separate Z values. Try manually \
-                    setting initial guess using `init` keyword in `fit`"
+                    "Insufficient data at separate Z values. Try manually "
+                    "setting initial guess using `init` keyword in `fit`"
                 )
 
             parameter_data = params_at_Z[:, life_parameter_idx]
@@ -311,9 +328,12 @@ class ParameterSubstitutionFitter(
             # for a non-callable phi_init. Neither could run: all ten
             # life models are callable with the two-argument signature.
             phi_init = self.life_model.phi_init(parameter_data, stress_data)
-            init = np.array([*dist_init, *phi_init])
-        else:
-            init = np.array(init)
+            return np.array([*dist_init, *phi_init])
+
+        user_init = (
+            init is not None and len(init) > 0  # type: ignore[arg-type]
+        )
+        init = np.array(init) if user_init else default_init()
 
         if self.baseline != []:
             baseline_model = self.dist.fit_from_surpyval_data(data)
@@ -354,6 +374,15 @@ class ParameterSubstitutionFitter(
         with np.errstate(all="ignore"):
 
             fun = make_objective(self, data, inv_trans, const)
+            init = finite_start(
+                fun,
+                init,
+                (
+                    (lambda: transform(default_init())[not_fixed])
+                    if user_init
+                    else None
+                ),
+            )
 
             res1 = minimize(
                 fun, init, method="Nelder-Mead", options={"maxiter": 1000}
@@ -370,6 +399,7 @@ class ParameterSubstitutionFitter(
             else:
                 res = res2
 
+        require_finite_fit(float(res.fun))
         params = inv_trans(const(res.x))
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
@@ -391,7 +421,11 @@ class ParameterSubstitutionFitter(
         model.k_dist = self.k_dist
         model.fun = fun
 
-        model.k = len(bounds)
+        # Estimated parameters only. ``fixed`` holds the life-parameter
+        # placeholder (its value is replaced by the life model, so it is not
+        # a parameter at all), any baseline parameters and the user's fixed
+        # values; counting them inflated AIC/BIC.
+        model.k = len(bounds) - len(fixed)
 
         model.data = {"x": x, "c": c, "n": n, "t": t}
         model.data = data

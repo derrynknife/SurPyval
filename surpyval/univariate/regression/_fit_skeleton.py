@@ -10,6 +10,7 @@ family supplies only its optimiser strategy and covariate-link object
 separate: its life-model parameter juggling does not fit this shape.
 """
 
+import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
@@ -113,8 +114,8 @@ class HazardIdentitiesMixin:
     stays accurate when ``H`` is tiny (the deep left tail), and
     ``log_df = log(h) - H`` avoids exponentiating and re-logging. For
     additive-hazard models the hazard can be driven non-positive, in
-    which case ``log_df`` is nan and the MLE machinery rejects the
-    point — the fit fails rather than returning an invalid model.
+    which case ``log_df`` is nan and the optimiser rejects the point, so
+    the fit stays where the hazard is positive at every failure.
     """
 
     def mpp_x_transform(self, x: Numeric, gamma: Boxable = 0) -> Boxable:
@@ -198,15 +199,16 @@ def prepare_regression_fit(
     fixed = {} if fixed is None else fixed
     Z_data = np.asarray(data.Z)
 
-    if init is None or len(np.atleast_1d(init)) == 0:
+    def default_init() -> npt.NDArray:
         ps = fitter.dist.fit_from_surpyval_data(data).params
         if callable(phi_init):
             init_phi = phi_init(Z_data)
         else:
             init_phi = np.zeros(Z_data.shape[1])
-        init = np.array([*ps, *init_phi])
-    else:
-        init = np.array(init)
+        return np.array([*ps, *init_phi])
+
+    user_init = init is not None and len(np.atleast_1d(init)) > 0
+    init = np.array(init) if user_init else default_init()
 
     bounds = (
         *fitter.bounds,
@@ -227,7 +229,64 @@ def prepare_regression_fit(
         data.x, bounds, fixed, param_map
     )
     init_t = transform(init)[not_fixed]
+    init_t = finite_start(
+        make_objective(fitter, data, inv_trans, const),
+        init_t,
+        (lambda: transform(default_init())[not_fixed]) if user_init else None,
+    )
     return data, (init_t, bounds, pmap, transform, inv_trans, const, fixed)
+
+
+def finite_start(
+    fun: Callable,
+    init_t: npt.ArrayLike,
+    default_init_t: "Callable[[], npt.NDArray] | None",
+) -> npt.NDArray:
+    """A starting point at which the objective ``fun`` is finite.
+
+    Every optimiser rung starts from ``init_t``, and none of them can move
+    off a start where the negative log-likelihood is ``inf`` or ``nan``:
+    Nelder-Mead sees the same non-finite value at every vertex and stops,
+    returning the start unchanged -- which the fitters then reported as
+    the fitted parameters. A user-supplied ``init`` that lands there (a
+    fitted parameter vector from another family, say, with the
+    coefficients of the opposite sign) falls back to the default start,
+    with a warning; if that is non-finite too the fit cannot begin, and
+    says so instead of returning a model that was never fitted.
+    """
+    start: npt.NDArray = np.asarray(init_t)
+    with np.errstate(all="ignore"):
+        if np.isfinite(fun(start)):
+            return start
+        if default_init_t is not None:
+            alt = default_init_t()
+            if np.isfinite(fun(alt)):
+                warnings.warn(
+                    "The log-likelihood is not finite at the supplied "
+                    "`init`, so the fit cannot start there; starting from "
+                    "the default initial values instead.",
+                    stacklevel=4,
+                )
+                return alt
+    raise ValueError(
+        "The log-likelihood is not finite at the initial parameter values, "
+        "so the fit cannot start. Supply an `init` at which the model gives "
+        "every observation a positive likelihood."
+    )
+
+
+def require_finite_fit(neg_ll: float) -> None:
+    """Refuse to return a model whose fitted log-likelihood is not finite.
+
+    Reached only if every optimiser rung failed to find a finite point
+    (``finite_start`` guarantees the start was one), so the parameters
+    are not an estimate of anything.
+    """
+    if not np.isfinite(neg_ll):
+        raise ValueError(
+            "The fit did not converge: the log-likelihood is not finite at "
+            "the parameters the optimiser returned."
+        )
 
 
 def assemble_regression_model(
@@ -243,6 +302,7 @@ def assemble_regression_model(
     neg_ll: "float | None" = None,
 ) -> ParametricRegressionModel:
     """Common tail of every parametric-regression ``fit``."""
+    require_finite_fit(float(res.fun) if neg_ll is None else neg_ll)
     model = ParametricRegressionModel()
     model.distribution_param_map = fitter.param_map
     model.phi_param_map = pmap
@@ -258,7 +318,9 @@ def assemble_regression_model(
     model._neg_ll = float(res.fun) if neg_ll is None else neg_ll
     model.fixed = fixed
     model.k_dist = fitter.k_dist
-    model.k = len(bounds)
+    # Estimated parameters only: a parameter held at a value by ``fixed``
+    # costs the model nothing in AIC/BIC.
+    model.k = len(bounds) - len(fixed)
     model.data = data
     return model
 

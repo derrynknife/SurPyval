@@ -36,6 +36,7 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.information_criteria import InformationCriteriaMixin
 
 from ..regression_data import (
     prepare_Z,
@@ -44,7 +45,19 @@ from ..regression_data import (
 )
 
 
-class FrailtyModel(SerialisableMixin):
+def _standard_error(variance: Any) -> np.ndarray:
+    """``sqrt`` of a variance, ``nan`` where it is negative.
+
+    With ``theta`` on its boundary at zero the numerical information matrix
+    is barely invertible and a variance can come out negative: the standard
+    error is then unavailable, which ``nan`` says without the
+    invalid-value warning a bare ``sqrt`` would emit.
+    """
+    variance = np.asarray(variance, dtype=float)
+    return np.sqrt(np.where(variance >= 0, variance, np.nan))
+
+
+class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
     """A fitted shared-frailty proportional-hazards model.
 
     See :class:`FrailtyFitter` for how one is produced. Prediction methods
@@ -52,6 +65,13 @@ class FrailtyModel(SerialisableMixin):
     *marginal* (population) curve by default; pass ``group=`` to condition on
     an observed group's posterior frailty, or ``frailty=`` to condition on a
     supplied frailty value.
+
+    :meth:`neg_ll`, :meth:`aic`, :meth:`bic` and :meth:`aic_c` use the
+    marginal likelihood and count every estimated parameter (baseline,
+    coefficients and ``theta``), on the same data conventions as the
+    parametric regression models, so a frailty fit can be compared directly
+    with the proportional-hazards fit (``WeibullPH`` for ``WeibullFrailty``)
+    of the same data -- the model it reduces to at ``theta = 0``.
     """
 
     def __init__(self) -> None:
@@ -72,7 +92,20 @@ class FrailtyModel(SerialisableMixin):
         self.n_obs: int = 0
         self.n_events: int = 0
         self.n_groups: int = 0
+        # Count-weighted numbers of events and observations, the sample
+        # sizes of the information criteria (``n_events``/``n_obs`` count
+        # rows).
+        self.n_events_weighted: float = 0.0
+        self.n_obs_weighted: float = 0.0
         self._neg_ll: float = 0.0
+        # The number of estimated parameters -- the baseline, the
+        # coefficients and theta -- the ``k`` of the information criteria.
+        self.k: int = 0
+
+    # -- information criteria (InformationCriteriaMixin) -------------------
+
+    def _ic_counts(self) -> tuple[int, int]:
+        return self.n_events_weighted, self.n_obs_weighted  # type: ignore
 
     # -- covariate / frailty resolution ------------------------------------
 
@@ -175,7 +208,7 @@ class FrailtyModel(SerialisableMixin):
         """Wald standard errors for each parameter, keyed by name."""
         if self.covariance is None:
             raise ValueError("No covariance was stored for this model.")
-        se = np.sqrt(np.diag(self.covariance))
+        se = _standard_error(np.diag(self.covariance))
         return {name: float(s) for name, s in zip(self.param_names, se)}
 
     def param_cb(
@@ -194,7 +227,7 @@ class FrailtyModel(SerialisableMixin):
             raise ValueError("No covariance was stored for this model.")
         idx = self.param_names.index(name)
         est = self._param_vector()[idx]
-        se = float(np.sqrt(self.covariance[idx, idx]))
+        se = float(_standard_error(self.covariance[idx, idx]))
         positive = name == "theta" or (
             idx < self.k_dist and self.dist.bounds[idx][0] == 0
         )
@@ -215,7 +248,13 @@ class FrailtyModel(SerialisableMixin):
                 # has no log-scale Wald interval; dividing by zero gave
                 # NaN/ZeroDivision (#262).
                 return np.zeros_like(signs, dtype=float)
-            return est * np.exp(signs * q * se / est)
+            # Near the boundary ``se / est`` is huge (theta ~ 1e-14 on
+            # frailty-free data), and the upper bound really is beyond any
+            # float: ``exp`` of the log-scale half-width is inf, the lower
+            # bound underflows to 0. That is the answer, not an accident,
+            # so the overflow is not reported as one.
+            with np.errstate(over="ignore"):
+                return est * np.exp(signs * q * se / est)
         return est + signs * q * se
 
     def _param_vector(self) -> np.ndarray:
@@ -263,6 +302,8 @@ class FrailtyModel(SerialisableMixin):
             "n_obs": int(self.n_obs),
             "n_events": int(self.n_events),
             "n_groups": int(self.n_groups),
+            "n_events_weighted": float(self.n_events_weighted),
+            "n_obs_weighted": float(self.n_obs_weighted),
             "_neg_ll": to_native(self._neg_ll),
         }
         if self.covariance is not None:
@@ -294,6 +335,7 @@ class FrailtyModel(SerialisableMixin):
         out.theta = float(model_dict["theta"])
         out.k_dist = int(model_dict["k_dist"])
         out.param_names = list(model_dict["param_names"])
+        out.k = len(out.param_names)
         out.group_labels = list(model_dict.get("group_labels", []))
         out.frailties = {
             k: float(v) for k, v in model_dict.get("frailties", {}).items()
@@ -301,6 +343,11 @@ class FrailtyModel(SerialisableMixin):
         out.n_obs = int(model_dict.get("n_obs", 0))
         out.n_events = int(model_dict.get("n_events", 0))
         out.n_groups = int(model_dict.get("n_groups", 0))
+        # Dicts written before these were stored have unit weights.
+        out.n_events_weighted = float(
+            model_dict.get("n_events_weighted", out.n_events)
+        )
+        out.n_obs_weighted = float(model_dict.get("n_obs_weighted", out.n_obs))
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)

@@ -237,8 +237,8 @@ fitter accepts:
 - the parametric families (PH, AFT, PO, AH and AL) accept every censoring
   type, and truncation through ``t`` (a two-column ``[tl, tr]`` array);
 - ``CoxPH`` takes observed and right-censored data, with left truncation
-  through a 1-D ``tl``. It does not yet reject ``c = -1``, which it silently
-  treats as right censored, so check your ``c`` before fitting it;
+  through a 1-D ``tl``, and refuses left- or interval-censored rows (the
+  partial likelihood has no term for them);
 - the Lin-Ying (``AdditiveHazards``), Buckley-James and frailty fitters take
   observed and right-censored data only, and say so if given anything else.
 
@@ -425,10 +425,11 @@ treats time as genuinely discrete, so its coefficient is a log *odds* ratio of
 failing within a day rather than a log hazard ratio, and is larger here for
 that reason, not because it is more accurate. Use it when time really is
 discrete (a unit can only fail at an inspection), and compare it only with
-other discrete-time fits. The two exact methods are much slower — this cell
-spends almost all of its time in them, and ``'exact'`` grows as :math:`2^d` in
-the size :math:`d` of a tie group and refuses more than twelve — so Efron is
-the practical choice for heavily tied data. With no ties all four agree.
+other discrete-time fits. The two exact methods cost more than Efron — each
+tie group is a recursion (``'kalbfleisch-prentice'``) or a numerical integral
+(``'exact'``) rather than a closed form — but both grow only polynomially with
+the size of a tie group, so they remain practical on heavily tied data. With
+no ties all four agree.
 
 Delayed entry (left truncation)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -467,10 +468,16 @@ unrelated to the covariate. If entry were related to the covariate the
 coefficient would be biased too. Only left truncation is available for Cox; right or
 interval truncation cannot be expressed in the forward partial likelihood and is
 rejected, so use a parametric family (``t=[tl, tr]``) for those.
-``CoxPH.fit_from_df`` has no entry-age column, so for a delayed-entry Cox fit
-pass the arrays to ``CoxPH.fit`` (or use the start-stop form of
-`Time-Varying Covariates`_, where a first interval starting after 0 is a
-delayed entry).
+``CoxPH.fit_from_df`` takes the entry ages as a column, ``tl_col``:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    entry_df = pd.DataFrame({'age': x_le, 'z': z_le[:, 0], 'entry': tl_le})
+    cox_df = CoxPH.fit_from_df(entry_df, x_col='age', Z_cols='z',
+                               tl_col='entry', method='breslow')
+    print('Cox with tl_col : %.3f' % cox_df.beta[0])
 
 Fitting from a DataFrame: formulas and categorical covariates
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -483,7 +490,8 @@ formula such as ``"age + site"`` or ``"age * site"``). The fitted model
 remembers its ``feature_names`` — and the formula's encoding — so it can
 predict directly from a DataFrame of raw covariates. Beyond those, the
 parametric families take ``tl_col`` / ``tr_col`` (truncation) and ``init`` /
-``fixed``; ``CoxPH.fit_from_df`` takes ``method`` and ``strata_col``; and the
+``fixed``; ``CoxPH.fit_from_df`` takes ``tl_col`` (delayed entry), ``method``
+and ``strata_col``; and the
 frailty fitter requires a ``group_col``. There is a single time column, so
 interval-censored data (two time columns) go through ``fit``.
 
@@ -1023,10 +1031,10 @@ that keep :math:`h_0(x) + \beta'Z` positive at every observed failure. When
 the data would prefer a negative hazard — a strongly protective covariate —
 the fit returns the best model that stays positive, pressed against that
 boundary (the fitted hazard of the protected units is then close to zero at
-their earliest failures, and the baseline is bent to compensate), and it
-raises only if the optimiser cannot end at a positive-hazard point. So check
-``hf`` at the earliest failures of the protected group before trusting such a
-fit, and prefer a proportional-hazards model when effects are strongly
+their earliest failures, and the baseline is bent to compensate), and warns
+that it has done so; it raises only if the optimiser cannot end at a
+positive-hazard point. Treat that warning as a verdict on the model, not the
+optimiser, and prefer a proportional-hazards model when effects are strongly
 protective.
 
 
@@ -1112,10 +1120,10 @@ it is the acceleration factor, for PO the odds multiplier, for accelerated
 life the modelled life; an additive model has none). ``random(size, Z)``
 draws lifetimes from the fitted model — useful for simulation studies and for
 checking a fit against its own simulated data. It exists for the PH, parametric
-AH and accelerated-life families (not AFT or PO). A PH model returns ``size``
-draws for each covariate row, in the order given, together with the matching
-covariate rows; an accelerated life model does the same for each *distinct*
-stress, in sorted order; a parametric AH model takes a single covariate row:
+AH and accelerated-life families (not AFT or PO). A PH or parametric AH model
+returns ``size`` draws for each covariate row, in the order given, together
+with the matching covariate rows; an accelerated life model does the same for
+each *distinct* stress, in sorted order:
 
 .. jupyter-execute::
 
@@ -1545,7 +1553,7 @@ varies with stress via the Arrhenius relationship. This is the key assumption of
 ALT: the failure mechanism does not change with stress, only the rate. The
 ``alpha: 1.0`` in the report is a placeholder: the life parameter is replaced
 by :math:`\phi(Z)`, so it is held fixed and carries no information (it is listed
-in ``model_arr.fixed``). The Arrhenius parameter ``a`` is
+in ``model_arr.fixed``, and is not counted as a parameter in the AIC). The Arrhenius parameter ``a`` is
 :math:`E_a / k_B`, so the fit estimates the activation energy directly:
 
 .. jupyter-execute::
@@ -2069,9 +2077,29 @@ any baseline distribution; ``WeibullFrailty``, ``ExponentialFrailty``,
 right-censored data, and at least two groups are required. When the data show
 little between-group variation the estimate of ``theta`` goes to its boundary
 at zero, and the frailty fit then coincides with the ordinary ``WeibullPH`` fit
-(the same baseline, coefficients and likelihood); report the
-proportional-hazards model, since a variance on its boundary has no meaningful
-Wald interval.
+(the same baseline, coefficients and likelihood). The frailty model has the
+same ``neg_ll()``, ``aic()`` and ``bic()`` as the parametric families, counting
+``theta`` as one more parameter, so the two fits can be compared directly —
+here on grouped data with no frailty at all:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(2)
+    z_ff = rng.normal(size=300)
+    x_ff = 20 * (-np.log(rng.uniform(size=300)) / np.exp(0.8 * z_ff)) ** (1 / 1.8)
+    g_ff = np.repeat(np.arange(30), 10)          # 30 groups, but no frailty
+    no_frailty = WeibullFrailty.fit(x=x_ff, Z=z_ff.reshape(-1, 1), groups=g_ff)
+    ph_ff = WeibullPH.fit(x=x_ff, Z=z_ff.reshape(-1, 1))
+    print('theta               : %.1g' % no_frailty.theta)
+    print('neg log-likelihood  : frailty %.4f, PH %.4f'
+          % (no_frailty.neg_ll(), ph_ff.neg_ll()))
+    print('AIC                 : frailty %.2f, PH %.2f'
+          % (no_frailty.aic(), ph_ff.aic()))
+
+The likelihoods agree and the frailty model pays 2 AIC units for its unused
+``theta``: report the proportional-hazards model, since a variance on its
+boundary has no meaningful Wald interval (``param_cb('theta')`` is then
+``[0, inf]``).
 
 
 Model Selection
@@ -2081,9 +2109,9 @@ With several competing models it is useful to compare them on information
 criteria. AIC penalises log-likelihood by the number of parameters (favouring
 simpler models); BIC additionally penalises by sample size (favouring even
 simpler models with larger datasets). Lower is better for both. In surpyval
-the parameter count :math:`k` is the length of the parameter vector — held
-(``fixed``) parameters and the accelerated-life placeholder included — and the
-BIC's sample size is the number of exactly observed failures.
+the parameter count :math:`k` is the number of *estimated* parameters — held
+(``fixed``) parameters and the accelerated-life placeholder are not counted —
+and the BIC's sample size is the number of exactly observed failures.
 
 For the tires data, we can compare the three statistical regression families
 with a Weibull baseline, and try a second baseline for AFT and PO:

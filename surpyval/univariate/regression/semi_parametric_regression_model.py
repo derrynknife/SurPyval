@@ -457,10 +457,12 @@ class SemiParametricRegressionModel(SerialisableMixin):
 
         The Cox analogue of :meth:`predict_tvc` written to the shared
         time-varying-covariate convention used by the parametric families:
-        ``Z`` is either a :class:`~...tvc_schedule.StepSchedule` or an array of
-        per-segment covariate rows with ``xl`` giving the segment start times.
-        The cumulative hazard sums the fitted baseline-hazard jumps weighted by
-        the covariate active at each jump (see :meth:`_tvc_cumhaz`).
+        ``Z`` is either a
+        :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` or
+        an array of per-segment covariate rows with ``xl`` giving the segment
+        start times. The cumulative hazard sums the fitted baseline-hazard
+        jumps weighted by the covariate active at each jump (see
+        :meth:`_tvc_cumhaz`).
 
         Parameters
         ----------
@@ -468,8 +470,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
             Times at which to evaluate the cumulative hazard.
         Z : StepSchedule or array_like
             The covariate path -- a
-            :class:`~...tvc_schedule.StepSchedule`, or per-segment covariate
-            rows (with ``xl`` giving the segment start times).
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
+            or per-segment covariate rows (with ``xl`` giving the segment start
+            times).
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
         """
@@ -519,10 +522,10 @@ class SemiParametricRegressionModel(SerialisableMixin):
             Times at which to evaluate survival.
         Z : StepSchedule or array_like
             The covariate path. Either a
-            :class:`~...tvc_schedule.StepSchedule` (change-points, intervals, a
-            cyclic pattern, or a step-valued expression) or an array of
-            per-segment covariate rows with ``xl`` giving the segment start
-            times.
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+            (change-points, intervals, a cyclic pattern, or a step-valued
+            expression) or an array of per-segment covariate rows with ``xl``
+            giving the segment start times.
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
         given : float, optional

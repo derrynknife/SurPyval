@@ -404,7 +404,6 @@ def test_exact_negll_matches_average_over_orderings():
 
 def test_exact_and_kp_differ_on_ties():
     # On tied data the exact, KP, breslow and efron estimates should differ.
-    # Kept small (few tied deaths per time) because the exact method is O(2^d).
     rng = np.random.default_rng(5)
     n = 30
     Z = rng.normal(size=(n, 1))
@@ -495,16 +494,18 @@ def test_kp_count_weights_equivalent_to_repeated_rows():
     assert np.allclose(m_rep.beta, m_cnt.beta, atol=1e-5)
 
 
-def test_exact_rejects_excessive_ties():
-    # The exact method is O(2^d) in the tie multiplicity d, so a very large
-    # tie set is refused with a pointer to efron.
+def test_exact_handles_large_tie_sets():
+    # The exact method used to be O(2^d) in the tie multiplicity d and
+    # refused more than 12 ties; its integral form has no such limit. With
+    # every observation dying at once the contribution is exactly one for
+    # any beta, so the likelihood is flat.
     rng = np.random.default_rng(3)
     n = 80
     Z = rng.normal(size=(n, 1))
     x = np.ones(n)  # every observation ties at the same time
     c = np.zeros(n, dtype=int)
-    with pytest.raises(ValueError, match="O\\(2\\^d\\)"):
-        CoxPH.fit(x=x, Z=Z, c=c, method="exact")
+    model = CoxPH.fit(x=x, Z=Z, c=c, method="exact")
+    assert model.neg_ll(np.array([0.7])) == pytest.approx(0.0, abs=1e-12)
 
 
 def test_kp_handles_heavy_ties():

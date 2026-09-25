@@ -33,7 +33,11 @@ so it integrates out of each group's likelihood in closed form. Only
 observed and right-censored data are supported, and at least two groups
 are needed. The fitted model predicts the *marginal* (population) curve
 by default, or the curve conditional on an observed group's posterior
-frailty (``group=``) or on a given frailty (``frailty=``).
+frailty (``group=``) or on a given frailty (``frailty=``). Like the
+parametric regression models it reports ``neg_ll()``, ``aic()``,
+``bic()`` and ``aic_c()`` (``theta`` counted as a parameter), so a
+frailty fit can be compared directly with the proportional-hazards fit it
+reduces to at ``theta = 0``.
 
 .. autofunction:: surpyval.univariate.regression.frailty.Frailty
 

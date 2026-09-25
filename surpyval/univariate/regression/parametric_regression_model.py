@@ -334,11 +334,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out.params = params
         out.dist_params = params[:k_dist]
         out.phi_params = params[k_dist:]
-        out.k = int(model_dict["k"])
         out.k_dist = k_dist
         out.fixed = {
             k: float(v) for k, v in model_dict.get("fixed", {}).items()
         }
+        # The number of estimated parameters, recomputed rather than read
+        # from the stored ``k``: dicts written before ``k`` excluded the
+        # fixed parameters (and the accelerated-life placeholder) stored the
+        # full parameter-vector length.
+        out.k = len(params) - len(out.fixed)
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
@@ -511,8 +515,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     def _to_schedule(self, Z: Any, xl: "npt.ArrayLike | None") -> Any:
         """
         Coerce the ``sf_tvc`` covariate argument into a
-        :class:`~...tvc_schedule.StepSchedule` and check its covariate count
-        against the fitted model.
+        :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` and
+        check its covariate count against the fitted model.
         """
         from .tvc_schedule import as_step_schedule
 
@@ -555,8 +559,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             Times at which to evaluate the cumulative hazard.
         Z : StepSchedule or array_like
             The covariate path -- either a
-            :class:`~...tvc_schedule.StepSchedule`, or an array of per-segment
-            covariate rows (with ``xl`` giving the segment start times).
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
+            or an array of per-segment covariate rows (with ``xl`` giving the
+            segment start times).
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
 
@@ -667,10 +672,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             Times at which to evaluate survival.
         Z : StepSchedule or array_like
             The covariate path. Either a
-            :class:`~...tvc_schedule.StepSchedule` (built from change-points,
-            intervals, a cyclic pattern, or a step-valued expression) or an
-            array of per-segment covariate rows with ``xl`` giving the segment
-            start times.
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+            (built from change-points, intervals, a cyclic pattern, or a
+            step-valued expression) or an array of per-segment covariate rows
+            with ``xl`` giving the segment start times.
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
         given : float, optional
@@ -888,16 +893,20 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Parameters
         ----------
         size : int
-            The number of random samples to be drawn from the distribution.
+            The number of random samples to draw for each covariate row
+            (for each distinct stress, for an accelerated life model).
 
         Z : scalar or array like
-            The value(s) of the stresses at which the random
+            The covariate row(s) (or stress value(s)) at which to draw: one
+            row per covariate vector, or a scalar / 1-D array of stresses
+            for a single-stress accelerated life model.
 
         Returns
         -------
-        random : numpy array
-            Returns a numpy array of size ``size`` with random values drawn
-            from the distribution.
+        x : numpy array
+            The ``size`` draws for each row, concatenated row by row.
+        Z : numpy array
+            A 2-D array giving the covariate row each draw was made at.
 
 
         Examples
@@ -935,11 +944,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         n, c = self.data.n, self.data.c
         return n[c == 0].sum(), n.sum()
 
-    def _ic_k_aic_c(self) -> int:
-        # Regression models have historically used the full parameter-
-        # vector length here (which can differ from ``self.k`` when
-        # parameters are fixed); preserved as-is (#298).
-        return len(self.params)
+    # ``self.k`` is the number of estimated parameters, so the AIC/BIC
+    # penalties and the AIC_c correction all use it (the mixin's defaults).
+    # Fixed parameters -- and the accelerated-life placeholder for the life
+    # parameter -- used to be counted as well.
 
     # -- confidence bounds -------------------------------------------------
 

@@ -1579,6 +1579,8 @@ def validate_coxph_df_inputs(
     n_col: "str | None",
     Z_cols: "str | list[str] | None",
     formula: "str | None",
+    tl_col: "str | None" = None,
+    strata_col: "str | None" = None,
 ) -> tuple:
     # TODO: Return the count of dropped rows?
 
@@ -1598,9 +1600,15 @@ def validate_coxph_df_inputs(
     else:
         n = df.loc[mask, n_col].values
 
+    # Delayed-entry times and stratum labels go through the same row mask as
+    # the covariates so they stay aligned with ``x`` when rows with missing
+    # covariates drop.
+    tl = None if tl_col is None else df.loc[mask, tl_col].values
+    strata = None if strata_col is None else df.loc[mask, strata_col].values
+
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
-    return x, c, n, Z, form, feature_names, model_spec
+    return x, c, n, tl, strata, Z, form, feature_names, model_spec
 
 
 def validate_coxph(
@@ -1630,6 +1638,27 @@ def validate_coxph(
         )
 
     x_a, c_a, n_a, t_a = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+
+    # The partial likelihood is built from risk sets at exact event times,
+    # so it can only use observed (0) and right-censored (1) rows. A left-
+    # or interval-censored row has no event time to place in a risk set;
+    # the generators would otherwise read ``c != 0`` as "right-censored"
+    # and silently fit the wrong likelihood (or, for interval rows, index
+    # a 2-D ``x`` as if it were 1-D). Refuse them and point at a model that
+    # has a full likelihood for them.
+    if np.isin(c_a, (-1, 2)).any():
+        raise ValueError(
+            "CoxPH supports only observed (c=0) and right-censored (c=1) "
+            "observations (with optional left-truncation `tl`); the Cox "
+            "partial likelihood has no term for left-censored (c=-1) or "
+            "interval-censored (c=2) data. Use a parametric regression "
+            "model instead, e.g. WeibullPH.fit(x, Z, c=c) or "
+            "WeibullAFT.fit(x, Z, c=c), which handle every censoring type."
+        )
+    # A two-column ``x`` with no interval rows has ``xl == xr`` everywhere:
+    # it is exact / right-censored data written as intervals.
+    if np.ndim(x_a) == 2:
+        x_a = np.asarray(x_a)[:, 0]
 
     tl_a = t_a[:, 0]
 

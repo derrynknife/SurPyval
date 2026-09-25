@@ -9,11 +9,9 @@
 from copy import copy
 from typing import TYPE_CHECKING, Any, Callable
 
-import autograd.numpy as anp
 import numpy as np
 import numpy.ma as ma
 import numpy.typing as npt
-from autograd import grad
 from numpy.linalg import inv, pinv
 from scipy.optimize import minimize, root
 from scipy.stats import norm
@@ -314,73 +312,202 @@ def _sub(a: "npt.ArrayLike | None", mask: npt.NDArray) -> "npt.NDArray | None":
     return np.asarray(a)[mask]
 
 
-# Cap on the tie-set size for the average-over-orderings exact method. Its
-# risk-set recursion is O(2^d) in the number ``d`` of tied deaths at a single
-# time, so a large tie set is both slow and a sign the exact-marginal method is
-# the wrong tool -- Efron is the intended approximation there.
-_EXACT_MAX_TIES = 12
+def _kp_tie_term(
+    eta: npt.NDArray, Z: npt.NDArray, d: int, derivs: bool = True
+) -> tuple[float, npt.NDArray, npt.NDArray]:
+    """``log e_d`` of the risk-set scores ``exp(eta)``, with its gradient and
+    Hessian in ``beta`` (``eta = Z @ beta`` over the risk set).
 
+    ``e_d`` is the ``d``-th elementary symmetric polynomial -- the sum, over
+    every ``d``-subset of the risk set, of the product of its scores -- which
+    is the denominator of the Kalbfleisch-Prentice (discrete) tie term. It is
+    evaluated by the Gail, Lubin & Rubinstein (1981) recursion over the risk
+    set that R's ``coxph(ties="exact")`` also uses: with ``B_k(j)`` the value
+    of ``e_k`` over the first ``j`` members,
 
-def _elementary_symmetric(v: Any, d: int) -> Any:
-    """The ``d``-th elementary symmetric polynomial ``e_d`` of the entries of
-    ``v`` -- i.e. the sum, over every ``d``-subset of ``v``, of the product of
-    that subset's entries.
+        B_k(j) = B_k(j - 1) + r_j B_{k-1}(j - 1),
 
-    This is exactly the denominator of the Kalbfleisch-Prentice (discrete
-    conditional-logistic) tie contribution: summing ``prod exp(Z_j'b)`` over
-    the ``j`` in every size-``d`` subset of the risk set. It is computed by the
-    standard O(len(v) * d) recursion rather than by enumerating subsets, and is
-    written in ``autograd.numpy`` so the score and Hessian differentiate
-    through it.
+    and the same recursion differentiated once and twice gives the score and
+    information. For fixed ``k`` that is a cumulative sum over ``j``, so the
+    Python loop runs ``d`` times over vectorised risk-set arrays, O(d m p^2)
+    in all. The same recursion used to run as a scalar autograd trace of
+    ``m * d`` Python-level operations, re-traced for every gradient, which
+    took minutes on a tie set of a hundred.
+
+    Each row ``k`` is rescaled by its largest entry (the running ``log_scale``
+    keeps the value) so ``e_d`` cannot overflow; derivatives are carried in
+    the same scale, and only their ratios to ``e_d`` are used.
     """
-    # e[k] accumulates e_k; start at e_0 = 1, e_{>0} = 0.
-    e = [anp.ones_like(v[0])] + [anp.zeros_like(v[0]) for _ in range(d)]
-    for vk in v:
-        # Update high-to-low so each e[k] uses the previous iteration's e[k-1].
-        for k in range(d, 0, -1):
-            e[k] = e[k] + vk * e[k - 1]
-    return e[d]
+    m, p = Z.shape
+    if d > m - d:
+        # e_d(v) = prod(v) * e_{m-d}(1/v): the complement runs fewer
+        # iterations, and when every member of the risk set dies (d = m) it
+        # runs none at all.
+        log_e, g, h = _kp_tie_term(-eta, -Z, m - d, derivs)
+        return float(eta.sum()) + log_e, Z.sum(axis=0) + g, h
+
+    shift = float(eta.max()) if m else 0.0
+    r = np.exp(eta - shift)
+    B = np.ones(m + 1)
+    dB = np.zeros((m + 1, p))
+    d2B = np.zeros((m + 1, p, p))
+    ZZ = Z[:, :, None] * Z[:, None, :] if derivs else None
+    log_scale = 0.0
+    for _ in range(d):
+        Bp = B[:-1]
+        B = np.concatenate([[0.0], np.cumsum(r * Bp)])
+        if derivs:
+            dBp, d2Bp = dB[:-1], d2B[:-1]
+            t1 = dBp + Z * Bp[:, None]
+            t2 = (
+                d2Bp
+                + Z[:, :, None] * dBp[:, None, :]
+                + dBp[:, :, None] * Z[:, None, :]
+                + ZZ * Bp[:, None, None]
+            )
+            dB = np.concatenate(
+                [np.zeros((1, p)), np.cumsum(r[:, None] * t1, axis=0)]
+            )
+            d2B = np.concatenate(
+                [
+                    np.zeros((1, p, p)),
+                    np.cumsum(r[:, None, None] * t2, axis=0),
+                ]
+            )
+        # The cumulative sums only add non-negative terms, so the last entry
+        # is the largest.
+        scale = B[-1]
+        log_scale += np.log(scale)
+        B = B / scale
+        if derivs:
+            dB = dB / scale
+            d2B = d2B / scale
+
+    log_e = log_scale + d * shift
+    if not derivs:
+        return log_e, np.zeros(p), np.zeros((p, p))
+    g = dB[-1] / B[-1]
+    return log_e, g, d2B[-1] / B[-1] - np.outer(g, g)
 
 
-def _exact_ordering_logterm(a: Any, risk_sum: Any) -> Any:
-    """``log`` of the average-over-orderings exact tie term.
+def _weighted_moments(
+    eta: npt.NDArray, Z: npt.NDArray
+) -> tuple[float, npt.NDArray, npt.NDArray]:
+    """``log sum exp(eta)`` with the ``exp(eta)``-weighted mean and
+    covariance of the rows of ``Z``."""
+    shift = eta.max()
+    w = np.exp(eta - shift)
+    total = w.sum()
+    w = w / total
+    mean = w @ Z
+    Zc = Z - mean
+    cov = (w[:, None] * Zc).T @ Zc
+    return float(shift + np.log(total)), mean, cov
 
-    For ``d`` tied deaths with risk scores ``a`` (``a_j = exp(Z_j'b)``) drawn
-    from a risk set whose total score is ``risk_sum``, the exact (continuous)
-    partial-likelihood contribution treats the tied deaths as having occurred
-    in some unknown order and sums the sequential Cox contribution over all
-    ``d!`` orderings:
 
-        T = sum_{orderings} prod_{m=1..d} 1 / (risk_sum - sum of placed a).
+# DeLong et al. integrand, integrated over ``w = log t``: points further than
+# this many log-units below the mode contribute below 1e-26 relative, and the
+# coarse grid used to bracket the mode steps by ``_EXACT_COARSE_STEP``.
+_EXACT_DROP = 60.0
+_EXACT_COARSE_STEP = 0.1
+_EXACT_NODES = 401
 
-    ``T`` is evaluated with an O(2^d) subset recursion ``h`` over the set of
-    already-placed deaths (``h[mask] = sum_{j in mask} h[mask - j] /
-    (risk_sum - A(mask - j))``), which is exact and far cheaper than the ``d!``
-    orderings. The numerator ``prod a_j = exp(b' * sum Z)`` is added separately
-    by the caller, so this returns ``log T`` only.
+
+def _exact_tie_term(
+    eta_d: npt.NDArray,
+    Z_d: npt.NDArray,
+    eta_w: npt.NDArray,
+    Z_w: npt.NDArray,
+    derivs: bool = True,
+) -> tuple[float, npt.NDArray, npt.NDArray]:
+    """``log`` of the exact (average-over-orderings) tie contribution, with
+    its gradient and Hessian in ``beta``.
+
+    For ``d`` tied deaths with scores ``a_j = exp(eta_j)`` and the rest of the
+    risk set scoring ``W = sum exp(eta_w)``, the sum over the ``d!`` orderings
+    of the sequential Cox terms equals (DeLong, Guirguis & So 1994)
+
+        L = int_0^inf prod_j (1 - exp(-a_j t / W)) exp(-t) dt,
+
+    the formula SAS uses for ``TIES=EXACT``. This replaces an O(2^d) subset
+    recursion that was capped at twelve ties and still took tens of seconds
+    to fit. In ``w = log t`` the log-integrand
+
+        g(w) = sum_j log(1 - exp(-c_j e^w)) - e^w + w,   c_j = a_j / W,
+
+    is concave, so the integrand is a single smooth bump. A coarse grid
+    brackets the region within ``_EXACT_DROP`` log-units of its peak and the
+    trapezoid rule on a fine grid there -- spectrally accurate for a smooth,
+    negligible-at-the-ends integrand -- gives ``L`` to machine precision. The
+    score and information follow by differentiating under the integral:
+    with ``E`` the expectation over the normalised integrand,
+
+        d log L = E[dg],   d2 log L = E[d2g] + Var[dg].
     """
-    d = len(a)
-    full = (1 << d) - 1
-    # A[mask] = sum of a over the death-bits set in mask.
-    A = [anp.zeros_like(risk_sum) for _ in range(1 << d)]
-    for mask in range(1, 1 << d):
-        low = (mask & -mask).bit_length() - 1
-        A[mask] = A[mask ^ (1 << low)] + a[low]
+    d, p = Z_d.shape
+    if eta_w.size == 0:
+        # Everyone left at risk dies: every ordering's product telescopes
+        # and the orderings sum to exactly one.
+        return 0.0, np.zeros(p), np.zeros((p, p))
 
-    h = [None] * (1 << d)
-    h[0] = anp.ones_like(risk_sum)
-    for mask in range(1, 1 << d):
-        total = anp.zeros_like(risk_sum)
-        m = mask
-        while m:
-            j = (m & -m).bit_length() - 1
-            prev = mask ^ (1 << j)
-            # risk_sum - A(prev) is strictly positive: prev omits death j, so
-            # it is at most (risk set minus one death), leaving >= a_j > 0.
-            total = total + h[prev] / (risk_sum - A[prev])
-            m ^= 1 << j
-        h[mask] = total
-    return anp.log(h[full])
+    lse_w, mean_w, cov_w = _weighted_moments(eta_w, Z_w)
+    log_c = eta_d - lse_w
+
+    def log_integrand(w: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+        x = np.exp(log_c[None, :] + w[:, None])
+        with np.errstate(divide="ignore"):
+            # log(1 - e^-x); x can underflow to 0 far left of the mode,
+            # where the log is -inf and the node simply carries no weight.
+            g = np.log(-np.expm1(-x)).sum(axis=1) - np.exp(w) + w
+        return g, x
+
+    # The mode lies in (0, log(d + 1)): g' = sum x/(e^x - 1) - e^w + 1 with
+    # every summand in (0, 1). g falls at least as fast as w - e^w to the left
+    # and as (d + 1)(w - e^w) to the right, so this range contains every point
+    # within _EXACT_DROP of the peak.
+    coarse = np.arange(
+        -(_EXACT_DROP + 2.0), np.log(d + 1.0) + 4.0, _EXACT_COARSE_STEP
+    )
+    g_coarse = log_integrand(coarse)[0]
+    # g is concave, so the points above the threshold form one run; a coarse
+    # point below it bounds the region from outside on each side.
+    inside = np.flatnonzero(g_coarse >= g_coarse.max() - _EXACT_DROP)
+    lo = coarse[max(inside[0] - 1, 0)]
+    hi = coarse[min(inside[-1] + 1, coarse.size - 1)]
+
+    nodes = np.linspace(lo, hi, _EXACT_NODES)
+    step = nodes[1] - nodes[0]
+    g, x = log_integrand(nodes)
+    g_max = g.max()
+    weight = np.exp(g - g_max)
+    total = weight.sum()
+    log_L = float(g_max + np.log(step * total))
+    if not derivs:
+        return log_L, np.zeros(p), np.zeros((p, p))
+
+    # q = x / (e^x - 1) = d/dlog(x) of log(1 - e^-x), written to stay finite
+    # for large x; q -> 1 as x -> 0 (a node that underflowed to x = 0).
+    one_minus = -np.expm1(-x)
+    positive = x > 0
+    safe = np.where(positive, one_minus, 1.0)
+    q = np.where(positive, x * np.exp(-x) / safe, 1.0)
+    # x q'(x), the second log-derivative, is q (1 - x / (1 - e^-x)).
+    xq = np.where(positive, q * (1.0 - x / safe), 0.0)
+
+    Zc = Z_d - mean_w
+    dg = q @ Zc
+    d2g = (
+        np.einsum("nd,dp,dq->npq", xq, Zc, Zc)
+        - q.sum(axis=1)[:, None, None] * cov_w
+    )
+    prob = weight / total
+    mean_dg = prob @ dg
+    hess = (
+        np.einsum("n,npq->pq", prob, d2g)
+        + np.einsum("n,np,nq->pq", prob, dg, dg)
+        - np.outer(mean_dg, mean_dg)
+    )
+    return log_L, mean_dg, hess
 
 
 def _solve_beta_and_p_values(
@@ -480,7 +607,9 @@ class CoxPH_:
     The coefficients are estimated from the partial likelihood (with a
     choice of tie handling) and the baseline by the Breslow estimator.
     Supports right censoring, left truncation (delayed entry),
-    stratification and time-varying covariates in start-stop form.
+    stratification and time-varying covariates in start-stop form; left-
+    and interval-censored data are refused, as the partial likelihood has
+    no term for them (use a parametric regression model).
     ``CoxPH`` is an instance of this class; its fit methods return a
     :class:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel`.
     """
@@ -785,34 +914,32 @@ class CoxPH_:
         return Ze, event_times, death_idx, risk_idx, np.array(death_Z_sum)
 
     @staticmethod
-    def _autograd_ll_jac_hess(neg_ll: Callable) -> tuple[Callable, Callable]:
-        """Wrap a scalar ``autograd.numpy`` negative-log-likelihood into the
-        ``(neg_ll, jac_hess)`` contract used by :meth:`fit`.
+    def _tie_term_ll_jac_hess(
+        n_events: int,
+        term: Callable[[npt.NDArray, int, bool], tuple],
+    ) -> tuple[Callable, Callable]:
+        """Sum per-event-time ``term(eta, i, derivs) -> (log L_i, grad,
+        hess)`` contributions into the ``(neg_ll, jac_hess)`` contract used
+        by :meth:`fit` (the gradient and Hessian of the *negative*
+        log-likelihood, so the Hessian is the observed information)."""
 
-        The score is the reverse-mode automatic gradient (exact and cheap). The
-        observed information is obtained by forward finite-differencing that
-        gradient rather than by autograd's forward-over-reverse ``hessian``:
-        the exact tie term's O(2^d) risk-set recursion builds a large trace,
-        and re-differentiating it a second time makes the full Hessian
-        prohibitively slow, whereas ``p + 1`` gradient evaluations stay fast.
-        The resulting
-        information matrix is symmetrised; it is accurate to O(eps) and only
-        feeds the Newton step and the standard-error covariance.
-        """
-        score = grad(neg_ll)
-        eps = 1e-6
+        def total(beta: npt.NDArray, derivs: bool) -> tuple:
+            beta = np.asarray(beta, dtype=float)
+            p = beta.shape[0]
+            ll, score, hess = 0.0, np.zeros(p), np.zeros((p, p))
+            for i in range(n_events):
+                ll_i, g_i, h_i = term(beta, i, derivs)
+                ll += ll_i
+                score = score + g_i
+                hess = hess + h_i
+            return -ll, -score, -hess
+
+        def neg_ll(beta: npt.NDArray) -> float:
+            return float(total(beta, False)[0])
 
         def jac_hess(beta: npt.NDArray) -> tuple:
-            beta = np.asarray(beta, dtype=float)
-            s0 = np.asarray(score(beta))
-            p = beta.shape[0]
-            hess_matrix = np.zeros((p, p))
-            for j in range(p):
-                db = beta.copy()
-                db[j] += eps
-                hess_matrix[:, j] = (np.asarray(score(db)) - s0) / eps
-            hess_matrix = 0.5 * (hess_matrix + hess_matrix.T)
-            return s0, hess_matrix
+            _, score, hess = total(beta, True)
+            return score, hess
 
         return neg_ll, jac_hess
 
@@ -835,23 +962,22 @@ class CoxPH_:
         risk-set scores -- i.e. the sum over all ``d``-subsets of ``R`` of the
         product of their scores. This is the exact discrete
         proportional-hazards (Cox 1972 discrete model / Kalbfleisch-Prentice)
-        likelihood.
+        likelihood, R's ``ties="exact"``. ``e_d`` and its derivatives come
+        from the polynomial recursion in :func:`_kp_tie_term`.
         """
         Ze, event_times, death_idx, risk_idx, S = self._prepare_exact_tie_data(
             x, Z, c, n, tl
         )
+        Z_risk = [Ze[r] for r in risk_idx]
         ds = [len(d) for d in death_idx]
 
-        def neg_ll(beta: npt.NDArray) -> float:
-            r = anp.exp(anp.dot(Ze, beta))
-            total = anp.zeros(())
-            for i in range(len(event_times)):
-                beta_S = anp.dot(S[i], beta)
-                e_d = _elementary_symmetric(r[risk_idx[i]], ds[i])
-                total = total + beta_S - anp.log(e_d)
-            return -total
+        def term(beta: npt.NDArray, i: int, derivs: bool) -> tuple:
+            log_e, g, h = _kp_tie_term(
+                Z_risk[i] @ beta, Z_risk[i], ds[i], derivs
+            )
+            return float(S[i] @ beta) - log_e, S[i] - g, -h
 
-        return self._autograd_ll_jac_hess(neg_ll)
+        return self._tie_term_ll_jac_hess(len(event_times), term)
 
     def create_exact_ll_jac_hess(
         self,
@@ -866,41 +992,35 @@ class CoxPH_:
         Appropriate when ties arise from coarse rounding of an underlying
         continuous time. Each tie set is treated as having occurred in an
         unknown order and its contribution is the sequential Cox partial
-        likelihood averaged over all orderings of the tied deaths (see
-        :func:`_exact_ordering_logterm`). Reduces to Breslow/Efron when there
-        are no ties.
+        likelihood summed over all orderings of the tied deaths, evaluated
+        as the DeLong et al. integral (SAS's ``TIES=EXACT``; see
+        :func:`_exact_tie_term`). Reduces to Breslow/Efron when there are no
+        ties.
         """
         Ze, event_times, death_idx, risk_idx, S = self._prepare_exact_tie_data(
             x, Z, c, n, tl
         )
-        ds = [len(d) for d in death_idx]
-        too_many = [
-            event_times[i] for i, d in enumerate(ds) if d > _EXACT_MAX_TIES
-        ]
-        if too_many:
-            raise ValueError(
-                "The 'exact' tie method is O(2^d) in the number of tied "
-                "deaths d at a single time; {} deaths tie at time {:g} "
-                "(limit {}). "
-                "Use method='efron' for heavily tied data.".format(
-                    max(ds), too_many[0], _EXACT_MAX_TIES
-                )
+        Z_death = [Ze[d] for d in death_idx]
+        # The rest of the risk set: at risk at the time but not dying there.
+        survivors = [np.setdiff1d(r, d) for r, d in zip(risk_idx, death_idx)]
+        Z_surv = [Ze[s] for s in survivors]
+        Z_risk = [Ze[r] for r in risk_idx]
+
+        def term(beta: npt.NDArray, i: int, derivs: bool) -> tuple:
+            if len(death_idx[i]) == 1:
+                # A single death needs no ordering: a_j / sum over the risk
+                # set, the Breslow term, in closed form.
+                lse, mean, cov = _weighted_moments(Z_risk[i] @ beta, Z_risk[i])
+                return float(S[i] @ beta) - lse, S[i] - mean, -cov
+            return _exact_tie_term(
+                Z_death[i] @ beta,
+                Z_death[i],
+                Z_surv[i] @ beta,
+                Z_surv[i],
+                derivs,
             )
 
-        def neg_ll(beta: npt.NDArray) -> float:
-            r = anp.exp(anp.dot(Ze, beta))
-            total = anp.zeros(())
-            for i in range(len(event_times)):
-                beta_S = anp.dot(S[i], beta)
-                risk_sum = anp.sum(r[risk_idx[i]])
-                log_t = _exact_ordering_logterm(r[death_idx[i]], risk_sum)
-                # L_i = exp(b'S) * T, so log L_i = b'S + log T; for a single
-                # death T = 1/risk_sum, recovering the Breslow term b'S -
-                # log(risk_sum).
-                total = total + beta_S + log_t
-            return -total
-
-        return self._autograd_ll_jac_hess(neg_ll)
+        return self._tie_term_ll_jac_hess(len(event_times), term)
 
     def _resolve_func_generator(self, method: str) -> Callable[..., Any]:
         """Map a tie-handling ``method`` name to its likelihood generator."""
@@ -942,7 +1062,10 @@ class CoxPH_:
             The covariates of the model, one row per observation.
         c: array-like, optional
             The censoring indicator. 0 if observed (event),
-            1 if right-censored. Defaults to all observed.
+            1 if right-censored. Defaults to all observed. Left-censored
+            (-1) and interval-censored (2) rows raise a ``ValueError``: the
+            partial likelihood has no term for them, so fit such data with
+            a parametric regression model (e.g. ``WeibullPH``) instead.
         n: array-like, optional
             The number of observations at each time point.
         tl: array-like, optional
@@ -1147,6 +1270,7 @@ class CoxPH_:
         formula: str | None = None,
         method: str = "efron",
         strata_col: str | None = None,
+        tl_col: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fits a Cox PH model using a pandas dataframe as the input.
@@ -1174,6 +1298,10 @@ class CoxPH_:
             The column name of the stratum label. When supplied the model is
             fitted stratified (a separate baseline hazard per stratum, shared
             coefficients); see :meth:`fit`.
+        tl_col: str, optional
+            The column name of the left-truncation (delayed-entry) times,
+            passed to :meth:`fit` as ``tl``. A subject enters the risk sets
+            only after its entry time.
 
         Returns
         -------
@@ -1181,12 +1309,20 @@ class CoxPH_:
         model: SemiParametricRegressionModel
             The fitted model.
         """
-        x, c, n, Z, form, feature_names, model_spec = validate_coxph_df_inputs(
-            df, x_col, c_col, n_col, Z_cols, formula
+        x, c, n, tl, strata, Z, form, feature_names, model_spec = (
+            validate_coxph_df_inputs(
+                df,
+                x_col,
+                c_col,
+                n_col,
+                Z_cols,
+                formula,
+                tl_col=tl_col,
+                strata_col=strata_col,
+            )
         )
 
-        strata = None if strata_col is None else df[strata_col].to_numpy()
-        model = self.fit(x, Z, c, n, method=method, strata=strata)
+        model = self.fit(x, Z, c, n, tl=tl, method=method, strata=strata)
         model.formula = form
         model.feature_names = feature_names
         model._model_spec = model_spec

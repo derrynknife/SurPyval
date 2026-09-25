@@ -347,7 +347,8 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         model._neg_ll = res.fun
         model.fixed = fixed
         model.k_dist = self.k_dist
-        model.k = len(bounds)
+        # Estimated parameters only; see ``assemble_regression_model``.
+        model.k = len(bounds) - len(fixed or {})
         model.data = edata
         model.is_tvc = True
 
