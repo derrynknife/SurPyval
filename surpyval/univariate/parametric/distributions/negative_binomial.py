@@ -82,16 +82,7 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
     def ff(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = I_{p}(r, k)`."""
         safe_x = np.where(x < 0.0, 1.0, x)
-        # ``betainc``'s derivative in its last argument comes back in the
-        # shape of the output, not of that argument, so a scalar ``p``
-        # handed in directly got an array-shaped gradient and every
-        # likelihood that differentiates ``ff`` -- interval censoring, or
-        # right censoring in a limited-failure fit -- died in autograd
-        # with "array is not broadcastable". Broadcasting ``p`` through an
-        # ordinary product first lets autograd sum the gradient back down
-        # (the survival function's ``1.0 - p`` already did this).
-        p_x = p * np.ones(np.shape(safe_x))
-        return np.where(x < 0.0, 0.0, betainc(r, safe_x, p_x))
+        return np.where(x < 0.0, 0.0, betainc(r, safe_x, p))
 
     def df(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""PMF :math:`P(T = k)`."""

@@ -29,6 +29,7 @@ import numpy as np
 import numpy.typing as npt
 from autograd.extend import defvjp, primitive
 from autograd.numpy.numpy_boxes import ArrayBox
+from autograd.numpy.numpy_vjps import unbroadcast_f
 from autograd.scipy.special import betaln as _ag_betaln
 from autograd.scipy.special import gammaln as _ag_gammaln
 from autograd.tracer import getval
@@ -103,12 +104,12 @@ def _make_da_primitive(f: Callable) -> Callable:
     def vjp_a(ans: Boxable, a: Boxable, x: Boxable) -> Callable:
         av, xv = getval(a), getval(x)
         d2 = _cdiff_second(lambda aa: f(aa, xv), av)
-        return lambda g: (getval(g) * d2).sum()
+        return unbroadcast_f(a, lambda g: getval(g) * d2)
 
     def vjp_x(ans: Boxable, a: Boxable, x: Boxable) -> Callable:
         av, xv = getval(a), getval(x)
         mixed = _cdiff(lambda xx: _cdiff1(f, av, xx), xv)
-        return lambda g: getval(g) * mixed
+        return unbroadcast_f(x, lambda g: getval(g) * mixed)
 
     defvjp(f_da, vjp_a, vjp_x)
     return f_da
@@ -137,32 +138,32 @@ def _make_dab_primitives(f: Callable) -> tuple[Callable, Callable]:
     def da_vjp_a(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         d2 = _cdiff_second(lambda aa: f(aa, bv, xv), av)
-        return lambda g: (getval(g) * d2).sum()
+        return unbroadcast_f(a, lambda g: getval(g) * d2)
 
     def da_vjp_b(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         d2 = _cdiff(lambda bb: _cdiff2_a(f, av, bb, xv), bv)
-        return lambda g: (getval(g) * d2).sum()
+        return unbroadcast_f(b, lambda g: getval(g) * d2)
 
     def da_vjp_x(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         mixed = _cdiff(lambda xx: _cdiff2_a(f, av, bv, xx), xv)
-        return lambda g: getval(g) * mixed
+        return unbroadcast_f(x, lambda g: getval(g) * mixed)
 
     def db_vjp_a(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         d2 = _cdiff(lambda aa: _cdiff2_b(f, aa, bv, xv), av)
-        return lambda g: (getval(g) * d2).sum()
+        return unbroadcast_f(a, lambda g: getval(g) * d2)
 
     def db_vjp_b(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         d2 = _cdiff_second(lambda bb: f(av, bb, xv), bv)
-        return lambda g: (getval(g) * d2).sum()
+        return unbroadcast_f(b, lambda g: getval(g) * d2)
 
     def db_vjp_x(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
         av, bv, xv = _vals(a, b, x)
         mixed = _cdiff(lambda xx: _cdiff2_b(f, av, bv, xx), xv)
-        return lambda g: getval(g) * mixed
+        return unbroadcast_f(x, lambda g: getval(g) * mixed)
 
     defvjp(f_da, da_vjp_a, da_vjp_b, da_vjp_x)
     defvjp(f_db, db_vjp_a, db_vjp_b, db_vjp_x)
@@ -185,10 +186,11 @@ defvjp(
     gammainc,
     # d/da: numerical but traced — the product keeps both g and the
     # derivative factor boxed so Hessians through a are correct (#270)
-    lambda ans, a, x: lambda g: anp.sum(g * _gammainc_da(a, x)),
+    lambda ans, a, x: unbroadcast_f(a, lambda g: g * _gammainc_da(a, x)),
     # d/dx: analytical; anp.log handles ArrayBox x for correct Hessian
-    lambda ans, a, x: lambda g: g
-    * anp.exp(-x + anp.log(x) * (a - 1) - _ag_gammaln(a)),
+    lambda ans, a, x: unbroadcast_f(
+        x, lambda g: g * anp.exp(-x + anp.log(x) * (a - 1) - _ag_gammaln(a))
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -209,10 +211,13 @@ _gammaincln_da = _make_da_primitive(_gammaincln_raw)
 
 defvjp(
     gammaincln,
-    lambda ans, a, x: lambda g: anp.sum(g * _gammaincln_da(a, x)),
+    lambda ans, a, x: unbroadcast_f(a, lambda g: g * _gammaincln_da(a, x)),
     # d/dx of log P = (dP/dx)/P; ans = log P avoids recomputing P
-    lambda ans, a, x: lambda g: g
-    * anp.exp(-x + anp.log(x) * (a - 1) - _ag_gammaln(a) - ans),
+    lambda ans, a, x: unbroadcast_f(
+        x,
+        lambda g: g
+        * anp.exp(-x + anp.log(x) * (a - 1) - _ag_gammaln(a) - ans),
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -233,10 +238,13 @@ _gammainccln_da = _make_da_primitive(_gammainccln_raw)
 
 defvjp(
     gammainccln,
-    lambda ans, a, x: lambda g: anp.sum(g * _gammainccln_da(a, x)),
+    lambda ans, a, x: unbroadcast_f(a, lambda g: g * _gammainccln_da(a, x)),
     # d/dx of log Q = -(dP/dx)/Q; negated, ans = log Q
-    lambda ans, a, x: lambda g: g
-    * -anp.exp(-x + anp.log(x) * (a - 1) - _ag_gammaln(a) - ans),
+    lambda ans, a, x: unbroadcast_f(
+        x,
+        lambda g: g
+        * -anp.exp(-x + anp.log(x) * (a - 1) - _ag_gammaln(a) - ans),
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -253,12 +261,15 @@ _betainc_da, _betainc_db = _make_dab_primitives(_sc_betainc)
 
 defvjp(
     betainc,
-    lambda ans, a, b, x: lambda g: anp.sum(g * _betainc_da(a, b, x)),
-    lambda ans, a, b, x: lambda g: anp.sum(g * _betainc_db(a, b, x)),
+    lambda ans, a, b, x: unbroadcast_f(a, lambda g: g * _betainc_da(a, b, x)),
+    lambda ans, a, b, x: unbroadcast_f(b, lambda g: g * _betainc_db(a, b, x)),
     # d/dx: x^(a-1)*(1-x)^(b-1)/B(a,b); anp handles ArrayBox x
-    lambda ans, a, b, x: lambda g: g
-    * anp.exp(
-        (a - 1) * anp.log(x) + (b - 1) * anp.log(1 - x) - _ag_betaln(a, b)
+    lambda ans, a, b, x: unbroadcast_f(
+        x,
+        lambda g: g
+        * anp.exp(
+            (a - 1) * anp.log(x) + (b - 1) * anp.log(1 - x) - _ag_betaln(a, b)
+        ),
     ),
 )
 
@@ -280,14 +291,21 @@ _betaincln_da, _betaincln_db = _make_dab_primitives(_betaincln_raw)
 
 defvjp(
     betaincln,
-    lambda ans, a, b, x: lambda g: anp.sum(g * _betaincln_da(a, b, x)),
-    lambda ans, a, b, x: lambda g: anp.sum(g * _betaincln_db(a, b, x)),
+    lambda ans, a, b, x: unbroadcast_f(
+        a, lambda g: g * _betaincln_da(a, b, x)
+    ),
+    lambda ans, a, b, x: unbroadcast_f(
+        b, lambda g: g * _betaincln_db(a, b, x)
+    ),
     # d/dx of log B = (dB/dx)/B; ans = log B
-    lambda ans, a, b, x: lambda g: g
-    * anp.exp(
-        (a - 1) * anp.log(x)
-        + (b - 1) * anp.log(1 - x)
-        - _ag_betaln(a, b)
-        - ans
+    lambda ans, a, b, x: unbroadcast_f(
+        x,
+        lambda g: g
+        * anp.exp(
+            (a - 1) * anp.log(x)
+            + (b - 1) * anp.log(1 - x)
+            - _ag_betaln(a, b)
+            - ans
+        ),
     ),
 )
