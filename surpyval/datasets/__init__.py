@@ -13,6 +13,17 @@ def load_bearing_failures() -> pd.DataFrame:
     Data on the failure of bearings, from [1]_. "Cycles to Failure (millions)"
     is the number of cycles to failure in millions of cycles.
 
+    The 23 values are all exact failure times: there is no censoring
+    column, so pass the column as ``x`` alone.
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_bearing_failures
+    >>> x = load_bearing_failures()["Cycles to Failure (millions)"]
+    >>> surpyval.Weibull.fit(x).params.round(3)
+    array([81.875,  2.102])
+
     References
     ----------
     .. [1] Lieblein, J. and Zelen, M. (1956) Statistical Investigation
@@ -52,6 +63,10 @@ def load_bofors_steel() -> pd.DataFrame:
     """
     Returns a Pandas DataFrame containing the data of
     the tensile strength of Bofors Steel from [2]_.
+
+    Grouped data in ten rows: ``x`` is the strength and ``n`` the number
+    of specimens with that strength, so pass the columns as ``x`` and
+    ``n``. Every value is an exact observation.
 
     First 5 rows of the dataset:
 
@@ -97,6 +112,11 @@ def load_boston_housing() -> pd.DataFrame:
     analysed with survival analysis methods by considering the
     fact that the highest prices appear to be right censored.
 
+    One row per census tract (506), with the thirteen covariates of the
+    original data and ``medv``, the median house value in thousands of
+    dollars. ``medv`` is capped at 50: the 16 tracts at 50.0 are right
+    censored there. There is no censoring column; build one from the cap.
+
     References
     ----------
 
@@ -112,6 +132,11 @@ def load_boston_housing() -> pd.DataFrame:
 def load_g1_kaminskiy_krivtsov() -> pd.DataFrame:
     """
     Data on the survival of a repairable system from [4]_.
+
+    One system with twelve failures. ``x`` is the *cumulative* time of
+    each failure (the times between failures are 3, 6, 11, 5, 16, 9, 19,
+    22, 37, 23, 31 and 45); every row is an observed failure and there is
+    no item or censoring column.
 
     References
     ----------
@@ -133,7 +158,10 @@ def load_heart_transplants() -> pd.DataFrame:
     Start-stop form: each patient (``id``) has one row before a
     transplant and, if transplanted, one after (``transplant`` 1), over
     ``(start, stop]``; ``event`` is 1 for a death at ``stop`` (so
-    ``c = 1 - event``).
+    ``c = 1 - event``). There are 172 rows for 103 patients, 75 of whom
+    died. ``age`` is the age at acceptance minus 48 years, ``year`` the
+    date of acceptance in years after 1 November 1967 and ``surgery`` 1
+    for prior bypass surgery. ``Unnamed: 0`` is a row index.
 
     References
     ----------
@@ -153,7 +181,21 @@ def load_lung() -> pd.DataFrame:
 
     ``time`` is the survival time in days. ``status`` is coded as
     SurPyval's censoring flag -- 0 for a death, 1 for a patient censored
-    (alive at last follow-up) -- so use it directly as ``c``.
+    (alive at last follow-up) -- so use it directly as ``c``. There are
+    228 patients, 165 of whom died. The other columns are the covariates
+    of the original data (``inst``, ``age``, ``sex`` with 1 male and 2
+    female, ``ph.ecog``, ``ph.karno``, ``pat.karno``, ``meal.cal`` and
+    ``wt.loss``, several with missing values); ``Unnamed: 0`` is a row
+    index.
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_lung
+    >>> df = load_lung()
+    >>> km = surpyval.KaplanMeier.fit(df["time"], c=df["status"])
+    >>> km.sf([365]).round(3)
+    array([0.409])
 
     References
     ----------
@@ -172,6 +214,10 @@ def load_lung() -> pd.DataFrame:
 def load_mettas_and_zhao() -> pd.DataFrame:
     """
     Data on the survival of a repairable system from [7]_.
+
+    Recurrent event data for six systems: ``x`` is the cumulative time of
+    each event on system ``i``, and ``c`` is 1 on each system's last
+    row, the end of its observation (0 for a failure).
 
     References
     ----------
@@ -297,6 +343,11 @@ def load_tires_data() -> pd.DataFrame:
     """
     Data on the survival of tires from [10]_.
 
+    One row per tire (34). ``Survival`` is the (normalised) time and
+    ``Censoring`` is coded as SurPyval's censoring flag -- 1 for a tire
+    that had not failed, 0 for a failure (11 of them) -- so use it
+    directly as ``c``. The other seven columns are the covariates.
+
     References
     ----------
 
@@ -313,7 +364,9 @@ def load_sae() -> pd.DataFrame:
     """
     Data on failures in automotive industry from [11]_.
 
-    Features heavily (right) censored data.
+    Features heavily (right) censored data: ``x`` is the time and ``c``
+    SurPyval's censoring flag, with 10 failures (``c = 0``) and 21 right
+    censored values (``c = 1``).
 
     References
     ----------
@@ -358,7 +411,10 @@ def load_meeker_lfp() -> pd.DataFrame:
     Data on failures of integrated circuits from [12]_.
 
     Very difficult for LFP calculations since the data is heavily
-    right censored.
+    right censored: 4,156 circuits were tested for 1,370 hours and 28
+    failed. The data is in ``xcnt`` form: ``x`` the time in hours, ``c``
+    the censoring flag and ``n`` the count, with the 4,128 survivors in
+    one row right censored at 1,370.
 
     References
     ----------

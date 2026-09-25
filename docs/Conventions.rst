@@ -43,7 +43,7 @@ When you call ``fit()``, SurPyval validates the arrays, converts them to numpy, 
     data = surv.SurpyvalData(x=[1, 2, 3, [4, 5], 2], c=[0, 1, 0, 2, 1], tl=0)
     print(data)
 
-Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals. And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``). Parametric fitters accept a ``SurpyvalData`` object directly through ``fit_from_surpyval_data``, and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself.
+Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals. And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``). Parametric fitters accept a ``SurpyvalData`` object directly through ``fit_from_surpyval_data``, and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself. ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` parses a string as JSON *text*, so to read a file pass a ``pathlib.Path``: ``SurpyvalData.from_json(Path("data.json"))``.
 
 The xrd format
 ~~~~~~~~~~~~~~
@@ -61,6 +61,7 @@ Converting between the two formats loses information in both directions, so the 
 
 - ``xcnt_to_xrd`` needs data that is observed or right censored (``c`` of 0 or 1) and not right truncated. Left censored and interval censored data have no single time at which to count a death, so they need the Turnbull estimator instead.
 - ``xrd_to_xcnt`` recovers the individual observed and right censored values from ``r`` and ``d``. It cannot recover left truncation: if the risk set ever *grows* between two times (items entering late), the per-item entry times are lost, and the function raises an error rather than returning a different study.
+- xrd data given directly (to ``xrd_to_xcnt``, or to ``KaplanMeier.from_xrd`` and the other non-parametric ``from_xrd`` methods) must list each time once, in increasing order, as ``xcnt_to_xrd`` returns it. This is not checked: rows out of order are read in the order given, and give a wrong estimate.
 
 The xicnt format
 ~~~~~~~~~~~~~~~~
@@ -171,7 +172,7 @@ The conventions for single event SurPyval models are that each object returned f
 - :code:`hf()` - The (instantaneous) hazard function
 - :code:`Hf()` - The cumulative hazard function
 
-These are the functions :math:`f(x)`, :math:`F(x)`, :math:`R(x)`, :math:`h(x)` and :math:`H(x)`; how each can be computed from any of the others is shown in :doc:`Handy References - Aide-mémoire`. One caution: a non-parametric estimate (Kaplan-Meier and the others) is a step function, so its ``hf()`` and ``df()`` are the sizes of the jumps between the points you ask for, not rates, and change with how finely you space them; ``smoothed_hf()`` gives a kernel-smoothed hazard rate instead. Most single event models also provide:
+A ``MixtureModel`` is the exception: it has no ``hf()`` or ``qf()``. These are the functions :math:`f(x)`, :math:`F(x)`, :math:`R(x)`, :math:`h(x)` and :math:`H(x)`; how each can be computed from any of the others is shown in :doc:`Handy References - Aide-mémoire`. One caution: a non-parametric estimate (Kaplan-Meier and the others) is a step function, so its ``hf()`` and ``df()`` are the sizes of the jumps between the points you ask for, not rates, and change with how finely you space them; ``smoothed_hf()`` gives a kernel-smoothed hazard rate instead. Most single event models also provide:
 
 - :code:`qf()` - The quantile function, the inverse of the CDF. ``qf(0.1)`` is the B10 life.
 - :code:`cb()` - Confidence bounds on a function (the survival function by default).
@@ -246,7 +247,7 @@ Reading across the rows: the offset model has not started by 5; the LFP model le
 Saving and Loading Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Every fitted SurPyval model can be saved and restored:
+Almost every fitted SurPyval model can be saved and restored (the exceptions are listed at the end of this section):
 
 - ``model.to_dict()`` returns a dictionary of plain Python types (strings, numbers, lists), so it can be written as JSON or stored directly in a document database such as MongoDB.
 - ``model.to_json(path)`` writes that dictionary to a JSON file.
@@ -272,4 +273,18 @@ Every fitted SurPyval model can be saved and restored:
 
 Every dictionary carries a ``"schema"`` version number. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread.
 
-A restored model keeps what it needs to make predictions (the parameters, and for parametric models the covariance used by ``cb`` and the fitted negative log-likelihood, so ``neg_ll()`` and ``aic()`` work), but by default **not the data it was fitted to**. Anything that needs the data, such as ``plot()``, the sample-size-based criteria (``bic()``, ``aic_c()``) or likelihood-ratio confidence bounds, is only available on the model as originally fitted, or on one saved with ``to_dict(with_data=True)``. Keep the data (for example with ``SurpyvalData.to_json``) if you will need to refit. The full API is in :doc:`surpyval.serialisation`.
+A restored model keeps what it needs to make predictions, but by default **not the data it was fitted to**. A univariate parametric model also keeps its covariance matrix, so ``cb`` (Wald bounds) works, and its fitted negative log-likelihood, so ``neg_ll()`` and ``aic()`` work; a parametric regression model keeps its covariance too. Anything that needs the data, such as ``plot()``, the sample-size-based criteria (``bic()``, ``aic_c()``), bootstrap or likelihood-ratio confidence bounds, residuals and diagnostics, raises an error on a restored model. What each family keeps is described on its how-to page; recurrent-event models, for example, keep no covariance, so their ``cif_cb`` needs a refit.
+
+The univariate parametric and non-parametric models can carry their data with them: ``to_dict(with_data=True)`` adds the ``x``, ``c``, ``n`` and ``t`` arrays, and a model restored from that dictionary has ``plot()``, ``bic()`` and ``aic_c()`` (parametric) or ``bootstrap_cb()`` (non-parametric) again. ``to_json(path)`` always leaves the data out; to keep it in a file, write ``json.dump(model.to_dict(with_data=True), f)``. Likelihood-ratio bounds (``method="lr"``) are the exception: they are only available on the model as originally fitted, even when the data was saved.
+
+.. jupyter-execute::
+
+    try:
+        restored_weibull.bic()
+    except ValueError as err:
+        print("without the data:", str(err)[:60], "...")
+
+    with_data = surv.from_dict(weibull.to_dict(with_data=True))
+    print("with the data    :", with_data.bic(), weibull.bic())
+
+A few models cannot be saved, and say so when ``to_dict`` is called: a stratified Cox model, an accelerated-life model with a life model of your own, a regression fitted with a formula that uses a data-dependent transform such as ``scale()``, and a copula of a custom family. A model of a ``CustomDistribution``, or of a distribution made with ``Discretize``, is written without complaint but cannot be read back, because the reader only knows SurPyval's own distributions; keep its parameters and rebuild it with ``from_params``. Keep the data (for example with ``SurpyvalData.to_json``) whenever you may need to refit. The full API is in :doc:`surpyval.serialisation`.

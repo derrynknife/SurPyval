@@ -103,6 +103,8 @@ The rows come back sorted, which is how SurPyval stores data internally: the fir
 
 The same data can be given as two separate arrays with ``xl`` and ``xr`` in place of ``x``, which is often more natural when every row is an interval.
 
+Two-column ``x`` (or ``xl`` and ``xr``) is read by the maximum likelihood fitters, the parametric regression fitters, ``CoxPH`` and Turnbull. The Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the MPP, MPS, MSE and MOM methods, and the Buckley-James, additive hazards, frailty and competing risks fitters currently need one-column ``x``, even when no row is an interval. If none is, convert first and pass the first column: ``x, c, n, t = surpyval.xcnt_handler(xl=..., xr=...)`` and then ``surpyval.KaplanMeier.fit(x[:, 0], c, n)``.
+
 Condensing repeated values with counts
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

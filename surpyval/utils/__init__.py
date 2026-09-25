@@ -137,6 +137,10 @@ def group_xcnt(
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Collapse identical ``(x, c, t)`` rows, summing their counts.
 
+    Takes and returns the four ``xcnt`` arrays (``t`` of shape
+    ``(k, 2)``); each group is represented by its first row, in order of
+    first appearance. Rows containing NaN are never merged.
+
     This used to walk every observation in Python, accumulating into a
     triple-nested ``defaultdict``. That is O(N) but with a very large
     constant -- roughly 13 microseconds per observation -- which made it
@@ -247,9 +251,10 @@ def fsli_handler(
     i: "npt.ArrayLike | None" = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
-    Takes in the fsli format and ensures that the data is correctly defined.
-    Takes an assorted combination of f, s, l, and i and returns them in the
-    correct format as numpy arrays.
+    Validate data in the ``fsli`` format: separate lists of failures,
+    suspensions (right censored), left censored values and intervals.
+    Any combination may be given, but at least one must hold data. Each
+    is returned as a float array.
 
     Parameters
     ----------
@@ -260,7 +265,15 @@ def fsli_handler(
     l: array-like, optional (default: None)
         array of left censored observation values
     i: array-like, optional (default: None)
-        array of length 2 arrays interval censored data
+        array of ``[lower, upper]`` pairs, one per interval censored
+        observation, with ``lower < upper``
+
+    Raises
+    ------
+    ValueError
+        If no data is given, if ``f``, ``s`` or ``l`` is not
+        one-dimensional, if ``i`` is not of shape ``(k, 2)``, or if an
+        interval's lower value is not below its upper value.
 
     Returns
     -------
@@ -332,11 +345,16 @@ def xrd_handler(
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Takes a combination of 'x', 'r', and 'd' arrays and ensures that the data
-    is feasible.
+    is feasible: the arrays are one-dimensional and the same length, ``r``
+    and ``d`` hold integers (an integer-valued float array such as
+    ``[5.0, 4.0]`` is refused), every ``r`` is at least one, no ``d`` is
+    negative and no ``d`` exceeds its ``r``.
 
-    Does not check for the case where r is always decreasing as this is
-    possible in some cases, i.e. when there is left truncation, a.k.a late
-    entry.
+    Does not check that ``r`` decreases, as it can grow when there is
+    left truncation (late entry). Nor does it check that ``x`` is sorted
+    and free of repeats: xrd data lists each distinct time once, in
+    increasing order, and rows given out of order are used in the order
+    given.
 
     Parameters
     ----------
@@ -542,12 +560,25 @@ def xcnt_handler(
     Main handler that ensures any input to a surpyval fitter meets the
     requirements to be used in one of the parametric or nonparametric fitters.
 
+    It converts the inputs to numpy arrays and checks them: ``x`` has no
+    NaN; ``c`` holds only -1, 0 and 1 (and 2 for a two-column ``x``);
+    ``n`` holds positive whole numbers; the truncation window of each row
+    has its left bound below its right bound; and each value lies
+    strictly above its left truncation bound and at or below its right
+    one (for two-column ``x``, the lower value may equal the left
+    bound). For two-column ``x``, a row with equal values is not an
+    interval, a row with different values must be flagged 2 (when ``c``
+    is given), and an infinite end turns the row into one-sided
+    censoring: ``[v, inf]`` becomes right censored at ``v`` and
+    ``[-inf, v]`` left censored at ``v``. Identical rows are then merged
+    (their counts summed) and the rows sorted with :func:`xcnt_sort`.
+
     Parameters
     ----------
     x: array
         array of values of variable for which observations were made.
     c: array, optional (default: None)
-        array of censoring values (-1, 0, 1, 2) corrseponding to x
+        array of censoring values (-1, 0, 1, 2) corresponding to x
     n: array, optional (default: None)
         array of count of observations at each x and with censoring c
     t: array, optional (default: None)
@@ -582,14 +613,23 @@ def xcnt_handler(
     x: array
         sorted array of values of variable for which observations were made.
     c: array
-        array of censoring values (-1, 0, 1, 2) corrseponding to output array
-        x. If c was None, defaults to creating array of zeros the length of x.
+        array of censoring values (-1, 0, 1, 2) corresponding to output array
+        x. If c was None, every row is observed (0), except that the rows of
+        a two-column x with different values are interval censored (2).
     n: array
         array of count of observations at output array x and with censoring c.
         If n was None, count array assumed to be all one observation.
     t: array
         array of truncation values of observations at output array x and with
         censoring c.
+
+    Raises
+    ------
+    ValueError
+        If the inputs break any of the rules above: for example ``x`` and
+        ``xl``/``xr`` both given, arrays of different lengths, a NaN in
+        ``x``, an unknown censoring flag, a count that is not a positive
+        whole number, or a value at or below its own left truncation.
 
     Examples
     --------
@@ -828,12 +868,18 @@ def xcn_to_fs(
         Censoring flags: 0 observed, 1 right-censored. Other values are
         dropped. Defaults to all observed.
     n : array like, optional
-        The count at each time. Defaults to 1.
+        The count at each time, a whole number. Defaults to 1.
 
     Returns
     -------
     f, s : arrays
         The failure times and the suspension times.
+
+    Notes
+    -----
+    The inputs are not validated (use :func:`xcnt_handler` first if in
+    doubt): ``x`` must be one-dimensional, and a non-integer count is
+    truncated to an integer.
 
     Examples
     --------
@@ -906,20 +952,28 @@ def xcnt_to_xrd(
     **kwargs: Any,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
-    Converts the xcn format to the xrd format.
+    Converts the xcnt format to the xrd format: the distinct times, the
+    number at risk at each and the number of deaths at each. The data is
+    validated with :func:`xcnt_handler` first. Only observed and right
+    censored rows without right truncation can be converted; left
+    truncation is allowed and sets when each item enters the risk set,
+    under the (entry, exit] convention.
 
     Parameters
     ----------
     x: array
         array of values of variable for which observations were made.
     c: array, optional (default: None)
-        array of censoring values (-1, 0, 1, 2) corrseponding to x. If None, an
+        array of censoring values (0 or 1) corresponding to x. If None, an
         array of 0s is created corresponding to each x.
     n: array, optional (default: None)
         array of count of observations at each x and with censoring c. If None,
         an array of ones is created.
-    kwargs: keywords for truncation can be either 't' or a combo of 'tl' and
-    'tr'
+    t: array, optional (default: None)
+        array of shape (?, 2) of truncation bounds; the right bounds must
+        be infinite.
+    kwargs: keywords for truncation, ``tl`` and ``tr``, used in place of
+        ``t`` as in :func:`xcnt_handler`
 
     Returns
     ----------
@@ -930,6 +984,12 @@ def xcnt_to_xrd(
         an event at 'x').
     d: array
         array of the count of failures/deaths at each time x.
+
+    Raises
+    ------
+    ValueError
+        If any row is left (-1) or interval (2) censored, or right
+        truncated.
 
     Examples
     --------
@@ -998,8 +1058,13 @@ def xrd_to_xcnt(
     x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
-    Converts the xrd format to the xcn format. Assumes that there is no
-    right truncation or left censoring.
+    Converts the xrd format to the xcnt format. Each death becomes an
+    observed row, and the items that leave the risk set without dying
+    between ``x[j]`` and ``x[j + 1]``, ``r[j] - d[j] - r[j + 1]``, become
+    right censored rows at ``x[j]`` (after the last time, ``r - d``).
+    The times must be distinct and in increasing order; this is not
+    checked. The result has no truncation and no left or interval
+    censoring.
 
     Note: left truncation cannot be recovered from the xrd format because
     the at-risk count `r` collapses per-subject truncation times into a
@@ -1020,12 +1085,18 @@ def xrd_to_xcnt(
     x: array
         array of values of variable for which observations were made.
     c: array
-        array of censoring values (-1, 0, 1, 2) corrseponding to x
+        array of censoring values (0 or 1) corresponding to x
     n: array
         array of count of observations at each x and with censoring c
     t: array
         array of values with shape (?, 2) with the left and right value of
-        truncation
+        truncation (all ``[-inf, inf]``)
+
+    Raises
+    ------
+    ValueError
+        If the risk set grows from one time to the next (late entry),
+        which the xcnt output cannot represent.
 
     Examples
     --------
@@ -1085,8 +1156,11 @@ def fsli_to_xcnt(
     i: "npt.ArrayLike | None" = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
-    Converts the fsli format to the xcn format. This ensures is so that the
-    data can be passed to one of the parametric or nonparametric fitters.
+    Converts the fsli format to the xcnt format, so that the data can be
+    passed to one of the parametric or nonparametric fitters. The inputs
+    are validated with :func:`fsli_handler`. Repeated values are counted
+    in ``n``. When there are intervals, ``x`` is returned with two
+    columns, the other rows repeating their value.
 
     Parameters
     ----------
@@ -1097,17 +1171,17 @@ def fsli_to_xcnt(
     l: array
         array of left censored observation values
     i: array
-        array of length 2 arrays interval censored data
+        array of ``[lower, upper]`` pairs of interval censored data
 
     Returns
     ----------
     x: array
         sorted array of values of variable for which observations were made.
     c: array
-        array of censoring values (-1, 0, 1, 2) corrseponding to output array
+        array of censoring values (-1, 0, 1, 2) corresponding to output array
         x.
     n: array
-        array of count of observations at to output array x and with censoring
+        array of count of observations at output array x and with censoring
         c.
     t: ndarray
         ndarray of truncation values of observations at output array x and with
@@ -1220,6 +1294,19 @@ def fs_to_xcnt(
     """
     Convert failure (``f``) and suspension (right-censored, ``s``) times to
     the ``xcnt`` format, counting repeated times; see :func:`fsl_to_xcnt`.
+
+    Parameters
+    ----------
+    f : array like, optional
+        Observed failure times.
+    s : array like, optional
+        Right-censored (suspension) times.
+
+    Returns
+    -------
+    x, c, n, t : arrays
+        The distinct times, censoring flags (0 or 1), counts and
+        (untruncated) truncation bounds, sorted.
 
     Examples
     --------

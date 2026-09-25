@@ -11,6 +11,32 @@ from surpyval.utils import xcnt_handler
 
 
 class SurpyvalData:
+    """
+    Validated univariate survival data in the ``xcnt`` format, split by
+    type of observation for the likelihoods.
+
+    Every univariate fitter builds one from its arrays (with
+    :func:`~surpyval.utils.xcnt_handler`); parametric fitters also accept
+    one directly through ``fit_from_surpyval_data``. Besides ``x``, ``c``,
+    ``n`` and ``t`` (and ``tl``/``tr``, the columns of ``t``), it holds
+    the observed (``x_o``, ``n_o``), right censored (``x_r``, ``n_r``),
+    left censored (``x_l``, ``n_l``) and interval (``x_il``, ``x_ir``,
+    ``n_i``) rows separately. A censored row with a finite truncation
+    bound on its censored side is stored as an interval ending at that
+    bound, so the likelihood uses the probability of the part of the
+    window it could have fallen in.
+
+    Examples
+    --------
+    >>> from surpyval import SurpyvalData
+    >>> inf = float("inf")
+    >>> data = SurpyvalData(x=[1, 2, 3, 4], c=[0, 1, 0, 1], tr=[9, 3, 9, inf])
+    >>> data.x_o, data.x_r
+    (array([1., 3.]), array([4.]))
+    >>> data.x_il, data.x_ir
+    (array([2.]), array([3.]))
+    """
+
     def __init__(
         self,
         x: ArrayLike | None = None,
@@ -43,7 +69,8 @@ class SurpyvalData:
             * -1 = left censored
             * 2 = interval censored
         n : array-like, optional
-            Number of occurrences for each value in x.
+            Number of occurrences for each value in x (positive whole
+            numbers).
         t : array-like, optional
             2D array of truncation bounds [left, right] for each value in x.
         xl : array-like, optional
@@ -67,7 +94,9 @@ class SurpyvalData:
             to maintain data order.
         handle : bool, default=True
             Whether to validate and process the input data.
-            Set False for pre-validated data.
+            Set False for pre-validated data: ``x``, ``c``, ``n`` and a
+            two-column ``t`` exactly as
+            :func:`~surpyval.utils.xcnt_handler` returns them.
 
         Examples
         --------
@@ -253,11 +282,14 @@ class SurpyvalData:
 
     def to_xrd(self, estimator: str = "Nelson-Aalen") -> tuple:
         """
-        Converts the data into the xrd format. If the data has right truncated
-        observations or left or interval censored observations, the data is
-        converted to the xrd format using the Turnbull estimator. The
-        ``estimator`` parameter will be used in the with, and only with,
-        the Turnbull estimator.
+        Converts the data into the xrd format. Observed and right censored
+        data without right truncation is converted exactly with
+        :func:`~surpyval.utils.xcnt_to_xrd`. If the data has right truncated
+        observations or left or interval censored observations, the
+        Turnbull estimator is
+        fitted and its (possibly fractional) numbers at risk and deaths are
+        returned; the ``estimator`` parameter is used only in that case.
+        Two-column ``x`` with no interval rows is not supported.
 
         Parameters
         ----------
@@ -271,7 +303,7 @@ class SurpyvalData:
         -------
 
             tuple
-                The xrd data.
+                The xrd data, ``(x, r, d)``.
         """
         # Cache per estimator: the first call used to be returned for
         # every later call regardless of a different ``estimator``
@@ -377,18 +409,28 @@ class SurpyvalData:
     @classmethod
     def from_json(cls, source: str | Path) -> "SurpyvalData":
         """
-        Create SurpyvalData instance from JSON string or file path.
+        Create SurpyvalData instance from JSON text or a file.
 
         Parameters
         ----------
         source : str | Path
-            Pass a ``Path`` to load from a file; pass a ``str`` to parse as
-            JSON text directly.
+            Pass a ``pathlib.Path`` to load from a file; a ``str`` is always
+            parsed as JSON text, so ``from_json("data.json")`` fails even
+            though ``to_json("data.json")`` writes that file. The data is
+            not re-validated.
 
         Returns
         -------
         SurpyvalData
             New instance created from JSON data
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData(x=[1, 2, 2, 5], c=[0, 0, 0, 1])
+        >>> restored = SurpyvalData.from_json(data.to_json())
+        >>> restored.x, restored.n
+        (array([1., 2., 5.]), array([1, 2, 1]))
         """
         if isinstance(source, Path):
             text = source.read_text()

@@ -33,6 +33,31 @@ the fitters: ``Weibull.from_dict`` and ``CoxPH.from_dict`` do not exist.
 ``how="Cox"`` and ``how="Fine-Gray"``; its per-cause optimiser results
 (``results``) are not stored.
 
+Some details differ between families:
+
+- Only the univariate ``Parametric`` and ``NonParametric`` models take
+  ``to_dict(with_data=True)``, which stores the fitted data as well so
+  that ``bic``, ``aic_c`` and ``plot`` (parametric) or ``bootstrap_cb``
+  (non-parametric) work after restoring. ``to_json`` never stores the
+  data.
+- The degenerate ``NeverOccurs`` and ``InstantlyOccurs`` distributions
+  have ``to_dict`` but no ``to_json``; write their dictionary with
+  ``json.dump``.
+- These cannot be saved and raise an error from ``to_dict``: a
+  stratified Cox model, an accelerated-life model with a user-defined
+  life model, a regression fitted with a formula that uses a
+  data-dependent transform (such as ``scale()``), and a copula of a
+  custom family.
+- A model of a ``CustomDistribution`` or of a ``Discretize(...)``
+  distribution is written, but ``from_dict`` cannot rebuild it (it only
+  resolves SurPyval's own distributions by name) and raises a
+  ``ValueError``. Save its ``params`` and rebuild it with the
+  distribution's ``from_params``.
+- The dictionaries can hold ``inf`` and ``-inf`` (an untruncated bound, a
+  cumulative hazard after the last death). Python's ``json`` module and
+  BSON store these, but they are not strict JSON, so a strict parser in
+  another language may refuse the file.
+
 .. autofunction:: surpyval.serialisation.from_dict
 
 .. autofunction:: surpyval.serialisation.from_json

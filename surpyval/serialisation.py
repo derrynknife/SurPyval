@@ -218,7 +218,19 @@ def from_dict(model_dict: dict) -> Any:
     ------
     ValueError
         If the dictionary is not recognisable as a serialised SurPyval
-        model.
+        model, was written by a newer SurPyval (a higher ``"schema"``
+        version), or names a distribution the reader does not know --
+        which includes every ``CustomDistribution`` and ``Discretize``
+        distribution, since only SurPyval's own distributions are
+        resolved by name.
+
+    Notes
+    -----
+    What a restored model keeps differs by family: in general the
+    parameters and whatever predictions need, but not the fitted data,
+    so methods that need the data (``plot``, ``bic``, bootstrap and
+    likelihood-ratio bounds, residuals) raise on the restored model.
+    See "Saving and Loading Models" in the Conventions page.
 
     Examples
     --------

@@ -288,8 +288,8 @@ Theory: :doc:`Multivariate Analysis`. How-to:
 Saving a model
 --------------
 
-Every fitted model can be written to a plain dictionary or a JSON file and
-restored later, without having to remember which class wrote it:
+Almost every fitted model can be written to a plain dictionary or a JSON file
+and restored later, without having to remember which class wrote it:
 
 .. jupyter-execute::
 

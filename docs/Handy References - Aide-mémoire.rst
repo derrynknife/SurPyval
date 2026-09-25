@@ -52,7 +52,7 @@ The identities in the table, written out:
 
 The hazard is the one that most often causes confusion. It is not a probability: it is a *conditional rate*, and it can be greater than one. Its shape is what distinguishes infant mortality (decreasing hazard), random failures (constant hazard) and wear-out (increasing hazard); it is also the quantity that proportional hazards models act on.
 
-Every univariate SurPyval model, parametric or non-parametric, has all five methods, so the identities can be checked directly. (A non-parametric estimate is a step function, so its ``hf`` and ``df`` are the sizes of the jumps between the points you ask for, not rates; ``smoothed_hf`` gives a smoothed hazard rate. See :doc:`Non-Parametric SurPyval Modelling`.)
+Every fitted univariate distribution and non-parametric estimate in SurPyval has all five methods, so the identities can be checked directly; the one exception is a ``MixtureModel``, which has no ``hf`` (divide its ``df`` by its ``sf``). A non-parametric estimate is a step function, so its ``hf`` and ``df`` are the sizes of the jumps between the points you ask for, not rates; ``smoothed_hf`` gives a smoothed hazard rate (see :doc:`Non-Parametric SurPyval Modelling`).
 
 .. jupyter-execute::
 

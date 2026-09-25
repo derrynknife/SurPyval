@@ -144,8 +144,9 @@ so on.
      - :doc:`Multivariate Analysis` /
        :doc:`Multivariate Modelling with SurPyval`
 
-Every fitted model can be saved to a dictionary or a JSON file and restored
-with ``surv.from_dict`` or ``surv.from_json`` (see :doc:`Conventions`). A
+Almost every fitted model can be saved to a dictionary or a JSON file and
+restored with ``surv.from_dict`` or ``surv.from_json`` (see :doc:`Conventions`
+for what a restored model keeps, and the few models that cannot be saved). A
 survival tree and a random survival forest are available as beta-stage
 models in ``surpyval.beta.ml`` (see :doc:`surpyval.beta`).
 

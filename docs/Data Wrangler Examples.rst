@@ -301,10 +301,13 @@ non-parametric estimators think in:
    * - ``SurpyvalData(x, c, n, t, xl, xr, tl, tr)``
      - the same validation, returned as the object the fitters use
        internally; ``.to_xrd()`` gives its ``xrd`` form and ``to_json`` /
-       ``from_json`` save and restore it
+       ``from_json`` save and restore it (``from_json`` reads a file only
+       when given a ``pathlib.Path``; a string is parsed as JSON text)
    * - ``fsli_handler(f, s, l, i)``, ``xrd_handler(x, r, d)``
      - validate data already in the ``fsli`` or ``xrd`` layout (for example,
-       more deaths than items at risk is an error)
+       more deaths than items at risk is an error). ``xrd_handler`` does
+       not check that the times are distinct and increasing; make sure
+       they are
    * - ``handle_xicn(x, i, c, n, ...)``
      - validates recurrent event data (``xicnt``) and returns the
        ``RecurrentEventData`` object the recurrent models use
@@ -319,7 +322,9 @@ information:
 - ``xrd_to_xcnt`` cannot recover left truncation, and raises an error if the
   risk set ever grows from one time to the next.
 - ``xcn_to_fs`` returns only the observed (``c = 0``) and right censored
-  (``c = 1``) values; left and interval censored rows are left out.
+  (``c = 1``) values; left and interval censored rows are left out. It
+  does not validate its input, so pass one-column ``x`` and whole-number
+  counts.
 
 Observed and right censored ``xcnt`` data folds into the ``xrd`` form, the count at risk
 and the number of deaths at each distinct time:
@@ -331,3 +336,26 @@ and the number of deaths at each distinct time:
     print("times  :", times)
     print("at risk:", at_risk)
     print("deaths :", deaths)
+
+Going back with ``xrd_to_xcnt`` recovers the same rows here. The
+number censored at each time is what is left of the risk set after the
+deaths, ``r[j] - d[j] - r[j + 1]``, and it is placed at that time:
+
+.. jupyter-execute::
+
+    x_back, c_back, n_back, _ = surv.xrd_to_xcnt(times, at_risk, deaths)
+    print("x:", x_back)
+    print("c:", c_back)
+    print("n:", n_back)
+
+If the risk set ever grows from one time to the next, some items entered
+late (left truncation). ``xrd`` has no record of when each item entered,
+so the conversion cannot be undone, and SurPyval refuses rather than
+guessing:
+
+.. jupyter-execute::
+
+    try:
+        surv.xrd_to_xcnt([1, 2, 3], [4, 6, 3], [1, 2, 3])
+    except ValueError as err:
+        print(err)
