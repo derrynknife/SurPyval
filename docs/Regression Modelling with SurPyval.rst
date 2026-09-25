@@ -31,6 +31,77 @@ For the rest of this page we assume the following imports:
     import numpy as np
     from matplotlib import pyplot as plt
 
+**How this page is organised.** It is long, and it builds up in four parts.
+First, how the families differ and the conventions every fitter shares (the
+data arguments and how predictions pair times with covariates). Second, the
+*semi-parametric* models, which leave the baseline to the data: the Cox model
+with its whole toolkit — tied times, delayed entry, DataFrames and formulas,
+time-varying covariates, the proportional-hazards check, robust errors and
+strata — then its accelerated-time counterpart Buckley-James and the
+additive-hazards model. Third, the *parametric* families — proportional
+hazards, accelerated failure time, proportional odds, their confidence bounds,
+accelerated life testing, time-varying covariates across families and shared
+frailty. Fourth, choosing between fitted models, validating their predictions,
+and saving them. If you already know the question you are asking, the table
+below points straight to the section that answers it.
+
+.. list-table:: Which model, when
+   :header-rows: 1
+   :widths: 44 28 28
+
+   * - If you want to ...
+     - use
+     - see
+   * - estimate hazard ratios without assuming a lifetime distribution
+     - ``CoxPH``
+     - `Semi-Parametric — Cox Proportional Hazards`_
+   * - predict the whole lifetime distribution, extrapolate beyond the data,
+       or use left- or interval-censored data
+     - ``WeibullPH``, ``PH(dist)``, and the other parametric families
+     - `Parametric Proportional Hazards (PH)`_
+   * - say "this factor costs a fraction of the life" (a time ratio)
+     - ``WeibullAFT``, ``LogNormalAFT``; ``BuckleyJames`` with no
+       distribution assumed
+     - `Accelerated Failure Time (AFT)`_,
+       `Semi-Parametric — Buckley-James (AFT)`_
+   * - carry accelerated-test results to use conditions through a physical
+       stress-life law
+     - ``AcceleratedLife(Weibull, ExponentialLifeModel)``, ...
+     - `Accelerated Life (AL)`_
+   * - model an effect that fades as time goes on
+     - ``LogisticPO``, ``PO(dist)``
+     - `Proportional Odds (PO)`_
+   * - report an excess risk (extra failures per unit time)
+     - ``AdditiveHazards``, ``WeibullAH``
+     - `Semi-Parametric — Additive Hazards`_
+   * - use covariates that change during follow-up, or forecast along a
+       planned covariate path
+     - ``fit_tvc`` / ``sf_tvc`` (Cox, PH, AH, AFT)
+     - `Time-Varying Covariates`_, `Time-varying covariates across families`_
+   * - check that a hazard ratio really is constant
+     - ``model.check_ph()``
+     - `Checking the proportional-hazards assumption`_
+   * - get honest standard errors for grouped or repeated data
+     - ``model.robust_summary(cluster=...)``
+     - `Cluster-robust standard errors`_
+   * - model, and predict for, the variation between groups
+     - ``WeibullFrailty``, ``Frailty(dist)``
+     - `Shared-frailty models`_
+   * - remove a nuisance factor that breaks proportional hazards
+     - ``CoxPH.fit(..., strata=...)``
+     - `Stratified Cox models`_
+   * - find structure you cannot specify (thresholds, interactions)
+     - ``RandomSurvivalForest`` (beta)
+     - `Survival trees and random survival forests (beta)`_
+   * - compare, validate or store fitted models
+     - ``aic()``, ``surpyval.metrics``, ``to_dict()``
+     - `Model Selection`_, `Validating a survival predictor`_,
+       `Saving and loading a fitted model`_
+
+.. contents:: On this page
+   :local:
+   :depth: 1
+
 
 Choosing a regression model family
 ------------------------------------
@@ -158,22 +229,30 @@ Data, covariates and predictions
 
 Every regression fitter takes the observed times ``x`` and a covariate matrix
 ``Z`` with one row per observation and one column per covariate (a
-one-dimensional ``z`` is read as a single covariate, one value per row) —
+one-dimensional ``Z`` is read as a single covariate, one value per row) —
 plus surpyval's usual optional arrays: the censoring flag ``c`` (``0`` observed,
-``1`` right, ``-1`` left, ``2`` interval censored) and counts ``n``. The
-parametric families (PH, AFT, PO, AH, AL) accept every censoring type and
-truncation through ``t`` (a two-column ``[tl, tr]`` array); ``CoxPH`` accepts
-left truncation through a 1-D ``tl``; the Lin-Ying, Buckley-James and frailty
-fitters take observed and right-censored data. Each family also has a
-``fit_from_df`` that names DataFrame columns instead (see
-`Fitting from a DataFrame: formulas and categorical covariates`_).
+``1`` right, ``-1`` left, ``2`` interval censored) and counts ``n``. What each
+fitter accepts:
+
+- the parametric families (PH, AFT, PO, AH and AL) accept every censoring
+  type, and truncation through ``t`` (a two-column ``[tl, tr]`` array);
+- ``CoxPH`` takes observed and right-censored data, with left truncation
+  through a 1-D ``tl``. It does not yet reject ``c = -1``, which it silently
+  treats as right censored, so check your ``c`` before fitting it;
+- the Lin-Ying (``AdditiveHazards``), Buckley-James and frailty fitters take
+  observed and right-censored data only, and say so if given anything else.
+
+Each family also has a ``fit_from_df`` that names DataFrame columns instead
+(see `Fitting from a DataFrame: formulas and categorical covariates`_).
 
 Predictions — ``sf``, ``ff``, ``df``, ``hf`` and ``Hf`` — take times and
 covariates. Given **one** covariate row they return the curve over all the
 times; given ``n`` rows and ``n`` times they pair them **element-wise**, one
 time per row, which is what you want for scoring a data set but not for drawing
 several curves. To draw curves for several covariate values, call once per
-value. A small simulated data set shows both:
+value. (Buckley-James predictions take a single covariate row only, and the
+random survival forest returns a full grid; both are noted in their sections.)
+A small simulated data set shows both forms:
 
 .. jupyter-execute::
 
@@ -317,28 +396,38 @@ inspection — several units share a time and the partial likelihood needs a tie
 convention, chosen with ``method=``: ``'breslow'``, ``'efron'``, ``'exact'`` or
 ``'kalbfleisch-prentice'`` (``'kp'``). ``CoxPH.fit`` defaults to Breslow;
 ``CoxPH.fit_from_df`` and the time-varying-covariate fits default to Efron,
-which is also the default of R and lifelines. Breslow's approximation pulls
-the coefficient towards zero when ties are heavy; Efron's is much closer to the
-answer the unrounded data would have given:
+which is also the default of R and lifelines. Below, fifty units have
+continuous lifetimes that were recorded only to the whole day, so up to six
+share a day; each method is compared with the fit to the unrounded times,
+which is the answer rounding took away:
 
 .. jupyter-execute::
 
-    rng = np.random.default_rng(3)
-    z_tie = rng.binomial(1, 0.5, 80).astype(float).reshape(-1, 1)
-    t_true = rng.exponential(1 / np.exp(0.7 * z_tie[:, 0]))   # true beta = 0.7
-    t_rounded = np.ceil(t_true * 10) / 10                      # recorded to 0.1
+    rng = np.random.default_rng(0)
+    z_tie = rng.binomial(1, 0.5, 50).astype(float)
+    t_true = 10 * rng.weibull(2, 50) * np.exp(-0.7 * z_tie / 2)  # true beta 0.7
+    t_day = np.ceil(t_true)                        # recorded to the whole day
 
-    print('distinct times     :', np.unique(t_rounded).size, 'for 80 failures')
-    for method in ['breslow', 'efron']:
-        m = CoxPH.fit(x=t_rounded, Z=z_tie, method=method)
-        print(f'{method:18s} : beta = {m.beta[0]:.3f}')
-    print('unrounded times    : beta = %.3f'
+    counts = np.unique(t_day, return_counts=True)[1]
+    print('distinct days:', counts.size, '  largest tie:', counts.max())
+    print('unrounded times        : beta = %.3f'
           % CoxPH.fit(x=t_true, Z=z_tie).beta[0])
+    for method in ['breslow', 'efron', 'exact', 'kalbfleisch-prentice']:
+        m = CoxPH.fit(x=t_day, Z=z_tie, method=method)
+        print(f'{method:22s} : beta = {m.beta[0]:.3f}')
 
-``'exact'`` (all orderings of the tied failures, for rounded continuous time)
-and ``'kalbfleisch-prentice'`` (the discrete-time likelihood) are available for
-completeness, but their cost grows combinatorially with the size of a tie group
-— ``'exact'`` refuses more than twelve tied failures at one time — so Efron is
+Breslow's approximation pulls the coefficient towards zero; Efron's recovers
+almost all of what rounding lost, and ``'exact'`` — which averages the
+likelihood over every order in which the tied failures could have happened —
+lands closest to the unrounded fit, as it should for rounded continuous time.
+``'kalbfleisch-prentice'`` (alias ``'kp'``) answers a different question: it
+treats time as genuinely discrete, so its coefficient is a log *odds* ratio of
+failing within a day rather than a log hazard ratio, and is larger here for
+that reason, not because it is more accurate. Use it when time really is
+discrete (a unit can only fail at an inspection), and compare it only with
+other discrete-time fits. The two exact methods are much slower — this cell
+spends almost all of its time in them, and ``'exact'`` grows as :math:`2^d` in
+the size :math:`d` of a tie group and refuses more than twelve — so Efron is
 the practical choice for heavily tied data. With no ties all four agree.
 
 Delayed entry (left truncation)
@@ -378,6 +467,10 @@ unrelated to the covariate. If entry were related to the covariate the
 coefficient would be biased too. Only left truncation is available for Cox; right or
 interval truncation cannot be expressed in the forward partial likelihood and is
 rejected, so use a parametric family (``t=[tl, tr]``) for those.
+``CoxPH.fit_from_df`` has no entry-age column, so for a delayed-entry Cox fit
+pass the arrays to ``CoxPH.fit`` (or use the start-stop form of
+`Time-Varying Covariates`_, where a first interval starting after 0 is a
+delayed entry).
 
 Fitting from a DataFrame: formulas and categorical covariates
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -388,7 +481,11 @@ covariates either as ``Z_cols`` (a list of numeric columns) or as a
 ``formula`` (a `formulaic <https://matthewwardrop.github.io/formulaic/>`__
 formula such as ``"age + site"`` or ``"age * site"``). The fitted model
 remembers its ``feature_names`` — and the formula's encoding — so it can
-predict directly from a DataFrame of raw covariates.
+predict directly from a DataFrame of raw covariates. Beyond those, the
+parametric families take ``tl_col`` / ``tr_col`` (truncation) and ``init`` /
+``fixed``; ``CoxPH.fit_from_df`` takes ``method`` and ``strata_col``; and the
+frailty fitter requires a ``group_col``. There is a single time column, so
+interval-censored data (two time columns) go through ``fit``.
 
 A **categorical** covariate (a string or categorical column) is expanded with
 reference-level (treatment) coding: its first level is the baseline and each
@@ -455,7 +552,7 @@ delayed-entry (left-truncated) observation, the partial likelihood fits this
 format directly — splitting a subject into intervals with the same covariates
 leaves the fit unchanged.
 
-Use :meth:`CoxPH.fit_tvc` (arrays) or :meth:`CoxPH.fit_tvc_from_df` (a
+Use :meth:`CoxPH.fit_tvc <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_tvc>` (arrays) or :meth:`CoxPH.fit_tvc_from_df <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_tvc_from_df>` (a
 start-stop ``DataFrame``). The interval bounds follow surpyval's ``xl`` / ``xr``
 naming and the status column ``c`` follows surpyval's censoring convention —
 ``c = 0`` for the terminal event, ``c = 1`` for a right-censored interval end
@@ -499,8 +596,8 @@ switch could not.
 Writing intervals by hand is error-prone. A covariate *timeline* — one row per
 covariate change per subject, each value holding until the subject's next row,
 the first row's time being the entry and the last row carrying the exit time
-and status — can be given instead with :meth:`CoxPH.fit_tvc_timeline` or
-:meth:`CoxPH.fit_tvc_timeline_from_df`. The covariate on a subject's last row
+and status — can be given instead with :meth:`CoxPH.fit_tvc_timeline <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_tvc_timeline>` or
+:meth:`CoxPH.fit_tvc_timeline_from_df <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_tvc_timeline_from_df>`. The covariate on a subject's last row
 is ignored, as is ``c`` on every row but the last. It is expanded to the same
 intervals, so the fit is identical:
 
@@ -584,7 +681,7 @@ Schoenfeld residuals. A fitted model exposes it through
 :meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.check_ph`.
 It returns a joint ``global`` test and a ``per_covariate`` breakdown; a *small*
 ``p``-value is evidence *against* proportional hazards. We fit the tires model
-with :meth:`CoxPH.fit_from_df` so the report carries the covariate names:
+with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_from_df>` so the report carries the covariate names:
 
 .. jupyter-execute::
 
@@ -650,7 +747,10 @@ with ``kind`` one of ``"schoenfeld"``, ``"scaled_schoenfeld"``,
 ``"martingale"``, ``"deviance"``, ``"score"`` or ``"dfbeta"``. Schoenfeld
 residuals come one row per failure, in the order the failures appear in the
 fitted data (as in the plot above); the others one row per observation, in
-input order. Martingale
+input order (for a start-stop fit, in the fit's internal order, sorted by
+subject and entry time). They follow the tie method of a Breslow or Efron
+fit; after an ``'exact'`` or ``'kalbfleisch-prentice'`` fit the Breslow forms
+are used. Martingale
 residuals plotted against a covariate reveal non-linear functional form;
 deviance residuals highlight poorly-predicted individuals; dfbeta residuals
 show how far each observation moves each coefficient:
@@ -723,8 +823,8 @@ remedy is **stratification**: fit a separate baseline hazard for each stratum
 while sharing the coefficients :math:`\beta`. Risk sets never cross a stratum
 boundary, so the comparison is always within-stratum.
 
-Pass ``strata`` (a label per observation) to :meth:`CoxPH.fit`, or
-``strata_col`` to :meth:`CoxPH.fit_from_df`. The example below is deliberately
+Pass ``strata`` (a label per observation) to :meth:`CoxPH.fit <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit>`, or
+``strata_col`` to :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_from_df>`. The example below is deliberately
 adversarial: the baseline hazard differs by an order of magnitude across three
 sites *and* the covariate is correlated with the site. An ordinary Cox fit is
 badly confounded; the stratified fit recovers the true coefficient:
@@ -746,7 +846,9 @@ badly confounded; the stratified fit recovers the true coefficient:
     print(f"stratified  = {stratified.beta[0]:.3f}")
 
 Prediction on a stratified model needs a ``stratum`` argument to pick the right
-baseline; ``sf``, ``Hf``, ``hf``, ``ff`` and ``df`` all accept it:
+baseline — one of ``stratified.strata_labels``, here the site codes 0, 1 and
+2; ``sf``, ``Hf``, ``hf``, ``ff`` and ``df`` all accept it, and refuse to
+guess if it is left out:
 
 .. jupyter-execute::
 
@@ -795,8 +897,9 @@ negative of the slope in the equation above).
 The ``Converged`` line reports whether the iteration reached a fixed point
 (``model.converged`` and ``model.n_iter``); the estimator can settle into a
 two-point cycle, which surpyval detects and averages, and a fit that has not
-converged within ``max_iter`` iterations warns. Only observed and
-right-censored data with positive times are accepted.
+converged within ``max_iter`` iterations (default 100, with step tolerance
+``tol=1e-5``) warns. The coefficients are ``model.beta`` (also ``model.coef``).
+Only observed and right-censored data with positive times are accepted.
 
 Buckley-James has no simple closed-form standard error, so uncertainty comes
 from a percentile bootstrap — resampling, refitting, and taking coefficient
@@ -809,7 +912,8 @@ percentiles:
 Predictions use the fitted residual distribution directly,
 :math:`S(t \mid Z) = S_\varepsilon(\log t + \beta' Z)`, so the survival curves
 shift with the covariate (``sf``, ``ff`` and ``Hf`` are available; being a
-step function, the model has no density or hazard rate):
+step function, the model has no density or hazard rate). Each call takes a
+single covariate row and returns the curve at every time given:
 
 .. jupyter-execute::
 
@@ -888,8 +992,7 @@ baseline hazard with the same additive covariate term, ``h(x|Z) = h_0(x;θ) +
 factory and as pre-built ``WeibullAH``, ``ExponentialAH``, … instances, and
 gives a smooth, extrapolatable version of what ``AdditiveHazards`` estimates
 non-parametrically. Below, a Weibull wear-out hazard has an exposure that adds
-0.05 failures per unit time on top of it; both estimators recover the risk
-difference:
+0.05 failures per unit time on top of it:
 
 .. jupyter-execute::
 
@@ -909,9 +1012,22 @@ difference:
     ly = AdditiveHazards.fit(x=x_ah, Z=z_ah.reshape(-1, 1), c=c_ah)
     print('Lin-Ying beta_0 = %.3f (se %.3f)' % (ly.beta[0], ly.se[0]))
 
-The positivity caveat above applies more sharply here: because the likelihood
-needs ``log(h)`` at every event, a fit whose optimum requires a negative hazard
-raises rather than returning an invalid model.
+Both estimators recover the risk difference to within about two standard
+errors (0.035 and 0.046 against a true 0.05), and the Weibull baseline
+(scale 10, shape 2) is recovered too. The parametric fit is more efficient
+when its baseline is right; Lin-Ying makes no assumption about the baseline.
+
+The positivity caveat above bites differently here. The likelihood needs
+``log(h)`` at every failure, so the optimiser only accepts parameter values
+that keep :math:`h_0(x) + \beta'Z` positive at every observed failure. When
+the data would prefer a negative hazard — a strongly protective covariate —
+the fit returns the best model that stays positive, pressed against that
+boundary (the fitted hazard of the protected units is then close to zero at
+their earliest failures, and the baseline is bent to compensate), and it
+raises only if the optimiser cannot end at a positive-hazard point. So check
+``hf`` at the earliest failures of the protected group before trusting such a
+fit, and prefer a proportional-hazards model when effects are strongly
+protective.
 
 
 Parametric Proportional Hazards (PH)
@@ -991,11 +1107,15 @@ recovers the same parameters as the exact times:
     print('exact times         :', demo.params.round(3))
     print('inspection intervals:', interval_fit.params.round(3))
 
-``phi(Z)`` returns the fitted hazard multiplier :math:`e^{\beta'Z}`, and
-``random(size, Z)`` draws lifetimes from the fitted model (available for the PH,
-parametric AH and accelerated-life families) — useful for simulation studies
-and for checking a fit against its own simulated data. For each covariate row
-it returns ``size`` draws together with the matching covariate rows:
+``phi(Z)`` returns the fitted hazard multiplier :math:`e^{\beta'Z}` (for AFT
+it is the acceleration factor, for PO the odds multiplier, for accelerated
+life the modelled life; an additive model has none). ``random(size, Z)``
+draws lifetimes from the fitted model — useful for simulation studies and for
+checking a fit against its own simulated data. It exists for the PH, parametric
+AH and accelerated-life families (not AFT or PO). A PH model returns ``size``
+draws for each covariate row, in the order given, together with the matching
+covariate rows; an accelerated life model does the same for each *distinct*
+stress, in sorted order; a parametric AH model takes a single covariate row:
 
 .. jupyter-execute::
 
@@ -1004,6 +1124,48 @@ it returns ``size`` draws together with the matching covariate rows:
     sim_x, sim_Z = demo.random(5, [[0.0], [1.0]])
     print(sim_x.round(2))
     print(sim_Z.ravel())
+
+A custom covariate function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The log-linear :math:`e^{\beta'Z}` is a choice, not a requirement. Some fields
+use other forms — radiation epidemiology, for example, often models an
+*excess relative risk* that grows linearly with dose,
+:math:`\phi(z) = 1 + \beta z`, so that :math:`\beta` is the extra risk per unit
+dose. ``ProportionalHazardsFitter`` builds a PH fitter around any
+:math:`\phi(Z, *\text{params})` written with ``autograd.numpy``. Its arguments
+are a name, the baseline distribution, ``phi``, a display name for it, the
+parameter bounds and the parameter-name map (each either fixed or a function of
+``Z``), and optionally a starting value. The bounds are how you keep
+:math:`\phi` positive — here :math:`\beta > 0`:
+
+.. jupyter-execute::
+
+    import autograd.numpy as anp
+    from surpyval import ProportionalHazardsFitter, Weibull
+
+    def linear_rr(Z, *params):                  # phi(Z) = 1 + beta'Z
+        return 1.0 + anp.dot(Z, anp.array(params))
+
+    WeibullLinearRR = ProportionalHazardsFitter(
+        'WeibullLinearRR', Weibull, linear_rr, "Linear [1 + beta'Z]",
+        phi_bounds=lambda Z: ((0, None),) * Z.shape[1],
+        phi_param_map=lambda Z: {f'beta_{i}': i for i in range(Z.shape[1])},
+        phi_init=lambda Z: np.full(Z.shape[1], 0.5),
+    )
+
+    rng = np.random.default_rng(0)
+    dose = rng.uniform(0, 4, 400)
+    # Weibull(10, 2) baseline; each unit of dose adds 50% to the hazard
+    x_rr = 10 * (-np.log(rng.uniform(size=400)) / (1 + 0.5 * dose)) ** (1 / 2)
+    rr = WeibullLinearRR.fit(x=x_rr, Z=dose)
+    print('alpha, beta, beta_0:', rr.params.round(3))
+    print('standard errors    :', rr.standard_errors().round(3))
+
+The excess relative risk per unit dose, 0.60 (standard error 0.17), is within
+one standard error of the true 0.5. Everything else — predictions, bounds,
+``fit_from_df`` — works as for the pre-built models, but a custom covariate
+function cannot be rebuilt from a name, so such a model cannot be serialised.
 
 
 Accelerated Failure Time (AFT)
@@ -1154,6 +1316,13 @@ distribution:
     model = PO(Weibull).fit(x=x, Z=Z, c=c)
     model
 
+This fit tells a much weaker story — small coefficients, and an interaction
+with the same sign as in the PH fit — which is a warning rather than a
+finding: with 11 failures and four covariates the Weibull-PO fit is poorly
+determined, and `Model Selection`_ below shows it fits these data clearly
+worse than the PH/AFT description. The choice of baseline matters as much in
+the PO family as in any other.
+
 The fading effect is easiest to see on data simulated from a PO model. Below,
 a log-logistic baseline has its survival odds multiplied by :math:`e^{1}` for
 exposed units. The hazard ratio of exposed to unexposed units starts near
@@ -1179,6 +1348,346 @@ A practical rule of thumb: if the Kaplan-Meier curves for different covariate
 groups converge at long times (rather than remaining parallel on the log-hazard
 scale), PO is likely a better fit than PH. Proportional odds has no
 time-varying-covariate support and no ``random``.
+
+
+Confidence Bounds
+-----------------
+
+A point estimate is only half the story. The parametric regression models (PH,
+AFT, PO, AH and AL) carry the full parameter covariance — the inverse of the
+numerical Hessian of the negative log-likelihood — so every coefficient and every
+predicted curve comes with an interval. After a fit, the parameter covariance
+(``covariance()``) and standard errors are available directly:
+
+.. jupyter-execute::
+
+    from surpyval import WeibullPH
+
+    rng = np.random.default_rng(0)
+    Z_cb = rng.normal(size=(300, 1))
+    x_cb = 10.0 * (
+        -np.log(rng.uniform(size=300)) / np.exp(Z_cb[:, 0] * 0.8)
+    ) ** (1 / 2.0)
+    m_cb = WeibullPH.fit(x=x_cb, Z=Z_cb, c=np.zeros(300, dtype=int))
+
+    print(m_cb.parameter_names())
+    print(m_cb.standard_errors())
+
+``param_cb`` gives a Wald confidence bound on a single parameter, computed on a
+scale chosen from the parameter's support (log for a positive scale, natural for
+an unbounded coefficient) so the interval always stays valid:
+
+.. jupyter-execute::
+
+    m_cb.param_cb('beta_0')      # 95% CI for the covariate coefficient
+
+``cb`` propagates the parameter covariance through a predicted function by the
+delta method, returning a confidence *band*. Here is the survival at a covariate
+value with its 95% band:
+
+.. jupyter-execute::
+
+    x_grid = np.linspace(1, 40, 200)
+    band = m_cb.cb(x_grid, Z=[0.5], on='sf')      # (n, 2): [lower, upper]
+    sf = m_cb.sf(x_grid, Z=[0.5])
+    plt.plot(x_grid, sf, 'b', label='S(x | Z=0.5)')
+    plt.fill_between(x_grid, band[:, 0], band[:, 1], alpha=0.2,
+                     label='95% confidence band')
+    plt.legend()
+    plt.xlabel('Time')
+    plt.ylabel('S(x)')
+    plt.show()
+
+``cb`` takes a single covariate vector ``Z`` and accepts ``on='ff'``,
+``'Hf'``, ``'hf'`` or ``'df'``, one- or two-sided bounds via ``bound=``, and
+any ``alpha_ci``. A one-sided bound is what a reliability demonstration
+usually needs — for example the lower 90% bound on the reliability at time 5:
+
+.. jupyter-execute::
+
+    m_cb.cb([5.0], Z=[0.5], on='sf', bound='lower', alpha_ci=0.1)
+
+The convenience method ``model.plot()`` draws the fitted survival at the mean
+covariate, with this band, against a non-parametric estimate of the pooled
+data (the exponentiated Nelson-Aalen estimate) — a quick visual check, though
+the pooled curve ignores the covariates. The bounds here are Wald /
+delta-method bounds; the likelihood-ratio bounds available for univariate
+parametric fits are not implemented for the regression models.
+
+The other families quantify uncertainty their own way: Cox through the
+information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
+sandwich; Lin-Ying through its sandwich ``standard_errors()``; Buckley-James by
+``bootstrap_ci``; and the frailty model (below) through ``standard_errors()``
+and ``param_cb``.
+
+
+.. _accelerated-life:
+
+Accelerated Life (AL)
+----------------------
+
+Accelerated life testing (ALT) is a branch of reliability engineering where
+products are tested under *elevated stress conditions* — higher temperature,
+voltage, humidity, or load — to generate failure data faster than would be
+possible at normal operating conditions. The failures observed at high stress
+are then extrapolated back to normal conditions using a physical model for how
+the stress affects the life of the product.
+
+This is fundamentally different from the regression models above. In PH, AFT,
+and PO, the covariates are measured characteristics of each unit (e.g. tire
+gauge, patient age). In AL, the covariate is a controlled experimental condition
+(stress level), and there are typically only two or three distinct levels. The
+relationship between stress and life is not statistical but physical, and the
+choice of life model reflects domain knowledge about the failure mechanism.
+
+The AL model substitutes the life parameter :math:`\theta` of a distribution
+with a stress function :math:`\phi(Z)`:
+
+.. math::
+
+    F(x \mid Z) = F\!\left(x;\; \phi(Z),\; \text{other params}\right)
+
+For example, in a Weibull AL model the scale parameter :math:`\alpha` becomes
+:math:`\phi(Z)`, while the shape parameter :math:`\beta` is estimated globally
+across all stress levels (the assumption being that the failure mechanism is the
+same at all stresses, just faster or slower). Which parameter is the "life"
+for each distribution — and how the Exponential, Log-Normal and Gamma convert
+between a life and their own parameter — is tabulated on the
+:doc:`regression analysis` page. Weibull, Exponential, Normal, Log-Normal,
+Gamma, Gumbel and Logistic are supported.
+
+Available life models
+~~~~~~~~~~~~~~~~~~~~~~
+
+The choice of life model depends on the physical failure mechanism. The
+letters in each formula are the parameter names the fitted model reports, and
+:math:`Z_1, Z_2` are the two columns of ``Z`` for the two-stress models:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 38 36
+
+   * - Life model
+     - Formula :math:`\phi(Z)`
+     - Typical use
+   * - ``ExponentialLifeModel``
+     - :math:`b \cdot e^{a/Z}` (Arrhenius)
+     - Thermally-activated (chemical, diffusion, electromigration)
+   * - ``Eyring``
+     - :math:`Z^{-1} e^{-(b - a/Z)}`
+     - Temperature, from reaction-rate (transition-state) theory: Arrhenius
+       with a :math:`1/Z` pre-factor
+   * - ``InversePower``
+     - :math:`1 / (a \cdot Z^n)`
+     - Voltage, electrical field, mechanical fatigue
+   * - ``Power``
+     - :math:`a \cdot Z^n`
+     - The same law written directly as a life; with :math:`n < 0` life
+       falls as stress rises
+   * - ``Linear``
+     - :math:`a + b \cdot Z`
+     - Simple first-order approximation; valid over narrow stress ranges
+   * - ``DualExponential``
+     - :math:`c \cdot e^{a/Z_1} e^{b/Z_2}`
+     - Two thermal stresses
+   * - ``DualPower``
+     - :math:`c \cdot Z_1^m Z_2^n`
+     - Two non-thermal stresses
+   * - ``PowerExponential``
+     - :math:`c \cdot e^{a/Z_1} Z_2^n`
+     - One thermal + one non-thermal
+   * - ``InverseEyring``
+     - :math:`Z e^{c - a/Z}`, the reciprocal of Eyring
+     - Inverse Eyring relationship
+   * - ``InverseExponential``
+     - :math:`1 / (b \cdot e^{a/Z})`, the reciprocal of Arrhenius
+     - Inverse Arrhenius relationship
+
+A note on units: the stress variable :math:`Z` for Arrhenius and Eyring should
+be in Kelvin (absolute temperature), not Celsius. The accelerated life fitter
+takes the same ``c``, ``n``, ``t``, ``init`` and ``fixed`` arguments as the
+other parametric families (the life-model parameters can be held with
+``fixed`` too), and has a ``fit_from_df``.
+
+Using the factory
+~~~~~~~~~~~~~~~~~
+
+The example simulates a classic temperature test: twenty units at each of
+85 °C, 105 °C and 125 °C, with an activation energy of 0.7 eV, and a test that
+is stopped at 6,000 hours so that most of the coolest units are still running
+(right censored):
+
+.. jupyter-execute::
+
+    from surpyval import Weibull
+    from surpyval import AcceleratedLife, Power, ExponentialLifeModel
+
+    # Discrete stress levels — three temperatures in Kelvin
+    stress = np.repeat([358., 378., 398.], 20)   # 85°C, 105°C, 125°C
+    Ea, k = 0.7, 8.617e-5   # activation energy eV, Boltzmann constant eV/K
+    rng = np.random.default_rng(42)
+    true_life = 1.4e-6 * np.exp(Ea / (k * stress))   # Arrhenius, in hours
+    T_al = true_life * rng.weibull(2.5, stress.size)
+    test_end = 6000.0
+    x_al = np.minimum(T_al, test_end)
+    c_al = (T_al > test_end).astype(int)            # still running at the end
+    print('censored at each stress:',
+          [int(c_al[stress == s].sum()) for s in (358., 378., 398.)])
+
+    # Weibull + Arrhenius (ExponentialLifeModel) — the most common ALT model
+    model_arr = AcceleratedLife(Weibull, ExponentialLifeModel).fit(
+        x_al, Z=stress, c=c_al)
+    model_arr
+
+Notice that the Weibull shape parameter :math:`\beta` is estimated globally —
+it is the same for all stress levels — while the scale parameter :math:`\alpha`
+varies with stress via the Arrhenius relationship. This is the key assumption of
+ALT: the failure mechanism does not change with stress, only the rate. The
+``alpha: 1.0`` in the report is a placeholder: the life parameter is replaced
+by :math:`\phi(Z)`, so it is held fixed and carries no information (it is listed
+in ``model_arr.fixed``). The Arrhenius parameter ``a`` is
+:math:`E_a / k_B`, so the fit estimates the activation energy directly:
+
+.. jupyter-execute::
+
+    print('activation energy (eV)  : %.3f' % (model_arr.params[2] * k))
+    print('95% CI on a, in eV      :', (model_arr.param_cb('a') * k).round(3))
+
+.. jupyter-execute::
+
+    # Power law — a common choice for voltage or load acceleration
+    model_power = AcceleratedLife(Weibull, Power).fit(x_al, Z=stress, c=c_al)
+    model_power
+
+Over a narrow range of temperatures a steep power law mimics Arrhenius (hence
+the extreme exponent), and the two fit the test data about equally well. They
+part company as soon as they extrapolate — here by about 20% at a use
+temperature only 30 °C below the coolest test — which is why the life model
+should come from the physics rather than from the fit statistics alone:
+
+.. jupyter-execute::
+
+    use = 328.0                                  # 55°C use condition
+    for name, m in [('Arrhenius', model_arr), ('Power', model_power)]:
+        print(f'{name:10s} AIC = {m.aic():7.2f}'
+              f'   characteristic life at 55°C = {m.phi([use])[0]:7.0f} h')
+    print('true characteristic life at 55°C = %7.0f h'
+          % (1.4e-6 * np.exp(Ea / (k * use))))
+
+Both models under-predict the true use life. The fitted activation energy,
+0.67 eV against a true 0.70 eV, is well within its confidence interval, but an
+error in the slope of the stress-life line is multiplied by the distance of the
+extrapolation — a reminder to report the uncertainty of an extrapolated life
+(for example ``model_arr.cb`` at the use stress), not just its point estimate.
+The power law, whose form is wrong for this mechanism, is further off still.
+
+To use the fitted model for extrapolation, pass the operating stress to any
+of the survival functions:
+
+.. jupyter-execute::
+
+    # Predict life at the 55°C use condition, outside the tested range
+    x_pred = np.linspace(0, 200000, 500)
+    Z_use = np.array([[use]])   # operating condition
+
+    band = model_arr.cb(x_pred, Z=Z_use, on='sf')        # 95% delta-method band
+    plt.plot(x_pred, model_arr.sf(x_pred, Z=Z_use), label='Predicted at 55°C (328K)')
+    plt.fill_between(x_pred, band[:, 0], band[:, 1], alpha=0.2, label='95% band')
+    plt.plot(x_pred, Weibull.sf(x_pred, 1.4e-6 * np.exp(Ea / (k * use)), 2.5),
+             'k--', label='true reliability')
+    plt.xlabel('Time (hours)')
+    plt.ylabel('Reliability')
+    plt.legend()
+    plt.title('Extrapolated life at operating conditions')
+    plt.show()
+
+The band is wide — sixty units tested for at most 6,000 hours say only so much
+about lives of tens of thousands of hours — and it is the band, which here
+contains the true curve, rather than the point estimate that should drive a
+decision.
+
+Two stresses at once
+~~~~~~~~~~~~~~~~~~~~
+
+The dual life models take a two-column ``Z``, one column per stress. A
+common design tests every combination of two temperatures and two voltages;
+``PowerExponential`` then combines an Arrhenius term in temperature with a
+power law in voltage, :math:`c\, e^{a/Z_1} Z_2^{n}`:
+
+.. jupyter-execute::
+
+    from surpyval import PowerExponential
+
+    rng = np.random.default_rng(0)
+    temp = np.repeat([358., 378., 358., 378.], 25)       # kelvin
+    volts = np.repeat([10., 10., 20., 20.], 25)
+    true_life2 = 2e-4 * np.exp(Ea / (k * temp)) * volts ** -1.5
+    x_2s = true_life2 * rng.weibull(2.5, 100)
+
+    model_2s = AcceleratedLife(Weibull, PowerExponential).fit(
+        x_2s, Z=np.column_stack([temp, volts]))
+    for name, value in zip(model_2s.parameter_names(), model_2s.params):
+        print(f'{name:5s} = {value:.4g}')
+    print('activation energy (eV): %.3f' % (model_2s.params[3] * k))
+
+The fit separates the two effects — an activation energy of 0.67 eV against
+the true 0.7, and a voltage exponent ``n`` of -1.44 against the true -1.5 —
+because the design varies each stress while the other is held fixed. Had voltage been raised only
+together with temperature, the two columns would be collinear and no fit
+could tell their effects apart.
+
+Creating a custom life model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If none of the built-in life models matches your failure physics, you can define
+your own by subclassing ``LifeModel``. Its constructor takes a ``name``, a
+``phi_param_map`` naming the parameters in order, and their ``phi_bounds``. The
+two methods you must implement are:
+
+- ``phi(Z, *params)`` — the stress relationship. Use ``autograd.numpy`` so that
+  gradients are available for the optimiser.
+- ``phi_init(life, Z)`` — a closed-form or least-squares initialiser for the
+  model parameters. ``life`` is a vector of estimated life parameters at each
+  unique stress level; ``Z`` is the corresponding stress values. Good
+  initialisation is important for convergence.
+
+.. jupyter-execute::
+
+    from surpyval import LifeModel, AcceleratedLife
+    from surpyval import Weibull
+    import autograd.numpy as anp
+
+    class InverseSquareRoot(LifeModel):
+        """Life proportional to 1/sqrt(Z) — a simple custom example."""
+        def __init__(self):
+            super().__init__(
+                name="InverseSquareRoot",
+                phi_param_map={"a": 0},
+                phi_bounds=((0, None),),
+            )
+
+        def phi(self, Z, *params):
+            a = params[0]
+            return a / anp.sqrt(Z)
+
+        def phi_init(self, life, Z):
+            # life ~ a / sqrt(Z) => a ~ life * sqrt(Z)
+            a_est = float(anp.mean(life * anp.sqrt(Z.flatten())))
+            return [a_est]
+
+    model_custom = AcceleratedLife(Weibull, InverseSquareRoot()).fit(
+        x_al, Z=stress, c=c_al)
+    model_custom
+
+This life model is deliberately wrong for Arrhenius data — life cannot fall
+steeply enough with temperature — and the fit shows it: to reconcile the
+three stress levels it inflates the scatter within each (the Weibull shape
+drops well below the true 2.5), and its AIC is far worse:
+
+.. jupyter-execute::
+
+    print('AIC, Arrhenius       : %.1f' % model_arr.aic())
+    print('AIC, InverseSquareRoot: %.1f' % model_custom.aic())
 
 
 .. _tvc-parametric:
@@ -1215,7 +1724,7 @@ subject's likelihood depends on its accumulated *accelerated age*
 :math:`\psi = \sum e^{\beta'z}\,(b - a)` across intervals and cannot be
 reshaped into independent left-truncated rows the way PH/AH can; ``WeibullAFT``
 fits it with a dedicated accumulated-age likelihood instead, but the call is
-identical:
+identical (it accepts ``fixed=`` but not ``init=``):
 
 .. jupyter-execute::
 
@@ -1225,6 +1734,11 @@ identical:
         df, id_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
     )
     aft.params
+
+The true baseline is a Weibull of shape 1, for which accelerated failure time
+and proportional hazards are the same model with
+:math:`\beta_{PH} = \text{shape} \times \beta_{AFT}`, so the AFT coefficient
+is about 1 as well.
 
 Because the accelerated age is integrated from time zero, the AFT fit needs each
 subject's whole covariate history: every subject's first interval must start
@@ -1291,6 +1805,12 @@ step-valued guarantee; sandboxing an *untrusted* expression string is the
 calling application's responsibility.) The expression is sampled on a grid of
 spacing ``resolution`` (default 1) up to ``horizon``, so the resolution must be
 no coarser than the narrowest step; beyond the horizon the last value is held.
+For several covariates pass a list of expressions, one per covariate
+(``StepSchedule.from_expression(["...", "..."], horizon=...)``), and ``t0``
+starts the path somewhere other than 0. The expressions may use ``t``, numbers,
+arithmetic, comparisons, ``a if cond else b``, the constants ``pi``, ``e``,
+``tau`` and ``inf``, and the functions ``floor``, ``ceil``, ``round``,
+``trunc``, ``abs``, ``min`` and ``max``; anything else is refused.
 
 .. jupyter-execute::
 
@@ -1482,16 +2002,21 @@ label per observation (see :doc:`regression/frailty`):
     )
     print(model.summary())
     print("theta 95% CI:", np.round(model.param_cb("theta"), 3))
+    print("theta standard error: %.3f" % model.standard_errors()["theta"])
 
-The frailty variance ``theta`` quantifies the between-group spread; its
-confidence interval sitting clear of zero is evidence of real heterogeneity.
-(The data were simulated with :math:`\theta = 0.6`. A variance of a random
-effect is hard to pin down — with 60 groups of six, this sample happens to
-land low — while the coefficient, true value 0.8, is recovered well.) The
-per-group posterior frailties —
-an empirical-Bayes estimate for each observed group, shrunk toward 1 — are on
-``model.frailties``, keyed by group label, and ``model.standard_errors()``
-gives the Wald standard errors of every parameter.
+The frailty variance ``theta`` (also ``model.frailty_variance``) quantifies
+the between-group spread. Its interval is built on the log scale, so it can
+never include zero and says how precisely :math:`\theta` is known rather than
+whether it is positive; the evidence of real heterogeneity is an estimate
+well clear of zero relative to its standard error — here about three standard
+errors. (The data were simulated with
+:math:`\theta = 0.6`. A variance of a random effect is hard to pin down — with
+60 groups of six, this sample happens to land low, and the interval only just
+misses the truth — while the coefficient, true value 0.8, is recovered well.)
+The per-group posterior frailties — an empirical-Bayes estimate for each
+observed group, shrunk toward 1 — are on ``model.frailties``, keyed by group
+label (as a string), and ``model.standard_errors()`` gives the Wald standard
+errors of every parameter as a dictionary keyed by name.
 
 Prediction comes in two flavours. The default is **marginal** (population
 averaged), the right curve for a *new* unit from an *unknown* group; passing
@@ -1538,315 +2063,15 @@ predicts from a DataFrame:
           by_lot.sf([10.0], [0.0], group='L00'))
 
 Omit ``Z`` entirely for a pure random-effects survival model (grouped data, no
-covariates). Only Gamma frailty is available for now, on observed and
+covariates). Only Gamma frailty is available for now (``Frailty(dist)`` takes
+any baseline distribution; ``WeibullFrailty``, ``ExponentialFrailty``,
+``LogNormalFrailty`` and ``GammaFrailty`` are pre-built), on observed and
 right-censored data, and at least two groups are required. When the data show
 little between-group variation the estimate of ``theta`` goes to its boundary
 at zero, and the frailty fit then coincides with the ordinary ``WeibullPH`` fit
-(the same coefficients and log-likelihood); report the proportional-hazards
-model, since a variance on its boundary has no meaningful Wald interval.
-
-
-Confidence Bounds
------------------
-
-A point estimate is only half the story. The parametric regression models (PH,
-AFT, PO, AH and AL) carry the full parameter covariance — the inverse of the
-numerical Hessian of the negative log-likelihood — so every coefficient and every
-predicted curve comes with an interval. After a fit, the parameter covariance
-(``covariance()``) and standard errors are available directly:
-
-.. jupyter-execute::
-
-    from surpyval import WeibullPH
-
-    rng = np.random.default_rng(0)
-    Z_cb = rng.normal(size=(300, 1))
-    x_cb = 10.0 * (
-        -np.log(rng.uniform(size=300)) / np.exp(Z_cb[:, 0] * 0.8)
-    ) ** (1 / 2.0)
-    m_cb = WeibullPH.fit(x=x_cb, Z=Z_cb, c=np.zeros(300, dtype=int))
-
-    print(m_cb.parameter_names())
-    print(m_cb.standard_errors())
-
-``param_cb`` gives a Wald confidence bound on a single parameter, computed on a
-scale chosen from the parameter's support (log for a positive scale, natural for
-an unbounded coefficient) so the interval always stays valid:
-
-.. jupyter-execute::
-
-    m_cb.param_cb('beta_0')      # 95% CI for the covariate coefficient
-
-``cb`` propagates the parameter covariance through a predicted function by the
-delta method, returning a confidence *band*. Here is the survival at a covariate
-value with its 95% band:
-
-.. jupyter-execute::
-
-    x_grid = np.linspace(1, 40, 200)
-    band = m_cb.cb(x_grid, Z=[0.5], on='sf')      # (n, 2): [lower, upper]
-    sf = m_cb.sf(x_grid, Z=[0.5])
-    plt.plot(x_grid, sf, 'b', label='S(x | Z=0.5)')
-    plt.fill_between(x_grid, band[:, 0], band[:, 1], alpha=0.2,
-                     label='95% confidence band')
-    plt.legend()
-    plt.xlabel('Time')
-    plt.ylabel('S(x)')
-    plt.show()
-
-``cb`` accepts ``on='ff'``, ``'Hf'``, ``'hf'`` or ``'df'``, one- or two-sided
-bounds via ``bound=``, and any ``alpha_ci``. A one-sided bound is what a
-reliability demonstration usually needs — for example the lower 90% bound on
-the reliability at time 5:
-
-.. jupyter-execute::
-
-    m_cb.cb([5.0], Z=[0.5], on='sf', bound='lower', alpha_ci=0.1)
-
-The convenience method ``model.plot()`` draws the fitted survival at the mean
-covariate against the Kaplan-Meier with this band already applied. The bounds
-here are Wald / delta-method bounds; the likelihood-ratio bounds available for
-univariate parametric fits are not implemented for the regression models.
-
-The other families quantify uncertainty their own way: Cox through the
-information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
-sandwich; Lin-Ying through its sandwich ``standard_errors()``; Buckley-James by
-``bootstrap_ci``; and the frailty model through ``standard_errors()`` and
-``param_cb``.
-
-
-.. _accelerated-life:
-
-Accelerated Life (AL)
-----------------------
-
-Accelerated life testing (ALT) is a branch of reliability engineering where
-products are tested under *elevated stress conditions* — higher temperature,
-voltage, humidity, or load — to generate failure data faster than would be
-possible at normal operating conditions. The failures observed at high stress
-are then extrapolated back to normal conditions using a physical model for how
-the stress affects the life of the product.
-
-This is fundamentally different from the regression models above. In PH, AFT,
-and PO, the covariates are measured characteristics of each unit (e.g. tire
-gauge, patient age). In AL, the covariate is a controlled experimental condition
-(stress level), and there are typically only two or three distinct levels. The
-relationship between stress and life is not statistical but physical, and the
-choice of life model reflects domain knowledge about the failure mechanism.
-
-The AL model substitutes the life parameter :math:`\theta` of a distribution
-with a stress function :math:`\phi(Z)`:
-
-.. math::
-
-    F(x \mid Z) = F\!\left(x;\; \phi(Z),\; \text{other params}\right)
-
-For example, in a Weibull AL model the scale parameter :math:`\alpha` becomes
-:math:`\phi(Z)`, while the shape parameter :math:`\beta` is estimated globally
-across all stress levels (the assumption being that the failure mechanism is the
-same at all stresses, just faster or slower). Which parameter is the "life"
-for each distribution — and how the Exponential, Log-Normal and Gamma convert
-between a life and their own parameter — is tabulated on the
-:doc:`regression analysis` page. Weibull, Exponential, Normal, Log-Normal,
-Gamma, Gumbel and Logistic are supported.
-
-Available life models
-~~~~~~~~~~~~~~~~~~~~~~
-
-The choice of life model depends on the physical failure mechanism:
-
-.. list-table::
-   :header-rows: 1
-   :widths: 26 38 36
-
-   * - Life model
-     - Formula :math:`\phi(Z)`
-     - Typical use
-   * - ``ExponentialLifeModel``
-     - :math:`b \cdot e^{a/Z}` (Arrhenius)
-     - Thermally-activated (chemical, diffusion, electromigration)
-   * - ``Eyring``
-     - :math:`Z^{-1} e^{-(c - a/Z)}`
-     - Quantum-mechanical processes; more accurate than Arrhenius at
-       extreme temperatures
-   * - ``InversePower``
-     - :math:`1 / (a \cdot Z^n)`
-     - Voltage, electrical field, mechanical fatigue
-   * - ``Power``
-     - :math:`a \cdot Z^n`
-     - The same law written directly as a life; with :math:`n < 0` life
-       falls as stress rises
-   * - ``Linear``
-     - :math:`a + b \cdot Z`
-     - Simple first-order approximation; valid over narrow stress ranges
-   * - ``DualExponential``
-     - :math:`c \cdot e^{a/Z_1} e^{b/Z_2}`
-     - Two thermal stresses
-   * - ``DualPower``
-     - :math:`c \cdot Z_1^m Z_2^n`
-     - Two non-thermal stresses
-   * - ``PowerExponential``
-     - :math:`c \cdot e^{a/Z_1} Z_2^n`
-     - One thermal + one non-thermal
-   * - ``InverseEyring``
-     - Reciprocal of Eyring
-     - Inverse Eyring relationship
-   * - ``InverseExponential``
-     - Reciprocal of Arrhenius
-     - Inverse Arrhenius relationship
-
-A note on units: the stress variable :math:`Z` for Arrhenius and Eyring should
-be in Kelvin (absolute temperature), not Celsius.
-
-Using the factory
-~~~~~~~~~~~~~~~~~
-
-The example simulates a classic temperature test: twenty units at each of
-85 °C, 105 °C and 125 °C, with an activation energy of 0.7 eV, and a test that
-is stopped at 6,000 hours so that most of the coolest units are still running
-(right censored):
-
-.. jupyter-execute::
-
-    from surpyval import Weibull
-    from surpyval import AcceleratedLife, Power, ExponentialLifeModel
-
-    # Discrete stress levels — three temperatures in Kelvin
-    stress = np.repeat([358., 378., 398.], 20)   # 85°C, 105°C, 125°C
-    Ea, k = 0.7, 8.617e-5   # activation energy eV, Boltzmann constant eV/K
-    rng = np.random.default_rng(42)
-    true_life = 1.4e-6 * np.exp(Ea / (k * stress))   # Arrhenius, in hours
-    T_al = true_life * rng.weibull(2.5, stress.size)
-    test_end = 6000.0
-    x_al = np.minimum(T_al, test_end)
-    c_al = (T_al > test_end).astype(int)            # still running at the end
-    print('censored at each stress:',
-          [int(c_al[stress == s].sum()) for s in (358., 378., 398.)])
-
-    # Weibull + Arrhenius (ExponentialLifeModel) — the most common ALT model
-    model_arr = AcceleratedLife(Weibull, ExponentialLifeModel).fit(
-        x_al, Z=stress, c=c_al)
-    model_arr
-
-Notice that the Weibull shape parameter :math:`\beta` is estimated globally —
-it is the same for all stress levels — while the scale parameter :math:`\alpha`
-varies with stress via the Arrhenius relationship. This is the key assumption of
-ALT: the failure mechanism does not change with stress, only the rate. The
-``alpha: 1.0`` in the report is a placeholder: the life parameter is replaced
-by :math:`\phi(Z)`, so it is held fixed and carries no information (it is listed
-in ``model_arr.fixed``). The Arrhenius parameter ``a`` is
-:math:`E_a / k_B`, so the fit estimates the activation energy directly:
-
-.. jupyter-execute::
-
-    print('activation energy (eV)  : %.3f' % (model_arr.params[2] * k))
-    print('95% CI on a, in eV      :', (model_arr.param_cb('a') * k).round(3))
-
-.. jupyter-execute::
-
-    # Power law — a common choice for voltage or load acceleration
-    model_power = AcceleratedLife(Weibull, Power).fit(x_al, Z=stress, c=c_al)
-    model_power
-
-Over a narrow range of temperatures a steep power law mimics Arrhenius (hence
-the extreme exponent), and the two fit the test data about equally well. They
-part company as soon as they extrapolate — here by about 20% at a use
-temperature only 30 °C below the coolest test — which is why the life model
-should come from the physics rather than from the fit statistics alone:
-
-.. jupyter-execute::
-
-    use = 328.0                                  # 55°C use condition
-    for name, m in [('Arrhenius', model_arr), ('Power', model_power)]:
-        print(f'{name:10s} AIC = {m.aic():7.2f}'
-              f'   characteristic life at 55°C = {m.phi([use])[0]:7.0f} h')
-    print('true characteristic life at 55°C = %7.0f h'
-          % (1.4e-6 * np.exp(Ea / (k * use))))
-
-Both models under-predict the true use life. The fitted activation energy,
-0.67 eV against a true 0.70 eV, is well within its confidence interval, but an
-error in the slope of the stress-life line is multiplied by the distance of the
-extrapolation — a reminder to report the uncertainty of an extrapolated life
-(for example ``model_arr.cb`` at the use stress), not just its point estimate.
-The power law, whose form is wrong for this mechanism, is further off still.
-
-To use the fitted model for extrapolation, pass the operating stress to any
-of the survival functions:
-
-.. jupyter-execute::
-
-    # Predict life at the 55°C use condition, outside the tested range
-    x_pred = np.linspace(0, 200000, 500)
-    Z_use = np.array([[use]])   # operating condition
-
-    band = model_arr.cb(x_pred, Z=Z_use, on='sf')        # 95% delta-method band
-    plt.plot(x_pred, model_arr.sf(x_pred, Z=Z_use), label='Predicted at 55°C (328K)')
-    plt.fill_between(x_pred, band[:, 0], band[:, 1], alpha=0.2, label='95% band')
-    plt.plot(x_pred, Weibull.sf(x_pred, 1.4e-6 * np.exp(Ea / (k * use)), 2.5),
-             'k--', label='true reliability')
-    plt.xlabel('Time (hours)')
-    plt.ylabel('Reliability')
-    plt.legend()
-    plt.title('Extrapolated life at operating conditions')
-    plt.show()
-
-The band is wide — sixty units tested for at most 6,000 hours say only so much
-about lives of tens of thousands of hours — and it is the band, which here
-contains the true curve, rather than the point estimate that should drive a
-decision.
-
-Creating a custom life model
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If none of the built-in life models matches your failure physics, you can define
-your own by subclassing ``LifeModel``. Its constructor takes a ``name``, a
-``phi_param_map`` naming the parameters in order, and their ``phi_bounds``. The
-two methods you must implement are:
-
-- ``phi(Z, *params)`` — the stress relationship. Use ``autograd.numpy`` so that
-  gradients are available for the optimiser.
-- ``phi_init(life, Z)`` — a closed-form or least-squares initialiser for the
-  model parameters. ``life`` is a vector of estimated life parameters at each
-  unique stress level; ``Z`` is the corresponding stress values. Good
-  initialisation is important for convergence.
-
-.. jupyter-execute::
-
-    from surpyval import LifeModel, AcceleratedLife
-    from surpyval import Weibull
-    import autograd.numpy as anp
-
-    class InverseSquareRoot(LifeModel):
-        """Life proportional to 1/sqrt(Z) — a simple custom example."""
-        def __init__(self):
-            super().__init__(
-                name="InverseSquareRoot",
-                phi_param_map={"a": 0},
-                phi_bounds=((0, None),),
-            )
-
-        def phi(self, Z, *params):
-            a = params[0]
-            return a / anp.sqrt(Z)
-
-        def phi_init(self, life, Z):
-            # life ~ a / sqrt(Z) => a ~ life * sqrt(Z)
-            a_est = float(anp.mean(life * anp.sqrt(Z.flatten())))
-            return [a_est]
-
-    model_custom = AcceleratedLife(Weibull, InverseSquareRoot()).fit(
-        x_al, Z=stress, c=c_al)
-    model_custom
-
-This life model is deliberately wrong for Arrhenius data — life cannot fall
-steeply enough with temperature — and the fit shows it: to reconcile the
-three stress levels it inflates the scatter within each (the Weibull shape
-drops well below the true 2.5), and its AIC is far worse:
-
-.. jupyter-execute::
-
-    print('AIC, Arrhenius       : %.1f' % model_arr.aic())
-    print('AIC, InverseSquareRoot: %.1f' % model_custom.aic())
+(the same baseline, coefficients and likelihood); report the
+proportional-hazards model, since a variance on its boundary has no meaningful
+Wald interval.
 
 
 Model Selection
@@ -1855,30 +2080,40 @@ Model Selection
 With several competing models it is useful to compare them on information
 criteria. AIC penalises log-likelihood by the number of parameters (favouring
 simpler models); BIC additionally penalises by sample size (favouring even
-simpler models with larger datasets). Lower is better for both.
+simpler models with larger datasets). Lower is better for both. In surpyval
+the parameter count :math:`k` is the length of the parameter vector — held
+(``fixed``) parameters and the accelerated-life placeholder included — and the
+BIC's sample size is the number of exactly observed failures.
 
-For the tires data, we can compare all three statistical regression families
-using the same Weibull baseline:
+For the tires data, we can compare the three statistical regression families
+with a Weibull baseline, and try a second baseline for AFT and PO:
 
 .. jupyter-execute::
 
-    from surpyval import WeibullAFT, WeibullPH
+    from surpyval import WeibullAFT, WeibullPH, LogNormalAFT, LogisticPO
     from surpyval import PO
     from surpyval import Weibull
 
     models = {
-        'WeibullPH':  WeibullPH.fit(x=x, Z=Z, c=c),
-        'WeibullAFT': WeibullAFT.fit(x=x, Z=Z, c=c),
-        'WeibullPO':  PO(Weibull).fit(x=x, Z=Z, c=c),
+        'WeibullPH':    WeibullPH.fit(x=x, Z=Z, c=c),
+        'WeibullAFT':   WeibullAFT.fit(x=x, Z=Z, c=c),
+        'WeibullPO':    PO(Weibull).fit(x=x, Z=Z, c=c),
+        'LogNormalAFT': LogNormalAFT.fit(x=x, Z=Z, c=c),
+        'LogisticPO':   LogisticPO.fit(x=x, Z=Z, c=c),
     }
 
     for name, m in models.items():
-        print(f'{name:12s}  AIC={m.aic():.2f}  BIC={m.bic():.2f}')
+        print(f'{name:12s}  AIC={m.aic():6.2f}  BIC={m.bic():6.2f}')
 
 The PH and AFT rows are identical — for a Weibull baseline they are the same
-model (see `Accelerated Failure Time (AFT)`_) — so the real comparison is
-between the PH/AFT description and proportional odds, which fits these data
-clearly worse.
+model (see `Accelerated Failure Time (AFT)`_). The Weibull PO model fits
+clearly worse, but that is a verdict on the *pair* (family, baseline): with a
+logistic baseline, proportional odds comes within one AIC unit of the Weibull
+PH/AFT model, and the log-normal AFT is about three units behind. Differences
+of a unit or two are not meaningful — with 11 failures the data cannot
+separate these descriptions — so compare each family at its best baseline
+before ruling it out, and let the purpose and the diagnostics decide between
+close contenders.
 
 A note of caution: AIC and BIC compare how well a model fits the *observed
 data*, not whether the model's assumptions are correct. A PH model with a lower
@@ -1897,9 +2132,10 @@ Validating a survival predictor
 
 Information criteria compare models on the data they were fit to. To judge how
 well a model *predicts*, score it on held-out data. Two right-censored-standard
-metrics live in :mod:`surpyval.metrics`, and both work for **any** model that
-exposes ``sf(x, Z)`` — the parametric families, ``CoxPH``, and the
-:mod:`surpyval.beta.ml` forest (see :doc:`comparison_and_validation`).
+metrics live in :mod:`surpyval.metrics.validation` (importable from
+``surpyval.metrics``), and both work for **any** model that exposes
+``sf(x, Z)`` — the parametric families, ``CoxPH``, and the ``surpyval.beta.ml``
+forest (see :doc:`comparison_and_validation`).
 
 Both handle censoring by inverse-probability-of-censoring weighting (IPCW), so
 a subject censored before the horizon does not silently bias the score.
@@ -1913,7 +2149,7 @@ a subject censored before the horizon does not silently bias the score.
   who has failed by ``t`` was assigned a higher risk than one still event-free.
   0.5 is chance, 1.0 is perfect.
 
-The helper :func:`~surpyval.metrics.survival_probability` builds the predicted
+The helper :func:`~surpyval.metrics.validation.survival_probability` builds the predicted
 survival matrix ``S(times | Z_i)`` from a fitted model. We fit a Cox model on a
 training set and score it on an independent test set:
 

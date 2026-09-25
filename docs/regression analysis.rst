@@ -18,7 +18,7 @@ Surpyval covers five families of regression model, distinguished by *how* the co
 
 Around these sit a number of variations — semi-parametric versions that leave the baseline unspecified (Cox, Lin-Ying, Buckley-James), a random-effects (frailty) version for grouped data, stratified and time-varying-covariate versions, and tree-based predictors that make no structural assumption at all. There are special cases when several of these coincide, however, it is important to understand the difference between them in general. I detail the differences in the following sections; the worked, runnable versions of everything here are on the :doc:`Regression Modelling with SurPyval` page, and the complete API is under :doc:`surpyval.regression`.
 
-**Notation.** Throughout, :math:`T` is the (random) lifetime and :math:`x` an observed time. The covariates of one unit are a row vector :math:`Z = (z_1, \dots, z_p)` and the coefficients a column vector :math:`\beta`, so :math:`\beta' Z = \beta_1 z_1 + \dots + \beta_p z_p` is a single number, the *linear predictor*. The survival function is :math:`S(x) = P(T > x)`, the CDF :math:`F = 1 - S`, the density :math:`f`, the hazard :math:`h = f / S` and the cumulative hazard :math:`H = -\log S`. A subscript :math:`0` marks the *baseline* — the distribution of a unit whose covariates are all zero. Censoring follows the surpyval convention: ``c = 0`` observed, ``c = 1`` right censored, ``c = -1`` left censored and ``c = 2`` interval censored.
+**Notation.** Throughout, :math:`T` is the (random) lifetime and :math:`x` an observed time or an age at which a function is evaluated. The sections on the Cox model and later, which follow a process along the time axis, also write :math:`t` for a point on that axis and :math:`t_k` for the :math:`k`-th distinct failure time; truncation bounds are always subscripted, :math:`t_l` and :math:`t_r` (the ``tl``/``tr`` of surpyval's ``t``). The covariates of one unit are a row vector :math:`Z = (z_1, \dots, z_p)` and the coefficients a column vector :math:`\beta`, so :math:`\beta' Z = \beta_1 z_1 + \dots + \beta_p z_p` is a single number, the *linear predictor*. The survival function is :math:`S(x) = P(T > x)`, the CDF :math:`F = 1 - S`, the density :math:`f`, the hazard :math:`h = f / S` and the cumulative hazard :math:`H = -\log S`. A subscript :math:`0` marks the *baseline* — the distribution of a unit whose covariates are all zero. Censoring follows the surpyval convention: ``c = 0`` observed, ``c = 1`` right censored, ``c = -1`` left censored and ``c = 2`` interval censored.
 
 The table below is the one-line summary of each family — what the covariates do, and how to read a coefficient. The sign convention matters: in the PH, AFT and additive families a *positive* coefficient means a *shorter* life, while in the proportional odds family it means a *longer* one, and in accelerated life the stress-life function is written directly in units of life.
 
@@ -75,64 +75,41 @@ The families really are different, and the quickest way to see it is to look at 
 Proportional Hazards Model
 --------------------------
 
-A proportional hazards model is one in which we change the hazard rate of the distribution by some proportional amount. You may recall that every distribution can be defined by a hazard rate or a cumulative hazard rate, see the :doc:`Handy References - Aide-mémoire` page which shows that the density, CDF, and survival function can all be defined in terms of the hazard rate, h(t).
-
-So what we can do then is assume that the covariates will affect the survival time of the thing by having some effect on the hazard rate. The general definition for a proportional hazard model is:
+Every distribution can be described by its hazard rate :math:`h(x)` — the instantaneous risk of failing at age :math:`x`, given survival to :math:`x` — and the density, CDF and survival function all follow from it (see the :doc:`Handy References - Aide-mémoire` page). So a natural way to let covariates act on a lifetime is to let them act on the hazard. A proportional hazards model *multiplies* it:
 
 .. math::
 
-	h(t|X) = \phi(X) h_{0}(t)
+	h(x \mid Z) = \phi(Z)\, h_{0}(x),
 
-This is to say that the hazard rate at time t is the function (of a vector) of covariates on a 'baseline' hazard rate. Let's use a simple example, a proportional hazard model with covariates that affect a constant hazard rate. Let's say that some factory produces one widget an hour. But this is only with one machine in operation, if we add a second machine, we can produce widgets at two per hour, if we had a third, it will be three per hour. In this case the base rate is 1 and the function linking X to the base rate is to simply multiply X by the base rate.
+where :math:`h_0` is the *baseline* hazard and :math:`\phi(Z) > 0` a function of the covariates. A concrete picture: pumps run at high load (:math:`z = 1`) wear twice as fast as pumps at low load (:math:`z = 0`), so :math:`\phi(1) = 2`, :math:`\phi(0) = 1`. At *every* age, a high-load pump is twice as likely to fail in the next hour as a low-load pump of the same age; the shape of the hazard over age — rising for wear-out, flat for random failures — is the same for both, only its level differs.
 
-This is to say that for this example:
-
-.. math::
-
-    \phi(X) = X \\
-    h_{0}(t) = 1
-
-Therefore:
+Which :math:`\phi`? The simplest idea, :math:`\phi(Z) = 1 + \beta' Z` (a linear *relative risk*), turns negative for a protective covariate with a large enough value, and a negative hazard is impossible, so its coefficients have to be constrained. The standard choice avoids that:
 
 .. math::
 
-	h(t|X) = X
+	\phi(Z) = e^{\beta' Z} = e^{\beta_1 z_1 + \beta_2 z_2 + \dots + \beta_p z_p}.
 
-This is an overly simple model, but it shows how we can construct a PH model.
-
-In this case we have a simple proportional hazard model, also, it is limited to only an increasing hazard rate, but sometimes we need to capture a negative impact. Further, we may need a way to capture more covariates. For these reasons a very common selection for the function of covariates is an exponential function.
-
-.. math::
-
-	\phi(X) = e^{X\cdot \beta }
-
-Where
-
-.. math::
-
-	X\cdot \beta = X_{0}\beta_{0} + X_{1} \beta_{1} + ... + X_{n-1}\beta_{n-1} + X_{n}\beta_{n}
-
-In this case the proportional term is e raised to the power of the dot product of X and beta. Using this as the covariate function is a very common choice. This is because it will not ever become negative. It can capture situations where a covariate will increase the hazard rate if its coefficient, beta, is positive, and it will decrease the hazard rate if its coefficient is negative. Also, the dot product can capture a varying number of covariates with ease. For these reasons this log-linear form is used by the Cox model and by every parametric PH model in surpyval. Although you can choose any function for your covariates there is already likely literature about your problem which might indicate which function to use.
+It is positive for every :math:`\beta` and :math:`Z`; a positive coefficient raises the hazard and a negative one lowers it; and any number of covariates enter through the one linear predictor :math:`\beta' Z`. This *log-linear* form is used by the Cox model and by every pre-built parametric PH model in surpyval. Another function can be supplied when the subject matter calls for one (see the custom-covariate-function example on the :doc:`Regression Modelling with SurPyval` page), but the log-linear form is the one whose coefficients have the clean reading below.
 
 **What a coefficient means.** Compare two units that differ by one unit in :math:`z_j` and agree on everything else. The ratio of their hazards is
 
 .. math::
 
-    \frac{h(t \mid z_j + 1)}{h(t \mid z_j)} = e^{\beta_j},
+    \frac{h(x \mid z_j + 1)}{h(x \mid z_j)} = e^{\beta_j},
 
-at *every* time :math:`t` — that is what "proportional" means. :math:`e^{\beta_j}` is the **hazard ratio**: :math:`\beta_j = 0.7` roughly doubles the instantaneous risk of failure, :math:`\beta_j = -0.7` roughly halves it. Because the hazards stay a constant multiple apart, the survival curves are powers of one another, :math:`S(t \mid Z) = S_0(t)^{e^{\beta' Z}}`, and so they never cross. The multiplier only has meaning relative to the baseline: the baseline is the unit with :math:`Z = 0`, so centring a covariate (subtracting its mean) changes the baseline but not :math:`\beta`.
+at *every* age :math:`x` — that is what "proportional" means. :math:`e^{\beta_j}` is the **hazard ratio**: :math:`\beta_j = 0.7` roughly doubles the instantaneous risk of failure, :math:`\beta_j = -0.7` roughly halves it. Because the hazards stay a constant multiple apart, the survival curves are powers of one another, :math:`S(x \mid Z) = S_0(x)^{e^{\beta' Z}}`, and so they never cross. The multiplier only has meaning relative to the baseline: the baseline is the unit with :math:`Z = 0`, so centring a covariate (subtracting its mean) changes the baseline but not :math:`\beta`.
 
-For a *parametric* proportional hazards model (a known baseline such as the Weibull) surpyval uses MLE to estimate the parameters. This is a simple conversion from regular MLE since we know the relationship between a baseline distribution and the proportional hazards version. (The Cox model in the next section is *semi-parametric* — its baseline is left unspecified and its coefficients are estimated by *partial* likelihood, not full MLE.) These relationships are:
+For a *parametric* proportional hazards model (a known baseline such as the Weibull, with parameters :math:`\theta`) surpyval estimates :math:`\theta` and :math:`\beta` together by maximum likelihood. Integrating the hazard gives :math:`H(x \mid Z) = \phi(Z) H_0(x)`, and every other function follows:
 
 .. math::
 
-	f(t|X) = \phi(X) h_{0}(t) e^{-\phi(X) H_{0}(t)} \\
+	f(x \mid Z) = \phi(Z)\, h_{0}(x)\, e^{-\phi(Z) H_{0}(x)} \\
 	\\
-	F(t|X) = 1 - e^{-\phi(X) H_{0}(t)} \\
+	F(x \mid Z) = 1 - e^{-\phi(Z) H_{0}(x)} \\
 	\\
-	S(t|X) = e^{-\phi(X) H_{0}(t)}
+	S(x \mid Z) = e^{-\phi(Z) H_{0}(x)}
 
-It is therefore relatively simple to adjust the MLE methods to accommodate proportional hazard models. Pre-built versions exist for the Exponential, Weibull, Normal, Gumbel, Logistic, Log-Normal and Gamma baselines (``WeibullPH`` and friends), and the ``PH(distribution)`` factory builds one from other surpyval distributions; see :doc:`regression/parametric`.
+These are all the likelihood of the next section needs. (The Cox model further down is *semi-parametric* — its baseline is left unspecified and its coefficients are estimated by a *partial* likelihood instead.) Pre-built versions exist for the Exponential, Weibull, Normal, Gumbel, Logistic, Log-Normal and Gamma baselines (``WeibullPH`` and friends), and the ``PH(distribution)`` factory builds one from other surpyval distributions; see :doc:`regression/parametric`.
 
 The details on fitting proportional hazards model is detailed more in the :doc:`Regression Modelling with SurPyval` page.
 
@@ -157,25 +134,25 @@ If the row could only have been observed inside a truncation window :math:`(t_{l
 
 The truncation term is where a naive analysis goes wrong: ignoring delayed entry treats every late entrant as if it had been watched from birth, so it over-represents long lives. For a window bounded on one side only, surpyval evaluates :math:`\log S(t_l \mid Z)` or :math:`\log F(t_r \mid Z)` directly rather than as a difference of CDFs, which keeps the term finite even when the probability underflows.
 
-The estimate :math:`(\hat\theta, \hat\beta)` maximises :math:`\log L` numerically (the baseline parameters :math:`\theta` are optimised on a transformed scale that respects their support). Parameters can be held at known values with ``fixed=``, e.g. a Weibull shape known from experience.
+The estimate :math:`(\hat\theta, \hat\beta)` maximises :math:`\log L` numerically (the baseline parameters :math:`\theta` are optimised on a transformed scale that respects their support). Parameters can be held at known values with ``fixed=``, e.g. a Weibull shape known from experience. The information criteria reported with a fit, :math:`\text{AIC} = 2k - 2\log L` and :math:`\text{BIC} = k \log d - 2 \log L`, use :math:`d`, the number of exactly observed failures (``c = 0``), as the sample size of the BIC, and count as :math:`k` every entry of the parameter vector — held (``fixed``) parameters included.
 
 **Uncertainty.** The covariance of the estimates is approximated by the inverse of the observed information — the numerical Hessian of :math:`-\log L` at the optimum, :math:`\widehat{\text{Cov}} = \mathcal{I}(\hat\theta, \hat\beta)^{-1}` (fixed parameters get a zero row and column). From it:
 
 - a Wald interval on a single parameter is formed on a scale that respects its support — the natural scale for an unbounded coefficient, the log of the distance from the bound for a positive parameter such as a Weibull scale — so the interval can never leave the parameter space;
-- a band on a predicted curve at covariate :math:`Z` uses the **delta method**: the gradient :math:`g` of, say, :math:`S(x \mid Z)` with respect to all parameters gives :math:`\text{se} = \sqrt{g' \,\widehat{\text{Cov}}\, g}`, and the band is built on the logit scale for :math:`S`, :math:`F` and :math:`H` (so it stays in :math:`(0, 1)`) and on the log scale for :math:`h` and :math:`f` (so it stays positive).
+- a band on a predicted curve at covariate :math:`Z` uses the **delta method**: the gradient :math:`g` of, say, :math:`S(x \mid Z)` with respect to all parameters gives :math:`\text{se} = \sqrt{g' \,\widehat{\text{Cov}}\, g}`, and the band is built on the logit scale of :math:`S` — with the bands on :math:`F = 1 - S` and :math:`H = -\log S` read off from it — so that :math:`S` and :math:`F` stay in :math:`(0, 1)` and :math:`H` positive, and on the log scale for :math:`h` and :math:`f` (so they stay positive).
 
 Both are large-sample approximations. They are least trustworthy with few failures or with a parameter near a boundary, in which case the information matrix may not be invertible and the covariance is reported as unavailable.
 
 Semi-Parametric
 ^^^^^^^^^^^^^^^
 
-Earlier pages covered 'parametric' and 'non-parametric' survival models, so what is 'semi-parametric'? A semi-parametric model is a survival model with a non-parametric baseline and parametric function that affects that baseline. Recall that a proportional hazard model can be defined as:
+Earlier pages covered 'parametric' and 'non-parametric' survival models, so what is 'semi-parametric'? A semi-parametric model is a survival model with a non-parametric baseline and a parametric function that acts on that baseline. Recall that a proportional hazards model is
 
 .. math::
 
-	h(t|X) = \phi(X) h_{0}(t)
+	h(x \mid Z) = \phi(Z)\, h_{0}(x).
 
-It is interesting to note that the phi term must be parametric, however, the baseline hazard rate need not be parametric, it can be non-parametric! Therefore, what we have is a parametric relationship of the covariates to the baseline hazard rate, but a non-parametric baseline hazard rate, therefore, a 'semi-parametric' model.
+The covariate function :math:`\phi` has to be parametric — it is what the coefficients describe — but nothing forces the baseline hazard :math:`h_0` to be: it can be left completely unspecified and estimated non-parametrically. A parametric covariate effect on a non-parametric baseline is a 'semi-parametric' model.
 
 By far the most common of any regression model of any kind (parametric, non-parametric, and semi-parametric of all the accelerated life, proportional hazard, and accelerated time) is the Cox Proportional Hazard model [Cox1972reg]_, it is a semi-parametric model.
 
@@ -196,7 +173,7 @@ where :math:`Z_{(k)}` is the covariate of the unit that failed and :math:`R_k` i
 
 with counts :math:`n_j` as weights. Only the *order* of the failure times matters, which is why the Cox model cannot tell you anything about the shape of the baseline — and why it does not need to.
 
-**Risk sets, censoring and delayed entry.** Censored units never appear in the numerator, but they do sit in the risk sets of every failure time up to their censoring time — that is how they contribute information. A unit that entered observation late (left truncation, ``tl`` in surpyval) is at risk only after it entered. surpyval uses the standard ``(entry, exit]`` convention: unit :math:`j` is in :math:`R_k` when :math:`t_{l,j} < t_k \le x_j`, so a unit entering exactly at a failure time is not at risk for it, and a unit is at risk at its own failure or censoring time. Right and interval truncation cannot be expressed in this forward-in-time comparison, so the Cox fitter accepts left truncation only.
+**Risk sets, censoring and delayed entry.** Censored units never appear in the numerator, but they do sit in the risk sets of every failure time up to their censoring time — that is how they contribute information. A unit that entered observation late (left truncation, ``tl`` in surpyval) is at risk only after it entered. surpyval uses the standard ``(entry, exit]`` convention: unit :math:`j` is in :math:`R_k` when :math:`t_{l,j} < t_k \le x_j`, so a unit entering exactly at a failure time is not at risk for it, and a unit is at risk at its own failure or censoring time. Right and interval truncation cannot be expressed in this forward-in-time comparison, so the Cox fitter accepts left truncation only. For the same reason it needs to know, for every unit, whether it was still at risk at each failure time, which a left- or interval-censored observation does not say: the Cox fitter is for observed (``c = 0``) and right-censored (``c = 1``) data. (It does not currently reject ``c = -1``, which it treats as right censored; use a parametric family for left- or interval-censored data.)
 
 A tiny example makes the formula concrete. Four units fail in turn at times 1, 2, 3 and 4; the first and third are "exposed" (:math:`z = 1`). The partial log-likelihood at :math:`\beta = 0.3`, computed by hand, matches the value surpyval optimises:
 
@@ -222,9 +199,9 @@ A tiny example makes the formula concrete. Four units fail in turn at times 1, 2
 - **Breslow** [Breslow1974reg]_ treats the :math:`d_k` tied units as if each failed against the full risk set: the log term becomes :math:`d_k \log \sum_{j \in R_k} n_j e^{\beta' Z_j}`. Simple and fast, but it biases :math:`\hat\beta` towards zero when ties are heavy.
 - **Efron** [Efron1977reg]_ assumes the tied failures happened in some unknown order and removes, on average, a fraction of their weight from the risk set for each successive one. Writing :math:`\mathcal{R}_k = \sum_{j \in R_k} n_j e^{\beta' Z_j}` and :math:`\mathcal{D}_k` for the same sum over the tied failures, the term is :math:`\sum_{l=0}^{d_k - 1} \log\bigl(\mathcal{R}_k - \tfrac{l}{d_k}\mathcal{D}_k\bigr)`. It is much closer to the exact answer at almost no cost, and it is the default in R and lifelines.
 - **Exact** (``'exact'``) sums the sequential contribution over every ordering of the tied failures — appropriate when the ties come from rounding a continuous time. Its cost grows as :math:`2^{d}` in the size of a tie group, so it is limited to twelve tied failures at one time. Like the next method it needs integer counts ``n``, because each row is expanded into that many tied units.
-- **Kalbfleisch-Prentice** (``'kalbfleisch-prentice'`` or ``'kp'``) is the exact *discrete-time* (conditional logistic) likelihood [KalbfleischPrentice2002reg]_, for time that really is discrete: the denominator sums the product of the risk scores over every subset of the risk set of size :math:`d_k`.
+- **Kalbfleisch-Prentice** (``'kalbfleisch-prentice'`` or ``'kp'``) is the exact *discrete-time* (conditional logistic) likelihood [KalbfleischPrentice2002reg]_, for time that really is discrete: the denominator sums the product of the risk scores over every subset of the risk set of size :math:`d_k`, :math:`\sum_{|D| = d_k,\, D \subseteq R_k} \prod_{j \in D} e^{\beta' Z_j}`. surpyval evaluates it by the elementary-symmetric-polynomial recursion, in time proportional to :math:`|R_k|\, d_k` rather than by listing subsets, so it has no hard limit, but it is still far slower than Efron.
 
-With no ties all four are identical. ``CoxPH.fit`` defaults to Breslow; ``CoxPH.fit_from_df`` and the time-varying-covariate fits default to Efron.
+The first three estimate the same continuous-time hazard ratio and differ only in how well they approximate it; with light ties Breslow and Efron are close to the exact answer and Efron is the better of the two. Kalbfleisch-Prentice is a different *model*: in discrete time :math:`e^{\beta}` is an odds ratio of the per-period failure probabilities, which is larger in magnitude than the hazard ratio when many units fail per period, so its :math:`\hat\beta` is not directly comparable with the other three. With no ties all four are identical. ``CoxPH.fit`` defaults to Breslow; ``CoxPH.fit_from_df`` and the time-varying-covariate fits default to Efron.
 
 **Estimation and uncertainty.** The score :math:`U(\beta) = \partial \ell / \partial \beta = \sum_k \bigl(Z_{(k)} - \bar Z_k\bigr)`, where :math:`\bar Z_k` is the risk-weighted mean covariate over :math:`R_k`, is solved for zero by a root finder (with a direct minimisation as fallback). The observed information :math:`\mathcal{I}(\hat\beta) = -\partial^2 \ell / \partial\beta\,\partial\beta'` is the risk-weighted covariance of :math:`Z` summed over failures; its inverse is the covariance of :math:`\hat\beta`, and the reported ``p_values`` are the Wald tests :math:`2\bigl(1 - \Phi(|\hat\beta_j| / \text{se}_j)\bigr)`. When the design is degenerate (for example a covariate that never varies inside a risk set) the information is singular and the standard error is reported as unavailable.
 
@@ -236,40 +213,32 @@ With no ties all four are identical. ``CoxPH.fit`` defaults to Breslow; ``CoxPH.
     \hat H_0(t) = \sum_{t_k \le t} \hat h_0(t_k), \qquad
     \hat S(t \mid Z) = \exp\bigl(-e^{\hat\beta' Z}\,\hat H_0(t)\bigr).
 
-This is a step function that jumps only at observed times, so a Cox model predicts only within the range of the data: beyond the last observed time the curve is simply held flat, and it cannot be used to extrapolate. A parametric PH model is the tool for that. Note too that the Cox model's ``hf`` returns the *jump* :math:`\hat h_0(t_k) e^{\hat\beta' Z}` of the step at the latest time :math:`t_k \le t`, not a smooth hazard rate.
+This is a step function that jumps only at observed failure times: it is 0 (so :math:`\hat S = 1`) before the first failure, and beyond the last observed time the curve is simply held flat, so a Cox model predicts only within the range of the data and cannot be used to extrapolate. A parametric PH model is the tool for that. Note too that the Cox model's ``hf`` returns the *jump* :math:`\hat h_0(t_k) e^{\hat\beta' Z}` of the step at the latest failure time :math:`t_k \le t`, not a smooth hazard rate. surpyval uses this Breslow baseline whatever tie method fitted :math:`\hat\beta` (R's ``survival`` uses an Efron-adjusted baseline after an Efron fit; the two differ only at tied times).
 
 Accelerated Failure Time
 ------------------------
 
-An accelerated failure time (AFT) model is very similar to a proportional hazards model. The difference is where the function is applied; instead of multiplying the hazard function, an accelerated failure time model multiplies the time by the function of covariates. The general definition is:
+An accelerated failure time (AFT) model applies the covariate function somewhere else. Instead of multiplying the hazard, it multiplies *age*: a unit with covariates :math:`Z` that has been running for a time :math:`x` is as worn as a baseline unit that has been running for
 
 .. math::
 
-	f(t|X) = \phi(X)\, f_{0}(\phi(X)t)
+	x_{a} = \phi(Z)\, x,
 
-It is called accelerated failure time since the time term is transformed by the covariates, i.e. time is 'accelerated' by the covariates.
-
-.. math::
-
-	t_{a} = \phi(X)t
-
-
-Just like proportional hazards, there are simple transformations that apply. Note the density carries an extra :math:`\phi(X)` factor — the Jacobian of the time change of variables — while the survival and CDF do not:
-
+its *accelerated age*. Think of a battery cycled at a higher temperature: each hour at 60 °C does the chemical damage of, say, three hours at 25 °C, so :math:`\phi = 3` and every quantity of the baseline is simply read off three times further along the time axis. It is called accelerated failure time because the covariates speed up (or slow down) the clock. The survival and CDF are the baseline's evaluated at the accelerated age; the density and hazard carry an extra :math:`\phi(Z)` factor — the Jacobian of the change of variables :math:`x \to \phi(Z) x`:
 
 .. math::
 
-	f(t|X) = \phi(X)\, f_{0}(\phi(X)t) \\
+	S(x \mid Z) = S_{0}(\phi(Z)\, x) \\
 	\\
-	F(t|X) = F_{0}(\phi(X)t) \\
+	F(x \mid Z) = F_{0}(\phi(Z)\, x) \\
 	\\
-	S(t|X) = S_{0}(\phi(X)t) \\
+	f(x \mid Z) = \phi(Z)\, f_{0}(\phi(Z)\, x) \\
 	\\
-	h(t|X) = \phi(X)\, h_{0}(\phi(X)t)
+	h(x \mid Z) = \phi(Z)\, h_{0}(\phi(Z)\, x)
 
-Given the simple transformation of the time term the MLE is feasible with an additional transformation step. This is how surpyval estimates the parameters, using the likelihood of the previous section; pre-built versions are ``WeibullAFT``, ``LogNormalAFT`` and friends, and ``AFT(distribution)`` builds one for any distribution.
+surpyval fits these by the maximum likelihood of the previous section; pre-built versions are ``WeibullAFT``, ``LogNormalAFT`` and friends (Exponential, Normal, Gumbel, Logistic, Log-Normal, Gamma, Weibull), and ``AFT(distribution)`` builds one for any distribution.
 
-**What a coefficient means.** surpyval uses :math:`\phi(Z) = e^{\beta' Z}`, so a unit with covariates :math:`Z` "ages" :math:`e^{\beta' Z}` times faster than the baseline: it reaches at time :math:`t` the state a baseline unit reaches at :math:`e^{\beta' Z} t`. Equivalently the lifetime itself is scaled, :math:`T = T_0\, e^{-\beta' Z}`, so every quantile — the median, the B10 life — is multiplied by the **time ratio** :math:`e^{-\beta' Z}`. As with PH, a positive coefficient shortens life. Taking logs,
+**What a coefficient means.** surpyval uses :math:`\phi(Z) = e^{\beta' Z}`, so a unit with covariates :math:`Z` "ages" :math:`e^{\beta' Z}` times faster than the baseline: it reaches at time :math:`x` the state a baseline unit reaches at :math:`e^{\beta' Z} x`. Equivalently the lifetime itself is scaled, :math:`T = T_0\, e^{-\beta' Z}`, so every quantile — the median, the B10 life — is multiplied by the **time ratio** :math:`e^{-\beta' Z}`. As with PH, a positive coefficient shortens life. Taking logs,
 
 .. math::
 
@@ -288,17 +257,17 @@ which is a proportional hazards model with :math:`\beta_{PH} = k\,\beta_{AFT}`. 
 Accelerated Life
 ----------------
 
-An accelerated life model is, in many cases, simply the inverse of an accelerated time model. However, there are some cases where they are different. Consider an accelerated life model with a normal distribution:
+An accelerated life model is, in many cases, simply the inverse of an accelerated time model. However, there are some cases where they are different. Consider an accelerated failure time model with a normal baseline:
 
 .. math::
 
-	F(t|X) = \Phi\left(\frac{\phi(X)t - \mu}{\sigma}\right) \\
+	F(x \mid Z) = \Phi\left(\frac{\phi(Z)\,x - \mu}{\sigma}\right)
 
-Where :math:`\Phi` is the CDF of the standard normal distribution. In this case :math:`\mu` is the expected life of the model, however, we may instead be interested in determining what effect covariates have on the expected life of an item. In this case we can simply substitute the expected life:
+where :math:`\Phi` is the CDF of the standard normal distribution. Here :math:`\mu` is the expected life of a baseline unit, and the covariates rescale time. But what we usually want to know is how the covariates change the expected life itself. So instead substitute the expected life directly:
 
 .. math::
 
-	F(t|X) = \Phi\left(\frac{t - \phi(X)}{\sigma}\right) \\
+	F(x \mid Z) = \Phi\left(\frac{x - \phi(Z)}{\sigma}\right)
 
 An accelerated life model is, therefore, simply a model where the life parameter of a distribution is substituted with a function of the covariates, that is, it 'accelerates' the expected life, as opposed to accelerating time as per an accelerated time model. This is the standard framework of accelerated life testing (ALT) [Meeker1998]_: units are tested at elevated stress — temperature, voltage, humidity, load — so that they fail quickly, and a physical stress-life relationship carries the result back to use conditions.
 
@@ -333,9 +302,9 @@ For each of the distributions in Surpyval their life parameter that varies is as
 | Beta             | Not Avail                                                     |
 +------------------+---------------------------------------------------------------+
 
-Given the simple substitution into the life parameter, surpyval uses MLE to calculate the parameters: the remaining distribution parameters (for a Weibull, the shape) are shared across all stress levels — the assumption that the failure *mechanism* is the same at every stress and only its speed changes — and the life-model parameters replace the life parameter. The life parameter itself is kept in the parameter vector as a fixed placeholder (reported as ``1.0``), since its value now comes from :math:`\phi(Z)`. To start the search, surpyval fits the distribution separately at each distinct stress and regresses those lives on the stress, so the data need at least two distinct stress levels.
+Given the simple substitution into the life parameter, surpyval uses MLE to calculate the parameters: the remaining distribution parameters (for a Weibull, the shape) are shared across all stress levels — the assumption that the failure *mechanism* is the same at every stress and only its speed changes — and the life-model parameters replace the life parameter. The life parameter itself is kept in the parameter vector as a fixed placeholder (reported as ``1.0``), since its value now comes from :math:`\phi(Z)`; like any held parameter it is still counted in the :math:`k` of the AIC and BIC, which shifts every accelerated life model's AIC by 2 (harmless when comparing accelerated life models with each other). To start the search, surpyval fits the distribution separately at each distinct stress and regresses those lives on the stress, so the data need at least two distinct stress levels.
 
-The built-in stress-life relationships (all are ``LifeModel`` instances, and a custom one can be written by subclassing ``LifeModel``):
+The built-in stress-life relationships (all are ``LifeModel`` instances, and a custom one can be written by subclassing ``LifeModel``). The letters are the parameter names surpyval reports; :math:`Z_1, Z_2` are the two columns of a two-stress ``Z``:
 
 .. list-table::
    :header-rows: 1
@@ -357,10 +326,10 @@ The built-in stress-life relationships (all are ``LifeModel`` instances, and a c
      - :math:`1 / (b\, e^{a / Z})`
      - Reciprocal of the above
    * - ``Eyring``
-     - :math:`\frac{1}{Z} e^{-(c - a/Z)}`
+     - :math:`\frac{1}{Z} e^{-(b - a/Z)}`
      - Temperature, with a :math:`1/Z` pre-factor from reaction-rate theory
    * - ``InverseEyring``
-     - reciprocal of Eyring
+     - :math:`Z\, e^{c - a/Z}`, the reciprocal of Eyring
      - Reciprocal of the above
    * - ``Linear``
      - :math:`a + b Z`
@@ -414,9 +383,9 @@ Where proportional hazards *multiplies* the baseline hazard, an additive hazards
 
 .. math::
 
-    h(t \mid X) = h_{0}(t) + \beta \cdot X.
+    h(x \mid Z) = h_{0}(x) + \beta' Z.
 
-The covariate shifts the absolute hazard by a constant amount at every time, rather than scaling it. This is often the more natural scale for risk-difference questions (excess deaths per unit time attributable to an exposure), and for reliability settings where hazards from separate mechanisms genuinely add. Integrating, the cumulative hazard is :math:`H(t \mid Z) = H_0(t) + t\, \beta' Z`, so :math:`S(t \mid Z) = S_0(t)\, e^{-t \beta' Z}`. A coefficient is a *rate*: :math:`\beta_j = 0.01` per hour means one extra failure per hundred unit-hours for each unit of :math:`z_j`, whatever the baseline is doing.
+The covariate shifts the absolute hazard by a constant amount at every age, rather than scaling it. This is often the more natural scale for risk-difference questions (excess deaths per unit time attributable to an exposure), and for reliability settings where hazards from separate mechanisms genuinely add — a component exposed to an extra, age-independent shock process of rate :math:`\beta' Z` on top of its own wear-out. Integrating, the cumulative hazard is :math:`H(x \mid Z) = H_0(x) + x\, \beta' Z`, so :math:`S(x \mid Z) = S_0(x)\, e^{-x \beta' Z}`: the covariate multiplies survival by an exponential factor. A coefficient is a *rate*: :math:`\beta_j = 0.01` per hour means one extra failure per hundred unit-hours for each unit of :math:`z_j`, whatever the baseline is doing.
 
 **The Lin-Ying estimator.** Like Cox, the Lin-Ying form [LinYing1994reg]_ leaves the baseline hazard unspecified, but unlike Cox it admits a *closed-form* estimator for :math:`\beta` — no iteration and nothing to converge. With :math:`Y_i(t)` the at-risk indicator, :math:`N_i(t)` the failure counting process and :math:`\bar Z(t)` the mean covariate among those at risk,
 
@@ -430,7 +399,7 @@ The covariate shifts the absolute hazard by a constant amount at every time, rat
 
 **The parametric version.** ``AH(distribution)`` and the pre-built ``WeibullAH``, ``ExponentialAH``, ... use a parametric baseline, :math:`h(x \mid Z) = h_0(x; \theta) + \beta' Z`, and are fitted by the censored and truncated likelihood of the proportional hazards section. They give a smooth, extrapolatable version of the same model.
 
-**The positivity caveat.** Nothing constrains :math:`h_0(t) + \beta' Z` to be positive. For a strongly protective covariate the additive hazard can go negative — impossible for a real hazard. The semi-parametric estimate is returned unclamped, so a fitted survival that rises above 1 is the symptom; the parametric likelihood needs :math:`\log h` at every failure, so a fit whose optimum would need a negative hazard raises an error instead of returning an invalid model. When effects are strongly protective, the exponential link of proportional hazards, which keeps the hazard positive by construction, is the safer choice.
+**The positivity caveat.** Nothing constrains :math:`h_0(x) + \beta' Z` to be positive. For a strongly protective covariate the additive hazard can go negative — impossible for a real hazard. The semi-parametric estimate is returned unclamped, so a fitted survival that rises above 1 is the symptom. The parametric likelihood needs :math:`\log h` at every failure, so surpyval's optimiser treats any parameter value that makes the hazard non-positive at an observed failure as infeasible and stays inside the feasible region. When the data would prefer a negative hazard, the fit therefore returns the best *feasible* model — pressed against the boundary, with a near-zero hazard at the earliest failures of the protected units and a baseline distorted to compensate — and it raises an error only if the optimiser ends at an infeasible point. When effects are strongly protective, the exponential link of proportional hazards, which keeps the hazard positive by construction, is the safer choice.
 
 Semi-Parametric — Buckley-James
 -------------------------------
@@ -477,7 +446,7 @@ the global and per-covariate statistics of R's ``cox.zph`` and lifelines, which 
 
 When the test rejects, the usual remedies are to **stratify** on the offending covariate (if it is a nuisance), to let its effect change over time by including an interaction with a function of time as a time-varying covariate, or to move to a family whose effect is not constant in time (AFT, proportional odds).
 
-SurPyval exposes several other residuals for a fitted Cox model, each answering a different question: **martingale** residuals (observed minus expected events, :math:`M_i = \delta_i - e^{\hat\beta' Z_i}\bigl(\hat H_0(x_i) - \hat H_0(t_{l,i})\bigr)`, where :math:`\delta_i = 1` for a failure; an Efron fit credits a tied failure with only its share of the baseline step at its own time) reveal non-linear covariate functional form when plotted against a covariate; **deviance** residuals, a symmetrised transform of the martingale residuals, highlight poorly-predicted individuals; **score** residuals are each observation's contribution to :math:`U(\hat\beta)`, and **dfbeta** residuals (score residuals times :math:`V`) approximate how much each observation moves :math:`\hat\beta`. The Schoenfeld, score and martingale residuals all sum to zero at the maximum of the partial likelihood. All of them use the tie method of the fit and respect delayed entry. See [TherneauGrambsch2000reg]_ for a thorough treatment.
+SurPyval exposes several other residuals for a fitted Cox model, each answering a different question: **martingale** residuals (observed minus expected events, :math:`M_i = \delta_i - e^{\hat\beta' Z_i}\bigl(\hat H_0(x_i) - \hat H_0(t_{l,i})\bigr)`, where :math:`\delta_i = 1` for a failure; an Efron fit credits a tied failure with only its share of the baseline step at its own time) reveal non-linear covariate functional form when plotted against a covariate; **deviance** residuals, a symmetrised transform of the martingale residuals, highlight poorly-predicted individuals; **score** residuals are each observation's contribution to :math:`U(\hat\beta)`, and **dfbeta** residuals (score residuals times :math:`V`) approximate how much each observation moves :math:`\hat\beta`. The Schoenfeld, score and martingale residuals all sum to zero at the maximum of the partial likelihood. All of them respect delayed entry. They follow the tie method of a Breslow or Efron fit; after an ``'exact'`` or ``'kalbfleisch-prentice'`` fit they are computed with the Breslow forms, so under heavy ties they will not sum exactly to zero there. See [TherneauGrambsch2000reg]_ for a thorough treatment.
 
 Cluster-robust standard errors
 ------------------------------
@@ -512,7 +481,7 @@ Because the frailty multiplies the *cumulative* hazard, a Gamma frailty integrat
     + \log\Gamma\!\bigl(D_g + \tfrac{1}{\theta}\bigr)
     - \bigl(D_g + \tfrac{1}{\theta}\bigr)\log\!\bigl(H_g + \tfrac{1}{\theta}\bigr)
 
-to the marginal log-likelihood, which is maximised jointly over the baseline parameters, :math:`\beta`, and :math:`\theta`. The same conjugacy makes the **posterior** frailty of an observed group a closed form, :math:`\hat u_g = (D_g + 1/\theta)/(H_g + 1/\theta)` — an empirical-Bayes estimate shrunk toward 1, larger for groups that fail early. Standard errors come from the numerical Hessian of the marginal likelihood; the Wald interval for :math:`\theta` (and for the positive baseline parameters) is formed on the log scale so it stays positive. The closed form requires observed and right-censored data only.
+to the marginal log-likelihood, which is maximised jointly over the baseline parameters, :math:`\beta`, and :math:`\theta`. The same conjugacy makes the **posterior** frailty of an observed group a closed form, :math:`\hat u_g = (D_g + 1/\theta)/(H_g + 1/\theta)` — an empirical-Bayes estimate shrunk toward 1, larger for groups that fail early. Standard errors come from the numerical Hessian of the marginal likelihood; the Wald interval for :math:`\theta` (and for the positive baseline parameters) is formed on the log scale so it stays positive. The closed form requires observed and right-censored data only. Gamma is the only frailty distribution surpyval offers (other choices, such as a log-normal frailty, have no closed form and need numerical integration); the *baseline* can be any surpyval distribution, via ``Frailty(distribution)``.
 
 The distinction between the two curves the model can draw matters. Integrating the frailty out gives the **marginal** (population-averaged) survival of a unit from an *unknown* group, :math:`S(t \mid Z) = (1 + \theta \, e^{\beta' Z} H_0(t))^{-1/\theta}` — a Laplace transform of the frailty distribution, and always heavier-tailed than the baseline. Conditioning on a value :math:`u` gives :math:`S(t \mid Z, u) = e^{-u \, e^{\beta' Z} H_0(t)}`, used with :math:`\hat u_g` to predict a *new* member of an *already-observed* group. A subtle consequence is that a mixture of groups makes the **population** hazard bend down over time even when every group's hazard rises, because the frail groups fail first and leave robust survivors — so an apparent decreasing hazard can be a heterogeneity artifact rather than a real one. Identification requires within-group replication: with a single group, or one observation per group, :math:`\theta` is confounded with the baseline shape and cannot be estimated.
 
@@ -535,7 +504,7 @@ so the *population* hazard ratio between two covariate values starts at :math:`e
     plt.xlabel('t'); plt.ylabel('population (marginal) hazard'); plt.legend()
     plt.show()
 
-Every group's hazard is the rising :math:`\theta = 0` curve times its own :math:`u_g`, yet the population hazard for :math:`\theta = 1` rises and then falls. As :math:`\theta \to 0` the marginal cumulative hazard :math:`\log(1 + \theta e^{\beta' Z} H_0)/\theta` tends continuously to the proportional-hazards one, :math:`e^{\beta' Z} H_0(t)`, and surpyval's marginal predictions switch to that limit when :math:`\theta` is numerically zero. Because :math:`\theta` cannot be negative, data with no between-group heterogeneity push the estimate onto that boundary, where the Wald interval is no longer meaningful. A :math:`\hat\theta` at or very near zero says the grouping explains nothing beyond the covariates: fit and report the ordinary proportional-hazards model instead, and compare its coefficients with the frailty fit's.
+Every group's hazard is the rising :math:`\theta = 0` curve times its own :math:`u_g`, yet the population hazard for :math:`\theta = 1` rises and then falls. As :math:`\theta \to 0` the marginal cumulative hazard :math:`\log(1 + \theta e^{\beta' Z} H_0)/\theta` tends continuously to the proportional-hazards one, :math:`e^{\beta' Z} H_0(t)`, and surpyval's marginal predictions switch to that limit when :math:`\theta` is numerically zero. Because :math:`\theta` cannot be negative, data with no between-group heterogeneity push the estimate onto that boundary, where the Wald interval is no longer meaningful (the log-scale interval degenerates to :math:`[0, \infty)` or to a single point). A :math:`\hat\theta` at or very near zero says the grouping explains nothing beyond the covariates, and the frailty fit then reproduces the ordinary proportional-hazards fit — same baseline, coefficients and likelihood: fit and report that model instead.
 
 Stratification
 --------------
