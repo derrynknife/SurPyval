@@ -407,6 +407,12 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         # only improves as the range shrinks onto the data.
         return np.array([np.min(data.x), np.max(data.x)])
 
+    def _closed_form_optimizer(self, data: SurpyvalData) -> str:
+        """How ``_closed_form_mle`` solved this data, for ``optimizer``."""
+        if (data.c != 0).any():
+            return "L-BFGS-B (bounded, censored Uniform MLE)"
+        return "closed-form"
+
     def _censored_mle(self, data: SurpyvalData) -> npt.NDArray | None:
         """The MLE with right- and/or left-censored observations.
 

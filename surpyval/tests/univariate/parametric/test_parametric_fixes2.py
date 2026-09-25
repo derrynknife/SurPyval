@@ -358,3 +358,9 @@ def test_mps_truncation_messages_have_no_space_run():
     with pytest.raises(ValueError) as err:
         surv.Weibull.fit(x, how="MPS", tr=[10, 10, 10, 10, 9])
     assert "  " not in str(err.value)
+
+
+def test_censored_uniform_reports_its_search_as_the_optimizer():
+    censored = surv.Uniform.fit([0, 9.9, 9.9, 9.9, 10], c=[0, 1, 1, 1, 0])
+    assert censored.optimizer.startswith("L-BFGS-B")
+    assert surv.Uniform.fit([1.0, 2.0, 3.0, 5.0]).optimizer == "closed-form"

@@ -81,10 +81,15 @@ def mom_fun(
     # Where the model's moments do not exist (a LogLogistic with shape at
     # or below the moment's order, say) the mismatch is nan. nan compares
     # false against everything, so an optimiser that stepped there lost
-    # track of the best point and the search ended *on* the nan; +inf
-    # instead reads as "worse than anything", and the line searches and
-    # Nelder-Mead back away from it.
-    return value if np.isfinite(value) else np.inf
+    # track of the best point and the search ended *on* the nan. A huge
+    # finite penalty instead reads as "worse than anything", and the line
+    # searches and Nelder-Mead back away from it. (Not inf: the gradient
+    # search's finite differences would then take inf - inf.)
+    return value if np.isfinite(value) else _NO_MOMENTS
+
+
+# The objective's value where the model's moments do not exist.
+_NO_MOMENTS = 1e300
 
 
 def mom(model: "Parametric") -> Any:
@@ -138,7 +143,7 @@ def mom(model: "Parametric") -> Any:
         start_value = mom_fun(
             np.array(init), dist, inv_trans, const, offset, moments
         )
-    if not np.isfinite(start_value):
+    if not start_value < _NO_MOMENTS:
         raise ValueError(
             f"Method of moments cannot start: the {dist.name} moments are "
             "not finite at the initial guess "

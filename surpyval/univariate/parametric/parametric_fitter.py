@@ -1857,7 +1857,11 @@ turnbull_estimator
         if params is None:
             return None
 
-        return closed_form_results(self, surv_data, params)
+        # A distribution whose "closed form" is, for some data, a
+        # dedicated search reports that search as the optimiser.
+        label = getattr(self, "_closed_form_optimizer", None)
+        optimizer = "closed-form" if label is None else label(surv_data)
+        return closed_form_results(self, surv_data, params, optimizer)
 
     def _fit_numerically(
         self,
