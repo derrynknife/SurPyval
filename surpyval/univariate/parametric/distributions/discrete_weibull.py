@@ -120,9 +120,30 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
         return np.maximum(np.ceil(k), 1.0)
 
     def mean(self, q: Boxable, beta: Boxable) -> Boxable:
+        r"""Mean number of cycles, :math:`E[T]` (the first moment, see
+        :meth:`moment`).
+
+        Examples
+        --------
+        >>> from surpyval import DiscreteWeibull
+        >>> DiscreteWeibull.mean(0.9, 1.5)
+        np.float64(4.549546554642062)
+        """
         return self.moment(1, q, beta)
 
     def moment(self, m: int, q: Boxable, beta: Boxable) -> Boxable:
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`.
+
+        Summed over the mass function out to the ``1 - 1e-9`` quantile,
+        so it agrees with the exact value to about seven significant
+        figures.
+
+        Examples
+        --------
+        >>> from surpyval import DiscreteWeibull
+        >>> DiscreteWeibull.moment(2, 0.9, 1.5)
+        np.float64(28.30743136203336)
+        """
         upper = int(self.qf(1.0 - 1e-9, q, beta))
         k = np.arange(1, upper + 1, dtype=float)
         return np.sum(k**m * self.df(k, q, beta))
@@ -130,6 +151,16 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
     def random(
         self, size: int | tuple[int, ...], q: Boxable, beta: Boxable
     ) -> npt.NDArray:
+        """Draw ``size`` cycle counts by inverting the CDF (see ``qf``).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import DiscreteWeibull
+        >>> np.random.seed(1)
+        >>> DiscreteWeibull.random(5, 0.9, 1.5)
+        array([3., 6., 1., 3., 2.])
+        """
         U = uniform.rvs(size=size)
         # qf is declared Boxable because a fit differentiates it;
         # sampling never does, so this is always a real array.

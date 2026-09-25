@@ -414,6 +414,16 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         return integrate.quad(func, 0, np.inf)[0]
 
     def mean(self, alpha: Boxable, beta: Boxable, mu: Boxable) -> Boxable:
+        r"""
+        The mean of the ExpoWeibull distribution, the first moment (see
+        :meth:`moment`), found by numerical integration.
+
+        Examples
+        --------
+        >>> from surpyval import ExpoWeibull
+        >>> ExpoWeibull.mean(3, 4, 1.2)
+        2.8422622081888997
+        """
         return self.moment(1, alpha, beta, mu)
 
     def entropy(self, alpha: Boxable, beta: Boxable, mu: Boxable) -> Boxable:

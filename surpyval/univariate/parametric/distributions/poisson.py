@@ -93,9 +93,29 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         return poisson.ppf(u, mu)
 
     def mean(self, mu: Boxable) -> Boxable:
+        r"""Mean count, :math:`E[T] = \mu`.
+
+        Examples
+        --------
+        >>> from surpyval import Poisson
+        >>> Poisson.mean(3.0)
+        3.0
+        """
         return mu
 
     def moment(self, m: int, mu: Boxable) -> Boxable:
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`.
+
+        Summed over the mass function out to the ``1 - 1e-9`` quantile,
+        so it agrees with the exact value to about seven significant
+        figures.
+
+        Examples
+        --------
+        >>> from surpyval import Poisson
+        >>> Poisson.moment(2, 3.0)
+        np.float64(11.999999794454748)
+        """
         # Non-central moment E[T^m] by a truncated sum over the pmf out to a
         # far quantile (no simple closed form for general m).
         upper = int(poisson.ppf(1.0 - 1e-9, mu))
@@ -103,6 +123,16 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         return np.sum(k**m * self.df(k, mu))
 
     def random(self, size: int | tuple[int, ...], mu: Boxable) -> npt.NDArray:
+        """Draw ``size`` Poisson counts (as floats).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Poisson
+        >>> np.random.seed(1)
+        >>> Poisson.random(5, 3.0)
+        array([2., 1., 1., 3., 3.])
+        """
         return poisson.rvs(mu, size=size).astype(float)
 
     def log_df(self, x: Numeric, mu: Boxable) -> Boxable:

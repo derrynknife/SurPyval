@@ -113,6 +113,15 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return out if out.size > 1 else out[0]
 
     def mean(self, a: Boxable, b: Boxable) -> Boxable:
+        r"""Mean number of cycles, :math:`E[T] = (a + b - 1)/(a - 1)`,
+        infinite when :math:`a \leq 1`.
+
+        Examples
+        --------
+        >>> from surpyval import BetaGeometric
+        >>> BetaGeometric.mean(5.0, 3.0)
+        1.75
+        """
         # E[T] = E[1/p] with p ~ Beta(a, b) is (a + b - 1)/(a - 1) for a > 1;
         # the mean diverges for a <= 1 (heavy right tail).
         if a <= 1.0:
@@ -120,6 +129,20 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return (a + b - 1.0) / (a - 1.0)
 
     def moment(self, m: int, a: Boxable, b: Boxable) -> Boxable:
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`.
+
+        Infinite unless :math:`a > m` (the survival decays like
+        :math:`k^{-a}`). Exact for ``m`` of 1 and 2; higher moments are
+        summed over the mass function out to the ``1 - 1e-6`` quantile.
+
+        Examples
+        --------
+        >>> from surpyval import BetaGeometric
+        >>> BetaGeometric.moment(2, 5.0, 3.0)
+        5.25
+        >>> BetaGeometric.moment(2, 2.0, 3.0)
+        inf
+        """
         # The survival decays as k^-a, so E[T^m] converges only for a > m --
         # the same condition ``mean`` applies at m = 1. Without the test a
         # truncated sum reports a finite value for a moment that does not
@@ -188,6 +211,8 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
     def random(
         self, size: int | tuple[int, ...], a: Boxable, b: Boxable
     ) -> npt.NDArray:
+        """Draw ``size`` cycle counts: a per-unit probability from the
+        Beta(``a``, ``b``) mixing law, then a Geometric count with it."""
         # Draw each unit's failure probability from the Beta mixing law, then
         # a Geometric cycle count with that probability.
         p = beta_rv.rvs(a, b, size=size)

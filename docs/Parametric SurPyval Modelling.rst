@@ -836,6 +836,32 @@ value, and any other ``fit`` option is passed straight through:
     model = surv.Weibull.fit_from_df(df, x='hours', c='censored', tl='entry')
     print(model.params)
 
+Sometimes there are no unit-level data at all, only a curve: a failure
+curve read off a supplier's report, say. ``fit_from_ecdf(x, F)`` fits the
+distribution to the points of such a curve by probability plotting -- the
+same straight line ``how='MPP'`` draws, but through the CDF values you
+give. ``fit_from_non_parametric`` does the same with a fitted
+non-parametric model, so it matches ``how='MPP'`` with that estimator as
+the heuristic:
+
+.. jupyter-execute::
+
+    t = np.array([2., 5., 8., 12., 16.])
+    F = np.array([0.04, 0.22, 0.47, 0.76, 0.92])   # read off a published curve
+    from_curve = surv.Weibull.fit_from_ecdf(t, F)
+    print(from_curve.params, "R(10) =", from_curve.sf(10.))
+
+    np.random.seed(1)
+    x = surv.Weibull.random(60, 10., 2.)
+    km = surv.KaplanMeier.fit(x)
+    print(surv.Weibull.fit_from_non_parametric(km).params)
+    print(surv.Weibull.fit(x, how='MPP', heuristic='Kaplan-Meier').params)
+
+A model made this way has all the distribution functions, but it holds no
+data, so it has no likelihood, information criteria or confidence bounds.
+Only distributions with a probability plot (``how='MPP'``) can be fitted
+from a curve.
+
 Using alternate estimation methods
 ----------------------------------
 

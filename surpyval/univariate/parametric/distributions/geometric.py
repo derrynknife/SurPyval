@@ -100,9 +100,29 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return np.maximum(np.ceil(k), 1.0)
 
     def mean(self, p: Boxable) -> Boxable:
+        r"""Mean number of cycles to failure, :math:`E[T] = 1/p`.
+
+        Examples
+        --------
+        >>> from surpyval import Geometric
+        >>> Geometric.mean(0.2)
+        5.0
+        """
         return 1.0 / p
 
     def moment(self, m: int, p: Boxable) -> Boxable:
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`.
+
+        Summed over the mass function out to the ``1 - 1e-9`` quantile,
+        so it agrees with the exact value to about seven significant
+        figures.
+
+        Examples
+        --------
+        >>> from surpyval import Geometric
+        >>> Geometric.moment(2, 0.2)
+        np.float64(44.99999065187732)
+        """
         # Non-central moment E[T^m] by a truncated sum over the pmf out to a
         # far quantile (no simple closed form for general m).
         upper = int(self.qf(1.0 - 1e-9, p))
@@ -110,6 +130,16 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return np.sum(k**m * self.df(k, p))
 
     def random(self, size: int | tuple[int, ...], p: Boxable) -> npt.NDArray:
+        """Draw ``size`` cycle counts by inverting the CDF (see ``qf``).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Geometric
+        >>> np.random.seed(1)
+        >>> Geometric.random(5, 0.3)
+        array([2., 4., 1., 2., 1.])
+        """
         U = uniform.rvs(size=size)
         # qf is declared Boxable because a fit differentiates it;
         # sampling never does, so this is always a real array.

@@ -270,12 +270,22 @@ class ParametricFitter:
         return self.qf(U, *params)
 
     def log_df(self, x: npt.NDArray, *params: Any) -> Any:
+        r"""Log of the density, :math:`\ln f(x) = \ln h(x) - H(x)` (the
+        log of the mass :math:`P(T = x)` for a discrete distribution).
+
+        Used by the likelihood; many distributions override it with a
+        closed form that stays finite where ``df`` itself underflows.
+        """
         return np.log(self.hf(x, *params)) - self.Hf(x, *params)
 
     def log_sf(self, x: Numeric, *params: Any) -> Any:
+        r"""Log of the survival function, :math:`\ln R(x) = -H(x)`."""
         return -self.Hf(x, *params)
 
     def log_ff(self, x: Numeric, *params: Any) -> Any:
+        r"""Log of the CDF, :math:`\ln F(x) = \ln(1 - e^{-H(x)})`,
+        computed with ``expm1`` so it stays accurate where :math:`F` is
+        small."""
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
     def cs(self, x: Numeric, X: Numeric, *params: Any) -> Any:
@@ -722,6 +732,16 @@ class OptimisedFitMixin:
     def neg_mean_D(
         self, x: npt.NDArray, c: Any, n: Any, tl: Any, tr: Any, *params: Any
     ) -> Any:
+        r"""The maximum-product-of-spacings objective that ``how='MPS'``
+        minimises: minus the mean log spacing, with the tie, censoring
+        and truncation terms described in :doc:`/Parametric Estimation`.
+
+        ``x`` must be sorted, ``c`` and ``n`` are the matching censoring
+        flags and counts, and ``tl`` and ``tr`` are the single truncation
+        window shared by every observation (``-inf`` and ``inf`` when
+        there is none). Returns ``inf`` where the window has no
+        probability.
+        """
         mask = c == 0
         x_obs = x[mask]
         n_obs = n[mask]
@@ -1396,6 +1416,39 @@ class OptimisedFitMixin:
         return self.fit(x=x, c=c, n=n, t=t, **fit_options)
 
     def fit_from_ecdf(self, x: npt.ArrayLike, F: npt.ArrayLike) -> Parametric:
+        r"""
+        Fit the distribution to points of an empirical CDF by probability
+        plotting.
+
+        The points ``(x, F)`` are transformed to the distribution's
+        probability-plot axes and a straight line is fitted through them
+        by least squares (the ``how='MPP'`` regression with ``rr='y'``,
+        but on the CDF values given rather than on plotting positions
+        computed from data). Points with ``F`` equal to 0 or 1 cannot be
+        transformed and are left out. Only distributions that support
+        ``how='MPP'`` can be fitted this way.
+
+        Parameters
+        ----------
+        x : array like
+            The values at which the CDF is known.
+        F : array like
+            The CDF at each ``x``, between 0 and 1.
+
+        Returns
+        -------
+        Parametric
+            A model whose ``method`` is ``'given ecdf'``. It holds no
+            data, so it has no likelihood, information criteria or
+            confidence bounds.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.fit_from_ecdf([1, 2, 3, 4], [0.1, 0.3, 0.6, 0.9])
+        >>> model.params
+        array([2.96150944, 2.1761779 ])
+        """
         model = Parametric(self, "given ecdf", None, False, False, False)
         res = mpp_from_ecfd(self, x, F)
         model.params = np.array(res["params"])
@@ -1404,6 +1457,34 @@ class OptimisedFitMixin:
         return model
 
     def fit_from_non_parametric(self, non_parametric_model: Any) -> Parametric:
+        r"""
+        Fit the distribution to a fitted non-parametric model by
+        probability plotting.
+
+        Equivalent to :meth:`fit_from_ecdf` with ``x`` the model's
+        distinct times and ``F = 1 - R`` its estimate there, so a
+        Kaplan-Meier model gives the same parameters as
+        ``fit(x, how='MPP', heuristic='Kaplan-Meier')`` on its data.
+
+        Parameters
+        ----------
+        non_parametric_model : NonParametric
+            A fitted ``KaplanMeier``, ``NelsonAalen``,
+            ``FlemingHarrington`` or ``Turnbull`` model.
+
+        Returns
+        -------
+        Parametric
+            A model whose ``method`` is ``'given ecdf'`` (see
+            :meth:`fit_from_ecdf`).
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier, Weibull
+        >>> km = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        >>> Weibull.fit_from_non_parametric(km).params
+        array([5.9544901 , 1.35505406])
+        """
         x, F = non_parametric_model.x, 1 - non_parametric_model.R
         return self.fit_from_ecdf(x, F)
 

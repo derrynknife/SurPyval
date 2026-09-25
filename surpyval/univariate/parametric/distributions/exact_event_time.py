@@ -25,10 +25,26 @@ class ExactEventTime_(ParametricFitter):
         )
 
     def sf(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        r"""Survival function: 1 before ``T`` and 0 from ``T`` on.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.sf([4., 5., 6.], 5.)
+        array([1., 0., 0.])
+        """
         x_arr = np.atleast_1d(x)
         return (x_arr < T).astype(float)
 
     def ff(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        r"""CDF: 0 before ``T`` and 1 from ``T`` on.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.ff([4., 5., 6.], 5.)
+        array([0., 1., 1.])
+        """
         x_arr = np.atleast_1d(x)
         return (x_arr >= T).astype(float)
 
@@ -69,6 +85,15 @@ class ExactEventTime_(ParametricFitter):
         )
 
     def Hf(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        r"""Cumulative hazard :math:`-\ln R(x)`: 0 before ``T`` and
+        infinite from ``T`` on.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.Hf([4., 5., 6.], 5.)
+        array([ 0., inf, inf])
+        """
         # -log R(x): zero while the item survives, infinite once the
         # event has certainly happened. Previously this returned hf,
         # which happened to be the same two values.
@@ -119,6 +144,7 @@ class ExactEventTime_(ParametricFitter):
         return T**m
 
     def random(self, size: int | tuple[int, ...], T: Boxable) -> npt.NDArray:
+        """Every draw is ``T``: an array of shape ``size`` filled with it."""
         return np.ones(size) * T
 
     # Narrower than OptimisedFitMixin.fit by design, and no longer a
@@ -133,6 +159,40 @@ class ExactEventTime_(ParametricFitter):
         n: npt.ArrayLike | None = None,
         t: npt.ArrayLike | None = None,
     ) -> Parametric:
+        """
+        Estimate the event time from "not yet" and "already" checks.
+
+        Every ``T`` between the latest right-censored value (the event
+        had not yet happened) and the earliest left-censored value (it
+        already had) has likelihood one; the midpoint is returned.
+
+        Parameters
+        ----------
+        x : array like
+            The times at which the item was checked.
+        c : array like, optional
+            ``1`` where the event had not yet happened, ``-1`` where it
+            already had. At least one of each is needed; an exactly
+            observed value (``0``) raises, since then ``T`` is known (use
+            :meth:`from_params`), and interval censoring is not
+            supported.
+        n : array like, optional
+            Counts, accepted for the common signature (they do not change
+            the estimate).
+        t : array like, optional
+            Truncation, accepted for the common signature and ignored.
+
+        Returns
+        -------
+        Parametric
+            The fitted model, with ``params`` holding ``T``.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.fit([2, 3, 4, 5, 6], c=[1, 1, -1, -1, -1]).params
+        array([3.5])
+        """
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t)
 
         if 0 in c:

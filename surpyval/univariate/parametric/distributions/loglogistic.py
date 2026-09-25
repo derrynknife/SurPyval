@@ -338,6 +338,17 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         return alpha, beta
 
     def moment(self, m: int, alpha: Boxable, beta: Boxable) -> Boxable:
+        r"""
+        The ``m``-th raw moment :math:`E[X^{m}]` of the LogLogistic
+        distribution. It exists only for :math:`\beta > m`; otherwise
+        ``nan`` is returned.
+
+        Examples
+        --------
+        >>> from surpyval import LogLogistic
+        >>> LogLogistic.moment(2, 10, 3)
+        np.float64(241.83991523122904)
+        """
         return fisk.moment(m, beta, scale=alpha)
 
     def entropy(self, alpha: Boxable, beta: Boxable) -> Boxable:

@@ -193,6 +193,9 @@ class MixtureModel(SerialisableMixin, Distribution):
         return total
 
     def expectation(self) -> Any:
+        """EM E-step: set each observation's responsibilities ``p`` (the
+        probability it belongs to each component, given the current fit)
+        and the count-weighted mixing weights ``w``."""
         for i in range(self.m):
             like = self.likelihood(self.params[i])
             like = np.multiply(self.w[i], like)
@@ -202,11 +205,16 @@ class MixtureModel(SerialisableMixin, Distribution):
         self.w = (self.p * self.data.n).sum(axis=1) / self.data.n.sum()
 
     def maximisation(self) -> Any:
+        """EM M-step: refit every component's parameters by minimising
+        :meth:`Q` with the current responsibilities held fixed."""
         bounds = self.dist.bounds * self.m
         res = minimize(self.Q, self.params.ravel(), bounds=bounds)
         self.params = res.x.reshape(self.m, self.dist.k)
 
     def EM(self) -> Any:
+        """One EM iteration (:meth:`expectation` then
+        :meth:`maximisation`), after which ``loglike`` holds the observed
+        negative log-likelihood."""
         self.expectation()
         self.maximisation()
         # Convergence is tracked on the observed likelihood, not the
@@ -230,6 +238,9 @@ class MixtureModel(SerialisableMixin, Distribution):
             )
 
     def initialise_params(self) -> Any:
+        """The EM starting point: cut the (sorted) data into ``m``
+        consecutive blocks, fit one component to each block, and weight
+        the components equally."""
         splits_x = np.array_split(self.data.x, self.m)
         splits_c = np.array_split(self.data.c, self.m)
         splits_n = np.array_split(self.data.n, self.m)
@@ -385,12 +396,45 @@ class MixtureModel(SerialisableMixin, Distribution):
         self.loglike = float(res.fun)
 
     def mean(self, *args: Any, **kwargs: Any) -> Any:
+        r"""
+        The mean of the fitted mixture, :math:`\sum_{j} w_{j} E[X_{j}]`.
+
+        Returns
+        -------
+        float
+            The weighted sum of the component means.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel(dist=surv.Weibull, m=2)
+        >>> wmm.fit(x)
+        >>> round(float(wmm.mean()), 4)
+        9.8294
+        """
         mean = 0
         for i in range(self.m):
             mean += self.w[i] * self.dist.mean(*self.params[i])
         return mean
 
     def random(self, size: int, *args: Any, **kwargs: Any) -> Any:
+        """
+        Draw random samples from the fitted mixture.
+
+        The number drawn from each component is multinomial with the
+        mixing weights ``w``, and the draws are shuffled together.
+
+        Parameters
+        ----------
+        size : int
+            The number of samples to draw.
+
+        Returns
+        -------
+        numpy array
+            ``size`` values from the mixture, in random order.
+        """
         sizes = np.random.multinomial(size, self.w)
         rvs = np.zeros(size)
         s_last = 0
@@ -487,6 +531,8 @@ class MixtureModel(SerialisableMixin, Distribution):
         return self.sf(x + X) / self.sf(X)
 
     def get_plot_data(self, heuristic: str = "Nelson-Aalen") -> Any:
+        """The plotting positions and fitted curve that :meth:`plot`
+        draws, computed from the fitted data with ``heuristic``."""
         return probability_plot_data(
             dist=self.dist,
             ff=self.ff,

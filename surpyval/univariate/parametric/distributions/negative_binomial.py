@@ -101,9 +101,29 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         return nbinom.ppf(u, r, p) + 1.0
 
     def mean(self, r: Boxable, p: Boxable) -> Boxable:
+        r"""Mean number of cycles, :math:`E[T] = 1 + r(1 - p)/p`.
+
+        Examples
+        --------
+        >>> from surpyval import NegativeBinomial
+        >>> NegativeBinomial.mean(3.0, 0.4)
+        5.499999999999999
+        """
         return 1.0 + r * (1.0 - p) / p
 
     def moment(self, m: int, r: Boxable, p: Boxable) -> Boxable:
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`.
+
+        Summed over the mass function out to the ``1 - 1e-9`` quantile,
+        so it agrees with the exact value to about seven significant
+        figures.
+
+        Examples
+        --------
+        >>> from surpyval import NegativeBinomial
+        >>> NegativeBinomial.moment(2, 3.0, 0.4)
+        np.float64(41.499997892103195)
+        """
         upper = int(self.qf(1.0 - 1e-9, r, p))
         k = np.arange(1, upper + 1, dtype=float)
         return np.sum(k**m * self.df(k, r, p))
@@ -111,6 +131,16 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
     def random(
         self, size: int | tuple[int, ...], r: Boxable, p: Boxable
     ) -> npt.NDArray:
+        """Draw ``size`` cycle counts, ``1 +`` a negative binomial draw.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import NegativeBinomial
+        >>> np.random.seed(1)
+        >>> NegativeBinomial.random(5, 3.0, 0.4)
+        array([ 7.,  4.,  2., 20.,  3.])
+        """
         return nbinom.rvs(r, p, size=size) + 1.0
 
     def log_df(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:

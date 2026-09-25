@@ -308,6 +308,16 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         return np.log(-np.expm1(-self.Hf(x, mu, sigma)))
 
     def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
+        r"""
+        The ``m``-th raw moment :math:`E[X^{m}]` of the Gumbel (smallest
+        extreme value) distribution.
+
+        Examples
+        --------
+        >>> from surpyval import Gumbel
+        >>> Gumbel.moment(2, 5, 2)
+        np.float64(21.368134664593125)
+        """
         return gumbel_l.moment(m, loc=mu, scale=sigma)
 
     def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:

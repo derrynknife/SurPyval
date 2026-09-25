@@ -325,6 +325,17 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         return (sigma**m) * (2 ** (m / 2)) * gamma_func(1 + m / 2)
 
     def entropy(self, sigma: Boxable) -> Boxable:
+        r"""
+        Differential entropy of the Rayleigh distribution,
+        :math:`S = 1 + \ln(\sigma/\sqrt{2}) + \gamma_{e}/2`, with
+        :math:`\gamma_{e}` the Euler-Mascheroni constant.
+
+        Examples
+        --------
+        >>> from surpyval import Rayleigh
+        >>> Rayleigh.entropy(3)
+        np.float64(2.0406465308389032)
+        """
         return euler_gamma / 2 + 1 + np.log(sigma / (np.sqrt(2)))
 
     def log_df(self, x: Numeric, sigma: Boxable) -> Boxable:

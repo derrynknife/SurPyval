@@ -319,6 +319,16 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         return np.exp(-np.exp(-y))
 
     def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
+        r"""
+        The ``m``-th raw moment :math:`E[X^{m}]` of the Gumbel LEV
+        (largest extreme value) distribution.
+
+        Examples
+        --------
+        >>> from surpyval import GumbelLEV
+        >>> GumbelLEV.moment(2, 5, 2)
+        np.float64(44.45676126065444)
+        """
         return gumbel_r.moment(m, loc=mu, scale=sigma)
 
     def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:
