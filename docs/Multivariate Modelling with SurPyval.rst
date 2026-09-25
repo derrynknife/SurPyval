@@ -7,10 +7,21 @@ series jointly. The dependence between the series is specified with a
 distribution — so the margins and the dependence are chosen independently. For
 the concepts (Sklar's theorem, the copula families and their tail behaviour,
 and the estimation strategies) see the :doc:`Multivariate Analysis` page; this
-page is the how-to.
+page is the how-to. The full API is on the :doc:`surpyval.multivariate`
+reference page.
 
 SurPyval provides the ``Independence``, ``Clayton``, ``Gumbel``, ``Frank`` and
-``Gaussian`` copulas.
+``Gaussian`` copulas. Each is a ready-made object (like ``surpyval.Weibull``)
+with two ways to create a model: ``fit`` to data, or ``from_params`` for a
+known parameter. Both return a
+:class:`~surpyval.multivariate.parametric.copula.copula_model.CopulaModel`.
+Models are bivariate: exactly two series.
+
+.. note::
+
+    ``surpyval.multivariate.Gumbel`` is the Gumbel *copula*; the univariate
+    Gumbel distribution is ``surpyval.Gumbel``. Import the copulas from
+    ``surpyval.multivariate`` to keep the two apart.
 
 Fitting a copula
 ----------------
@@ -23,10 +34,14 @@ recovers it:
 .. jupyter-execute::
 
     import warnings
-    warnings.filterwarnings("ignore")   # copula optimisers explore log(0) regions
+    # The copula likelihood evaluates log() and powers at the edges of the
+    # unit square (e.g. at the default infinite truncation bounds), which
+    # numpy reports as harmless RuntimeWarnings; silence them for this page.
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
 
     import numpy as np
     import surpyval as surv
+    from matplotlib import pyplot as plt
     from surpyval.multivariate import Clayton
 
     truth = Clayton.from_params(
@@ -47,13 +62,153 @@ recovers it:
     print("Kendall's tau:", round(model.kendall_tau(), 3))
     model.margins         # the two fitted univariate models
 
+The true parameter is :math:`\theta = 2` (Kendall's :math:`\tau = 0.5`), and
+the margins come back close to Weibull(10, 2) and LogNormal(2.5, 0.5). The
+model's ``repr`` summarises it:
+
+.. jupyter-execute::
+
+    print(model)
+
+Laying out the data
+~~~~~~~~~~~~~~~~~~~
+
+A joint observation is a *row*: the two lifetimes of one shaft's bearings, one
+patient's two complications. ``x`` can be given in either of two layouts:
+
+- a **list (or tuple) of columns**, one array per series: ``[x1, x2]``, as
+  above;
+- a **2-D numpy array** of shape ``(N, 2)``, one row per joint observation.
+
+``c`` (censoring) and ``xl``/``xr`` (interval bounds) follow the same two
+layouts, ``n`` is one count per row (shape ``(N,)``), and ``t`` holds a
+truncation window per row *and* series (shape ``(N, 2, 2)``). Internally the
+inputs are normalised by
+:class:`~surpyval.multivariate.parametric.data.MultivariateSurpyvalData`,
+which you can also build directly to check your shapes:
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import MultivariateSurpyvalData
+
+    md = MultivariateSurpyvalData([x1, x2])        # list of columns
+    print(md.N, "rows x", md.D, "series; x:", md.x.shape, "c:", md.c.shape,
+          "t:", md.t.shape)
+    same = MultivariateSurpyvalData(data)          # (N, 2) array
+    print(np.array_equal(md.x, same.x))
+
+.. warning::
+
+    A *list* is always read as a list of columns. A list of rows such as
+    ``[[3.1, 5.0], [4.2, 6.3], [2.2, 7.7]]`` would be read as three series of
+    two observations each, one series per inner list. Convert rows to a numpy
+    array first: ``np.asarray(rows)``.
+
+IFM and MLE
+~~~~~~~~~~~
+
 Two estimation strategies are available via ``how``:
 
 * ``"IFM"`` (*Inference Functions for Margins*, the default) fits each margin
   independently and then fits the single copula parameter holding the margins
   fixed. Robust and fast.
 * ``"MLE"`` jointly optimises the copula parameter together with all margin
-  parameters.
+  parameters, starting from the IFM solution.
+
+(The ``Independence`` copula has no parameter, so its ``fit`` only fits the
+margins, whichever ``how`` is given.)
+
+On well-behaved data the two agree closely; MLE takes longer because it
+searches over every parameter at once:
+
+.. jupyter-execute::
+
+    import time
+
+    small = data[:800]
+    for how in ["IFM", "MLE"]:
+        start = time.perf_counter()
+        fit = Clayton.fit(small, margins=[surv.Weibull, surv.LogNormal], how=how)
+        print("%s: theta = %.3f, Weibull = %s, LogNormal = %s  (%.2f s)" % (
+            how, fit.params[0], np.round(fit.margins[0].params, 3),
+            np.round(fit.margins[1].params, 3), time.perf_counter() - start))
+
+Prefer ``"MLE"`` when the data carry row counts ``n`` or truncation ``t``: in
+the current implementation the IFM first stage fits each margin to its values
+and censoring codes only, so counts and truncation reach the margins only
+through the joint MLE refinement (see `Truncated observation`_ below).
+
+Margins can also be passed **already fitted**, in which case they are used as
+they are and only the copula parameter is estimated. This is useful when a
+margin has been fitted with options the copula fit does not pass on, or
+reused from an earlier analysis:
+
+.. jupyter-execute::
+
+    m1 = surv.Weibull.fit(x1)
+    m2 = surv.LogNormal.fit(x2)
+    prefit = Clayton.fit([x1, x2], margins=[m1, m2])
+    print(prefit.params, prefit.margins[0] is m1)
+
+Choosing a copula family
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+With complete (uncensored) data the log-likelihood of a fitted model is
+simply the sum of the log joint density over the rows, which ``pdf`` gives.
+Under IFM every family shares the same fitted margins, so the comparison is
+purely about the dependence structure; and every family here has one parameter
+(the Independence copula has none), so ranking by log-likelihood is the same as
+ranking by AIC:
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import Independence, Gumbel, Frank, Gaussian
+
+    fits = {}
+    for fam in [Independence, Clayton, Gumbel, Frank, Gaussian]:
+        fits[fam.name] = fam.fit(data, margins=[surv.Weibull, surv.LogNormal])
+
+    for name, m in fits.items():
+        loglik = np.sum(np.log(m.pdf(data)))
+        print("%-12s params=%-22s tau=%.3f  tails=%s  loglik=%.1f" % (
+            name, np.round(m.params, 3), m.kendall_tau(),
+            np.round(m.tail_dependence(), 3), loglik))
+
+The Clayton copula, which generated the data, has the highest likelihood by a
+wide margin, even though Gaussian and Frank reach a similar Kendall's tau: the
+data carry strong *lower-tail* dependence (joint early failures) that only
+Clayton can express. A picture tells the same story. Transforming each series
+to ranks in :math:`(0, 1)` (pseudo-observations) removes the margins and shows
+the copula itself; compare the data with samples from two fitted families:
+
+.. jupyter-execute::
+
+    from scipy.stats import rankdata
+
+    def pseudo_obs(xy):
+        return np.column_stack([rankdata(col) / (len(col) + 1) for col in xy.T])
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4), sharey=True)
+    panels = [("data", data),
+              ("Clayton fit", fits["Clayton"].random(3000, random_state=2)),
+              ("Gaussian fit", fits["Gaussian"].random(3000, random_state=2))]
+    for ax, (title, xy) in zip(axes, panels):
+        u = pseudo_obs(xy)
+        ax.scatter(u[:, 0], u[:, 1], s=2, alpha=0.4)
+        ax.set_title(title)
+        ax.set_xlabel("rank of series 1")
+    axes[0].set_ylabel("rank of series 2")
+
+The tight cluster in the bottom-left corner of the data (both series failing
+early) is reproduced by Clayton and missing from the Gaussian copula.
+
+.. warning::
+
+    Clayton (:math:`\theta > 0`) and Gumbel (:math:`\theta \geq 1`) can only
+    express positive dependence. If the empirical Kendall's tau of your data is
+    negative, use Frank or Gaussian: a Clayton or Gumbel fit is pushed to its
+    independence boundary and its likelihood there is not a meaningful basis
+    for comparison.
 
 Censoring and truncation
 ------------------------
@@ -76,7 +231,7 @@ parameter:
     model_c = Clayton.fit(
         [x_obs[:, 0], x_obs[:, 1]],
         c=[c[:, 0], c[:, 1]],                    # one column per series
-        margins=[surv.Weibull, surv.Weibull],
+        margins=[surv.Weibull, surv.LogNormal],
         how="IFM",
     )
     print("censored fraction:", round(c.mean(), 2))
@@ -84,13 +239,79 @@ parameter:
 
 Internally every censoring type reduces to evaluating the copula CDF and its
 partial derivatives at the margin-transformed bounds (interval censoring, for
-example, is inclusion-exclusion on the rectangle corners of ``C``).
+example, is inclusion-exclusion on the rectangle corners of ``C``). The
+:doc:`Multivariate Analysis` page lists the operation for each censoring code.
+
+Interval and left censoring
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Suppose series 2 is only checked at inspections every 5 time units, so each
+of its failures is known to lie in an interval, while series 1 cannot be
+resolved below 4 units (a left-censored "failed before 4"). Interval-censored
+entries have ``c == 2`` and take their bounds from ``xl`` and ``xr`` (same
+layout as ``x``; the value in ``x`` is ignored for those entries);
+left-censored entries have ``c == -1`` with the bound in ``x``:
+
+.. jupyter-execute::
+
+    x_mix = data.copy()
+    c_mix = np.zeros_like(data, dtype=int)
+
+    # series 1: left censored below 4
+    early = data[:, 0] < 4.0
+    c_mix[early, 0] = -1
+    x_mix[early, 0] = 4.0
+
+    # series 2: interval censored between inspections every 5 units
+    xl = data.copy()
+    xr = data.copy()
+    xl[:, 1] = np.floor(data[:, 1] / 5.0) * 5.0
+    xr[:, 1] = xl[:, 1] + 5.0
+    c_mix[:, 1] = 2
+
+    model_mix = Clayton.fit(x_mix, c=c_mix, xl=xl, xr=xr,
+                            margins=[surv.Weibull, surv.LogNormal])
+    print("left-censored fraction of series 1:", round(early.mean(), 3))
+    print("theta:", model_mix.params)
+    print("margins:", [np.round(m.params, 3) for m in model_mix.margins])
+
+Even with every series-2 time reduced to a 5-unit interval, the copula
+parameter and both margins are recovered.
+
+Truncated observation
+~~~~~~~~~~~~~~~~~~~~~
+
+Truncation means some joint observations could never have been seen. Suppose
+only shafts whose first bearing survived a 3-unit burn-in reach the field, so
+the field data contain no rows with :math:`X_1 \leq 3`. The truncation window
+is given per row and per series as ``t[i, j] = [lower, upper]``, with
+``-np.inf``/``np.inf`` for "no limit":
+
+.. jupyter-execute::
+
+    field = data[data[:, 0] > 3.0]
+    t = np.empty((len(field), 2, 2))
+    t[..., 0], t[..., 1] = -np.inf, np.inf       # no truncation by default
+    t[:, 0, 0] = 3.0                             # series 1 left-truncated at 3
+
+    for how in ["IFM", "MLE"]:
+        fit = Clayton.fit(field, t=t, margins=[surv.Weibull, surv.LogNormal],
+                          how=how)
+        print("%s: theta = %.3f, Weibull = %s" % (
+            how, fit.params[0], np.round(fit.margins[0].params, 3)))
+
+The burn-in removes the earliest failures, which are exactly where Clayton's
+dependence lives. With ``how="IFM"`` the Weibull margin is fitted without the
+truncation (its shape comes back well above 2) and :math:`\theta` is biased; the
+joint ``how="MLE"`` fit uses the truncated likelihood for everything and
+recovers both. Row counts ``n`` behave the same way: give them with
+``how="MLE"``.
 
 Working with a fitted model
 ---------------------------
 
 The fitted model exposes the joint distribution functions, the dependence
-measures, and a correlated sampler:
+measures, and a correlated sampler. Points are given as rows ``[x1, x2]``:
 
 .. jupyter-execute::
 
@@ -101,9 +322,115 @@ measures, and a correlated sampler:
                                                  given_dim=0))  # h-function
     print("Kendall tau:", round(model.kendall_tau(), 3))
     print("Spearman   :", round(model.spearman_rho(), 3))
-    print("tail dep.  :", model.tail_dependence())          # (lower, upper)
+    lower, upper = model.tail_dependence()
+    print("tail dep.  : lower %.3f, upper %.3f" % (lower, upper))
 
     model.random(3, random_state=0)     # correlated (N, 2) samples
+
+``ff`` is an alias of ``cdf``. For Clayton the lower tail-dependence
+coefficient is :math:`2^{-1/\theta} \approx 0.71` and the upper one is zero.
+Spearman's rho is estimated by simulation for the Clayton, Gumbel and Frank
+copulas, so treat its third decimal place with caution.
+
+Conditional probabilities
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``conditional_cdf(x, given_dim=0)`` is :math:`P(X_2 \leq x_2 \mid X_1 =
+x_1)` — the probability that the second series has failed by :math:`x_2`
+*given that the first failed at exactly* :math:`x_1`; ``given_dim=1`` swaps
+the roles. It shows how knowledge of one failure updates the other:
+
+.. jupyter-execute::
+
+    x2_query = 12.0
+    print("P(X2 <= 12) unconditionally: %.3f" % model.margins[1].ff(x2_query))
+    for x1_seen in [2.0, 10.0, 20.0]:
+        p = model.conditional_cdf([[x1_seen, x2_query]], given_dim=0)[0]
+        print("P(X2 <= 12 | X1 = %4.1f)    : %.3f" % (x1_seen, p))
+
+An early failure of the first bearing makes an early failure of the second
+much more likely; a late one makes it less likely. Conditioning on *survival*
+rather than on an exact failure time uses the joint survival function: by the
+definition of conditional probability,
+:math:`P(X_2 > x_2 \mid X_1 > x_1) = S(x_1, x_2) / S_1(x_1)`:
+
+.. jupyter-execute::
+
+    def p_survive_given_survived(m, x1, x2):
+        return m.sf([[x1, x2]])[0] / m.margins[0].sf(x1)
+
+    print("P(X2 > 12)            : %.3f" % model.margins[1].sf(x2_query))
+    print("P(X2 > 12 | X1 > 5)   : %.3f" % p_survive_given_survived(model, 5.0, 12.0))
+
+System reliability
+~~~~~~~~~~~~~~~~~~
+
+The joint functions answer system-level questions directly. A **series**
+system (it needs both parts) survives to :math:`t` with probability
+:math:`S(t, t)` = ``sf([[t, t]])``; a **parallel** (redundant) system fails by
+:math:`t` only if both parts have, with probability :math:`H(t, t)` =
+``cdf([[t, t]])``. Comparing with the same margins joined by the
+``Independence`` copula shows what ignoring the dependence would cost:
+
+.. jupyter-execute::
+
+    indep = Independence.from_params([], margins=model.margins)
+
+    t_grid = np.array([[3.0, 3.0], [5.0, 5.0], [8.0, 8.0]])
+    print("P(parallel pair failed by t): dependent vs independent")
+    for row, dep_p, ind_p in zip(t_grid, model.cdf(t_grid), indep.cdf(t_grid)):
+        print("  t = %.0f: %.5f vs %.5f  (ratio %.1f)" % (row[0], dep_p, ind_p,
+                                                       dep_p / ind_p))
+
+At short times the redundant pair is many times more likely to have failed
+than the independence assumption suggests, because of Clayton's lower-tail
+dependence: redundancy buys much less protection against common-cause early
+failure than the margins alone would imply.
+
+Plotting and simulation
+~~~~~~~~~~~~~~~~~~~~~~~
+
+``random(size, random_state=None)`` returns an ``(size, 2)`` array of
+correlated lifetimes: it samples the copula (by inverting the h-function, or
+directly for the Gaussian copula) and maps the uniforms through each margin's
+quantile function. There is no built-in plot method, but simulated samples and
+the joint functions plot directly with matplotlib; here a sample is drawn over
+contours of the joint survival function:
+
+.. jupyter-execute::
+
+    sample = model.random(1000, random_state=3)
+    g1, g2 = np.meshgrid(np.linspace(0.5, 25, 60), np.linspace(2, 40, 60))
+    joint_sf = model.sf(np.column_stack([g1.ravel(), g2.ravel()])).reshape(g1.shape)
+
+    plt.scatter(sample[:, 0], sample[:, 1], s=4, alpha=0.4)
+    cs = plt.contour(g1, g2, joint_sf, levels=[0.1, 0.25, 0.5, 0.75],
+                     colors="k")
+    plt.clabel(cs, fmt="S=%.2f")
+    plt.xlabel("series 1 (Weibull margin)")
+    plt.ylabel("series 2 (LogNormal margin)")
+
+Saving and loading a copula model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A ``CopulaModel`` serialises to a plain dictionary (``to_dict``) or JSON file
+(``to_json``) holding the family, its parameter, how it was fitted and each
+margin's own serialisation. Restore it with ``CopulaModel.from_dict`` /
+``CopulaModel.from_json`` or with the package-level ``surpyval.from_dict`` /
+``surpyval.from_json``. The fitting data are not stored, and every margin must
+itself be serialisable (the built-in distributions are):
+
+.. jupyter-execute::
+
+    import json
+    from surpyval.multivariate import CopulaModel
+
+    d = model.to_dict()
+    print(json.dumps(d)[:120], "...")
+    restored = surv.from_dict(json.loads(json.dumps(d)))
+    print(type(restored).__name__, restored.copula.name, restored.params)
+    print(np.allclose(restored.cdf([[10, 18]]), model.cdf([[10, 18]])))
+    print(CopulaModel.from_dict(d).margins[1].params)   # class-level reader
 
 Building a model from known parameters
 --------------------------------------
@@ -120,3 +447,51 @@ exactly how the data above was generated):
                  surv.LogNormal.from_params([3, 0.4])],
     )
     sim.random(5, random_state=0)
+
+The margins must be models (they need ``ff``, ``df`` and ``qf``), such as
+those returned by ``from_params`` or ``fit``; the Independence copula takes an
+empty parameter list.
+
+Same correlation, different tails
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A common way to set up a simulation is to choose the strength of dependence
+as a Kendall's tau and convert it to each family's parameter with the
+relations on the :doc:`Multivariate Analysis` page. Holding :math:`\tau = 0.5`
+fixed and the margins fixed, the families still disagree sharply about joint
+extremes:
+
+.. jupyter-execute::
+
+    from scipy.optimize import brentq
+
+    tau = 0.5
+    params = {
+        "Clayton": 2 * tau / (1 - tau),
+        "Gumbel": 1 / (1 - tau),
+        "Gaussian": np.sin(np.pi * tau / 2),
+        "Frank": brentq(lambda th: Frank.kendall_tau(th) - tau, 0.1, 50),
+    }
+    margins = [surv.Weibull.from_params([10.0, 2.0]),
+               surv.Weibull.from_params([10.0, 2.0])]
+    q_lo = margins[0].qf(0.05)                   # 5% quantile of each margin
+    q_hi = margins[0].qf(0.95)                   # 95% quantile
+    families = {"Clayton": Clayton, "Gumbel": Gumbel,
+                "Gaussian": Gaussian, "Frank": Frank}
+
+    print("family    param   tau    P(both < 5% q)  P(both > 95% q)")
+    for name, fam in families.items():
+        m = fam.from_params(params[name], margins=margins)
+        both_early = m.cdf([[q_lo, q_lo]])[0]
+        both_late = m.sf([[q_hi, q_hi]])[0]
+        print("%-9s %5.3f   %.3f   %.4f          %.4f" % (
+            name, params[name], m.kendall_tau(), both_early, both_late))
+    print("independent               %.4f          %.4f" % (0.05**2, 0.05**2))
+
+All four have the same Kendall's tau, but Clayton makes a joint failure below
+the 5% quantile far more likely than the others, and Gumbel a joint survival
+beyond the 95% quantile. Frank and Gaussian treat the two tails alike (their
+two probabilities are equal), with Frank, the lightest-tailed of the four,
+lowest of all. When the quantity you care about is a joint extreme — both
+redundant units failing early, both components outliving a warranty — the
+choice of family matters as much as the strength of dependence.
