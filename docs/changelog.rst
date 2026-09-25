@@ -4,6 +4,132 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Bug fixes found while rewriting the documentation.** Each was
+  reproduced first, is covered by a new test, and the documentation that
+  described the old behaviour (or a workaround for it) has been updated.
+
+  *Regression.*
+
+  - **Cox predictions before the first event were wrong.** The baseline
+    lookup index was -1 there, which wrapped to the *last* baseline value,
+    so ``Hf(0.1)`` returned the end-of-data cumulative hazard and ``sf``
+    was near 0 where it should be 1. It is now 0 before the first event.
+  - **Cox predictions paired unsorted times with the wrong covariate
+    rows.** The query times were sorted for the baseline lookup but
+    ``phi(Z)`` was not, so ``Hf([3, 1], Z)`` gave ``[9.69, 0.39]`` instead
+    of ``[1.87, 2.03]``. Times and rows now stay paired, in the order
+    given.
+  - **The gamma-frailty fit broke when there was little frailty.** Its
+    group log-likelihood subtracted terms of size
+    :math:`(1/\theta)\log(1/\theta)` to get a difference of order
+    :math:`\theta`; as :math:`\theta \to 0` round-off swamped it and the
+    fit chased the noise (``neg_ll`` of -1985 against the PH fit's 755) or
+    divided by an underflowed :math:`\theta`. It is now computed in a
+    form that tends to the PH contribution, and the fit coincides with the
+    ordinary PH fit when there is no frailty.
+  - **A 1-D ``Z`` raised ``IndexError``** in the PH, AFT, PO and AH
+    fitters; it is read as one covariate, as the other fitters already
+    did.
+  - **Accelerated life with a Gamma baseline had the life model backwards.**
+    Gamma's ``beta`` is a rate, so the life now enters as ``1 / life`` (as
+    for the Exponential); a longer modelled life had meant a faster rate.
+  - **PH random draws returned ``inf`` for a tiny hazard multiplier**; they
+    now invert through the cumulative hazard.
+  - Docstring: Schoenfeld residuals follow the input order of the event
+    rows, not event-time order.
+
+  *Competing risks.*
+
+  - **``CompetingRisksProportionalHazards`` (``how="Cox"``) incidence could
+    exceed 1.** Its CIF weighted each hazard increment by ``exp(-H)`` (the
+    #278 defect, fixed for the non-parametric CIF but not here): total
+    incidence reached 1.07-1.18 in small samples, and 118 in one. The
+    weight is the product-limit survival, and the CIFs now sum to exactly
+    ``1 - S``.
+  - **``CompetingRisks(method="Kaplan-Meier")`` only changed ``S``;** ``sf``,
+    ``ff`` and ``Hf`` still used ``exp(-H)``. They now follow the method
+    (the default is unchanged; the method is serialised).
+  - The causes of a Cox competing-risks model are sorted, so the row order
+    of ``betas`` no longer depends on the hash seed. Docstrings for
+    ``how``/``tie_method``, FineGray's ``c``, and API entries for
+    ``FineGrayModel`` and ``GrayTestResult``.
+
+  *Parametric.*
+
+  - **Two-sided parameter bounds other than (0, 1) were ignored** (a spline
+    knot bounded to (0, 50) was fitted at 89.7). Every finite interval is
+    now enforced.
+  - **Poor default starts reported success at poor optima.** A
+    ``CustomDistribution`` started each positive parameter at 1, where for
+    data on another scale the likelihood is flat to machine precision; it
+    now starts from the best of a grid of magnitudes, with the old start as
+    a second try. A limited-failure-population fit could settle on the
+    worse of two optima (Meeker's data: ``p = 0.116``, ``neg_ll`` 302.9,
+    instead of ``p = 0.0067``, 293.0); it is also started from the failures
+    alone. An MLE fit without ``init`` keeps the best of these starts.
+  - **Restored models:** ``neg_ll()`` and ``aic()`` work from the stored
+    likelihood; ``bic()``, ``aic_c()`` and ``plot()`` explain that the data
+    were not saved instead of raising ``TypeError``.
+  - Docstrings for ``from_params``' ``p``, zero-inflation in ``qf`` and
+    ``random``, ``tl``/``tr``, ``MixtureModel.loglike`` and the
+    ``CustomDistribution`` example.
+
+  *Non-parametric.*
+
+  - **``Turnbull.fit`` modified its input.** Infinite interval endpoints
+    were rewritten in the caller's array, so refitting the same array gave
+    a different answer.
+  - **Fleming-Harrington could return ``nan``** when the Turnbull EM's risk
+    and death sets carried float noise (``1 + 2e-16``); near-integer sets
+    are treated as integers.
+  - Docstrings for ``turnbull_estimator`` (Fleming-Harrington, the default,
+    was missing), ``hf`` (it returns increments, not a rate), and the
+    Turnbull EM (the estimator option acts inside the EM too).
+
+  *Multivariate (copulas).*
+
+  - **IFM ignored counts and truncation in the margins.** The first stage
+    now fits each margin with the row counts and its own series'
+    truncation window.
+  - **Clayton had a spurious likelihood maximum near** :math:`\theta = 0`.
+    The closed form rounded to ``C = 1`` and density ``1/(uv)`` below
+    :math:`\theta \approx 10^{-16}`, which negatively dependent data drove
+    the fit into; computed through ``log1p``/``expm1`` it tends to the
+    independence copula.
+  - ``MultivariateSurpyvalData``: interval rows without ``xl``/``xr`` are
+    rejected (the check could never fire), a single row of ``D`` censoring
+    codes broadcasts, and no ``RuntimeWarning`` comes from the default
+    infinite truncation bounds.
+
+  *Recurrent events.*
+
+  - **The MCF variance ignored within-item covariance.** It is now the
+    Lawless-Nadeau robust variance; the per-step variance was about eight
+    times too small when items differ in their rates.
+  - **``mcf_cb(bound_type="normal")`` scaled the standard error by the
+    estimate a second time**, giving far too wide, negative bounds; it is
+    now ``M +- z SE``.
+  - **``ProportionalIntensityNHPP`` stopped short of the optimum** (Duane
+    baseline: 15-30 AIC worse than the same model as Crow-AMSAA). It starts
+    from the covariate-free baseline fit and searches on an unconstrained
+    scale; on one-event-per-item data it now reproduces Weibull PH exactly.
+    Crow-AMSAA's ``beta`` is bounded below by 0.
+  - ``CauseSpecificNHPP(dist=HPP)`` works (it raised ``TypeError``) and
+    ``HPP`` has ``from_params``; model summaries say how the model was
+    obtained instead of always "MLE"; a covariate dict of scalars and a
+    1-D ``Z`` are accepted; ``CauseSpecificMCF.plot`` draws confidence
+    bounds and honours ``confidence``/``plot_bounds``.
+  - Docstrings: residuals are not exactly i.i.d. Exp(1) when an item's
+    window closes before an event; the Rossi example passes ``i`` and
+    ``c`` by keyword.
+
+  *Degradation.*
+
+  - **Bootstrap bounds failed on a reloaded model.** ``from_dict`` did not
+    restore the fitter the refits need, so every refit failed; it is now
+    recovered from the restored life model (the distribution, or the
+    regression fitter of an accelerated model).
+
 - **REML population fits are 20-60x faster.** ``population_method="reml"``
   -- the plain and stress-dependent (``links``) populations, linear and
   nonlinear paths -- now evaluates the same REML objective through the
