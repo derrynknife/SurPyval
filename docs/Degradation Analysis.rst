@@ -183,6 +183,68 @@ at any stress — including stresses outside the tested range, where the
 mechanism, not a curve fitted to the pseudo failure times, carries the
 extrapolation.
 
+Step-stress degradation: an accelerated clock
+---------------------------------------------
+
+Both treatments above assume each unit is tested at one stress. In a
+**step-stress** test the stress is raised part way through, on the same units,
+so a unit's path runs at several stresses in turn. The path then has to say how
+it carries on at a step, and the natural answer is the **cumulative-exposure**
+principle [Nelson1980]_: stress speeds up the unit's clock. A unit at stress
+:math:`z` ages
+
+.. math::
+
+    \mathrm{AF}(z) = \exp\!\bigl(\gamma^\top (z - z_{\text{ref}})\bigr)
+
+times faster than at the reference stress :math:`z_{\text{ref}}`, so under a
+stress history :math:`z(s)` it has aged :math:`\tau(t) = \int_0^t
+\mathrm{AF}(z(s))\,ds` of reference-stress time by calendar time :math:`t`, and
+its path is the ordinary path model on that clock,
+
+.. math::
+
+    y_{ij} = g\bigl(\tau_i(t_{ij}); \theta_i\bigr) + \varepsilon_{ij},
+    \qquad \theta_i \sim \mathrm{MVN}(\mu, \Sigma).
+
+The path parameters and their population describe degradation at the reference
+stress, and :math:`\gamma` how strongly stress speeds it up (with :math:`z =
+1/T`, the Arrhenius relationship). It is the same clock the stochastic-process
+models use for time-varying stress (below).
+
+Why a clock rather than some other rule for the step? For a path that rises
+with time, :math:`y = g(\tau)` means :math:`dy/dt = \mathrm{AF}(z)\,f(y)` with
+:math:`f(y) = g'(g^{-1}(y))`: at every moment the unit degrades at a rate set by
+its *current damage* and multiplied by the stress's acceleration factor. So the
+clock model is also the natural *rate-based* model — the damage is carried over
+at a step, and the unit continues from it at the new stress's rate. The two
+rules only part company if stress changes the *shape* of the path rather than
+its speed, which a step-stress profile cannot identify without a model for the
+damage rate itself.
+
+Estimating :math:`\gamma` needs care, because a unit held at a single stress can
+absorb any acceleration into its own path parameters (every standard path family
+is closed under rescaling time). The information comes from two places:
+
+* **Units whose stress steps during the test.** The change of slope at a step
+  fixes the acceleration factor between the two stresses. The two-stage
+  estimate uses only this: for a trial :math:`\gamma` every unit's path is
+  refitted on its clock, and :math:`\gamma` minimises the pooled residual sum
+  of squares (profile least squares).
+* **Units at different stresses, through the population.** Units share one
+  population of path parameters, so the systematic difference between units
+  run at different stresses identifies :math:`\gamma` too, even with no steps.
+  The mixed-model estimate uses both sources: it maximises the approximate
+  marginal likelihood (the Lindstrom-Bates first-order linearisation) over
+  :math:`\gamma`, with the population refitted at each trial value.
+
+Once :math:`\gamma` is estimated, everything else is the ordinary general-path
+analysis on the clock. The pseudo failure times :math:`\tau_i^* =
+g^{-1}(D; \theta_i)` are reference-stress lifetimes, a lifetime distribution
+:math:`F_0` is fitted to them, and life under *any* stress history follows from
+the clock, :math:`F(t) = F_0(\tau(t))` — at a constant stress simply
+:math:`F_0(\mathrm{AF}(z)\,t)`, the accelerated-failure-time form.
+
 Stochastic-process degradation models
 --------------------------------------
 
@@ -318,6 +380,10 @@ References
 .. [vanNoortwijk2009] van Noortwijk, J.M., 2009. A survey of the application of
    gamma processes in maintenance. *Reliability Engineering & System Safety*,
    94(1), pp.2-21.
+
+.. [Nelson1980] Nelson, W., 1980. Accelerated life testing — step-stress
+   models and data analyses. *IEEE Transactions on Reliability*, R-29(2),
+   pp.103-108.
 
 .. [WhitmoreSchenkelberg1997] Whitmore, G.A. and Schenkelberg, F., 1997.
    Modelling accelerated degradation data using Wiener diffusion with a time

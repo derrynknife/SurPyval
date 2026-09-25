@@ -60,6 +60,45 @@ v0.21.0 (unreleased)
   a section on time-varying stress and the how-to a step-stress worked
   example.
 
+- **Accelerated degradation, Stage 3: step-stress general-path models**
+  (<#155>). ``DegradationAnalysis.fit(..., Z=Z, acceleration="clock",
+  stress_ref=...)`` lets a unit's stress change *during* its test.
+  Stress speeds up the clock of every unit's path,
+  ``AF(z) = exp(gamma'(z - z_ref))``: the path is the ordinary path
+  model on the reference-stress time the unit has aged (the
+  cumulative-exposure model, Nelson 1980, which for these paths is
+  also the rate-based model -- damage carries over at a step). ``Z``
+  has one row per measurement, the stress over the interval ending
+  there.
+
+  - ``population_method="moments"`` estimates ``gamma`` by profile
+    least squares from the units whose stress steps (and refuses data
+    with no steps); ``"reml"`` fits the mixed model -- the FOCE
+    profile likelihood of ``gamma`` -- which also identifies it from
+    units at different constant stresses.
+  - The path parameters, their population and the pseudo failure
+    times are on the reference-stress clock, the life distribution is
+    fitted to those reference-stress lifetimes, and ``sf``, ``ff``,
+    ``df``, ``hf``, ``Hf``, ``qf``, ``mean`` and ``random`` take ``Z``
+    as a stress row or a ``StepSchedule``: ``F(t) = F0(tau(t))``.
+  - ``gamma``, ``stress_ref``, ``acceleration_factor(Z)``; ``path(t,
+    unit)`` and ``plot`` follow each unit's own stress history.
+    Serialised and shown in the ``repr``.
+  - Not yet for clock models (each raises ``NotImplementedError``):
+    ``predict_rul``, ``predict_failure_time``,
+    ``predict_remaining_life``, ``induced_life``, ``cb`` and
+    ``life_parameter_covariance``. ``links`` and ``path="best"`` cannot
+    be combined with the clock.
+
+  Every existing fit is bit-identical (118 fingerprinted outputs of
+  plain, REML, nonlinear, ``path="best"``, Stage-1 and ``links`` models,
+  and the 84 process-model outputs); the only change is that the error
+  for a ``Z`` that varies within a unit now points to
+  ``acceleration="clock"``. The process models' clock moved to a shared
+  module unchanged, and the REML step gained a Woodbury-identity variant
+  used by the clock fit. The theory page gains a section on the
+  accelerated clock and the how-to a step-stress worked example.
+
 v0.20.0 (23 September 2026)
 ---------------------------
 

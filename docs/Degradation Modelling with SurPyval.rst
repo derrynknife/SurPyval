@@ -577,6 +577,109 @@ A model fitted without ``links`` refuses ``Z`` in ``predict_rul`` and
 ``induced_life``, since it has no stress-conditional population to condition
 on; a model fitted with ``links`` requires it.
 
+Step-stress tests: an accelerated clock
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Everything above assumes each unit is tested at one stress — ``Z`` must be
+constant within a unit. In a **step-stress** test the same units are stepped up
+in stress during the test, so each unit's path runs at several stresses in
+turn. ``acceleration='clock'`` handles this. Stress speeds up the clock of every
+unit's path: a unit at stress ``z`` ages
+:math:`\mathrm{AF}(z) = \exp(\gamma^\top (z - z_{\text{ref}}))` times faster than
+at the reference stress, and its path is the ordinary path model evaluated on
+the time it has aged at the reference stress. ``Z`` is now one row per
+measurement giving the stress over the interval that *ends* at that
+measurement, and ``stress_ref`` is the use condition.
+
+Here 25 units run for 300 hours — 100 at 50 °C, 100 at 75 °C, then 100 at
+100 °C — with ``z = 1/T`` (so the acceleration is Arrhenius) and a true
+:math:`\gamma = -5000`, inspected every 10 hours. At 50 °C each unit's path is
+``a + b * t`` with a unit-to-unit rate ``b`` around ``0.02``, and failure is at
+``15``:
+
+.. jupyter-execute::
+
+    from surpyval import StepSchedule
+
+    rng = np.random.default_rng(3)
+    temps = np.array([323.0, 348.0, 373.0])        # 50, 75 and 100 C, in kelvin
+    z_levels = 1 / temps
+    gamma_true = -5000.0
+    times = np.arange(10.0, 300.0 + 1e-9, 10.0)
+    z = np.select([times <= 100, times <= 200], z_levels[:2], z_levels[2])
+    af = np.exp(gamma_true * (z - z_levels[0]))    # speed-up relative to 50 C
+
+    xs, ys, ids, Zs = [], [], [], []
+    for unit in range(25):
+        a, b = rng.normal([1.0, 0.02], [0.2, 0.003])  # 50 C start and rate
+        tau = np.cumsum(10.0 * af)                     # hours aged at 50 C
+        xs.append(times)
+        ys.append(a + b * tau + rng.normal(0, 0.3, times.size))
+        ids.append(np.full(times.size, unit))
+        Zs.append(z)
+    xs_, ys_, ids_, Zs_ = (np.concatenate(v) for v in (xs, ys, ids, Zs))
+
+    step = DegradationAnalysis.fit(xs_, ys_, ids_, threshold=15.0, Z=Zs_,
+                                   acceleration='clock',
+                                   stress_ref=[z_levels[0]])
+    step
+
+The stress coefficient is close to the ``-5000`` simulated. The path
+parameters, their population (``path_param_mean``, ``path_param_cov``) and the
+pseudo failure times are all on the 50 °C clock, so the life distribution
+listed is the life *at the reference stress*. ``model.path(t, unit)`` evaluates
+a unit's fitted path in calendar time, along its own stress history, and bends
+at each step:
+
+.. jupyter-execute::
+
+    for unit in range(4):
+        m = ids_ == unit
+        line, = plt.plot(xs_[m], ys_[m], '.', alpha=0.6)
+        plt.plot(times, step.path(times, unit), color=line.get_color())
+    for edge in (100, 200):
+        plt.axvline(edge, color='grey', linestyle=':')
+    plt.xlabel('Time (h)')
+    plt.ylabel('Degradation')
+
+Every life method takes the stress as ``Z``: one row for a constant stress, or a
+:class:`~surpyval.StepSchedule` for a stress that changes over time. Because
+stress only changes the speed of the clock, life under any history is the
+reference-stress life at the clock time, :math:`F(t) = F_0(\tau(t))`:
+
+.. jupyter-execute::
+
+    profile = StepSchedule.from_changepoints([0, 100, 200], z_levels)
+    print('AF at 100 C                 :',
+          round(step.acceleration_factor([z_levels[2]]), 2))
+    print('mean life at 50 C           :', round(step.mean(Z=[z_levels[0]]), 1))
+    print('mean life at 100 C          :', round(step.mean(Z=[z_levels[2]]), 1))
+    print('mean life on the test profile:', round(step.mean(Z=profile), 1))
+
+    t = np.linspace(0, 400, 401)
+    plt.plot(t, step.ff(t, Z=[z_levels[2]]), label='constant 100 C')
+    plt.plot(t, step.ff(t, Z=profile), label='step profile')
+    plt.plot(t, step.ff(t, Z=[z_levels[1]]), label='constant 75 C')
+    plt.xlabel('Time (h)')
+    plt.ylabel('Probability of failure  F(t)')
+    plt.legend()
+
+Where the information about :math:`\gamma` comes from decides the estimation
+method. With the default ``population_method='moments'`` it comes from the
+units whose stress *steps* — the change of slope at a step fixes the
+acceleration — by profile least squares. A unit held at one stress can absorb
+any acceleration into its own rate, so with no steps at all this raises an
+error. ``population_method='reml'`` fits the mixed model instead: units share
+one population of path parameters, so differences between units run at
+different constant stresses identify :math:`\gamma` as well, and it works for a
+classic constant-stress test too.
+
+A few limits of this first version: ``acceleration='clock'`` cannot be combined
+with ``links`` or ``path='best'``, and the life model must be a plain
+distribution, since stress enters through the clock. Remaining-life prediction
+(``predict_rul``), the induced life and the confidence bounds are not yet
+available for a clock model, and each raises an error saying so.
+
 Stochastic-process degradation models
 -------------------------------------
 
