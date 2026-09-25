@@ -151,9 +151,11 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     def hf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
-        Instantaneous hazard function with the non-parametric
-        estimates from the data. This is calculated using simply
-        the difference between consecutive H(x).
+        The discrete hazard of the non-parametric estimate: the increment
+        of the cumulative hazard ``H`` between consecutive requested points
+        (for a single point, the increment of the step it falls in). It is
+        a jump size, not an instantaneous rate, so it depends on how finely
+        ``x`` is spaced; for a rate, use ``smoothed_hf``.
 
         Parameters
         ----------

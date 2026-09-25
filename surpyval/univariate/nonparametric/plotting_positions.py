@@ -91,10 +91,11 @@ def plotting_positions(
         "Larsen", "Tukey", "DPW"). str, optional
         Method to use to compute the heuristic of F. See details of each
         heursitic in the probability plotting section.
-    turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier'), str, optional
-        If using the Turnbull heuristic, you can elect to use the NA or KM
-        method to compute R with the Turnbull estimates of the risk and death
-        sets.
+    turnbull_estimator : str, optional
+        If using the Turnbull heuristic, the estimator used with the
+        Turnbull estimates of the risk and death sets: one of
+        ``'Fleming-Harrington'`` (the default), ``'Nelson-Aalen'`` or
+        ``'Kaplan-Meier'``.
 
     Returns
     -------

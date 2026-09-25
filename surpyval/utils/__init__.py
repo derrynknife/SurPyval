@@ -406,7 +406,10 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
     elif isinstance(x, Series):
         x = np.array(x)
     else:
-        x = np.asarray(x)
+        # A copy: the handlers rewrite interval endpoints in place (an
+        # infinite endpoint becomes a one-sided censoring), which must not
+        # reach the caller's array -- refitting it gave a different answer.
+        x = np.array(x)
 
     if x.ndim > 2:
         raise ValueError("Variable 'x' array must be one or two dimensional")

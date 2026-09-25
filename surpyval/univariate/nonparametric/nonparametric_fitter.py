@@ -120,10 +120,13 @@ class NonParametricFitter:
             Defaults to FH.
 
             **This default is why a Turnbull fit does not equal a
-            KaplanMeier fit on data both can handle.** The Turnbull EM
-            recovers the same ``r`` and ``d``; the three options then differ
-            in how they turn those into a survival curve, so the difference
-            is the estimator, not the data or the EM. On
+            KaplanMeier fit on data both can handle.** The option is used
+            inside the EM as well as at the end: each self-consistency step
+            redistributes the uncertain observations with the chosen
+            estimator's survival curve, so the expected ``r`` and ``d`` the
+            EM converges to depend on the option too -- a Turnbull fit with
+            the NA or FH option is *not* the same as ``NelsonAalen`` or
+            ``FlemingHarrington`` on right-censored data. On
             ``x=[2,3,3,4,5,6], tl=[0,0,1,1,2,2]`` the survival at 2 is
             0.750 under KM, 0.765 under FH and 0.779 under NA. Pass
             ``turnbull_estimator='Kaplan-Meier'`` to compare like with like
