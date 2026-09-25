@@ -9,6 +9,7 @@ distribution actually calls it ``"failure_rate"``, so the fit raised
 """
 
 import numpy as np
+import pytest
 
 import surpyval
 from surpyval import AcceleratedLife, Exponential, Power, Weibull
@@ -89,3 +90,18 @@ def test_weibull_accelerated_life_still_fits():
 
     model = AcceleratedLife(Weibull, Power).fit(x=x, Z=Z)
     assert np.all(np.isfinite(model.params))
+
+
+def test_gamma_life_is_the_reciprocal_of_its_rate():
+    # Gamma's beta is a rate, like the Exponential's failure_rate, so the
+    # life model must enter through 1 / life. With shape 1 the Gamma is
+    # the Exponential, so on exponential data the two agree.
+    from surpyval import AcceleratedLife, Exponential, Gamma, InversePower
+
+    rng = np.random.default_rng(0)
+    stress = np.repeat([1.0, 2.0, 4.0], 60)
+    x = rng.exponential(1000 * stress**-1.5)
+    expo = AcceleratedLife(Exponential, InversePower).fit(x, Z=stress)
+    gamma = AcceleratedLife(Gamma, InversePower).fit(x, Z=stress)
+    assert gamma.params[0] == pytest.approx(1.0, abs=0.05)
+    assert gamma.params[2:] == pytest.approx(expo.params[1:], rel=0.02)

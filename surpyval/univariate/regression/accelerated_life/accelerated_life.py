@@ -20,7 +20,9 @@ _LIFE_PARAM_MAP = {
     "Gumbel": ("mu", None, None),
     "Logistic": ("mu", None, None),
     "LogNormal": ("mu", np.log, np.exp),
-    "Gamma": ("beta", None, None),
+    # The Gamma's ``beta`` is also a rate (the survival is a function of
+    # ``beta * x``), so it too is the reciprocal of the modelled life.
+    "Gamma": ("beta", lambda x: 1.0 / x, lambda x: 1.0 / x),
 }
 
 

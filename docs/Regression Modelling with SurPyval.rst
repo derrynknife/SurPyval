@@ -157,9 +157,9 @@ Data, covariates and predictions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Every regression fitter takes the observed times ``x`` and a covariate matrix
-``Z`` with one row per observation and one column per covariate — pass a
-single covariate as a column, ``z.reshape(-1, 1)``, since the parametric
-fitters require a two-dimensional ``Z`` — plus surpyval's usual optional arrays: the censoring flag ``c`` (``0`` observed,
+``Z`` with one row per observation and one column per covariate (a
+one-dimensional ``z`` is read as a single covariate, one value per row) —
+plus surpyval's usual optional arrays: the censoring flag ``c`` (``0`` observed,
 ``1`` right, ``-1`` left, ``2`` interval censored) and counts ``n``. The
 parametric families (PH, AFT, PO, AH, AL) accept every censoring type and
 truncation through ``t`` (a two-column ``[tl, tr]`` array); ``CoxPH`` accepts
@@ -1541,8 +1541,9 @@ Omit ``Z`` entirely for a pure random-effects survival model (grouped data, no
 covariates). Only Gamma frailty is available for now, on observed and
 right-censored data, and at least two groups are required. When the data show
 little between-group variation the estimate of ``theta`` goes to its boundary
-at zero; in that case the ordinary ``WeibullPH`` fit is the model to report,
-and it is worth comparing its coefficients with the frailty fit's.
+at zero, and the frailty fit then coincides with the ordinary ``WeibullPH`` fit
+(the same coefficients and log-likelihood); report the proportional-hazards
+model, since a variance on its boundary has no meaningful Wald interval.
 
 
 Confidence Bounds

@@ -302,7 +302,7 @@ Where :math:`\Phi` is the CDF of the standard normal distribution. In this case 
 
 An accelerated life model is, therefore, simply a model where the life parameter of a distribution is substituted with a function of the covariates, that is, it 'accelerates' the expected life, as opposed to accelerating time as per an accelerated time model. This is the standard framework of accelerated life testing (ALT) [Meeker1998]_: units are tested at elevated stress — temperature, voltage, humidity, load — so that they fail quickly, and a physical stress-life relationship carries the result back to use conditions.
 
-For each of the distributions in Surpyval their life parameter that varies is as per the following table. The built-in stress-life functions :math:`\phi(Z)` are written as a *life* (a time). For the Exponential and Log-Normal, whose parameter is a rate or a log-location, surpyval converts the life to that parameter; for the Gamma, note that :math:`\phi(Z)` replaces the rate parameter itself:
+For each of the distributions in Surpyval their life parameter that varies is as per the following table. The built-in stress-life functions :math:`\phi(Z)` are written as a *life* (a time). For the Exponential, Gamma and Log-Normal, whose parameter is a rate or a log-location, surpyval converts the life to that parameter:
 
 +------------------+---------------------------------------------------------------+
 | **Distribution** | **Life Param**                                                |
@@ -316,8 +316,9 @@ For each of the distributions in Surpyval their life parameter that varies is as
 | LogNormal        | mu (set to :math:`\log \phi(Z)`, so :math:`\phi` is the       |
 |                  | median life)                                                  |
 +------------------+---------------------------------------------------------------+
-| Gamma            | beta (the rate parameter; :math:`\phi(Z)` is substituted for  |
-|                  | it directly, so the mean life is :math:`\alpha / \phi(Z)`)    |
+| Gamma            | 1./beta (the rate ``beta`` is set to :math:`1/\phi(Z)`, so    |
+|                  | :math:`\phi` is the scale and the mean life                   |
+|                  | :math:`\alpha\,\phi(Z)`)                                      |
 +------------------+---------------------------------------------------------------+
 | Gumbel           | mu                                                            |
 +------------------+---------------------------------------------------------------+

@@ -2,7 +2,9 @@ import inspect
 from typing import Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
+from scipy.optimize import brentq
 
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -105,11 +107,51 @@ class ProportionalHazardsFitter(
         for row in Z_arr:
             phi = self.phi(row, *phi_params)
             U = np.random.uniform(0, 1, size)
-            # S(x|Z) = S0(x)^phi, so inverting S(x|Z) = U gives
-            # x = qf(1 - U^(1/phi)); U^phi inverts the wrong quantity.
-            x.append(self.dist.qf(1 - U ** (1.0 / phi), *dist_params))
+            x.append(
+                self._invert_cumulative_hazard(-np.log(U) / phi, dist_params)
+            )
             Z_out.append(np.tile(row, (size, 1)))
         return np.concatenate(x), np.vstack(Z_out)
+
+    def _invert_cumulative_hazard(
+        self, h: npt.NDArray, dist_params: npt.NDArray
+    ) -> npt.NDArray:
+        """
+        The times at which the baseline cumulative hazard reaches ``h``.
+
+        ``S(x|Z) = S0(x)^phi``, so a draw ``U`` of the survival is reached
+        where ``H0(x) = -log(U) / phi``. Through the quantile function that
+        is ``qf(1 - exp(-h))``; for a very small hazard multiplier ``h`` is
+        so large that ``1 - exp(-h)`` rounds to 1 and ``qf`` returns
+        ``inf``, although the time is finite. Those draws are solved on
+        ``log H0(x) = log h`` directly.
+        """
+        h = np.asarray(h, dtype=float)
+        with onp.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            out = np.asarray(
+                self.dist.qf(-np.expm1(-h), *dist_params), dtype=float
+            )
+        lost = ~np.isfinite(out) & np.isfinite(h)
+        if lost.any():
+            out = out.copy()
+            start = float(self.dist.qf(0.5, *dist_params))
+            for k in np.flatnonzero(lost):
+                target = np.log(h[k])
+
+                def gap(t: float) -> float:
+                    with onp.errstate(all="ignore"):
+                        return float(
+                            np.log(self.dist.Hf(t, *dist_params)) - target
+                        )
+
+                upper = max(start, 1.0)
+                for _ in range(2000):
+                    if gap(upper) >= 0:
+                        break
+                    upper *= 2.0
+                lower = upper / 2.0 if upper > start else 0.0
+                out[k] = brentq(gap, lower, upper, xtol=1e-300, rtol=1e-12)
+        return out
 
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)

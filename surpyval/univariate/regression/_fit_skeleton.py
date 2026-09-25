@@ -170,6 +170,11 @@ def prepare_regression_fit(
     callables of the covariate array or static values.
     """
     data = SurpyvalData(x, c, n, t, group_and_sort=False)
+    # A one-dimensional Z is a single covariate (one value per row), as
+    # the Cox, accelerated-life and other fitters already read it.
+    Z_in = Z if hasattr(Z, "ndim") else np.asarray(Z)
+    if getattr(Z_in, "ndim", 2) == 1:
+        Z = np.asarray(Z_in).reshape(-1, 1)
     data.add_covariates(Z)
 
     fixed = {} if fixed is None else fixed

@@ -85,6 +85,67 @@ def _make_transforms(dist: Any, k_dist: int) -> tuple[
     return to_unc, to_nat
 
 
+def _log_rising_ratio(D: npt.NDArray, theta: float) -> npt.NDArray:
+    """
+    ``log Gamma(D + 1/theta) - log Gamma(1/theta) - D log(1/theta)``,
+    computed without cancellation.
+
+    Written directly, the three terms are each of size about
+    ``(1/theta) log(1/theta)`` while their difference is at most of order
+    ``D^2 theta``, so for a small ``theta`` round-off swamps the answer. For
+    an integer ``D`` the ratio is the product ``prod_{k<D} (1 + k theta)``,
+    so its log is a sum of ``log1p`` terms; a non-integer ``D`` (fractional
+    weights) uses the gamma functions, or their Stirling series once
+    ``theta`` is small enough for the gamma functions to cancel.
+    """
+    D = np.asarray(D, dtype=float)
+    integer = np.isclose(D, np.round(D), rtol=0.0, atol=1e-9)
+    out = np.empty_like(D)
+    if integer.any():
+        d_int = np.round(D[integer]).astype(int)
+        k = np.arange(max(int(d_int.max()), 0), dtype=float)
+        cumulative = np.concatenate([[0.0], np.cumsum(np.log1p(k * theta))])
+        out[integer] = cumulative[d_int]
+    if (~integer).any():
+        d = D[~integer]
+        if theta < 1e-6:
+            # the Stirling series in theta = 1/a (Bernoulli polynomials),
+            # where the gamma functions below would cancel
+            d2 = d * (d - 1.0)
+            out[~integer] = (
+                d2 / 2.0 * theta
+                - d2 * (2.0 * d - 1.0) / 12.0 * theta**2
+                + d2**2 / 12.0 * theta**3
+            )
+        else:
+            it = 1.0 / theta
+            out[~integer] = gammaln(d + it) - gammaln(it) - d * np.log(it)
+    return out
+
+
+def _group_frailty_ll(
+    D: npt.NDArray, H: npt.NDArray, theta: float
+) -> npt.NDArray:
+    """
+    Each group's gamma-frailty term of the marginal log-likelihood,
+
+    .. math::
+        -\\tfrac{1}{\\theta}\\log\\theta - \\log\\Gamma(\\tfrac{1}{\\theta})
+        + \\log\\Gamma(D + \\tfrac{1}{\\theta})
+        - (D + \\tfrac{1}{\\theta}) \\log(H + \\tfrac{1}{\\theta}),
+
+    rearranged so that it stays accurate as ``theta -> 0``: it equals
+    ``log_rising_ratio(D, theta) - (D + 1/theta) log1p(H theta)``, which
+    tends to ``-H`` -- the no-frailty (proportional-hazards) contribution.
+    """
+    if theta <= 0.0:
+        # the limit itself (theta underflowed): no frailty
+        return -np.asarray(H, dtype=float)
+    return _log_rising_ratio(D, theta) - (
+        D * np.log1p(H * theta) + np.log1p(H * theta) / theta
+    )
+
+
 class FrailtyFitter:
     """Configured fitter for a shared-frailty PH model on one distribution."""
 
@@ -131,18 +192,12 @@ class FrailtyFitter:
         eta = np.exp(eta_Z @ beta) if n_beta else np.ones_like(x)
 
         event = c == 0
-        it = 1.0 / theta
         ll = np.sum(w[event] * (np.log(h0[event]) + np.log(eta[event])))
 
         n_groups = inv.max() + 1
         D = np.bincount(inv, weights=w * event, minlength=n_groups)
         H = np.bincount(inv, weights=w * eta * H0, minlength=n_groups)
-        ll += np.sum(
-            -it * np.log(theta)
-            - gammaln(it)
-            + gammaln(D + it)
-            - (D + it) * np.log(H + it)
-        )
+        ll += np.sum(_group_frailty_ll(D, H, theta))
         return -ll
 
     # -- fit ---------------------------------------------------------------
@@ -246,10 +301,11 @@ class FrailtyFitter:
         # Posterior (empirical-Bayes) frailty per group.
         H0 = self.dist.Hf(x, *dist_params)
         eta = np.exp(Zc @ beta) if n_beta else np.ones_like(x)
-        it = 1.0 / theta
         D = np.bincount(inv, weights=w * (c == 0), minlength=n_groups)
         H = np.bincount(inv, weights=w * eta * H0, minlength=n_groups)
-        post = (D + it) / (H + it)
+        # (D + 1/theta) / (H + 1/theta), written to stay finite (and tend
+        # to 1) as theta -> 0
+        post = (1.0 + D * theta) / (1.0 + H * theta)
 
         # Covariance of the natural parameters via a numerical Hessian.
         param_names = list(self.dist.param_names)
