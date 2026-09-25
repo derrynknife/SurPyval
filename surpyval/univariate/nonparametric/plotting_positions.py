@@ -35,7 +35,9 @@ HEURISTIC_AB = {
     "Midpoint": (0.5, 0.0),
     "Mean": (0.0, 1.0),
     "Weibull": (0.0, 1.0),
-    "Benard": (0.3, 0.2),
+    # Benard's median-rank approximation, (i - 0.3) / (N + 0.4): the same
+    # formula as "Median" (B was 0.2, which is no published heuristic).
+    "Benard": (0.3, 0.4),
     "Beard": (0.31, 0.38),
     "Hazen": (0.5, 0.0),
     "Gringorten": (0.44, 0.12),

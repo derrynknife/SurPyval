@@ -118,22 +118,31 @@ class NonParametricFitter:
         turnbull_estimator : str, optional
             Turnbull only: one of ``'Fleming-Harrington'`` (the default),
             ``'Nelson-Aalen'`` or ``'Kaplan-Meier'``, the estimator used with
-            the Turnbull estimates of r and d. Ignored by the other
-            estimators.
+            the Turnbull estimates of r and d; any other value raises a
+            ``ValueError``. Ignored by the other estimators.
 
             **This default is why a Turnbull fit does not equal a
-            KaplanMeier fit on data both can handle.** The option is used
-            inside the EM as well as at the end: each self-consistency step
-            redistributes the uncertain observations with the chosen
-            estimator's survival curve, so the expected ``r`` and ``d`` the
-            EM converges to depend on the option too -- a Turnbull fit with
-            the NA or FH option is *not* the same as ``NelsonAalen`` or
-            ``FlemingHarrington`` on right-censored data. On
-            ``x=[2,3,3,4,5,6], tl=[0,0,1,1,2,2]`` the survival at 2 is
-            0.750 under KM, 0.765 under FH and 0.779 under NA. Pass
-            ``turnbull_estimator='Kaplan-Meier'`` to compare like with like
-            -- it then agrees with :code:`KaplanMeier` to around 1e-9 on
-            both ``sf`` and ``cb``, on right-censored and left-truncated
+            KaplanMeier fit on data both can handle.** Where the option
+            acts depends on whether the data are truncated:
+
+            - Without truncation it is used inside the EM as well as at the
+              end: each self-consistency step redistributes the uncertain
+              observations with the chosen estimator's survival curve, so
+              the expected ``r`` and ``d`` the EM converges to depend on
+              the option too. A Turnbull fit with the NA or FH option is
+              therefore *not* the same as ``NelsonAalen`` or
+              ``FlemingHarrington`` on right-censored data: on
+              ``x=[2,3,3,4,5,6], c=[0,1,0,0,1,0]`` the survival at 4 is
+              0.501 with the NA option against 0.497 from ``NelsonAalen``.
+            - With truncation the EM always iterates with the Kaplan-Meier
+              (self-consistency) update, whatever the option, and the
+              chosen estimator is applied only to the converged ``r`` and
+              ``d``. On ``x=[2,3,3,4,5,6], tl=[0,0,1,1,2,2]`` the survival
+              at 2 is 0.750 under KM, 0.765 under FH and 0.779 under NA.
+
+            Pass ``turnbull_estimator='Kaplan-Meier'`` to compare like with
+            like -- it then agrees with :code:`KaplanMeier` to around 1e-9
+            on both ``sf`` and ``cb``, on right-censored and left-truncated
             data alike.
 
             Only the KM option is the non-parametric MLE. NA and FH are
@@ -156,7 +165,9 @@ class NonParametricFitter:
 
         max_iter : int, optional
             Turnbull only. Cap on EM iterations; a warning is raised if it
-            is reached before ``tol`` is. Defaults to 1000.
+            is reached before ``tol`` is. Defaults to 1000. Both ``tol`` and
+            ``max_iter`` are kept with the model, and ``bootstrap_cb``
+            refits every resample with them.
 
         Returns
         -------
@@ -170,7 +181,8 @@ class NonParametricFitter:
 
         ValueError
             If the data has left- (``c=-1``) or interval- (``c=2``) censored
-            observations and the estimator is not ``Turnbull``.
+            observations and the estimator is not ``Turnbull``, or if a
+            ``Turnbull`` fit is given an unknown ``turnbull_estimator``.
 
         Examples
         --------
@@ -188,6 +200,15 @@ class NonParametricFitter:
         Model            : Turnbull
         Estimator        : Kaplan-Meier
         """
+        if self.how == "Turnbull":
+            # Imported here as this module is imported by the package
+            # __init__ before ``turnbull`` is.
+            from surpyval.univariate.nonparametric.turnbull import (
+                check_turnbull_estimator,
+            )
+
+            check_turnbull_estimator(turnbull_estimator)
+
         x, c, n, t = xcnt_handler(
             x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
         )
@@ -200,6 +221,10 @@ class NonParametricFitter:
 
         if self.how == "Turnbull":
             data["estimator"] = turnbull_estimator
+            # Kept with the estimator so that ``bootstrap_cb`` refits every
+            # resample with the settings this fit used, not the defaults.
+            data["tol"] = tol
+            data["max_iter"] = max_iter
             out = NonParametric()
             t_obj = self._fit(x, c, n, t, turnbull_estimator, tol, max_iter)
 
@@ -211,6 +236,12 @@ class NonParametricFitter:
             out.greenwood = self._compute_var(turnbull_estimator, var_r, var_d)
             for k, v in t_obj.items():
                 setattr(out, k, v)
+            # The cumulative hazard, defined as for every other estimator
+            # (and as ``Hf`` evaluates it): -log of the reported survival.
+            # For the NA and FH options that is exactly their summed
+            # hazard, since they report R = exp(-H).
+            with np.errstate(all="ignore"):
+                out.H = -np.log(out.R)
 
             out.data = data
             return out

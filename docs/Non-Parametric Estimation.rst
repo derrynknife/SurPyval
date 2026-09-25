@@ -246,7 +246,7 @@ Using this estimate of the masses, it can be input to the start of this procedur
 
 It helps to see the M-step in xrd terms. Call :math:`d_j = \sum_i (\mu_{ij} + \nu_{ij})` the expected deaths in piece :math:`j` and :math:`r_j = \sum_{k \geq j} d_k` the expected number at risk just before it. The Kaplan-Meier on this *expected* ladder, :math:`\prod (1 - d_j/r_j)`, telescopes to a curve whose mass in piece :math:`j` is exactly :math:`d_j / M`. The M-step is therefore just a Kaplan-Meier applied to expected counts, which is why a fitted Turnbull model has ``r`` and ``d`` attributes like every other estimator, with fractional values.
 
-In SurPyval the iteration stops when the largest change in any :math:`p_j` falls below ``tol`` (default :math:`10^{-10}`), or after ``max_iter`` iterations (default 1000), with a warning if the tolerance was not reached. The iteration starts from equal masses on every piece (under truncation, on every piece some observation could have failed in). EM is reliable but can be slow, especially when many observations are censored far to the right; raising ``max_iter`` is the first thing to try. Under truncation SurPyval also intersects each observation's support with its own truncation window (an observed failure cannot have happened where it would not have been observed) and confines the mass to pieces that at least one observation could have failed in, which keeps the iteration away from meaningless solutions.
+In SurPyval the iteration stops when the largest change in any :math:`p_j` falls below ``tol`` (default :math:`10^{-10}`), or after ``max_iter`` iterations (default 1000), with a warning if the tolerance was not reached. The iteration starts from equal masses on every piece (under truncation, on every piece some observation could have failed in). With the Kaplan-Meier option and no truncation it starts instead on Turnbull's *innermost intervals*, the runs of pieces that begin where some observation's possible failure pieces begin and end where some observation's end, with no other beginning or end in between. Every other piece is dominated: any observation that could have failed there could also have failed in an innermost interval, so the NPMLE gives it no mass [TB]_. Starting there spares the EM from draining that mass away, which it does only slowly, leaving residues of around :math:`10^{-9}` that the confidence bounds are sensitive to (see below). EM is reliable but can be slow, especially when many observations are censored far to the right; raising ``max_iter`` is the first thing to try. Under truncation SurPyval also intersects each observation's support with its own truncation window (an observed failure cannot have happened where it would not have been observed) and confines the mass to pieces that at least one observation could have failed in, which keeps the iteration away from meaningless solutions.
 
 Why a Turnbull fit need not equal the Kaplan-Meier
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -270,7 +270,7 @@ The confidence bounds from ``cb()`` for a Turnbull model use the variance formul
 
 In the last case, and whenever you want calibrated intervals for a Turnbull estimate, use ``bootstrap_cb()``. The simultaneous bands of ``band()`` rest on theory for right censored data and should not be used with interval censored Turnbull estimates.
 
-A limitation of the current implementation affects the interval censored case. The variance at the left end :math:`x_k` of a piece :math:`(x_k, x_{k+1}]` already includes the expected failures *in* that piece, while the estimate only drops at :math:`x_{k+1}`. Between :math:`x_k` and :math:`x_{k+1}` the ``cb()`` bounds are therefore built from a survival estimate that has not yet dropped and a variance that has, and they can be far too wide (for example :math:`[0, 1]` where the estimate is still 1). At the right end of a piece, where the drop has happened, the two agree. This is one more reason to prefer ``bootstrap_cb()`` for interval censored data.
+The variance at each value uses the same pieces as the estimate there: the expected failures in a piece :math:`(x_k, x_{k+1}]` enter both at :math:`x_{k+1}`, where the estimate drops, so where the estimate is still 1 the bounds are :math:`[1, 1]`. Expected counts that are equal, or zero, up to rounding error are treated as exactly so: at a last value where every item still at risk fails the variance is undefined, just as for exact data. One sensitivity remains. The width of the log(-log) interval on its own scale is roughly :math:`1/\sqrt{D}` for :math:`D` expected failures so far, so where the ladder holds only a tiny fraction of a failure the bounds are :math:`[0, 1]` even though the estimate is 1 to eight decimal places. That happens where the EM leaves a small residue of mass on a piece the NPMLE gives none, which it can with the Nelson-Aalen and Fleming-Harrington options or under truncation (the Kaplan-Meier option without truncation avoids it, as described above). ``bound_type='normal'`` or ``bootstrap_cb()`` avoid it too.
 
 What the data cannot tell you: non-identifiability
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -288,7 +288,7 @@ The NPMLE is a delicate object, and it is worth being clear about what it does *
 When to use it
 ^^^^^^^^^^^^^^
 
-The Turnbull estimator is the only non-parametric method that can handle left censoring, interval censoring, and right truncation (and arbitrary combinations of censoring and truncation). Left truncation / delayed entry on its own is handled by the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators too, via the ``tl`` keyword; it is only the left/interval censoring and right truncation that require Turnbull. Turnbull must therefore be used to supply the plotting positions in the parametric package whenever such data is present. For data the simpler estimators can handle, prefer them: they are exact rather than iterative, and their confidence bounds rest on firmer ground. (Also, a Turnbull model does not currently store the cumulative hazard array ``H``, so ``smoothed_hf()`` raises an ``AttributeError`` for it; ``Hf()``, ``hf()`` and ``df()`` work.)
+The Turnbull estimator is the only non-parametric method that can handle left censoring, interval censoring, and right truncation (and arbitrary combinations of censoring and truncation). Left truncation / delayed entry on its own is handled by the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators too, via the ``tl`` keyword; it is only the left/interval censoring and right truncation that require Turnbull. Turnbull must therefore be used to supply the plotting positions in the parametric package whenever such data is present. For data the simpler estimators can handle, prefer them: they are exact rather than iterative, and their confidence bounds rest on firmer ground.
 
 On Surpyval's recommended estimator
 -----------------------------------
@@ -336,7 +336,7 @@ ECDF_Adj          0        1
 Modal             1        -1
 Midpoint          0.5      0
 Mean / Weibull    0        1
-Benard            0.3      0.2
+Benard            0.3      0.4
 Beard             0.31     0.38
 Hazen             0.5      0
 Gringorten        0.44     0.12
@@ -346,7 +346,7 @@ DPW               1        0
 None              0        0
 ================  =======  =======
 
-The names are the strings to pass as ``heuristic`` (``'Mean'`` and ``'Weibull'`` are the same formula). Note that the option named ``'Benard'`` uses :math:`B = 0.2`, which is not Benard's published median-rank approximation; for that, use ``'Median'``.
+The names are the strings to pass as ``heuristic`` (``'Mean'`` and ``'Weibull'`` are the same formula, as are ``'Median'`` and ``'Benard'``).
 
 The Filliben heuristic [Filliben1975np]_ uses :math:`A = 0.3175, B = 0.365` for the interior values and :math:`1 - 0.5^{1/N}` and :math:`0.5^{1/N}` for the smallest and largest. With right censored data the ranks :math:`i` of the failures are replaced by adjusted (mean order number) ranks: each failure's rank is the previous adjusted rank plus :math:`(N + 1 - \text{previous rank}) / (1 + \text{number of items at or beyond the current position})`, which shares the "missing" ranks of censored items among the later failures, much as the Kaplan-Meier redistributes their mass. The rank-based heuristics cannot handle truncation; the ``'Kaplan-Meier'``, ``'Nelson-Aalen'`` and ``'Fleming-Harrington'`` options handle left truncation; and left censoring, interval censoring or right truncation require ``'Turnbull'``.
 

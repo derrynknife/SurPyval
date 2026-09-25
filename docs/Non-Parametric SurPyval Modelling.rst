@@ -279,7 +279,7 @@ A fitted model can be written to a plain dictionary (or a JSON file) and read ba
     restored = surv.from_dict(json.loads(json.dumps(model_dict)))
     print(restored.model, restored.sf([1.5, 3]), model.sf([1.5, 3]))
 
-``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). For Turnbull models the estimator name is stored, but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
+``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
 
 
 Right Censored Data
@@ -595,12 +595,12 @@ This is done even though we might not have a complete failure occur in an interv
 
 You can see that some values are 0 and that others are fractional: the EM has shared each
 censored item's failure out over the times it could have failed at, so ``d`` and ``r`` are
-*expected* counts. The risk set starts at all 17 items, but ``d`` adds up to about 16.98: with the
+*expected* counts. The risk set starts at all 17 items, but ``d`` adds up to about 16.95: with the
 default Fleming-Harrington option the curve never reaches zero, so a small share of the two right
 censored items' failures is placed beyond the last value (see the theory page). A few things to know when reading them:
 
 - ``x`` holds the endpoints of the Turnbull pieces. Exactly observed times appear twice, because the failure mass at such a time sits in the zero-width piece between the two copies.
-- ``d[k]`` is the expected number of failures in the piece that *starts* at ``x[k]``, i.e. in :math:`(x_k, x_{k+1}]`, and ``r[k]`` is the expected number at risk just before it. So the 1.57 failures at ``x = 5`` are in (5, 6], and the curve shows them as a drop at 6.
+- ``d[k]`` is the expected number of failures in the piece that *ends* at ``x[k]``, i.e. in :math:`(x_{k-1}, x_k]`, and ``r[k]`` is the expected number at risk just before that piece, so that ``R[k]`` is the estimator applied to ``r`` and ``d`` up to ``k``, as for the other estimators. So the 1.57 failures at ``x = 6`` are in (5, 6], and the curve drops there. (The first piece starts at ``model.bounds[0]``, here :math:`-\infty`.)
 - Where the estimate falls across a piece, the data do not say *where* in the piece: the drawn step (holding the value until the right end) is a convention. The full set of piece boundaries is ``model.bounds``, and ``model.R_upper`` and ``model.R_lower`` hold the survival at the start and end of each piece, which is the range any curve through that piece could take:
 
 .. jupyter-execute::
@@ -612,9 +612,9 @@ censored items' failures is placed beyond the last value (see the theory page). 
 
 The second piece, (7, 7], is the zero-width piece holding the failures observed at exactly 7. The
 fitted model also records the Turnbull-specific ``turnbull_estimator``, ``converged``,
-``iters``, ``degenerate`` and ``exploitable_mass`` (described below). There is no ``H`` array on a
-Turnbull model, and because ``smoothed_hf()`` needs one it currently raises an ``AttributeError``
-for Turnbull models; ``Hf()``, ``hf()`` and ``df()`` work as usual.
+``iters``, ``degenerate`` and ``exploitable_mass`` (described below). Like every other model it
+carries the cumulative hazard ``H`` (:math:`-\ln R`), so ``Hf()``, ``hf()``, ``df()`` and
+``smoothed_hf()`` all work as usual.
 
 Choosing the estimator applied to the Turnbull ladder
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -671,19 +671,18 @@ way to put bounds on such an estimate:
 
 The bootstrap interval at 8 is much wider than the one from ``cb()``: six of the 17 items were
 interval or left censored, and the formula-based bound does not know how uncertain their failure times
-are. Each bootstrap resample refits the Turnbull EM, so keep ``B`` modest for large data sets. Two
-cautions with the current implementation:
+are. Each bootstrap resample refits the Turnbull EM, with the same ``turnbull_estimator``, ``tol``
+and ``max_iter`` as the original fit, so keep ``B`` modest for large data sets.
 
-- The resamples are refitted with the *default* ``tol`` and ``max_iter``, not the values you passed to ``fit()``. For data that need more than 1000 iterations (like the first interval censored example above) each slow resample raises a non-convergence warning and its curve is slightly less accurate.
-- Within a piece in which the estimate drops, the ``cb()`` bounds for interval censored data are computed with the variance *after* the drop but the estimate *before* it, and can be absurdly wide there:
+The ``cb()`` bounds use the same pieces as the estimate, so they drop where it drops:
 
 .. jupyter-execute::
 
     print('sf at 5.5:', model.sf(5.5).round(3), ' cb at 5.5:', model.cb(5.5).round(3))
     print('sf at 6:  ', model.sf(6).round(3), ' cb at 6:  ', model.cb(6).round(3))
 
-The estimate at 5.5 is 1 (the drop in (5, 6] is drawn at 6), yet the bounds are :math:`[0, 1]`. Read
-formula-based Turnbull bounds at the right-hand ends of pieces, or use the bootstrap.
+The estimate at 5.5 is 1 (the drop in (5, 6] is drawn at 6), and so are both bounds; at 6 all three
+have dropped.
 
 Truncation with the Turnbull estimator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -491,7 +491,11 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             R_out = self.greenwood * 1.0 / (np.log(self.R) ** 2)
             R_out = np.log(-np.log(self.R)) - stat * np.sqrt(R_out)
             R_out = np.exp(-np.exp(R_out))
-            R_out = np.where(self.greenwood == 0, 1, R_out)
+            # No variance, no interval: the bounds collapse onto the
+            # estimate. (That is 1 before the first event; it is the
+            # estimate itself, not 1, where float-noise counts in a
+            # Turnbull ladder were snapped to zero events.)
+            R_out = np.where(self.greenwood == 0, self.R, R_out)
         else:
             # Normal Greenwood confidence
             R_out = self.R + np.sqrt(self.greenwood * self.R**2) * stat
@@ -911,6 +915,15 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         n_data = self.data["n"]
         t_data = self.data["t"]
 
+        # Refit each resample exactly as the original was fitted. Models
+        # saved before ``tol``/``max_iter`` were recorded fall back to the
+        # ``fit()`` defaults.
+        tb_kwargs: dict[str, Any] = {}
+        if self.model == "Turnbull":
+            tb_kwargs["estimator"] = self.data["estimator"]
+            tb_kwargs["tol"] = self.data.get("tol", 1e-10)
+            tb_kwargs["max_iter"] = self.data.get("max_iter", 1000)
+
         rng = np.random.default_rng(random_state)
         N = int(n_data.sum())
         probs = n_data / n_data.sum()
@@ -926,7 +939,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                     c_data[keep],
                     n_b[keep],
                     t_data[keep],
-                    estimator=self.data["estimator"],
+                    **tb_kwargs,
                 )
                 x_b, R_b = fitted["x"], fitted["R"]
             else:
@@ -1366,9 +1379,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         Serialize the fitted non-parametric model to a plain dictionary,
         mirroring the parametric ``to_dict``. The estimator ladder
         (``x``, ``r``, ``d``), the derived curves (``R``, ``F``, ``H``),
-        the variance estimate (``greenwood``) and the estimator name are
-        stored, which is everything the model's methods need to be
-        reconstructed with :meth:`from_dict`.
+        the variance estimate (``greenwood``) and, for Turnbull models, the
+        estimator name and the EM's ``tol`` and ``max_iter`` are stored,
+        which is everything the model's methods need to be reconstructed
+        with :meth:`from_dict`.
 
         Parameters
         ----------
@@ -1390,8 +1404,11 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             value = getattr(self, attr, None)
             out[attr] = None if value is None else np.asarray(value).tolist()
 
-        if "estimator" in getattr(self, "data", {}):
-            out["estimator"] = self.data["estimator"]
+        # The Turnbull settings travel with the model so that a restored
+        # model's ``bootstrap_cb`` refits as the original did.
+        for key in ("estimator", "tol", "max_iter"):
+            if key in getattr(self, "data", {}):
+                out[key] = self.data[key]
 
         if with_data and getattr(self, "data", None) is not None:
             data_dict: dict[str, Any] = {}
@@ -1429,6 +1446,12 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             else:
                 setattr(out, attr, np.asarray(value))
 
+        # Turnbull models serialised before they carried ``H`` stored it
+        # as None; derive it as the fitter does, so ``smoothed_hf`` works.
+        if getattr(out, "H", None) is None and hasattr(out, "R"):
+            with np.errstate(all="ignore"):
+                out.H = -np.log(out.R)
+
         if "data" in model_dict or "estimator" in model_dict:
             data: dict[str, Any] = {}
             raw = model_dict.get("data", {})
@@ -1436,8 +1459,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 value = raw.get(ch, None)
                 if value is not None:
                     data[ch] = np.asarray(value)
-            if "estimator" in model_dict:
-                data["estimator"] = model_dict["estimator"]
+            for key in ("estimator", "tol", "max_iter"):
+                if key in model_dict:
+                    data[key] = model_dict[key]
             out.data = data
 
         return out

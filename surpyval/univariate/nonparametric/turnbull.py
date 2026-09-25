@@ -1,5 +1,5 @@
 import warnings
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -11,6 +11,56 @@ from surpyval.univariate.nonparametric.nonparametric_fitter import (
 from .fleming_harrington import fleming_harrington as fh
 from .kaplan_meier import kaplan_meier as km
 from .nelson_aalen import nelson_aalen as na
+
+# The estimators that can be applied to the Turnbull ladder. Checked up
+# front: an unknown name used to fall through to Fleming-Harrington in the
+# EM and only fail later, as a bare KeyError, when the variance was looked
+# up by that name.
+TURNBULL_ESTIMATORS: dict[str, Callable[..., npt.NDArray]] = {
+    "Fleming-Harrington": fh,
+    "Nelson-Aalen": na,
+    "Kaplan-Meier": km,
+}
+
+
+def check_turnbull_estimator(estimator: str) -> None:
+    """Raise a ``ValueError`` if ``estimator`` is not a Turnbull option."""
+    if estimator not in TURNBULL_ESTIMATORS:
+        raise ValueError(
+            "'turnbull_estimator' must be one of {}; got {!r}".format(
+                ", ".join(repr(k) for k in TURNBULL_ESTIMATORS), estimator
+            )
+        )
+
+
+def _innermost(
+    lo: npt.NDArray, hi: npt.NDArray, M: int
+) -> npt.NDArray[np.bool_]:
+    """Pieces inside Turnbull's innermost intervals.
+
+    An innermost interval is a run of pieces ``[a, b]`` that starts at
+    some observation's support start (``a`` is a ``lo``) and ends at some
+    support end (``b`` is a ``hi``) with no other start in ``(a, b]`` and
+    no other end in ``[a, b)``. Without truncation every other piece is
+    dominated -- each support containing it also contains an innermost
+    interval -- so the NPMLE puts no mass there (Turnbull 1976).
+    """
+    valid = lo <= hi
+    is_lo = np.zeros(M, dtype=bool)
+    is_lo[lo[valid]] = True
+    is_hi = np.zeros(M, dtype=bool)
+    is_hi[hi[valid]] = True
+    idx = np.arange(M)
+    # The latest start at or before each piece, and the latest end
+    # strictly before it (-1 where there is none).
+    last_lo = np.maximum.accumulate(np.where(is_lo, idx, -1))
+    last_hi = np.maximum.accumulate(np.where(is_hi, idx, -1))
+    prev_hi = np.concatenate([[-1], last_hi[:-1]])
+    ends = is_hi & (last_lo >= 0) & (prev_hi < last_lo)
+    mark = np.zeros(M + 1)
+    np.add.at(mark, last_lo[ends], 1.0)
+    np.add.at(mark, idx[ends] + 1, -1.0)
+    return np.cumsum(mark[:M]) > 0
 
 
 def turnbull(
@@ -36,6 +86,7 @@ def turnbull(
     """
     if max_iter < 1:
         raise ValueError(f"max_iter must be at least 1; got {max_iter}")
+    check_turnbull_estimator(estimator)
     # Taken as arrays before anything indexes or slices them. The
     # signature accepts array-like because callers pass lists, but the
     # body below is written against arrays throughout.
@@ -225,14 +276,24 @@ def turnbull(
     if any_truncated and identifiable.any():
         p = identifiable / identifiable.sum()
     else:
-        p = np.ones(M) / M
+        # Without truncation the NPMLE has no mass off the innermost
+        # intervals, but the self-consistency EM only drains the mass it
+        # starts with there sublinearly: a residue of ~1e-8 expected
+        # failures stayed on such pieces, leaving the estimate at 1 - 1e-9
+        # and its log(-log) bounds at [0, 1]. Starting on the innermost
+        # intervals keeps that mass exactly zero (p = 0 stays 0 under the
+        # update) and converges in fewer iterations. Only for the
+        # Kaplan-Meier update, which is the NPMLE: the Nelson-Aalen and
+        # Fleming-Harrington iterations are not likelihood steps and do
+        # settle with real mass on those pieces. Under truncation the
+        # dominance argument fails (moving mass changes each window's
+        # probability), so the identifiable start above is kept.
+        support = _innermost(lo, hi, M)
+        if any_truncated or estimator != "Kaplan-Meier" or not support.any():
+            support = np.ones(M, dtype=bool)
+        p = support / support.sum()
 
-    if estimator == "Kaplan-Meier":
-        func = km
-    elif estimator == "Nelson-Aalen":
-        func = na
-    else:
-        func = fh
+    func = TURNBULL_ESTIMATORS[estimator]
 
     old_err_state = np.seterr(all="ignore")
 
@@ -462,13 +523,22 @@ def turnbull(
 
     # Heterogeneous by design: arrays, the estimator name, and the
     # convergence flags all go out in the one dictionary.
+    #
+    # Ladder index j is the piece ``(bounds[j], bounds[j+1]]``, so the
+    # survival after it, ``R[j]``, is reported at its *right* end,
+    # ``bounds[j+1]`` -- hence ``x = bounds[1:-1]`` with ``R[:-2]``. The
+    # counts that produce ``R[j]`` must go out on the same index: slicing
+    # them ``[1:-1]`` instead paired each x with the *next* piece's
+    # failures, so the variance had already stepped where the estimate had
+    # not yet dropped, and ``cb()`` on interval-censored data gave bounds
+    # like [0, 1] where the survival estimate was still 1.
     out: dict[str, Any] = {}
     out["x"] = bounds[1:-1]
-    out["r"] = r[1:-1]
-    out["d"] = d[1:-1]
+    out["r"] = r[:-2]
+    out["d"] = d[:-2]
     if any_truncated:
-        out["var_r"] = r_var[1:-1]
-        out["var_d"] = d_var[1:-1]
+        out["var_r"] = r_var[:-2]
+        out["var_d"] = d_var[:-2]
     elif km_reducible:
         # Variance from the observed counts (the Greenwood ladder): the
         # estimation ladder redistributes each right-censored observation
@@ -487,10 +557,12 @@ def turnbull(
         var_r[ok] = rg[pos[ok]]
         # Exact times appear twice on the bounds ladder (the zero-width
         # [x, x] interval trick); credit each event count once so the
-        # cumulative variance steps once per event time.
-        first = np.ones(ladder_x.shape[0], dtype=bool)
-        first[1:] = ladder_x[1:] != ladder_x[:-1]
-        take = ok & first
+        # cumulative variance steps once per event time, and on the
+        # *second* copy -- where the estimate drops -- since the first
+        # carries the survival just before the event.
+        last = np.ones(ladder_x.shape[0], dtype=bool)
+        last[:-1] = ladder_x[:-1] != ladder_x[1:]
+        take = ok & last
         var_d[take] = dg[pos[take]]
         out["var_r"] = var_r
         out["var_d"] = var_d

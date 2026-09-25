@@ -1,6 +1,7 @@
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.univariate.nonparametric.fleming_harrington import _snap
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
 )
@@ -19,8 +20,15 @@ def nelson_aalen_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     the variance of the Kaplan-Meier and Nelson-Aalen estimators",
     Scandinavian Journal of Statistics, 18(4), 333-340.
     """
+    r = np.asarray(r, dtype=float)
+    d = np.asarray(d, dtype=float)
     with np.errstate(all="ignore"):
         var = d / r**2
+        # A proportion failing that is 0 up to round-off (a Turnbull EM
+        # expected count of ~1e-15) is no event, as in Greenwood's formula;
+        # left in, it gave a variance where the estimate is still 1.
+        q = np.array([_snap(v) for v in d / r])
+        var = np.where(q == 0, 0.0, var)
         var = np.where(np.isfinite(var), var, np.nan)
         return np.cumsum(var)
 
