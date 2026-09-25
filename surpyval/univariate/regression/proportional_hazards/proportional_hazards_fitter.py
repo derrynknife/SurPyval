@@ -57,6 +57,57 @@ class ProportionalHazardsFitter(
     this class directly; the constructor exists for a custom ``phi(Z,
     *params)`` with its own bounds and parameter names. ``fit`` returns a
     :class:`~surpyval.univariate.regression.parametric_regression_model.ParametricRegressionModel`.
+
+    Parameters
+    ----------
+    name : str
+        The fitter's name (e.g. ``"WeibullLinearRR"``).
+    dist : ParametricFitter
+        The baseline distribution (e.g. ``Weibull``).
+    phi : callable
+        The covariate function, with the signature ``phi(Z, *params)``,
+        written with ``autograd.numpy`` so the likelihood can be
+        differentiated; it must be positive at the fitted parameters.
+    phi_name : str
+        A display name for ``phi``, shown in the fitted model's ``repr``.
+    phi_bounds : tuple or callable
+        The ``(lower, upper)`` bounds of each ``phi`` parameter (``None``
+        for unbounded), or a function of the covariate matrix returning
+        them. The bounds are how ``phi`` is kept positive.
+    phi_param_map : dict or callable
+        ``{name: position}`` of the ``phi`` parameters, or a function of the
+        covariate matrix returning it.
+    phi_init : callable, optional
+        A function of the covariate matrix returning starting values for
+        the ``phi`` parameters. Defaults to zeros.
+
+    A model with a custom ``phi`` predicts, and gives bounds, like the
+    pre-built ones, but cannot be serialised (``phi`` cannot be rebuilt
+    from a name).
+
+    Examples
+    --------
+    An excess-relative-risk model, :math:`\\phi(z) = 1 + \\beta z` with
+    :math:`\\beta > 0`:
+
+    >>> import numpy as np
+    >>> import autograd.numpy as anp
+    >>> from surpyval import ProportionalHazardsFitter, Weibull
+    >>> def linear_rr(Z, *params):
+    ...     return 1.0 + anp.dot(Z, anp.array(params))
+    >>> WeibullLinearRR = ProportionalHazardsFitter(
+    ...     "WeibullLinearRR", Weibull, linear_rr, "Linear [1 + beta'Z]",
+    ...     phi_bounds=lambda Z: ((0, None),) * Z.shape[1],
+    ...     phi_param_map=lambda Z: {
+    ...         f"beta_{i}": i for i in range(Z.shape[1])
+    ...     },
+    ...     phi_init=lambda Z: np.full(Z.shape[1], 0.5),
+    ... )
+    >>> rng = np.random.default_rng(0)
+    >>> dose = rng.uniform(0, 4, 400)
+    >>> x = 10 * (-np.log(rng.uniform(size=400)) / (1 + 0.5 * dose)) ** 0.5
+    >>> WeibullLinearRR.fit(x=x, Z=dose).params.round(3)
+    array([10.15 ,  2.081,  0.604])
     """
 
     def __init__(

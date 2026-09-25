@@ -242,6 +242,12 @@ fitter accepts:
 - the Lin-Ying (``AdditiveHazards``), Buckley-James and frailty fitters take
   observed and right-censored data only, and say so if given anything else.
 
+Remove rows with a missing (``NaN``) covariate before fitting. ``CoxPH``,
+``AdditiveHazards`` and ``BuckleyJames`` drop such rows from array input
+themselves, but the parametric and frailty fitters do not, and
+``fit_from_df`` with a ``formula`` fails when one of the formula's columns
+has a missing value.
+
 Each family also has a ``fit_from_df`` that names DataFrame columns instead
 (see `Fitting from a DataFrame: formulas and categorical covariates`_).
 

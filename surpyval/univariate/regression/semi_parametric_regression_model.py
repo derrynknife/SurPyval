@@ -26,7 +26,8 @@ class SemiParametricRegressionModel(SerialisableMixin):
 
     ``params`` (also ``beta``) are the coefficients, ``p_values`` their
     Wald p-values, and ``x``, ``h0``, ``H0`` the Breslow baseline hazard
-    and cumulative hazard at the event times. The survival functions take
+    increments and cumulative hazard at the distinct observed times (the
+    increment is 0 at a censoring time). The survival functions take
     the covariates as a second argument, ``sf(x, Z)`` (and a ``stratum``
     for a stratified fit); ``sf_tvc`` / ``Hf_tvc`` follow a time-varying
     covariate path. The model also provides residuals, the
@@ -237,8 +238,11 @@ class SemiParametricRegressionModel(SerialisableMixin):
     ) -> npt.NDArray:
         """
         Hazard at ``x`` for covariates ``Z``: the Breslow baseline hazard
-        increment in force at ``x`` times ``phi(Z)``. ``Z`` is one row (used
-        for every ``x``) or one row per ``x``, paired in the order given.
+        increment at the latest baseline time at or before ``x``, times
+        ``phi(Z)``. It is a step size, not a smooth hazard rate; the
+        baseline times ``self.x`` include the censoring times, where the
+        increment is 0. ``Z`` is one row (used for every ``x``) or one row
+        per ``x``, paired in the order given.
         """
         Z = self._prepare_Z(Z)
         bx, bh0, _ = self._baseline_arrays(stratum)

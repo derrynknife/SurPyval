@@ -1092,7 +1092,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x : array like or scalar
             Times at which to evaluate the bound(s).
         Z : array like
-            A single covariate vector.
+            A single covariate vector, used at every ``x`` (one row per
+            ``x`` is paired element-wise, as for :meth:`sf`).
         on : {'sf', 'ff', 'Hf', 'hf', 'df'}, optional
             The function to bound. Default ``'sf'``.
         alpha_ci : float, optional
@@ -1156,8 +1157,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         r"""
 
         A method to plot the survival function of the distribution at the mean
-        covariate vector against the empirical (Kaplan-Meier) survival of the
-        fitted data, with a delta-method confidence band.
+        covariate vector against a non-parametric estimate of the pooled
+        fitted data (the exponentiated Nelson-Aalen estimate, which ignores
+        the covariates), with a delta-method confidence band. It needs the
+        fitted data, so it is not available on a restored model.
 
         Parameters
         ----------

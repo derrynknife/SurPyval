@@ -99,9 +99,11 @@ Additive Hazards (AH)
     h(x \mid Z) = h_0(x) + \beta'Z, \qquad H(x \mid Z) = H_0(x) + x\,\beta'Z
 
 The fully parametric counterpart of the semi-parametric Lin-Ying model
-(:doc:`additive_hazards`). Nothing keeps the hazard positive, so a fit
-whose hazard would be non-positive at an observed event fails rather
-than return an invalid model.
+(:doc:`additive_hazards`). Nothing keeps the hazard positive, so the fit
+only accepts parameters that keep it positive at every observed failure.
+When the data would prefer a negative hazard (a strongly protective
+covariate) it returns the best model on that boundary and warns; it
+raises only if the optimiser cannot end at a positive-hazard point.
 
 Pre-built instances: ``ExponentialAH``, ``NormalAH``, ``WeibullAH``,
 ``GumbelAH``, ``LogisticAH``, ``LogNormalAH``, ``GammaAH``.

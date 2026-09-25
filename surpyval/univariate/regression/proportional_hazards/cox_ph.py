@@ -1282,15 +1282,17 @@ class CoxPH_:
             The dataframe containing the data.
         x_col: str
             The column name of the observed times.
-        Z_cols: list, optional
-            The column names of the covariates.
+        Z_cols: str or list of str, optional
+            The column name(s) of the covariates. Give this or ``formula``.
         c_col: str, optional
             The column name of the censoring indicator.
         n_col: str, optional
             The column name of the number of observations at each time point.
         formula: str, optional
-            The formula to use for the model. If not provided, the column names
-            will be used.
+            A ``formulaic`` formula for the covariates (e.g.
+            ``"age + site"``), instead of ``Z_cols``; categorical columns get
+            reference-level coding. Rows with a missing covariate are
+            dropped when ``Z_cols`` is used.
         method: str, optional
             The tie-handling method: ``'breslow'``, ``'efron'``, ``'exact'``
             or ``'kalbfleisch-prentice'`` (alias ``'kp'``). See :meth:`fit`.
@@ -1360,18 +1362,43 @@ class CoxPH_:
             per-interval covariates.
         n : array_like, optional
             Count weight per interval row.
-        method : {'efron', 'breslow'}, optional
-            Tie-handling method. Default ``'efron'``.
+        method : str, optional
+            Tie-handling method: ``'efron'`` (default), ``'breslow'``,
+            ``'exact'`` or ``'kalbfleisch-prentice'`` (``'kp'``); see
+            :meth:`fit`.
         tol : float, optional
             Optimiser tolerance.
 
         Returns
         -------
         SemiParametricRegressionModel
-            The fitted model, with ``is_tvc`` set and TVC-aware prediction
-            available through :meth:`~surpyval.univariate.regression.
-            semi_parametric_regression_model.SemiParametricRegressionModel.
-            predict_tvc`.
+            The fitted model, with ``is_tvc`` set. Evaluate it along a
+            covariate path with ``sf_tvc`` / ``Hf_tvc`` (or the
+            interval-oriented ``predict_tvc``); its cluster-robust standard
+            errors cluster the rows by subject.
+
+        Examples
+        --------
+        Seven subjects; four of them move from ``Z = 0`` to ``Z = 1`` part
+        way through follow-up, so they contribute two rows each, and only
+        the row ending in an event carries ``c = 0``:
+
+        >>> from surpyval import CoxPH
+        >>> from surpyval.univariate.regression import StepSchedule
+        >>> i  = [0, 0, 1, 2, 2, 3, 4, 4, 5, 6]
+        >>> xl = [0, 2, 0, 0, 1, 0, 0, 3, 0, 0]
+        >>> xr = [2, 5, 3, 1, 4, 6, 3, 7, 2, 8]
+        >>> c  = [1, 0, 0, 1, 0, 1, 1, 0, 0, 1]
+        >>> Z  = [0, 1, 0, 0, 1, 0, 0, 1, 1, 0]
+        >>> model = CoxPH.fit_tvc(i, xl, xr, c, Z)
+        >>> model.beta.round(4)
+        array([1.6982])
+
+        Survival of a unit that switches to ``Z = 1`` at time 2:
+
+        >>> path = StepSchedule.from_changepoints([0, 2], [[0], [1]])
+        >>> model.sf_tvc([1, 3, 5], path).round(4)
+        array([1.    , 0.6513, 0.3171])
         """
         x, c, n_arr, tl, Z_arr, ident = handle_tvc(i, xl, xr, c, Z, n)
         model = self.fit(
@@ -1457,8 +1484,10 @@ class CoxPH_:
             event, ``1`` right-censored).
         n : array_like, optional
             Per-subject count weight (read from the terminal row).
-        method : {'efron', 'breslow'}, optional
-            Tie-handling method. Default ``'efron'``.
+        method : str, optional
+            Tie-handling method: ``'efron'`` (default), ``'breslow'``,
+            ``'exact'`` or ``'kalbfleisch-prentice'`` (``'kp'``); see
+            :meth:`fit`.
         tol : float, optional
             Optimiser tolerance.
 
