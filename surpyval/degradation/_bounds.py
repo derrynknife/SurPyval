@@ -256,7 +256,10 @@ def bootstrap_cb(
 
     For an *accelerated* (covariate) model pass the stress ``Z`` to
     evaluate at: each resampled unit carries its stress row and the
-    covariate life fit is rerun per resample. The selected path model is
+    covariate life fit is rerun per resample. For a step-stress
+    (``acceleration="clock"``) model ``Z`` is a stress row or a
+    ``StepSchedule``; each resampled unit carries its stress history and
+    the clock is re-estimated per resample. The selected path model is
     held fixed across resamples (matching ``path="best"``'s chosen
     model), so the bound reflects life-fit and extrapolation
     variability, not path re-selection. Refits whose curve is not
@@ -271,6 +274,18 @@ def bootstrap_cb(
     method_name = _on_method(on)
     n_units = len(model.units)
     curves = []
+    # A step-stress (clock) model refits its clock on every resample: each
+    # unit carries its own stress rows, the reference stress is held so the
+    # refits describe the same reference-stress life, and gamma is
+    # re-estimated by the model's own population method.
+    clock = getattr(model, "acceleration", None) == "clock"
+    clock_kwargs: dict = {}
+    if clock:
+        clock_kwargs = {
+            "acceleration": "clock",
+            "stress_ref": model.stress_ref,
+            "population_method": model.population_method,
+        }
     # Each resampled fit may emit the usual small-sample path-covariance
     # warnings; silence them here so a single bootstrap call does not surface
     # hundreds of duplicates.
@@ -285,7 +300,9 @@ def bootstrap_cb(
                 xs.append(model.x[mask])
                 ys.append(model.y[mask])
                 ids.append(np.full(n_meas, new_id))
-                if Z is not None:
+                if clock:
+                    Zs.append(model.Z[mask])
+                elif Z is not None:
                     Zs.append(np.tile(model.Z[idx], (n_meas, 1)))
             try:
                 m = DegradationAnalysis.fit(
@@ -297,6 +314,7 @@ def bootstrap_cb(
                     distribution=model._distribution,
                     how=model._how,
                     Z=None if Z is None else np.concatenate(Zs),
+                    **clock_kwargs,
                 )
                 curve_fn = getattr(m, method_name)
                 curve = np.asarray(
@@ -313,6 +331,11 @@ def bootstrap_cb(
             if Z is not None
             else ""
         )
+        if clock and model._distribution is None:
+            detail = (
+                " (a model restored from a dict does not keep its "
+                "distribution fitter, which the refits need)"
+            )
         raise RuntimeError(
             "The degradation bootstrap produced too few successful refits "
             "to form a confidence bound" + detail + "."

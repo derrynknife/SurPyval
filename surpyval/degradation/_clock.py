@@ -110,3 +110,53 @@ class StressClock:
             knots_t, knots_tau = self._knots(horizon)
         out = np.interp(tau, knots_tau, knots_t)
         return np.where(np.isposinf(tau), np.inf, out)
+
+
+class HistoryClock:
+    """
+    A unit's clock from its measured stress history, continued by a future
+    stress.
+
+    ``Z_rows`` holds the stress over each measurement interval (one row per
+    measurement, the interval ending at it; the first starts at time zero).
+    Up to the last measurement the clock is that history; after it, it runs
+    under ``Z_future`` -- a stress row or a :class:`~surpyval.StepSchedule`
+    whose time zero is the last measurement -- or, by default, the last
+    stress held.
+    """
+
+    def __init__(
+        self,
+        x: npt.NDArray,
+        Z_rows: npt.NDArray,
+        acceleration_factor: Callable[[Any], float],
+        q: int,
+        Z_future: Any = None,
+    ) -> None:
+        order = np.argsort(x, kind="stable")
+        x_sorted = x[order]
+        rates = np.array([acceleration_factor(z) for z in Z_rows[order]])
+        tau_sorted = np.cumsum(
+            np.diff(np.concatenate([[0.0], x_sorted])) * rates
+        )
+        #: reference-stress time at each measurement, aligned to ``x``
+        self.tau = np.empty_like(tau_sorted)
+        self.tau[order] = tau_sorted
+        self.knots_t = np.concatenate([[0.0], x_sorted])
+        self.knots_tau = np.concatenate([[0.0], tau_sorted])
+        self.age = float(x_sorted[-1])
+        self.tau_age = float(tau_sorted[-1])
+        future = Z_rows[order][-1] if Z_future is None else Z_future
+        self.future = StressClock(acceleration_factor, q, future)
+
+    def calendar(self, tau: npt.ArrayLike) -> npt.NDArray:
+        """The calendar time at which the clock reads ``tau`` (``inf``
+        stays ``inf``)."""
+        tau = np.asarray(tau, dtype=float)
+        past = np.interp(tau, self.knots_tau, self.knots_t)
+        ahead = np.maximum(
+            np.where(np.isfinite(tau), tau, 0.0) - self.tau_age, 0.0
+        )
+        future = self.age + self.future.inverse(ahead)
+        out = np.where(tau <= self.tau_age, past, future)
+        return np.where(np.isposinf(tau), np.inf, out)

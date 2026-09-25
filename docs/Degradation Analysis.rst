@@ -245,6 +245,14 @@ g^{-1}(D; \theta_i)` are reference-stress lifetimes, a lifetime distribution
 the clock, :math:`F(t) = F_0(\tau(t))` — at a constant stress simply
 :math:`F_0(\mathrm{AF}(z)\,t)`, the accelerated-failure-time form.
 
+A unit being monitored is predicted on its own clock too. Its measured
+stress history gives the reference-stress time at each measurement, the
+population :math:`N(\mu, \Sigma)` is the prior for its path parameters, and
+each posterior draw's reference-stress failure time :math:`g^{-1}(D;
+\theta)` is carried back to calendar time along the history and the planned
+future stress. The rest of its life therefore depends on the stress plan,
+not only on how degraded it is.
+
 Stochastic-process degradation models
 --------------------------------------
 

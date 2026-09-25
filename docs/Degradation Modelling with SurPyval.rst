@@ -674,11 +674,56 @@ one population of path parameters, so differences between units run at
 different constant stresses identify :math:`\gamma` as well, and it works for a
 classic constant-stress test too.
 
-A few limits of this first version: ``acceleration='clock'`` cannot be combined
-with ``links`` or ``path='best'``, and the life model must be a plain
-distribution, since stress enters through the clock. Remaining-life prediction
-(``predict_rul``), the induced life and the confidence bounds are not yet
-available for a clock model, and each raises an error saying so.
+**Remaining life on a stress plan.** For a unit you are watching, the stress
+matters twice: its *history* sets how far along its reference-stress clock it
+already is, and the *plan* for the rest of its life sets how fast it gets
+through the remainder. ``predict_rul`` takes both: ``Z`` is the unit's history,
+one row per measurement as at fit (or one row for a constant stress), and
+``Z_future`` the stress from its last measurement on — a row, or a
+:class:`~surpyval.StepSchedule` whose time zero is *now* (by default the last
+stress is held). Here is a unit run on the test profile for 150 hours, with two
+plans for what comes next:
+
+.. jupyter-execute::
+
+    new_t = np.arange(10.0, 150.0 + 1e-9, 10.0)
+    new_z = np.select([new_t <= 100], [z_levels[0]], z_levels[1])
+    new_y = 0.9 + 0.022 * np.cumsum(
+        10.0 * np.exp(gamma_true * (new_z - z_levels[0]))
+    ) + rng.normal(0, 0.3, new_t.size)
+
+    plans = {
+        'stay at 75 C': [z_levels[1]],
+        '50 h at 75 C, then 100 C': StepSchedule.from_changepoints(
+            [0, 50], [[z_levels[1]], [z_levels[2]]]),
+    }
+    for name, plan in plans.items():
+        pred = step.predict_rul(new_t, new_y, Z=new_z, Z_future=plan,
+                                random_state=0)
+        lower, upper = pred.rul_interval
+        print(f'{name:26s}: RUL {pred.rul:5.1f} h '
+              f'(95% interval {lower:5.1f} to {upper:5.1f})')
+
+The posterior is taken on the unit's clock against the reference-stress
+population, and each sampled failure time is mapped back to calendar time
+along the history and the plan. ``predict_failure_time`` and
+``predict_remaining_life`` take the same ``Z`` and ``Z_future``.
+``induced_life(Z=...)`` pushes the whole population of paths through the
+threshold under any stress or profile, and the two-stage confidence bounds are
+available by bootstrap: units are resampled with their stress histories and
+the clock is re-estimated on every resample.
+
+.. jupyter-execute::
+
+    induced = step.induced_life(Z=profile, random_state=0)
+    print('induced median life on the profile:', round(induced.median(), 1))
+    step.cb([200.0, 240.0], Z=profile, method='bootstrap', n_boot=100, seed=0)
+
+``acceleration='clock'`` cannot be combined with ``links`` or ``path='best'``,
+and the life model must be a plain distribution, since stress enters through
+the clock. The analytic confidence-bound correction is not derived for a clock
+model, whose pseudo failure times also depend on the estimated clock, so
+``cb`` needs ``method='bootstrap'``.
 
 Stochastic-process degradation models
 -------------------------------------

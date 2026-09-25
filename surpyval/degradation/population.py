@@ -176,33 +176,19 @@ def reml_estimate(
     (gamma, Sigma, sigma2, converged)
         ``gamma`` is the population mean ``mu`` when ``a_mat_list`` is
         not given.
+
+    Notes
+    -----
+    The objective is :func:`_reml_pieces`, evaluated through the Woodbury
+    identity by :func:`reml_estimate_woodbury` (a ``p x p`` computation per
+    unit rather than an ``n_i x n_i`` factorisation) and searched by BFGS.
     """
-    p = x_mat_list[0].shape[1]
     if a_mat_list is None:
         a_mat_list = x_mat_list
-
-    def objective(z: npt.NDArray) -> float:
-        try:
-            return _reml_pieces(z, y_list, x_mat_list, p, a_mat_list)[0]
-        except np.linalg.LinAlgError:
-            return _LARGE
-
-    z0 = _z_from_init(cov_init, sigma2_init, p)
-    result = minimize(
-        objective,
-        z0,
-        method="Nelder-Mead",
-        options={
-            "maxiter": 20_000,
-            "maxfev": 20_000,
-            "xatol": 1e-10,
-            "fatol": 1e-10,
-        },
+    gamma, covariance, sigma2, converged, _ = reml_estimate_woodbury(
+        y_list, x_mat_list, cov_init, sigma2_init, a_mat_list
     )
-    _, gamma, covariance, sigma2 = _reml_pieces(
-        result.x, y_list, x_mat_list, p, a_mat_list
-    )
-    return gamma, covariance, sigma2, bool(result.success)
+    return gamma, covariance, sigma2, converged
 
 
 def _unit_summaries(y_list: list, x_mat_list: list, a_mat_list: list) -> dict:

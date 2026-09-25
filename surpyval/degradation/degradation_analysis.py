@@ -52,7 +52,7 @@ from ._bounds import (
     bootstrap_cb,
     life_parameter_covariance,
 )
-from ._clock import StressClock, stress_row
+from ._clock import HistoryClock, StressClock, stress_row
 from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate, reml_estimate_nonlinear
 from .step_stress import (
@@ -713,12 +713,50 @@ class DegradationModel(SerialisableMixin):
         rate = self.acceleration_factor(self.Z[order][-1])
         return float(x_unit[-1] + (tau - knots_tau[-1]) / rate)
 
-    def _refuse_clock(self, what: str) -> None:
-        if self._is_clock:
-            raise NotImplementedError(
-                "{} is not yet available for a step-stress "
-                "(acceleration='clock') model".format(what)
+    def _history_clock(
+        self, x: npt.NDArray, Z: Any, Z_future: Any
+    ) -> "HistoryClock | None":
+        """
+        A new unit's clock for the trajectory methods: from its measured
+        stress history ``Z`` and, after its last measurement, ``Z_future``.
+        ``None`` for a model without a clock, which refuses both.
+        """
+        if not self._is_clock:
+            if Z_future is not None:
+                raise ValueError(
+                    "Z_future is the stress from now on for a step-stress "
+                    "(acceleration='clock') model; this model has no clock"
+                )
+            return None
+        if Z is None:
+            raise ValueError(
+                "This step-stress (acceleration='clock') model needs the new "
+                "unit's stress history: pass Z with one row per measurement "
+                "(the stress over the interval ending at it, as at fit), or "
+                "one row for a constant stress"
             )
+        assert self.gamma is not None
+        q = self.gamma.size
+        Z_arr = np.asarray(Z, dtype=float)
+        if Z_arr.size == q:
+            Z_arr = np.tile(Z_arr.reshape(1, q), (len(x), 1))
+        elif Z_arr.ndim == 1 and q == 1:
+            Z_arr = Z_arr.reshape(-1, 1)
+        if Z_arr.shape != (len(x), q):
+            raise ValueError(
+                "Z must have one row of {} covariate(s) per measurement, or "
+                "be a single row; got shape {} for {} measurements".format(
+                    q, np.shape(Z), len(x)
+                )
+            )
+        if not np.isfinite(Z_arr).all():
+            raise ValueError("Z must contain only finite values")
+        if (x < 0).any():
+            raise ValueError(
+                "With a step-stress model the measurement times must be "
+                "non-negative: the unit's clock starts at time zero"
+            )
+        return HistoryClock(x, Z_arr, self.acceleration_factor, q, Z_future)
 
     @property
     def _reg(self) -> ParametricRegressionModel:
@@ -857,7 +895,11 @@ class DegradationModel(SerialisableMixin):
         return linked.to_natural(mean)
 
     def predict_failure_time(
-        self, x: npt.ArrayLike, y: npt.ArrayLike
+        self,
+        x: npt.ArrayLike,
+        y: npt.ArrayLike,
+        Z: Any = None,
+        Z_future: Any = None,
     ) -> float:
         """
         Estimate the failure time of a new unit from its (partial)
@@ -873,6 +915,16 @@ class DegradationModel(SerialisableMixin):
             Times at which the new unit's measurements were taken.
         y : array like
             The new unit's degradation measurements.
+        Z : array like, optional
+            For a step-stress (``acceleration="clock"``) model, required:
+            the new unit's stress history, one row per measurement (the
+            stress over the interval ending at it), or one row for a
+            constant stress. The path is fitted on the unit's clock.
+        Z_future : array like or StepSchedule, optional
+            For a step-stress model, the stress from the last measurement
+            on: one row, or a :class:`~surpyval.StepSchedule` whose time
+            zero is the last measurement. Defaults to holding the last
+            stress.
 
         Returns
         -------
@@ -883,9 +935,15 @@ class DegradationModel(SerialisableMixin):
             Returns ``nan`` (with a warning) if the fitted path never
             reaches the threshold.
         """
-        self._refuse_clock("predict_failure_time")
         x_arr, y_arr = self._handle_new_trajectory(x, y)
-        params = self.path_model.fit(x_arr, y_arr)
+        if Z is not None and not self._is_clock:
+            raise ValueError(
+                "predict_failure_time takes Z only for a step-stress "
+                "(acceleration='clock') model"
+            )
+        clock = self._history_clock(x_arr, Z, Z_future)
+        path_x = x_arr if clock is None else clock.tau
+        params = self.path_model.fit(path_x, y_arr)
         t = float(self.path_model.inv_path(self.threshold, *params))
         if not (np.isfinite(t) and t > 0):
             warnings.warn(
@@ -896,10 +954,16 @@ class DegradationModel(SerialisableMixin):
                 stacklevel=2,
             )
             return float("nan")
+        if clock is not None:
+            return float(clock.calendar(t))
         return t
 
     def predict_remaining_life(
-        self, x: npt.ArrayLike, y: npt.ArrayLike
+        self,
+        x: npt.ArrayLike,
+        y: npt.ArrayLike,
+        Z: Any = None,
+        Z_future: Any = None,
     ) -> float:
         """
         Estimate the remaining life of a new unit from its (partial)
@@ -909,11 +973,13 @@ class DegradationModel(SerialisableMixin):
         observed time. A negative value means the fitted path crossed
         the threshold before the last observation (the unit is
         predicted to have already failed); ``nan`` (with a warning)
-        means the fitted path never reaches the threshold.
+        means the fitted path never reaches the threshold. ``Z`` and
+        ``Z_future`` are as for :meth:`predict_failure_time`.
         """
-        self._refuse_clock("predict_remaining_life")
         x_arr, y_arr = self._handle_new_trajectory(x, y)
-        return self.predict_failure_time(x_arr, y_arr) - float(x_arr.max())
+        return self.predict_failure_time(
+            x_arr, y_arr, Z=Z, Z_future=Z_future
+        ) - float(x_arr.max())
 
     def predict_rul(
         self,
@@ -923,6 +989,7 @@ class DegradationModel(SerialisableMixin):
         n_samples: int = 10_000,
         random_state: "int | None" = None,
         Z: Any = None,
+        Z_future: Any = None,
     ) -> RULPrediction:
         """
         Bayesian remaining-useful-life prediction for a new unit.
@@ -969,7 +1036,19 @@ class DegradationModel(SerialisableMixin):
             stress levels. The posterior is taken on the link scale (so a
             log-linked rate stays positive) and pushed through the
             threshold crossing in the same way. Refused for a model
-            without ``links``.
+            without ``links``. For a step-stress
+            (``acceleration="clock"``) model, required: the new unit's
+            stress history, one row per measurement (the stress over the
+            interval ending at it, as at fit), or one row for a constant
+            stress. The posterior is then taken on the unit's clock
+            against the reference-stress population, and each sampled
+            reference-stress failure time is mapped back to calendar time
+            along the unit's history and ``Z_future``.
+        Z_future : array like or StepSchedule, optional
+            For a step-stress model, the stress from the last measurement
+            on: one row, or a :class:`~surpyval.StepSchedule` whose time
+            zero is the last measurement. Defaults to holding the last
+            stress. Refused for other models.
 
         Returns
         -------
@@ -977,7 +1056,6 @@ class DegradationModel(SerialisableMixin):
             Posterior medians, credible intervals, failure
             probabilities, and the parameter posterior.
         """
-        self._refuse_clock("predict_rul")
         # a numerically-zero variance (exact path fits) makes the
         # posterior degenerate; compare against the scale of y
         noise_floor = np.finfo(float).eps * float(np.mean(self.y**2))
@@ -999,12 +1077,14 @@ class DegradationModel(SerialisableMixin):
             raise ValueError("At least one measurement is required")
         if not (np.isfinite(x_arr).all() and np.isfinite(y_arr).all()):
             raise ValueError("x and y must contain only finite values")
-        self.path_model.check_data(x_arr, y_arr)
+        clock = self._history_clock(x_arr, Z, Z_future)
+        path_x = x_arr if clock is None else clock.tau
+        self.path_model.check_data(path_x, y_arr)
 
         linked: "LinkedPathModel | None" = None
-        if Z is None and self.links is None:
+        if clock is not None or (Z is None and self.links is None):
             posterior_mean, posterior_cov = self._path_posterior(
-                x_arr,
+                path_x,
                 y_arr,
                 self.path_model,
                 self.path_param_mean,
@@ -1042,6 +1122,10 @@ class DegradationModel(SerialisableMixin):
             )
         reaches = np.isfinite(failure_times) & (failure_times > 0)
         failure_times = np.where(reaches, failure_times, np.inf)
+        if clock is not None:
+            # reference-stress failure times to calendar time along the
+            # unit's history and future stress
+            failure_times = clock.calendar(failure_times)
 
         age = float(x_arr.max())
         quantiles = [0.5, alpha_ci / 2.0, 1.0 - alpha_ci / 2.0]
@@ -1312,14 +1396,21 @@ class DegradationModel(SerialisableMixin):
             path parameters were modelled against stress (fitted with
             ``links``): the draws are then ``eta ~ N(D(z) gamma, Sigma)``
             on the link scale, mapped through the links to path
-            parameters. Refused for a model without ``links``.
+            parameters. Refused for a model without ``links``, unless it
+            is a step-stress (``acceleration="clock"``) model: then ``Z``
+            is required, as one stress row or a
+            :class:`~surpyval.StepSchedule`, and each draw's
+            reference-stress failure time is read along that stress's
+            clock. The returned distribution records a constant stress
+            row as its ``stress``; under a profile it records none.
 
         Returns
         -------
         InducedFailureDistribution
             The Monte-Carlo induced failure-time distribution.
         """
-        self._refuse_clock("induced_life")
+        if self._is_clock:
+            return self._clock_induced_life(n_samples, random_state, Z)
         linked: "LinkedPathModel | None" = None
         stress: "list[float] | None" = None
         if Z is not None or self.links is not None:
@@ -1356,6 +1447,38 @@ class DegradationModel(SerialisableMixin):
         t = np.where(np.isfinite(t) & (t > 0), t, np.inf)
         return InducedFailureDistribution(
             t, self.threshold, self.path_model.name, stress=stress
+        )
+
+    def _clock_induced_life(
+        self, n_samples: int, random_state: Any, Z: Any
+    ) -> InducedFailureDistribution:
+        """The induced life of a step-stress model under the stress ``Z``:
+        reference-stress failure times from the population of path
+        parameters, read along the stress's clock."""
+        clock = self._clock(Z)
+        mean = np.asarray(self.path_param_mean, dtype=float)
+        rng = np.random.default_rng(random_state)
+        root = psd_root(np.asarray(self.path_param_cov, dtype=float))
+        theta = mean + rng.standard_normal((n_samples, mean.size)) @ root.T
+        with np.errstate(all="ignore"):
+            tau = np.asarray(
+                self.path_model.inv_path(
+                    self.threshold, *(theta[:, k] for k in range(mean.size))
+                ),
+                dtype=float,
+            )
+        tau = np.where(np.isfinite(tau) & (tau > 0), tau, np.inf)
+        assert self.gamma is not None
+        stress = (
+            None
+            if clock.schedule is not None
+            else stress_row(Z, self.gamma.size).tolist()
+        )
+        return InducedFailureDistribution(
+            clock.inverse(tau),
+            self.threshold,
+            self.path_model.name,
+            stress=stress,
         )
 
     def _reg_qf(self, p: npt.ArrayLike, Z: Any) -> npt.NDArray:
@@ -1433,7 +1556,14 @@ class DegradationModel(SerialisableMixin):
         the delta-method / generated-regressor correction
         ``H^{-1} + sum_i v_i (dphi/dt_i)(dphi/dt_i)'``.
         """
-        self._refuse_clock("life_parameter_covariance")
+        if self._is_clock:
+            raise NotImplementedError(
+                "The two-stage life-parameter covariance is not derived for "
+                "a step-stress (acceleration='clock') model, whose pseudo "
+                "failure times also depend on the estimated clock; use "
+                "cb(..., method='bootstrap'), which re-estimates the clock "
+                "on every resample."
+            )
         if self.is_accelerated:
             raise NotImplementedError(
                 "The two-stage life-parameter covariance is not implemented "
@@ -1491,19 +1621,39 @@ class DegradationModel(SerialisableMixin):
             Seed for the bootstrap resampling.
         Z : array like, optional
             Stress vector at which to evaluate the bound; required for an
-            accelerated model, rejected for a plain one.
+            accelerated model, rejected for a plain one. For a step-stress
+            (``acceleration="clock"``) model it is one stress row or a
+            :class:`~surpyval.StepSchedule`, and only
+            ``method='bootstrap'`` is available: units are resampled with
+            their stress histories and the clock is re-estimated on each
+            resample (with the model's ``population_method``, so a
+            ``"reml"`` model's bootstrap takes correspondingly longer).
 
         Returns
         -------
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
-        self._refuse_clock("cb")
         valid = ("sf", "R", "ff", "F", "Hf")
         if on not in valid:
             raise ValueError("`on` must be one of {}".format(valid))
         if bound not in ("two-sided", "lower", "upper"):
             raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        if self._is_clock:
+            self._clock(Z)  # validates the stress
+            if method == "analytic":
+                raise NotImplementedError(
+                    "The two-stage analytic correction is not derived for a "
+                    "step-stress (acceleration='clock') model, whose pseudo "
+                    "failure times also depend on the estimated clock; use "
+                    "method='bootstrap', which re-estimates the clock on "
+                    "every resample."
+                )
+            if method == "bootstrap":
+                return bootstrap_cb(
+                    self, x, on, alpha_ci, bound, n_boot, seed, Z=Z
+                )
+            raise ValueError("`method` must be 'analytic' or 'bootstrap'")
         Z = self._predict_Z(Z)
         if self.is_accelerated:
             if method == "analytic":
