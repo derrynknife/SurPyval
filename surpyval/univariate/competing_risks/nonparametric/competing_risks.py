@@ -299,8 +299,10 @@ class CompetingRisks(SerialisableMixin):
         x : array_like
             Failure or censoring times.
         e : array_like
-            The cause of each failure: any hashable labels. A missing
-            value (``None``, ``NaN``) marks a right-censored row.
+            The cause of each failure: labels of one sortable type (all
+            integers, or all strings, ...), since the causes are sorted to
+            fix their order in ``event_idx_map``. A missing value (``None``,
+            ``NaN``) marks a right-censored row.
         c : array_like, optional
             Censoring flags: 0 a failure (with a cause in ``e``), 1
             right-censored (with ``e`` missing). Derived from ``e`` if not

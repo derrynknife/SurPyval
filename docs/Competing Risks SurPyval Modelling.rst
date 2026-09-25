@@ -537,7 +537,10 @@ independent censoring, and count how often ``p < 0.05``:
     print("rejection rate at 5%%: %.3f" % np.mean(np.array(p_values) < 0.05))
 
 The rejection rate is close to the nominal 5%, as it should be when the null
-hypothesis is true.
+hypothesis is true. Both groups here share one censoring distribution, which
+the test assumes: it weights with a single censoring Kaplan-Meier for the
+pooled sample, and when the groups are censored very differently it rejects
+too often (see the :doc:`Competing Risks Analysis` page).
 
 Gray's test versus a cause-specific log-rank
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -745,19 +748,24 @@ prediction uses it. Read the coefficients from ``betas``.
 itself defaults to ``"breslow"``), ``"breslow"``, ``"exact"`` or
 ``"kalbfleisch-prentice"`` (``"kp"``). The simulated times are continuous, so
 there are no ties and every method gives the same fit. Rounding the times up
-to the next 0.25 creates heavy ties, and then the Breslow approximation pulls
-the coefficients towards zero compared with Efron's:
+to the next 0.25 creates heavy ties (the largest is 107 cause-1 failures at a
+single time):
 
 .. jupyter-execute::
 
     x_tied = np.ceil(x * 4) / 4
-    for tm in ["breslow", "efron"]:
+    for tm in ["breslow", "efron", "exact", "kp"]:
         fit_t = CompetingRisksProportionalHazards.fit(x_tied, Z, e, c=c,
                                                       tie_method=tm)
         print("%-8s cause 1: %s" % (tm, np.round(fit_t.betas[row], 3)))
 
-The exact methods are expensive with this many ties (``"exact"`` refuses more
-than 12 failures tied at one time), so keep them for lightly tied data.
+``"exact"`` averages the partial likelihood over every order in which the
+tied failures could have happened, which is the right treatment when the ties
+come from rounding a continuous time, as here. Efron's approximation is very
+close to it; Breslow's pulls the coefficients towards zero. ``"kp"`` fits a
+different model, one in which time is genuinely discrete, so its coefficients
+are log *odds* ratios rather than log hazard ratios and come out larger. Every
+method is fast, even with ties this heavy.
 
 With ``how="Cox"`` the model has the usual functions, each taking the times,
 one covariate vector ``Z`` and an optional ``event``:

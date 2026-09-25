@@ -81,6 +81,16 @@ def gray_test(
         ``n_groups - 1`` and a small ``p_value`` is evidence the groups'
         cumulative incidence functions differ.
 
+    Notes
+    -----
+    The statistic is a weighted log-rank comparison on the subdistribution
+    risk sets, with one censoring Kaplan-Meier for the pooled sample and the
+    hypergeometric variance; Gray (1988) instead estimates the censoring
+    distribution within each group. The two agree closely when the groups
+    are censored alike. When the groups' censoring distributions differ
+    markedly the pooled weights are biased and the test rejects a true null
+    too often, increasingly so as the sample grows.
+
     Examples
     --------
     Group 1 has twice group 0's hazard of cause ``a``:

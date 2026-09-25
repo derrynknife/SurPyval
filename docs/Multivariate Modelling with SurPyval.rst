@@ -165,7 +165,9 @@ Margins can also be passed **already fitted**. With ``how="IFM"`` they are
 used as they are and only the copula parameter is estimated. This is useful
 when a margin has been fitted with options the copula fit does not pass on,
 or reused from an earlier analysis. (With ``how="MLE"`` a fitted margin only
-supplies the starting values: its parameters are re-estimated jointly.)
+supplies the starting values: it is re-estimated jointly as a plain
+distribution of its family, so an offset, limited-failure or zero-inflated
+option it was fitted with is dropped. Use IFM for such margins.)
 
 .. jupyter-execute::
 

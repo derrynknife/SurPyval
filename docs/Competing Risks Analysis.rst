@@ -451,9 +451,20 @@ Most model quantities are closed-form combinations of the per-cause models:
 the all-cause survival is :math:`\prod_k S_k(t)`, the all-cause hazard is
 :math:`\sum_k h_k(t)`, and the instantaneous incidence of cause :math:`k` is
 :math:`f_k(t)\prod_{j\neq k} S_j(t)`. The CIF integral generally has no closed
-form, so SurPyval evaluates it numerically (trapezoidal integration on a fine
-grid from 0 to the largest requested time), and :math:`F_k(\infty)` is
-evaluated at a time by which the causes have essentially played out.
+form, so SurPyval evaluates it numerically, by the trapezoidal rule on 4,000
+equally spaced points from 0 to the largest requested time, and
+:math:`F_k(\infty)` is evaluated at a time by which the causes have
+essentially played out (a very high quantile of each cause). An equally spaced
+grid is accurate when the incidence builds up smoothly over the range asked
+for, as in the examples on the how-to page. It is not when most of the mass
+sits in a small part of that range: a query that also asks for a time far
+beyond the others coarsens the grid for all of them, a density that is
+infinite at zero (a Weibull shape below one) puts mass the grid cannot
+resolve next to zero, and for a very heavy-tailed cause (a LogNormal with a
+large :math:`\sigma`) the high quantile used for :math:`F_k(\infty)` is so
+far out that the probabilities of the causes no longer sum to one. In those
+cases, compare with the all-cause ``ff``, which is exact: the CIFs should
+sum to it.
 
 Because the parametric model is a full generative model, it can also be
 **simulated**: draw a latent time from every cause's distribution and keep the
@@ -601,7 +612,13 @@ inverse-probability-of-censoring weight
 where :math:`\hat{G}(t)` is the Kaplan-Meier estimate of the *censoring*
 survival function :math:`P(C > t)` (the censored rows play the role of
 "events"). :math:`\hat{G}(t)/\hat{G}(x_i)` is the estimated probability that
-the unit would have remained uncensored from :math:`x_i` to :math:`t`. The
+the unit would have remained uncensored from :math:`x_i` to :math:`t`. One
+:math:`\hat{G}` is estimated from the whole sample, which assumes the
+censoring does not depend on the covariates. :math:`\hat{G}` is evaluated
+right-continuously, at :math:`t` and :math:`x_i` themselves; R's
+``cmprsk::crr`` uses the values just before them, so the two differ slightly
+when censoring times coincide with event times (they agree when there are no
+such ties). The
 coefficients maximise the weighted partial log-likelihood
 
 .. math::
@@ -709,10 +726,20 @@ distribution separately within each group and derives a variance from the
 asymptotic theory of the CIF estimators; SurPyval uses one censoring
 Kaplan-Meier :math:`\hat{G}` for the pooled sample and the hypergeometric
 variance of an ordinary log-rank test computed on the weighted risk sets. The
-two give very similar answers when the groups are censored in a similar way,
-and the test is calibrated in simulation (the how-to page checks this), but
-p-values will not match R's ``cmprsk::cuminc`` to many digits, and they can
-differ more when the groups' censoring patterns are very different.
+two give very similar answers when the groups are censored in the same way,
+and then the test is calibrated in simulation (the how-to page checks this),
+although p-values will not match R's ``cmprsk::cuminc`` to many digits.
+
+The pooled :math:`\hat{G}` is also the test's main limitation: it assumes the
+censoring distribution is the same in every group. If one group is censored
+much more heavily than another, the pooled weights are too large for one
+group's competing failures and too small for the other's, the expected counts
+are biased, and the test rejects a true null too often — increasingly so as
+the sample grows. In a simulation with identical cause-specific hazards in two
+groups of 100, censored exponentially with means 2 and 50, about 13% of the
+p-values fell below 0.05, and with 1,000 per group about 90% did. Check that
+the groups' censoring patterns are similar (for example with a Kaplan-Meier
+curve of the censoring times per group) before relying on the test.
 
 A useful way to see the difference from a cause-specific log-rank: imagine two
 groups with *identical* cause-1 hazards but a much larger cause-2 hazard in the

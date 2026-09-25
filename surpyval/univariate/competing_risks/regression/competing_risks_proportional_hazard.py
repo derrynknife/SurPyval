@@ -304,9 +304,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         self, x: npt.ArrayLike, Z: npt.ArrayLike, event: Any
     ) -> npt.NDArray:
         """
-        Cumulative incidence of cause ``event`` at ``x`` for covariates
-        ``Z``: the probability of failing from that cause by ``x`` with the
-        other causes acting. The cause-specific (``how="Cox"``) model
+        Cumulative incidence of cause ``event`` at ``x`` for one covariate
+        vector ``Z``: the probability of failing from that cause by ``x``
+        with the other causes acting. The cause-specific (``how="Cox"``) model
         integrates the cause's hazard against the all-cause product-limit
         survival; the Fine-Gray model evaluates the subdistribution
         directly.

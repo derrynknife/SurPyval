@@ -10,8 +10,9 @@ univariate :class:`~surpyval.utils.surpyval_data.SurpyvalData`)::
     c ==  2  interval censored (the true value is in [xl, xr])
 
 so that every censoring/truncation type the univariate library supports is
-available per-dimension in the joint likelihood. Weights ``n`` and the
-truncation window ``t`` apply to the whole row.
+available per-dimension in the joint likelihood. A weight (count) ``n``
+applies to the whole row; the truncation window ``t`` is given per row and
+per dimension.
 """
 
 import numpy as np

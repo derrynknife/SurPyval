@@ -54,19 +54,27 @@ class Copula:
         raise NotImplementedError
 
     def du(self, u: Any, v: Any, *params: Any) -> Any:
-        """``dC/du`` -- the h-function. autograd default; override if known."""
+        """``dC/du`` -- the h-function :math:`P(V \\le v \\mid U = u)`.
+
+        The default differentiates :meth:`cdf` with autograd; override it
+        when a closed form is known. ``u`` and ``v`` must have the same
+        shape: the automatic derivative sums over any broadcast axis, so a
+        scalar ``u`` with an array ``v`` returns one summed number.
+        """
         return elementwise_grad(lambda a: self.cdf(a, v, *params))(
             onp.asarray(u, dtype=float)
         )
 
     def dv(self, u: Any, v: Any, *params: Any) -> Any:
-        """``dC/dv``. autograd default; override if known."""
+        """``dC/dv``, the h-function :math:`P(U \\le u \\mid V = v)`.
+        As for :meth:`du`, ``u`` and ``v`` must have the same shape."""
         return elementwise_grad(lambda b: self.cdf(u, b, *params))(
             onp.asarray(v, dtype=float)
         )
 
     def pdf(self, u: Any, v: Any, *params: Any) -> Any:
-        """``d2C/du dv`` -- the copula density. autograd default."""
+        """``d2C/du dv`` -- the copula density. The default differentiates
+        :meth:`du` with autograd; ``u`` and ``v`` must have the same shape."""
         return elementwise_grad(lambda b: self.du(u, b, *params))(
             onp.asarray(v, dtype=float)
         )
@@ -298,6 +306,11 @@ class Copula:
         margins : sequence of length D
             Either surpyval distribution classes (e.g. ``surpyval.Weibull``)
             to be fitted, or already-fitted models exposing ``ff``/``df``.
+            Under ``"IFM"`` a fitted model is used as it is. Under ``"MLE"``
+            it only supplies starting values: it is re-estimated as a plain
+            distribution of its family (``model.dist``), so an offset,
+            limited-failure or zero-inflated option it was fitted with is not
+            kept.
         how : {"IFM", "MLE"}
             ``"IFM"`` (default) fits each margin independently then the
             single copula parameter (robust two-stage estimation).
@@ -382,7 +395,8 @@ class Copula:
         ----------
         params : array like
             The copula parameter(s), e.g. ``[theta]`` (empty for the
-            independence copula).
+            independence copula), inside the family's ``bounds``; the value
+            is not checked.
         margins : sequence of length 2
             Fitted (or ``from_params``) univariate models, one per
             dimension.

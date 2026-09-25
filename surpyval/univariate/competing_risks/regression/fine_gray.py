@@ -215,6 +215,8 @@ class FineGrayModel(SerialisableMixin):
         )
 
     def phi(self, Z: npt.ArrayLike) -> npt.NDArray:
+        """The subdistribution hazard multiplier :math:`e^{\\beta' Z}`, one
+        value per row of ``Z`` (a scalar for a single covariate vector)."""
         return np.exp(np.asarray(Z, dtype=float) @ self.beta)
 
     def cif(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
@@ -257,9 +259,11 @@ class FineGray_:
         F_k(t \\mid Z) = 1 - \\exp\\left(-\\Lambda_{k0}(t)\\,
         e^{\\beta' Z}\\right).
 
-    Estimated by inverse-probability-of-censoring weighting (IPCW).
-    ``FineGray`` (from ``surpyval.univariate.competing_risks``) is an
-    instance of this class; its ``fit`` returns a
+    Estimated by inverse-probability-of-censoring weighting (IPCW), with one
+    Kaplan-Meier censoring distribution for the whole sample, so censoring
+    is assumed not to depend on the covariates. ``FineGray`` (from
+    ``surpyval.univariate.competing_risks``) is an instance of this class;
+    its ``fit`` returns a
     :class:`~surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel`.
     """
 

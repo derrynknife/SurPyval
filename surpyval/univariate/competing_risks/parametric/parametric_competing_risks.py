@@ -187,6 +187,27 @@ class ParametricCompetingRisks(SerialisableMixin):
         :math:`\\int_0^t f_k^{\\mathrm{sub}}(u)\\,du`, the probability of
         having failed from cause ``k`` by ``t``; ``event=None`` gives the
         all-cause incidence :math:`1 - S(t) = \\sum_k \\mathrm{CIF}_k(t)`.
+
+        The integral is evaluated by the trapezoidal rule on 4,000 equally
+        spaced points from 0 to the largest time in ``x``, so every value
+        depends on that largest time. The result is accurate when the
+        incidence builds up smoothly over the requested range; it is not when
+        the requested times span several orders of magnitude or the cause's
+        density is infinite at 0 (a Weibull shape below 1). The all-cause
+        ``ff`` is exact, and the causes' CIFs should sum to it.
+
+        Parameters
+        ----------
+        x : array_like or float
+            Times at which to evaluate the incidence.
+        event : optional
+            The cause; ``None`` for all causes combined.
+
+        Returns
+        -------
+        numpy array or float
+            The cumulative incidence at each time (a float for a scalar
+            ``x``).
         """
         if event is None:
             return self.ff(x)
@@ -205,7 +226,16 @@ class ParametricCompetingRisks(SerialisableMixin):
     def probability_of_cause(self, event: Any) -> Any:
         """
         The eventual probability that a unit fails from ``event``,
-        :math:`\\mathrm{CIF}_k(\\infty)`. These sum to one over all causes.
+        :math:`\\mathrm{CIF}_k(\\infty)`. These sum to one over all causes
+        unless a cause has a cure (limited-failure) fraction.
+
+        It is :meth:`cif` evaluated at a time by which every cause has
+        essentially played out (each cause's quantile at :math:`1 - 10^{-6}`,
+        or where a cured cause's incidence stops rising), so it inherits the
+        accuracy of that numerical integral: for a very heavy-tailed cause
+        (a LogNormal with a large :math:`\\sigma`) that time is so far out
+        that the grid misses the mass and the probabilities no longer sum to
+        one.
         """
         self._check_event(event)
         # Integrate out to where the all-cause incidence has essentially
@@ -390,8 +420,9 @@ class ParametricCompetingRisks(SerialisableMixin):
         x : array_like
             Observed times.
         e : array_like
-            The cause of each observation. A missing value (``None`` / ``NaN``)
-            marks a censored observation with no attributed cause.
+            The cause of each observation: labels of one sortable type (all
+            integers, or all strings, ...). A missing value (``None`` /
+            ``NaN``) marks a censored observation with no attributed cause.
         c : array_like, optional
             Censoring flag (0 observed, 1 right-censored). If omitted it is
             derived from ``e`` -- a missing event is censored, an event present

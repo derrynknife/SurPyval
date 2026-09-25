@@ -88,7 +88,12 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
     def conditional_cdf(
         self, x: npt.ArrayLike, given_dim: int = 0
     ) -> npt.NDArray:
-        """``P(X_other <= x_other | X_d = x_d)`` -- the copula h-function."""
+        """``P(X_other <= x_other | X_d = x_d)`` -- the copula h-function.
+
+        ``given_dim=0`` conditions on the first series, giving
+        :math:`P(X_2 \\le x_2 \\mid X_1 = x_1)`; any other value
+        conditions on the second.
+        """
         x, u, v = self._uv(x)
         if given_dim == 0:
             return onp.asarray(self.copula.du(u, v, *self.params))
@@ -100,7 +105,8 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         size: "int | tuple[int, ...]",
         random_state: "int | None" = None,
     ) -> npt.NDArray:
-        """Draw correlated samples; returns an array of shape ``(size, 2)``."""
+        """Draw ``size`` (an integer) correlated samples: an array of shape
+        ``(size, 2)``, one row per draw."""
         u, v = self.copula.sample_uv(size, self.params, random_state)
         x1 = onp.asarray(self.margins[0].qf(u))
         x2 = onp.asarray(self.margins[1].qf(v))
