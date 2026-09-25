@@ -57,7 +57,9 @@ All three can be combined with stress: units run at elevated or changing stress
 (temperature, voltage, load) to make degradation happen faster, and the model
 then predicts life at the (lower) use stress. How stress enters is its own
 topic, covered in `Accelerated degradation: stress-dependent path
-parameters`_ and `Step-stress degradation: an accelerated clock`_.
+parameters`_ and `Step-stress degradation: an accelerated clock`_, with a
+summary of which to use in `Choosing how stress enters a general-path
+model`_.
 
 Notation
 ~~~~~~~~
@@ -87,8 +89,17 @@ Used throughout the page:
      - the population mean and between-unit covariance of the path parameters
    * - :math:`\sigma^2`
      - the measurement-error variance around a unit's path
+   * - :math:`\hat T_i`, :math:`\phi`
+     - unit :math:`i`'s pseudo failure time, and the parameters of the
+       lifetime distribution fitted to the pseudo failure times
    * - :math:`z`, :math:`\gamma`
-     - a stress (covariate) row, and the coefficients describing its effect
+     - a stress (covariate) row, and the coefficients describing its effect:
+       the fixed effects of a stress-dependent population, or the stress
+       coefficients of the accelerated clock (the section says which)
+   * - :math:`\eta`, :math:`D(z)`
+     - path parameters on a *link* scale (e.g. :math:`\log b`), and the
+       design matrix that maps :math:`\gamma` to their mean at stress
+       :math:`z`
    * - :math:`\mathrm{AF}(z)`, :math:`\tau(t)`
      - the acceleration factor of stress :math:`z`, and the reference-stress
        time a unit has aged by calendar time :math:`t`
@@ -328,12 +339,26 @@ factor). Plain maximum likelihood for variance components is biased low in
 small samples, for the same reason the sample variance divides by
 :math:`n - 1`: it ignores that :math:`\mu` was estimated from the same data.
 **REML** (restricted maximum likelihood) fixes this by maximising the
-likelihood of the part of the data that does not depend on :math:`\mu`; in
-practice it adds a :math:`\log\det(\sum X_i^\top V_i^{-1} X_i)` term to the
-objective, with :math:`\mu` profiled out by generalised least squares. On a
-balanced design (every unit measured at the same times) REML and the corrected
-moments estimate coincide; they differ, and REML is the better estimate, on
-unbalanced data and with few units.
+likelihood of the part of the data that does not depend on :math:`\mu`. With
+:math:`\mu` profiled out by generalised least squares,
+:math:`\hat\mu = \bigl(\sum X_i^\top V_i^{-1} X_i\bigr)^{-1}
+\sum X_i^\top V_i^{-1} y_i`, the quantity minimised over
+:math:`(\Sigma, \sigma^2)` is
+
+.. math::
+
+    -2\ell_R = \sum_i \log\det V_i
+        + \sum_i (y_i - X_i\hat\mu)^\top V_i^{-1} (y_i - X_i\hat\mu)
+        + \log\det\Bigl(\sum_i X_i^\top V_i^{-1} X_i\Bigr)
+
+(up to a constant). The first two terms are the ordinary (ML) Gaussian
+likelihood; the last is the REML adjustment for having estimated :math:`\mu`. On a
+balanced design (every unit measured at the same times, with a path linear in
+its parameters) REML and the corrected moments estimate coincide whenever the
+moments estimate needed no clipping — the two are then different routes to the
+same answer. They differ, and REML is the better estimate, on unbalanced data
+and with few units, where the subtraction :math:`S - \bar V` can go negative
+but a Cholesky-parameterised :math:`\Sigma` cannot.
 
 A **nonlinear** path has no fixed :math:`X_i`, and the marginal likelihood has
 no closed form. The Lindstrom-Bates algorithm [LindstromBates1990]_ (known as
@@ -348,11 +373,28 @@ changes:
    REML step on it to update :math:`(\mu, \Sigma, \sigma^2)`.
 
 On a path that is already linear the linearisation is exact and the loop stops
-after one pass, so the two routes agree. Computationally each REML evaluation
-uses the Woodbury identity, which turns every unit's
-:math:`n_i \times n_i` covariance :math:`V_i` into a
-:math:`p \times p` problem (:math:`p` the number of path parameters), so the
-cost does not grow with the number of measurements per unit.
+after one pass, so the two routes agree.
+
+Computationally, each evaluation of the REML objective needs
+:math:`V_i^{-1}` and :math:`\log\det V_i` for every unit. Writing
+:math:`\Sigma = LL^\top` (its Cholesky factor, which is what is optimised) and
+:math:`M_i = I_p + L^\top X_i^\top X_i L/\sigma^2`, the Woodbury identity gives
+
+.. math::
+
+    V_i^{-1} = \frac{1}{\sigma^2}\Bigl(I - \frac{X_i L\, M_i^{-1} L^\top
+        X_i^\top}{\sigma^2}\Bigr),
+    \qquad
+    \log\det V_i = n_i \log\sigma^2 + \log\det M_i,
+
+so every unit's :math:`n_i \times n_i` problem becomes a :math:`p \times p` one
+(:math:`p` the number of path parameters) on the cross-products
+:math:`X_i^\top X_i`, :math:`X_i^\top y_i`, and the cost does not grow with the
+number of measurements per unit. The objective is minimised over the entries
+of :math:`L` (its diagonal on the log scale, so it stays positive) and
+:math:`\log\sigma` by a quasi-Newton (BFGS) search started from the moments
+estimate. The same machinery is reused, many times over, by the step-stress
+clock below.
 
 Induced failure-time distribution (Lu-Meeker)
 ---------------------------------------------
@@ -423,13 +465,16 @@ Two corrections are available.
   pipeline (path fits, pseudo failure times, life fit) on each resample, and
   take percentiles of the resulting curves. Slower, but it makes no
   first-order approximation, so it is the better choice with few units or long
-  extrapolations, and a useful check on the analytic bounds.
+  extrapolations, and a useful check on the analytic bounds. The path model is
+  held fixed across resamples, so after a ``path="best"`` selection the band
+  does not include the uncertainty of having chosen the shape.
 
 For the accelerated models further down, the analytic correction is not
 derived (the regression life fit, or the estimated clock, adds uncertainty the
 formula above does not capture), and the bootstrap is the method: units are
-resampled together with their stresses and the whole accelerated fit is rerun
-each time.
+resampled together with their stresses (a step-stress unit with its whole
+stress history) and the whole accelerated fit — including, for the clock, the
+estimate of :math:`\gamma` — is rerun each time.
 
 Accelerated degradation: stress-dependent path parameters
 ---------------------------------------------------------
@@ -485,6 +530,17 @@ cumulative hazard is
 so a unit at stress :math:`z` lives :math:`e^{\beta^\top z}` times *shorter* than
 one at :math:`z = 0` (a positive coefficient means higher stress, shorter life).
 Any SurPyval regression fitter can be used instead of AFT.
+
+**Estimation** is the ordinary censored maximum-likelihood regression of the
+triples :math:`(\hat T_i, c_i, z_i)` — a unit whose path never reaches
+:math:`D` enters as right censored, exactly as in the plain analysis. The
+stress must therefore be one value per unit: this model has no notion of a
+stress that changes during a test. **Prediction**: :math:`S(t \mid z)` is the
+life distribution of a unit held at the constant stress :math:`z` for its
+whole life, and its quantiles and mean are read off it numerically. The
+extrapolation to use conditions is carried entirely by the regression's
+functional form in :math:`z` (log-linear, for AFT), fitted to a handful of
+stress levels.
 
 This predicts life at any stress, but it never models *why* life changes. The
 population of path parameters is pooled across the stress levels — it mixes
@@ -599,7 +655,11 @@ happens — it speeds up the unit's clock. A unit at stress :math:`z` ages
     \mathrm{AF}(z) = \exp\!\bigl(\gamma^\top (z - z_{\text{ref}})\bigr)
 
 times faster than at the reference stress :math:`z_{\text{ref}}` (usually the
-use condition, where :math:`\mathrm{AF} = 1`). Under a stress history
+use condition, where :math:`\mathrm{AF} = 1`; if none is given SurPyval uses
+the mean stress over the measurement intervals). The choice of
+:math:`z_{\text{ref}}` decides which stress the fitted path parameters and life
+distribution describe, so passing the use condition lets you read them
+directly. Under a stress history
 :math:`z(s)` it has therefore aged
 
 .. math::
@@ -661,25 +721,91 @@ accelerated one. The information about :math:`\gamma` comes from two places:
 * **Units whose stress steps during the test.** A unit's own slope changes by
   exactly :math:`\mathrm{AF}(z_2)/\mathrm{AF}(z_1)` at a step from :math:`z_1` to
   :math:`z_2` — its own path parameters cannot absorb that, because they are
-  shared by both segments. The two-stage (``moments``) estimate uses only this:
-  for a trial :math:`\gamma` every unit's path is refitted on its clock, and
-  :math:`\gamma` minimises the pooled residual sum of squares (*profile least
-  squares*). With no stepped units it has nothing to go on, and refuses.
+  shared by both segments. The kink in each stepped unit's trace is a direct
+  reading of the acceleration.
 * **Units at different stresses, through the population.** Units share one
   population of path parameters, so if the units at 100 °C all look eight times
   faster than the units at 50 °C, that is not unit-to-unit variation — it is
-  the stress. The mixed-model (``reml``) estimate uses both sources, so it also
-  works for a classic constant-stress test with no steps at all. It maximises
-  the approximate (Lindstrom-Bates) marginal likelihood of all the
-  measurements over :math:`\gamma`, refitting the population at each trial
-  value. A fast joint iteration, with :math:`\gamma` treated as one more fixed
-  effect, first finds the neighbourhood; it would then crawl along the ridge on
-  which a unit's rate and :math:`\gamma` nearly trade off, so the profile
-  likelihood of :math:`\gamma` is maximised directly. That profile uses the
-  plain likelihood rather than REML, because :math:`\gamma` changes the
-  fixed-effects design and REML likelihoods for different designs are not
-  comparable; the population is then estimated by REML at the chosen
-  :math:`\gamma`.
+  the stress. This source needs the population model; per-unit fits alone
+  cannot see it.
+
+The two population methods differ precisely in which of these sources they
+use.
+
+**Two-stage estimate** (``moments``): **profile least squares on the stepped
+units.** For a
+trial :math:`\gamma`, compute every unit's clock
+:math:`\tau_{ij}(\gamma)`, refit its path on that clock by least squares, and
+add up the residuals:
+
+.. math::
+
+    \hat\gamma = \arg\min_\gamma \sum_i \min_{\theta_i}
+        \sum_j \bigl(y_{ij} - g(\tau_{ij}(\gamma); \theta_i)\bigr)^2 .
+
+Because each unit is refitted freely, a unit held at one stress fits equally
+well for *every* :math:`\gamma` and contributes nothing to the choice; only the
+stepped units' kinks move the objective. So this route needs units whose stress
+changes during the test — more precisely, the within-unit variation of the
+stress rows must span every covariate — and it refuses otherwise. With one
+covariate the search is a coarse grid followed by a bounded scalar
+minimisation; with several, a Nelder-Mead search. Once :math:`\hat\gamma` is
+fixed, every unit's path is refitted on its clock and the population
+:math:`(\mu, \Sigma, \sigma^2)` is the ordinary two-stage (Lu-Meeker) moments
+estimate on those clock-time fits.
+
+**Mixed-model estimate** (``reml``): **the population identifies**
+:math:`\gamma` **too.** Here the likelihood is the marginal likelihood of all the
+measurements with the :math:`\theta_i` integrated out against
+:math:`N(\mu, \Sigma)`, so a unit's rate is no longer free: a rate far from
+the population's costs likelihood, and an acceleration that explains why the
+hot units look fast is preferred. It uses both sources, so it also works for a
+classic constant-stress test with no steps at all. As for any nonlinear path,
+the marginal likelihood is approximated by the Lindstrom-Bates (FOCE)
+linearisation, now about the clock as well. The estimation runs in three
+stages:
+
+1. **Joint FOCE iteration.** Treat :math:`\gamma` as one more fixed effect.
+   About each unit's conditional mode :math:`\tilde\theta_i`, linearise the
+   path in both :math:`\theta` and :math:`\gamma`,
+
+   .. math::
+
+       g(\tau_{ij}(\gamma); \theta) \approx g(\tau_{ij}(\gamma_0);
+           \tilde\theta_i)
+           + J_{ij}\,(\theta - \tilde\theta_i)
+           + G_{ij}\,(\gamma - \gamma_0),
+       \qquad
+       G_{ij} = g'(\tau_{ij})\,\frac{\partial\tau_{ij}}{\partial\gamma},
+
+   with :math:`J` the path Jacobian, :math:`g'` the path's slope in time and
+   :math:`\partial\tau_{ij}/\partial\gamma = \sum_{k\le j}
+   \mathrm{AF}(z_{ik})\,\Delta t_{ik}\,(z_{ik} - z_\text{ref})`. That is a
+   linear mixed model with fixed-effects design :math:`[J_i, G_i]` and
+   random-effects design :math:`J_i`, and one Woodbury REML step estimates
+   :math:`(\mu, \gamma)` by GLS together with :math:`(\Sigma, \sigma^2)`.
+   Repeating this moves quickly to the neighbourhood of the estimate.
+2. **Profile likelihood of** :math:`\gamma`. Near the estimate the joint
+   iteration crawls: a unit held at one stress creates a curved ridge along
+   which its rate and :math:`\gamma` nearly trade off. So :math:`\gamma` is
+   then optimised directly: for each trial :math:`\gamma` the clocks are
+   recomputed, the population is refitted by FOCE with :math:`\gamma` held
+   fixed, and the resulting approximate marginal log-likelihood is compared
+   (a Brent search for one covariate, Nelder-Mead for several). This profile
+   uses the *plain* likelihood rather than REML: :math:`\gamma` changes the
+   fixed-effects design, and REML likelihoods for different designs are not
+   comparable.
+3. **Population at** :math:`\hat\gamma`. With the clock fixed, the population
+   :math:`(\mu, \Sigma, \sigma^2)` is estimated by REML, exactly as for a
+   constant-stress nonlinear path.
+
+Each profile evaluation is itself a FOCE fit, so ``reml`` is much slower than
+``moments`` — seconds rather than a fraction of a second on a few dozen
+units — and a
+bootstrap of a ``reml`` clock model reruns all of it on every resample. Use
+``moments`` when every unit is stepped and the test is large; use ``reml``
+when some or all units are held at one stress, when there are few units, or
+when you want the population estimated as well as possible.
 
 Life and prediction on the clock
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -697,9 +823,15 @@ lifetimes, and a lifetime distribution :math:`F_0` is fitted to them. Life under
 because a unit that has aged :math:`\tau(t)` reference hours has exactly the
 reference-stress chance of having failed by then. At a constant stress this is
 :math:`F_0(\mathrm{AF}(z)\,t)`: every quantile divides by :math:`\mathrm{AF}`.
-Under a profile, the density picks up the clock's rate,
-:math:`f(t) = f_0(\tau(t))\,\mathrm{AF}(z(t))`, and the mean life is the
-integral of :math:`1 - F(t)`.
+Under a profile, the density and hazard pick up the clock's rate,
+:math:`f(t) = f_0(\tau(t))\,\mathrm{AF}(z(t))` and
+:math:`h(t) = h_0(\tau(t))\,\mathrm{AF}(z(t))`; a quantile is the calendar
+time at which the clock reaches the reference quantile,
+:math:`t_p = \tau^{-1}\bigl(F_0^{-1}(p)\bigr)`; and the mean life is the
+integral of :math:`1 - F(t)`. The induced (Lu-Meeker) life works the same
+way: draw :math:`\theta \sim N(\mu, \Sigma)`, compute its reference-stress
+failure time :math:`g^{-1}(D; \theta)`, and carry it to calendar time through
+:math:`\tau^{-1}` of the stress history of interest.
 
 A unit being **monitored** is predicted on its own clock. Its measured stress
 history gives the reference-stress time at each of its measurements; the
@@ -710,6 +842,64 @@ carried back to calendar time — through its history if it has already been
 reached, and otherwise through the *planned* future stress from now on. Its
 remaining life therefore depends on the stress plan, not only on how degraded it
 is: the same unit has a shorter remaining life if you intend to run it hotter.
+(The plain least-squares forecast is the same without the prior: fit the path
+to the unit's measurements on its clock, extrapolate to :math:`D`, and carry
+that single reference-stress time back to calendar time.)
+
+.. _deg-choosing-stress:
+
+Choosing how stress enters a general-path model
+-----------------------------------------------
+
+The three accelerated models form a progression, each adding one assumption and
+buying one capability:
+
+1. **Life regression** (``Z``). Assumes only that each unit ran at one stress.
+   Stress acts on the pseudo failure times through a regression life model.
+   Gives the life at any constant stress. Use it when all you need is a life
+   distribution at use conditions from a constant-stress test, and you are
+   content to extrapolate with the regression's form in :math:`z`.
+2. **Stress-dependent population** (``Z`` and ``links``). Adds a model of
+   *which path parameters* stress changes, and how (a link per parameter).
+   Gives, in addition, the population of paths at each stress, and with it a
+   stress-aware Bayesian RUL and an induced life that extrapolates through the
+   mechanism. Use it for a constant-stress test when you know (or want to
+   test) which parameter carries the stress effect — "the rate is Arrhenius,
+   the initial value is not" — and when you will forecast individual units.
+   It lets stress act on each parameter independently, so it can describe
+   stress changing the *shape* of the path; the price is that the stress must
+   be constant within a unit.
+3. **Accelerated clock** (``Z`` and ``acceleration="clock"``). Assumes instead
+   that stress changes only the *speed* of degradation: every parameter's
+   effect is accelerated together, as a rescaling of time. That one assumption
+   is what makes a stress that changes *during* a test tractable (the unit
+   carries on from its current damage at the new speed), so it is the model for
+   step-stress tests, and it also gives life and RUL under any stress plan. It
+   is equally valid for a constant-stress test (with ``reml``).
+
+The last two are close relatives. For the linear path at a constant stress,
+the clock gives :math:`a + b\,\mathrm{AF}(z)\,t`: the intercept is untouched and
+the rate is multiplied by :math:`e^{\gamma^\top(z - z_\text{ref})}` — which is
+exactly ``links={"b": "log"}``, the log-rate linear in :math:`z`. The two then
+differ only in the population: the clock has a normal rate at the reference
+stress, scaled by :math:`\mathrm{AF}` (so its coefficient of variation is the
+same at every stress), the link model a log-normal rate with a common log-scale
+spread. For a curved path they differ more, because the clock can only rescale
+time. For the Gompertz path :math:`a e^{-b e^{-c\,\mathrm{AF}\,t}}` it
+multiplies the rate :math:`c` by :math:`\mathrm{AF}` and leaves the asymptote
+:math:`a` alone; for the power path :math:`a(\mathrm{AF}\,t)^b` it multiplies
+:math:`a` by :math:`\mathrm{AF}^b`, tying the stress effect to the exponent.
+Links let stress act on any parameter independently, so a stress that raises
+the asymptote, or changes the power path's exponent, can only be expressed
+with links. When the data can tell the two apart, the fitted models will
+disagree; when they cannot, the clock's one-coefficient-per-covariate
+description is the more economical.
+
+Whichever you choose, check it the same way: the pseudo-failure life and the
+induced life should agree at the tested stresses, the fitted coefficient
+should be physically plausible (an activation energy of a few tenths of an
+eV, say), and extrapolation to use conditions deserves the most scepticism —
+it is where the chosen form in :math:`z`, not the data, sets the answer.
 
 Stochastic-process degradation models
 --------------------------------------
@@ -734,6 +924,17 @@ pseudo failure times. And a unit's **remaining life** from its current level
 :math:`y` is simply a fresh first passage over the remaining distance
 :math:`D - y`. Two processes cover the common cases, and the choice between them
 is dictated by whether the degradation can *decrease*.
+
+One convention matters in practice. The process starts at :math:`W(0) = 0`,
+so the threshold :math:`D` is the *distance* a new unit must travel. Fitting
+uses only increments and never sees the starting level, but the life
+distribution does: if your units start at a non-zero baseline (an initial
+resistance of 100 Ω, failure at 110 Ω), subtract the baseline — the threshold
+is 10, not 110. The process models are also *homogeneous*: every unit has the
+same drift, so the spread of lifetimes comes entirely from the randomness along
+the path, not from differences between units (random-effect extensions, which
+add unit-to-unit variation in the drift, are surveyed in [Wang2010]_ but are
+not implemented).
 
 The Wiener process
 ~~~~~~~~~~~~~~~~~~~
@@ -771,8 +972,7 @@ The mean life :math:`D/\mu` — distance to failure over average speed — is
 intuitive, and the shape controls how tightly failure times cluster around it
 (more diffusion, more scatter). The drift must be positive for the life to be
 well defined: with :math:`\mu \le 0` the process is not reliably heading toward
-the threshold, so the fit refuses. Wiener degradation models, including
-random-effect extensions, are surveyed in [Wang2010]_.
+the threshold, so the fit refuses.
 
 The Gamma process
 ~~~~~~~~~~~~~~~~~
@@ -844,18 +1044,28 @@ the reference stress and :math:`\gamma` how strongly stress speeds it up. With
 Fitting maximises the same increment likelihood with :math:`\Delta\tau` in place
 of :math:`\Delta t`: given :math:`\gamma` the Wiener parameters still have the
 closed forms above and the Gamma rate is still profiled out, so only
-:math:`\gamma` (and the Gamma shape) needs a numerical search. As for the
-general-path clock, :math:`\gamma` is identified by stress that differs across
-the measurement intervals — between units or within them — and at least two
-distinct stress levels are required.
+:math:`\gamma` (and the Gamma shape) needs a numerical search. :math:`\gamma` is
+identified by stress that differs across the measurement intervals — between
+units or within them — and at least two distinct stress levels are required.
+Unlike the general-path ``moments`` route, a process model needs no steps: all
+units share the same :math:`(\mu, \sigma)` or :math:`(\alpha, \beta)`, so there
+are no unit-specific parameters that could absorb an acceleration, and units
+that simply run at different constant stresses identify :math:`\gamma`
+directly.
 
 Because stress only changes the speed of the clock, the life under any stress
 history is the reference life read at the operational time,
 :math:`F(t) = F_0\bigl(\tau(t)\bigr)` — closed form for both processes, and a
 simple rescaling of time, :math:`F(t) = F_0(\mathrm{AF}(z)\,t)`, at a constant
-stress. For the Wiener process this assumes the stress scales the diffusion
-along with the drift (the ratio :math:`\mu/\sigma^2` is stress-free), which is
-what makes the time-scale model identifiable and the life closed form.
+stress. For the Wiener process this means the stress scales the variance per
+unit time along with the drift (both are multiplied by :math:`\mathrm{AF}`, so
+the ratio :math:`\mu/\sigma^2` is stress-free). That is the defining assumption
+of the time-scale model — stress changes only how fast time passes — and it is
+what makes the life under any profile closed form; a model in which stress
+changed the drift but not the diffusion would be a different model, and is not
+the one fitted here. For the Gamma process, the shape accrues at
+:math:`\alpha\,\mathrm{AF}(z)` per unit time while :math:`\beta` is the same at
+every stress.
 
 Choosing between a path and a process
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -907,8 +1117,9 @@ in the weakest 10 % at one age is in the weakest 10 % at every age. So the
 failure-time distribution is read straight off the fitted degradation
 distribution: for **increasing** degradation (wear, crack growth)
 :math:`F_T(t) = P(Y(t) > D_f)`, and for **decreasing** degradation (strength
-loss) :math:`F_T(t) = P(Y(t) < D_f)`. The direction is inferred from the sign of
-the fitted trend unless it is given. This is the standard destructive-degradation
+loss) :math:`F_T(t) = P(Y(t) < D_f)`. Unless it is given, the direction is
+inferred from the sign of a straight-line trend of the measurements against
+time. This is the standard destructive-degradation
 (degradation-distribution) model; see [Meeker1998]_.
 
 References

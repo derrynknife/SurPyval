@@ -46,8 +46,11 @@ model object:
 
 The page covers, in order: the general-path model (fitting, predicting a new
 unit, the population of paths, the induced life, confidence bounds),
-accelerated and step-stress tests for it, the stochastic-process models (with
-their own stress support), destructive degradation, and saving a fitted model.
+accelerated tests for it in three steps of increasing detail — stress on the
+life, stress on the path parameters, and stress on the clock (which handles
+step-stress tests) — with a summary of which to use, the stochastic-process
+models (with their own stress support), destructive degradation, and saving a
+fitted model.
 
 The data
 ~~~~~~~~
@@ -169,7 +172,14 @@ defaults to nonlinear least squares from an ``_initial_guess`` you supply; a
 path that is linear in its parameters can instead set
 ``linear_in_parameters = True`` and provide a closed-form ``fit`` and its
 (constant) ``jacobian``, which also makes the population estimates below
-exact. Here is a diffusion-limited, square-root path:
+exact. The ``jacobian`` (the derivatives of the path with respect to its
+parameters, used for the estimation covariances, the Bayesian update and REML)
+otherwise defaults to central finite differences, and an optional
+``check_data(x, y)`` can reject data outside the path's domain with a clear
+message. The built-in shapes are importable objects too (``LinearPath``,
+``GompertzPath``, …, and the name-to-object mapping ``PATH_MODELS`` in
+``surpyval.degradation``), so ``path=GompertzPath`` is the same as
+``path="gompertz"``. Here is a diffusion-limited, square-root path:
 
 .. jupyter-execute::
 
@@ -265,8 +275,11 @@ takes into account, and a warning says which unit it was:
     print("censored flags:", with_flat.c)
 
 **Other inputs and options.** Data can come straight from a DataFrame with
-``fit_from_df``, naming the columns; the life distribution and its fitting
-method can be changed with ``distribution`` and ``how``:
+``fit_from_df``, naming the columns (``Z_cols`` names the stress column(s) for
+the accelerated models below, and every other ``fit`` argument passes
+through); the life distribution fitted to the pseudo failure times, and its
+fitting method, can be changed with ``distribution`` and ``how`` (``"MLE"`` by
+default, passed on to the distribution's ``fit``):
 
 .. jupyter-execute::
 
@@ -438,10 +451,24 @@ sensible answer (the truth is 3):
 The estimates land in the same attributes (``path_param_mean``,
 ``path_param_cov``, ``measurement_var``), so ``predict_rul`` and everything else
 work unchanged. :math:`\Sigma` is parameterised by its Cholesky factor, so it is
-positive definite by construction — no clipping. On balanced designs (every
-unit measured at the same times) REML coincides with the corrected moments
-estimate; they differ on unbalanced data and when the unit count is small,
-where REML is preferable. REML requires a positive measurement variance.
+positive definite by construction — no clipping. On a balanced design (every
+unit measured at the same times, with a path linear in its parameters) REML
+coincides with the corrected moments estimate whenever that needed no clipping.
+The twelve units at the top of the page are such a design, and the two methods
+agree to every printed digit:
+
+.. jupyter-execute::
+
+    reml12 = DegradationAnalysis.fit(x, y, i, threshold=450.0,
+                                     population_method="reml")
+    print("moments between-unit sd:", np.sqrt(np.diag(model.path_param_cov)).round(4))
+    print("REML between-unit sd   :", np.sqrt(np.diag(reml12.path_param_cov)).round(4))
+    print("measurement sd         :", round(float(np.sqrt(model.measurement_var)), 4),
+          round(float(np.sqrt(reml12.measurement_var)), 4))
+
+They differ on unbalanced data and when the unit count is small, where REML is
+preferable. The method used is recorded as ``population_method`` on the fitted
+model. REML requires a positive measurement variance.
 
 For path models that are **linear in their parameters** (linear,
 quadratic, logarithmic, Lloyd-Lipow) the design matrix :math:`X_i` is
@@ -525,9 +552,30 @@ two CDFs is the check:
     plt.ylabel("Probability of failure  F(t)")
     plt.legend()
 
-Close agreement (as here) is reassuring; a large gap is a warning that the
-path model, the Gaussian population assumption, or the covariance estimate is
-off.
+Close agreement is reassuring; a large gap is a warning that the path model,
+the Gaussian population assumption, the covariance estimate — or the lifetime
+distribution fitted to the pseudo failure times — is off. Here the medians,
+30.3 and 28.7, differ by about 5 %, but the shapes differ more: the induced
+curve starts later and has the longer right tail. That is the path model
+talking. A failure time :math:`(D - a)/b` with a normally distributed rate
+:math:`b` is right-skewed, and the default Weibull (shape near 5) is not. A
+right-skewed life distribution for the pseudo failure times should then agree
+better, and it does — the LogNormal matches the induced quantiles far more
+closely than the Weibull, and has the lower AIC:
+
+.. jupyter-execute::
+
+    from surpyval import LogNormal
+
+    lognormal_fit = DegradationAnalysis.fit(x, y, i, threshold=threshold,
+                                            distribution=LogNormal)
+    p = [0.05, 0.1, 0.5, 0.9, 0.95]
+    print("quantiles at", p)
+    print("Weibull   :", np.round(model.qf(p), 1))
+    print("LogNormal :", np.round(lognormal_fit.qf(p), 1))
+    print("induced   :", np.round(induced.qf(p), 1))
+    print("AIC Weibull, LogNormal:", round(model.life_model.aic(), 1),
+          round(lognormal_fit.life_model.aic(), 1))
 
 A subtlety the induced distribution surfaces honestly: some draws of
 :math:`\theta` describe paths that **never reach the threshold** (a
@@ -605,7 +653,7 @@ into the general-path model — on the life, on the path parameters, or on the
 clock — compared side by side on the :doc:`Degradation Analysis` page; this
 section takes them in that order.
 
-The simplest: pass the stress as ``Z`` to :meth:`DegradationAnalysis.fit`.
+The simplest: pass the stress as ``Z`` to :meth:`DegradationAnalysis.fit <surpyval.degradation.degradation_analysis.DegradationAnalysis_.fit>`.
 ``Z`` is aligned to ``x`` (one row per measurement, one column per stress
 variable) and must be constant within each unit — a unit is tested at a single
 stress. The paths are fitted exactly as before, and step three fits a
@@ -637,8 +685,11 @@ regression fitter (``AFT(LogNormal)``, ``WeibullPH``, …) is used as given.
     model
 
 The last fitted coefficient is the stress effect (higher stress ⇒ faster
-degradation ⇒ shorter life). The prediction methods now take the stress vector
-``Z`` at which to evaluate life, so life at use conditions is one call:
+degradation ⇒ shorter life); the regression itself is ``model.life_model``,
+``model.Z`` holds one stress row per unit (aligned to ``model.units``), and
+``model.is_accelerated`` is ``True``. The prediction methods now take the
+stress vector ``Z`` at which to evaluate life — and refuse to predict without
+it — so life at use conditions is one call:
 
 .. jupyter-execute::
 
@@ -665,7 +716,7 @@ evaluated at a chosen stress:
 
     t = np.array([50.0, 100.0, 150.0])
     band = model.cb(t, on='sf', method='bootstrap', Z=[0.0],
-                    n_boot=100, seed=0)
+                    n_boot=50, seed=0)
     band                                        # (n, 2): [lower, upper] at Z=0
 
 The analytic (generated-regressor) delta-method correction used for the plain
@@ -682,8 +733,10 @@ The fit above lets stress act only on the pseudo failure times. It never says
 *why* life shortens, and its population of path parameters pools every stress
 level, so it describes no unit actually tested. Passing ``links`` alongside
 ``Z`` models the degradation **mechanism** instead: the named path parameters
-depend on stress, on an ``"identity"`` or ``"log"`` link, and the others are
-common to every unit. Here the degradation rate ``b`` is log-linear in stress
+depend on stress, on an ``"identity"`` link (the parameter itself is linear in
+``Z``) or a ``"log"`` link (its log is, so it stays positive and stress acts
+multiplicatively); the others do not depend on stress, though they still vary
+from unit to unit. Here the degradation rate ``b`` is log-linear in stress
 (with ``Z = 1/T`` that is the Arrhenius relationship) and the starting level
 ``a`` is not:
 
@@ -702,10 +755,24 @@ route as the plain population. The life model is still the covariate
 regression on the pseudo failure times, so ``sf``, ``qf``, ``mean`` and the
 bootstrap bounds all work exactly as above.
 
-What the mechanism adds is a population of paths *at each stress*.
-``path_param_median(Z)`` gives the typical unit's path parameters there, and
-``induced_life(Z=...)`` pushes the whole stress-conditional population through
-the threshold crossing. Inside the tested range it agrees with the regression
+What the mechanism adds is a population of paths *at each stress*: on the link
+scale, :math:`\eta \sim N(D(z)\gamma, \Sigma)`. ``path_param_link_mean(Z)``
+is its mean :math:`D(z)\gamma` (here ``a`` and ``log(b)``), and
+``path_param_link_cov`` its covariance :math:`\Sigma`, the same at every
+stress. ``path_param_median(Z)`` maps the mean through the links to give the
+typical (median) unit's natural-scale path parameters at that stress:
+
+.. jupyter-execute::
+
+    print("link-scale mean at stress 1:", mech.path_param_link_mean([1.0]).round(3))
+    print("median a, b at stress 1    :", mech.path_param_median([1.0]).round(3))
+    print("between-unit sd (link)     :",
+          np.sqrt(np.diag(mech.path_param_link_cov)).round(3))
+
+(The pooled ``path_param_mean`` and ``path_param_cov`` are still computed, but
+they mix every stress level.) ``induced_life(Z=...)`` pushes the whole
+stress-conditional population through the threshold crossing. Inside the
+tested range it agrees with the regression
 life fit; outside it — here at ``-0.5``, below every tested level, as use
 conditions usually are — it is the mechanism rather than a curve through the
 pseudo failure times that carries the extrapolation:
@@ -789,9 +856,12 @@ Here 25 units run for 300 hours — 100 at 50 °C, 100 at 75 °C, then 100 at
     step
 
 The stress coefficient is close to the ``-5000`` simulated (an activation
-energy of :math:`5000 \times 8.617\times10^{-5} \approx 0.43` eV). The path
-parameters, their population (``path_param_mean``, ``path_param_cov``) and the
-pseudo failure times are all on the 50 °C clock, so the life distribution
+energy of :math:`5000 \times 8.617\times10^{-5} \approx 0.43` eV). It is
+stored as ``step.gamma``, with ``step.stress_ref`` the reference stress (the
+mean stress over the measurement intervals if ``stress_ref`` is not given),
+``step.acceleration == 'clock'``, and ``step.Z`` the stress rows as given. The
+path parameters, their population (``path_param_mean``, ``path_param_cov``) and
+the pseudo failure times are all on the 50 °C clock, so the life distribution
 listed is the life *at the reference stress*.
 
 It is worth looking at how the stress rows line up with the measurements around
@@ -816,8 +886,9 @@ model sees instead of calendar time:
     })
 
 ``model.path(t, unit)`` evaluates
-a unit's fitted path in calendar time, along its own stress history, and bends
-at each step:
+a unit's fitted path in calendar time, along its own stress history (holding
+its last stress beyond its last measurement), and bends at each step;
+``model.plot()`` draws every unit this way:
 
 .. jupyter-execute::
 
@@ -831,7 +902,7 @@ at each step:
     plt.ylabel('Degradation')
 
 Every life method takes the stress as ``Z``: one row for a constant stress, or a
-:class:`~surpyval.StepSchedule` for a stress that changes over time. Because
+:class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` for a stress that changes over time. Because
 stress only changes the speed of the clock, life under any history is the
 reference-stress life at the clock time, :math:`F(t) = F_0(\tau(t))`:
 
@@ -855,12 +926,18 @@ reference-stress life at the clock time, :math:`F(t) = F_0(\tau(t))`:
 Where the information about :math:`\gamma` comes from decides the estimation
 method. With the default ``population_method='moments'`` it comes from the
 units whose stress *steps* — the change of slope at a step fixes the
-acceleration — by profile least squares. A unit held at one stress can absorb
-any acceleration into its own rate, so with no steps at all this raises an
-error. ``population_method='reml'`` fits the mixed model instead: units share
-one population of path parameters, so differences between units run at
-different constant stresses identify :math:`\gamma` as well, and it works for a
-classic constant-stress test too. On this stepped test the two agree:
+acceleration — by profile least squares: for each trial :math:`\gamma` every
+unit's path is refitted on its clock, and :math:`\gamma` minimises the pooled
+residual sum of squares. A unit held at one stress can absorb any acceleration
+into its own rate, so with no steps at all this raises an error.
+``population_method='reml'`` fits the mixed model instead: units share one
+population of path parameters, so differences between units run at different
+constant stresses identify :math:`\gamma` as well, and it works for a classic
+constant-stress test too. It maximises the (Lindstrom-Bates) approximate
+marginal likelihood over :math:`\gamma`, then estimates the population by REML
+at that :math:`\gamma` — the details are on the :doc:`Degradation Analysis`
+page. It is the slower of the two (seconds rather than a fraction of a second
+here). On this stepped test the two agree:
 
 .. jupyter-execute::
 
@@ -870,13 +947,43 @@ classic constant-stress test too. On this stepped test the two agree:
                                         population_method='reml')
     print('gamma, moments:', step.gamma.round(0), '  REML:', step_reml.gamma.round(0))
 
+``reml`` is also how a clock is fitted to a classic **constant-stress** test,
+where ``moments`` refuses. Here it is on the four-level test from the start of
+this section, next to the two earlier treatments of the same data. The life
+regression's stress coefficient, the log-rate's stress coefficient under
+``links``, and the clock's :math:`\gamma` all estimate the same quantity (the
+data were simulated with a rate proportional to :math:`e^{0.8 z}`, which for
+the linear path is a clock with :math:`\gamma = 0.8`):
+
+.. jupyter-execute::
+
+    clock_adt = DegradationAnalysis.fit(xd, yd, idd, threshold=100.0, Z=Zd,
+                                        acceleration='clock',
+                                        population_method='reml',
+                                        stress_ref=[0.0])
+    print('life regression coefficient:', round(model.life_model.params[-1], 3))
+    print('links log(b):Z0            :', round(mech.path_param_fixed[-1], 3))
+    print('clock gamma                :', clock_adt.gamma.round(3))
+    for name, fitted in [('regression', model), ('clock', clock_adt)]:
+        print(f'median life at stress -0.5, {name:10s}:',
+              round(float(np.ravel(fitted.qf(0.5, Z=[-0.5]))[0]), 1))
+
+The three coefficients are 0.851, 0.827 and 0.824, and the median life at
+:math:`-0.5`, below every tested level, is 283 from the regression, 273 from
+the clock and 271 from the ``links`` model's induced life above: three routes
+to the same extrapolation, differing by a few percent. That agreement is the
+check to make; a clear disagreement would mean the stress acts on the paths in
+a way one of the models cannot represent. For the linear path the clock and
+``links={'b': 'log'}`` are nearly the same model (the theory page explains
+why), so their closeness is expected.
+
 **Remaining life on a stress plan.** For a unit you are watching, the stress
 matters twice: its *history* sets how far along its reference-stress clock it
 already is, and the *plan* for the rest of its life sets how fast it gets
 through the remainder. ``predict_rul`` takes both: ``Z`` is the unit's history,
 one row per measurement as at fit (or one row for a constant stress), and
 ``Z_future`` the stress from its last measurement on — a row, or a
-:class:`~surpyval.StepSchedule` whose time zero is *now* (by default the last
+:class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` whose time zero is *now* (by default the last
 stress is held). Here is a unit run on the test profile for 150 hours, with two
 plans for what comes next:
 
@@ -913,13 +1020,59 @@ the clock is re-estimated on every resample.
 
     induced = step.induced_life(Z=profile, random_state=0)
     print('induced median life on the profile:', round(induced.median(), 1))
-    step.cb([200.0, 240.0], Z=profile, method='bootstrap', n_boot=100, seed=0)
+    step.cb([200.0, 240.0], Z=profile, method='bootstrap', n_boot=50, seed=0)
 
 ``acceleration='clock'`` cannot be combined with ``links`` or ``path='best'``,
 and the life model must be a plain distribution, since stress enters through
 the clock. The analytic confidence-bound correction is not derived for a clock
 model, whose pseudo failure times also depend on the estimated clock, so
-``cb`` needs ``method='bootstrap'``.
+``cb`` needs ``method='bootstrap'``. With ``population_method='reml'`` every
+bootstrap resample re-runs the mixed-model estimate of the clock, which takes
+seconds per resample; budget ``n_boot`` accordingly.
+
+Which stress model?
+~~~~~~~~~~~~~~~~~~~
+
+The three accelerated general-path models side by side (the reasoning is in
+:ref:`Choosing how stress enters a general-path model <deg-choosing-stress>`
+on the :doc:`Degradation Analysis` page):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 26 26 26
+
+   * -
+     - ``Z``
+     - ``Z`` + ``links``
+     - ``Z`` + ``acceleration='clock'``
+   * - stress within a unit
+     - constant
+     - constant
+     - may change (step-stress)
+   * - stress acts on
+     - pseudo failure times (regression)
+     - chosen path parameters
+     - the time scale of the whole path
+   * - life methods (``sf``, ``qf``, ``mean``, …) take
+     - one stress row
+     - one stress row
+     - a row or a ``StepSchedule``
+   * - ``predict_rul`` prior
+     - pooled population (no ``Z``)
+     - population at the unit's stress (``Z``)
+     - reference population on the unit's clock (``Z``, ``Z_future``)
+   * - ``induced_life``
+     - refused
+     - at a stress row
+     - at a row or a ``StepSchedule``
+   * - ``population_method``
+     - either
+     - either
+     - ``moments`` needs stepped units; ``reml`` works for any test
+   * - ``cb``
+     - bootstrap
+     - bootstrap
+     - bootstrap
 
 Stochastic-process degradation models
 -------------------------------------
@@ -955,6 +1108,13 @@ section: ``x`` (measurement times), ``y`` (degradation measurements) and ``i``
 *increments* between consecutive measurements of a unit, so units can be
 measured at different, irregular times without any special handling — a two-week
 gap simply contributes a larger ``dt``.
+
+One consequence to keep in mind: the fit never sees a unit's starting level,
+but the life distribution assumes every unit starts from degradation ``0`` at
+time ``0``, so ``threshold`` is the *distance* a new unit travels to failure.
+If your measurements start from a baseline (a resistance of 100 Ω that fails at
+110 Ω), subtract it, or pass the distance (``threshold=10``). The examples
+below all start at zero.
 
 The Wiener process
 ------------------
@@ -1086,7 +1246,16 @@ distance. ``predict_rul`` returns its median and an interval:
 The interval widths tell you how much uncertainty remains: a unit close to the
 threshold has a short, tight remaining-life estimate; a fresh unit has a long,
 uncertain one. If the current degradation is already at or beyond the threshold,
-``prob_already_failed`` is ``1`` and the remaining life is ``0``.
+``prob_already_failed`` is ``1`` and the remaining life is ``0``. ``rul`` is a
+``ProcessRUL`` holding ``rul`` (the median), ``rul_interval`` (equal-tailed, at
+level ``alpha_ci``, default ``0.05``) and ``prob_already_failed``. Unlike the
+general-path ``predict_rul`` it needs only the current level, not the unit's
+history — the independent increments make the past irrelevant — and the
+interval reflects the randomness of the process, not uncertainty in the fitted
+``mu`` and ``sigma`` (the process models do not report parameter
+uncertainty). The fitted parameters are ``model.mu`` and ``model.sigma``
+(together, ``model.params``), and ``hf``, ``Hf``, ``df`` and
+``random(size, random_state=...)`` complete the set of life methods.
 
 The Gamma process
 -----------------
@@ -1293,7 +1462,7 @@ life at the reference stress. Every life method now needs a stress, passed as
     print("mean life at 50 C            :", round(model.mean(Z=[z_use]), 1))
     print("mean life at 100 C           :", round(model.mean(Z=[z_levels[2]]), 1))
 
-or a :class:`~surpyval.StepSchedule` for a stress that changes over time. Because
+or a :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` for a stress that changes over time. Because
 stress only changes the speed of the clock, the life under a profile is still
 closed form: :math:`F(t) = F_0(\tau(t))` with :math:`\tau` the operational time.
 Here is the life of a fresh unit on the test profile itself, next to the life at
@@ -1333,8 +1502,12 @@ A few practical points:
   coefficients cannot be estimated and the fit says so.
 * ``Z`` can carry several stresses (e.g. ``[1/T, log V]``); ``gamma`` then has one
   coefficient per column.
-* ``GammaProcess`` works identically; its ``alpha`` (the shape accrual) and
-  ``beta`` are the reference-stress values.
+* ``GammaProcess`` works identically. Its ``alpha`` is the shape accrual at
+  the reference stress (at stress ``z`` the shape accrues at
+  ``alpha * AF(z)``), and ``beta`` is the same at every stress.
+* Unlike the general-path ``moments`` fit, no steps are needed: every unit
+  shares the process parameters, so units at different constant stresses
+  identify ``gamma`` on their own.
 * For the Wiener process the stress scales the diffusion along with the drift.
   That is the assumption that makes the life closed form under any profile.
 * A model fitted without ``Z`` is unchanged and refuses a ``Z`` argument. A
@@ -1388,25 +1561,64 @@ over time (``degradation_quantile``):
     plt.legend()
     plt.xlabel('Age')
 
+The fitted location is ``model.beta`` (intercept and slope on
+:math:`\varphi(t)`) and the scale ``model.sigma``; ``model.direction`` records
+the direction used (``"auto"``, the default, inferred ``"decreasing"`` here
+from the downward trend; pass ``direction=`` to set it).
+
 The response distribution is ``LogNormal`` by default (a positive-valued
-measurement); use ``Normal`` when the response can be negative. The time
-transform :math:`\varphi` is ``"linear"`` by default — ``"log"``, ``"sqrt"``,
-``"reciprocal"`` or ``"best"`` (lowest AICc) are also available. Because the
-fit goes through the distribution's own likelihood, censored measurements — a
-strength below the test floor (left-censored), a specimen that did not break at
-the maximum load (right-censored) — are passed through the ordinary ``c``
-argument, and ``cb`` gives bootstrap confidence bounds on the induced lifetime.
+measurement, whose scatter grows with its level); use ``Normal`` when the
+response can be negative. The time transform :math:`\varphi` is ``"linear"`` by
+default — ``"log"``, ``"sqrt"`` and ``"reciprocal"`` are also available, and
+``"best"`` fits all four and keeps the one with the lowest AICc, reporting
+every score in ``transform_scores``. Because the fit goes through the
+distribution's own likelihood, censored measurements — a strength below the
+test floor (left censored, ``c = -1``), a specimen that did not break at the
+maximum load (right censored, ``c = 1``) — are passed through the ordinary
+``c`` argument, recorded at the bound. Here the strength decays exponentially
+(so its log is linear in age: the ``LogNormal`` default with the linear
+transform), the rig cannot read below 45, and a unit has failed below 50;
+``cb`` gives bootstrap confidence bounds on the induced lifetime by
+resampling specimens and refitting:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(4)
+    age = rng.uniform(1, 40, 200)
+    strength = 100.0 * np.exp(-0.02 * age + rng.normal(0, 0.08, age.size))
+    floor = 45.0                                  # the rig cannot read below 45
+    c = np.where(strength < floor, -1, 0)         # -1: left censored at the floor
+    reading = np.maximum(strength, floor)
+
+    best = DestructiveDegradation.fit(age, reading, threshold=50.0, c=c,
+                                      transform="best")
+    print({name: round(score, 1) for name, score in best.transform_scores.items()})
+    print("selected transform        :", best.transform, "  censored:", (c == -1).sum())
+    print("location, scale           :", best.beta.round(4), round(best.sigma, 4))
+    print("median strength at 10, 40 :", best.median_degradation([10.0, 40.0]).round(1))
+    print("reliability at 25, 35, 45 :", best.sf([25.0, 35.0, 45.0]).round(3))
+    best.cb([25.0, 35.0, 45.0], n_boot=50, seed=0)
+
+The linear transform wins, as simulated; the location recovers
+:math:`\log 100 \approx 4.61` and the slope :math:`-0.02` closely, and the
+median life, where the median strength falls to 50, is at about
+:math:`\ln 2 / 0.02 \approx 35`. ``median_degradation(t)`` is the
+``degradation_quantile(0.5, t)`` of the fitted measurement distribution.
 
 Saving and loading a fitted model
 ---------------------------------
 
-Every fitted degradation model can be serialised to a dictionary or JSON file
-and rebuilt later — the general-path ``DegradationModel``, the stochastic-
-process ``WienerProcessModel`` / ``GammaProcessModel``, the destructive
-``DestructiveDegradationModel``, and the ``InducedFailureDistribution``:
+Every fitted degradation model can be serialised to a plain, JSON-safe
+dictionary with ``to_dict`` and rebuilt with its class's ``from_dict`` — the
+general-path ``DegradationModel``, the stochastic-process
+``WienerProcessModel`` / ``GammaProcessModel``, the destructive
+``DestructiveDegradationModel``, and the ``InducedFailureDistribution`` — or
+with the package-level ``surpyval.from_dict``, which dispatches on the stored
+model type:
 
 .. jupyter-execute::
 
+    import surpyval
     from surpyval.degradation import DegradationAnalysis, DegradationModel
 
     saveable = DegradationAnalysis.fit(
@@ -1419,9 +1631,8 @@ process ``WienerProcessModel`` / ``GammaProcessModel``, the destructive
     reloaded = DegradationModel.from_dict(saveable.to_dict())
     grid = np.array([300.0, 450.0, 600.0])
     print("match:", np.allclose(saveable.sf(grid), reloaded.sf(grid)))
+    print("dispatched:", type(surpyval.from_dict(saveable.to_dict())).__name__)
 
-Use ``to_json`` / ``from_json`` for a file directly, or the package-level
-``surpyval.from_dict``, which dispatches on the stored model type.
 ``DegradationModel`` stores its raw data and everything fitted from it — the
 path parameters, the population, the pseudo failure times, the life model
 (plain or accelerated, through its own serialisation), and for accelerated
@@ -1430,4 +1641,19 @@ models the stresses, ``links`` fixed effects or the clock's ``gamma`` and
 including the *bootstrap* confidence bound. That bound reruns the whole fit on
 resampled units; the fitter it reruns (the lifetime distribution, or for an
 accelerated model the regression fitter such as ``WeibullPH`` or
-``AFT(Weibull)``) is recovered from the restored life model.
+``AFT(Weibull)``) is recovered from the restored life model, so with the same
+seed the reloaded model reproduces the original's band exactly:
+
+.. jupyter-execute::
+
+    print(saveable.cb(grid, method="bootstrap", n_boot=50, seed=1).round(3))
+    print(reloaded.cb(grid, method="bootstrap", n_boot=50, seed=1).round(3))
+
+A few limits. The path model is stored by *name* and resolved among the
+built-in ones, so a model fitted with a custom ``PathModel`` subclass (like
+the square-root path above) cannot be rebuilt. ``DegradationModel``, the
+process models and ``InducedFailureDistribution`` also have ``to_json(path)``
+and ``from_json(path)`` for writing a file directly (``surpyval.from_json``
+reads any of them); the destructive model has only ``to_dict`` /
+``from_dict``, and it does not store its data, so a reloaded destructive
+model predicts but cannot compute bootstrap bounds.
