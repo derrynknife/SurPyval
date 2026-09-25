@@ -4,6 +4,105 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Bug fixes found in the second documentation review.** Each was
+  reproduced first and has a regression test that fails on the old code;
+  documentation describing the old behaviour was updated.
+
+  *Non-parametric.*
+
+  - **Turnbull confidence bounds stepped a piece too early.** The variance
+    at each value included the next piece's expected failures, so ``cb()``
+    on interval-censored data gave ``[0, 1]`` where the estimate was 1. The
+    ``r``, ``d`` and variance ladders now line up with ``R``; the
+    Kaplan-Meier option without truncation starts the EM on Turnbull's
+    innermost intervals; MPP fits with ``heuristic='Turnbull'`` pair each
+    failure with the CDF after its drop (their estimates move slightly).
+  - ``smoothed_hf()`` works on Turnbull models; Turnbull ``bootstrap_cb()``
+    refits with the fit's ``tol`` and ``max_iter``; Greenwood's variance no
+    longer blows up (about 1e14) from round-off at the last value.
+  - ``'Benard'`` plotting positions use Benard's (i - 0.3)/(N + 0.4); an
+    unknown ``turnbull_estimator`` raises a ``ValueError`` up front.
+
+  *Parametric.*
+
+  - **Distribution parameters named** ``p`` **clashed with the
+    limited-failure proportion.** ``param_cb('p')`` on a Geometric or
+    NegativeBinomial now bounds the distribution's own ``p``, and
+    ``lfp=True`` works for them (the proportion is named ``lfp_p``).
+  - **Uniform MLE with censoring was not the maximum.** ``(min, max)`` is
+    used only for exact data; censored data gets a bounded search (``b =
+    24.75``, not 10, in the reported example).
+  - **Method of moments could return its start as the fit.**
+    Beta-Geometric MOM has a closed form, non-finite moments at the start
+    raise, and the search backs away from regions without moments. With
+    ``fixed``, MOM matches one moment per free parameter.
+  - ``CustomDistribution`` gains finite moments and ``var()``, a fast MOM,
+    and the standard MPP refusal; ``offset=True`` is refused for discrete
+    distributions; ``param_cb('gamma')`` and unknown names give clear
+    errors; ``var()`` of LFP and zero-inflated models follows ``mean()``'s
+    convention; the MSE/MPS fallback ends on Nelder-Mead as documented.
+  - The gradients of the incomplete gamma/beta helpers had the wrong shape
+    when a scalar argument met an array partner (NegativeBinomial fits
+    that differentiate the CDF crashed).
+
+  *Information criteria.*
+
+  - **AIC, AICc and BIC count only estimated parameters.** Fixed
+    parameters (and the accelerated-life placeholder) no longer add to
+    ``k``, in parametric and regression models; restored models agree.
+    A Weibull with its shape fixed now scores the same as the equivalent
+    Rayleigh, and ``AcceleratedLife(Weibull, Power)`` AICs drop by 2.
+  - Recurrent models use one BIC sample size, the number of exactly
+    observed events (it was every row, or only failures for ARI).
+
+  *Regression.*
+
+  - **The exact Cox tie methods are fast.** ``'kp'`` uses the
+    Gail-Lubin-Rubinstein recursion and ``'exact'`` the DeLong-Guirguis-So
+    integral, with analytic score and information: a 107-way tie that took
+    over nine minutes fits in 0.06 s, and the twelve-tie cap is gone.
+  - **Cox silently fitted left-censored rows as right-censored** and
+    failed on interval rows; both are refused with a clear error.
+    ``CoxPH.fit_from_df`` gains ``tl_col``, and strata labels follow the
+    missing-covariate row mask.
+  - **A parametric regression fit could return its starting values** when
+    the start's log-likelihood was infinite; it now falls back to the
+    default start with a warning, or raises.
+  - ``AH(...).random`` works with several covariate rows; the unreachable
+    accelerated-life ``(low, high)`` stress option is removed and a scalar
+    stress works; additive-hazards fits held at the positivity boundary
+    warn; ``FrailtyModel`` gains ``neg_ll``/``aic``/``bic``/``aic_c`` and
+    is warning-free near :math:`\theta = 0`.
+
+  *Competing risks and copulas.*
+
+  - ``gray_test`` counted a NaN cause as a competing failure (only
+    ``None`` was censored); it uses the shared missing-cause rule.
+  - ``CompetingRisksProportionalHazards`` (Cox and Fine-Gray) can be saved
+    and restored, reproducing every prediction.
+  - Copula fits start strictly inside the family's bounds and take a public
+    ``init``; ``CopulaModel`` reports ``log_likelihood``, ``neg_ll()``,
+    ``aic()`` and ``bic()`` from the full censored and truncated
+    likelihood.
+
+  *Recurrent events.*
+
+  - **The cause-specific MCF's bounds were too narrow**: it used the
+    per-step variance; each cause now gets the Lawless-Nadeau robust
+    variance. The per-step variance itself was wrong with ties.
+  - The non-parametric MCF accepts right truncation (``tr``); models
+    without data raise an informative error; G1, ARI and NHPP fits are
+    warning-free (NHPP searches run on an unconstrained scale, moving
+    fitted values only within the optimiser tolerance); the renewal
+    goodness-of-fit bootstrap resimulates each item as it was observed.
+
+  *Degradation.*
+
+  - Offset-exponential models could not be reloaded; every built-in path
+    now round-trips. ``DestructiveDegradationModel`` gains
+    ``to_json``/``from_json`` and keeps its data, so a reloaded model's
+    ``cb`` matches the original.
+
 - **Bug fixes found while rewriting the documentation.** Each was
   reproduced first, is covered by a new test, and the documentation that
   described the old behaviour (or a workaround for it) has been updated.
