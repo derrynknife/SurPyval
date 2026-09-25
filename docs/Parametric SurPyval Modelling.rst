@@ -12,6 +12,25 @@ the package (non-parametric, regression, recurrent, competing-risks and
 copula). See :doc:`Data Wrangler Examples` for worked examples that combine
 them and convert between input formats.
 
+On top of the data, ``fit`` takes the options that describe the *model* and
+how to estimate it. Each is demonstrated below:
+
+- ``how``: the estimation method, one of ``'MLE'`` (the default), ``'MPS'``,
+  ``'MSE'``, ``'MPP'`` or ``'MOM'``;
+- ``offset=True``: add a threshold (shift) parameter ``gamma``;
+- ``lfp=True``: a limited failure population, where only a proportion ``p``
+  can ever fail;
+- ``zi=True``: zero inflation, where a proportion ``f0`` fails at time zero;
+- ``fixed``: a dictionary of parameters to hold at known values;
+- ``init``: a starting point for the optimiser;
+- ``heuristic``, ``rr``, ``on_d_is_0`` and ``turnbull_estimator``: options for
+  probability plotting.
+
+What each estimation method optimises, and why each accepts the data it does,
+is explained in :doc:`Parametric Estimation`. The API reference for every
+distribution is listed in :doc:`surpyval.parametric`, and the fitted model
+object is documented in :doc:`Parametric model API <univariate/parametric_class>`.
+
 Complete Data
 -------------
 
@@ -41,15 +60,153 @@ The :code:`model` object from the above example can be used to calculate the den
 
     from matplotlib import pyplot as plt
 
-    x = np.linspace(10, 50, 1000)
-    f = model.df(x)
-    plt.plot(x, f)
+    x_plot = np.linspace(10, 50, 1000)
+    f = model.df(x_plot)
+    plt.plot(x_plot, f)
 
 The CDF :code:`ff()`, Survival (or Reliability) :code:`sf()`, hazard
 rate :code:`hf()`, or cumulative hazard rate :code:`Hf()` can be computed as
 well. This functionality makes it very easy to work with surpyval models to
 determine risks or to pass the function to other libraries to find optimal
 trade-offs.
+
+Working with a fitted model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The fitted parameters are in ``model.params``, in the order given by the
+distribution's ``param_names``, and each is also available by name:
+
+.. jupyter-execute::
+
+    print(model.dist.param_names, model.params)
+    print("alpha =", model.alpha, " beta =", model.beta)
+
+Every function of the distribution is a method of the model. As well as the
+five functions above there is the quantile function ``qf`` (the inverse of
+the CDF, so ``model.qf(0.1)`` is the "B10 life" by which 10% have failed), the
+conditional survival ``cs(x, X)`` (the probability of surviving a further
+``x`` given survival to ``X``), and the summary statistics:
+
+.. jupyter-execute::
+
+    t = np.array([20., 30., 40.])
+    print("R(t)   :", model.sf(t))
+    print("F(t)   :", model.ff(t))
+    print("h(t)   :", model.hf(t))
+    print("H(t)   :", model.Hf(t))
+    print("B10    :", model.qf(0.1))
+    print("median :", model.qf(0.5))
+    print("P(survive 5 more | survived 25):", model.cs(5, 25))
+    print("mean, variance :", model.mean(), model.var())
+    print("E[X^2], entropy:", model.moment(2), model.entropy())
+
+The distributions can also be used directly, without a model, by passing
+the parameters after ``x``. This is handy for a quick calculation:
+
+.. jupyter-execute::
+
+    surv.Weibull.sf(t, 30., 9.)
+
+Models from known parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Not every model comes from data. A supplier's datasheet, a handbook value or
+an earlier analysis may give you the parameters, and ``from_params`` builds a
+full model from them, with all of the methods above. It also takes the
+structural options as values: ``gamma`` for an offset, ``p`` for a limited
+failure population and ``f0`` for zero inflation (each explained below).
+
+.. jupyter-execute::
+
+    known = surv.Weibull.from_params([30., 9.])
+    print("R(25) =", known.sf(25.))
+
+    shifted = surv.Weibull.from_params([10., 2.], gamma=5.)
+    print(shifted)
+    print("R at 4, 5 and 10:", shifted.sf([4., 5., 10.]))
+
+Nothing can fail before the offset, so the survival of the shifted model is
+exactly one up to ``gamma = 5``.
+
+Some distributions exist *only* in this form. The ``Hypoexponential`` is the
+lifetime of something that must pass through several independent,
+memoryless stages in turn: a load-sharing group whose failure rate changes as
+members fail, or a warm-standby system. Each stage lasts an exponential time
+with its own rate, and the lifetime is their sum. Because the number of
+stages is up to you, it takes any number of rates, and there is no ``fit``:
+you construct it from rates you know (see :doc:`univariate/hypoexponential`).
+
+.. jupyter-execute::
+
+    from surpyval import Hypoexponential
+
+    # Three stages with rates 0.5, 1.5 and 3.0 per unit time
+    standby = Hypoexponential.from_params([0.5, 1.5, 3.0])
+    print(standby)
+    print("mean:", standby.mean())
+    print("R at 1, 2 and 5:", standby.sf([1., 2., 5.]))
+
+The mean is the sum of the stage means, :math:`1/0.5 + 1/1.5 + 1/3 = 3`, as
+it should be. The rates must be distinct: as two rates approach each other the
+closed form becomes numerically unstable, and SurPyval raises an error. When
+every stage has the same rate the sum is an Erlang distribution, which is a
+``Gamma`` with an integer shape:
+
+.. jupyter-execute::
+
+    erlang = surv.Gamma.from_params([3, 1.0])   # three stages, each with rate 1
+    print("R at 1, 2 and 5:", erlang.sf([1., 2., 5.]))
+
+Random samples
+^^^^^^^^^^^^^^
+
+Random samples are drawn with ``random``, either from a distribution with
+given parameters or from a model. They are useful for simulation studies,
+for testing an analysis on data where you know the answer (as the examples
+on this page do), and for Monte Carlo propagation of risk. Seed numpy's
+generator to make them repeatable. A model can also be sampled *truncated*,
+between ``a`` and ``b``:
+
+.. jupyter-execute::
+
+    np.random.seed(1)
+    print(surv.Weibull.random(5, 30., 9.))   # from the distribution
+    print(model.random(5))                   # from a fitted model
+    print(model.random(5, a=25, b=30))       # only values between 25 and 30
+
+A model with a limited failure population returns its sample as
+``(x, c, n, t)`` arrays instead of a single array, because some of the drawn
+units never fail and have to be recorded as right censored. The limited
+failure population section below uses this.
+
+Saving and loading a model
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A fitted model can be stored and restored with ``to_dict`` and
+``surpyval.from_dict``, or written to a JSON file with ``to_json`` and read
+back with ``surpyval.from_json``. The package-level readers work out which
+kind of model wrote the file, so the same call restores a Weibull, a mixture,
+a Royston-Parmar model or any other SurPyval model (see
+:doc:`surpyval.serialisation`).
+
+.. jupyter-execute::
+
+    import os
+    import tempfile
+
+    restored = surv.from_dict(model.to_dict())
+    print(restored.sf(25.), model.sf(25.))
+
+    path = os.path.join(tempfile.mkdtemp(), "weibull.json")
+    model.to_json(path)
+    print(surv.from_json(path).params)
+
+The dictionary holds the parameters and their covariance but, by default, not
+the data. So a restored model can still give Wald confidence bounds, but it
+cannot report its ``neg_ll`` or information criteria, and it cannot compute
+likelihood-ratio bounds, which need the data. Pass ``with_data=True`` to
+``to_dict`` to keep the data and the information criteria; for
+likelihood-ratio bounds, refit.
 
 Using censored data
 -------------------
@@ -59,7 +216,7 @@ Right Censored
 
 A common complication in survival analysis is that all the data is not
 observed up to the point of failure (or death). In this case the data is
-right censored, see the types of data section for a more detailed discussion,
+right censored, see the :doc:`Types of Data` section for a more detailed discussion,
 surpyval offers a very clean and easy way to model this. First, let's create
 a simulated data set:
 
@@ -81,7 +238,7 @@ set to 40. This value is where we stopped observing the events. For all the
 randomly generated values that are above this limit we create the censoring
 flag array c. This array has zeros where the event time was observed, and a 1
 where the value is above the recorded value. For all the values in the data
-that are above 40 we set them to 40. This is a common occurence in survival
+that are above 40 we set them to 40. This is a common occurrence in survival
 analysis and surpyval is designed to accept this input with a simple call:
 
 .. jupyter-execute::
@@ -120,7 +277,7 @@ That is, we set the start of the observations at 10 and flag that all the values
 
     model.plot(heuristic="Turnbull")
 
-The values did not substantially change, although the plot does look different as there are no values below 10.
+The values did not substantially change, although the plot does look different as there are no values below 10. Note the ``heuristic="Turnbull"``: left-censored units have no rank, so the plotting positions have to come from the Turnbull estimator.
 
 
 Intervally Censored
@@ -134,11 +291,11 @@ The next type of censoring that is naturally handled by surpyval is interval cen
     import numpy as np
 
     np.random.seed(30)
-    x = surv.Weibull.random(50, 30, 10.)
+    x = surv.Weibull.random(100, 30, 10.)
     n, xx = np.histogram(x, bins=[20, 23, 26, 29, 32, 35, 38])
     x = np.vstack([xx[0:-1], xx[1:]]).T
 
-In this example we have created the varable x with a matrix of the intervals within which each of the obervations have failed. That is each exact observation has been binned into a window and the x array has an entry [left, right] within which the event failed. We also have the n array that has the count of the failures within the window. With these two values we can make the simple surpyval call:
+In this example we have created the variable x with a matrix of the intervals within which each of the observations have failed. That is each exact observation has been binned into a window and the x array has an entry [left, right] within which the event failed. We also have the n array that has the count of the failures within the window. With these two values we can make the simple surpyval call:
 
 .. jupyter-execute::
 
@@ -146,15 +303,26 @@ In this example we have created the varable x with a matrix of the intervals wit
     model
 
 .. jupyter-execute::
-    :stderr:
 
-    model.plot()
+    model.plot(heuristic="Turnbull")
 
 Again, we have a result that is very close to the original parameters.
-SurPyval can take as input an arbitrary combination of censored data. This is
+SurPyval can take as input an arbitrary combination of censored data. This
 plot also looks to be a great fit! The data at the tails are a little bit
-off, but this is only 50 samples and the core of the model matches the data
+off, but the data are binned into only six intervals and the core of the model matches the data
 quite well.
+
+The same intervals can be given as two separate arrays, ``xl`` for the left
+ends and ``xr`` for the right ends, which is often how inspection data arrive.
+It is the same data, so it is the same fit:
+
+.. jupyter-execute::
+
+    surv.Weibull.fit(xl=xx[:-1], xr=xx[1:], n=n).params
+
+A row with ``xl == xr`` is treated as an exact observation, a row with
+``xr = np.inf`` as right censored and a row with ``xl = -np.inf`` as left
+censored, so these two arrays can describe any mix of censoring.
 
 Mixed Censoring
 ^^^^^^^^^^^^^^^
@@ -176,7 +344,7 @@ Using truncated data
 Left truncated
 ^^^^^^^^^^^^^^
 
-Surpyval has the capacity to handle arbitrary truncated data. A common occurence of this is in the insurance industry data. When customers make a claim on their policies they have to pay an 'excess' which is a charge to submit a claim for processing. If say, the excess on a set of policies in an area is $250, then it would not be logical for a customer to submit a claim for a loss of less than that number. Therefore there will be no claims under $250. This can also happen in engineering where a part may be tested up to some limit prior to be sold, therefore, as a customer you need to make sure you take into account the fact that some parts would have been rejected at the end of the line which you may not have seen. So a washing machine may run through 25 cycles prior to shipping. This is similar to, but distinct from censoring. When something is left censored, we know there was a failure or event below the threshold.  Whereas with truncation, we do not see any variables below the threshold. A simulated example may explain this better:
+Surpyval has the capacity to handle arbitrary truncated data. A common occurrence of this is in the insurance industry data. When customers make a claim on their policies they have to pay an 'excess' which is a charge to submit a claim for processing. If say, the excess on a set of policies in an area is $250, then it would not be logical for a customer to submit a claim for a loss of less than that number. Therefore there will be no claims under $250. This can also happen in engineering where a part may be tested up to some limit prior to be sold, therefore, as a customer you need to make sure you take into account the fact that some parts would have been rejected at the end of the line which you may not have seen. So a washing machine may run through 25 cycles prior to shipping. This is similar to, but distinct from censoring. When something is left censored, we know there was a failure or event below the threshold.  Whereas with truncation, we do not see any variables below the threshold. A simulated example may explain this better:
 
 .. jupyter-execute::
 
@@ -185,7 +353,7 @@ Surpyval has the capacity to handle arbitrary truncated data. A common occurence
 
     np.random.seed(10)
     x = surv.Weibull.random(100, 100, 0.6)
-    # Keep only those values greater than 250
+    # Keep only those values greater than 25
     threshold = 25
     x = x[x > threshold]
 
@@ -214,16 +382,15 @@ But if you take the truncation into account:
 With the plot:
 
 .. jupyter-execute::
-    :stderr:
 
-    model.plot()
+    model.plot(heuristic="Turnbull")
 
 You can see now that the model fits the data much better, but also that the beta parameter is actually below 1. This shows that ignoring the left-truncated data in parametric estimation can lead to errors in prediction.
 
 Right truncated
 ^^^^^^^^^^^^^^^
 
-The example from above can be continued for right-truncated data as well.
+The example from above can be continued for right-truncated data as well. Here the data come from a Normal distribution with a mean of 100 and a standard deviation of 10, but only values between 85 and 115 could be recorded:
 
 .. jupyter-execute::
 
@@ -236,18 +403,20 @@ The example from above can be continued for right-truncated data as well.
     tr = 115
     # Truncate the data
     x = x[(x > tl) & (x < tr)]
+    print(len(x), "values were recorded")
 
-    model = surv.Weibull.fit(x=x, tl=tl, tr=tr)
-    print(model.params)
+    naive = surv.Normal.fit(x)
+    model = surv.Normal.fit(x=x, tl=tl, tr=tr)
+    print("ignoring the truncation :", naive.params)
+    print("with the truncation     :", model.params)
 
 When plotted we get:
 
 .. jupyter-execute::
-    :stderr:
 
-    model.plot()
+    model.plot(heuristic="Turnbull")
 
-From the output above, the number of data points we have has been reduced from the simulated 100, downt to 87. Then with the 87 samples we now have we estimated the parameters to be quite close to the parameters used in the simulation. Further, the plot looks as though the parametric distribution fits the non-parametric distribution quite well.
+From the output above, the number of data points we have has been reduced from the simulated 100, down to 87. Both fits find the centre, but the naive fit badly underestimates the spread: the truncation removed the tails, so the recorded values look less variable than the population really is. Accounting for the truncation moves the estimate of :math:`\sigma` back towards the true value of 10. It cannot recover it completely -- the tails that carry most of the information about the spread were never recorded -- which is a useful reminder that truncation costs information even when it is modelled correctly.
 
 In the cases above we used a scalar value for the truncation values. But some data has individual values for left truncation. This is seen in trials where someone may join the trial as a late entry. Therefore each data point as an entry time. For example:
 
@@ -292,12 +461,19 @@ In the above example we used both the tl and tr. However, surpyval has a flexibl
 
 Which, obviously, gives the same result. This shows the flexibility of the surpyval API, you can use scalar, array, or matrix values for the truncations using the t, tl, and tr keywords with the fit method and surpyval does the rest.
 
+Truncation needs a method that models it. Maximum likelihood handles any
+truncation; MPS handles a single window shared by every observation (scalar
+``tl`` and ``tr``); probability plotting handles it only through the
+non-parametric estimate, with the limitation shown at the end of the section
+on alternate estimation methods below; and MSE and MOM do not accept
+truncated data at all.
+
 Offsets
 -------
 
-Another common feature in survival analysis is a requirement to fit a distribution with an offset. These distributions are sometimes referred to as the two-parameter (e.g. two parameter exponential) three parameter, (e.g., the three three parameter Weibull), or four parameter (e.g four parameter Exponentiated Weibull distribution). SurPyval however just uses an ``offset`` to increase the numbers of parameters and allow the distribution to be shifted.
+Another common feature in survival analysis is a requirement to fit a distribution with an offset. These distributions are sometimes referred to as the two-parameter (e.g. two parameter exponential) three parameter, (e.g., the three parameter Weibull), or four parameter (e.g four parameter Exponentiated Weibull distribution). SurPyval however just uses an ``offset`` to increase the numbers of parameters and allow the distribution to be shifted.
 
-Using data from Weibull's original paper for the strenght of Bofor's steel shows when this might be necessary.
+Using data from Weibull's original paper for the strength of Bofors steel shows when this might be necessary.
 
 .. jupyter-execute::
 
@@ -333,7 +509,7 @@ The above plot does not look to be a good fit. However, if we use an offset we c
 
     model.plot()
 
-This is evidently a much better fit! The offset value for an offset distribution is saved as :code:`gamma` in the model object. Offsets can be used for any distribution whose support is the half real line :math:`(0, \infty)` — such as the Weibull, Gamma, LogNormal, LogLogistic and Exponential. For example:
+This is evidently a much better fit! The offset value for an offset distribution is saved as :code:`gamma` in the model object, and every method of the model -- ``sf``, ``qf``, ``mean`` and the rest -- includes the shift. Offsets can be used for any distribution whose support is the half real line :math:`(0, \infty)` — such as the Weibull, Gamma, LogNormal, LogLogistic, Exponential, Rayleigh and exponentiated Weibull. For example:
 
 .. jupyter-execute::
 
@@ -365,7 +541,7 @@ A four parameter exponentiated Weibull can also be found:
 
     model.plot()
 
-Offsets only make sense for distributions supported on the half real line ``[0, inf)`` - the offset ``gamma`` simply slides the lower bound of the support. A distribution with a finite upper bound, such as the Beta distribution on ``[0, 1]``, therefore cannot be offset, and ``surv.Beta.fit(x, offset=True)`` will raise a ``ValueError``. Sliding the lower bound while pinning the upper bound at 1 does not produce another member of the Beta family. If your data are bounded on both sides and you need to estimate where those bounds are, use the four parameter Beta distribution (``Beta4``) instead, which estimates the lower bound ``a`` and upper bound ``b`` along with the two shape parameters:
+Offsets only make sense for distributions supported on the half real line ``[0, inf)`` - the offset ``gamma`` simply slides the lower bound of the support. A distribution on the whole real line, such as the Normal, can already sit anywhere, so ``surv.Normal.fit(x, offset=True)`` raises a ``ValueError``. A distribution with a finite upper bound, such as the Beta distribution on ``[0, 1]``, cannot be offset either, and ``surv.Beta.fit(x, offset=True)`` will also raise a ``ValueError``. Sliding the lower bound while pinning the upper bound at 1 does not produce another member of the Beta family. If your data are bounded on both sides and you need to estimate where those bounds are, use the four parameter Beta distribution (``Beta4``) instead, which estimates the lower bound ``a`` and upper bound ``b`` along with the two shape parameters:
 
 .. jupyter-execute::
 
@@ -382,7 +558,7 @@ A caution: offset parameters can be unidentifiable
 
 The offset ``gamma`` is a *threshold* parameter, and threshold parameters are statistically awkward. ``gamma`` trades off against the shape and scale parameters, so two very different parameter tuples can describe almost the same distribution. A high-shape Gamma sitting near the origin is, by the central limit theorem, nearly the same bell-shaped curve as a moderate Gamma shifted out to 10. The likelihood surface is correspondingly flat along that trade-off, which makes a threshold fit far more sensitive to its starting point than an ordinary two-parameter fit.
 
-In practice that sensitivity is the estimator's problem to solve, not yours. Shifted Gamma data is recovered by every fit method:
+In practice that sensitivity is the estimator's problem to solve, not yours. Shifted Gamma data is recovered by every fit method that the Gamma supports:
 
 .. jupyter-execute::
 
@@ -413,7 +589,8 @@ This was not always so. Earlier versions could land on an absurd tuple - a negat
 The underlying caution still stands, though, and it is worth keeping in mind for your own data:
 
 - **Judge an offset fit by what it predicts, not only by the printed parameters.** Plot it against the non-parametric estimate, or compare the survival function, quantiles, mean and variance. Two parameter tuples that look very different can imply nearly the same distribution.
-- **If you need ``gamma`` itself to be meaningful** - you are interpreting it as a guaranteed minimum life, say - prefer ``MLE``, which remains the most accurate on the parameters, and treat a single point estimate of a threshold with care regardless of method.
+- **If you need ``gamma`` itself to be meaningful** - you are interpreting it as a guaranteed minimum life, say - prefer ``MLE``, which remains the most accurate on the parameters, and treat a single point estimate of a threshold with care regardless of method. Note that ``gamma`` has no standard error, so ``param_cb`` cannot give an interval for it (see :doc:`Parametric Estimation`).
+- **If the MLE struggles** - a small sample, or a shape that puts an infinite density at the threshold - try ``how='MPS'``, which was designed for exactly this case (see the section on alternate estimation methods below).
 
 ``test_offset_divergence.py`` in the test suite pins this down with measured KL and Wasserstein distances alongside parameter tolerances: ``MLE`` is held to 5% on every parameter across the offsettable distributions, and ``MOM`` to 10%, with the implied distributions essentially identical either way.
 
@@ -436,7 +613,7 @@ Another useful feature of surpyval is the ability to easily fix parameters. For 
 
     model.plot()
 
-You can see that the mu parameter has been fixed at 10. This can work for distribuitons with many more parameters, including the offset.
+You can see that the mu parameter has been fixed at 10. This can work for distributions with many more parameters, including the offset.
 
 .. jupyter-execute::
 
@@ -452,12 +629,42 @@ You can see that the mu parameter has been fixed at 10. This can work for distri
 
     model.plot()
 
-We have fit three of the four parameters for an offset exponentiated-Weibull distribution!
+We have fit only one of the four parameters of an offset exponentiated-Weibull distribution, holding the other three at known values!
+
+Parameters are fixed by name, using the names in the distribution's
+``param_names`` plus ``gamma`` for the offset. Fixing works with ``MLE``,
+``MPS``, ``MSE`` and ``MOM``, but not with probability plotting, which fits
+all of the parameters of its line at once. A fixed parameter is known rather
+than estimated, so it has no standard error and the confidence bounds of the
+other parameters are conditional on it.
+
+Fixing a parameter also reduces how much data a fit needs. SurPyval refuses to
+fit when there are fewer distinct (non-right-censored) values than free
+parameters, because the answer would be arbitrary; a Weibull cannot be fitted
+to a single value. With the shape fixed -- a common practice in reliability,
+where a "Weibayes" analysis assumes a shape from experience -- one value is
+enough:
+
+.. jupyter-execute::
+
+    surv.Weibull.fit([10.], fixed={'beta': 2.}).params
+
+Finally, the optimiser can be given a starting point with ``init`` (in the
+order of ``param_names``, with ``gamma`` first if there is an offset). You
+rarely need it, but if a fit fails, a starting point near the answer -- a
+shape of 1 and a scale near the mean of the data, say -- is the first thing
+to try.
+
+.. jupyter-execute::
+
+    np.random.seed(30)
+    x = surv.Weibull.random(50, 30., 2.)
+    surv.Weibull.fit(x, init=[30., 1.]).params
 
 Modelling with arbitrary input
 ------------------------------
 
-The surpyval API is extremely flexible. All the unique examples provided above can all be used at once. That is, data can be censored, truncated, and directly observed with offsets and fixing parameters. The API is completely flexible. This makes surpyval an extremely useful tool for analysts where the data is gathered in a manner where it's cleanliness is not guaranteed.
+The surpyval API is extremely flexible. All the unique examples provided above can all be used at once. That is, data can be censored, truncated, and directly observed with offsets and fixing parameters. The API is completely flexible. This makes surpyval an extremely useful tool for analysts where the data is gathered in a manner where its cleanliness is not guaranteed.
 
 .. jupyter-execute::
 
@@ -471,10 +678,29 @@ The surpyval API is extremely flexible. All the unique examples provided above c
     model = surv.Normal.fit(x, c=c, tl=tl, tr=tr, fixed={'mu' : 1.})
     print(model)
 
+Data often live in a table. ``fit_from_df`` takes a pandas ``DataFrame`` and
+the names of its columns; ``tl`` and ``tr`` may be a column name or a single
+value, and any other ``fit`` option is passed straight through:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    df = pd.DataFrame({
+        'hours':    [3, 4, 6, 7, 9, 10, 12],
+        'censored': [0, 0, 1, 0, 0, 1, 0],
+        'entry':    [0, 0, 0, 1, 2, 2, 0],
+    })
+    model = surv.Weibull.fit_from_df(df, x='hours', c='censored', tl='entry')
+    print(model.params)
+
 Using alternate estimation methods
 ----------------------------------
 
-Surpyval's API is very flexible because you can change which method is used to estimate parameters. This is useful when a more appropriate method is needed or the method you are using fails.
+Surpyval's API is very flexible because you can change which method is used to estimate parameters. This is useful when a more appropriate method is needed or the method you are using fails. The five methods, what they optimise and what data each accepts are explained in :doc:`Parametric Estimation`; here we see them at work.
+
+When MLE is not the best estimator
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The default parametric method for surpyval is the maximum likelihood estimation (MLE), this is because it can take any arbitrary input. However, the MLE is not always the best estimator. Consider an example with the uniform distribution:
 
@@ -490,7 +716,7 @@ The default parametric method for surpyval is the maximum likelihood estimation 
     mle_model = surv.Uniform.fit(x)
     print(*mle_model.params)
 
-You can see that the results are the same. This is because the maximum likelihood estimate of the parameters of a uniform distriubtion are just the smallest and largest values in the sample. If however we use the 'Maximum Product Spacing' method we get:
+You can see that the results are the same. This is because the maximum likelihood estimate of the parameters of a uniform distribution are just the smallest and largest values in the sample. If however we use the 'Maximum Product Spacing' method we get:
 
 .. jupyter-execute::
 
@@ -499,20 +725,27 @@ You can see that the results are the same. This is because the maximum likelihoo
 
 You can see that using the MPS method we have parameters that are closer to the real values. This is because the MPS method can 'look outside' the existing values to estimate where the real value lies. See the details of this method in the :doc:`Parametric Estimation` section. But the MPS method is useful when you need to estimate the point at which a distribution's support starts or for any distribution that has unknown support. Concretely, this includes any offset distribution or a distribution with a finite upper and lower support (such as the Uniform).
 
-The other important use case is when, for some reason, an alternate estimation method just does not work. For example:
+When an estimation method fails
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The other important use case is when, for some reason, an alternate estimation method just does not work. For example, fitting an offset LogLogistic to only ten points:
 
 .. jupyter-execute::
-    :stderr:
 
     import surpyval as surv
     import numpy as np
+    import warnings
 
     np.random.seed(30)
     x = surv.LogLogistic.random(10, 4., 2) + 10
-    model = surv.LogLogistic.fit(x, how='MLE', offset=True)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = surv.LogLogistic.fit(x, how='MLE', offset=True)
+    print(str(caught[0].message).splitlines()[0])
     model.plot()
 
-This shows, that the Maximum Likelihood Estimation may have failed for this data. However, because we have access to other methods, we can use an alternate estimation method:
+This shows, that the Maximum Likelihood Estimation has failed for this data: SurPyval warns and hands back the optimiser's starting point instead. The message speaks of "MPP results" because for many distributions the starting point is a probability-plot fit; for an offset LogLogistic it is only a rough guess, which is why the fitted curve misses the points. The warning is captured and printed above; in your own code it simply appears as a ``UserWarning``. However, because we have access to other methods, we can use an alternate estimation method:
 
 .. jupyter-execute::
 
@@ -525,13 +758,48 @@ This shows, that the Maximum Likelihood Estimation may have failed for this data
     print(model)
 
 .. jupyter-execute::
-    :stderr:
 
     model.plot()
 
-Our estimation has worked! Even though we used the MPS estimate for the parameters, we can still call all the same functions with the created variable to find the density :code:`df()`, hazard :code:`hf()`, CDF :code:`ff()`, SF :code:`sf()` etc. So regardless of the estimation method, we can still use the model.
+Our estimation has worked! The fit converged and follows the ten points. Do not expect it to return the parameters the data were simulated with (an offset of 10, ``alpha = 4``, ``beta = 2``): ten points say little about a three-parameter distribution, and, as the caution on offsets above explains, quite different parameter sets describe nearly the same curve. Even though we used the MPS estimate for the parameters, we can still call all the same functions with the created variable to find the density :code:`df()`, hazard :code:`hf()`, CDF :code:`ff()`, SF :code:`sf()` etc. So regardless of the estimation method, we can still use the model.
 
 This shows the power of the flexible API that surpyval offers, because if your modelling fails using one estimation method, you can use another. In this case, the MPS method is quite good at handling offset distributions. It is therefore a good approach to use when using offset distributions.
+
+Every method on the same data
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Each method has its own options and its own limits. Probability plotting
+takes the plotting-position ``heuristic`` (any of those listed in
+:doc:`Parametric Estimation`, or ``'Nelson-Aalen'``, ``'Kaplan-Meier'``,
+``'Fleming-Harrington'``, ``'Turnbull'`` and ``'Filliben'``) and the
+regression direction ``rr``. MSE, MPP and MLE accept censored data (MPP
+needs ``heuristic='Turnbull'`` for left- or interval-censored data); MPS
+accepts right- and left-censored but not interval-censored data; MOM needs
+exact observations. Here all five fit the same right-censored sample:
+
+.. jupyter-execute::
+
+    np.random.seed(2)
+    x = surv.Weibull.random(100, 10., 2.)
+    c = (x > 15).astype(int)
+    x = np.minimum(x, 15.)
+
+    for how in ["MLE", "MPS", "MSE", "MPP"]:
+        print(f"{how:<4}", surv.Weibull.fit(x, c, how=how).params)
+    print("MPP with Blom and rr='x'",
+          surv.Weibull.fit(x, c, how="MPP", heuristic="Blom", rr="x").params)
+
+    try:
+        surv.Weibull.fit(x, c, how="MOM")
+    except ValueError as e:
+        print("MOM :", e)
+
+Asking a method for something it cannot do raises a ``ValueError`` (or
+``NotImplementedError``) that says why, rather than returning a quietly wrong
+answer.
+
+Likelihoods and information criteria for any method
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 That extends to the information criteria. A log-likelihood is a property of the
 parameters and the data, not of the search that found them, so ``neg_ll()``,
@@ -556,8 +824,38 @@ that is precisely the quantity it minimises. The others land close behind, each
 optimising something else — MPS the spacings, MSE the distance to the plotting
 positions, MOM the moments.
 
+Comparing distributions
+^^^^^^^^^^^^^^^^^^^^^^^
+
+To choose a distribution, fit the candidates to the same data and compare an
+information criterion; lower is better. ``fit_best`` does this for every
+fittable continuous distribution in SurPyval and returns the winner (see
+:doc:`comparison_and_validation`); ``metric`` may be ``'aic'`` (the default),
+``'aic_c'``, ``'bic'`` or ``'neg_ll'``, and ``include`` or ``exclude`` narrow
+the candidates.
+
+.. jupyter-execute::
+
+    np.random.seed(1)
+    x = surv.Weibull.random(100, 10., 2.)
+
+    for dist in [surv.Weibull, surv.Gamma, surv.LogNormal, surv.Rayleigh]:
+        print(f"{dist.name:<10} AIC = {dist.fit(x).aic():8.2f}")
+
+    best = surv.fit_best(x, include=["Weibull", "Gamma", "LogNormal", "Rayleigh"])
+    print("best:", best.dist.name, best.params)
+
+The data are Weibull with a shape of 2, yet the Rayleigh wins. That is not a
+mistake: the Rayleigh *is* a Weibull with the shape fixed at 2, so it fits
+just as well with one parameter fewer, and the criterion rewards the simpler
+model. Information criteria choose the most economical adequate model, not the
+"true" one; always look at the fit as well.
+
+A warning about truncated data and probability plotting
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 As stated in the Non-Parametric section, there is a risk that using the Turnbull estimator when all
-values are trunctated by the same values. We will now show what happens. First, some example data:
+values are truncated by the same values. We will now show what happens. First, some example data:
 
 .. jupyter-execute::
 
@@ -575,9 +873,8 @@ values are trunctated by the same values. We will now show what happens. First, 
     mpp_model
 
 .. jupyter-execute::
-    :stderr:
 
-    mpp_model.plot()
+    mpp_model.plot(heuristic="Turnbull")
 
 You can see that there is a strange match between the Turnbull estimate of the CDF and the parametric
 model. Also, you can see that the CDF at 90 is near 0% and the CDF at 110 is near 100%. This shows
@@ -589,9 +886,8 @@ that it has not taken into account the truncation. Instead, if we use MLE we get
     model
 
 .. jupyter-execute::
-    :stderr:
 
-    model.plot()
+    model.plot(heuristic="Turnbull")
 
 We can see that the MLE method is a much better fit to this data, further, the MLE estimate of the
 :math:`\sigma` parameter is much closer. The plotting points for the MLE plot
@@ -606,9 +902,13 @@ are truncated by the same value, otherwise it will give a poor fit.
 Mixture Models
 --------------
 
-On occasion, it can appear as though there are one, or two different distributions in the data you are using. On these occasions it can be useful to use a different type of distribuiton; or really, distributions. A mixture model is a distribution made from the partial combination of several distributions. Intuitively, it can be understood as a distribution where there is a proportion that fail for each kind of distribution. So 60% may come from a Weibull(3, 4) distribution but then another 40% come from a Weibull(19, 2) distribution.
+On occasion, it can appear as though there are one, or two different distributions in the data you are using. On these occasions it can be useful to use a different type of distribution; or really, distributions. A mixture model is a distribution made from the partial combination of several distributions. Intuitively, it can be understood as a distribution where there is a proportion that fail for each kind of distribution. So 60% may come from a Weibull(3, 4) distribution but then another 40% come from a Weibull(19, 2) distribution. With weights :math:`w_{j}` that sum to one, the mixture of :math:`m` distributions is
 
-SurPyval uses Expectation-Maximisation to
+.. math::
+
+    F(x) = \sum_{j=1}^{m} w_{j} F_{j}(x), \qquad f(x) = \sum_{j=1}^{m} w_{j} f_{j}(x).
+
+SurPyval uses the Expectation-Maximisation (EM) algorithm to fit a mixture. We do not know which component each unit came from, and EM alternates between two easy problems: given the current fit, compute each unit's probability of belonging to each component (the E step), then refit every component, and the weights, with the units weighted by those probabilities (the M step). Each round cannot decrease the likelihood, and the rounds repeat until it stops changing. A mixture is created with ``MixtureModel(dist, m)`` -- the distribution to use for every component, and the number of components -- and fitted with ``fit``:
 
 .. jupyter-execute::
 
@@ -624,9 +924,15 @@ SurPyval uses Expectation-Maximisation to
     wmm.fit(x)
 
     model.plot(plot_bounds=False)
-    plt.plot(x_, wmm.ff(x_))
+    plt.plot(x_, wmm.ff(x_), color='red')
 
-You can see that the mixture model, in blue, tracks the data more closely than does the single model. SurPyval has incredible flexibility. The number of distributions can be changed by simply changing the value of ``m``, and, the distribution passed to ``dist`` in the mixture can also be changed. Consider:
+You can see that the mixture model, in red, tracks the data more closely than does the single model. The fitted weights and component parameters are shown by printing the mixture:
+
+.. jupyter-execute::
+
+    wmm
+
+SurPyval has incredible flexibility. The number of distributions can be changed by simply changing the value of ``m``, and, the distribution passed to ``dist`` in the mixture can also be changed. Consider:
 
 .. jupyter-execute::
 
@@ -634,10 +940,10 @@ You can see that the mixture model, in blue, tracks the data more closely than d
     import numpy as np
     from matplotlib import pyplot as plt
 
-    np.random.seed(1)
-    x1 = surv.Normal.random(20, -10, 5)
-    x2 = surv.Normal.random(30, 10, 10)
-    x3 = surv.Normal.random(40, 50, 15)
+    np.random.seed(3)
+    x1 = surv.Normal.random(40, -10, 3)
+    x2 = surv.Normal.random(60, 10, 4)
+    x3 = surv.Normal.random(80, 30, 5)
     x = np.concatenate([x1, x2, x3])
     np.random.shuffle(x)
     x_ = np.linspace(np.min(x), np.max(x))
@@ -649,9 +955,33 @@ You can see that the mixture model, in blue, tracks the data more closely than d
     normal.plot(plot_bounds=False)
     plt.plot(x_, gmm.ff(x_), color='red')
 
-It was that simple to create a gaussian mixture model using ``m=3`` and the ``dist=surv.Normal`` parameters. SurPuyval does default to 2 Weibull distributions if neither parameters are provided, but it can take any distribution in SurPyval as an input distribution.
+It was that simple to create a gaussian mixture model using ``m=3`` and the ``dist=surv.Normal`` parameters. There is no default distribution, so ``dist`` must always be given; ``m`` defaults to 2. Any SurPyval distribution can be used as the component distribution. The components are found in the order the EM settles on, so compare them by their parameters rather than their position:
 
-Finally, mixture models can take counts and censoring flags as input (but not, yet, truncation). This makes SurPyval a truly powerful package for your survival analysis.
+.. jupyter-execute::
+
+    print("weights :", gmm.w.round(3))
+    print("(mu, sigma) of each component:")
+    print(gmm.params.round(2))
+
+The weights recover the 40/60/80 split of the simulated data (2/9, 3/9 and 4/9), and the component means sit close to -10, 10 and 30.
+
+Mixture models take counts, censoring flags and truncation as input. Truncation needs care: the truncation window is a property of the whole mixture, not of any one component, so a truncated mixture cannot be split up the way EM needs. For truncated data SurPyval instead maximises the truncation-corrected likelihood directly, starting from the same initial fit. A fitted mixture has ``sf``, ``ff``, ``df``, ``cs``, ``mean`` and ``random``, and it serialises with ``to_dict`` / ``surpyval.from_dict`` like any other model:
+
+.. jupyter-execute::
+
+    np.random.seed(1)
+    x = np.concatenate([surv.Weibull.random(60, 5, 3), surv.Weibull.random(40, 20, 4)])
+    c = (x > 22).astype(int)          # right censor anything still running at 22
+    x = np.minimum(x, 22)
+
+    wmm = surv.MixtureModel(dist=surv.Weibull, m=2)
+    wmm.fit(x, c=c)
+    print("weights:", wmm.w.round(3))
+
+    restored = surv.from_dict(wmm.to_dict())
+    print(restored.sf([5, 10]), wmm.sf([5, 10]))
+
+This makes SurPyval a truly powerful package for your survival analysis. Two cautions: a mixture has many parameters, so it needs a good amount of data (SurPyval refuses a fit with fewer observations than parameters), and the EM finds *a* maximum, which depends on where it starts; with poorly separated components, check that the answer makes sense.
 
 
 Limited Failure Population
@@ -687,12 +1017,24 @@ As an example, we can created a Defective Subpopulation Weibull, also known as a
 
 This API works with any distribution so simply changing ``Weibull`` to ``Exponential`` would create a Defective Subpopulation Exponential / Limited Failure Population Exponential model. Further, if it was changed to ``Gamma`` it would create a Defective Subpopulation Gamma model / Limited Failure Population Gamma.
 
-LFP models can only (as yet) work with ``MLE``. It cannot (yet) work with the other estimation methods. The ``MSE`` is a good candidate for implementation.
+The estimated proportion ``p`` is a parameter like any other, so it has a
+confidence interval, and it changes what the model predicts far into the
+future. The survival function levels off at ``1 - p`` instead of falling to
+zero, and a quantile beyond ``p`` is infinite, because that proportion of the
+population never fails:
+
+.. jupyter-execute::
+
+    print("p =", lfp_model.p, " 95% CI:", lfp_model.param_cb('p'))
+    print("R(1000) =", lfp_model.sf(1000.))
+    print("time by which 70% have failed:", lfp_model.qf(0.7))
+
+LFP models can only (as yet) work with ``MLE``. It cannot (yet) work with the other estimation methods. The ``MSE`` is a good candidate for implementation. Remember too that ``p`` is only well determined when the data follow the units long enough to see the failure curve level off (see :doc:`Parametric Estimation`).
 
 Zero-Inflated Modelling
 -----------------------
 
-In survival analysis you might have the scenario where many failure times are 0, known as being dead on arrival. In this case we need a model that can account for the fact that many will be failed at 0, this is a situation that cannot be handled by regular distribuitons, since most have a 0% chance of failing at 0. Therefore what we need is something that is symmetrical to the LFP/DS case, where a proportion of the failures occur at 0 instead of there being a proportion that will never fail.
+In survival analysis you might have the scenario where many failure times are 0, known as being dead on arrival. In this case we need a model that can account for the fact that many will be failed at 0, this is a situation that cannot be handled by regular distributions, since most have a 0% chance of failing at 0. Therefore what we need is something that is symmetrical to the LFP/DS case, where a proportion of the failures occur at 0 instead of there being a proportion that will never fail.
 
 .. jupyter-execute::
 
@@ -705,7 +1047,7 @@ In survival analysis you might have the scenario where many failure times are 0,
     x = model.random(100)
     model
 
-Using this random data, we can make a fitted model (with the added convenience not offered in the real world of knowing exactly what parameters we are aiming toward).
+Random values from a zero-inflated model come back as a plain array, in which the dead-on-arrival units are exact zeros. Using this random data, we can make a fitted model (with the added convenience not offered in the real world of knowing exactly what parameters we are aiming toward).
 
 .. jupyter-execute::
 
@@ -728,7 +1070,7 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
     dist = surv.LogNormal
     model = dist.from_params([2.2, .2], f0=0.05, p=0.6)
     np.random.seed(10)
-    # Random values from LFP models come in xcn format!!!!!
+    # Random values from LFP models come in xcnt format
     x, c, n, _ = model.random(100)
 
     fitted_model = dist.fit(x, c, n, zi=True, lfp=True)
@@ -738,7 +1080,7 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
 
     fitted_model.plot(plot_bounds=False)
 
-Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data.
+Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data. With both options, ``p`` is the total proportion that ever fails, *including* the ``f0`` that fail at time zero, so here about 4% fail at once and about 58% more fail over time. Zero inflation needs a distribution whose support starts at zero (it is not available for the Normal, say), and like LFP it can only be fitted by ``MLE``.
 
 Flexible parametric (Royston-Parmar)
 ------------------------------------
@@ -791,12 +1133,37 @@ interval-censored data (``c``, or ``xl`` / ``xr``), with left- and/or
 right-truncation and weights (``tl`` / ``tr`` / ``t``, ``n``) — and a fitted
 model serialises with ``to_dict`` / ``from_dict`` like any other.
 
+The ``df=1`` claim is easy to check: on the hazard scale the one-knot-free
+spline is :math:`\ln H(t) = \gamma_{0} + \gamma_{1}\ln t`, which is a Weibull
+with :math:`\beta = \gamma_{1}` and :math:`\alpha = e^{-\gamma_{0}/\gamma_{1}}`.
+The two fits reach the same likelihood. The scale is a modelling choice too,
+and the same AIC comparison picks it; here the data are right censored at 40:
+
+.. jupyter-execute::
+
+    m1 = RoystonParmar.fit(x, df=1)
+    print("RP df=1 :", m1.neg_ll(), " Weibull:", Weibull.fit(x).neg_ll())
+    print("beta =", m1.params[1], " alpha =", np.exp(-m1.params[0] / m1.params[1]))
+
+    c = (x > 40).astype(int)
+    xc = np.minimum(x, 40)
+    for scale in ("hazard", "odds", "normal"):
+        m = RoystonParmar.fit(xc, c=c, df=3, scale=scale)
+        print(f"{scale:<7} AIC={m.aic():8.1f}")
+
+The fitted model has ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``,
+``mean`` and ``random``; its confidence bands (``cb``) are formed on the
+spline's linear predictor and are available on ``'sf'``, ``'ff'`` and
+``'Hf'``. Explicit knots, on the log-time scale and including the two
+boundary knots, can be given with ``knots``. See
+:doc:`univariate/royston_parmar` for the full API.
+
 Discrete Distributions
 ----------------------
 
 Every distribution used so far is *continuous* -- a failure time can be any positive real number. But many reliability problems are naturally *discrete*: an item does not fail after "3.7 cycles", it fails **on** the 4th cycle. A switch is toggled until it breaks, a component absorbs shocks until it fractures, a system is inspected once per period until a defect appears. When the lifetime is a count -- a positive integer -- a discrete distribution is the honest model, and reaching for a continuous one can bias the answer.
 
-*SurPyval* provides three discrete lifetime distributions, all supported on the positive integers :math:`\{1, 2, 3, \dots\}`:
+*SurPyval* provides these discrete lifetime distributions, supported on the positive integers :math:`\{1, 2, 3, \dots\}`:
 
 .. list-table::
    :header-rows: 1
@@ -813,8 +1180,14 @@ Every distribution used so far is *continuous* -- a failure time can be any posi
    * - ``NegativeBinomial``
      - Gamma
      - cycles until the ``r``-th shock
+   * - ``BetaGeometric``
+     - a frailty (mixture) model
+     - decreasing: the frailest units fail first
+   * - ``Discretize(dist)``
+     - any continuous ``dist`` on :math:`[0, \infty)`
+     - that of ``dist``, grouped into whole cycles
 
-They are used exactly like the continuous distributions -- the same ``fit()`` call, the same ``sf``, ``ff``, ``hf``, ``Hf`` and ``df`` methods, and the same support for censoring, truncation, and counts.
+along with the ``Poisson``, a count on :math:`\{0, 1, 2, \dots\}`. They are used exactly like the continuous distributions -- the same ``fit()`` call, the same ``sf``, ``ff``, ``hf``, ``Hf`` and ``df`` methods, and the same support for censoring, truncation, and counts. Two meanings shift slightly, and are explained in :doc:`Parametric Estimation`: ``df`` is the probability *mass* :math:`P(T = k)` and ``sf`` is :math:`P(T > k)`.
 
 The ``Geometric`` distribution is the discrete analogue of the ``Exponential``: each cycle fails independently with a constant probability ``p``, so it is *memoryless*. It models the number of cycles until the first failure.
 
@@ -828,7 +1201,7 @@ The ``Geometric`` distribution is the discrete analogue of the ``Exponential``: 
     x = surv.Geometric.random(200, 0.15)
     surv.Geometric.fit(x)
 
-The ``DiscreteWeibull`` distribution (the Nakagawa-Osaki Type I) is the discrete analogue of the ``Weibull``, and like it has a flexible hazard: ``beta`` controls the shape, with ``beta < 1`` a decreasing (infant-mortality) hazard, ``beta = 1`` the constant-hazard Geometric, and ``beta > 1`` an increasing (wear-out) hazard.
+The ``DiscreteWeibull`` distribution (the Nakagawa-Osaki Type I) is the discrete analogue of the ``Weibull``, and like it has a flexible hazard: ``beta`` controls the shape, with ``beta < 1`` a decreasing (infant-mortality) hazard, ``beta = 1`` the constant-hazard Geometric, and ``beta > 1`` an increasing (wear-out) hazard. Its other parameter, ``q``, is the probability of surviving the first cycle.
 
 .. jupyter-execute::
 
@@ -854,6 +1227,51 @@ The ``NegativeBinomial`` distribution models the number of cycles until an item 
 
 Since ``r`` and ``p`` trade off against each other, the negative binomial usually needs more data than the single-parameter Geometric to pin both down.
 
+The ``BetaGeometric`` is a Geometric in which every unit has its *own*
+per-cycle failure probability, varying across the population as a Beta
+distribution with parameters ``a`` and ``b``. The weak units fail early and
+leave the strong ones behind, so the hazard of the population *falls* with
+time even though each unit's hazard is constant -- a pattern no single
+Geometric can produce, and a common one in customer-retention and
+early-life-failure data:
+
+.. jupyter-execute::
+
+    np.random.seed(4)
+    x = surv.BetaGeometric.random(500, 3.0, 5.0)
+    model = surv.BetaGeometric.fit(x)
+    print(model.params)
+    print("hazard at cycles 1, 2, 5 and 10:", model.hf([1, 2, 5, 10]))
+
+``Discretize`` turns any continuous distribution on :math:`[0, \infty)` into a
+discrete one by counting the cycle in which the continuous failure happens,
+:math:`K = \lceil T \rceil`. Its mass on cycle :math:`k` is the continuous
+probability of failing in :math:`(k - 1, k]`, and it keeps the parameters of
+the continuous distribution, so a discretised Weibull fitted to cycle counts
+reports an ordinary Weibull ``alpha`` and ``beta``:
+
+.. jupyter-execute::
+
+    DiscretizedWeibull = surv.Discretize(surv.Weibull)
+
+    np.random.seed(5)
+    cycles = np.ceil(surv.Weibull.random(300, 10, 2))
+    model = DiscretizedWeibull.fit(cycles)
+    print(model.dist.name, model.params)
+
+The ``Poisson`` distribution is the count of events in a fixed period when
+events occur at a constant rate ``mu``. Unlike the lifetimes above it
+includes zero:
+
+.. jupyter-execute::
+
+    np.random.seed(3)
+    counts = surv.Poisson.random(200, 4.0)
+    print(surv.Poisson.fit(counts).params, counts.mean())
+
+The maximum likelihood estimate of ``mu`` is the sample mean, as the output
+shows.
+
 The full ``fit()`` API carries over. Censored and truncated discrete data are handled exactly as for the continuous distributions -- here every item still running after 10 cycles is right censored:
 
 .. jupyter-execute::
@@ -865,6 +1283,8 @@ The full ``fit()`` API carries over. Censored and truncated discrete data are ha
     x[x > 10] = 10
     surv.DiscreteWeibull.fit(x, c=c)
 
+A right-censored value of 10 means "still working after cycle 10", that is :math:`T > 10`.
+
 Because the support is :math:`\{1, 2, 3, \dots\}`, the value ``0`` is left free to carry a **zero-inflation** mass -- the "dead on arrival" units from the previous section. Fitting with ``zi=True`` recovers both the lifetime parameters and the structural-zero fraction:
 
 .. jupyter-execute::
@@ -874,7 +1294,63 @@ Because the support is :math:`\{1, 2, 3, \dots\}`, the value ``0`` is left free 
     x = np.concatenate([x, np.zeros(40)])  # 40 dead-on-arrival units
     surv.Geometric.fit(x, zi=True)
 
-A note on estimation: probability plotting (MPP) is not defined for these discrete lifetimes, so they are fit by maximum likelihood (the default) and calling ``plot()`` on a discrete model raises. All the other model methods -- ``sf``, ``ff``, ``hf``, ``Hf``, ``df``, ``mean``, ``moment``, ``random`` and the confidence bounds ``cb`` -- work as usual.
+The fraction of zeros is 40 of 240, or 0.167, exactly the fitted ``f0``. (The ``Poisson`` already has mass at zero, so it cannot be zero inflated.)
+
+A note on estimation: probability plotting (MPP) is not defined for these discrete lifetimes, since their step-shaped CDFs cannot be drawn as a straight line, and neither is MPS, since tied integer values make the spacings degenerate; both raise a ``ValueError``. Maximum likelihood (the default), MSE and MOM all work. Calling ``plot()`` on a discrete model raises for the same reason. All the other model methods -- ``sf``, ``ff``, ``hf``, ``Hf``, ``df``, ``mean``, ``moment``, ``random`` and the confidence bounds ``cb`` -- work as usual.
+
+.. jupyter-execute::
+
+    np.random.seed(2)
+    x = surv.DiscreteWeibull.random(200, 0.95, 2.0)
+    for how in ["MLE", "MSE", "MOM"]:
+        print(how, surv.DiscreteWeibull.fit(x, how=how).params)
+
+    model = surv.DiscreteWeibull.fit(x)
+    print("R(5) with 95% bounds:", model.sf(5), model.cb(5, on='sf'))
+
+Per-demand and degenerate models
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A handful of models describe events with little or no time dimension. They
+estimate their parameters in closed form, so their ``fit`` takes only the
+data it needs (no ``how``, ``offset``, ``lfp``, ``zi`` or ``fixed``):
+
+- ``Bernoulli``: one pass/fail outcome, ``x`` is 0 or 1 and :math:`P(X = 1) = p`.
+  Read as a one-shot device, ``p`` is the probability it works on demand. Its
+  survival follows the convention :math:`R(x) = P(X \geq x)`, so ``R(0) = 1``
+  and ``R(1) = p``. Fitted from 0/1 outcomes (and optional counts ``n``).
+- ``FixedEventProbability``: a proportion ``p`` of units experience the event
+  and the rest never do, with nothing said about *when*: ``F(x) = p`` at
+  every ``x``.
+- ``Binomial``: the number of events in ``n`` independent trials; fitted for
+  a known number of trials, ``n_trials``.
+- ``ExactEventTime``: an event known to occur at one fixed time ``T``,
+  estimated from "not yet" (right-censored) and "already" (left-censored)
+  checks, as the midpoint between the latest "not yet" and the earliest
+  "already".
+- ``InstantlyOccurs`` and ``NeverOccurs``: no parameters at all; everything
+  has already failed, or nothing ever will. They arise as the limits of the
+  models above and as components of larger models.
+
+.. jupyter-execute::
+
+    # 17 of 20 demands succeeded
+    print("Bernoulli p :", surv.Bernoulli.fit([0, 1], n=[3, 17]).params)
+    switch = surv.Bernoulli.from_params(0.85)
+    print("R(0), R(1)  :", switch.sf([0, 1]))
+
+    print("Binomial    :", surv.Binomial.fit([2, 3, 1, 4], n_trials=5).params)
+
+    # checked at 2 and 3: not yet; checked at 4, 5 and 6: already happened
+    event = surv.ExactEventTime.fit([2, 3, 4, 5, 6], c=[1, 1, -1, -1, -1])
+    print("event time  :", event.params)
+
+    from surpyval import NeverOccurs
+    print("NeverOccurs R:", NeverOccurs.sf(np.array([1., 100.])))
+
+See :doc:`univariate/bernoulli`, :doc:`univariate/fixed_event_probability`,
+:doc:`univariate/binomial`, :doc:`univariate/exact_event_time` and
+:doc:`univariate/degenerate` for their full APIs.
 
 Confidence Intervals
 --------------------
@@ -901,8 +1377,25 @@ Once you have a model, this can easily be computed with the ``cb()`` method.
 
 This shows that we can change the confidence level with ``alpha_ci`` and that we can change the function for which
 we want the confidence interval. That is, the ``on`` keyword can be any of ``sf``, ``ff``, ``df``, ``hf``, or ``Hf``.
+Here ``alpha_ci=0.1`` gives a 90% interval; the default is 0.05, a 95% interval. A two-sided bound returns two
+columns, lower and upper; ``bound='lower'`` or ``bound='upper'`` returns a single one-sided bound. A one-sided lower
+bound on reliability is the usual form of a reliability demonstration:
+
+.. jupyter-execute::
+
+    print("R(5)              :", model.sf(5.))
+    print("two-sided 95%     :", model.cb(5., on='sf'))
+    print("95% lower bound   :", model.cb(5., on='sf', bound='lower'))
+
 This will work with models that you create as well, so even a user defined Distribution will be able to have the
 confidence intervals computed. Creating these models is discussed in the section below.
+
+Confidence bounds come from the curvature of the likelihood, so they are
+available for models fitted by maximum likelihood (the default), including
+limited-failure-population and zero-inflated models, whose extra parameters
+widen the bounds. A model fitted with ``how='MPS'``, ``'MSE'``, ``'MPP'`` or
+``'MOM'`` raises instead; so does a Uniform, whose MLE sits on the edge of its
+support.
 
 The band above is a *Wald* band: it propagates the parameter covariance through
 the function by the delta method. ``cb`` also offers a **likelihood-ratio**
@@ -946,19 +1439,25 @@ use a **likelihood-ratio** (profile) interval instead, via ``method='lr'``:
     x = Weibull.random(15, 10, 2)     # a small sample
     model = Weibull.fit(x)
 
+    print("beta :", model.params[1])
     print("Wald :", model.param_cb('beta', method='wald'))
     print("LR   :", model.param_cb('beta', method='lr'))
 
 The likelihood-ratio interval is the set of shape values whose profile deviance
 stays within the :math:`\chi^2_1` critical value, with the scale re-optimised at
-each candidate. Unlike the Wald interval it is transformation-invariant,
-respects the parameter's support, and need not be symmetric about the estimate -
+each candidate. The Wald interval for a positive parameter like ``beta`` is
+symmetric on the log scale, so it is always stretched upwards by the same
+factor it is stretched downwards; the likelihood-ratio interval instead follows
+the actual shape of the likelihood. Both need not be symmetric about the estimate -
 here the upper bound sits further from the fitted value than the lower one, as
-you would expect for a shape parameter from a small sample. Because it is
-computed from the likelihood directly it needs the original data, so it is only
-available on a model fit in-process (not one restored from ``from_dict``), and
-is not yet supported for offset / limited-failure-population / zero-inflated
-models; those fall back to ``method='wald'``.
+you would expect for a shape parameter from a small sample - and the
+likelihood-ratio interval is invariant to how the model is parameterised.
+Because it is computed from the likelihood directly it needs the original data,
+so it is only available on a model fit in-process (not one restored from
+``from_dict``), and is not yet supported for offset / limited-failure-population
+/ zero-inflated models; for those use ``method='wald'``. ``param_cb`` also takes
+``alpha_ci`` and ``bound``, like ``cb``. How both kinds of bound are computed is
+explained in :doc:`Parametric Estimation`.
 
 
 Creating a custom Distribution
@@ -966,7 +1465,12 @@ Creating a custom Distribution
 
 Given the implementation in SurPyval, it is possible to create a new distribution and use all the
 previously listed techniques. For example, the Gompertz distribution is not implemented in the
-surpyval API, this however can be quickly overcome. First, we set up a random number generator.
+surpyval API, this however can be quickly overcome. Its cumulative hazard is
+:math:`H(x) = \nu\left(e^{b x} - 1\right)` for :math:`x \geq 0`: a hazard
+:math:`h(x) = \nu b\, e^{b x}` that grows exponentially with age, which is why
+it is a classic model of human mortality. First, we set up a random number
+generator. Because :math:`H(X)` of a random lifetime is a unit exponential,
+:math:`X = \ln(1 - \ln(U)/\nu)/b` for a uniform :math:`U`.
 Because SurPyval works based on the autograd numpy implementation, it is essential that you
 use the autograd numpy import to make this work.
 
@@ -976,12 +1480,12 @@ use the autograd numpy import to make this work.
     # IMPORTANT - Will not work with regular numpy
     from autograd import numpy as np
 
-    def qf(p, mu, b):
-        return (np.log(((-np.log(p)/mu))) + 1)/b
+    def qf(u, nu, b):
+        return np.log(1 - np.log(u) / nu) / b
 
-    # Generate random values from Gompertz distribution
+    # Generate random values from a Gompertz distribution
     np.random.seed(1)
-    x = qf(np.random.uniform(0, 1, 100), 1.2, 2.)
+    x = qf(np.random.uniform(0, 1, 100), 0.2, 1.5)
 
 Now that we have our random data set, we can fit a Gompertz distribution to it. To do so, we need
 to create a Gompertz distribution class, and to do this we need the cumulative hazard function,
@@ -992,12 +1496,19 @@ the names of the parameters, the bounds of the parameters, and the distribution 
     name = 'Gompertz'
 
     def Hf(x, *params):
-        return params[0] * np.exp(params[1] * x - 1)
+        return params[0] * (np.exp(params[1] * x) - 1)
 
     param_names = ['nu', 'b']
     bounds = ((0, None), (0, None))
-    support = (-np.inf, np.inf)
+    support = (0, np.inf)
     Gompertz = surv.CustomDistribution(name, Hf, param_names, bounds, support)
+
+The cumulative hazard function must have the signature ``(x, *params)``, and
+the names ``p``, ``gamma`` and ``f0`` are reserved for the limited failure
+population, offset and zero-inflation parameters. Everything else is derived:
+the hazard and the density are obtained by automatically differentiating the
+cumulative hazard, and the survival function is :math:`e^{-H(x)}` (see
+:doc:`CustomDistribution API <univariate/custom>`).
 
 With this now created, all the calls to the regular surpyval API can be used.
 
@@ -1005,17 +1516,17 @@ With this now created, all the calls to the regular surpyval API can be used.
 
     Gompertz.fit(x)
 
-If we transform the data slightly, we can show that this can be used with censored and truncated data
+The fit is close to the :math:`\nu = 0.2` and :math:`b = 1.5` used to simulate the data; with only 100 values the two parameters trade off against each other a little. If we transform the data slightly, we can show that this can be used with censored and truncated data
 as well.
 
 .. jupyter-execute::
 
     c = np.zeros_like(x)
-    # Right censor all values above 2
-    c[x > 2] = 1
-    x[x > 2] = 2
-    # Left truncate all values below 0
-    tl = 0
+    # Right censor all values above 1.5
+    c[x > 1.5] = 1
+    x = np.where(x > 1.5, 1.5, x)
+    # Left truncate: only units that survived to 0.2 were observed
+    tl = 0.2
     c = c[x > tl]
     x = x[x > tl]
 
@@ -1034,15 +1545,26 @@ Even with a user defined ``Hf()`` we can still use the confidence bounds as well
 can be seen by simply calling the plot function:
 
 .. jupyter-execute::
-    :stderr:
 
-    model.plot()
+    model.plot(heuristic="Turnbull")
 
 You can see that the distribution is not linearised. This is because the Hf is not readily convertible
 into the transformation function needed to do the linearisation of the CDF. The defaults are a simple
 linear scale for both the x and y axis and it shows that the confidence bounds have worked nicely.
 
-You can also see that the confidence bound expands quite widely above approximately 1.2. This is due to the heavy truncation and censoring, if using complete data the confidence boudns do not diverge. This shows the importance of inference when working with truncated and censored data, the uncertainty can be quite wide!
+Towards the right of the plot the band becomes wide compared with the
+estimate itself. That is where the data run out: almost a quarter of the
+units were censored at 1.5, so there is little direct information about the
+survival there, and beyond 1.5 the model is extrapolating. The numbers show
+it:
+
+.. jupyter-execute::
+
+    for t in [0.5, 1.0, 1.5, 2.0]:
+        lower, upper = model.cb(t, on='sf')[0]
+        print(f"R({t}) = {model.sf(t):.3f}   95% CI [{lower:.3f}, {upper:.3f}]")
+
+This shows the importance of inference when working with truncated and censored data, the uncertainty can be quite wide!
 
 .. warning::
     Due to the implementation of confidence bounds in surpyval it can result
