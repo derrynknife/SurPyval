@@ -20,7 +20,10 @@ interval-counted rows), plus the covariates ``Z`` as the **second** argument:
 of ``x`` (repeat an item's covariates on each of its rows; a 1-D array is one
 covariate), or a dictionary mapping each item id to its covariate values (a
 list, or a plain number for a single covariate). The covariates describe
-the item and should be constant within it.
+the item and should be constant within it. Both fitters also take ``init``,
+the starting values for the search: the baseline parameters on their natural
+scale followed by one value per coefficient. Gapped observation
+(``windows``) is not available with covariates.
 
 Proportional-Intensity HPP
 --------------------------
@@ -169,7 +172,9 @@ can be supplied via ``dist``.
 
 Confidence bounds on the fitted cumulative intensity at a covariate setting are
 available from ``cif_cb`` (delta method, computed on the log scale so they stay
-positive), as ``[lower, upper]`` columns:
+positive), as ``[lower, upper]`` columns. As for the models without
+covariates, the level is set by the total tail probability ``alpha_ci``
+(default 0.05) and ``bound="lower"``/``"upper"`` gives one-sided bounds:
 
 .. jupyter-execute::
 
@@ -236,8 +241,11 @@ at half duty:
     print(fleet.cif_cb([20, 40], z).round(2))
 
 ``plot`` draws the fitted cumulative intensity, with its confidence band, at
-the *average* of the covariate rows, over the non-parametric MCF of all the
-data (which ignores the covariates):
+the *average* of the covariate rows (an average over rows, so items with more
+events weigh more), over the non-parametric MCF of all the data (which ignores
+the covariates). It is a rough visual check only: the curve at the average
+covariates is not the average of the items' curves. ``plot_bounds`` and
+``confidence`` work as for the other models:
 
 .. jupyter-execute::
 

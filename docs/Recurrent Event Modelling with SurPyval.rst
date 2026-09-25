@@ -80,10 +80,13 @@ Two further arguments describe the observation window. ``tl`` gives a
 left-truncation (delayed entry) time — the item was already in service when
 observation began — and ``tr`` a right-truncation time at which observation
 closed, which is equivalent to a ``c=1`` row at that time. Both may be a
-scalar (every item) or one value per row. Items observed over several
+scalar (every item) or one value per row, constant within an item, and every
+event must fall inside the item's window (the intensity models also accept
+them together as an ``(N, 2)`` array ``t``). Items observed over several
 disjoint periods use ``windows`` (see `Gapped (multi-window) observation`_).
-The intensity models accept all of these; the non-parametric MCF accepts
-``tl`` and ``windows``; the renewal models need each item watched from new.
+The intensity models accept all of these (see `Delayed entry and right
+truncation`_ for a worked example); the non-parametric MCF accepts ``tl`` and
+``windows``; the renewal models need each item watched from new.
 
 Non-Parametric Counting Model with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -105,8 +108,10 @@ pass it to the ``fit`` call of the ``NonParametricCounting`` class.
 This shows the expected number of events at any time. The model is a step
 function since it is non-parametric and we have made no assumptions about the
 count between observed events. The plot also draws pointwise 95% confidence
-bounds in red, but with a single item there is no item-to-item variation to
-measure: the variance estimate is zero and the bounds lie on top of the MCF.
+bounds in red (``plot_bounds=False`` hides them, ``confidence`` changes their
+level and ``ax`` draws on an existing axes), but with a single item there is
+no item-to-item variation to measure: the variance estimate is zero and the
+bounds lie on top of the MCF.
 One system tells you about that system, not about the population.
 
 The result of this is a Non-Parametric Counting model that can be used just like
@@ -183,10 +188,11 @@ Let's look at how we can use right censoring.
     model = NonParametricCounting.fit(x, i=i, c=c)
     model.plot()
 
-The fitted model keeps the pieces of the estimate: the distinct event times
-``x``, the number of items at risk ``r`` and the number of events ``d`` at each
-time, and the running MCF ``mcf_hat``. Item 1 stops being observed at 7, so
-from time 8 only two items are at risk:
+The fitted model keeps the pieces of the estimate: the distinct observed times
+``x`` (event and censoring times), the number of items at risk ``r`` and the
+number of events ``d`` at each time, the running MCF ``mcf_hat`` and its
+variance ``var``. Item 1 stops being observed at 7, so from time 8 only two
+items are at risk:
 
 .. jupyter-execute::
 
@@ -273,9 +279,10 @@ event of each item is treated as the end of its window.
 Both tests find strong evidence of an increasing intensity, so an HPP would be
 a poor model. The ``alternative`` argument chooses a two-sided test (the
 default) or a one-sided test for ``"increasing"`` (deterioration) or
-``"decreasing"`` (reliability growth). The result's ``trend`` attribute is
-only the *direction* of the statistic; look at ``p_value`` to judge whether
-the trend is real:
+``"decreasing"`` (reliability growth). The result carries ``statistic``,
+``p_value``, ``trend``, ``n_events`` and ``n_systems`` (and ``dof`` for the
+MIL-HDBK-189C test). Its ``trend`` attribute is only the *direction* of the
+statistic; look at ``p_value`` to judge whether the trend is real:
 
 .. jupyter-execute::
 
@@ -423,6 +430,51 @@ Both models agree at 50 hours, where there is data, and differ by a large
 margin at 100 hours. Extrapolation is only as good as the assumed shape, so
 check any long-range forecast against more than one plausible model.
 
+Delayed entry and right truncation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Suppose monitoring of the same fleet only started some time after the systems
+entered service: two were watched from new, two from 20 hours and two from 30
+hours, so failures before those times were never recorded. We simulate six
+systems from the true model and delete what monitoring would have missed. The
+entry time goes in ``tl``, one value per row:
+
+.. jupyter-execute::
+
+    full = true_model.time_terminated_simulation_data(50, items=6, seed=11)
+    entry = {1: 0.0, 2: 0.0, 3: 20.0, 4: 20.0, 5: 30.0, 6: 30.0}
+    seen = np.array([t >= entry[k] for t, k in zip(full.x, full.i)])
+    x_d, i_d, c_d = full.x[seen], full.i[seen], full.c[seen]
+    tl_d = np.array([entry[k] for k in i_d])
+    print("failures recorded:", int((c_d == 0).sum()), "of", int((full.c == 0).sum()))
+
+    print("fit with tl     :", CrowAMSAA.fit(x_d, i_d, c_d, tl=tl_d).params.round(3))
+    print("tl ignored      :", CrowAMSAA.fit(x_d, i_d, c_d).params.round(3))
+    print("all failures    :", CrowAMSAA.fit(full.x, full.i, full.c).params.round(3))
+
+With ``tl`` the likelihood only integrates each system's intensity from its
+entry time, and the estimates are close to those from the complete record
+(the true values are 8 and 1.6). Ignoring the delayed entry treats the
+unmonitored early hours as hours without failures, which invents a strong
+wear-out trend (``beta`` about 2.3). The non-parametric MCF corrects for
+delayed entry through its risk set in the same way:
+
+.. jupyter-execute::
+
+    t = [10, 25, 50]
+    print("MCF with tl :", NonParametricCounting.fit(x_d, i_d, c_d, tl=tl_d).mcf(t).round(2))
+    print("tl ignored  :", NonParametricCounting.fit(x_d, i_d, c_d).mcf(t).round(2))
+    print("true model  :", true_model.cif(t).round(2))
+
+At the other end of the window, ``tr`` closes observation without a
+censoring row: fitting the events with ``tr=52`` gives exactly the
+time-truncated fit from the start of this page, which used a ``c=1`` row at
+52.
+
+.. jupyter-execute::
+
+    print(CrowAMSAA.fit(events, tr=52.0).params.round(3))
+
 Interval-counted (grouped) data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -457,9 +509,11 @@ Least squares, and models from parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The NHPP models (``CrowAMSAA``, ``Duane``, ``CoxLewis``) are fitted by maximum
-likelihood by default. ``how="MSE"`` instead fits the cumulative intensity to
-the non-parametric MCF by least squares. It has no likelihood, so AIC,
-standard errors and confidence bounds are not available for such a fit:
+likelihood by default, with the search started from a least-squares fit
+(``init`` starts it from values of your own instead). ``how="MSE"`` stops at
+that least-squares fit of the cumulative intensity to the non-parametric MCF.
+It has no likelihood, so AIC, standard errors and confidence bounds are not
+available for such a fit (the ``HPP`` is fitted by maximum likelihood only):
 
 .. jupyter-execute::
 
@@ -498,9 +552,14 @@ refitted; the others return the non-parametric MCF of the simulated items:
   ``T``;
 - ``count_terminated_simulation(events, items)`` /
   ``count_terminated_simulation_data(events, items)`` watch each item until
-  it has had ``events + 1`` events (the extra event closes the window).
+  it has had ``events + 1`` events (the extra event closes the window). The
+  MCF version keeps only the part of the curve below ``events``, where it is
+  not yet distorted by the items dropping out.
 
-Pass ``seed`` for a reproducible result. Simulation is a good way to check
+Pass ``seed`` for a reproducible result. The time-terminated versions also
+take ``tol`` and ``max_events``: a sequence whose gaps shrink below ``tol``
+(a process heading for an asymptote) or that reaches ``max_events`` events
+before ``T`` is stopped at its last event, with a warning. Simulation is a good way to check
 that a model does what you think, or to see how much data you need to
 estimate it — here, how precisely one system watched for 50 hours pins down
 the shape parameter:
@@ -578,7 +637,10 @@ increasing.
 That parameter uncertainty propagates to the fitted curve. ``plot()`` draws a
 delta-method confidence band around the cumulative intensity function (set
 ``plot_bounds=False`` to hide it, or ``confidence`` to change its level), and
-``cif_cb`` returns the band directly, as ``[lower, upper]`` columns:
+``cif_cb`` returns the band directly, as ``[lower, upper]`` columns. Note that
+``cif_cb`` and ``param_cb`` take the total tail probability ``alpha_ci``
+(default 0.05, i.e. 95% bounds) rather than a confidence level, and
+``bound="lower"`` or ``"upper"`` gives a one-sided bound:
 
 .. jupyter-execute::
 
@@ -644,6 +706,11 @@ while exploring (the default is 200):
     gof = model.cramer_von_mises(n_boot=100, seed=2)
     print("statistic", round(gof.statistic, 3), " p-value", round(gof.p_value, 3))
 
+A p-value of about 0.7 gives no reason to doubt the power law for this
+system. The result object also records ``n_boot`` (the replicates actually
+used; any failed refits are reported in a warning), ``n_events`` and
+``n_systems``.
+
 The same inference and diagnostic methods are available on the
 proportional-intensity regression models and the renewal models below.
 
@@ -684,7 +751,14 @@ Generalized Renewal Process modelling is simple with SurPyval:
 The restoration factor ``q`` of about 0.16 means each repair removes most, but
 not all, of the ageing since the previous repair: the item is
 better-than-old-but-worse-than-new. The fitted lifetime distribution itself is
-available as ``model.model``, and ``model.q`` holds the restoration factor.
+available as ``model.model`` (an ordinary SurPyval distribution, with ``sf``,
+``hf`` and so on), ``model.q`` holds the restoration factor and
+``model.kijima_type`` the Kijima type. As with the intensity models, ``init``
+(the restoration factor followed by the distribution's parameters) starts the
+search from your own values instead of the built-in starts, and
+``GeneralizedRenewal.fit_from_parameters(params, q, kijima=..., dist=...)``
+builds a model from known values for simulation; ``GeneralizedOneRenewal``,
+``ARA`` and ``ARI`` have the same method.
 
 We cannot write down the cumulative intensity function of the model since it
 does not have a closed form solution. We can however estimate it with a monte
@@ -769,12 +843,14 @@ G1 Modelling can easily be done with SurPyval:
 
 This data is from [1]_ and shows the inter-arrival times, and not the total
 time to each event. We therefore need to take the cumulative sum of all the
-times before passing it to the ``fit`` method. These are the same results as
-achieved by Kaminskiy and Krivtsov in their paper [2]_ introducing the G1
-Renewal Process. The inter-arrival times grow over the life of the system, and
-the positive restoration factor (about 0.23) says each repair leaves the system
-better than new: the expected time to the next failure grows by about 23% with
-every repair.
+times before passing it to the ``fit`` method (the cumulative times are also
+available as ``surpyval.datasets.load_g1_kaminskiy_krivtsov()``). These are
+the results Kaminskiy and Krivtsov report in their paper [2]_ introducing the
+G1 Renewal Process: :math:`q \approx 0.232` and a mean time to the first
+failure of :math:`1/0.2092 \approx 4.78`. The inter-arrival times grow over
+the life of the system, and the positive restoration factor says each repair
+leaves the system better than new: the expected time to the next failure grows
+by about 23% with every repair.
 
 Surpyval allows you to use any non-negative lifetime distribution in SurPyval as
 the underlying distribution. Let's use the same data with a Weibull G1 Renewal
@@ -937,9 +1013,14 @@ once per replicate, so it is noticeably slower than the residual checks; keep
 ``n_boot`` modest while exploring (with 20 replicates the p-value can only be
 a multiple of 1/21, a coarse answer). Note also that this fit put ``q`` at
 zero — each repair is as good as new — so the model is an ordinary Weibull
-renewal process. The residuals average one, and with a p-value of about 0.1
-the goodness-of-fit test gives no strong evidence against the model (the trend
-test's "decreasing" is only the sign of an unconvincing statistic).
+renewal process. The residuals average exactly one, but that is no evidence
+of a good fit: every gap here ends in a failure (there are no censoring
+rows), and for complete data the Weibull maximum-likelihood equations force
+the cumulative hazards of the gaps to sum to their number. Their *pattern*
+(a Q-Q plot against Exp(1), a drift with time) is what carries information.
+With a p-value of about 0.1 the goodness-of-fit test gives no strong evidence
+against the model (the trend test's "decreasing" is only the sign of an
+unconvincing statistic).
 
 Predicting with a renewal model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1009,9 +1090,20 @@ the MCF an item simply drops out of the risk set while it is unobserved:
 Item 1 is not at risk at 14, so only one item is counted there. The
 virtual-age / renewal models reject gapped data, since the virtual age at the
 start of a later window depends on the unobserved failures during the gap.
-Every item must appear in ``windows``, windows must not overlap, and every
-event must fall inside one of its item's windows; ``windows`` cannot be
-combined with ``tl``/``tr``.
+Every item must appear in ``windows``, windows must not overlap (they may
+touch), and every event must fall inside one of its item's windows;
+``windows`` cannot be combined with ``tl``/``tr`` (or ``t``), covariates or
+event marks. Because each window is handled as its own observation period,
+the diagnostics see windows rather than items: ``residuals(kind="martingale")``
+returns one value per window, and ``trend_test`` refuses gapped data, since
+the trend tests need every system watched from time zero:
+
+.. jupyter-execute::
+
+    gapped = CrowAMSAA.fit([3, 7, 10, 25, 33, 38], [1] * 6,
+                           windows={1: [(0, 12), (20, 40)]})
+    print("martingale residuals, one per window:",
+          gapped.residuals(kind="martingale").round(2))
 
 Competing risks: marked recurrent events
 -----------------------------------------
@@ -1035,7 +1127,10 @@ at-risk set across causes:
 
 Each cause's curve is an ordinary ``NonParametricCounting`` estimate, available
 as ``model.models[cause]``; ``mcf`` and ``mcf_cb`` take the cause as an
-argument:
+argument (``mcf_cb`` passes any other keyword, such as ``confidence`` or
+``bound``, on to that estimate). The data may carry delayed entry (``tl``),
+which shrinks the shared risk set, but, as for the overall MCF, not right
+truncation or counts of events:
 
 .. jupyter-execute::
 
@@ -1045,10 +1140,13 @@ argument:
 
 For a parametric picture, ``CauseSpecificNHPP`` fits one intensity model per
 cause (``CrowAMSAA`` by default; ``HPP``, ``Duane`` and ``CoxLewis`` can be
-passed as ``dist``). A marked Poisson process decomposes into independent thinned
-Poisson processes, so each cause is fitted to its own events over the full
+passed as ``dist``; ``how`` and ``init`` are passed on to every cause's fit).
+A marked Poisson process decomposes into independent thinned Poisson
+processes, so each cause is fitted to its own events over the full
 observation window — other-cause events are ignored, exactly like a censored
-period.
+period. Each item's window runs from its ``tl`` (or zero) to its censoring
+row, its ``tr``, or failing both its last event. The rows must be exact
+events or right-censoring rows.
 
 A parametric fit needs more than a handful of events per cause, so let's build
 a more realistic data set: five pumps watched for 40 months, suffering seal
@@ -1095,13 +1193,31 @@ cause-specific MCF of the same data is the non-parametric check:
     ax = pump_mcf.plot()
 
 The dashed steps are each cause's pointwise confidence bounds
-(``confidence`` sets the level, ``plot_bounds=False`` hides them). Each
-``model.models[cause]`` is an ordinary fitted recurrence model, so it
+(``confidence`` sets the level, ``plot_bounds=False`` hides them). They use
+the simpler per-step variance rather than the Lawless-Nadeau robust variance
+of ``NonParametricCounting.fit`` (see :doc:`Recurrent Event Analysis`), so
+when pumps differ in how often they suffer a cause the bounds are too narrow;
+treat them as a lower limit on the uncertainty.
+
+Each ``pumps.models[cause]`` is an ordinary fitted recurrence model, so it
 carries the full ``cif`` / ``iif``, inference and diagnostic behaviour shown
-above; ``model.cif(x, cause)`` and ``model.iif(x, cause)`` are shortcuts, and
-``total_cif`` sums the causes for the overall event intensity. Both classes
-also have a ``fit_from_df`` method that reads the columns of a ``pandas``
-DataFrame.
+above; ``pumps.cif(x, cause)``, ``pumps.iif(x, cause)`` and
+``pumps.mcf(x, cause)`` are shortcuts, ``total_cif`` sums the causes for the
+overall expected count, and ``pumps.plot()`` draws every cause's fitted
+cumulative intensity on one axes. For example, a confidence interval on the
+shape of the bearing failures:
+
+.. jupyter-execute::
+
+    bearing_fit = pumps.models["bearing"]
+    print("beta 95% CI:", bearing_fit.param_cb("beta").round(2))
+
+The whole interval lies well above 1, so the bearings' wear-out is not a
+fluke of this sample.
+
+Both classes also have a ``fit_from_df`` method that reads the columns of a
+``pandas`` DataFrame (``x_col``, ``e_col`` and optionally ``i_col``,
+``c_col``, ``n_col``, ``tl_col``, ``tr_col``).
 
 Saving and loading a fitted model
 ---------------------------------
@@ -1110,7 +1226,7 @@ Every fitted recurrence model can be serialised to a plain dictionary or a
 JSON file and rebuilt later. The intensity model is stateless, so only its name
 and the fitted parameters are stored (for the nonparametric MCF, the step
 arrays); the reloaded model reproduces every prediction exactly. This works for
-the parametric intensity fits (``CrowAMSAA`` / ``Duane`` / ``Cox-Lewis`` /
+the parametric intensity fits (``CrowAMSAA`` / ``Duane`` / ``CoxLewis`` /
 ``HPP``), the nonparametric MCF, the proportional-intensity regression, the two
 cause-specific containers, and the renewal / imperfect-repair models
 (``RenewalModel`` — generalized renewal, G1 renewal, ARA, ARI).
@@ -1143,12 +1259,13 @@ seed gives the same simulated MCF:
 
 Use ``to_json`` / ``from_json`` for a file directly. The likelihood-inference
 state (the fitted data and the log-likelihood) is not serialised, so a reloaded
-model behaves like a ``from_params`` one for confidence bounds and diagnostics
-— re-fit if you need those.
+model behaves like a ``from_params`` one: it predicts and simulates, but
+confidence bounds, diagnostics and ``plot`` need a re-fit. (A reloaded
+non-parametric MCF keeps its variance, so ``mcf_cb`` still works.)
 
 References
 ----------
 
 .. [1] Basu, A.P. and Rigdon, S.E., 2000. Statistical methods for the reliability of repairable systems. John Wiley & Sons.
 
-.. [2] Kaminskiy, M.P. and Krivtsov, V.V., 2010. G1-renewal process as repairable system model. Reliability: Theory & Applications, 5(3), pp.7-14.
+.. [2] Kaminskiy, M.P. and Krivtsov, V.V., 2010. G1-renewal process as repairable system model. Reliability: Theory & Applications, 1(3) (issue 18), pp.7-14. arXiv:1006.3718.

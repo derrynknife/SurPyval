@@ -69,67 +69,37 @@ coefficients ``beta_0``, ``beta_1``, ... in the order of the columns of
 
 .. rubric:: Time-varying baselines: the Duane example
 
-A notable example within recurrent event regression is the Duane process,
-which is particularly relevant in reliability engineering. The Duane model is
-a form of non-homogeneous Poisson process (NHPP) that describes the improvement
-in reliability of a system or component over time, typically as a result of
-learning effects or reliability growth. The model posits that the failure rate
-of a system decreases as a function of cumulative operating time, reflecting
-the notion that systems become more reliable through usage and corrective
-actions. In the Duane process, the cumulative number of failures is modeled as
-a function of time, providing a way to quantify reliability growth and
-forecast future performance. The parameterisation SurPyval uses for the Duane
-model is:
+A constant rate is often too simple: a system under development gets more
+reliable as its faults are found and fixed, and an ageing one fails more and
+more often. The Duane process, particularly relevant in reliability
+engineering, is the classic model of such a trend. It is a non-homogeneous
+Poisson process (NHPP) whose expected number of events is a power of time;
+the parameterisation SurPyval uses is
 
 .. math::
 
-    \Lambda(t) = b\, t^{\alpha}
+    \Lambda(t) = b\, t^{\alpha},
+    \qquad
+    \lambda(t) = \frac{d\Lambda(t)}{dt} = \alpha\, b\, t^{\alpha - 1} .
 
-This can be interpreted as the number of events we can expect up to time t is
-given by the result of the equation. The exponent :math:`\alpha` controls the
-trend — below one the rate of events falls over time (reliability growth),
-above one it rises (wear-out) — and :math:`b` is the expected number of events
-by :math:`t = 1`. (Many textbooks swap the letters, writing
+The exponent :math:`\alpha` controls the trend — below one the rate of events
+falls over time (reliability growth, the case Duane studied), above one it
+rises (wear-out) — and :math:`b` is the expected number of events by
+:math:`t = 1`. (Many textbooks swap the letters, writing
 :math:`\alpha t^{\beta}`; the parameters that SurPyval prints are ``alpha``
 for the exponent and ``b`` for the scale.)
 
-In addition to specific models like the Duane process, recurrent event
-regression encompasses the broader class of proportional intensity models.
-These models, often used in the context of survival analysis, assume that
-the intensity function (or hazard function) for an individual's time to the next
-event is proportional to a baseline intensity function, adjusted by the
-individual's covariates. This assumption of proportionality allows for the
-straightforward interpretation of covariate effects on the hazard of an event
-occurring. This makes the comparison of risks between different groups or
-under different conditions easy and interpretable.
-
-
-1. The Duane model's cumulative number of failures as a function of time:
+To add covariates we keep this trend as a *baseline* intensity
+:math:`\lambda_0(t)` and scale it by the same factor as before, exactly as the
+proportional hazards model scales a baseline hazard:
 
 .. math::
 
-    \Lambda(t) = b\, t^{\alpha}
+    \lambda(t \mid Z) = \lambda_0(t)\, e^{Z\beta}
+    = \alpha\, b\, t^{\alpha - 1} e^{Z\beta} .
 
-2. The failure intensity function derived from the Duane model:
-
-.. math::
-
-    \lambda(t) = \frac{d\Lambda(t)}{dt} = \alpha\, b\, t^{\alpha - 1}
-
-3. The Proportional Intensity model incorporating a covariate vector :math:`Z`:
-
-.. math::
-
-    \lambda(t \mid Z) = \lambda_0(t) \exp(Z \beta)
-
-4. The adjusted failure intensity function with the covariate effect in the context of the Duane model:
-
-.. math::
-
-    \lambda(t \mid Z) = \alpha\, b\, t^{\alpha - 1} \exp(Z \beta)
-
-These equations outline the framework for modelling the reliability growth of a
-system, incorporating the effects of covariates on the failure intensity.
+Every item shares the power-law trend; its covariates only make its events
+more or less frequent at every age.
 
 .. rubric:: The general proportional-intensity model
 
@@ -210,6 +180,8 @@ HPP) if there is no trend, and an NHPP baseline — a power law (``Duane``, the
 default, or ``CrowAMSAA``) or the log-linear ``CoxLewis`` — if there is.
 Duane and Crow-AMSAA are the same power-law process in two parameterisations,
 so as baselines they describe the same model, and their fits should agree.
+(Likewise ``ProportionalIntensityNHPP`` with an ``HPP`` baseline is the same
+model as ``ProportionalIntensityHPP``.)
 Compare candidate baselines with the information criteria and the diagnostics
 below.
 
@@ -238,8 +210,8 @@ estimated jointly and a wrong baseline can bias the coefficients.
   too small, and the goodness-of-fit test and martingale residuals are the
   place to look for it.
 - **Scope.** Covariates are available for the HPP and NHPP intensity models.
-  The imperfect-repair (renewal) models and gapped (multi-window) observation
-  do not take covariates.
+  The imperfect-repair (renewal) models, the cause-specific (marked) models
+  and gapped (multi-window) observation do not take covariates.
 
 Model checking
 --------------

@@ -179,8 +179,9 @@ single event survival analysis. The main one being that it is not possible to
 extrapolate an estimate of the MCF function beyond the last observed event. This
 is because when doing non-parametric analysis we make no assumptions about the
 shape of the curve and cannot therefore extrapolate beyond the last observed event.
-SurPyval returns ``nan`` for times beyond the last observed time. Two further
-assumptions are worth stating:
+SurPyval returns ``nan`` for times beyond the last observed time (the latest
+event or end-of-observation row of any item). Two further assumptions are
+worth stating:
 
 - **Independent end of observation.** Items must not leave observation *because*
   they were about to have an event (or because they had many). If units with a
@@ -195,6 +196,15 @@ end-of-observation rows, left truncation (delayed entry) and gapped
 observation windows. Interval-counted data, left-censored counts and right
 truncation are rejected rather than silently mishandled; use a parametric
 intensity model for those.
+
+The risk-set counts :math:`d_i` and :math:`r_i` alone only support a simpler,
+per-step variance, which squares each step's deviations on its own and so
+treats every step as independent of every other. That is the right
+answer for a Poisson process but understates the uncertainty whenever items
+differ in their rates. SurPyval uses it in only two places: an MCF built
+directly from ``(x, r, d)`` arrays (``NonParametricCounting.from_xrd``), which
+do not record which item had each event, and, for now, the cause-specific MCF
+(see `Competing Risks: Marked Recurrent Events`_).
 
 Parametric Recurrent Event Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -511,10 +521,12 @@ parameter after an event. The transformation is defined as:
 
     \alpha_{i} = \alpha(1 + q)^{i - 1}
 
-Where :math:`\alpha` is the life parameter of a location-scale distribution and
-:math:`q` is the effectiveness of the intervention. Unlike what is possible
-with the G-Renewal process, if q is greater than zero the model captures the
-behaviour of when the intervention can improves the life of the subject. If
+Where :math:`\alpha` is the scale (life) parameter of the lifetime
+distribution, :math:`\alpha_i` the one that applies to the :math:`i`-th
+inter-arrival time, and :math:`q` is the effectiveness of the intervention.
+Unlike what is possible with the G-Renewal process, if :math:`q` is greater
+than zero the model captures an intervention that improves the life of the
+subject beyond new. If
 :math:`q = 0` then the repair is as-good-as-new. If :math:`q < 0` then each
 repair leaves the item *worse* than before — a partial or harmful repair that
 shortens the subsequent life (a deteriorating system). Note that :math:`q`
@@ -644,7 +656,7 @@ matching the G1 scaling :math:`(1 + q)^{j}` to :math:`a^{-j}` gives
 :math:`a = 1 / (1 + q)`. A deteriorating system (:math:`a > 1`) therefore
 corresponds to a negative restoration factor, and reliability growth
 (:math:`a < 1`) to a positive one. Fitting a
-:class:`~surpyval.recurrent.GeneralizedOneRenewal` gives the geometric process
+:doc:`GeneralizedOneRenewal <counting/g1_rp>` gives the geometric process
 with a parametric lifetime distribution.
 
 
@@ -654,12 +666,21 @@ Parameter Estimation
 As with regular survival analysis there are several ways one can estimate the
 parameters of the models. Mean Square Error (MSE) is quite straight forward
 for the intensity (Poisson-process) models. For the NHPP models (Crow-AMSAA,
-Duane, Cox-Lewis) SurPyval's ``how="MSE"`` option chooses the parameters that make :math:`\Lambda(t)` pass as closely as possible
-(in the least-squares sense) through the non-parametric MCF at the observed
-event times. This is fast and needs no distributional assumptions about the
-counts, and SurPyval uses it as the starting point for the likelihood search.
-It does not produce a likelihood, so the likelihood-based inference (AIC/BIC,
-standard errors, confidence bounds) is not available for an MSE fit. For the
+Duane, Cox-Lewis) SurPyval's ``how="MSE"`` option chooses the parameters that
+make :math:`\Lambda(t)` pass as closely as possible (in the least-squares
+sense) through the non-parametric MCF at the observed times,
+
+.. math::
+
+    \hat{\theta}_{\text{MSE}} = \arg\min_{\theta} \sum_i
+    \left[\Lambda(x_i \mid \theta) - \hat{M}(x_i)\right]^2 .
+
+This is fast and needs no distributional assumptions about the counts, and
+SurPyval uses it as the starting point for the likelihood search of these
+models. It does not produce a likelihood, so the likelihood-based inference
+(AIC/BIC, standard errors, confidence bounds) is not available for an MSE
+fit. The HPP has no MSE option: its maximum-likelihood estimate is already
+the simple ratio of events to exposure. For the
 renewal models the complication is that the MCF has no closed form, so an MSE
 fit would need a Monte Carlo simulation for each set of parameters. This can
 get quite time consuming and expensive; SurPyval fits the renewal models by
@@ -773,7 +794,21 @@ Wald intervals computed on a scale chosen to respect the parameter's range —
 log scale for a positive parameter, logit scale for one confined to an
 interval such as :math:`\rho \in (0, 1)` — so the bounds never leave the
 allowed range. Confidence bounds on the fitted cumulative intensity are
-obtained by the delta method, again on the log scale so they stay positive.
+obtained by the delta method: with :math:`\hat{\Sigma}` the parameter
+covariance and :math:`\nabla_\theta \Lambda` the gradient of the cumulative
+intensity with respect to the parameters,
+
+.. math::
+
+    \widehat{\text{SE}}\big[\hat{\Lambda}(t)\big] \approx
+    \sqrt{\nabla_\theta \Lambda(t)^{\top}\, \hat{\Sigma}\,
+    \nabla_\theta \Lambda(t)},
+    \qquad
+    \hat{\Lambda}(t) \exp\left(\pm z\,
+    \widehat{\text{SE}} / \hat{\Lambda}(t)\right),
+
+again on the log scale so the bounds stay positive (the same construction as
+the default MCF bounds).
 
 Two warnings apply. When an estimate sits on the edge of its range — a repair
 parameter estimated as exactly perfect or minimal repair is the usual case —
@@ -909,26 +944,56 @@ For failure-truncated data the last event of each system *is* the end of its
 window rather than a random event, so it is dropped from both statistics. Both
 tests can be run one-sided (``"increasing"`` or ``"decreasing"``) when you
 only care about one direction. Two cautions: the tests assume all systems are
-observed from time zero, and the direction a test reports is simply the sign
-of its statistic — only the p-value tells you whether that direction is
-distinguishable from noise.
+observed from time zero (SurPyval refuses delayed-entry and gapped data), and
+the direction a test reports is simply which side of its null value the
+statistic fell (the sign of :math:`U`; :math:`\chi^2` below or above its
+:math:`2N` degrees of freedom) — only the p-value tells you whether that
+direction is distinguishable from noise. Both are available as standalone
+functions and as a ``trend_test`` method on every fitted model; see
+:doc:`counting/trend_tests`.
 
 Goodness of fit
 ~~~~~~~~~~~~~~~
 
 Finally, a **Cramér–von Mises** goodness-of-fit test [DaleyVereJones2003]_
 measures how far the conditionally-uniform transforms fall from uniformity.
-Conditional on the number of events an item shows, the normalised compensators
-:math:`\Lambda(x_k) / \Lambda(\text{close})` are i.i.d. U(0, 1) under the true
-model; the statistic aggregates their departure from uniformity. Because the
-parameters were estimated from the same data, the p-value is obtained by a
-parametric bootstrap — resimulating from the fitted model, refitting, and
+For a Poisson process observed over a fixed window
+:math:`(s, \tau]`, and conditional on the number of events the item shows
+there, the normalised compensators
+
+.. math::
+
+    u_k = \frac{\Lambda(x_k) - \Lambda(s)}{\Lambda(\tau) - \Lambda(s)}
+
+are i.i.d. U(0, 1) under the true model. For a failure-truncated item the
+window ends at its last event, which is left out (the remaining events,
+normalised by the compensator there, are uniform in the same way). The
+statistic pools the :math:`u_k` of all items, sorts them into
+:math:`u_{(1)} \le \dots \le u_{(M)}`, and measures their departure from
+uniformity,
+
+.. math::
+
+    C_M^2 = \frac{1}{12M} + \sum_{j=1}^{M}
+    \left(u_{(j)} - \frac{2j - 1}{2M}\right)^2 .
+
+A large value means the events are not spread over time the way the fitted
+intensity says they should be. Because the parameters were estimated from the
+same data, the p-value is obtained by a parametric bootstrap — resimulating
+every item over its own window from the fitted model, refitting, and
 recomputing the statistic — so it accounts for the estimation. For the
 power-law (Crow-AMSAA) process this is the construction behind Crow's
-classical goodness-of-fit test. Every bootstrap replicate is a full refit, so
-the test is slow for the imperfect-repair models; a small number of
-replicates gives only a coarse p-value (with :math:`B` replicates the smallest
-possible p-value is :math:`1/(B + 1)`).
+classical goodness-of-fit test.
+
+For the imperfect-repair models the compensator is the running sum of the
+conditional (virtual-age or reduced-intensity) increments described above.
+Uniformity is then exact for failure-truncated items and an approximation for
+time-truncated ones, whose window close is itself history-dependent, and the
+bootstrap resimulates each item as a new item with its observed number of
+events. Every bootstrap replicate is a full refit, so the test is slow for
+the imperfect-repair models; a small number of replicates gives only a coarse
+p-value (with :math:`B` replicates the smallest possible p-value is
+:math:`1/(B + 1)`).
 
 Choosing a model
 ~~~~~~~~~~~~~~~~
@@ -951,7 +1016,9 @@ There is no single right model, but a sensible order of work is:
    the imperfect-repair models. Compare the Kijima types, the G1 process and
    several ARA/ARI memories by their information criteria; all are fitted to
    the same event times by maximum likelihood, so their AIC values are on a
-   common footing. Check the winner with residuals.
+   common footing. (Prefer AIC to BIC across families: BIC's sample size is
+   the number of data rows, censoring rows included, for every model except
+   ARI, which counts only the failures.) Check the winner with residuals.
 5. **If events come from several distinct mechanisms,** analyse them per
    cause (next section); **if items differ systematically** (environment, duty
    cycle, design version), move to the regression models on the
@@ -986,6 +1053,12 @@ because an event of one type does not remove the item from observation, an
 event of another type can still follow it, so no adjustment for the other
 causes is needed.
 
+One difference from the overall MCF: SurPyval currently attaches the simpler
+per-step variance (see `Non-Parametric - Mean Cumulative Function`_), not the
+Lawless-Nadeau robust one, to each cause-specific MCF. Its confidence bounds
+are therefore only trustworthy when items do not differ much in their rates
+of that cause; otherwise they are too narrow.
+
 Parametrically, a marked Poisson process has an elegant structure: the
 cause-specific processes are **independent thinned Poisson processes**. An
 event of one cause neither advances nor interrupts another cause's intensity,
@@ -1018,6 +1091,12 @@ machinery: an item is simply absent from the risk set while it is unobserved.
 The virtual-age and renewal models cannot accommodate gaps, because the virtual
 age at the start of a later window depends on the unobserved failures during
 the gap.
+
+Because SurPyval implements the gaps by treating each window as its own
+observation period, anything computed per item is computed per *window* for
+gapped data: the martingale residuals come one per window, and the trend
+tests, which need every item watched from time zero, refuse gapped data. The
+covariate (regression) and cause-specific models do not accept windows.
 
 For worked examples — fitting the NHPP, HPP and renewal models, estimating and
 plotting the mean cumulative function, and handling gapped observation — see the
@@ -1071,5 +1150,5 @@ References
    general repair. *Journal of Applied Probability*, 26(1), pp.89-102.
 
 .. [Kaminskiy2010] Kaminskiy, M.P. and Krivtsov, V.V., 2010. G1-renewal process
-   as repairable system model. *Reliability: Theory & Applications*, 5(3),
-   pp.7-14.
+   as repairable system model. *Reliability: Theory & Applications*, 1(3)
+   (issue 18), pp.7-14. arXiv:1006.3718.
