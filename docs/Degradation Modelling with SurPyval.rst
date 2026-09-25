@@ -8,39 +8,94 @@ measurable process — a crack grows, a resistance drifts, a lumen output
 fades, a material wears. Degradation analysis exploits this: instead of
 waiting for units to fail, we track a *degradation measurement* over time
 on each unit, define failure as the measurement crossing a *threshold*,
-and extrapolate each unit's degradation trend to that threshold to obtain
-a failure time — even for units that never actually failed on test.
+and work out the failure-time distribution from how the measurements
+evolve — even for units that never actually failed on test.
 
-For the concepts and the underlying theory — the general-path model, the
-Lu-Meeker two-stage correction, the induced failure-time distribution, and the
-stochastic-process (Wiener/Gamma) first-passage models — see the
-:doc:`Degradation Analysis` page.
+This page shows how to do all of it with SurPyval, with runnable examples. The
+concepts and the mathematics behind each model — why it works, what it
+assumes, how it is estimated — are on the :doc:`Degradation Analysis` page,
+which follows the same order; it is worth reading the matching section there
+alongside each section here.
 
-SurPyval implements the classic *pseudo-failure-time* approach:
+What is on this page
+~~~~~~~~~~~~~~~~~~~~
 
-1. A degradation *path model* (e.g. linear) is fitted, by least squares,
-   to each unit's measurements.
-2. Each unit's fitted path is extrapolated to the failure threshold. The
-   crossing time is that unit's *pseudo failure time*.
-3. A lifetime distribution (Weibull by default) is fitted to the pseudo
-   failure times, and can then be used like any other SurPyval parametric
-   model.
+There are three families of model, each a fitter whose ``fit`` returns a fitted
+model object:
 
-If a unit's fitted path never reaches the threshold (for example, the
-unit is not degrading, or is trending away from the threshold), the unit
-is treated as right censored at its last observed time, and the censoring
-is passed through to the lifetime distribution fit.
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
 
-This page also covers two alternatives to the pseudo-failure-time approach:
-the `Stochastic-process degradation models`_ (Wiener and Gamma processes,
-which model the increments directly), and `Destructive degradation`_ for tests
-where each specimen can be measured only once.
+   * - Fitter
+     - Returns
+     - Use when
+   * - :class:`DegradationAnalysis <surpyval.degradation.degradation_analysis.DegradationAnalysis_>`
+     - :class:`~surpyval.degradation.degradation_analysis.DegradationModel`
+     - each unit is measured repeatedly and follows a smooth trend (the
+       *general-path* model) — with optional stress effects
+   * - :class:`~surpyval.degradation.process_models.WienerProcess`,
+       :class:`~surpyval.degradation.process_models.GammaProcess`
+     - :class:`~surpyval.degradation.process_models.WienerProcessModel`,
+       :class:`~surpyval.degradation.process_models.GammaProcessModel`
+     - each unit is measured repeatedly and its degradation wanders randomly
+       (a *stochastic process*)
+   * - :class:`DestructiveDegradation <surpyval.degradation.destructive.DestructiveDegradation_>`
+     - :class:`~surpyval.degradation.destructive.DestructiveDegradationModel`
+     - each unit can be measured only once
+
+The page covers, in order: the general-path model (fitting, predicting a new
+unit, the population of paths, the induced life, confidence bounds),
+accelerated and step-stress tests for it, the stochastic-process models (with
+their own stress support), destructive degradation, and saving a fitted model.
+
+The data
+~~~~~~~~
+
+Repeated-measures degradation data comes in *long* format: three arrays of the
+same length, one entry per measurement,
+
+* ``x`` — the time of the measurement (hours, cycles, days, …),
+* ``y`` — the degradation measured,
+* ``i`` — which unit it belongs to (any hashable labels).
+
+Units need not be measured at the same times or the same number of times. An
+accelerated test adds a fourth array, ``Z``, holding the stress for each
+measurement; that is described in `Accelerated degradation testing
+(covariates)`_.
+
+Here is the data used for the next several sections: twelve units inspected
+every 100 hours, each drifting upward at its own rate from its own starting
+level, with measurement noise. A unit fails when its measurement reaches 450.
+
+.. jupyter-execute::
+
+    import warnings
+
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    from surpyval.degradation import DegradationAnalysis
+
+    rng = np.random.default_rng(1)
+    times = np.arange(100.0, 1100.0, 100.0)       # an inspection every 100 h
+    xs, ys, ids = [], [], []
+    for unit in range(12):
+        a = rng.normal(10.0, 3.0)                 # this unit's starting level
+        b = rng.normal(0.30, 0.06)                # this unit's rate per hour
+        xs.append(times)
+        ys.append(a + b * times + rng.normal(0, 3.0, times.size))  # + noise
+        ids.append(np.full(times.size, unit))
+    x, y, i = (np.concatenate(v) for v in (xs, ys, ids))
+
+    pd.DataFrame({"x": x, "y": y, "i": i}).head(12)
 
 Degradation path models
 -----------------------
 
-The path models available, and the pseudo failure time each implies for a
-threshold :math:`y_{t}`, are:
+The path model is the shape fitted to each unit's measurements. The path
+models available, and the pseudo failure time each implies for a threshold
+:math:`y_{t}`, are:
 
 .. list-table::
     :header-rows: 1
@@ -83,171 +138,256 @@ needs no configuration. Models that are linear in their parameters
 the others are fitted by nonlinear least squares started from a
 linearised fit. The offset-exponential covers growth or decay toward an
 asymptote (``a = 0`` reduces it to the exponential); Gompertz is
-S-shaped; Michaelis-Menten saturates from zero toward ``a``.
+S-shaped; Michaelis-Menten saturates from zero toward ``a``. Some paths
+need positive data — the exponential, power, Gompertz and Michaelis-Menten
+need positive measurements, and the power, logarithmic, Lloyd-Lipow and
+Michaelis-Menten need positive times — and say so if they do not get it.
 
-Not sure which shape fits? Pass ``path="best"``:
+Pass the name as ``path`` (``"linear"`` is the default). Not sure which shape
+fits? Pass ``path="best"``: every registered path model is fitted to every
+unit and the one with the smallest AICc (pooled over all units, penalising the
+per-unit parameter count) is selected:
 
-.. code:: python
+.. jupyter-execute::
 
-    model = DegradationAnalysis.fit(x, y, i, threshold=150, path="best")
-    model.path_model.name   # the selected model
-    model.path_selection    # AICc score per candidate
+    best = DegradationAnalysis.fit(x, y, i, threshold=450.0, path="best")
+    print("selected:", best.path_model.name)
+    {name: round(score, 1) for name, score in best.path_selection.items()}
 
-Every registered path model is fitted to every unit and the model with
-the smallest AICc (pooled over all units, penalising the per-unit
-parameter count) is selected; candidates that cannot be fitted to every
-unit — domain violations such as negative measurements for the
-exponential, too few distinct measurement times for their parameter
-count, or non-convergence — are excluded and score ``nan``. The
-selection is by measurement fit only; as always, prefer a shape with
-physical justification when one is known, since the winner is
+Candidates that cannot be fitted to every unit — domain violations such as
+negative measurements for the exponential, too few distinct measurement times
+for their parameter count, or non-convergence — are excluded and score
+``nan``. The selection is by measurement fit only; as always, prefer a shape
+with physical justification when one is known, since the winner is
 extrapolated well beyond the data.
+
+**A custom path.** When the physics suggests a shape that is not in the list,
+subclass :class:`~surpyval.degradation.path_models.PathModel`: give it a ``name``, its
+``param_names``, the ``path`` itself and its inverse ``inv_path`` (the time the
+path reaches a level, ``nan`` or non-positive if it never does). ``fit``
+defaults to nonlinear least squares from an ``_initial_guess`` you supply; a
+path that is linear in its parameters can instead set
+``linear_in_parameters = True`` and provide a closed-form ``fit`` and its
+(constant) ``jacobian``, which also makes the population estimates below
+exact. Here is a diffusion-limited, square-root path:
+
+.. jupyter-execute::
+
+    from surpyval.degradation import PathModel
+
+    class SquareRootPath(PathModel):
+        """y = a + b * sqrt(x): diffusion-limited growth."""
+
+        name = "Square-root"
+        param_names = ["a", "b"]
+        linear_in_parameters = True
+
+        def path(self, x, a, b):
+            return a + b * np.sqrt(np.asarray(x, dtype=float))
+
+        def inv_path(self, y, a, b):
+            with np.errstate(divide="ignore", invalid="ignore"):
+                return ((np.asarray(y, dtype=float) - a) / b) ** 2
+
+        def jacobian(self, x, *params):
+            x = np.asarray(x, dtype=float)
+            return np.column_stack([np.ones_like(x), np.sqrt(x)])
+
+        def fit(self, x, y):
+            design = np.column_stack([np.ones(len(x)), np.sqrt(x)])
+            return np.linalg.lstsq(design, np.asarray(y, dtype=float),
+                                   rcond=None)[0]
+
+    # each unit with its own start and rate, as before
+    rng_sq = np.random.default_rng(3)
+    start = np.repeat(rng_sq.normal(10.0, 5.0, 12), times.size)
+    rate = np.repeat(rng_sq.normal(9.0, 1.0, 12), times.size)
+    y_sqrt = start + rate * np.sqrt(x) + rng_sq.normal(0, 2.0, x.size)
+    sqrt_model = DegradationAnalysis.fit(x, y_sqrt, i, threshold=450.0,
+                                         path=SquareRootPath())
+    sqrt_model.pseudo_failure_times[:4].round(0)
 
 Example
 -------
 
-Consider four units whose degradation is measured every 100 hours, with
-failure defined as the measurement reaching 150:
+Fit the linear path to the twelve units above:
 
-.. code:: python
+.. jupyter-execute::
 
-    import numpy as np
-    from surpyval.degradation import DegradationAnalysis
+    model = DegradationAnalysis.fit(x, y, i, threshold=450.0)
+    model
 
-    x = np.tile(np.arange(100, 1100, 100), 4)
-    i = np.repeat([1, 2, 3, 4], 10)
-    slopes = np.repeat([0.31, 0.28, 0.44, 0.37], 10)
-    y = 10 + slopes * x
+The summary names the path model and the lifetime distribution fitted to the
+pseudo failure times (Weibull by default) with its parameters. Everything the
+three steps produced is on the model:
 
-    model = DegradationAnalysis.fit(x, y, i, threshold=150)
-    print(model)
+.. jupyter-execute::
 
-.. code:: text
+    print("pseudo failure times:", model.pseudo_failure_times.round(0))
+    print("censored (1) or not :", model.c)
+    print("unit 0's fitted a, b:", model.path_params[0].round(4))
 
-    Degradation Analysis SurPyval Model
-    ===================================
-    Path Model          : Linear
-    Threshold           : 150.0
-    Number of Units     : 4
-    Censored Units      : 0
-    Life Distribution   : Weibull
-    Parameters          :
-         alpha: 441.4780882117898
-          beta: 6.987078993008337
+``model.path(t, unit)`` evaluates a unit's fitted path, and ``model.plot()``
+draws every unit's data and fitted path, extended to its pseudo failure time,
+against the threshold:
 
-The fitted model exposes the per-unit results and forwards the usual
-lifetime functions to the fitted life model:
+.. jupyter-execute::
 
-.. code:: python
+    model.plot()
 
-    model.pseudo_failure_times
-    # array([451.61290323, 500.        , 318.18181818, 378.37837838])
+The usual lifetime functions — ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``,
+``mean``, ``random`` — are forwarded to the fitted life model, which is also
+available directly as ``model.life_model`` (an ordinary SurPyval parametric
+model):
 
-    model.sf([300, 400, 500])
-    # array([0.93496716, 0.60538471, 0.09196813])
+.. jupyter-execute::
 
-    model.life_model    # the underlying Parametric Weibull model
-    model.plot()        # data, fitted paths, and the threshold
+    print("reliability at 1000, 1500, 2000 h:", model.sf([1000.0, 1500.0, 2000.0]).round(3))
+    print("B10 and median life              :", model.qf([0.1, 0.5]).round(0))
+    print("mean life                        :", round(float(model.mean()), 0))
 
-Data can also come straight from a DataFrame with
-``DegradationAnalysis.fit_from_df(df, x="time", y="measurement",
-i="unit", threshold=150)``, the life distribution and fitting method can
-be changed with the ``distribution`` and ``how`` arguments (e.g.
-``distribution=LogNormal, how="MPP"``), and a custom path shape can be
-used by passing a ``surpyval.degradation.PathModel`` subclass instance as
-``path``.
+**Units that never reach the threshold.** Add a thirteenth unit that is not
+degrading — its reading drifts slightly *down*. Its fitted path never reaches
+450, so it has no pseudo failure time;
+it is treated as right censored at its last measurement, which the life fit
+takes into account, and a warning says which unit it was:
+
+.. jupyter-execute::
+
+    x_flat = np.concatenate([x, times])
+    y_flat = np.concatenate([y, 12 - 0.005 * times + rng.normal(0, 1.0, times.size)])
+    i_flat = np.concatenate([i, np.full(times.size, 99)])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with_flat = DegradationAnalysis.fit(x_flat, y_flat, i_flat, threshold=450.0)
+    print(caught[0].message)
+    print("censored flags:", with_flat.c)
+
+**Other inputs and options.** Data can come straight from a DataFrame with
+``fit_from_df``, naming the columns; the life distribution and its fitting
+method can be changed with ``distribution`` and ``how``:
+
+.. jupyter-execute::
+
+    from surpyval import LogNormal
+
+    df = pd.DataFrame({"hours": x, "resistance": y, "unit": i})
+    DegradationAnalysis.fit_from_df(df, x="hours", y="resistance", i="unit",
+                                    threshold=450.0, distribution=LogNormal)
 
 Predicting a new unit's failure time
 ------------------------------------
 
-A fitted model can estimate the failure time of a *new*, partially
-observed unit from its degradation trajectory. The model fits its path
-shape to the new measurements and extrapolates to the same threshold:
+A fitted model can estimate the failure time of a *new*, partially observed
+unit from its degradation trajectory. ``predict_failure_time`` fits the model's
+path shape to the new measurements and extrapolates to the same threshold;
+``predict_remaining_life`` subtracts the unit's age (its last measurement
+time):
 
-.. code:: python
+.. jupyter-execute::
 
-    # a new unit observed for only 300 hours, degrading at ~0.35/hour
-    x_new = [100, 200, 300]
-    y_new = [45, 80, 115]
+    x_new = np.array([100.0, 200.0, 300.0])     # observed for 300 h so far
+    y_new = np.array([45.0, 70.0, 103.0])
 
-    model.predict_failure_time(x_new, y_new)   # ~400: when y reaches 150
-    model.predict_remaining_life(x_new, y_new) # ~100: minus its age (300)
+    print("failure time  :", round(model.predict_failure_time(x_new, y_new), 0))
+    print("remaining life:", round(model.predict_remaining_life(x_new, y_new), 0))
 
-If the trajectory has already crossed the threshold, the predicted
-failure time is in the past and the remaining life is negative. If the
-new unit's fitted path never reaches the threshold (it is not
-degrading), both return ``nan`` with a warning. For a population-level
-view instead of a per-unit extrapolation, the fitted life model can be
-used directly — e.g. the survival of a unit that has already survived
-to time ``a``: ``model.life_model.cs(t, a)``.
+If the trajectory has already crossed the threshold, the predicted failure time
+is in the past and the remaining life is negative. If the new unit's fitted path
+never reaches the threshold (it is not degrading), both return ``nan`` with a
+warning. The trajectory needs at least as many measurements as the path has
+parameters, at two or more distinct times. For a population-level view instead
+of a per-unit extrapolation, use the fitted life model — e.g. the survival of a
+unit that has already survived to time ``a``: ``model.life_model.cs(t, a)``.
 
 Bayesian remaining-life prediction
 ----------------------------------
 
-``predict_failure_time`` trusts the new unit's least-squares fit
-completely — dangerous when the trajectory is short or noisy.
-``predict_rul`` instead blends the unit's own trend with the
-population: the population path-parameter distribution (below) is the
-prior, the unit's measurements are the likelihood, and the Gaussian
-posterior of the unit's path parameters is pushed through the
-threshold crossing by Monte Carlo:
+``predict_failure_time`` trusts the new unit's least-squares fit completely —
+dangerous when the trajectory is short or noisy. ``predict_rul`` instead blends
+the unit's own trend with the population: the population path-parameter
+distribution (next section) is the prior, the unit's measurements are the
+likelihood, and the Gaussian posterior of the unit's path parameters is pushed
+through the threshold crossing by Monte Carlo:
 
-.. code:: python
+.. jupyter-execute::
 
-    pred = model.predict_rul(x_new, y_new, alpha_ci=0.05)
+    pred = model.predict_rul(x_new, y_new, alpha_ci=0.05, random_state=0)
 
-    pred.failure_time           # posterior median failure time
-    pred.failure_time_interval  # 95% credible interval
-    pred.rul                    # median remaining useful life
-    pred.rul_interval           # 95% credible interval
-    pred.prob_failed            # P(already crossed the threshold)
-    pred.prob_never_fails       # P(path never reaches the threshold)
-    pred.posterior_mean         # the unit's posterior path parameters
-    pred.posterior_cov
+    print("failure time (median)  :", round(pred.failure_time, 0))
+    print("95% credible interval  :", tuple(round(v, 0) for v in pred.failure_time_interval))
+    print("remaining life (median):", round(pred.rul, 0))
+    print("95% credible interval  :", tuple(round(v, 0) for v in pred.rul_interval))
+    print("P(already failed)      :", pred.prob_failed)
+    print("P(never fails)         :", pred.prob_never_fails)
+    print("posterior mean a, b    :", pred.posterior_mean.round(4))
 
-The posterior mean is a precision-weighted compromise: a short or
-noisy trajectory is shrunk toward the population's typical path, and
-as measurements accumulate the prediction converges to the plain
-least-squares extrapolation. Unlike ``predict_failure_time``, it works
-from a single measurement, and a not-yet-degrading trajectory yields a
-long-but-finite prediction with wide bounds rather than ``nan``. The
-posterior is exact (conjugate) for path models that are linear in
-their parameters (linear, quadratic, logarithmic, Lloyd-Lipow) and an
-iterated-linearisation (Laplace) approximation for the others. It
-requires a positive ``measurement_var`` — with noiseless training
-paths there is nothing to blend.
+``pred`` is a :class:`~surpyval.degradation.degradation_analysis.RULPrediction`; ``pred.samples``
+holds the Monte Carlo failure times (``inf`` for draws whose path never reaches
+the threshold) and ``posterior_cov`` the posterior covariance. ``alpha_ci`` sets
+the interval level, ``n_samples`` the number of draws, and ``random_state``
+makes the draws reproducible.
+
+The point of the prior shows when the trajectory is short. Here is the same unit
+seen after one, two and three measurements, next to the plain least-squares
+extrapolation (which needs at least two points):
+
+.. jupyter-execute::
+
+    for k in (1, 2, 3):
+        p = model.predict_rul(x_new[:k], y_new[:k], random_state=0)
+        lo, hi = p.failure_time_interval
+        plain = (model.predict_failure_time(x_new[:k], y_new[:k])
+                 if k >= 2 else float("nan"))
+        print(f"{k} measurement(s): Bayesian {p.failure_time:6.0f} "
+              f"({lo:5.0f} to {hi:5.0f})   least squares {plain:6.0f}")
+
+With one measurement the forecast leans on the population, and its interval is
+wide; with two, the least-squares line through two noisy points overshoots,
+while the Bayesian forecast moves only part of the way toward it; with three it
+has moved most of the way to the unit's own trend, and its interval has
+narrowed. The posterior mean is a
+precision-weighted compromise, so as measurements accumulate the prediction
+converges to the plain least-squares extrapolation. The posterior is exact
+(conjugate) for path models that are linear in their parameters and an
+iterated-linearisation (Laplace) approximation for the others. It requires a
+positive ``measurement_var``: if every training unit's path fitted its
+measurements exactly there is no noise model to blend with, and
+``predict_rul`` says so.
 
 The population path-parameter distribution
 ------------------------------------------
 
-The fitted model also estimates the *population* distribution of the
-path parameters, which is what a random-effects treatment (and any
-Bayesian blending of a new unit's trajectory with the population) needs
-as its prior:
+The fitted model also estimates the *population* distribution of the path
+parameters, :math:`\theta_i \sim N(\mu, \Sigma)` — what a random-effects
+treatment, and the Bayesian prior above, needs:
 
-.. code:: python
+.. jupyter-execute::
 
-    model.path_param_mean        # mean path parameters across units
-    model.path_param_cov         # between-unit covariance (corrected)
-    model.path_param_sample_cov  # raw sample covariance (uncorrected)
-    model.measurement_var        # pooled measurement-error variance
+    print("mean a, b (mu)          :", model.path_param_mean.round(4))
+    print("between-unit sd (Sigma) :", np.sqrt(np.diag(model.path_param_cov)).round(4))
+    print("raw sample sd           :", np.sqrt(np.diag(model.path_param_sample_cov)).round(4))
+    print("measurement sd (sigma)  :", round(float(np.sqrt(model.measurement_var)), 3))
 
-Because each unit's fitted parameters are least-squares *estimates*,
-their scatter across units mixes two sources: real unit-to-unit
-variability and per-unit estimation noise
-(:math:`\mathrm{Cov}(\hat{\theta}_i) = \Sigma + V_i`). The raw sample
-covariance therefore overstates the between-unit variability.
-``path_param_cov`` applies the Lu-Meeker two-stage correction: the
-measurement variance is pooled from the per-unit residuals, each
-unit's estimation covariance :math:`V_i = \sigma^2 (J_i^T J_i)^{-1}`
-is computed from the path Jacobian, and the average is subtracted from
-the sample covariance. The result is projected onto the positive
-semi-definite cone; if material clipping was needed (estimation noise
-comparable to the between-unit scatter — few units or few measurements
-per unit), a warning is raised and the corrected covariance should be
-treated as unreliable. When every unit has only as many measurements
-as path parameters, the measurement variance cannot be estimated and
-no correction is applied.
+The data were simulated with a mean start of 10 and rate of 0.30, starting
+levels spread by 3, rates by 0.06 and measurement noise 3, and the estimates are
+close to all of them. Notice that the raw sample
+standard deviation of the fitted intercepts is larger than the corrected one:
+because each unit's fitted parameters are least-squares *estimates*, their
+scatter across units mixes two sources — real unit-to-unit variability and
+per-unit estimation noise (:math:`\mathrm{Cov}(\hat{\theta}_i) = \Sigma + V_i`).
+``path_param_cov`` applies the Lu-Meeker two-stage correction: the measurement
+variance is pooled from the per-unit residuals, each unit's estimation
+covariance :math:`V_i = \sigma^2 (J_i^T J_i)^{-1}` is computed from the path
+Jacobian, and the average is subtracted from the sample covariance.
+
+The result is projected onto the positive semi-definite cone. If material
+clipping was needed — the estimation noise is comparable to the between-unit
+scatter, typically with few units or few measurements per unit — a warning is
+raised and the corrected covariance should be treated as unreliable. When every
+unit has only as many measurements as path parameters, the measurement variance
+cannot be estimated and no correction is applied.
 
 REML estimation of the population
 ---------------------------------
@@ -266,22 +406,42 @@ integrated out each unit's measurement vector is marginally
 and :math:`(\mu, \Sigma, \sigma^2)` are estimated by maximising the
 restricted (REML) marginal likelihood — REML rather than plain ML so
 the variance components do not inherit the small-sample downward bias
-from estimating :math:`\mu`. Select it with:
+from estimating :math:`\mu`. Select it with ``population_method="reml"``.
 
-.. code:: python
+Here is where it matters: six units, each measured only three to six times at
+irregular moments, with noisy measurements. The moments correction subtracts
+more estimation noise from the intercepts than their raw scatter, clips the
+intercept spread to zero and warns; REML estimates it directly and gets a
+sensible answer (the truth is 3):
 
-    model = DegradationAnalysis.fit(
-        x, y, i, threshold=150, population_method="reml"
-    )
+.. jupyter-execute::
+
+    rng5 = np.random.default_rng(5)
+    xs, ys, ids = [], [], []
+    for unit in range(6):
+        t = np.sort(rng5.uniform(50, 1000, rng5.integers(3, 7)))
+        a, b = rng5.normal(10, 3.0), rng5.normal(0.3, 0.06)
+        xs.append(t)
+        ys.append(a + b * t + rng5.normal(0, 8.0, t.size))
+        ids.append(np.full(t.size, unit))
+    x_few, y_few, i_few = (np.concatenate(v) for v in (xs, ys, ids))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        moments = DegradationAnalysis.fit(x_few, y_few, i_few, threshold=450.0)
+    print("warning:", str(caught[0].message)[:70], "...")
+    reml = DegradationAnalysis.fit(x_few, y_few, i_few, threshold=450.0,
+                                   population_method="reml")
+    print("moments between-unit sd:", np.sqrt(np.diag(moments.path_param_cov)).round(3))
+    print("REML between-unit sd   :", np.sqrt(np.diag(reml.path_param_cov)).round(3))
 
 The estimates land in the same attributes (``path_param_mean``,
-``path_param_cov``, ``measurement_var``), so ``predict_rul`` and
-everything else work unchanged. :math:`\Sigma` is parameterised by its
-Cholesky factor, so it is positive definite by construction — no
-clipping. On balanced designs (every unit measured at the same times)
-REML coincides with the corrected moments estimate; they differ on
-unbalanced data and when the unit count is small, where REML is
-preferable. REML requires a positive measurement variance.
+``path_param_cov``, ``measurement_var``), so ``predict_rul`` and everything else
+work unchanged. :math:`\Sigma` is parameterised by its Cholesky factor, so it is
+positive definite by construction — no clipping. On balanced designs (every
+unit measured at the same times) REML coincides with the corrected moments
+estimate; they differ on unbalanced data and when the unit count is small,
+where REML is preferable. REML requires a positive measurement variance.
 
 For path models that are **linear in their parameters** (linear,
 quadratic, logarithmic, Lloyd-Lipow) the design matrix :math:`X_i` is
@@ -292,14 +452,8 @@ linearisation [LindstromBates1990]_: each unit's parameters are
 estimated at their conditional (penalised-least-squares) mode, the path
 is linearised about that mode to give a working linear mixed model, and
 the linear REML step is iterated to convergence. On a linear path this
-reduces to the exact fit in a single pass. Select it the same way:
-
-.. code:: python
-
-    model = DegradationAnalysis.fit(
-        x, y, i, threshold=20, path="exponential",
-        population_method="reml",
-    )
+reduces to the exact fit in a single pass. Select it the same way,
+``DegradationAnalysis.fit(..., path="exponential", population_method="reml")``.
 
 Induced failure-time distribution (Lu-Meeker)
 ---------------------------------------------
@@ -434,10 +588,11 @@ resamples whole units and reruns the whole pipeline:
     model.cb(np.array([500.0, 600.0]), on='sf', method='bootstrap',
              n_boot=100, seed=0)
 
-Random-effects (Lu-Meeker, fitted by REML) and stochastic-process (Wiener,
-gamma-process) degradation models, which propagate this uncertainty through a
-single likelihood rather than a two-stage correction, are candidates for future
-work.
+Both methods take ``on`` (``"sf"``, ``"ff"`` or ``"Hf"``), ``alpha_ci`` and
+``bound`` (``"two-sided"``, ``"lower"`` or ``"upper"``). The bounds describe
+the *life model*; the stochastic-process and destructive models further down
+have their own uncertainty story (the destructive model offers bootstrap bounds;
+the process models do not yet report parameter uncertainty).
 
 
 Accelerated degradation testing (covariates)
@@ -445,12 +600,21 @@ Accelerated degradation testing (covariates)
 
 In accelerated degradation testing (ADT) units are run at *elevated stress*
 (temperature, voltage, load) so they degrade fast enough to measure, and life
-is then extrapolated back to use conditions. Passing a per-unit stress
-covariate ``Z`` to :meth:`DegradationAnalysis.fit` fits a *regression* life
-model on the pseudo failure times instead of a plain distribution, so life can
-be predicted at any stress. A plain distribution is wrapped automatically in an
-accelerated-failure-time model; an explicit regression fitter
-(``AFT(LogNormal)``, ``WeibullPH``, …) is used as given.
+is then extrapolated back to use conditions. There are three ways to let stress
+into the general-path model — on the life, on the path parameters, or on the
+clock — compared side by side on the :doc:`Degradation Analysis` page; this
+section takes them in that order.
+
+The simplest: pass the stress as ``Z`` to :meth:`DegradationAnalysis.fit`.
+``Z`` is aligned to ``x`` (one row per measurement, one column per stress
+variable) and must be constant within each unit — a unit is tested at a single
+stress. The paths are fitted exactly as before, and step three fits a
+*regression* life model to the pseudo failure times instead of a plain
+distribution, with each unit's stress as its covariate, so life can be
+predicted at any stress. A plain distribution is wrapped automatically in an
+accelerated-failure-time model, :math:`H(t \mid z) = H_0(e^{\beta^\top z} t)`
+(a positive coefficient means higher stress, shorter life); an explicit
+regression fitter (``AFT(LogNormal)``, ``WeibullPH``, …) is used as given.
 
 .. jupyter-execute::
 
@@ -624,10 +788,34 @@ Here 25 units run for 300 hours — 100 at 50 °C, 100 at 75 °C, then 100 at
                                    stress_ref=[z_levels[0]])
     step
 
-The stress coefficient is close to the ``-5000`` simulated. The path
+The stress coefficient is close to the ``-5000`` simulated (an activation
+energy of :math:`5000 \times 8.617\times10^{-5} \approx 0.43` eV). The path
 parameters, their population (``path_param_mean``, ``path_param_cov``) and the
 pseudo failure times are all on the 50 °C clock, so the life distribution
-listed is the life *at the reference stress*. ``model.path(t, unit)`` evaluates
+listed is the life *at the reference stress*.
+
+It is worth looking at how the stress rows line up with the measurements around
+the first step. The chamber goes from 50 °C to 75 °C just after the 100-hour
+inspection, so the row for the 100-hour measurement still says 50 °C (that
+interval ran at 50 °C) and the row for the 110-hour measurement says 75 °C.
+Each unit's clock adds up ``AF`` times the interval length, which is what the
+model sees instead of calendar time:
+
+.. jupyter-execute::
+
+    unit0 = ids_ == 0
+    rows = slice(8, 12)
+    af_rows = step.acceleration_factor
+    tau0 = np.cumsum(np.diff(np.concatenate([[0.0], xs_[unit0]]))
+                     * np.array([af_rows([zz]) for zz in Zs_[unit0]]))
+    pd.DataFrame({
+        "time (h)": xs_[unit0][rows],
+        "stress row (C)": (1 / Zs_[unit0][rows] - 273.0).round(0),
+        "AF over interval": [round(af_rows([zz]), 2) for zz in Zs_[unit0][rows]],
+        "clock (50 C hours)": tau0[rows].round(1),
+    })
+
+``model.path(t, unit)`` evaluates
 a unit's fitted path in calendar time, along its own stress history, and bends
 at each step:
 
@@ -672,7 +860,15 @@ any acceleration into its own rate, so with no steps at all this raises an
 error. ``population_method='reml'`` fits the mixed model instead: units share
 one population of path parameters, so differences between units run at
 different constant stresses identify :math:`\gamma` as well, and it works for a
-classic constant-stress test too.
+classic constant-stress test too. On this stepped test the two agree:
+
+.. jupyter-execute::
+
+    step_reml = DegradationAnalysis.fit(xs_, ys_, ids_, threshold=15.0, Z=Zs_,
+                                        acceleration='clock',
+                                        stress_ref=[z_levels[0]],
+                                        population_method='reml')
+    print('gamma, moments:', step.gamma.round(0), '  REML:', step_reml.gamma.round(0))
 
 **Remaining life on a stress plan.** For a unit you are watching, the stress
 matters twice: its *history* sets how far along its reference-stress clock it
@@ -748,9 +944,9 @@ SurPyval provides two such processes. They are not competitors; they describe
 different physics, and the right one is dictated by whether your degradation can
 *decrease*:
 
-* :class:`~surpyval.degradation.WienerProcess` — for signals that **fluctuate**
+* :class:`~surpyval.degradation.process_models.WienerProcess` — for signals that **fluctuate**
   up and down (noisy sensors, measurements that wobble).
-* :class:`~surpyval.degradation.GammaProcess` — for damage that only ever
+* :class:`~surpyval.degradation.process_models.GammaProcess` — for damage that only ever
   **accumulates** (wear, corrosion, crack growth).
 
 Both are fitted from the same three arrays you have used throughout this
@@ -1154,7 +1350,7 @@ to read its strength, or drive insulation to breakdown — so each unit yields
 exactly **one** ``(time, degradation)`` point. There are no per-unit paths to
 fit and extrapolate, so the pseudo-failure-time machinery above does not apply.
 
-:class:`~surpyval.degradation.DestructiveDegradation` instead models the
+:class:`DestructiveDegradation <surpyval.degradation.destructive.DestructiveDegradation_>` instead models the
 *population* degradation distribution directly, as a location-scale regression
 whose location moves with a transform of time,
 :math:`Y \mid t \sim \mathrm{dist}(\text{loc} = \beta_0 + \beta_1\,\varphi(t),
@@ -1224,7 +1420,14 @@ process ``WienerProcessModel`` / ``GammaProcessModel``, the destructive
     grid = np.array([300.0, 450.0, 600.0])
     print("match:", np.allclose(saveable.sf(grid), reloaded.sf(grid)))
 
-Use ``to_json`` / ``from_json`` for a file directly. ``DegradationModel`` stores
-its raw data, so the reloaded model can also produce bootstrap confidence
-bounds; its fitted life model (plain or accelerated) round-trips through its own
-serialisation.
+Use ``to_json`` / ``from_json`` for a file directly, or the package-level
+``surpyval.from_dict``, which dispatches on the stored model type.
+``DegradationModel`` stores its raw data and everything fitted from it — the
+path parameters, the population, the pseudo failure times, the life model
+(plain or accelerated, through its own serialisation), and for accelerated
+models the stresses, ``links`` fixed effects or the clock's ``gamma`` and
+``stress_ref`` — so every prediction method works on the reloaded model. The
+one exception is the *bootstrap* confidence bound: it reruns the whole fit, and
+the lifetime-distribution fitter it needs is not stored, so after a reload use
+the analytic bound (``method="analytic"``, where the model supports it) or
+refit.

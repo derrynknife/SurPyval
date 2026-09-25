@@ -67,6 +67,24 @@ log-linked rate with ``Z = 1/T`` follows the Arrhenius relationship.
 
 .. autofunction:: surpyval.degradation.stress.stress_design
 
+.. autofunction:: surpyval.degradation.stress.fixed_effect_names
+
+Step-Stress: the Accelerated Clock
+----------------------------------
+
+For tests whose stress changes *during* a unit's test
+(``acceleration="clock"`` in :meth:`DegradationAnalysis.fit`): stress
+speeds up the clock of every unit's path, ``AF(z) = exp(gamma' (z -
+stress_ref))``, and the path is the ordinary path model on the
+reference-stress time the unit has aged. The fitted
+:class:`~surpyval.degradation.degradation_analysis.DegradationModel` then
+carries ``gamma`` and ``stress_ref``, its life methods take the stress as
+one row or a :class:`~surpyval.StepSchedule`, and its trajectory methods
+take the unit's stress history ``Z`` and a planned ``Z_future``. How the
+stress coefficients are estimated:
+
+.. automodule:: surpyval.degradation.step_stress
+
 Stochastic Process Models
 -------------------------
 
@@ -75,7 +93,10 @@ noise, these treat it as a stochastic process in its own right: the
 Wiener process for degradation that can go down as well as up, and the
 gamma process for monotone accumulation such as wear or crack growth.
 Both give a first-passage distribution to the threshold in closed form,
-and so a remaining-useful-life prediction with bounds.
+and so a remaining-useful-life prediction with bounds. Both also take a
+stress ``Z`` (one row per measurement), which may change between or
+during units' tests: stress accelerates the process clock, and the life
+under any stress profile stays in closed form.
 
 .. autoclass:: surpyval.degradation.process_models.WienerProcess
    :members:
