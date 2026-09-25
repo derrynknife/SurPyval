@@ -60,8 +60,13 @@ def fallback_minimize(
             if newton.success and np.isfinite(newton.fun):
                 res = newton
 
+        # The last rung is derivative free, as described above. It used to
+        # be scipy's default method, which with no jacobian passed is BFGS
+        # on finite differences: the method that had just failed with an
+        # exact gradient, retried with a worse one -- and no help at all
+        # for the zero-hessian case, whose gradients are the problem.
         if (res.success is False) or (np.isnan(res.x).any()):
-            res = minimize(fun, init, args=args)
+            res = minimize(fun, init, method="Nelder-Mead", args=args)
 
     return res
 

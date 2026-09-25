@@ -2,8 +2,10 @@ import inspect
 import itertools
 from typing import Callable
 
+import numpy as onp
 import numpy.typing as npt
 from autograd import elementwise_grad
+from scipy.integrate import quad
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -120,6 +122,13 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         # ``self.Hf = fun`` was an unbound instance attribute, so
         # ``self.Hf(x, *params)`` called ``fun(x, *params)`` either way.
         self._fun = fun
+        # A distribution known only through its cumulative hazard has no
+        # linearising transform, so there is no probability-plot
+        # regression to fit (the identity transforms below only serve to
+        # draw ``plot()``). Advertising MPP support sent ``how='MPP'`` on
+        # to an ``unpack_rr`` that does not exist, and it died with an
+        # AttributeError instead of the usual refusal.
+        self.supports_mpp = False
 
     def Hf(self, x: Numeric, *params: Boxable) -> Boxable:
         """
@@ -152,6 +161,61 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         autograd.
         """
         return elementwise_grad(self.ff)(x, *params)
+
+    def moment(self, m: int, *params: Boxable) -> Boxable:
+        r"""
+        The ``m``-th raw moment, integrated from the survival function:
+
+        .. math::
+            E[X^m] = \int_0^\infty m x^{m-1} R(x)\,dx
+                   - \int_{-\infty}^0 m x^{m-1} F(x)\,dx ,
+
+        restricted to the declared support (``R = 1`` below it and
+        ``F = 1`` above it contribute in closed form).
+
+        The generic fallback integrates ``x**m * df(x)`` instead, and
+        ``df`` here is autograd's derivative of ``ff``: in the far tail the
+        cumulative hazard overflows, the derivative of ``exp(-inf)`` is
+        ``0 * inf``, and one nan made every moment -- and so ``var()`` --
+        nan. ``R`` and ``F`` themselves underflow cleanly to 0 and 1, and
+        need no derivative at all.
+        """
+        if m == 0:
+            return 1.0
+        theta = [float(p) for p in params]
+        lo, hi = float(self.support[0]), float(self.support[1])
+
+        # Evaluated at a length-one array (a user's cumulative hazard may
+        # index or reduce its argument) and read back as a float.
+        def sf(t: float) -> float:
+            value = self.sf(onp.array([t]), *theta)
+            return float(onp.asarray(value, dtype=float).ravel()[0])
+
+        def ff(t: float) -> float:
+            value = self.ff(onp.array([t]), *theta)
+            return float(onp.asarray(value, dtype=float).ravel()[0])
+
+        total = 0.0
+        with onp.errstate(all="ignore"):
+            if hi > 0:
+                start = max(lo, 0.0)
+                # R = 1 on (0, lo) for a support starting above zero
+                total += start**m
+                total += quad(
+                    lambda t: m * t ** (m - 1) * sf(t), start, hi, limit=200
+                )[0]
+            if lo < 0:
+                end = min(hi, 0.0)
+                # F = 1 on (hi, 0) for a support ending below zero
+                total += end**m if hi < 0 else 0.0
+                total -= quad(
+                    lambda t: m * t ** (m - 1) * ff(t), lo, end, limit=200
+                )[0]
+        return total
+
+    def mean(self, *params: Boxable) -> Boxable:
+        """The mean, the first raw moment (see :meth:`moment`)."""
+        return self.moment(1, *params)
 
     # Returns a list, where Weibull returns a tuple and the discrete
     # distributions return an array. The base contract does not pin

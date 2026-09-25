@@ -3,11 +3,12 @@
 ``Parametric`` and ``ParametricRegressionModel`` carried near-identical
 ``neg_ll``/``aic``/``bic``/``aic_c`` implementations. They differed only
 in how the fitted data is stored (an xcnt dict versus a ``SurpyvalData``
-object) and in one deliberate convention difference: the small-sample
-AIC correction term uses ``self.k`` for univariate models but
-``len(self.params)`` for regression models. Both are preserved exactly
-through the ``_ic_counts``/``_ic_k_aic_c`` hooks so fitted values do not
-change.
+object), which the ``_ic_counts`` hook absorbs. ``_ic_k`` is the parameter
+count of the ``aic``/``bic`` penalty and (through ``_ic_k_aic_c``) of the
+small-sample correction: ``self.k`` by default, and the number of
+*estimated* parameters for univariate parametric models, which exclude the
+ones fixed at fit time. Regression models set ``self.k`` to their number
+of estimated parameters directly.
 """
 
 import numpy as np
@@ -33,9 +34,14 @@ class InformationCriteriaMixin:
     def _ic_counts(self) -> tuple[int, int]:
         raise NotImplementedError
 
-    def _ic_k_aic_c(self) -> int:
-        # The parameter count used in the aic_c correction term.
+    def _ic_k(self) -> int:
+        # The parameter count used in the aic and bic penalties.
         return self.k
+
+    def _ic_k_aic_c(self) -> int:
+        # The parameter count used in the aic_c correction term; the same
+        # as the aic penalty it corrects unless a host overrides it.
+        return self._ic_k()
 
     def neg_ll(self) -> float:
         r"""
@@ -104,7 +110,7 @@ class InformationCriteriaMixin:
         if hasattr(self, "_bic"):
             return self._bic
         n_observed, _ = self._ic_counts()
-        self._bic = self.k * np.log(n_observed) + 2 * self.neg_ll()
+        self._bic = self._ic_k() * np.log(n_observed) + 2 * self.neg_ll()
         return self._bic
 
     def aic(self) -> float:
@@ -132,7 +138,7 @@ class InformationCriteriaMixin:
         """
         if hasattr(self, "_aic"):
             return self._aic
-        self._aic = 2 * self.k + 2 * self.neg_ll()
+        self._aic = 2 * self._ic_k() + 2 * self.neg_ll()
         return self._aic
 
     def aic_c(self) -> float:

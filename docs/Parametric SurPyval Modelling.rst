@@ -769,13 +769,12 @@ We have fit only one of the four parameters of an offset exponentiated-Weibull d
 Parameters are fixed by name, using the names in the distribution's
 ``param_names`` plus ``gamma`` for the offset. Fixing works with ``MLE``,
 ``MPS``, ``MSE`` and ``MOM``, but not with probability plotting, which fits
-all of the parameters of its line at once. With ``MOM`` it is a compromise:
-the method still matches one moment per parameter, fixed ones included, so it
-usually cannot match them all and warns (see :doc:`Parametric Estimation`). A
-fixed parameter is known rather than estimated, so it has no standard error
-and the confidence bounds of the other parameters are conditional on it. It
-does, however, still count in the parameter number :math:`k` of ``aic()`` and
-``bic()``.
+all of the parameters of its line at once. With ``MOM`` a fixed parameter
+needs no equation of its own, so the method matches one moment per *free*
+parameter (see :doc:`Parametric Estimation`). A fixed parameter is known rather
+than estimated, so it has no standard error, the confidence bounds of the other
+parameters are conditional on it, and it does not count in the parameter number
+:math:`k` of ``aic()``, ``aic_c()`` and ``bic()``.
 
 Fixing a parameter also reduces how much data a fit needs. SurPyval refuses to
 fit when there are fewer distinct (non-right-censored) values than free
@@ -1195,7 +1194,10 @@ population never fails:
 ``mean()`` of an LFP model is the *defective* mean, ``p`` times the mean of
 the base Weibull, because a unit that never fails contributes nothing to it;
 the mean life of the units that do fail is the base mean,
-``surv.Weibull.mean(*lfp_model.params)``.
+``surv.Weibull.mean(*lfp_model.params)``. ``var()`` and ``moment()`` follow the
+same convention -- the units that never fail are scored as 0, so ``var()`` is
+``moment(2) - mean()**2`` -- and the same holds for the zero-inflated mass
+``f0`` below, which sits at 0 anyway.
 
 LFP models can only be fitted with ``MLE``; the other methods raise. And ``p``
 is only well determined when the data follow the units long enough to see the
@@ -1241,10 +1243,11 @@ start with the best likelihood wins, which here is almost ten log-likelihood
 units better. If you do pass ``init`` to an LFP fit, compare ``neg_ll()`` with
 the default fit.
 
-The ``p`` of a limited failure population is a reserved name, so distributions
-that call one of their own parameters ``p`` -- the ``Geometric`` and the
-``NegativeBinomial`` -- cannot at present be fitted with ``lfp=True``; see the
-section on discrete distributions below.
+Distributions that call one of their own parameters ``p`` -- the
+``Geometric`` and the ``NegativeBinomial`` -- keep that name, and their
+limited-failure proportion is called ``lfp_p`` instead (in ``fixed``,
+``param_cb`` and the printed model); see the section on discrete distributions
+below.
 
 Zero-Inflated Modelling
 -----------------------
@@ -1442,10 +1445,17 @@ per-cycle probability of a ``Geometric``, and the ``p`` of a
     print("per-cycle probability:", geom.params[0])
     print("geom.p               :", geom.p, "(the limited-failure proportion)")
 
-For the same reason these two distributions cannot at present be fitted with
-``lfp=True``, and ``param_cb('p')`` raises on them; a Wald interval for the
-per-cycle probability can be formed from ``geom.hess_inv`` as described in
-:doc:`Parametric Estimation`.
+Parameter *names*, though, always mean the distribution's own parameter
+first: ``param_cb('p')`` bounds the per-cycle probability, ``fixed={'p': ...}``
+fixes it, and a limited failure population fitted to these two distributions
+calls its proportion ``lfp_p``:
+
+.. jupyter-execute::
+
+    print("per-cycle probability 95% CI:", geom.param_cb('p'))
+    lfp_geom = surv.Geometric.fit(np.minimum(x, 10), c=(x > 10).astype(int),
+                                  lfp=True)
+    print("susceptible proportion 95% CI:", lfp_geom.param_cb('lfp_p'))
 
 The ``DiscreteWeibull`` distribution (the Nakagawa-Osaki Type I) is the discrete analogue of the ``Weibull``, and like it has a flexible hazard: ``beta`` controls the shape, with ``beta < 1`` a decreasing (infant-mortality) hazard, ``beta = 1`` the constant-hazard Geometric, and ``beta > 1`` an increasing (wear-out) hazard. Its other parameter, ``q``, is the probability of surviving the first cycle.
 
@@ -1542,7 +1552,7 @@ Because the support is :math:`\{1, 2, 3, \dots\}`, the value ``0`` is left free 
 
 The fraction of zeros is 40 of 240, or 0.167, exactly the fitted ``f0``. (The ``Poisson`` already has mass at zero, so it cannot be zero inflated.)
 
-A note on estimation: probability plotting (MPP) is not defined for these discrete lifetimes, since their step-shaped CDFs cannot be drawn as a straight line, and neither is MPS, since tied integer values make the spacings degenerate; both raise a ``ValueError``. Maximum likelihood (the default), MSE and MOM all work, except MOM for the ``BetaGeometric``, which currently returns its starting point (see :doc:`Parametric Estimation`). Calling ``plot()`` on a discrete model raises for the same reason as MPP, and ``offset=True`` is not supported. All the other model methods -- ``sf``, ``ff``, ``hf``, ``Hf``, ``df``, ``qf``, ``mean``, ``moment``, ``random`` and the confidence bounds ``cb`` -- work as usual (there is no ``entropy`` for these distributions).
+A note on estimation: probability plotting (MPP) is not defined for these discrete lifetimes, since their step-shaped CDFs cannot be drawn as a straight line, and neither is MPS, since tied integer values make the spacings degenerate; both raise a ``ValueError``. Maximum likelihood (the default), MSE and MOM all work (MOM for the ``BetaGeometric`` needs a sample more dispersed than a Geometric's, see :doc:`Parametric Estimation`). Calling ``plot()`` on a discrete model raises for the same reason as MPP, and ``offset=True`` raises a ``ValueError``: shifting a distribution on the integers by a continuous offset is not a member of the family. All the other model methods -- ``sf``, ``ff``, ``hf``, ``Hf``, ``df``, ``qf``, ``mean``, ``moment``, ``random`` and the confidence bounds ``cb`` -- work as usual (there is no ``entropy`` for these distributions).
 
 .. jupyter-execute::
 
@@ -1807,20 +1817,19 @@ functionality.
 
 What a cumulative hazard gives you, and what it does not:
 
-- **Available:** fitting by ``'MLE'`` (the default), ``'MPS'`` and ``'MSE'``,
-  with ``fixed``, ``init``, ``lfp``, ``offset`` (when the support is
-  :math:`(0, \infty)`) and ``zi`` (when it starts at 0); the functions
-  ``sf``, ``ff``, ``df``, ``hf``, ``Hf`` and ``cs``; confidence bounds
-  (``cb`` and ``param_cb``, Wald or likelihood ratio); ``neg_ll``, ``aic`` and
-  ``bic``; and ``plot``, on linear axes.
-- **Not available:** ``qf``, ``random``, ``mean``, ``moment`` and ``entropy``,
-  since neither a quantile function nor the moments follow from :math:`H(x)`
-  without numerical inversion or integration that SurPyval does not attempt
-  (``var()`` returns ``nan``). ``how='MPP'`` needs a linearising transform
-  that a custom distribution does not have (it currently fails with an
-  ``AttributeError``), and ``how='MOM'`` integrates the density numerically
-  for every moment at every step of the search, which is too slow to be
-  practical.
+- **Available:** fitting by ``'MLE'`` (the default), ``'MPS'``, ``'MSE'`` and
+  ``'MOM'``, with ``fixed``, ``init``, ``lfp``, ``offset`` (when the support
+  is :math:`(0, \infty)`) and ``zi`` (when it starts at 0); the functions
+  ``sf``, ``ff``, ``df``, ``hf``, ``Hf`` and ``cs``; ``mean``, ``moment`` and
+  ``var``, integrated numerically from the survival function
+  (:math:`E[X^m] = \int m x^{m-1} R(x)\,dx` on a positive support); confidence
+  bounds (``cb`` and ``param_cb``, Wald or likelihood ratio); ``neg_ll``,
+  ``aic`` and ``bic``; and ``plot``, on linear axes.
+- **Not available:** ``qf``, ``random`` and ``entropy``, since a quantile
+  function does not follow from :math:`H(x)` without a numerical inversion
+  SurPyval does not attempt. ``how='MPP'`` needs a linearising transform that
+  a custom distribution does not have, so it is refused with a
+  ``ValueError``.
 
 Credit for this idea must be given to the creators of the *lifelines* package. *lifelines* is capable
 of receiving a cumulative hazard function that can then be used as a distribution to fit parameters.

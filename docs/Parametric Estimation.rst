@@ -175,7 +175,7 @@ This is to say that the method of moments solution for the parameter of the expo
     print("1 / mean(x)  :", 1 / x.mean())
     print("MOM estimate :", surv.Exponential.fit(x, how='MOM').params[0])
 
-This is an easy result. When we extend to other distributions with more than one parameter, we need one equation per unknown: a distribution with :math:`k` parameters is matched on its first :math:`k` moments, and an offset adds one more parameter and so one more moment. Such simple analytical solutions are not always available. A few distributions have them -- the Uniform and Beta solve their moment equations in closed form, and SurPyval uses those solutions directly when there is no offset and nothing is fixed -- but in general numeric optimisation is needed. SurPyval uses numeric optimisation to compute the parameters for these distributions.
+This is an easy result. When we extend to other distributions with more than one parameter, we need one equation per unknown: a distribution with :math:`k` free parameters is matched on its first :math:`k` moments, and an offset adds one more parameter and so one more moment. Such simple analytical solutions are not always available. A few distributions have them -- the Uniform, Beta and Beta-Geometric solve their moment equations in closed form, and SurPyval uses those solutions directly when there is no offset and nothing is fixed -- but in general numeric optimisation is needed. SurPyval uses numeric optimisation to compute the parameters for these distributions.
 
 One closed form is SurPyval's own choice and worth knowing about: for the
 LogNormal, ``how='MOM'`` matches the mean and variance of :math:`\ln x`, not
@@ -200,8 +200,8 @@ parameters minimise
 
     \sum_{j=1}^{K} \left( \frac{\hat{m}_{j} - \mu_{j}(\theta)}{\hat{s}^{\,j}} \right)^{2},
 
-where :math:`K` is the number of distribution parameters, plus one for an
-offset. Every term is dimensionless: the
+where :math:`K` is the number of free parameters: the distribution's, plus one
+for an offset, less any held with ``fixed``. Every term is dimensionless: the
 first is the error in the mean measured in standard deviations, the second the
 relative error in the variance, the third the error in the skewness.
 
@@ -223,7 +223,8 @@ The moments of an offset distribution are themselves computed exactly. If
 
 so only the moments of the un-shifted distribution are needed. Those come from
 each distribution's closed form where one exists, and from numerical
-integration of :math:`x^{k} f(x)` otherwise.
+integration of :math:`x^{k} f(x)` otherwise (for a ``CustomDistribution``, of
+:math:`k x^{k-1} R(x)`, which needs no derivative of the cumulative hazard).
 
 The optimiser (BFGS) runs to a tight tolerance and, if the moments are still
 not matched, polishes the answer with Nelder-Mead. If the scaled mismatch above
@@ -231,14 +232,15 @@ is still larger than :math:`10^{-2}` SurPyval warns that the parameters may be
 unreliable. A healthy fit lands far below that: at about :math:`10^{-12}` when
 the moment equations have an exact solution, or at about :math:`10^{-3}` when
 sampling noise means no parameter vector reproduces the sample moments exactly.
+If the model's moments are not finite at all -- at the starting point, or
+anywhere the search goes -- the objective is undefined and SurPyval raises a
+``ValueError`` rather than return a fit; pass an ``init`` at which the moments
+exist, or use MLE.
 
-Fixing a parameter (``fixed=``) does not reduce :math:`K`: SurPyval still
-matches as many moments as the distribution (plus offset) has parameters, now
-with fewer free parameters to do it. The equations are then over-determined,
-the answer is the closest compromise, and the mismatch warning above is to be
-expected unless the fixed value happens to agree with the data. A Weibull with
-:math:`\beta` fixed at 2, for example, is fitted to both the sample mean and
-the sample variance with :math:`\alpha` alone.
+Fixing a parameter (``fixed=``) reduces :math:`K`: a fixed parameter is known,
+so it needs no equation of its own. A Weibull with :math:`\beta` fixed at 2,
+for example, is fitted to the sample mean alone, with :math:`\alpha` the one
+unknown, and matches it exactly.
 
 The method of moments, although interesting, can produce incorrect results, and it can only be used with observed data, so it cannot account for truncation or censoring. It is also statistically inefficient: higher sample moments are dominated by the few most extreme observations, so they are noisy, and for heavy-tailed distributions (a LogLogistic with a small shape, say) the higher moments may not even exist. With an offset, matching three moments to three parameters is close to unidentifiable, so treat offset MOM fits with care. But it is good to understand as it is one of the oldest methods used to estimate the parameters of a distribution, and it is a quick cross-check on complete data.
 
@@ -359,7 +361,7 @@ straight line and the points are the Blom positions. SurPyval has the option to 
      - 0
    * - Benard
      - 0.3
-     - 0.2
+     - 0.4
    * - Beard
      - 0.31
      - 0.38
@@ -388,7 +390,8 @@ Which is used with the general formula to estimate the plotting position heurist
 Some names are synonyms: ``'ECDF'`` and ``'None'`` are the raw empirical CDF
 :math:`k/n`, and ``'Mean'``, ``'Weibull'`` and ``'ECDF_Adj'`` are all
 :math:`k/(n + 1)`, the expected value of the :math:`k`-th uniform order
-statistic. Any point with :math:`\hat{F} = 0` or :math:`1` (the top point of
+statistic. ``'Median'`` and ``'Benard'`` are both Benard's
+approximation to the median rank, :math:`(k - 0.3)/(n + 0.4)`. Any point with :math:`\hat{F} = 0` or :math:`1` (the top point of
 ``'ECDF'``, for example) cannot be transformed and is left out of the fit.
 
 One final option available is that of the Filliben estimate (``'Filliben'``),
@@ -458,8 +461,7 @@ refuses it for the discrete distributions too, whose step-shaped CDFs cannot be
 linearised. (A fitted Gamma can still be *drawn* on a probability plot, since
 by then the parameters are known.) A ``CustomDistribution`` knows only its
 cumulative hazard, so it has no transform either: its plots use plain linear
-axes, and ``how='MPP'`` is not available for it (at present it fails with an
-``AttributeError`` rather than a helpful message).
+axes, and ``how='MPP'`` is refused for it with a ``ValueError``.
 
 Mean Square Error (MSE)
 -----------------------
@@ -500,8 +502,8 @@ left and interval censoring are all accepted. It does not yet support
 truncation (SurPyval raises ``NotImplementedError``), and like MPP it carries
 no likelihood-based measure of uncertainty, so an MSE fit has no confidence
 bounds. The minimisation is done with BFGS using the automatic gradient,
-escalating to Newton-CG and then to a BFGS with finite-difference gradients
-(scipy's default method) if a method fails.
+escalating to Newton-CG and then to the derivative-free Nelder-Mead if a method
+fails.
 
 Maximum Likelihood Estimation (MLE)
 -----------------------------------
@@ -667,13 +669,18 @@ it:
   mean and :math:`\hat{\sigma}` the standard deviation dividing by :math:`N`
   (not :math:`N - 1`).
 - **LogNormal**: the Normal solution applied to :math:`\ln x`.
-- **Uniform**: :math:`\hat{a} = \min(x)` and :math:`\hat{b} = \max(x)`.
-  SurPyval uses this for *every* Uniform MLE fit. It refuses interval-censored
-  data, and data whose smallest (largest) value is left (right) censored or
-  truncated, because then the extreme does not mark the end of the support.
-  Be aware that it also ignores censored values *inside* the range: with
-  right-censored units the true maximum of the likelihood can have :math:`b`
-  well above the largest value, so for censored Uniform data prefer ``how='MPS'``.
+- **Uniform**: :math:`\hat{a} = \min(x)` and :math:`\hat{b} = \max(x)`, for
+  exactly observed data (truncated or not). With right- or left-censored
+  values it is no longer the MLE: a unit known to survive past :math:`r`
+  contributes :math:`(b - r)/(b - a)`, which grows with :math:`b`, so the
+  maximum of the likelihood can have :math:`b` well above the largest value
+  (and, for left censoring, :math:`a` below the smallest). There is no closed
+  form then, but the likelihood vanishes the moment :math:`a` passes the
+  smallest exact or left-censored value or :math:`b` the largest exact or
+  right-censored one, and the maximum usually sits on one of those edges, so
+  SurPyval searches that region with the edges as simple bounds (L-BFGS-B),
+  which lands on an edge exactly. It refuses interval-censored data, and data
+  whose smallest (largest) value is left (right) censored or truncated.
 
 A request for an offset, a limited failure population, zero inflation or any
 fixed parameter adds structure that these formulas do not solve, so such fits
@@ -906,11 +913,12 @@ contributes :math:`\ln P(T = k)`; a unit still working after cycle :math:`k`
 :math:`\ln\left[F(b) - F(a)\right] = \ln P(a < T \leq b)`. Truncation divides
 by the probability of the window exactly as before.
 
-MLE, MSE and MOM all work for the discrete distributions, with one exception:
-MOM for the Beta-Geometric. Its moments are infinite unless the shape
-:math:`a` exceeds the moment's order, and its default starting point sits
-exactly where they are infinite, so ``how='MOM'`` currently returns that start
-unchanged; use MLE. MPP does not work for any of them, since a
+MLE, MSE and MOM all work for the discrete distributions. For the
+Beta-Geometric, whose moments are infinite unless the shape :math:`a` exceeds
+the moment's order, MOM solves the two moment equations in closed form; a
+solution exists only when the sample is more dispersed than a Geometric with
+the same mean (the Beta mixing can only add dispersion), and SurPyval raises a
+``ValueError`` otherwise. MPP does not work for any of them, since a
 step-shaped CDF cannot be linearised, and MPS does not either: spacings are
 increments of a continuous CDF, and repeated integer values make them
 degenerate. The Geometric, Negative Binomial, discrete Weibull, Beta-Geometric
@@ -1045,11 +1053,11 @@ failures. Using the failures rather than all units in the BIC penalty follows
 Lower is better. Because the likelihood is a property of the parameters and the
 data, not of how they were found, these criteria are available after a fit by
 *any* method (but not for a model built with ``from_params``, which has no
-data). One convention to be aware of: SurPyval counts a parameter held with
-``fixed`` in :math:`k` too, so a Weibull with its shape fixed is penalised as a
-two-parameter model. When comparing a fixed-parameter fit with a free one,
-subtract 2 from its AIC for each fixed parameter (and :math:`\ln d` from its
-BIC) to penalise only what was estimated.
+data). :math:`k` is the number of *estimated* parameters -- the
+distribution's, plus ``gamma``, ``p`` and ``f0`` when they are fitted -- so a
+parameter held with ``fixed`` is not counted: a Weibull with its shape fixed is
+penalised as the one-parameter model it is, and scores exactly as the
+equivalent Rayleigh does.
 
 Two pitfalls. Compare only models fitted to the *same* data. And do not compare
 a discrete model with a continuous one this way: a probability mass and a
@@ -1128,8 +1136,8 @@ Turnbull heuristic). Spacings are increments of a continuous CDF, so MPS is not
 available for discrete distributions. And MPS has no likelihood curvature to
 offer, so an MPS fit carries no confidence bounds (its ``neg_ll`` and
 information criteria are still available). The objective is minimised with
-BFGS with the automatic gradient, escalating to Newton-CG and then to a
-finite-difference BFGS (scipy's default) if needed; if that too fails,
+BFGS with the automatic gradient, escalating to Newton-CG and then to the
+derivative-free Nelder-Mead if needed; if that too fails,
 SurPyval warns ("MPS FAILED: Try alternate estimation method").
 
 Trading the density for spacings costs nothing asymptotically: under the usual regularity conditions MPS is consistent and asymptotically as efficient as MLE, attaining the same asymptotic variance. Its advantage is that it *stays* consistent in the awkward cases — J- or U-shaped densities, and distributions with unknown support — where the maximum likelihood estimate is inconsistent or fails to exist at all. In surpyval it is requested with ``how='MPS'`` and, like every other estimator, returns a fully-featured model (see the :doc:`Parametric SurPyval Modelling` notes for the code). This makes it a robust fall-back whenever an MLE fit struggles with an offset or a bounded support.

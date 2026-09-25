@@ -777,11 +777,15 @@ class OptimisedFitMixin:
             obj = obj + np.sum(n[c == -1] * np.log(Dl))
         return -obj / n.sum()
 
-    def mom_moment_gen(self, *params: Any, offset: bool = False) -> Any:
-        if offset:
-            k = self.k + 1
-        else:
-            k = self.k
+    def mom_moment_gen(
+        self, *params: Any, offset: bool = False, k: int | None = None
+    ) -> Any:
+        """The first ``k`` raw moments at ``params`` (leading with the
+        offset when ``offset``). ``k`` defaults to one per parameter; the
+        method of moments passes the number of *free* parameters, since a
+        fixed parameter needs no equation of its own."""
+        if k is None:
+            k = self.k + 1 if offset else self.k
         moments = np.zeros(k)
         for i in range(0, k):
             n = i + 1
@@ -869,6 +873,18 @@ class OptimisedFitMixin:
         if offset and not offsettable:
             detail = f"{self.name} distribution cannot be offset"
             raise ValueError(detail)
+
+        # A discrete distribution's mass sits on the integers, and its
+        # likelihood reads the data as integer counts: shifting it by a
+        # continuous ``gamma`` is not a member of the family. Declaring a
+        # support of ``[0, inf)`` let the check above through, and the fit
+        # then died deep in the optimiser with an unrelated zip() error.
+        if offset and self.discrete:
+            raise ValueError(
+                f"{self.name} is a discrete distribution and cannot be "
+                "offset; subtract a known integer shift from the data "
+                "instead."
+            )
 
         # Probability plotting is exempt. It is a regression through the
         # plotting positions, not a likelihood maximisation, so it has no
@@ -1028,12 +1044,15 @@ class OptimisedFitMixin:
             )
 
         if (surv_data.tl[0] != surv_data.tl).any() and how == "MPS":
-            raise ValueError("Left truncated value can only be single number \
-                              when using MPS")
+            raise ValueError(
+                "Left truncated value can only be single number when using MPS"
+            )
 
         if (surv_data.tr[0] != surv_data.tr).any() and how == "MPS":
-            raise ValueError("Right truncated value can only be single number \
-                              when using MPS")
+            raise ValueError(
+                "Right truncated value can only be single number when using "
+                "MPS"
+            )
 
         return heuristic
 
@@ -1101,8 +1120,8 @@ class OptimisedFitMixin:
 
         offset : boolean, optional
             If :code:`True` finds the shifted distribution. If not provided
-            assumes not a shifted distribution. Only works with distributions
-            that are supported on the half-real line.
+            assumes not a shifted distribution. Only works with continuous
+            distributions that are supported on the half-real line.
 
         zi : boolean, optional
             If :code:`True` fits a zero-inflated model: an extra parameter
@@ -1210,8 +1229,8 @@ class OptimisedFitMixin:
         Distribution        : Weibull
         Fitted by           : MPP
         Parameters          :
-             alpha: 9.950168329892755
-              beta: 3.211971411540382
+             alpha: 9.834445729732789
+              beta: 3.2602770099790424
         >>> c = np.zeros_like(x)
         >>> c[x > 13] = 1
         >>> x[x > 13] = 13

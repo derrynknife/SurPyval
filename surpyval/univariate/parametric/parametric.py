@@ -59,6 +59,7 @@ class Parametric(
     fitting_info: dict[str, Any]
     tl: Any
     tr: Any
+    lfp_name: str
     _neg_ll: float
     _mean: float
     _bic: float
@@ -102,9 +103,20 @@ class Parametric(
         else:
             self.gamma = 0
 
+        # The limited-failure proportion is addressed as ``p`` (in
+        # ``fixed``, ``param_cb`` and the repr) -- unless the distribution
+        # has a parameter of its own called ``p`` (Geometric,
+        # NegativeBinomial). Both keys then landed on the same
+        # ``param_map`` entry, the proportion overwrote the distribution's
+        # parameter, and the map came out one entry short of the bounds:
+        # every such LFP fit died in a zip() length check, and
+        # ``param_cb('p')`` read the distribution's ``p`` as the
+        # proportion. The distribution keeps ``p`` and the proportion
+        # becomes ``lfp_p``.
+        self.lfp_name = "lfp_p" if "p" in dist.param_map else "p"
         if lfp:
             bounds = (*bounds, (0, 1))
-            param_map.update({"p": len(param_map)})
+            param_map.update({self.lfp_name: len(param_map)})
             self.k += 1
         else:
             self.p = 1
@@ -196,6 +208,16 @@ class Parametric(
         if "_neg_ll" in model_dict:
             out._neg_ll = model_dict["_neg_ll"]
 
+        # The parameters fixed at fit time are not estimated, so they do
+        # not count towards the k of aic() and bic(); restoring them keeps
+        # a round-tripped model's criteria equal to the fitted one's.
+        # Dicts written before this key existed have none.
+        fixed_names = model_dict.get("fixed") or []
+        if fixed_names:
+            out.fitting_info = {
+                "fixed_idx": [out.param_map[name] for name in fixed_names]
+            }
+
         out.params = np.array(model_dict["params"])
 
         # Restore the support interval, which fit-time construction sets via
@@ -209,9 +231,10 @@ class Parametric(
         Serialise the model to a dictionary of plain Python types.
 
         The dictionary holds the distribution name, the parameters, the
-        offset / LFP / ZI settings and, if available, the parameter
-        covariance and fitted negative log-likelihood, so a restored model
-        can compute confidence bounds and ``aic``. Restore it with
+        offset / LFP / ZI settings, the names of any parameters fixed at fit
+        time (``"fixed"``) and, if available, the parameter covariance and
+        fitted negative log-likelihood, so a restored model can compute
+        confidence bounds and ``aic``. Restore it with
         :meth:`from_dict` or ``surpyval.from_dict``.
 
         Parameters
@@ -277,6 +300,13 @@ class Parametric(
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
 
+        fixed_idx = sorted(self._user_fixed_idx())
+        if fixed_idx:
+            # Named, not indexed, so the entry reads on its own; from_dict
+            # maps the names back through the rebuilt param_map.
+            names = {i: name for name, i in self.param_map.items()}
+            out["fixed"] = [names[i] for i in fixed_idx]
+
         return stamp_schema(out)
 
     def __repr__(self) -> str:
@@ -297,7 +327,8 @@ class Parametric(
                 out += f"\nOffset (gamma)      : {self.gamma}"
 
             if self.lfp:
-                out += f"\nMax Proportion (p)  : {self.p}"
+                label = f"Max Proportion ({self.lfp_name})"
+                out += f"\n{label:<20}: {self.p}"
 
             if self.zi:
                 out += f"\nZero-Inflation (f0) : {self.f0}"
@@ -338,7 +369,13 @@ class Parametric(
         ----------
         name : str
             The parameter, by name (e.g. ``"alpha"``; ``"p"`` for a
-            limited-failure model, ``"f0"`` for a zero-inflated one).
+            limited-failure model, ``"f0"`` for a zero-inflated one). A
+            distribution parameter named ``p`` (``Geometric``,
+            ``NegativeBinomial``) keeps its name, and the limited-failure
+            proportion of such a model is ``"lfp_p"``. The offset
+            ``"gamma"`` has no confidence bound: it is a threshold
+            parameter, whose likelihood is not regular, so no standard
+            error is estimated for it.
         alpha_ci : float, optional
             The significance level: 0.05 (the default) gives a 95% bound.
         bound : str, optional
@@ -375,25 +412,18 @@ class Parametric(
                 "use 'wald' or 'lr'."
             )
 
-        if name in ("p", "f0"):
-            if name == "p" and not self.lfp:
-                raise ValueError("'p' is only estimated for lfp models")
-            if name == "f0" and not self.zi:
-                raise ValueError("'f0' is only estimated for zi models")
+        is_core, idx = self._resolve_param_name(name)
+        if not is_core:
             cov = getattr(self, "cov_matrix", None)
             if cov is None:
                 raise ValueError(
                     f"Model has no covariance for '{name}'; "
                     "it must be fit with the MLE method"
                 )
-            idx = len(self.params)
-            if name == "f0" and self.lfp:
-                idx += 1
-            p_hat = self.p if name == "p" else self.f0
+            p_hat = self.f0 if name == "f0" else self.p
             var = cov[idx, idx]
             param_bounds = (0, 1)
         else:
-            idx = self.dist.param_map[name]
             p_hat = self.params[idx]
             hess_inv = getattr(self, "hess_inv", None)
             if hess_inv is None:
@@ -434,9 +464,56 @@ class Parametric(
             bounds = -bounds * factor
             return p_hat + bounds
 
+    def _resolve_param_name(self, name: str) -> tuple[bool, int]:
+        """Locate the parameter ``name`` for a confidence bound.
+
+        Returns ``(True, i)`` for the distribution's own ``i``-th
+        parameter and ``(False, j)`` for the limited-failure proportion or
+        the zero-inflation fraction, ``j`` being its index in the extended
+        covariance ``cov_matrix`` (core parameters, then ``p``, then
+        ``f0``). The distribution's parameters are looked up first, so a
+        ``Geometric`` ``p`` is never mistaken for the LFP proportion (which
+        is then ``lfp_p``, see ``__init__``). Anything else -- the offset,
+        or a name the model does not have -- raises a ``ValueError``
+        naming the valid choices rather than a bare ``KeyError``.
+        """
+        if name in self.dist.param_map:
+            return True, self.dist.param_map[name]
+        if name == self.lfp_name:
+            if not self.lfp:
+                raise ValueError(f"'{name}' is only estimated for lfp models")
+            return False, len(self.params)
+        if name == "f0":
+            if not self.zi:
+                raise ValueError("'f0' is only estimated for zi models")
+            return False, len(self.params) + int(self.lfp)
+        if name == "gamma":
+            if not self.offset:
+                raise ValueError("'gamma' is only estimated for offset models")
+            # mle holds gamma out of the covariance: the threshold of an
+            # offset model is non-regular (the likelihood's support moves
+            # with it), so a Wald variance for it would be misleading.
+            raise ValueError(
+                "No confidence bound is available for the offset 'gamma': "
+                "it is a threshold parameter whose likelihood is not "
+                "regular, so no standard error is estimated for it."
+            )
+        valid = list(self.dist.param_names)
+        if self.lfp:
+            valid.append(self.lfp_name)
+        if self.zi:
+            valid.append("f0")
+        raise ValueError(
+            f"Unknown parameter {name!r} for this {self.dist.name} model; "
+            f"expected one of {valid}"
+        )
+
     def _user_fixed_idx(self) -> set:
-        """Core-parameter indices the user fixed at fit time (empty set for
-        models without fitting info, e.g. ``from_params``)."""
+        """``param_map`` indices of the parameters the user fixed at fit
+        time (empty set for models without fitting info, e.g.
+        ``from_params``). Without an offset these are the core-parameter
+        indices; the likelihood-ratio bounds that read them as such reject
+        offset models."""
         info = getattr(self, "fitting_info", None) or {}
         return set(info.get("fixed_idx", []) or [])
 
@@ -521,13 +598,13 @@ class Parametric(
                 "limited-failure-population or zero-inflated models; use "
                 "method='wald'."
             )
-        if name in ("p", "f0"):
+        is_core, idx = self._resolve_param_name(name)
+        if not is_core:
             raise NotImplementedError(
                 "Likelihood-ratio bounds on 'p' / 'f0' are not yet "
                 "available; use method='wald'."
             )
 
-        idx = self.dist.param_map[name]
         if idx in self._user_fixed_idx():
             raise ValueError(
                 f"'{name}' was fixed at fit time; a confidence bound on a "
@@ -1092,10 +1169,39 @@ class Parametric(
         >>> model = Weibull.from_params([10, 3])
         >>> model.var()
         np.float64(10.533288486847923)
+
+        Notes
+        -----
+        For a limited-failure or zero-inflated model this follows the same
+        *defective* convention as :meth:`mean` and :meth:`moment`: it is the
+        variance of :math:`T` with the never-failing fraction ``1 - p`` and
+        the zero-inflated mass ``f0`` both counted at 0, i.e.
+        ``moment(2) - mean()**2``. With :math:`q = p - f_0` the proportion
+        failing through the base distribution :math:`X` (offset by
+        :math:`\gamma`),
+
+        .. math::
+            \mathrm{Var}(T) = q\,\mathrm{Var}(X)
+                + q(1 - q)\left(\gamma + \mathbb{E}[X]\right)^2,
+
+        which reduces to :math:`\mathrm{Var}(X)` for a plain model (the
+        offset does not change a variance). For a zero-inflated model this
+        is exactly the variance of the mixture; for a limited-failure model
+        the cured units never fail, so it is the variance of the failure
+        time with those units scored as 0, not a variance conditional on
+        failure (fit without ``lfp`` for that).
         """
         m1 = self.dist._moment(1, *self.params)
         m2 = self.dist._moment(2, *self.params)
-        return m2 - m1**2
+        base_var = m2 - m1**2
+        q = self.p - self.f0
+        if q == 1:
+            return base_var
+        # Written as q Var(X) + q (1 - q) mu^2 rather than as
+        # moment(2) - mean()**2, which subtracts two nearly equal numbers
+        # once the offset is large. It used to return Var(X) whatever p
+        # and f0 were, while mean() already applied the (p - f0) weight.
+        return q * base_var + q * (1 - q) * (m1 + self.gamma) ** 2
 
     def moment(self, n: int) -> float:
         r"""
@@ -1566,6 +1672,18 @@ class Parametric(
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin. The aic_c
     # correction uses the same parameter count as the aic() penalty it
     # corrects — including gamma / p / f0 when fitted (#256).
+    def _ic_k(self) -> int:
+        """The number of *estimated* parameters, the ``k`` of AIC and BIC.
+
+        ``self.k`` counts every parameter of the model -- the
+        distribution's, plus gamma / p / f0 when fitted -- including any the
+        user fixed. A fixed parameter is known, not estimated, so it costs
+        no degree of freedom: counting it penalised a Weibull with its
+        shape fixed as a two-parameter model, which is not the standard
+        definition and biased every comparison against fixed fits.
+        """
+        return self.k - len(self._user_fixed_idx())
+
     def _require_data(self, what: str) -> None:
         if self.data is None:
             raise ValueError(

@@ -58,11 +58,15 @@ def test_impermitted_censoring():
     with pytest.raises(ValueError):
         Uniform.fit(x, c)
 
+    # A right-censored value below the maximum is fittable, but (min, max)
+    # is not its MLE: the censored term (b - r) / (b - a) grows with b, so
+    # b = max(x_max, (n r - a) / (n - 1)) with a at the smallest value.
     c = np.zeros_like(x)
     c[-2] = 1
-    assert (
-        pytest.approx(np.array([x.min(), x.max()]))
-        == Uniform.fit(x, c=c).params
+    a_hat = x.min()
+    b_hat = max(x.max(), (len(x) * x[-2] - a_hat) / (len(x) - 1))
+    np.testing.assert_allclose(
+        Uniform.fit(x, c=c).params, [a_hat, b_hat], rtol=1e-3, atol=1e-4
     )
 
     x = Uniform.random(100, 0, 10)

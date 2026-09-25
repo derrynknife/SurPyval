@@ -1,4 +1,7 @@
+import numpy as onp
 import numpy.typing as npt
+from autograd import grad
+from scipy.optimize import minimize
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -396,7 +399,66 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
                 " the lowest value is left truncated"
             )
 
+        if (data.c != 0).any():
+            return self._censored_mle(data)
+
+        # With every observation exact, (min, max) is the MLE. Truncation
+        # does not change that: each term 1 / (min(b, tr) - max(a, tl))
+        # only improves as the range shrinks onto the data.
         return np.array([np.min(data.x), np.max(data.x)])
+
+    def _censored_mle(self, data: SurpyvalData) -> npt.NDArray | None:
+        """The MLE with right- and/or left-censored observations.
+
+        (min, max) is *not* the MLE here, and returning it was wrong: a
+        right-censored value ``r`` contributes ``(b - r) / (b - a)``, which
+        grows with ``b``, so it pulls ``b`` beyond the largest value --
+        three units censored at 9.9 next to failures at 0 and 10 put the
+        MLE at ``b = 24.75``, not 10 (neg_ll 7.95 against 18.42). A
+        left-censored value pulls ``a`` below the smallest the same way.
+
+        There is no closed form, but nor is the generic optimiser the right
+        tool: the likelihood drops to zero the moment ``a`` passes the
+        smallest exact (or left-censored) value or ``b`` the largest exact
+        (or right-censored) one, and the MLE usually sits on one of those
+        walls. The generic path searches an unbounded transform of
+        ``(a, b)``, so its gradient methods fail at the wall and it ends on
+        Nelder-Mead, which stopped up to 0.5% short. The walls are simple
+        bounds, though, so a bounded quasi-Newton search over the region
+        the data allow lands on them exactly and converges tightly inside.
+        Returns ``None`` (use the generic optimiser) if it does not
+        converge.
+        """
+        x = np.asarray(data.x, dtype=float)
+        c = np.asarray(data.c)
+        a_max = float(np.min(x[(c == 0) | (c == -1)]))
+        b_min = float(np.max(x[(c == 0) | (c == 1)]))
+        span = max(b_min - a_max, 1.0)
+
+        def neg_ll(theta: npt.NDArray) -> Boxable:
+            return self._neg_ll_func(data, theta[0], theta[1], 0.0, 0.0, 1.0)
+
+        gradient = grad(neg_ll)
+        # A censored value tied with the extreme exact one has zero
+        # probability on the wall itself, so start just inside.
+        x0 = onp.array(
+            [
+                a_max - (1e-3 * span if (c == -1).any() else 0.0),
+                b_min + (1e-3 * span if (c == 1).any() else 0.0),
+            ]
+        )
+        with onp.errstate(all="ignore"):
+            res = minimize(
+                lambda theta: float(neg_ll(theta)),
+                x0,
+                jac=lambda theta: onp.asarray(gradient(theta), dtype=float),
+                method="L-BFGS-B",
+                bounds=[(None, a_max), (b_min, None)],
+                options={"ftol": 1e-15, "gtol": 1e-12, "maxiter": 10000},
+            )
+        if not (res.success and onp.isfinite(res.fun)):
+            return None
+        return onp.asarray(res.x, dtype=float)
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x

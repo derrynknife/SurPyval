@@ -64,7 +64,7 @@ def mom_fun(
     because there the conditioning was never the problem.
     """
     dist_moments = dist.mom_moment_gen(
-        *inv_trans(const(params)), offset=offset
+        *inv_trans(const(params)), offset=offset, k=len(moments)
     )
     sample = raw_to_central(moments)
     model = raw_to_central(dist_moments)
@@ -77,7 +77,14 @@ def mom_fun(
         sigma = 1.0
     scale = np.array([sigma ** (k + 1) for k in range(len(sample))])
 
-    return (((sample - model) / scale) ** 2).sum()
+    value = (((sample - model) / scale) ** 2).sum()
+    # Where the model's moments do not exist (a LogLogistic with shape at
+    # or below the moment's order, say) the mismatch is nan. nan compares
+    # false against everything, so an optimiser that stepped there lost
+    # track of the best point and the search ended *on* the nan; +inf
+    # instead reads as "worse than anything", and the line searches and
+    # Nelder-Mead back away from it.
+    return value if np.isfinite(value) else np.inf
 
 
 def mom(model: "Parametric") -> Any:
@@ -106,10 +113,39 @@ def mom(model: "Parametric") -> Any:
     ):
         return {"params": np.atleast_1d(dist._mom(x_)), "gamma": 0.0}
 
-    moments = np.zeros(model.k)
+    # One equation per *free* parameter. A fixed parameter is known, so
+    # matching a moment for it too over-determined the system: the fit
+    # could only match every moment if the fixed value happened to agree
+    # with the data, and otherwise warned of a failed match -- routinely,
+    # e.g. for a Weibull with its shape fixed.
+    n_free = model.k - len(model.fitting_info["fixed_idx"])
+    if n_free == 0:
+        # Every parameter is fixed; there is nothing to match.
+        params = inv_trans(const(np.array(init)))
+        return _mom_results(params, offset, None)
 
-    for i in range(0, model.k):
+    moments = np.zeros(n_free)
+
+    for i in range(0, n_free):
         moments[i] = (x_ ** (i + 1)).mean()
+
+    # A start at which the model's moments do not exist (a heavy tail, as
+    # for the Beta-Geometric at a <= 2) makes the objective nan, and every
+    # optimiser then stops where it began and reports it -- the starting
+    # point came back as the fit, and since ``nan > 1e-2`` is False not
+    # even the mismatch warning below fired.
+    with np.errstate(all="ignore"):
+        start_value = mom_fun(
+            np.array(init), dist, inv_trans, const, offset, moments
+        )
+    if not np.isfinite(start_value):
+        raise ValueError(
+            f"Method of moments cannot start: the {dist.name} moments are "
+            "not finite at the initial guess "
+            f"{np.asarray(inv_trans(const(np.array(init))))} (they may not "
+            "exist there). Pass `init` with parameters at which the first "
+            f"{n_free} moment(s) exist, or use how='MLE'."
+        )
 
     # A loose tolerance here silently returned parameters far from the
     # moment-matching solution for offset/fixed fits (#275): use a tight
@@ -141,6 +177,13 @@ def mom(model: "Parametric") -> Any:
     # order of magnitude of clearance on either side; the previous 1e-4
     # was calibrated against the old raw-moment objective and fires on
     # ordinary sampling noise under this one.
+    if not np.isfinite(res.fun):
+        # Never report a nan objective as a fit (see the start check).
+        raise ValueError(
+            f"Method of moments failed for {dist.name}: the model moments "
+            "became non-finite during the search. Try a different `init`, "
+            "or how='MLE'."
+        )
     if res.fun > 1e-2:
         warnings.warn(
             "MOM optimisation did not match the sample moments (squared "
@@ -149,7 +192,11 @@ def mom(model: "Parametric") -> Any:
         )
 
     params = inv_trans(const(res.x))
+    return _mom_results(params, offset, res)
 
+
+def _mom_results(params: npt.NDArray, offset: bool, res: Any) -> Any:
+    """Split the full parameter vector into the results dict."""
     results = {}
     if offset:
         results["gamma"] = params[0]
