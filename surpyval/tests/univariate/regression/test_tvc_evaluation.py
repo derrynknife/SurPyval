@@ -295,9 +295,8 @@ def test_cox_array_form_matches_schedule():
 
 
 def test_cox_constant_reduces_to_sf_above_first_event():
-    # Cox's sf clamps the left tail (via _get_idx) to the first jump, so the
-    # constant reduction holds at/above the first event time, where the
-    # Breslow baseline is well defined.
+    # The constant reduction holds at every time; checked here at the
+    # fitted event times, where the Breslow baseline jumps.
     m = _fit_cox_tvc()
     z = 0.6
     t = m.x[m.x > 0][:5]

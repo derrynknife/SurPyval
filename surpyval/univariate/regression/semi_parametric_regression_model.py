@@ -8,7 +8,6 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils import _get_idx
 
 from .regression_data import (
     prepare_Z,
@@ -203,16 +202,33 @@ class SemiParametricRegressionModel(SerialisableMixin):
             )
         return self.x, self.h0, self.H0
 
+    @staticmethod
+    def _baseline_step(
+        bx: npt.NDArray, values: npt.NDArray, x: npt.ArrayLike
+    ) -> npt.NDArray:
+        """
+        The baseline step function ``values`` (jumping at the event times
+        ``bx``) evaluated at ``x``, in the order ``x`` was given. Before the
+        first event time nothing has happened yet, so the value is 0.
+        """
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        idx = np.searchsorted(bx, x, side="right") - 1
+        return np.where(idx >= 0, values[np.maximum(idx, 0)], 0.0)
+
     def hf(
         self,
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
     ) -> npt.NDArray:
+        """
+        Hazard at ``x`` for covariates ``Z``: the Breslow baseline hazard
+        increment in force at ``x`` times ``phi(Z)``. ``Z`` is one row (used
+        for every ``x``) or one row per ``x``, paired in the order given.
+        """
         Z = self._prepare_Z(Z)
         bx, bh0, _ = self._baseline_arrays(stratum)
-        idx, rev = _get_idx(bx, x)
-        return (bh0[idx] * self.phi(Z))[rev]
+        return self._baseline_step(bx, bh0, x) * self.phi(Z)
 
     def Hf(
         self,
@@ -220,10 +236,15 @@ class SemiParametricRegressionModel(SerialisableMixin):
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
     ) -> npt.NDArray:
+        """
+        Cumulative hazard at ``x`` for covariates ``Z``: the Breslow
+        baseline ``H0(x)`` (0 before the first event time) times
+        ``phi(Z)``. ``Z`` is one row (used for every ``x``) or one row per
+        ``x``, paired in the order given.
+        """
         Z = self._prepare_Z(Z)
         bx, _, bH0 = self._baseline_arrays(stratum)
-        idx, rev = _get_idx(bx, x)
-        return (bH0[idx] * self.phi(Z))[rev]
+        return self._baseline_step(bx, bH0, x) * self.phi(Z)
 
     def sf(
         self,

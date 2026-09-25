@@ -163,8 +163,11 @@ def compute_residuals(
     Returns
     -------
     numpy.ndarray
-        The requested residuals. Schoenfeld residuals are ordered by event
-        time; the per-observation residuals follow the input order.
+        The requested residuals. Schoenfeld residuals have one row per
+        event, in the input order of the event rows (the rows with
+        ``c == 0``) -- pair them with ``x[c == 0]``, and sort by it to plot
+        them against time; the per-observation residuals follow the input
+        order.
 
     Notes
     -----
