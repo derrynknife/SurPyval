@@ -6,7 +6,7 @@ This section documents some of the applications that SurPyval as a survival anal
 Boston House Prices
 -------------------
 
-No statistical analysis package can avoid doing the 'hello world' task of analysing the 'Boston House Pricing' dataset. What might surprise some readers is that this would even be considered... The myriad blogs and Kaggle posts looking into this problem can not surely be improved upon. I agree, however, it is a good example of why one needs to be aware of censoring and how flexible the SurPyval API is when dealing with it. Looking at the boston house pricing dataset you can see that there is a suspicous number of houses at the top end that all have the same price:
+No statistical analysis package can avoid doing the 'hello world' task of analysing the 'Boston House Pricing' dataset. What might surprise some readers is that this would even be considered... The myriad blogs and Kaggle posts looking into this problem can not surely be improved upon. I agree, however, it is a good example of why one needs to be aware of censoring and how flexible the SurPyval API is when dealing with it. Looking at the boston house pricing dataset you can see that there is a suspicious number of houses at the top end that all have the same price:
 
 .. image:: images/applications-boston-1.png
     :align: center
@@ -60,7 +60,9 @@ We can see that the model has changed slightly, however, there appears to be a '
     model.plot()
 
 
-This appears to be a much better fit, however, there is still quite a bit of difference between the data and the model in the middle of the distribution. Lets create a custom spline to see if we can perfect the fit.
+This appears to be a much better fit, however, there is still quite a bit of difference between the data and the model in the middle of the distribution. Note also the ``lfp=True``: the model allows a proportion :math:`1 - p` of houses whose value is never reached by the distribution, which is one way of letting the fit put mass beyond the $50,000 cap. Lets create a custom spline to see if we can perfect the fit.
+
+A ``CustomDistribution`` only needs the cumulative hazard function; SurPyval derives everything else from it. Our spline uses the Weibull cumulative hazard below a 'knot' and adds a LogLogistic cumulative hazard above it. The knot must stay within the range of the data, so rather than estimate the knot directly we estimate it as a fraction of the $50,000 cap, ``knot_frac``, bounded between 0 and 1.
 
 .. jupyter-execute::
 
@@ -75,7 +77,7 @@ This appears to be a much better fit, however, there is still quite a bit of dif
     def Hf(x, *params):
         x = np.array(x)
         Hf = np.zeros_like(x)
-        knot = params[0]
+        knot = 50 * params[0]    # knot_frac of the $50,000 cap
         params = params[1:]
         dist1 = surv.Weibull
         dist2 = surv.LogLogistic
@@ -83,8 +85,8 @@ This appears to be a much better fit, however, there is still quite a bit of dif
         Hf = np.where(x >= knot, (dist1.Hf(knot, *params[0:2])
                                 + dist2.Hf(x, *params[2::])), Hf)
         return Hf
-    bounds = ((0, 50), (0, None), (0, None), (0, None), (0, None),)
-    param_names = ['knot', 'alpha_w', 'beta_w', 'alpha_ll', 'beta_ll']
+    bounds = ((0, 1), (0, None), (0, None), (0, None), (0, None),)
+    param_names = ['knot_frac', 'alpha_w', 'beta_w', 'alpha_ll', 'beta_ll']
     name = 'WeibullLogLogisticSpline'
     support = (0, np.inf)
 
@@ -95,17 +97,19 @@ This appears to be a much better fit, however, there is still quite a bit of dif
     print(model)
     model.plot()
 
-Much better!
+Much better! The knot sits at about half the cap, near $25,000, which is where the 'disconnect' in the earlier plots was.
 
-It must be said that this is a bit 'hacky'. There is no theory that we are using to guide the choice of the spline model, we are simply finding the best fit to the data. For example, this model would not able to be used for extrapolation too far beyond $50,0000, this is because the model is limited to 97.1% of houses. A separate spline would be needed to model those data. However, the example shows the importance of censoring and the power of the surpyval API!
+It must be said that this is a bit 'hacky'. There is no theory that we are using to guide the choice of the spline model, we are simply finding the best fit to the data. For example, this model would not able to be used for extrapolation too far beyond $50,000, this is because the model is limited to 97.1% of houses (the fitted :math:`p`). A separate spline would be needed to model those data. The extra flexibility also has a cost: five parameters plus :math:`p` can fit almost any smooth curve, so a better fit on its own is weak evidence that the model is right. However, the example shows the importance of censoring and the power of the surpyval API!
 
 
-Applided Reliability Engineering
---------------------------------
+Applied Reliability Engineering
+-------------------------------
 
 In reliability engineering we might be interested in the proportion of a population that will experience a particular failure mode. We do not want to ship the items that will fail so that our customers do not have a poor experience. But, we will want to determine the minimum duration of a test that can establish whether a component will fail. This is because a test that is too long we will waste time and money in testing and if a test is too short we will ship too many items that will fail in the field. We need to optimise this interval the minimize the cost of testing but also the number of items at risk in the field.
 
 Using data from the paper that introduced the Limited Failure Population model (also known as the Defective Subpopulation) to the reliability engineering world [Meeker]_ we can show how surpyval can be used in part to calculate an optimal 'burn-in' test duration.
+
+In the test, 4,156 integrated circuits were run for 1,370 hours, and 28 of them failed. The failures bunch up early and then stop, even though thousands of units are still running: most of the units are simply not susceptible to this failure mode. An ordinary distribution would insist that every unit fails eventually and would badly misjudge the tail. A limited failure population (LFP) model, ``lfp=True``, adds a parameter :math:`p`, the proportion of the population that is susceptible (defective), so that :math:`F(t) = p\,F_0(t)`; see :doc:`Conventions` for the full definition.
 
 .. jupyter-execute::
 
@@ -116,28 +120,38 @@ Using data from the paper that introduced the Limited Failure Population model (
     s = [1370.] * 4128
 
     x, c, n, _ = surv.fs_to_xcnt(f, s)
-    model = surv.Weibull.fit(x, c, n, lfp=True)
+    # Start the search near the observed failure fraction, 28 / 4156.
+    model = surv.Weibull.fit(x, c, n, lfp=True, init=[25, 0.5, 0.0067])
     print(model)
+    print("negative log-likelihood:", model.neg_ll())
     model.plot()
 
-We can see from these results that at maximum we will have approximately 0.67% fail. If the company accepts a 0.1% probability of their products failing in the field then we can calculate the interval at which the difference between the total population and the proportion failed in the test is 0.1%.
+LFP likelihoods can be awkward to optimise: the proportion :math:`p` and the shape of the failure distribution trade off against each other, and the likelihood can have more than one optimum. So it is worth giving the fit a sensible starting point with ``init`` (the Weibull :math:`\alpha` and :math:`\beta`, then :math:`p`), and sanity-checking the answer. Here the fitted :math:`p` is essentially the observed failure fraction of :math:`28/4156 \approx 0.67\%`, as it should be, since the fitted Weibull says nearly all the susceptible units have failed long before 1,370 hours. A fit that reported a :math:`p` far above the observed fraction, with a worse (higher) negative log-likelihood, would be one to distrust.
+
+We can see from these results that at maximum we will have approximately 0.67% fail. If the company accepts a 0.1% probability of their products failing in the field then we can calculate the interval at which the difference between the total population and the proportion failed in the test is 0.1%. That is, we need the burn-in duration :math:`T` with :math:`p - F(T) = 0.001`, or :math:`T = F^{-1}(p - 0.001)`, which is the quantile function of the model:
 
 .. jupyter-execute::
 
-    from scipy.optimize import minimize
-    fun = lambda x : (0.001 - np.abs(model.p - model.ff(x)))**2
+    field_risk = 0.001
+    burn_in = model.qf(model.p - field_risk)
+    print("burn-in duration           :", burn_in)
+    print("defectives left after it   :", model.p - model.ff(burn_in))
 
-    res = minimize(fun, 10, tol=1e-50)
-    print(res.x)
-
-Therefore we should do a burn in test up to approximately 104.4 to make sure we minimize the number of items shipped that are defective while also minimizing the duration of the test. We can simply change the value of ``0.001`` in the above code to any value we may wish to use.
+Therefore we should do a burn in test up to approximately 104.4 to make sure we minimize the number of items shipped that are defective while also minimizing the duration of the test. We can simply change the value of ``field_risk`` in the above code to any value we may wish to use. (Strictly, the proportion of *shipped* units that are defective is :math:`(p - F(T)) / (1 - F(T))`, since the units that failed in burn-in are not shipped; with only about 0.6% removed by the burn-in the difference is negligible here.)
 
 Demographics / Actuarial
 ------------------------
 
 In demographics and actuarial studies, the distribution of the life of a population is of interest. For the demographer, it is necessary to understand how a population might change, in particular, how the expected lifespan is changing over time. The same applies to an actuary, an actuary is interested in lifetimes to understand the risk of payouts among those who own a life insurance policy.
 
-The `Gompertz-Makeham <https://en.wikipedia.org/wiki/Gompertz–Makeham_law_of_mortality>`_ is a distribution used in demography and actuarial studies to estimate the lifetime of a population. This can be implemented in surpyval with relative ease.
+The `Gompertz-Makeham <https://en.wikipedia.org/wiki/Gompertz–Makeham_law_of_mortality>`_ is a distribution used in demography and actuarial studies to estimate the lifetime of a population. Its hazard is the sum of an age-independent term :math:`\lambda` (accidents, infections) and a term that grows exponentially with age, :math:`\alpha e^{\beta x}` (ageing):
+
+.. math::
+
+    h(x) = \lambda + \alpha e^{\beta x}, \qquad
+    H(x) = \lambda x + \frac{\alpha}{\beta}\left(e^{\beta x} - 1\right)
+
+This can be implemented in surpyval with relative ease: a ``CustomDistribution`` only needs the cumulative hazard :math:`H(x)`, and SurPyval derives the density, the survival function and everything else from it. (Note the :math:`-1`: a cumulative hazard must be zero at :math:`x = 0`.)
 
 .. jupyter-execute::
 
@@ -150,7 +164,7 @@ The `Gompertz-Makeham <https://en.wikipedia.org/wiki/Gompertz–Makeham_law_of_m
     support = (0, np.inf)
     param_names = ['lambda', 'alpha', 'beta']
     def Hf(x, *params):
-        Hf = params[0] * x + (params[1]/params[2])*(np.exp(params[2]*x))
+        Hf = params[0] * x + (params[1]/params[2])*(np.exp(params[2]*x) - 1)
         return Hf
 
     GompertzMakeham = surv.CustomDistribution('GompertzMakeham', Hf, param_names, bounds, support)
@@ -171,29 +185,45 @@ We now have a GM distribution object that can be used to fit data. But we need s
 
     np.random.seed(1)
     params = np.array([.68, 28.7e-3, 102.3])/1000
-    x = qf(np.random.uniform(0, 1, 10_000), params)
-    # Filter out some numeric overflows.
+    # The closed-form quantile overflows for a few draws very close to 1.
+    with np.errstate(over="ignore", invalid="ignore"):
+        x = qf(np.random.uniform(0, 1, 10_000), params)
+    # Filter out those numeric overflows.
     x = x[np.isfinite(x)]
 
 
-The parameters for the distribution come from [Gavrilov]_, specifically the parameters for the lifespans of the 1974-1978 data. So in this case we have (simulated) data on the lifespans of 10,000 people and we need to determine the GM parameters. This can be compared to the historic parameters to see if the age related mortality has changed or has remained roughly constant. To do so, all we need do with surpyval is to put the data to the ``fit()`` method.
+The parameters for the distribution come from [Gavrilov]_, specifically the parameters for the lifespans of the 1974-1978 data. So in this case we have (simulated) data on the lifespans of almost 10,000 people and we need to determine the GM parameters. This can be compared to the historic parameters to see if the age related mortality has changed or has remained roughly constant. To do so, all we need do with surpyval is to put the data to the ``fit()`` method.
+
+One practical point: a ``CustomDistribution`` knows nothing about its parameters beyond their bounds, so its default starting point for the optimiser puts every parameter bounded below by zero at 1. Mortality rates are of the order of :math:`10^{-3}` to :math:`10^{-5}` per year, far from 1, so we give the optimiser a starting point of the right order of magnitude with ``init``. Without it the fit can stop far from the optimum. Always check that the fitted parameters of a custom distribution are sensible.
 
 .. jupyter-execute::
 
-    model = GompertzMakeham.fit(x)
+    model = GompertzMakeham.fit(x, init=[1e-3, 1e-4, 0.1])
     model.plot(alpha_ci=0.99, heuristic='Nelson-Aalen')
     model
 
-You can see that the model is a good fit to the data. Using the model we can determine the probability of death in a given term for a random individual from the population. This is useful to price the premium of a life insurance policy. For example, if a 60 year old was to take out a two year policy, what premium should we charge them for the policy. First, we need to determine the probability of death:
+The fitted parameters are close to the ones used to simulate the data (:math:`\lambda = 6.8 \times 10^{-4}`, :math:`\alpha = 2.87 \times 10^{-5}`, :math:`\beta = 0.1023`). :math:`\alpha` is the least precisely determined of the three, because a smaller :math:`\alpha` with a larger :math:`\beta` produces a very similar mortality curve over the ages where most deaths occur.
+
+You can see that the model is a good fit to the data. Using the model we can determine the probability of death in a given term for a random individual from the population. This is useful to price the premium of a life insurance policy. For example, if a 60 year old was to take out a two year policy, what premium should we charge them for the policy. First, we need to determine the probability of death.
+
+Care is needed here. :math:`F(62) - F(60)` is the probability, *at birth*, of dying between 60 and 62. Our applicant has already survived to 60, so what we need is the conditional probability
+
+.. math::
+
+    P(X \le 62 \mid X > 60) = \frac{F(62) - F(60)}{R(60)} = 1 - \frac{R(62)}{R(60)},
+
+which is one minus the conditional survival, ``cs(2, 60)``: the probability of surviving a further 2 years having survived 60.
 
 .. jupyter-execute::
 
-    p_death = model.ff(62) - model.ff(60)
+    p_death = 1 - model.cs(2, 60)
     policy_payout = 100_000
     expected_loss = policy_payout * p_death
-    print(p_death, expected_loss)
+    print(f"P(death in the term) : {p_death:.4f}")
+    print(f"expected loss        : ${expected_loss:,.2f}")
+    print(f"ignoring survival to 60 would give P = {model.ff(62) - model.ff(60):.4f}")
 
-From the results above, you can see that the probability of death over the two year interval is approximately 2.5%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $2,548.32. Therefore, to make a profit, the policy will need to cost more than $2,548.32. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $2,803.15. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $116.80 for two years (in the case of death the amount owing can be subtracted from the payout).
+From the results above, you can see that the probability of death over the two year interval is approximately 3.0%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $3,019.39. Therefore, to make a profit, the policy will need to cost more than $3,019.39. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $3,321.33. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $138.39 for two years (in the case of death the amount owing can be subtracted from the payout). Using the unconditional probability instead would have underpriced the policy by about 15%, because it spreads part of the risk over the people who never reach 60.
 
 Although this is a basic example, as insurance companies would have much more sophisticated models, it shows the basics of how demographic and actuarial data can be used. This shows the application of surpyval to actuarial and demogrphic studies.
 
@@ -248,9 +278,9 @@ Using the gun violence data from `Kaggle <https://www.kaggle.com/jameslko/gun-vi
     gun_violence_df = pd.read_csv('../gun-violence-data_01-2013_03-2018.csv', parse_dates=['date'])
 
     # Find the maximum number of people killed each month
-    gun_violence_df = gun_violence_df.groupby(pd.Grouper(key='date', freq='M')).agg({'n_killed' : 'max'})
+    gun_violence_df = gun_violence_df.groupby(pd.Grouper(key='date', freq='MS')).agg({'n_killed' : 'max'})
 
-    x = df['n_killed'].values
+    x = gun_violence_df['n_killed'].values
 
     # Inverse the data to get the maximum
     model = surv.Weibull.fit(1./x)
@@ -279,7 +309,7 @@ You can see that this model is a much better description of the data. However, t
     # Months from 2022 to 2040
     months = 12 * (2040 - 2022)
     p_not_happening_before_2040 = (p_not_happening)**(months)
-    (1 - p_not_happening_before_2040)*100
+    (p_happening * 100, (1 - p_not_happening_before_2040) * 100)
 
 .. code:: text
 
@@ -292,11 +322,12 @@ This is a bit higher than other reports of the same prediction, see [Duwe]_ who 
 Economics
 ---------
 
-Economists are interested in the times between recessions. This information helps them formulate policy proscriptions that may (or may not) reduce the duration of a recession, or the time between recessions. Using data from Tadeu Cristino et al. [TC]_ we can use real data to esimate the probability of a recession.
+Economists are interested in the times between recessions. This information helps them formulate policy prescriptions that may (or may not) reduce the duration of a recession, or the time between recessions. Using data from Tadeu Cristino et al. [TC]_ we can use real data to estimate the probability of a recession.
 
 .. jupyter-execute::
     :stderr:
 
+    import numpy as np
     import pandas as pd
     import surpyval as surv
 
@@ -319,8 +350,8 @@ Economists are interested in the times between recessions. This information help
         "March 1991", "November 2001", "June 2009"
     ]
 
-    df = pd.DataFrame({'start' : pd.to_datetime(start),
-                       'end' : pd.to_datetime(end)})
+    df = pd.DataFrame({'start' : pd.to_datetime(start, format="%B %Y"),
+                       'end' : pd.to_datetime(end, format="%B %Y")})
 
     # Compute time from end of last recession to peak of next.
     x = (df.start - df.end.shift(1)).dropna().dt.days.values
@@ -331,6 +362,8 @@ Economists are interested in the times between recessions. This information help
 
 
 You can see from the above the data is a good fit to the model! Great. So now what?
+
+First, note the ``offset=True``. This fits a three parameter Weibull, with a location :math:`\gamma` below which no value can occur: here :math:`\gamma` is about 304 days, so the model says an expansion has never lasted, and will not last, less than about ten months. That is consistent with the data (the shortest expansion in it is 306 days) and has a plausible economic reading, but an offset is a strong claim about the tail, so it deserves the same scrutiny as any other modelling choice.
 
 We can communicate what the expected time between recessions is:
 
