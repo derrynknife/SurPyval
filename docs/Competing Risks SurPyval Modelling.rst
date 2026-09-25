@@ -95,6 +95,20 @@ total "probability" of 1.6:
         naive = surv.KaplanMeier.fit(x, c=c_k)
         print(k, "naive 1 - KM at t=6:", naive.ff(6))
 
+When each row stands for several identical units, give the counts in ``n``
+rather than repeating rows. Doubling every row of the six-unit data gives the
+same CIFs, because the estimator only uses the proportions
+:math:`d_{k,j}/r_j`. The ``iif`` method returns the individual increments
+:math:`\hat{S}(x_{j-1})\,d_{k,j}/r_j`, here the three terms
+:math:`\tfrac{1}{6}, \tfrac{1}{6}, \tfrac{1}{4}` of the hand calculation on the
+theory page:
+
+.. jupyter-execute::
+
+    doubled = CompetingRisks.fit(x, e, n=[2] * 6)
+    print("CIF of A at t=3, 6     :", doubled.cif([3, 6], "A"))
+    print("increments at t=1, 3, 6:", doubled.iif([1, 3, 6], "A"))
+
 Non-parametric cumulative incidence
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -217,8 +231,9 @@ one, for ``sf``) before the first observed time.
 
 .. warning::
 
-    ``ff(x, event=k)`` is the net failure probability, the Nelson-Aalen
-    version of "one minus Kaplan-Meier with the other causes censored". It
+    ``ff(x, event=k)`` is the net failure probability: "one minus
+    Kaplan-Meier with the other causes censored" (exactly that with
+    ``method="Kaplan-Meier"``, its Nelson-Aalen version by default). It
     answers "what if cause ``k`` were the only cause?", which is only
     meaningful if the causes act independently. For "how likely is a
     failure from cause ``k``?" always use ``cif``.
@@ -454,9 +469,18 @@ Reach for it when the clinical or engineering question is "how many fail of this
 cause", not "how fast".
 
 Pass the observed times ``x``, the per-observation cause label ``e``, the group
-label, and the ``cause`` of interest (use ``c`` for censored rows, or mark them
-with a ``None`` cause). Here two groups have genuinely different cause-1
-incidence:
+label, and the ``cause`` of interest; optional ``n`` gives row counts. Mark
+censored rows either with ``c`` (``1`` censored) or, when ``c`` is omitted,
+with a ``None`` cause.
+
+.. warning::
+
+    Unlike the model classes, ``gray_test`` does not read a ``NaN`` cause as
+    censored when ``c`` is omitted: such a row is counted as a failure from a
+    competing cause. With data from a DataFrame (where a missing cause is
+    ``NaN``), pass ``c`` explicitly or convert the missing causes to ``None``.
+
+Here two groups have genuinely different cause-1 incidence:
 
 .. jupyter-execute::
 
@@ -482,7 +506,10 @@ incidence:
 The tiny ``p``-value correctly flags the difference in cause-1 incidence. The
 result is a named tuple ``(statistic, df, p_value, cause, groups)``; ``df`` is
 the number of groups minus one, so more than two groups are compared in one
-test.
+test. The statistic is a weighted log-rank test on the subdistribution risk
+set. It is close to Gray's original statistic but not identical to it (the
+:doc:`Competing Risks Analysis` page explains the difference), so expect
+small differences from R's ``cmprsk``.
 
 Calibration
 ~~~~~~~~~~~
@@ -705,6 +732,38 @@ coefficient is +0.7), and it does so by raising the cause-1 hazard and
 lowering the cause-2 hazard: the two sets of cause-specific coefficients
 together produce the incidence effect.
 
+The causes are sorted, so the row order of ``betas`` is reproducible.
+``phi_e(Z, row)`` is a cause's hazard multiplier :math:`e^{Z\hat\beta_k}`, and
+``results`` holds each cause's optimiser result. The model also has ``beta``
+and ``phi``. These are kept for backward compatibility: ``beta`` is the *sum*
+of the rows of ``betas``, which is not a quantity of the model, and no
+prediction uses it. Read the coefficients from ``betas``.
+
+.. jupyter-execute::
+
+    row = csph.event_idx_map[1]
+    print("cause-1 hazard multiplier at z = [0.5, -0.5]:",
+          np.round(csph.phi_e(np.array([0.5, -0.5]), row), 3))
+
+``tie_method`` chooses how the Cox fits handle tied failure times (see
+:doc:`regression/cox_ph`): ``"efron"`` (the default here, although ``CoxPH``
+itself defaults to ``"breslow"``), ``"breslow"``, ``"exact"`` or
+``"kalbfleisch-prentice"`` (``"kp"``). The simulated times are continuous, so
+there are no ties and every method gives the same fit. Rounding the times up
+to the next 0.25 creates heavy ties, and then the Breslow approximation pulls
+the coefficients towards zero compared with Efron's:
+
+.. jupyter-execute::
+
+    x_tied = np.ceil(x * 4) / 4
+    for tm in ["breslow", "efron"]:
+        fit_t = CompetingRisksProportionalHazards.fit(x_tied, Z, e, c=c,
+                                                      tie_method=tm)
+        print("%-8s cause 1: %s" % (tm, np.round(fit_t.betas[row], 3)))
+
+The exact methods are expensive with this many ties (``"exact"`` refuses more
+than 12 failures tied at one time), so keep them for lightly tied data.
+
 With ``how="Cox"`` the model has the usual functions, each taking the times,
 one covariate vector ``Z`` and an optional ``event``:
 
@@ -761,7 +820,9 @@ Fitting from a DataFrame
 ``fit_from_df`` takes the time and cause column names, and the covariates
 either as ``Z_cols`` (a column name or list of names) or as a ``formula``;
 ``c_col``, ``n_col``, ``how`` and ``tie_method`` (default ``"efron"``, passed to
-each cause's Cox fit) are optional. A blank/``NaN`` cause marks a censored row.
+each cause's Cox fit) are optional. A blank/``NaN`` cause marks a censored row,
+and rows with a missing covariate are dropped (as are rows of ``Z`` containing
+``NaN`` in ``fit``).
 Predictions still take a covariate array ``Z`` in column order:
 
 .. jupyter-execute::

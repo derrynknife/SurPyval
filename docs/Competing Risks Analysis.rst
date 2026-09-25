@@ -301,20 +301,40 @@ whichever ``method`` (``"Nelson-Aalen"``, the default, or ``"Kaplan-Meier"``)
 is requested; the shared helper
 :func:`~surpyval.univariate.competing_risks.aalen_johansen.aalen_johansen_iif`
 implements the weighting once for the non-parametric CIF, the cause-specific
-Cox CIF and the pooled CIF inside Gray's test. The ``method`` argument only
-chooses which estimate of the all-cause survival is stored on the fitted model
-as the attribute ``S``.
+Cox CIF and the pooled CIF inside Gray's test. So ``cif`` and ``iif`` do not
+depend on ``method``.
 
 Alongside the CIFs, the fitted model also carries the cause-specific
-Nelson-Aalen quantities: ``hf`` returns the hazard increment
-:math:`d_{k,j}/r_j` at the most recent observed time (a jump size, zero if no
-cause-:math:`k` failure occurred there), ``Hf`` the cumulative
-cause-specific hazard :math:`\hat{H}_k(t) = \sum_{x_j \leq t} d_{k,j}/r_j`,
-and ``sf``/``ff`` with an ``event`` the *net* quantities
-:math:`e^{-\hat{H}_k(t)}` and :math:`1 - e^{-\hat{H}_k(t)}` discussed above.
-Without an ``event`` they refer to all causes combined, using
-:math:`\hat{H}(t) = \sum_k \hat{H}_k(t)`. All of these are step functions,
-equal to zero (or one, for survival) before the first observed time.
+hazard quantities. ``hf`` returns the hazard increment
+:math:`d_{k,j}/r_j` at the most recent observed time (a jump size, not a
+rate; zero if no cause-:math:`k` failure occurred there). The survival
+functions follow ``method``:
+
+.. list-table::
+   :header-rows: 1
+
+   * - ``method``
+     - ``sf(t, event=k)``
+     - ``Hf(t, event=k)``
+   * - ``"Nelson-Aalen"`` (default)
+     - :math:`\exp\{-\hat{H}_k(t)\}`, with
+       :math:`\hat{H}_k(t) = \sum_{x_j \leq t} d_{k,j}/r_j`
+     - :math:`\hat{H}_k(t)`
+   * - ``"Kaplan-Meier"``
+     - :math:`\prod_{x_j \leq t} (1 - d_{k,j}/r_j)`
+     - :math:`-\log` of that product
+
+so that ``sf == exp(-Hf)`` and ``ff == 1 - sf`` for either method. With an
+``event`` these are the *net* quantities discussed above (cause :math:`k`
+acting alone, the other causes treated as censoring); without one they refer
+to all causes combined, using :math:`d_j` in place of :math:`d_{k,j}`. The
+two methods differ little while the risk sets are large: since
+:math:`e^{-h} \geq 1 - h`, the Nelson-Aalen survival is never below the
+product limit, and the gap grows in the tail, where the risk sets are small
+and each increment is large. All of these are step
+functions, equal to zero (or one, for survival) before the first observed
+time. The fitted all-cause survival at the distinct times is also stored as
+the attribute ``S``.
 
 Censoring and truncation
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -497,9 +517,11 @@ the multiplicative change in the *rate* of cause :math:`k` among units still
 event-free, per unit increase of covariate :math:`p`.
 
 ``CompetingRisksProportionalHazards`` with ``how="Cox"`` fits one ``CoxPH``
-model per cause (see :doc:`regression/cox_ph`; the ``tie_method`` argument,
-default ``"efron"``, is passed on as its tie-handling ``method``) and keeps each cause's Breslow baseline cumulative hazard
-:math:`\hat{\Lambda}_{k,0}`. The CIF at a covariate vector :math:`Z` is then
+model per cause (see :doc:`regression/cox_ph`) and keeps each cause's Breslow
+baseline cumulative hazard :math:`\hat{\Lambda}_{k,0}`. Its ``tie_method``
+argument is passed on as the Cox tie-handling ``method``; note that its
+default is ``"efron"``, whereas ``CoxPH.fit`` on its own defaults to
+``"breslow"``. The two agree when no failure times are tied. The CIF at a covariate vector :math:`Z` is then
 assembled exactly as in the Aalen-Johansen formula, but with covariate-specific
 hazards:
 
@@ -587,7 +609,8 @@ coefficients maximise the weighted partial log-likelihood
     \ell(\gamma) = \sum_{i:\,K_i = k} n_i \Big[ Z_i\gamma
         - \log \sum_j w_j(x_i)\, n_j\, e^{Z_j\gamma} \Big],
 
-with :math:`n_i` the count of each row. SurPyval's
+with :math:`n_i` the count of each row. (Tied event times are handled by
+this Breslow form: each tied event sees the same weighted risk set.) SurPyval's
 ``FineGray`` maximises this with BFGS (exact gradients by automatic
 differentiation), reports standard errors from the inverse of the Hessian of
 :math:`\ell` at the optimum, and estimates the baseline by the Breslow-type
@@ -643,9 +666,10 @@ inverse-probability-of-censoring weight
 where :math:`\hat{G}` is the Kaplan-Meier estimate of the censoring
 distribution. Subjects who have already failed from a competing cause therefore
 continue to count — with a decaying weight — which is precisely what makes the
-comparison one of incidence rather than of instantaneous rate. The resulting
-statistic is :math:`\chi^2` distributed with :math:`k - 1` degrees of freedom
-for :math:`k` groups. Reach for it when the question is "how many fail of this
+comparison one of incidence rather than of instantaneous rate. Under the null
+hypothesis of equal CIFs the resulting statistic is approximately
+:math:`\chi^2` distributed with :math:`G - 1` degrees of freedom for :math:`G`
+groups. Reach for it when the question is "how many fail of this
 cause", and for the cause-specific log-rank when the question is "how fast".
 
 The statistic
@@ -678,6 +702,17 @@ Aalen-Johansen CIF of the cause; the default :math:`\rho = 0` (every event time
 weighted equally) is the standard test, and :math:`\rho > 0` down-weights late
 event times, making the test more sensitive to differences in early
 incidence.
+
+This construction is SurPyval's own, and it is close to, but not identical
+with, Gray's original statistic. Gray [Gray1988cr]_ estimates the censoring
+distribution separately within each group and derives a variance from the
+asymptotic theory of the CIF estimators; SurPyval uses one censoring
+Kaplan-Meier :math:`\hat{G}` for the pooled sample and the hypergeometric
+variance of an ordinary log-rank test computed on the weighted risk sets. The
+two give very similar answers when the groups are censored in a similar way,
+and the test is calibrated in simulation (the how-to page checks this), but
+p-values will not match R's ``cmprsk::cuminc`` to many digits, and they can
+differ more when the groups' censoring patterns are very different.
 
 A useful way to see the difference from a cause-specific log-rank: imagine two
 groups with *identical* cause-1 hazards but a much larger cause-2 hazard in the

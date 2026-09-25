@@ -98,6 +98,29 @@ which you can also build directly to check your shapes:
     two observations each, one series per inner list. Convert rows to a numpy
     array first: ``np.asarray(rows)``.
 
+Two shortcuts save typing. A single row of two codes, such as ``c=[0, 1]``,
+applies to every row (here: series 1 always observed, series 2 always right
+censored). And rows that repeat can be given once with a count in ``n``. The
+fit is the same as with the rows written out, because each row's
+log-likelihood is simply multiplied by its count. ``dimension(d)`` returns one
+series' arrays ``(x, c, xl, xr, tl, tr)``:
+
+.. jupyter-execute::
+
+    shared = MultivariateSurpyvalData(data[:4], c=[0, 1])
+    print(shared.c)
+    print(shared.dimension(1)[:2])          # series 2: values and codes
+
+    rows = np.ceil(data[:200])              # rounding up creates repeats
+    uniq, counts = np.unique(rows, axis=0, return_counts=True)
+    by_count = Clayton.fit(uniq, n=counts, margins=[surv.Weibull, surv.LogNormal])
+    by_row = Clayton.fit(rows, margins=[surv.Weibull, surv.LogNormal])
+    print("%d distinct rows; theta %.3f (counts) vs %.3f (rows)" % (
+        len(uniq), by_count.params[0], by_row.params[0]))
+
+Interval-censored entries need their bounds: a ``c`` of ``2`` without ``xl``
+and ``xr`` raises a ``ValueError``, as does any array of the wrong shape.
+
 IFM and MLE
 ~~~~~~~~~~~
 
@@ -105,7 +128,8 @@ Two estimation strategies are available via ``how``:
 
 * ``"IFM"`` (*Inference Functions for Margins*, the default) fits each margin
   independently and then fits the single copula parameter holding the margins
-  fixed. Robust and fast.
+  fixed. Fast, and correct unless the truncation or censoring of one series
+  depends on the other.
 * ``"MLE"`` jointly optimises the copula parameter together with all margin
   parameters, starting from the IFM solution.
 
@@ -129,14 +153,19 @@ searches over every parameter at once:
 
 The IFM first stage fits each margin with everything that belongs to it: its
 values and censoring codes, the row counts ``n`` and that series' own
-truncation window. What it cannot see is how truncation of *one* series
-changes the rows seen for the *other*; for that, use ``"MLE"`` (see
-`Truncated observation`_ below).
+truncation window. What it cannot see is how truncation or censoring of *one*
+series changes what is seen of the *other*; for that, use ``"MLE"`` (see
+`Truncated observation`_ and `Censoring that depends on the other series`_
+below). The fitted model records how it was obtained in ``method``
+(``"IFM"``, ``"MLE"``, or ``"given"`` for ``from_params``) and keeps the
+normalised data in ``data`` (``None`` for ``from_params``); ``params`` holds the copula parameter and
+``margins`` the two margin models.
 
-Margins can also be passed **already fitted**, in which case they are used as
-they are and only the copula parameter is estimated. This is useful when a
-margin has been fitted with options the copula fit does not pass on, or
-reused from an earlier analysis:
+Margins can also be passed **already fitted**. With ``how="IFM"`` they are
+used as they are and only the copula parameter is estimated. This is useful
+when a margin has been fitted with options the copula fit does not pass on,
+or reused from an earlier analysis. (With ``how="MLE"`` a fitted margin only
+supplies the starting values: its parameters are re-estimated jointly.)
 
 .. jupyter-execute::
 
@@ -205,6 +234,24 @@ early) is reproduced by Clayton and missing from the Gaussian copula.
     independence boundary (:math:`\theta \to 0` or :math:`1`), where it *is*
     the independence copula, with the same likelihood.
 
+Here is that failure on purpose, with data simulated from a Frank copula with
+:math:`\theta = -5` (Kendall's :math:`\tau \approx -0.46`):
+
+.. jupyter-execute::
+
+    from scipy.stats import kendalltau
+
+    neg = Frank.from_params(-5.0, margins=truth.margins).random(1000, random_state=4)
+    print("empirical tau: %.3f" % kendalltau(neg[:, 0], neg[:, 1]).statistic)
+    for fam in [Independence, Clayton, Gumbel, Frank, Gaussian]:
+        m = fam.fit(neg, margins=[surv.Weibull, surv.LogNormal])
+        print("%-12s params=%-24s loglik=%.1f" % (
+            fam.name, np.round(m.params, 3), np.sum(np.log(m.pdf(neg)))))
+
+Clayton and Gumbel collapse onto independence, with exactly its
+log-likelihood; Frank recovers :math:`\theta` and fits far better, with the
+Gaussian copula second.
+
 Censoring and truncation
 ------------------------
 
@@ -212,10 +259,11 @@ The differentiator of the SurPyval copula implementation is that the joint
 likelihood supports the **full** censoring and truncation matrix, per
 dimension, using the same convention as the univariate models
 (``c`` of ``0`` observed, ``1`` right, ``-1`` left, ``2`` interval; ``t`` for
-a truncation window). Each series of a joint observation may be censored
-independently — pass one censoring column per series. Here each series is
-right-censored at its own threshold, and the fit still recovers the copula
-parameter:
+a truncation window). Each series of a joint observation carries its own
+censoring code — pass one censoring column per series. Here each series is
+right-censored at its own fixed threshold (censoring that is unrelated to the
+lifetimes, so the default IFM fit is appropriate), and the fit still recovers
+the copula parameter:
 
 .. jupyter-execute::
 
@@ -232,10 +280,49 @@ parameter:
     print("censored fraction:", round(c.mean(), 2))
     print("theta (censored) :", model_c.params)
 
-Internally every censoring type reduces to evaluating the copula CDF and its
-partial derivatives at the margin-transformed bounds (interval censoring, for
-example, is inclusion-exclusion on the rectangle corners of ``C``). The
-:doc:`Multivariate Analysis` page lists the operation for each censoring code.
+What does a censored row contribute to the likelihood? The
+:doc:`Multivariate Analysis` page derives the rule: each row is the
+probability of a rectangle, built from the copula CDF ``C``, its partial
+derivatives (the h-functions) and its density, evaluated at the
+margin-transformed values :math:`u_j = F_j(x_j)`. The copula objects expose
+these building blocks directly, as functions of ``(u, v, theta)``: ``cdf``,
+``du`` (:math:`\partial C/\partial u`), ``dv`` and ``pdf`` (the copula
+density). Here is one row, :math:`(x_1, x_2) = (10, 18)`, under four
+censoring patterns, each checked against the joint distribution of the fitted
+model:
+
+.. jupyter-execute::
+
+    th = model.params[0]
+    F1, F2 = model.margins
+    u, v = F1.ff(10.0), F2.ff(18.0)
+
+    def show(label, by_hand, from_joint):
+        print("%-24s %.6f   %.6f" % (label, np.ravel(by_hand)[0],
+                                     np.ravel(from_joint)[0]))
+
+    print("%-24s %-11s  %s" % ("row pattern", "by hand", "from the joint"))
+    # both observed: copula density times the two marginal densities
+    show("both observed", Clayton.pdf(u, v, th) * F1.df(10.0) * F2.df(18.0),
+         model.pdf([[10, 18]]))
+
+    # 1 observed, 2 right censored: f1 * (1 - dC/du). Check: the derivative
+    # in x1 of P(X1 <= x1, X2 > 18) = F1(x1) - H(x1, 18), by differencing
+    h = 1e-4
+    joint = lambda a: F1.ff(a) - model.cdf([[a, 18.0]])
+    show("1 observed, 2 right", F1.df(10.0) * (1 - Clayton.du(u, v, th)),
+         (joint(10 + h) - joint(10 - h)) / (2 * h))
+
+    # both right censored: the joint survival function
+    show("both right", 1 - u - v + Clayton.cdf(u, v, th), model.sf([[10, 18]]))
+
+    # 1 left censored, 2 interval censored in (15, 20]
+    show("1 left, 2 in (15, 20]",
+         Clayton.cdf(u, F2.ff(20.0), th) - Clayton.cdf(u, F2.ff(15.0), th),
+         model.cdf([[10, 20]]) - model.cdf([[10, 15]]))
+
+Each pair agrees. The fit applies exactly these expressions, row by row, and
+the same four building blocks cover all sixteen combinations of codes.
 
 Interval and left censoring
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -289,25 +376,68 @@ is given per row and per series as ``t[i, j] = [lower, upper]``, with
     t[..., 0], t[..., 1] = -np.inf, np.inf       # no truncation by default
     t[:, 0, 0] = 3.0                             # series 1 left-truncated at 3
 
+    print("truth: theta = 2, Weibull = [10, 2], LogNormal = [2.5, 0.5]")
     for how in ["IFM", "MLE"]:
         fit = Clayton.fit(field, t=t, margins=[surv.Weibull, surv.LogNormal],
                           how=how)
-        print("%s: theta = %.3f, Weibull = %s" % (
-            how, fit.params[0], np.round(fit.margins[0].params, 3)))
+        print("%s:   theta = %.3f, Weibull = %s, LogNormal = %s" % (
+            how, fit.params[0], np.round(fit.margins[0].params, 3),
+            np.round(fit.margins[1].params, 3)))
 
-The burn-in removes the earliest failures, which are exactly where Clayton's
-dependence lives. With ``how="IFM"`` the Weibull margin is fitted with its
-left truncation at 3 and comes back close to the truth, but :math:`\theta` is
-still biased. The reason is the *other* series: the rows that survived the
-burn-in are a selected sample of series 2 as well (with positive dependence,
-a unit whose bearing 1 lasted past 3 tends to have a long-lived bearing 2),
-and series 2 has no truncation window of its own, so its IFM margin is fitted
-to that selected sample as if it were the population. The copula stage then
-explains the distorted margin with too little dependence. The joint
-``how="MLE"`` fit divides every row by the probability of passing the
-burn-in, computed from the copula and both margins together, and recovers
-:math:`\theta` as well. Use ``how="MLE"`` whenever truncation of one series
-selects the rows of another.
+Read the IFM line margin by margin. The Weibull margin of series 1 was fitted
+with its left truncation at 3, which is exactly the selection series 1 went
+through, and it comes back close to the truth. The LogNormal margin of series
+2 does not: :math:`\mu` is too large and :math:`\sigma` too small. Series 2 was
+never truncated itself, but the burn-in selected its rows too. With positive
+dependence a unit whose bearing 1 lasted past 3 tends to have a long-lived
+bearing 2, so the field sample under-represents short series-2 lives, and the
+IFM margin, fitted to that sample as if it were the population, is shifted to
+longer and less variable lives. The copula stage then has to explain the data
+with that distorted margin, and it settles on far too little dependence.
+
+The ``how="MLE"`` fit gets all three right. Its correction does *not* come
+from the truncation divisor, which for a burn-in on series 1 alone is just
+:math:`P(X_1 > 3)`, free of the copula. It comes from fitting margin 2 jointly
+with the copula: each :math:`x_2` enters the likelihood through the copula
+density, paired with its :math:`x_1`, so the model knows which series-2 values
+the burn-in favours. The :doc:`Multivariate Analysis` page gives the formula
+for this selection. Use ``how="MLE"`` whenever truncation of one series
+selects the rows of another; with every series truncated, all the margins are
+affected.
+
+Censoring that depends on the other series
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The same issue arises without any truncation when the *censoring* of one
+series is set by the other. Suppose a shaft is retired 3 time units after its
+first bearing fails, so bearing 2 is right censored at :math:`x_1 + 3` unless
+it has already failed. Each row is still in the sample, and the joint
+likelihood is valid (the censoring time depends only on the observed
+:math:`x_1`). But series 2 on its own is now informatively censored: the
+bearings that are censored early are the partners of early bearing-1
+failures. Through the dependence, these are not a typical sample of the
+bearings still running at that age, and a univariate fit assumes they are.
+
+.. jupyter-execute::
+
+    retire = data[:, 0] + 3.0
+    c_dep = np.column_stack([np.zeros(len(data), dtype=int),
+                             (data[:, 1] > retire).astype(int)])
+    x_dep = np.column_stack([data[:, 0], np.minimum(data[:, 1], retire)])
+    print("series 2 censored fraction: %.2f" % c_dep[:, 1].mean())
+
+    for how in ["IFM", "MLE"]:
+        fit = Clayton.fit(x_dep, c=c_dep, margins=[surv.Weibull, surv.LogNormal],
+                          how=how)
+        print("%s:   theta = %.3f, LogNormal = %s" % (
+            how, fit.params[0], np.round(fit.margins[1].params, 3)))
+
+The IFM LogNormal margin is fitted as if the censoring were independent of
+bearing 2's life, which it is not, and comes out too long and too variable
+(:math:`\mu` of 2.70 against 2.5). The copula stage, handed that margin, finds much too little
+dependence (:math:`\theta` of 1.13 against 2). The joint fit recovers both. When IFM and MLE
+disagree like this, look for truncation or censoring of one series that is
+driven by the other; when they agree, the faster IFM fit is fine.
 
 Working with a fitted model
 ---------------------------
@@ -438,8 +568,8 @@ Building a model from known parameters
 --------------------------------------
 
 As with the univariate distributions, a model can be created directly from
-parameters and pre-built margins -- useful for Monte-Carlo simulation (this is
-exactly how the data above was generated):
+parameters and pre-built margins -- useful for Monte-Carlo simulation (the
+data at the top of this page were generated this way):
 
 .. jupyter-execute::
 
@@ -493,7 +623,62 @@ extremes:
 All four have the same Kendall's tau, but Clayton makes a joint failure below
 the 5% quantile far more likely than the others, and Gumbel a joint survival
 beyond the 95% quantile. Frank and Gaussian treat the two tails alike (their
-two probabilities are equal), with Frank, the lightest-tailed of the four,
-lowest of all. When the quantity you care about is a joint extreme — both
+two probabilities are equal), with Frank, whose dependence is weakest in the
+tails, below Gaussian in both. Clayton, for its part, gives the lowest
+probability of joint survival beyond the 95% quantile. When the quantity you care about is a joint extreme — both
 redundant units failing early, both components outliving a warranty — the
 choice of family matters as much as the strength of dependence.
+
+Defining your own copula family
+-------------------------------
+
+The five families are instances of classes derived from
+:class:`~surpyval.multivariate.parametric.copula.copula.Copula`, and a new
+family can be added the same way. The one thing a subclass must supply is the
+copula CDF ``cdf(u, v, theta)``, plus a ``name``, the parameter ``bounds``
+(in the same ``(low, high)`` form as the univariate fitters, ``None`` for
+unbounded) and ``param_names``. Everything else is derived from the CDF:
+``du``, ``dv`` and ``pdf`` by automatic differentiation (so write the CDF with
+arithmetic operators and the functions of ``surpyval.np``, autograd's numpy),
+sampling by inverting ``du``, and Kendall's tau and Spearman's rho by
+simulation. As an example, the Ali-Mikhail-Haq copula
+:math:`C(u, v) = uv / \{1 - \theta(1 - u)(1 - v)\}`,
+:math:`-1 \leq \theta < 1`, which only allows weak dependence
+(:math:`-0.18 < \tau < 1/3`):
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import Copula
+
+    class AliMikhailHaq(Copula):
+        name = "Ali-Mikhail-Haq"
+        bounds = ((-1, 1),)
+        param_names = ("theta",)
+
+        def cdf(self, u, v, theta):
+            return u * v / (1 - theta * (1 - u) * (1 - v))
+
+        def _init_theta(self, dims):
+            # the default starting value, 1, is on this family's bound
+            return np.array([0.0])
+
+    AMH = AliMikhailHaq()
+    amh_truth = AMH.from_params(0.6, margins=truth.margins)
+    amh_data = amh_truth.random(1000, random_state=0)
+    amh_fit = AMH.fit(amh_data, margins=[surv.Weibull, surv.LogNormal])
+    print(amh_fit)
+    print("Kendall's tau (simulated): %.3f" % amh_fit.kendall_tau())
+
+The estimate, 0.55 against a true 0.6, is typical for this weakly dependent
+family, whose parameter is hard to pin down with 1,000 rows. The simulated
+tau agrees with the family's closed form,
+:math:`1 - 2\{\theta + (1 - \theta)^2 \ln(1 - \theta)\}/(3\theta^2) = 0.145`
+at the fitted :math:`\theta`, to within the simulation error.
+
+Two cautions. The fit starts the search at :math:`\theta = 1` unless the
+subclass overrides ``_init_theta``, as here; for a family whose bounds exclude
+1 the override is required, otherwise the search starts outside the allowed
+range and returns a meaningless value. And a model of a custom family cannot
+be restored with ``from_dict``, which rebuilds a copula from its name and so
+only knows the five built-in families.
+

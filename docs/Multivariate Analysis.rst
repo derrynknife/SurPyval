@@ -297,25 +297,58 @@ Fitting a copula model means estimating both the marginal parameters and the
 copula parameter. Two strategies trade off robustness against efficiency:
 
 - **IFM** (*Inference Functions for Margins*) fits each margin independently and
-  then estimates the copula parameter with the margins held fixed. It is fast
-  and robust, and is the usual default.
+  then estimates the copula parameter with the margins held fixed. It is fast,
+  a poor margin cannot spoil the other one, and it is the usual default.
 - **MLE** optimises the copula parameter jointly with all marginal parameters.
   It is more efficient when the model is well specified, at a higher
-  computational cost.
+  computational cost, and it is the one that stays correct when the
+  truncation or censoring of one series depends on the other (see
+  `IFM or MLE?`_ below).
+
+Both maximise a likelihood, so the likelihood comes first.
 
 The likelihood with censored data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Because the margins are ordinary survival distributions, the joint likelihood
 inherits survival analysis's treatment of incomplete data: each series of a
-joint observation can be independently right, left or interval censored, or
-truncated, using the same conventions as the univariate models. Every censoring
-type reduces to evaluating the copula CDF and its partial derivatives at the
-margin-transformed bounds — interval censoring, for instance, is
-inclusion-exclusion on the rectangle corners of :math:`C`.
+joint observation can be observed, right, left or interval censored, whatever
+the status of the other series, using the same codes as the univariate models
+(``c`` of ``0``, ``1``, ``-1``, ``2``). One idea covers all of them.
 
-The rule is mechanical. For each series, look at what is known about it and
-apply one operation to :math:`C` in that series' argument:
+**Every censored row is a rectangle.** What we know about a row is that
+:math:`X_1` lies in some set :math:`I_1` and :math:`X_2` in some set
+:math:`I_2`, and its likelihood is the probability of that. For a censored
+series the set is an interval: :math:`(x, \infty)` if right censored,
+:math:`(-\infty, x]` if left censored, :math:`(x_l, x_r]` if interval
+censored. On the copula scale an interval :math:`(a_j, b_j]` of :math:`X_j`
+becomes :math:`(F_j(a_j), F_j(b_j)]` of :math:`U_j`, with
+:math:`F_j(-\infty) = 0` and :math:`F_j(\infty) = 1`. The probability of a
+rectangle then follows from the joint CDF by inclusion-exclusion, as it does
+for any bivariate distribution:
+
+.. math::
+
+   P(a_1 < X_1 \leq b_1,\; a_2 < X_2 \leq b_2)
+   = C(B_1, B_2) - C(A_1, B_2) - C(B_1, A_2) + C(A_1, A_2),
+
+with :math:`A_j = F_j(a_j)` and :math:`B_j = F_j(b_j)`. Every copula has
+:math:`C(0, \cdot) = C(\cdot, 0) = 0`, :math:`C(u, 1) = u` and
+:math:`C(1, v) = v`, so an infinite end of an interval simply drops terms or
+turns :math:`C` into a margin. For example, both series right censored gives
+:math:`1 - u_1 - u_2 + C(u_1, u_2)` with :math:`u_j = F_j(x_j)`, the joint
+survival function.
+
+**An exact observation is a very thin rectangle.** If :math:`X_1` is observed
+at :math:`x_1`, shrink its interval to :math:`(x_1, x_1 + \mathrm{d}x_1]`.
+The difference :math:`C(F_1(x_1 + \mathrm{d}x_1), \cdot) - C(F_1(x_1), \cdot)`
+becomes :math:`\partial C/\partial u_1 \cdot f_1(x_1)\,\mathrm{d}x_1`: the
+difference in that argument turns into a derivative, multiplied by the
+marginal density. (The :math:`\mathrm{d}x_1` is the same for every value of
+the parameters, so it is dropped, exactly as a univariate likelihood uses the
+density for an observed failure.)
+
+So each series applies one operation to its argument of :math:`C`:
 
 .. list-table::
    :header-rows: 1
@@ -336,7 +369,10 @@ apply one operation to :math:`C` in that series' argument:
      - ``2``
      - :math:`C(\cdot, F_j(x_r)) - C(\cdot, F_j(x_l))`
 
-Applying the operations for both series gives the row's likelihood. Some
+Applying the operations for both series gives the row's likelihood; with four
+codes per series there are sixteen combinations, all built from the four
+functions :math:`C`, :math:`\partial C/\partial u_1`,
+:math:`\partial C/\partial u_2` and the copula density :math:`c`. Some
 examples, with :math:`u_j = F_j(x_j)`:
 
 .. math::
@@ -344,24 +380,72 @@ examples, with :math:`u_j = F_j(x_j)`:
    \text{both observed:}\quad & c(u_1, u_2)\, f_1(x_1)\, f_2(x_2) \\
    \text{1 observed, 2 right censored:}\quad &
        f_1(x_1)\Big[1 - \frac{\partial C}{\partial u_1}(u_1, u_2)\Big] \\
+   \text{1 observed, 2 left censored:}\quad &
+       f_1(x_1)\,\frac{\partial C}{\partial u_1}(u_1, u_2) \\
    \text{both right censored:}\quad & 1 - u_1 - u_2 + C(u_1, u_2) \\
-   \text{both left censored:}\quad & C(u_1, u_2)
+   \text{both left censored:}\quad & C(u_1, u_2) \\
+   \text{1 left censored, 2 interval censored:}\quad &
+       C\big(u_1, F_2(x_{r,2})\big) - C\big(u_1, F_2(x_{l,2})\big)
 
-The second line reads naturally: the density of seeing series 1 fail at
-:math:`x_1`, times the conditional probability that series 2 had *not* failed
-by :math:`x_2` given that — the h-function at work.
-
-**Truncation** conditions on the row having been observable at all. If
-series :math:`j` could only be seen inside the window :math:`(t_{l,j},
-t_{r,j})`, each row's likelihood is divided by the copula mass of the
-rectangle :math:`[F_1(t_{l,1}), F_1(t_{r,1})] \times [F_2(t_{l,2}),
-F_2(t_{r,2})]`, i.e. the probability of both series landing in their windows,
-again by inclusion-exclusion on :math:`C`. When only one series is truncated
-this mass reduces to a marginal probability and does not involve the copula
-parameter at all — truncation then acts through the margins.
+The second and third lines read naturally: the density of seeing series 1 fail
+at :math:`x_1`, times the conditional probability that series 2 had *not*
+(or *had*) failed by :math:`x_2` given that. This is the h-function at work, and
+it is how a censored partner still carries information about the dependence:
+a row where series 1 failed early and series 2 was still running at a late
+censoring time is evidence *against* strong lower-tail dependence.
 
 **Counts** ``n`` weight each row's log-likelihood, so a row standing for
 five identical units counts five times.
+
+For the likelihood to be valid the censoring must not depend on the
+*unobserved* lifetimes. For a single series this is the usual
+independent-censoring assumption. Jointly it allows more: series 2 may be
+censored at a time that depends on what happened to series 1 (for example,
+the unit is retired a fixed time after series 1 fails), because :math:`x_1` is
+part of the observed row. As explained below, IFM does *not* allow this.
+
+Truncation: conditioning on being seen
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Truncation is different from censoring. Censoring hides part of an
+observation that is in the sample; truncation decides which rows are in the
+sample at all. If series :math:`j` could only be seen inside the window
+:math:`(t_{l,j}, t_{r,j})`, a row appears in the data only if *both* series
+landed in their windows. Each row's likelihood (from the rectangle rule
+above) is therefore divided by the probability of that event, which is the
+copula mass of the truncation rectangle, by the same inclusion-exclusion:
+
+.. math::
+
+   P(\text{row observable})
+   = C(r_1, r_2) - C(l_1, r_2) - C(r_1, l_2) + C(l_1, l_2),
+   \qquad l_j = F_j(t_{l,j}),\; r_j = F_j(t_{r,j}).
+
+In SurPyval the window is given per row and per series (``t`` of shape
+``(N, 2, 2)``), with :math:`\pm\infty` for "no limit"
+(:math:`l_j = 0`, :math:`r_j = 1`).
+
+A common special case is truncation of one series only, say a burn-in of length :math:`b`: rows
+are seen only if :math:`X_1 > b`. The divisor is then
+:math:`C(1, 1) - C(F_1(b), 1) = 1 - F_1(b)`, a marginal probability that
+does not involve the copula parameter. It is tempting to conclude that the
+truncation can be dealt with inside margin 1 alone. It cannot, because the
+selection also changes which values of :math:`X_2` are seen. The density of
+:math:`X_2` among the rows that pass the burn-in is
+
+.. math::
+
+   f_2(x_2)\,\frac{P(X_1 > b \mid X_2 = x_2)}{P(X_1 > b)}
+   = f_2(x_2)\,
+     \frac{1 - \dfrac{\partial C}{\partial u_2}\big(F_1(b), F_2(x_2)\big)}
+          {1 - F_1(b)} .
+
+Under independence the fraction is one and nothing changes. Under positive
+dependence a long :math:`X_2` makes passing the burn-in more likely, so the
+observed :math:`X_2` values are shifted towards long lives, although series 2
+was never truncated itself. The joint likelihood accounts for this
+automatically, through the copula density :math:`c(u_1, u_2)` that pairs each
+:math:`x_2` with its :math:`x_1`. A fit of margin 2 alone cannot.
 
 How SurPyval fits
 ~~~~~~~~~~~~~~~~~
@@ -372,41 +456,75 @@ exactly two series are supported. With ``how="IFM"`` [JoeXu1996mv]_:
 
 1. each margin is fitted by the usual univariate maximum likelihood to its own
    series, honouring that series' censoring codes (interval-censored entries
-   through ``xl``/``xr``), the row counts ``n`` and that series' truncation
-   window; margins passed as already-fitted models are used as they are;
-2. with the margins fixed, the copula parameter is chosen to maximise the
-   copula log-likelihood above. The search runs on an unconstrained
+   through ``xl``/``xr``), the row counts ``n`` and that series' own truncation
+   window; margins passed as already-fitted models are used as they are
+   (under ``how="MLE"`` they only supply starting values);
+2. with the margins fixed, the copula parameter is chosen to maximise the joint
+   log-likelihood above (censoring operations and truncation divisor
+   included). The search is a Nelder-Mead search on an unconstrained
    transformation of the parameter (for the Gaussian copula,
-   :math:`\rho = \tanh(\cdot)`), starting from the value that matches the
-   empirical Kendall's tau of the rows where both series are observed.
+   :math:`\rho = \tanh(\cdot)`). It starts from the value that matches the
+   empirical Kendall's tau of the rows where both series are observed (or
+   from near-independence if fewer than three such rows exist).
 
-With ``how="MLE"`` the IFM solution is the starting point for a joint search
-over the copula parameter and every margin parameter, maximising the full
-likelihood.
+With ``how="MLE"`` the IFM solution is the starting point for a joint
+Nelder-Mead search over the copula parameter and every margin parameter,
+maximising the full likelihood. This is slower (about ten times the IFM time
+in the examples on the how-to page) and, like any joint fit, it lets a
+misspecified margin pull on the copula parameter and on the other margin.
 
-Some consequences worth knowing:
+IFM or MLE?
+~~~~~~~~~~~
 
-- The IFM first stage truncates each margin by its own series' window only.
-  When the observation rule is joint -- a row is seen only if series 1
-  passed a burn-in, say -- the rows are also a selected sample of the other
-  series, which its margin cannot know about, and both that margin and the
-  copula parameter come out biased. ``how="MLE"`` divides each row by the
-  copula mass of the whole truncation rectangle and so accounts for the
-  selection; use it whenever truncation of one series selects the rows of
-  another.
+IFM's first stage fits each series as if it were the only one. That is
+correct when the data of each series, looked at on its own, is an honest
+sample of that margin: every series censored independently of its own
+lifetime, and no rows selected by what happened to the *other* series. The
+second stage then needs only the correct margins, so IFM is consistent, and
+it loses little efficiency when the dependence is moderate [JoeXu1996mv]_.
+Two common designs break the first stage:
+
+- **Truncation of a partner series.** As shown above, a burn-in on series 1
+  shifts the observed values of series 2. Margin 2 is fitted to the shifted
+  sample as if it were the population. The copula stage then has to explain
+  the data with a distorted margin, and it does so with the wrong amount of
+  dependence (too little, in the how-to page's example). The margin of the
+  truncated series itself is fine: its own window is exactly the selection
+  it is subject to.
+- **Censoring that depends on the partner.** If series 2 is censored at a
+  time set by series 1 (a unit retired soon after its first part fails, a
+  patient whose follow-up for one complication stops after the other), the
+  censoring of series 2 is related to :math:`X_2` through the dependence.
+  Viewed one series at a time this is informative censoring, and margin 2 is
+  biased. The joint likelihood is valid, because the censoring depends only
+  on the observed :math:`x_1`.
+
+``how="MLE"`` maximises the joint likelihood, in which the margins, the
+copula, the censoring operations and the truncation divisor all appear
+together, so it is right in both cases. It costs more time and is more
+exposed to a badly chosen margin. A practical check: fit both. If they agree,
+the cheaper IFM fit is fine; if they differ, look for truncation or
+censoring of one series that is driven by the other. The how-to page shows
+both failures of IFM and their MLE correction.
+
+Some further points worth knowing:
+
 - The copula parameter is estimated on the scale :math:`u_j = F_j(x_j)`, so a
   poorly chosen margin distorts it. Check the margins with the univariate
   tools first (see :doc:`Parametric SurPyval Modelling`).
 - The fitted model reports the point estimates; no standard errors or
-  likelihood values are attached to it.
+  likelihood values are attached to it. With complete data the
+  log-likelihood is the sum of the log joint density, which ``pdf`` gives.
 - Margin probabilities are kept a tiny distance (:math:`10^{-10}`) inside
   :math:`(0, 1)` to keep the Archimedean formulas finite.
 - Only bivariate models are supported; more than two series raise a
   ``NotImplementedError``.
 
-For worked examples — fitting a copula, handling per-series censoring, querying
-the joint distribution and dependence measures, and simulating correlated
-lifetimes — see the :doc:`Multivariate Modelling with SurPyval` page.
+For worked examples — fitting a copula, checking each censoring pattern's
+likelihood contribution, IFM against MLE under truncation and dependent
+censoring, querying the joint distribution and dependence measures,
+simulating correlated lifetimes and defining a new copula family — see the
+:doc:`Multivariate Modelling with SurPyval` page.
 
 .. rubric:: References
 
