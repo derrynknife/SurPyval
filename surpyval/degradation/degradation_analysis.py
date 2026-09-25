@@ -373,7 +373,15 @@ class DegradationModel(SerialisableMixin):
         When fitted with ``path="best"``, the AICc score of every
         candidate path model (``nan`` for candidates that could not be
         fitted to every unit); ``None`` otherwise. The fitted
-        ``path_model`` is the candidate with the smallest score.
+        ``path_model`` is the candidate with the smallest score. The
+        keys are the models' display names (``"Offset Exponential"``),
+        not the ``path=`` strings.
+    Z : ndarray or None
+        The stresses of an accelerated model: one row per unit (aligned
+        to ``units``) for a model fitted with ``Z`` alone or with
+        ``links``; for a step-stress (``acceleration="clock"``) model the
+        stress rows as given, one per measurement (aligned to ``x``).
+        ``None`` for a model fitted without stress.
     links : dict or None
         When the path parameters were modelled against stress
         (``links`` given to :meth:`DegradationAnalysis.fit`), the
@@ -1083,6 +1091,28 @@ class DegradationModel(SerialisableMixin):
         RULPrediction
             Posterior medians, credible intervals, failure
             probabilities, and the parameter posterior.
+
+        Examples
+        --------
+        Eight units with their own start and rate, then a new unit seen
+        three times:
+
+        >>> import numpy as np
+        >>> from surpyval.degradation import DegradationAnalysis
+        >>> rng = np.random.default_rng(1)
+        >>> x = np.tile(np.arange(100.0, 1100.0, 100.0), 8)
+        >>> i = np.repeat(np.arange(8), 10)
+        >>> a = np.repeat(rng.normal(10.0, 3.0, 8), 10)
+        >>> b = np.repeat(rng.normal(0.3, 0.05, 8), 10)
+        >>> y = a + b * x + rng.normal(0, 3.0, x.size)
+        >>> model = DegradationAnalysis.fit(x, y, i, threshold=450)
+        >>> pred = model.predict_rul(
+        ...     [100.0, 200.0, 300.0], [42.0, 71.0, 99.0], random_state=0
+        ... )
+        >>> round(pred.failure_time), round(pred.rul)
+        (1473, 1173)
+        >>> [round(v) for v in pred.failure_time_interval]
+        [1395, 1562]
         """
         # a numerically-zero variance (exact path fits) makes the
         # posterior degenerate; compare against the scale of y
@@ -1316,7 +1346,9 @@ class DegradationModel(SerialisableMixin):
 
         Plain life models expose their own ``qf``; accelerated regression
         models do not, so the quantile at stress ``Z`` is obtained by
-        numerically inverting the survival function.
+        numerically inverting the survival function. For a step-stress
+        model it is the calendar time at which the clock of ``Z`` reaches
+        the reference-stress quantile, :math:`\\tau^{-1}(F_0^{-1}(p))`.
         """
         if self._is_clock:
             clock = self._clock(Z)
@@ -1333,7 +1365,9 @@ class DegradationModel(SerialisableMixin):
 
         For an accelerated model the mean life at stress ``Z`` is obtained by
         integrating the survival function (the regression model has no closed
-        ``mean``).
+        ``mean``). For a step-stress model it is the reference-stress mean
+        divided by the acceleration factor at a constant stress, and the
+        integral of the survival function under a ``StepSchedule``.
         """
         if self._is_clock:
             return self._clock_mean(Z)
@@ -1377,7 +1411,21 @@ class DegradationModel(SerialisableMixin):
 
         For an accelerated model, ``size`` samples are drawn at stress ``Z`` by
         inverse-transform sampling of the fitted survival function (the
-        regression models do not all expose ``random`` directly).
+        regression models do not all expose ``random`` directly). For a
+        step-stress model the reference-stress quantiles are carried to
+        calendar time along the clock of ``Z``.
+
+        Parameters
+        ----------
+        size : int
+            Number of draws.
+        Z : array like or StepSchedule, optional
+            The stress, as for :meth:`sf`; required for an accelerated or
+            step-stress model, refused otherwise.
+        random_state : int, optional
+            Seed for the uniform draws of an accelerated or step-stress
+            model. A plain model draws from its life model's own
+            ``random``, which does not take it.
         """
         if self._is_clock:
             clock = self._clock(Z)
@@ -1438,6 +1486,25 @@ class DegradationModel(SerialisableMixin):
         -------
         InducedFailureDistribution
             The Monte-Carlo induced failure-time distribution.
+
+        Examples
+        --------
+        The induced median next to the pseudo-failure fit's:
+
+        >>> import numpy as np
+        >>> from surpyval.degradation import DegradationAnalysis
+        >>> rng = np.random.default_rng(1)
+        >>> x = np.tile(np.arange(100.0, 1100.0, 100.0), 8)
+        >>> i = np.repeat(np.arange(8), 10)
+        >>> a = np.repeat(rng.normal(10.0, 3.0, 8), 10)
+        >>> b = np.repeat(rng.normal(0.3, 0.05, 8), 10)
+        >>> y = a + b * x + rng.normal(0, 3.0, x.size)
+        >>> model = DegradationAnalysis.fit(x, y, i, threshold=450)
+        >>> induced = model.induced_life(random_state=0)
+        >>> round(induced.median()), round(float(model.qf(0.5)))
+        (1452, 1472)
+        >>> induced.prob_never_fails
+        0.0
         """
         if self._is_clock:
             return self._clock_induced_life(n_samples, random_state, Z)
@@ -1635,7 +1702,8 @@ class DegradationModel(SerialisableMixin):
         x : array like
             Times at which to evaluate the bound(s).
         on : {'sf', 'ff', 'Hf'}, optional
-            The function to bound. Default ``'sf'``.
+            The function to bound (``'R'`` and ``'F'`` are accepted as
+            aliases of ``'sf'`` and ``'ff'``). Default ``'sf'``.
         alpha_ci : float, optional
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
@@ -2631,8 +2699,10 @@ class DegradationAnalysis_:
             testing. When given, the selected columns are passed as ``Z`` to
             :meth:`fit`, fitting a covariate (ADT) life model.
         **fit_kwargs
-            Remaining arguments (``threshold``, ``path``,
-            ``distribution``, ``how``) passed to :meth:`fit`.
+            Remaining arguments passed to :meth:`fit`: ``threshold``
+            (required), and optionally ``path``, ``distribution``,
+            ``how``, ``population_method``, ``links``, ``acceleration``
+            and ``stress_ref``.
 
         Returns
         -------

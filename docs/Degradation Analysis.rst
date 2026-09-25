@@ -464,8 +464,12 @@ Two corrections are available.
 * **Bootstrap.** Resample whole units with replacement, rerun the entire
   pipeline (path fits, pseudo failure times, life fit) on each resample, and
   take percentiles of the resulting curves. Slower, but it makes no
-  first-order approximation, so it is the better choice with few units or long
-  extrapolations, and a useful check on the analytic bounds. The path model is
+  first-order approximation, so it is a useful check on the analytic bounds,
+  especially with long extrapolations. It is not a cure for having few units,
+  though: a percentile bootstrap of a dozen units resamples only a dozen
+  pseudo failure times, and its band can then be too narrow in the tails (in a
+  small simulation with twelve units, a nominal 95 % band covered the true
+  reliability of 0.13 only about 80 % of the time). The path model is
   held fixed across resamples, so after a ``path="best"`` selection the band
   does not include the uncertainty of having chosen the shape.
 

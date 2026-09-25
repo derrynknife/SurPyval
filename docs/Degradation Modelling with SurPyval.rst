@@ -274,6 +274,36 @@ takes into account, and a warning says which unit it was:
     print(caught[0].message)
     print("censored flags:", with_flat.c)
 
+**Decreasing degradation.** Nothing changes when the measurement falls toward
+the threshold instead of rising to it. Here eight LEDs lose light output
+exponentially from about 100 %, and a lamp has failed once it is below 70 % of
+its initial output (the "L70" life). The exponential path is
+:math:`a e^{bt}` with a *negative* rate :math:`b`, and its crossing time
+:math:`\ln(70/a)/b` is positive because numerator and rate are both negative:
+
+.. jupyter-execute::
+
+    rng_led = np.random.default_rng(7)
+    hours = np.arange(1000.0, 7000.0, 1000.0)
+    xs, ys, ids = [], [], []
+    for lamp in range(8):
+        a = rng_led.normal(100.0, 1.0)                  # initial output, %
+        b = -abs(rng_led.normal(2.5e-5, 0.5e-5))        # decay rate per hour
+        xs.append(hours)
+        ys.append(a * np.exp(b * hours) + rng_led.normal(0, 0.3, hours.size))
+        ids.append(np.full(hours.size, lamp))
+    x_led, y_led, i_led = (np.concatenate(v) for v in (xs, ys, ids))
+
+    led = DegradationAnalysis.fit(x_led, y_led, i_led, threshold=70.0,
+                                  path="exponential")
+    print("fitted decay rates b     :", led.path_params[:, 1].round(7))
+    print("pseudo L70 lives (hours) :", led.pseudo_failure_times.round(-2))
+    print("median L70 life (hours)  :", round(float(led.qf(0.5)), -2))
+
+The test ran for 6000 hours and no lamp got near 70 %, yet every lamp has an
+L70 estimate — around 14 000 hours, well beyond the data, which is exactly why
+the choice of path shape matters so much.
+
 **Other inputs and options.** Data can come straight from a DataFrame with
 ``fit_from_df``, naming the columns (``Z_cols`` names the stress column(s) for
 the accelerated models below, and every other ``fit`` argument passes
@@ -306,8 +336,9 @@ time):
     print("failure time  :", round(model.predict_failure_time(x_new, y_new), 0))
     print("remaining life:", round(model.predict_remaining_life(x_new, y_new), 0))
 
-If the trajectory has already crossed the threshold, the predicted failure time
-is in the past and the remaining life is negative. If the new unit's fitted path
+If the fitted path crossed the threshold between time zero and the last
+measurement, the predicted failure time is in the past and the remaining life
+is negative. If the new unit's fitted path
 never reaches the threshold (it is not degrading), both return ``nan`` with a
 warning. The trajectory needs at least as many measurements as the path has
 parameters, at two or more distinct times. For a population-level view instead
@@ -804,9 +835,12 @@ own trend whatever the stress:
         print(f'stress {stress}: RUL {pred.rul:5.1f}  '
               f'(95% interval {lower:5.1f} to {upper:5.1f})')
 
-A model fitted without ``links`` refuses ``Z`` in ``predict_rul`` and
-``induced_life``, since it has no stress-conditional population to condition
-on; a model fitted with ``links`` requires it.
+A model fitted with ``Z`` alone (no ``links``) refuses ``Z`` in
+``predict_rul`` and ``induced_life``, since it has no stress-conditional
+population to condition on (its ``predict_rul`` uses the pooled population
+and its ``induced_life`` is refused altogether); a model fitted with
+``links`` requires it. The step-stress clock below takes ``Z`` in both, in its
+own way.
 
 Step-stress tests: an accelerated clock
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

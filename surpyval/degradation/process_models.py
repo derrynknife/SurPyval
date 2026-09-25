@@ -208,8 +208,10 @@ class ProcessRUL:
     rul_interval : tuple of float
         Equal-tailed ``1 - alpha_ci`` interval for the remaining life.
     prob_already_failed : float
-        Probability the unit has already crossed the threshold (i.e. the
-        current degradation is at or beyond it).
+        ``1.0`` when the current degradation is at or beyond the threshold
+        (the remaining life and its interval are then ``0``), else ``0.0``.
+    alpha_ci : float
+        The tail probability of ``rul_interval``.
     """
 
     def __init__(
@@ -493,7 +495,20 @@ class FirstPassageProcessModel(SerialisableMixin):
         random_state: "int | None" = None,
         Z: Any = None,
     ) -> npt.NDArray:
-        """Draw first-passage (failure) times from the fitted model."""
+        """
+        Draw first-passage (failure) times from the fitted model.
+
+        Parameters
+        ----------
+        size : int
+            Number of draws.
+        random_state : int, optional
+            Seed for reproducible draws.
+        Z : array like or StepSchedule, optional
+            The stress, for a model fitted with ``Z`` (required then);
+            each reference-stress draw is carried to calendar time along
+            its clock.
+        """
         clock = self._clock(Z)
         rng = np.random.default_rng(random_state)
         draws = self._random0(size, rng)
@@ -540,6 +555,11 @@ class FirstPassageProcessModel(SerialisableMixin):
             from now on -- one row for a constant stress, or a
             :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
             whose time zero is *now*.
+
+        Returns
+        -------
+        ProcessRUL
+            The median remaining life and its equal-tailed interval.
         """
         clock = self._clock(Z)
         distance = self.threshold - float(current_degradation)

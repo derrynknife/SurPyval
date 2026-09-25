@@ -128,6 +128,14 @@ class DestructiveDegradationModel(SerialisableMixin):
         """
         The ``q``-quantile of the destructive measurement at time ``t`` (the
         fitted degradation distribution ``dist(loc(t), sigma)``).
+
+        Parameters
+        ----------
+        q : float or array_like
+            Probability (or probabilities) in ``(0, 1)``.
+        t : float or array_like
+            Time(s) at which to read the degradation distribution; a
+            scalar ``t`` gives a scalar result.
         """
         loc = self._loc(t)
         out = np.asarray(self.distribution.qf(q, loc, self.sigma), dtype=float)
@@ -200,6 +208,8 @@ class DestructiveDegradationModel(SerialisableMixin):
         alpha_ci : float, optional
             Total tail probability. Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis, with
+            ``alpha_ci / 2`` in each tail. Default ``'two-sided'``.
         n_boot : int, optional
             Number of bootstrap resamples. Default 200.
         seed : optional
@@ -443,7 +453,7 @@ class DestructiveDegradation_:
             ``-1`` left-censored (below the test floor). Default all observed.
         distribution : Parametric or str, optional
             Location-scale response distribution -- ``LogNormal`` (default,
-            positive response) or ``Normal``.
+            positive response) or ``Normal``, as the object or its name.
         transform : str, optional
             Time transform :math:`\varphi(t)` for the location: ``"linear"``,
             ``"log"``, ``"sqrt"``, ``"reciprocal"``, or ``"best"`` to pick the

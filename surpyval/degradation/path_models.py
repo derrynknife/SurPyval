@@ -13,12 +13,16 @@ Each model implements:
 - ``inv_path(y, *params)``: the time at which the path reaches level
   ``y`` (non-finite when the path never does),
 - ``fit(x, y)``: least-squares estimates of the path parameters from
-  one unit's measurements.
+  one unit's measurements,
+- ``jacobian(x, *params)``: the analytic derivatives of the path with
+  respect to its parameters.
 
 Models that are linear in their parameters (``LinearPath``,
-``LogarithmicPath``, ``LloydLipowPath``) are fitted with ordinary least
-squares in closed form; the others (``ExponentialPath``, ``PowerPath``)
-use nonlinear least squares started from the log-linearised fit.
+``QuadraticPath``, ``LogarithmicPath``, ``LloydLipowPath``) are fitted
+with ordinary least squares in closed form; the others
+(``ExponentialPath``, ``OffsetExponentialPath``, ``PowerPath``,
+``GompertzPath``, ``MichaelisMentenPath``) use nonlinear least squares
+started from a linearised fit.
 """
 
 from abc import ABC, abstractmethod
