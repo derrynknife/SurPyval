@@ -15,86 +15,108 @@ cleaner environment. We can use recurrent event regression to understand
 the relationship between these covariates and the number of repairs that
 a motor needs.
 
+This page builds on the counting-process ideas — the intensity
+:math:`\lambda(t)`, the cumulative intensity :math:`\Lambda(t)` and the
+Poisson-process likelihood — explained on the :doc:`Recurrent Event Analysis`
+page. Runnable examples of everything here are on the
+:doc:`Recurrent Event Regression Modelling with SurPyval` page, and the API
+is documented under :doc:`surpyval.counting`.
+
+.. rubric:: From a rate to a rate that depends on covariates
+
 We can start with the simplest version of recurrent event regression, a
 Homogeneous Poisson Process Regression. In this case we have a regular
-Homogeneous Poisson Process given by:
+Homogeneous Poisson Process, whose expected number of events by time
+:math:`t` is given by:
 
 .. math::
 
-    N(t) = \lambda t
+    \Lambda(t) = \mathbb{E}\left[N(t)\right] = \lambda t
 
 But we extend this to include the impact that additional factors have on the
 cumulative count. So the model becomes:
 
 .. math::
 
-    N(t) = \phi\left( Z \right) \lambda t
+    \Lambda(t \mid Z) = \phi\left( Z \right) \lambda t
 
-In this case, just as was the case with single event proportional hazard
-models, there is a factor that relates the covariates to the counting function.
-In doing so we can now model jointly the cumulative event process with
-factors that are likely to impact the rate at which the events occur. Again,
-repeating the lessons from single event survival analysis, a logical choice 
-for the phi function would be the exponential function. This is because
-it ensures there is never a negative number and so will always provide a valid
-rate even during optimisation. That is, our model will be:
+Here :math:`Z` is the row vector of an item's covariates (for example
+:math:`Z = [\text{humid}, \text{duty cycle}]`) and :math:`\phi` is a positive
+function of them. In this case, just as was the case with single event
+proportional hazard models, there is a factor that relates the covariates to
+the counting function. In doing so we can now model jointly the cumulative
+event process with factors that are likely to impact the rate at which the
+events occur. Again, repeating the lessons from single event survival
+analysis, a logical choice for the phi function would be the exponential
+function. This is because it ensures there is never a negative number and so
+will always provide a valid rate even during optimisation. That is, our model
+will be:
 
 .. math::
 
-    N(t) = e^{Z \beta} \lambda t
+    \Lambda(t \mid Z) = e^{Z \beta} \lambda t
 
 
 This is the proportional intensity HPP model. The log-linear (exponential)
 link function :math:`e^{Z\beta}` is the standard choice because it guarantees
 a positive rate regardless of the sign of :math:`\beta`, mirrors the Cox model
 for single events, and gives regression coefficients a direct multiplicative
-interpretation on the rate.
+interpretation on the rate. Here :math:`\beta` is the column vector of
+regression coefficients, one per covariate, so
+:math:`Z\beta = \beta_0 z_0 + \beta_1 z_1 + \dots`. (SurPyval labels the
+coefficients ``beta_0``, ``beta_1``, ... in the order of the columns of
+:math:`Z`.)
+
+.. rubric:: Time-varying baselines: the Duane example
 
 A notable example within recurrent event regression is the Duane process,
-which is particularly relevant in reliability engineering. The Duane model is 
-a form of non-homogeneous Poisson process (NHPP) that describes the improvement 
-in reliability of a system or component over time, typically as a result of 
-learning effects or reliability growth. The model posits that the failure rate 
-of a system decreases as a function of cumulative operating time, reflecting 
-the notion that systems become more reliable through usage and corrective 
-actions. In the Duane process, the cumulative number of failures is modeled as 
-a function of time, providing a way to quantify reliability growth and 
-forecast future performance. The conventional parameterisation for the Duane
-is:
+which is particularly relevant in reliability engineering. The Duane model is
+a form of non-homogeneous Poisson process (NHPP) that describes the improvement
+in reliability of a system or component over time, typically as a result of
+learning effects or reliability growth. The model posits that the failure rate
+of a system decreases as a function of cumulative operating time, reflecting
+the notion that systems become more reliable through usage and corrective
+actions. In the Duane process, the cumulative number of failures is modeled as
+a function of time, providing a way to quantify reliability growth and
+forecast future performance. The parameterisation SurPyval uses for the Duane
+model is:
 
 .. math::
 
-    N(t) = \alpha t^\beta
+    \Lambda(t) = b\, t^{\alpha}
 
 This can be interpreted as the number of events we can expect up to time t is
-given by the result of the equation.
-
-
+given by the result of the equation. The exponent :math:`\alpha` controls the
+trend — below one the rate of events falls over time (reliability growth),
+above one it rises (wear-out) — and :math:`b` is the expected number of events
+by :math:`t = 1`. (Many textbooks swap the letters, writing
+:math:`\alpha t^{\beta}`; the parameters that SurPyval prints are ``alpha``
+for the exponent and ``b`` for the scale.)
 
 In addition to specific models like the Duane process, recurrent event
-regression encompasses the broader class of proportional intensity models. 
-These models, often used in the context of survival analysis, assume that 
+regression encompasses the broader class of proportional intensity models.
+These models, often used in the context of survival analysis, assume that
 the intensity function (or hazard function) for an individual's time to the next
-event is proportional to a baseline intensity function, adjusted by the 
-individual's covariates. This assumption of proportionality allows for the 
-straightforward interpretation of covariate effects on the hazard of an event 
-occurring. This makes the comparison of risks between different groups or 
+event is proportional to a baseline intensity function, adjusted by the
+individual's covariates. This assumption of proportionality allows for the
+straightforward interpretation of covariate effects on the hazard of an event
+occurring. This makes the comparison of risks between different groups or
 under different conditions easy and interpretable.
 
 
-1. The traditional Duane model's cumulative number of failures as a function of time:
+1. The Duane model's cumulative number of failures as a function of time:
 
 .. math::
 
-    N(t) = \alpha t^\beta
+    \Lambda(t) = b\, t^{\alpha}
 
 2. The failure intensity function derived from the Duane model:
 
 .. math::
 
-    \lambda(t) = \frac{dN(t)}{dt} = \alpha \beta t^{\beta - 1}
+    \lambda(t) = \frac{d\Lambda(t)}{dt} = \alpha\, b\, t^{\alpha - 1}
 
-3. The Proportional Intensity model incorporating a covariate :math:`Z`:
+3. The Proportional Intensity model incorporating a covariate vector :math:`Z`:
 
 .. math::
 
@@ -104,10 +126,12 @@ under different conditions easy and interpretable.
 
 .. math::
 
-    \lambda(t \mid Z) = \alpha \beta t^{\beta - 1} \exp(Z \beta)
+    \lambda(t \mid Z) = \alpha\, b\, t^{\alpha - 1} \exp(Z \beta)
 
 These equations outline the framework for modelling the reliability growth of a
 system, incorporating the effects of covariates on the failure intensity.
+
+.. rubric:: The general proportional-intensity model
 
 More generally, any of SurPyval's counting-process baselines can play the role
 of :math:`\lambda_0(t)`. The proportional-intensity model multiplies that
@@ -128,12 +152,94 @@ recurrent-event analogue of a hazard ratio [Cook2007r]_, and the reason the
 coefficients :math:`\beta` read directly as multiplicative effects on the event
 rate.
 
+The baseline :math:`\lambda_0(t)` is the intensity of an item whose covariates
+are all zero. The covariates change *how many* events an item has, never the
+*shape* of its intensity over time: every item shares the same trend, scaled up
+or down. Each item's events still form a Poisson process — given its
+covariates, an item's intensity does not depend on its own past events.
+
+.. rubric:: Estimation
+
 The parameters are estimated jointly by maximum likelihood [Lawless1987]_,
 maximising the NHPP log-likelihood with the covariate-scaled intensity
-substituted in. The static, per-item covariates enter through
-:math:`e^{Z\beta}`, so an item in a harsher environment simply accumulates
-events faster. This proportional-intensity framing is standard in the
-reliability-growth literature [Rigdon2000r]_.
+substituted in. For item :math:`i` with covariates :math:`Z_i`, observed from
+:math:`s_i` to :math:`\tau_i` with events at :math:`t_{i1}, t_{i2}, \dots`,
+
+.. math::
+
+    \ell(\theta, \beta) = \sum_i \left\{ \sum_j \left[\ln \lambda_0(t_{ij};
+    \theta) + Z_i\beta\right] - e^{Z_i\beta}\left[\Lambda_0(\tau_i; \theta)
+    - \Lambda_0(s_i; \theta)\right] \right\},
+
+where :math:`\theta` are the baseline parameters. Exactly as for the models
+without covariates, the window end :math:`\tau_i` is the item's
+right-censoring time (time-truncated) or its last event (failure-truncated),
+the start :math:`s_i` is its left-truncation time or zero, and counts of
+events over inspection intervals enter as Poisson terms. The static, per-item
+covariates enter through :math:`e^{Z\beta}`, so an item in a harsher
+environment simply accumulates events faster. This proportional-intensity
+framing is standard in the reliability-growth literature [Rigdon2000r]_.
+
+The baseline parameters and the coefficients are estimated together, and
+their joint covariance (the inverse observed information) gives standard
+errors for every parameter and delta-method confidence bounds on
+:math:`\Lambda(t \mid Z)` at any covariate setting.
+
+.. rubric:: Interpreting the coefficients
+
+- :math:`e^{\beta_k}` is the **rate ratio** for a one-unit increase in
+  covariate :math:`k`, holding the others fixed: :math:`\beta_k = 0.7` means
+  about twice as many events (:math:`e^{0.7} \approx 2.0`) at every age.
+  Because the ratio is the same at every time, it is also the ratio of the
+  expected number of events by any time :math:`t`.
+- A confidence interval for :math:`\beta_k` becomes one for the rate ratio by
+  exponentiating its end points.
+- The baseline describes :math:`Z = 0`. Coding a two-level factor as 0/1 makes
+  the baseline one of the levels; *centring* a continuous covariate (subtracting
+  its mean) makes the baseline a typical item and usually makes the
+  optimisation better behaved too.
+- A factor with :math:`L` levels needs :math:`L - 1` indicator columns; a
+  column of ones would duplicate the baseline's scale parameter, and the model
+  would not be identifiable.
+
+.. rubric:: Choosing the baseline
+
+The choice of baseline is the choice of the *shared* trend over time, and the
+same reasoning applies as without covariates: use a constant baseline (the
+HPP) if there is no trend, and an NHPP baseline — a power law (``Duane``, the
+default, or ``CrowAMSAA``) or the log-linear ``CoxLewis`` — if there is.
+Duane and Crow-AMSAA are the same power-law process in two parameterisations,
+so as baselines they describe the same model, and their fits should agree.
+Compare candidate baselines with the information criteria and the diagnostics
+below.
+
+A useful fact: when every item is observed over the *same* window, the
+coefficient estimates do not depend on the shape of the baseline at all —
+only the total expected count over the window enters the part of the
+likelihood that involves :math:`\beta`. The baseline then matters for
+prediction over time but not for the covariate effects. When the windows
+differ (items entered service at different times, say), the two are
+estimated jointly and a wrong baseline can bias the coefficients.
+
+.. rubric:: Assumptions and limitations
+
+- **Static covariates.** The covariates are properties of the item, constant
+  over its observation. Supply them one row per event row (repeating the
+  item's values) or as a dictionary keyed by item. The residuals and the
+  goodness-of-fit test take each item's covariates from its first row.
+- **Proportionality.** Every item follows the same trend, scaled by its
+  covariates. If harsh-environment motors *wear out faster* (a different
+  shape), rather than simply failing more often, a single proportional model
+  is the wrong tool; fit the groups separately and compare their shapes.
+- **Poisson behaviour and heterogeneity.** The model assumes the covariates
+  explain all systematic differences between items. If items differ in ways
+  the covariates do not capture (extra-Poisson variation), the coefficient
+  estimates remain sensible but the model-based standard errors tend to be
+  too small, and the goodness-of-fit test and martingale residuals are the
+  place to look for it.
+- **Scope.** Covariates are available for the HPP and NHPP intensity models.
+  The imperfect-repair (renewal) models and gapped (multi-window) observation
+  do not take covariates.
 
 Model checking
 --------------
@@ -146,6 +252,25 @@ model), the trend test checks whether a time-varying baseline was warranted at
 all, and the Cramér–von Mises test provides a bootstrapped goodness-of-fit
 p-value. Confidence bounds on the fitted cumulative intensity at a covariate
 setting come from the delta method via ``cif_cb``.
+
+A few points are specific to the regression setting:
+
+- The **martingale residuals** (observed minus expected events per item) are
+  the most direct check of the covariate model. Plotted against a covariate,
+  a trend in them suggests the covariate's effect is not log-linear, and
+  against a covariate left *out* of the model, a trend suggests it should be
+  in.
+- The cumulative-hazard residuals only include the gaps that ended in an
+  event; each item's final, right-censored gap is left out. With only a few
+  events per item that selection pulls their average below one even when the
+  model is right, so judge their *pattern* rather than insisting on a mean of
+  exactly one.
+- The **trend test** uses only the event times and observation windows, not
+  the covariates. It answers "is there a common trend over time?", which is
+  the question that separates the HPP and NHPP baselines.
+- The **Cramér–von Mises** bootstrap resimulates every item from its own
+  covariate-scaled intensity and refits the whole regression each time, so it
+  checks the baseline shape and the covariate effects together.
 
 These methods form a comprehensive toolkit for researchers and practitioners
 working with recurrent event data, enabling detailed analysis and prediction of
@@ -168,8 +293,3 @@ References
 
 .. [Rigdon2000r] Rigdon, S.E. and Basu, A.P., 2000. *Statistical Methods for the
    Reliability of Repairable Systems*. John Wiley & Sons.
-
-
-
-
-

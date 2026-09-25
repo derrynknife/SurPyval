@@ -1,16 +1,89 @@
 Recurrent Event Modelling with SurPyval
 =======================================
 
-This section is aims to show how you can use SurPyval to model counting
-processes. For the concepts and mathematics behind these models — the HPP,
-the NHPP (Duane, Cox-Lewis, Crow-AMSAA), the renewal and virtual-age models,
-and the mean cumulative function — see the :doc:`Recurrent Event Analysis`
-page.
+This section aims to show how you can use SurPyval to model counting
+processes: items that experience the same kind of event again and again. For
+the concepts and mathematics behind these models — the HPP, the NHPP (Duane,
+Cox-Lewis, Crow-AMSAA), the renewal and virtual-age models, and the mean
+cumulative function — see the :doc:`Recurrent Event Analysis` page. Every
+class used here is documented in full under :doc:`surpyval.counting`.
+
+Everything recurrent lives in ``surpyval.recurrent``. The page works through
+the data format first, then the non-parametric and parametric (Poisson
+process) models, then the renewal (imperfect-repair) models, and finishes with
+gapped observation, event types and saving models. Covariate (regression)
+models have their own page, :doc:`Recurrent Event Regression Modelling with
+SurPyval`.
 
 Recurrent Event SurPyval Modelling
 ----------------------------------
 
-First, we will start with recurrent events, and a simple non-parametric model.
+First, we will look at how recurrent event data is given to SurPyval, then
+start with a simple non-parametric model.
+
+Recurrent event data in SurPyval
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every recurrent model in SurPyval takes the same ``xicn`` arrays (see
+:doc:`Conventions`), one row per event:
+
+- ``x`` — the time of each event, measured as the item's **cumulative** time
+  (its age, or calendar time since it entered service), *not* the time since
+  the previous event;
+- ``i`` — which item each row belongs to (defaults to a single item);
+- ``c`` — the censoring flag: ``0`` for an observed event, ``1`` for the
+  end-of-observation row (the item is still running but we stopped watching);
+  ``2`` and ``-1`` are used for counts of events, described below;
+- ``n`` — the number of events a row stands for (defaults to 1).
+
+The rows of each item must describe a coherent timeline. An item can have at
+most one right-censored row and it must be its last row: it makes no sense to
+stop watching an item and then record another event. Rows do not need to be
+sorted — SurPyval sorts them by item and time.
+
+The single most important decision when preparing the data is **how
+observation of each item ended**:
+
+- If an item was watched until a fixed time :math:`T` (the end of a study, or
+  "today"), add a row at :math:`T` with ``c=1``. This is *time-truncated*
+  data, and the time between the last event and :math:`T` — during which
+  nothing happened — is information the model uses.
+- If observation stopped at an event (a test run until the tenth failure,
+  say), give just the events. This is *failure-truncated* data.
+
+Here is the same set of events analysed both ways. With the censoring row the
+model knows the system then ran 12 more hours without failing, so it estimates
+a lower intensity with much less of a trend:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import CrowAMSAA
+    import numpy as np
+
+    events = np.array([4.0, 10, 17, 21, 29, 33, 37, 40])
+
+    failure_truncated = CrowAMSAA.fit(events)
+    time_truncated = CrowAMSAA.fit(
+        np.append(events, 52.0), c=np.append(np.zeros(len(events)), 1)
+    )
+    print("observed to the last event :", failure_truncated.params.round(3))
+    print("observed until t = 52      :", time_truncated.params.round(3))
+
+Crow-AMSAA's ``beta`` is the shape of the intensity: above 1 means events are
+getting more frequent. Treated as failure-truncated, the system seems to be
+wearing out (``beta`` about 1.4); knowing about the quiet final 12 hours,
+``beta`` is about 1.0 — a roughly constant rate. Forgetting the censoring row
+is the most common mistake in recurrent-event analysis; it makes a system
+look worse than it is.
+
+Two further arguments describe the observation window. ``tl`` gives a
+left-truncation (delayed entry) time — the item was already in service when
+observation began — and ``tr`` a right-truncation time at which observation
+closed, which is equivalent to a ``c=1`` row at that time. Both may be a
+scalar (every item) or one value per row. Items observed over several
+disjoint periods use ``windows`` (see `Gapped (multi-window) observation`_).
+The intensity models accept all of these; the non-parametric MCF accepts
+``tl`` and ``windows``; the renewal models need each item watched from new.
 
 Non-Parametric Counting Model with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -31,13 +104,16 @@ pass it to the ``fit`` call of the ``NonParametricCounting`` class.
 
 This shows the expected number of events at any time. The model is a step
 function since it is non-parametric and we have made no assumptions about the
-count between observed events.
+count between observed events. The plot also draws pointwise 95% confidence
+bounds in red, but with a single item there is no item-to-item variation to
+measure: the variance estimate is zero and the bounds lie on top of the MCF.
+One system tells you about that system, not about the population.
 
 The result of this is a Non-Parametric Counting model that can be used just like
 all other models in surpyval. It is important to note that the ``fit`` function
 takes the values of x as the *cumulative* time to the event, not the inter-arrival
 time. If you do have inter-arrival data (which is sorted in the correct order)
-all you need do is take the cumulative sum of the obervations along the length
+all you need do is take the cumulative sum of the observations along the length
 of the array. For example:
 
 .. jupyter-execute::
@@ -49,6 +125,9 @@ of the array. For example:
     x = np.cumsum(interarrival_times)
 
     model = NonParametricCounting.fit(x)
+
+With several items, take the cumulative sum *within* each item, never across
+the whole array.
 
 We can then use this model to estimate the number of failures at any time. For
 example, let's say we wanted to know how many failures we would expect to see
@@ -104,6 +183,45 @@ Let's look at how we can use right censoring.
     model = NonParametricCounting.fit(x, i=i, c=c)
     model.plot()
 
+The fitted model keeps the pieces of the estimate: the distinct event times
+``x``, the number of items at risk ``r`` and the number of events ``d`` at each
+time, and the running MCF ``mcf_hat``. Item 1 stops being observed at 7, so
+from time 8 only two items are at risk:
+
+.. jupyter-execute::
+
+    print("x   :", model.x)
+    print("r   :", model.r)
+    print("d   :", model.d)
+    print("MCF :", model.mcf_hat.round(3))
+
+Let's say this data was for the time, in years,
+between repairs on home air conditioners of a specific model. We can then use
+this model to estimate the number of repairs we would need on a newly installed
+air conditioner. Let's say we wanted to know how many repairs we would expect to see
+after 8 years. We can do this by using the ``mcf`` method of the model.
+
+.. jupyter-execute::
+
+    model.mcf([8, 10])
+
+If however, we wanted to know how many repairs were needed after 10 years, we
+could not do so since the data only goes up to 9 years: the model returns
+``nan`` rather than guess. To address this we would instead need to use a
+parametric model.
+
+Confidence bounds come from ``mcf_cb``. By default they are two-sided 95%
+bounds, returned as ``[lower, upper]`` columns and computed on the log scale
+so they cannot go negative; ``bound="lower"`` or ``"upper"`` gives a one-sided
+bound and ``confidence`` sets the level. ``mcf`` and ``mcf_cb`` also accept
+``interp="linear"`` to join the steps with straight lines instead:
+
+.. jupyter-execute::
+
+    print("95% bounds at 6.5  :", model.mcf_cb(6.5).round(2))
+    print("90% upper at 6.5   :", model.mcf_cb(6.5, bound="upper", confidence=0.9).round(2))
+    print("linear MCF at 6.5  :", model.mcf(6.5, interp="linear").round(3))
+
 The ``NonParametricCounting`` model also supports **left truncation** (delayed
 entry): an item that was already in service before observation began only joins
 the at-risk set once its entry time is reached, so events before that entry are
@@ -122,18 +240,47 @@ estimated over a smaller risk set. Pass a per-item (or scalar) entry time with
     model.mcf(4)
 
 Right truncation (a finite ``tr``) is not yet supported by the non-parametric
-risk-set construction; for right-truncated recurrent data use a parametric
-intensity model.
+risk-set construction, and neither are counts of events (``c=2`` or ``c=-1``
+rows); SurPyval raises an error for these rather than return a wrong MCF. For
+such data use a parametric intensity model.
 
-Let's say this data was for the time, in years,
-between repairs on home air conditioners of a specific model. We can then use
-this model to estimate the number of reparis we would need on a newly installed
-air conditioner. Let's say we wanted to know how many repairs we would expect to see
-after 8 years. We can do this by using the ``mcf`` method of the model.
+Trend tests before fitting
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If however, we wanted to know how many reparis were needed after 10 years, we
-could not do so since the data only goes up to 9 years. To address this we would
-instead need to use a parametric model.
+Before choosing a parametric model it is worth asking whether the rate of
+events is changing at all. ``laplace`` and ``mil_hdbk_189c`` test the null
+hypothesis of a homogeneous Poisson process (no trend) directly on the event
+times; no model is fitted. They take the event times ``x``, the item ids
+``i`` and the observation end ``T`` — a scalar, one value per item, or a
+dict keyed by item. Leave ``T`` out for failure-truncated data, and the last
+event of each item is treated as the end of its window.
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import laplace, mil_hdbk_189c
+
+    # inter-arrival times shrinking: failures are speeding up
+    x = [20, 32, 41, 48, 54, 59, 63, 67, 70, 73, 76, 78, 80, 82, 84]
+
+    print(laplace(x, T=85))
+    print()
+    print(mil_hdbk_189c(x, T=85, alternative="increasing"))
+
+Both tests find strong evidence of an increasing intensity, so an HPP would be
+a poor model. The ``alternative`` argument chooses a two-sided test (the
+default) or a one-sided test for ``"increasing"`` (deterioration) or
+``"decreasing"`` (reliability growth). The result's ``trend`` attribute is
+only the *direction* of the statistic; look at ``p_value`` to judge whether
+the trend is real:
+
+.. jupyter-execute::
+
+    result = laplace([3, 11, 14, 22, 30, 35], T=40)
+    print(result.trend, "- p-value", round(result.p_value, 3))
+
+Here the statistic leans (slightly) towards a decreasing rate, but the
+p-value is far from small: with six events there is no evidence of any
+trend.
 
 Parametric Recurrent Event Models with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -141,9 +288,9 @@ Parametric Recurrent Event Models with Surpyval
 Just as is the case with single event survival analysis, non-parametric models
 are not always the best choice. In the case of recurrent events, we can use
 parametric models to model the number of events at any time. This is done by
-assuming a hazard rate for the inter-arrival times. This also has the same
+assuming a form for the intensity of the process. This also has the same
 limitations as per single event survival analysis. That is, given we use a
-parametric representation of the hazard rate we are making assumptions about the
+parametric representation of the intensity we are making assumptions about the
 shape of the cumulative intensity function. This allows us to extrapolate
 above the highest observed values but may not be a good fit to the data.
 
@@ -161,8 +308,10 @@ Let's fit a parametric model.
     model = HPP.fit(x, i=i, c=c)
     model.plot()
 
-This model is a good fit to the data, althouhg it is just a straight line. But
-we can extraplotate above the highest observed value. Let's say we wanted to
+The plot shows the fitted cumulative intensity (blue) with a shaded 95%
+confidence band, over the non-parametric MCF of the data (red steps). This
+model is a good fit to the data, although it is just a straight line. But
+we can extrapolate above the highest observed value. Let's say we wanted to
 know how many events would happen up to "15", we can do this with the ``cif``
 method of the model.
 
@@ -171,7 +320,8 @@ method of the model.
     model.cif(15)
 
 This means that we would expect to see 7.2 events up to "15" (in whatever units
-this model is in). Let's see a different example:
+this model is in): the fitted rate is 12 events in 25 item-time units of
+observation, 0.48 per unit. Let's see a different example:
 
 .. jupyter-execute::
 
@@ -193,8 +343,191 @@ made a poor assumption in using the HPP model. Let's try another one.
     model = Duane.fit(x)
     model.plot()
 
-This is clearly a much better fit. Have a look at the api documentation to see
-what other parametric models are available in SurPyval.
+This is clearly a much better fit. The Duane model is a power law,
+:math:`\Lambda(t) = b\,t^{\alpha}`; in SurPyval its ``alpha`` is the exponent
+and ``b`` the scale:
+
+.. jupyter-execute::
+
+    model
+
+An exponent above one confirms what the plot shows — events are arriving
+faster as time goes on.
+
+Every fitted intensity model has the same prediction methods: ``cif`` (the
+expected number of events by :math:`t`), ``iif`` (the instantaneous event
+rate at :math:`t`), ``mcf`` (the same as ``cif`` for these models) and
+``inv_cif`` (the time by which a given number of events is expected):
+
+.. jupyter-execute::
+
+    print("expected events by t=20   :", model.cif(20).round(2))
+    print("event rate at t=20        :", model.iif(20).round(3))
+    print("time of the 12th event    :", model.inv_cif(12).round(2))
+
+Comparing the intensity models on a fleet
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SurPyval has four intensity models: ``HPP`` (constant rate), ``CrowAMSAA`` and
+``Duane`` (the power law, in two parameterisations) and ``CoxLewis`` (a
+log-linear intensity). To see how they compare, let's make data where we
+know the answer. ``from_params`` builds a model from known parameters, and
+``time_terminated_simulation_data`` simulates items from it, each observed
+until ``T`` (the simulated data ends every item with a ``c=1`` row at ``T``).
+Here four systems follow a Crow-AMSAA process with :math:`\alpha = 8` and
+:math:`\beta = 1.6` and are watched for 50 hours:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import HPP, CrowAMSAA, Duane, CoxLewis
+    import numpy as np
+
+    true_model = CrowAMSAA.from_params([8.0, 1.6])
+    data = true_model.time_terminated_simulation_data(50, items=4, seed=3)
+    x, i, c = data.x, data.i, data.c
+    print("events per system:", [int((c[i == k] == 0).sum()) for k in (1, 2, 3, 4)])
+
+Now fit each model and compare the information criteria (``aic`` and ``bic``
+are attributes; lower is better):
+
+.. jupyter-execute::
+
+    fits = {m.name: m.fit(x, i, c) for m in (HPP, CrowAMSAA, Duane, CoxLewis)}
+    for name, fit in fits.items():
+        print(f"{name:28s} AIC {fit.aic:7.2f}   params {fit.params.round(3)}")
+
+Several lessons are in this small table:
+
+- The HPP is clearly worst: the data has a trend.
+- Crow-AMSAA recovers the true parameters well (roughly 7.6 and 1.6) and has
+  the lowest AIC.
+- Duane has *exactly* the same AIC as Crow-AMSAA. It is the same power-law
+  process: its ``alpha`` equals Crow-AMSAA's ``beta``, and its ``b`` equals
+  :math:`\alpha_{CA}^{-\beta_{CA}}`.
+- Cox-Lewis is not far behind. Over the observed 50 hours the two shapes are
+  hard to tell apart — but they disagree badly beyond it:
+
+.. jupyter-execute::
+
+    ca, cl = fits["Crow-AMSAA"], fits["Cox-Lewis"]
+    t = np.array([50.0, 100.0])
+    print("Crow-AMSAA expected events :", ca.cif(t).round(1))
+    print("Cox-Lewis  expected events :", cl.cif(t).round(1))
+    print("true model                 :", true_model.cif(t).round(1))
+
+Both models agree at 50 hours, where there is data, and differ by a large
+margin at 100 hours. Extrapolation is only as good as the assumed shape, so
+check any long-range forecast against more than one plausible model.
+
+Interval-counted (grouped) data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes the exact event times are unknown and only the number of events
+between inspections is recorded. Give each inspection interval as an
+``[start, end]`` pair in ``x`` with ``c=2``, and the number of events found
+in ``n``. A count of events since new up to a time can be given as a
+left-censored row (``c=-1``). The HPP and NHPP models accept these rows,
+alone or mixed with exact events (when mixing, write an exact event at
+:math:`t` as the pair ``[t, t]`` with ``c=0``, and the end of observation as
+``[T, T]`` with ``c=1``):
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import CrowAMSAA, HPP
+
+    # two systems inspected every 10 hours; n is the number of events found
+    x = [[0, 10], [10, 20], [20, 30], [30, 40]] * 2
+    n = [2, 3, 5, 6, 1, 4, 4, 7]
+    i = [1, 1, 1, 1, 2, 2, 2, 2]
+    c = [2] * 8
+
+    grouped = CrowAMSAA.fit(x, i=i, c=c, n=n)
+    print("Crow-AMSAA params :", grouped.params.round(3))
+    print("HPP rate          :", HPP.fit(x, i=i, c=c, n=n).params.round(3))
+
+The HPP rate is the total count divided by the total observed time
+(32 events in 80 system-hours). The residual diagnostics shown below need exact
+event times, so they are not available for grouped data.
+
+Least squares, and models from parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The NHPP models (``CrowAMSAA``, ``Duane``, ``CoxLewis``) are fitted by maximum
+likelihood by default. ``how="MSE"`` instead fits the cumulative intensity to
+the non-parametric MCF by least squares. It has no likelihood, so AIC,
+standard errors and confidence bounds are not available for such a fit:
+
+.. jupyter-execute::
+
+    x, i, c = data.x, data.i, data.c
+    mse = CrowAMSAA.fit(x, i, c, how="MSE")
+    print("MSE params:", mse.params.round(3))
+    print("MLE params:", ca.params.round(3))
+
+Similarly, ``from_params`` (on the three NHPP models) builds a model from
+known parameters without any data. It predicts and simulates like a fitted
+model, but has no likelihood or data, so inference, diagnostics and ``plot``
+are not available. The HPP has no ``from_params``; to get an HPP with rate
+:math:`\lambda`, use ``CrowAMSAA.from_params([1 / rate, 1.0])``, since a
+power law with :math:`\beta = 1` is an HPP.
+
+Simulating from a fitted model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Any intensity model — fitted, or built with ``from_params`` — can simulate new
+items. There are four methods. The ``..._data`` versions return the simulated
+events themselves (with ``x``, ``i``, ``c`` and ``n`` attributes), ready to be
+refitted; the others return the non-parametric MCF of the simulated items:
+
+- ``time_terminated_simulation(T, items)`` /
+  ``time_terminated_simulation_data(T, items)`` watch each item until time
+  ``T``;
+- ``count_terminated_simulation(events, items)`` /
+  ``count_terminated_simulation_data(events, items)`` watch each item until
+  it has had ``events + 1`` events (the extra event closes the window).
+
+Pass ``seed`` for a reproducible result. Simulation is a good way to check
+that a model does what you think, or to see how much data you need to
+estimate it — here, how precisely one system watched for 50 hours pins down
+the shape parameter:
+
+.. jupyter-execute::
+
+    betas = []
+    for seed in range(20):
+        sim = true_model.time_terminated_simulation_data(50, items=1, seed=seed)
+        betas.append(CrowAMSAA.fit(sim.x, sim.i, sim.c).params[1])
+    print("beta estimates from one system: %.2f to %.2f" % (min(betas), max(betas)))
+
+A single system gives only a rough idea of the shape; the four-system fleet
+above did much better.
+
+Expected counts and prediction intervals
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The fitted ``cif`` is the *expected* number of events. Its uncertainty,
+from the uncertainty in the parameters, is given by ``cif_cb`` (see the next
+section). But the *actual* number of events in a future period is random even
+if the model is exactly right: for a Poisson process the count in
+:math:`(t_1, t_2]` is Poisson distributed with mean
+:math:`\Lambda(t_2) - \Lambda(t_1)`. SurPyval has no prediction-interval
+method, but a plug-in interval takes two lines with ``scipy``. How many
+failures should one system in our fleet expect in its next 10 hours, from 50 to
+60?
+
+.. jupyter-execute::
+
+    from scipy.stats import poisson
+
+    expected = float(ca.cif(60) - ca.cif(50))
+    lower, upper = poisson.ppf([0.05, 0.95], expected)
+    print(f"expected events in (50, 60]  : {expected:.2f}")
+    print(f"90% prediction interval      : {lower:.0f} to {upper:.0f}")
+    print(f"for the fleet of four systems: {poisson.ppf([0.05, 0.95], 4 * expected)}")
+
+Because counts are whole numbers the interval covers *at least* 90%. This
+plug-in interval treats the fitted parameters as exact, so with little data
+it is somewhat too narrow.
 
 Inference and model checking
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -202,17 +535,21 @@ Inference and model checking
 A fitted parametric recurrence model is more than a point estimate. Every
 model fit by maximum likelihood exposes the usual likelihood quantities for
 comparing models — the log-likelihood and the ``aic`` / ``bic`` information
-criteria (these are attributes, not methods):
+criteria (these are attributes, not methods). Let's go back to the Duane model
+of the single system from earlier:
 
 .. jupyter-execute::
 
+    model = Duane.fit([1, 5, 8, 10, 12, 13, 13, 14])
+    print("log-likelihood:", round(model.log_likelihood, 3))
     print("AIC:", model.aic, " BIC:", model.bic)
 
 It also carries the uncertainty of the fitted parameters. ``standard_errors()``
 returns the standard error of each parameter (from the observed information),
-and ``param_cb`` gives a confidence interval on a named parameter — computed on
-a transformed scale so the interval respects the parameter's support (a rate,
-for instance, cannot go negative):
+``covariance()`` the full covariance matrix, and ``param_cb`` gives a
+confidence interval on a named parameter — computed on a transformed scale so
+the interval respects the parameter's support (a rate, for instance, cannot go
+negative):
 
 .. jupyter-execute::
 
@@ -220,23 +557,36 @@ for instance, cannot go negative):
     print("std errors :", model.standard_errors())
     print("alpha 95% CI:", model.param_cb("alpha"))
 
+With only eight events the interval on the exponent ``alpha`` is wide and
+includes 1: this single system does not, on its own, prove the rate is
+increasing.
+
 That parameter uncertainty propagates to the fitted curve. ``plot()`` draws a
-delta-method confidence band around the cumulative intensity function, and
-``cif_cb`` returns the band directly:
+delta-method confidence band around the cumulative intensity function (set
+``plot_bounds=False`` to hide it, or ``confidence`` to change its level), and
+``cif_cb`` returns the band directly, as ``[lower, upper]`` columns:
 
 .. jupyter-execute::
 
     model.plot()
 
+.. jupyter-execute::
+
+    model.cif_cb([5, 10, 14])
+
 Having a model is not the same as having a *good* model. SurPyval provides three
 complementary checks. First, a **trend test** on the fitted data — the same
 Laplace / Military-Handbook tests used to decide whether a time-varying
-intensity was warranted in the first place:
+intensity was warranted in the first place (``test="mil_hdbk_189c"`` selects
+the second, and ``alternative`` works as for the standalone functions):
 
 .. jupyter-execute::
 
     result = model.trend_test()
     print(result.trend, "trend, p-value", round(result.p_value, 3))
+
+The direction is increasing, but with a p-value of about 0.2 the evidence is
+weak — consistent with the wide interval on ``alpha`` above.
 
 Second, **residuals**. Via the time-rescaling theorem, the fitted model turns
 the event times into what should be a unit-rate Poisson process, so the
@@ -247,16 +597,37 @@ mean 1:
 
     print(model.residuals().round(3))
 
+(The zero is the second event at 13: two events at the same time are no time
+apart on any scale.) ``residuals(kind="pit")`` transforms them to what should
+be uniform values, and ``residuals(kind="martingale")`` gives one value per
+item — observed minus expected number of events — which is the easiest way to
+spot items that fail more (positive) or less (negative) often than the model
+expects. On the fleet:
+
+.. jupyter-execute::
+
+    print("martingale residuals:", ca.residuals(kind="martingale").round(2))
+    print("mean of the Exp(1) residuals:", ca.residuals().mean().round(3))
+
+The first system had about five more failures than the fleet model expects and
+the last about four fewer. For counts of around twenty, whose Poisson standard
+deviation is between four and five, that is ordinary variation; residuals
+several times larger would point to a system that is genuinely different.
+(The mean of the Exp(1) residuals sits a little below one because each
+system's final, censored gap — from its last failure to 50 hours — is not
+part of the residuals; see the caution on the :doc:`Recurrent Event Analysis`
+page.)
+
 Third, a **goodness-of-fit test**. ``cramer_von_mises`` measures how far the
 transformed event times fall from uniformity and calibrates the statistic with
 a parametric bootstrap, so its p-value accounts for the parameters having been
 estimated. A large p-value means the fitted intensity is consistent with the
-data:
+data. Each bootstrap replicate is a full refit, so keep ``n_boot`` modest
+while exploring (the default is 200):
 
 .. jupyter-execute::
-    :stderr:
 
-    gof = model.cramer_von_mises(n_boot=100, seed=1)
+    gof = model.cramer_von_mises(n_boot=100, seed=2)
     print("statistic", round(gof.statistic, 3), " p-value", round(gof.p_value, 3))
 
 The same inference and diagnostic methods are available on the
@@ -266,9 +637,19 @@ Renewal Modelling in SurPyval
 -----------------------------
 
 In contrast to the above, where the cumulative count of events are assumed to
-have an underlying rate of occurence, renewal models assume that there is an
+have an underlying rate of occurrence, renewal models assume that there is an
 underlying distribution of the inter-arrival times where each subsequent
 inter-arrival time is affected by some restoration factor.
+
+All four renewal models — ``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
+``ARA`` and ``ARI`` — take the same ``x``, ``i``, ``c`` and ``n`` arrays as the
+intensity models, plus a ``dist`` (the lifetime distribution, Weibull by
+default, or for ``ARI`` the baseline intensity model) and the model's own
+options. Each item must be observed from new, with exact event times and at
+most a final right-censored row. They all return a
+:doc:`RenewalModel <counting/renewal_model>`, which has no closed-form
+cumulative intensity: its ``mcf`` and ``plot`` work by simulating many items
+from the fitted model.
 
 Generalised Renewal Process with SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -286,14 +667,19 @@ Generalized Renewal Process modelling is simple with SurPyval:
     model = GeneralizedRenewal.fit(x, dist=Weibull)
     model
 
-We cannot plot the cumulative intensity function of the model since it does
-not have a closed form solution. We can however plot the cumulative intensity
-function of a monte carlo simulation of the model. Let's do that and compare
-it to a non-parametric description of the MCF:
+The restoration factor ``q`` of about 0.16 means each repair removes most, but
+not all, of the ageing since the previous repair: the item is
+better-than-old-but-worse-than-new. The fitted lifetime distribution itself is
+available as ``model.model``, and ``model.q`` holds the restoration factor.
+
+We cannot write down the cumulative intensity function of the model since it
+does not have a closed form solution. We can however estimate it with a monte
+carlo simulation of the model. Let's do that and compare it to a
+non-parametric description of the MCF:
 
 .. jupyter-execute::
 
-    np_model = model.count_terminated_simulation(len(x), 5000)
+    np_model = model.count_terminated_simulation(len(x), 1000, seed=1)
     ax = np_model.plot()
     NonParametricCounting.fit(x).plot(ax=ax)
 
@@ -302,7 +688,9 @@ the data with the ``count_terminated_simulation`` method. This method takes
 two arguments, the first is the number of failures to simulate up to and the
 second is the number of simulations to run. The more simulations you run the
 more accurate the model will be. The method returns a ``NonParametricCounting``
-model that can be used to plot the results.
+model that can be used to plot the results. (``model.plot()`` and
+``model.mcf(t)`` do the same simulation for you, time-terminated at the times
+of interest; pass ``items`` and ``seed`` to control them.)
 
 You can see that the cumulative intensity function of the model is a very good
 fit to the data. You can also see that it is "wavy." This is because the
@@ -327,16 +715,27 @@ Kijima Type ii and see what happens.
 
     x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
 
-    model = GeneralizedRenewal.fit(x, dist=Weibull, kijima="ii")
+    model_ii = GeneralizedRenewal.fit(x, dist=Weibull, kijima="ii")
 
-    np_model = model.count_terminated_simulation(len(x), 5000)
+    np_model = model_ii.count_terminated_simulation(len(x), 1000, seed=1)
     ax = np_model.plot()
     NonParametricCounting.fit(x).plot(ax=ax)
 
-We can see that this model is not as good a fit as the kijima type i model.
-This implies that the restoration that is done only repairs damage done since
-the last event. We could then use this model, via the non-parametric
-simulations of it, to estimate the number of events up to a given time.
+We can see that this model is not as good a fit as the kijima type i model, and
+the information criteria agree:
+
+.. jupyter-execute::
+
+    print("Kijima i  AIC:", round(model.aic, 2), " q =", round(model.q, 3))
+    print("Kijima ii AIC:", round(model_ii.aic, 2), " q =", round(model_ii.q, 3))
+
+The Kijima-II fit has pushed ``q`` to (essentially) zero — perfect repair, an
+ordinary Weibull renewal process — because Kijima-II's virtual age, which
+keeps forgetting old damage, cannot reproduce the steadily shortening gaps between failures the way
+Kijima-I's ever-growing age can. This implies that the restoration that is done only
+repairs damage done since the last event. We could then use this model, via the
+non-parametric simulations of it, to estimate the number of events up to a
+given time.
 
 G1 Renewal Process with SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -358,21 +757,29 @@ This data is from [1]_ and shows the inter-arrival times, and not the total
 time to each event. We therefore need to take the cumulative sum of all the
 times before passing it to the ``fit`` method. These are the same results as
 achieved by Kaminskiy and Krivtsov in their paper [2]_ introducing the G1
-Renewal Process.
+Renewal Process. The inter-arrival times grow over the life of the system, and
+the positive restoration factor (about 0.23) says each repair leaves the system
+better than new: the expected time to the next failure grows by about 23% with
+every repair.
 
-Surpyval allows you to use any distribution in SurPyval as the underlying
-distribution. Let's use the same data with a Weibull G1 Renewal Process.
+Surpyval allows you to use any non-negative lifetime distribution in SurPyval as
+the underlying distribution. Let's use the same data with a Weibull G1 Renewal
+Process.
 
 
 .. jupyter-execute::
-    :stderr:
 
+    import warnings
     from surpyval import Weibull
     from surpyval.recurrent import GeneralizedOneRenewal, NonParametricCounting
     import numpy as np
     x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
 
-    model = GeneralizedOneRenewal.fit(x, dist=Weibull)
+    with warnings.catch_warnings():
+        # the optimiser's search reaches q = -1, where the likelihood takes
+        # log(0); numpy warns about it, but it does not affect the fit
+        warnings.simplefilter("ignore", RuntimeWarning)
+        model = GeneralizedOneRenewal.fit(x, dist=Weibull)
     model
 
 We can see that the restoration factor is quite similar. What is interesting is
@@ -384,7 +791,7 @@ compare it to the data MCF.
 
 .. jupyter-execute::
 
-    np_model = model.time_terminated_simulation(250, 1000)
+    np_model = model.time_terminated_simulation(250, 1000, seed=1)
     np_model.plot()
     NonParametricCounting.fit(x).plot()
 
@@ -407,9 +814,17 @@ Arithmetic Reduction Models (ARA / ARI) with SurPyval
 
 The ``ARA`` (Arithmetic Reduction of Age) and ``ARI`` (Arithmetic Reduction of
 Intensity) models make the *memory* of a repair explicit through an integer
-``m``: how many prior failures an intervention acts on. ``ARA`` reduces a
-virtual age; ``ARI`` reduces the intensity directly. Both are fitted with the
-same API as the other renewal models, plus the ``m`` argument.
+``m``: how many prior failures an intervention acts on (``m=1`` by default;
+``numpy.inf`` for the whole history). ``ARA`` reduces a virtual age; ``ARI``
+reduces the intensity directly. Both are fitted with the same API as the
+other renewal models, plus the ``m`` argument, and both report a repair
+efficiency ``rho`` between 0 (as-bad-as-old) and 1 (as-good-as-new).
+
+To see whether the fit can recover a known answer, we build an ARA model with
+known parameters using ``fit_from_parameters`` — Weibull lifetimes with
+:math:`\alpha = 10` and :math:`\beta = 3`, repair efficiency
+:math:`\rho = 0.5` and memory :math:`m = 2` — and simulate eight systems
+watched for 40 hours:
 
 .. jupyter-execute::
 
@@ -417,36 +832,76 @@ same API as the other renewal models, plus the ``m`` argument.
     from surpyval.recurrent import ARA
     import numpy as np
 
-    x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2.2, 5, 7.5, 9, 12])
-    i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3])
+    ara_true = ARA.fit_from_parameters([10.0, 3.0], 0.5, m=2, dist=Weibull)
+    sim = ara_true.time_terminated_simulation_data(40, items=8, seed=3)
+    x, i, c = sim.x, sim.i, sim.c
+    print("simulated failures:", int((c == 0).sum()))
 
-    model = ARA.fit(x, i, dist=Weibull, m=1)
+    model = ARA.fit(x, i, c, dist=Weibull, m=2)
     model
 
 The ``Repair Efficiency`` :math:`\rho` reported here plays the role of
 :math:`1 - q`: a value near 1 is close to as-good-as-new, a value near 0 is
-as-bad-as-old. ``ARI`` fits the same way but with an intensity (counting
-process) baseline such as ``CrowAMSAA``:
+as-bad-as-old. The estimates are reasonably close to the values we simulated
+from (:math:`\rho = 0.5`, :math:`\alpha = 10`, :math:`\beta = 3`), given
+about 75 failures.
+
+The memory ``m`` is not estimated: it is a choice. A practical way to make it
+is to fit several values and compare their AIC. ``m=1`` is the Kijima-I model
+(with :math:`q = 1 - \rho`) and ``m=np.inf`` the Kijima-II model, so this also
+compares the two Kijima types:
 
 .. jupyter-execute::
-    :stderr:
+
+    for m in (1, 2, np.inf):
+        fit = ARA.fit(x, i, c, m=m)
+        print(f"m = {m}:  rho = {fit.rho:.3f}   AIC = {fit.aic:.2f}")
+
+The true memory, ``m=2``, has the lowest AIC.
+
+``ARI`` fits the same way but with an intensity (counting process) baseline —
+``CrowAMSAA`` (the default), ``Duane`` or ``CoxLewis`` — in place of a lifetime
+distribution. Here we simulate from an ARI model with a deteriorating
+power-law baseline (:math:`\beta = 2.5`) and fit it back:
+
+.. jupyter-execute::
 
     from surpyval.recurrent import ARI, CrowAMSAA
 
-    model = ARI.fit(x, i, dist=CrowAMSAA, m=1)
-    model
+    ari_true = ARI.fit_from_parameters([10.0, 2.5], 0.6, m=1, dist=CrowAMSAA)
+    sim_ari = ari_true.time_terminated_simulation_data(40, items=10, seed=7)
+
+    ari = ARI.fit(sim_ari.x, sim_ari.i, sim_ari.c, dist=CrowAMSAA, m=1)
+    ari
+
+The baseline parameters are recovered well (we simulated from
+:math:`\alpha = 10`, :math:`\beta = 2.5`). The repair efficiency, which we set
+to 0.6, is estimated less precisely; the standard errors in the next section
+quantify how precisely.
 
 Checking a renewal model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The renewal and virtual-age models carry the same diagnostics as the intensity
-models. Because they have no marginal cumulative intensity, the residuals come
-from the *conditional* intensity — the cumulative hazard accumulated over each
-interval given the model's virtual age — but under a well-specified model they
-are still an i.i.d. Exp(1) sample:
+The renewal models carry the same likelihood inference as the intensity
+models. The parameter list starts with the repair parameter (``q`` or
+``rho``) followed by the lifetime (or baseline) parameters, and the interval
+on ``rho`` is computed on the logit scale so it stays inside (0, 1):
 
 .. jupyter-execute::
-    :stderr:
+
+    print("parameters :", ari.parameter_names)
+    print("std errors :", ari.standard_errors().round(3))
+    print("rho 95% CI :", ari.param_cb("rho").round(3))
+
+The interval on ``rho`` is wide but contains the true 0.6.
+
+The renewal and virtual-age models also carry the same diagnostics as the
+intensity models. Because they have no marginal cumulative intensity, the
+residuals come from the *conditional* intensity — the cumulative hazard
+accumulated over each interval given the model's virtual age — but under a
+well-specified model they are still an i.i.d. Exp(1) sample:
+
+.. jupyter-execute::
 
     from surpyval import Weibull
     from surpyval.recurrent import GeneralizedRenewal
@@ -457,14 +912,45 @@ are still an i.i.d. Exp(1) sample:
 
     model = GeneralizedRenewal.fit(x, i, dist=Weibull, kijima="i")
     print("residual mean :", round(model.residuals().mean(), 3))
+    print("martingale    :", model.residuals(kind="martingale").round(3))
     print("trend         :", model.trend_test().trend)
 
-    gof = model.cramer_von_mises(n_boot=50, seed=1)
+    gof = model.cramer_von_mises(n_boot=20, seed=1)
     print("CvM p-value   :", round(gof.p_value, 3))
 
 The Cramér–von Mises bootstrap refits the (multi-start) imperfect-repair model
 once per replicate, so it is noticeably slower than the residual checks; keep
-``n_boot`` modest while exploring.
+``n_boot`` modest while exploring (with 20 replicates the p-value can only be
+a multiple of 1/21, a coarse answer). Note also that this fit put ``q`` at
+zero — each repair is as good as new — so the model is an ordinary Weibull
+renewal process. The residuals average one, and with a p-value of about 0.1
+the goodness-of-fit test gives no strong evidence against the model (the trend
+test's "decreasing" is only the sign of an unconvincing statistic).
+
+Predicting with a renewal model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For a renewal model, ``mcf`` gives the expected number of events for a new
+item by simulation (``items`` controls the number of simulated items, default
+1000, and ``seed`` makes it reproducible). Because the future depends on the
+item's history, a prediction interval for the count also comes from
+simulation: simulate many new items and read off the spread of their counts.
+Using the ARA model fitted above:
+
+.. jupyter-execute::
+
+    ara = ARA.fit(sim.x, sim.i, sim.c, m=2)
+
+    print("expected failures by t=20, 40:", ara.mcf([20, 40], seed=1).round(2))
+
+    runs = ara.time_terminated_simulation_data(40, items=2000, seed=2)
+    counts = np.bincount(runs.i[runs.c == 0].astype(int), minlength=2001)[1:]
+    print("90% of new systems have between", np.percentile(counts, 5),
+          "and", np.percentile(counts, 95), "failures by t=40")
+
+The simulations always start from a new item (virtual age zero), so they
+answer questions about new units rather than forecasting a specific item's
+next failures from its current state.
 
 Gapped (multi-window) observation
 ---------------------------------
@@ -491,8 +977,27 @@ end-of-window censoring automatically.
 Because Poisson event counts over disjoint windows are independent, each window
 is fitted as its own observation period; the intensity likelihood and the
 non-parametric MCF at-risk set both account for the gaps with no extra work. The
+``HPP`` and ``NonParametricCounting`` accept the same ``windows`` argument. In
+the MCF an item simply drops out of the risk set while it is unobserved:
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import NonParametricCounting
+
+    x = [3, 7, 10, 25, 33, 5, 14, 22, 35]
+    i = [1, 1, 1, 1, 1, 2, 2, 2, 2]
+    windows = {1: [(0, 12), (20, 40)], 2: [(0, 40)]}
+
+    mcf = NonParametricCounting.fit(x, i, windows=windows)
+    print("time    :", mcf.x)
+    print("at risk :", mcf.r)
+
+Item 1 is not at risk at 14, so only one item is counted there. The
 virtual-age / renewal models reject gapped data, since the virtual age at the
 start of a later window depends on the unobserved failures during the gap.
+Every item must appear in ``windows``, windows must not overlap, and every
+event must fall inside one of its item's windows; ``windows`` cannot be
+combined with ``tl``/``tr``.
 
 Competing risks: marked recurrent events
 -----------------------------------------
@@ -514,25 +1019,73 @@ at-risk set across causes:
     model = CauseSpecificMCF.fit(x, i, c, e=e)
     ax = model.plot()
 
-For a parametric picture, ``CauseSpecificNHPP`` fits one intensity model per
-cause (``CrowAMSAA`` by default). A marked Poisson process decomposes into
-independent thinned Poisson processes, so each cause is fitted to its own events
-over the full observation window — other-cause events are ignored, exactly like
-a censored period:
+Each cause's curve is an ordinary ``NonParametricCounting`` estimate, available
+as ``model.models[cause]``; ``mcf`` and ``mcf_cb`` take the cause as an
+argument:
 
 .. jupyter-execute::
-    :stderr:
 
-    from surpyval.recurrent import CauseSpecificNHPP
+    print("causes          :", model.event_types)
+    print("MCF of A at 4.5 :", model.mcf(4.5, "A"))
+    print("MCF of B at 4.5 :", model.mcf(4.5, "B"))
 
-    model = CauseSpecificNHPP.fit(x, i, c, e=e)
-    print("causes         :", model.event_types)
-    print("cause A params :", model.models["A"].params.round(3))
-    print("total cif at 6 :", round(float(model.total_cif(6.0)), 3))
+For a parametric picture, ``CauseSpecificNHPP`` fits one intensity model per
+cause (``CrowAMSAA`` by default; ``Duane`` and ``CoxLewis`` can be passed as
+``dist``). A marked Poisson process decomposes into independent thinned
+Poisson processes, so each cause is fitted to its own events over the full
+observation window — other-cause events are ignored, exactly like a censored
+period.
+
+A parametric fit needs more than a handful of events per cause, so let's build
+a more realistic data set: five pumps watched for 40 months, suffering seal
+failures at a roughly constant rate and bearing failures that become more
+frequent as the pumps wear. We simulate each cause from a Crow-AMSAA process
+(seal :math:`\beta = 1`, bearing :math:`\beta = 2.5`), mark the events, and add
+one censoring row per pump at 40:
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval.recurrent import CrowAMSAA, CauseSpecificMCF, CauseSpecificNHPP
+
+    T = 40.0
+    seal = CrowAMSAA.from_params([6.0, 1.0]).time_terminated_simulation_data(
+        T, items=5, seed=3
+    )
+    bearing = CrowAMSAA.from_params([15.0, 2.5]).time_terminated_simulation_data(
+        T, items=5, seed=103
+    )
+    s_obs, b_obs = seal.c == 0, bearing.c == 0
+
+    x = np.concatenate([seal.x[s_obs], bearing.x[b_obs], np.full(5, T)])
+    i = np.concatenate([seal.i[s_obs], bearing.i[b_obs], np.arange(1, 6)])
+    c = np.concatenate([np.zeros(s_obs.sum() + b_obs.sum()), np.ones(5)])
+    e = ["seal"] * int(s_obs.sum()) + ["bearing"] * int(b_obs.sum()) + [None] * 5
+
+    pumps = CauseSpecificNHPP.fit(x, i, c, e=e)
+    for cause in pumps.event_types:
+        print(f"{cause:8s} params (alpha, beta): {pumps.models[cause].params.round(2)}")
+    print("expected failures per pump by 40, each cause:",
+          [round(float(pumps.cif(T, k)), 1) for k in pumps.event_types])
+    print("expected failures per pump by 40, in total  :",
+          round(float(pumps.total_cif(T)), 1))
+
+The per-cause shapes tell the maintenance story: seal failures show no trend
+(``beta`` near 1), bearing failures a strong wear-out trend (``beta`` above 2)
+— a single model of all failures together would have blurred the two. The
+cause-specific MCF of the same data is the non-parametric check:
+
+.. jupyter-execute::
+
+    pump_mcf = CauseSpecificMCF.fit(x, i, c, e=e)
+    ax = pump_mcf.plot()
 
 Each ``model.models[cause]`` is an ordinary fitted recurrence model, so it
 carries the full ``cif`` / ``iif``, inference and diagnostic behaviour shown
-above; ``total_cif`` sums the causes for the overall event intensity.
+above; ``model.cif(x, cause)`` and ``model.iif(x, cause)`` are shortcuts, and
+``total_cif`` sums the causes for the overall event intensity. Both classes
+also have a ``fit_from_df`` method that reads the columns of a ``pandas``
+DataFrame.
 
 Saving and loading a fitted model
 ---------------------------------
@@ -546,21 +1099,31 @@ the parametric intensity fits (``CrowAMSAA`` / ``Duane`` / ``Cox-Lewis`` /
 cause-specific containers, and the renewal / imperfect-repair models
 (``RenewalModel`` — generalized renewal, G1 renewal, ARA, ARI).
 
+``surpyval.from_dict`` (and ``surpyval.from_json``) restore any SurPyval model
+without you needing to know which class wrote it:
+
 .. jupyter-execute::
 
     import numpy as np
+    import surpyval
     from surpyval.recurrent import CrowAMSAA
-    from surpyval.recurrent.parametric.parametric_recurrence import (
-        ParametricRecurrenceModel,
-    )
 
     events = np.sort(np.random.default_rng(0).uniform(0, 1000, 40))
     fitted = CrowAMSAA.fit(events)
 
-    blob = fitted.to_dict()                                   # -> dict
-    restored = ParametricRecurrenceModel.from_dict(blob)      # <- dict
+    blob = fitted.to_dict()                    # -> dict
+    restored = surpyval.from_dict(blob)        # <- dict
     t = np.array([100.0, 500.0, 900.0])
     print("match:", np.allclose(fitted.cif(t), restored.cif(t)))
+
+The renewal models store their family, lifetime distribution, repair parameter
+and memory or Kijima type, and rebuild their simulator on loading, so the same
+seed gives the same simulated MCF:
+
+.. jupyter-execute::
+
+    restored_ara = surpyval.from_dict(ara.to_dict())
+    print(restored_ara.mcf([20, 40], seed=1).round(2))
 
 Use ``to_json`` / ``from_json`` for a file directly. The likelihood-inference
 state (the fitted data and the log-likelihood) is not serialised, so a reloaded
