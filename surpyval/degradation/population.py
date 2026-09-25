@@ -205,6 +205,167 @@ def reml_estimate(
     return gamma, covariance, sigma2, bool(result.success)
 
 
+def _unit_summaries(y_list: list, x_mat_list: list, a_mat_list: list) -> dict:
+    """The cross-products the Woodbury REML evaluation needs, stacked over
+    units (``xtx`` is ``(units, p, p)``, ``xta`` is ``(units, p, m)``, ...)
+    and summed where only the total is used."""
+    return {
+        "n": sum(len(y) for y in y_list),
+        "xtx": np.stack([x.T @ x for x in x_mat_list]),
+        "xty": np.stack([x.T @ y for x, y in zip(x_mat_list, y_list)]),
+        "xta": np.stack([x.T @ a for x, a in zip(x_mat_list, a_mat_list)]),
+        "yty": float(sum(y @ y for y in y_list)),
+        "ata": sum(a.T @ a for a in a_mat_list),
+        "aty": sum(a.T @ y for a, y in zip(a_mat_list, y_list)),
+    }
+
+
+def _reml_pieces_woodbury(
+    z: npt.NDArray, summary: dict, p: int, reml: bool = True
+) -> tuple:
+    """
+    :func:`_reml_pieces` through the Woodbury identity (with ``reml=False``
+    the plain ML objective: no ``logdet`` adjustment for the fixed effects).
+
+    With ``Sigma = L L'`` and ``M_i = I + L' X_i' X_i L / sigma^2``,
+    ``V_i^-1 = (I - X_i L M_i^-1 L' X_i' / sigma^2) / sigma^2`` and
+    ``logdet V_i = n_i log sigma^2 + logdet M_i``, so every quantity is a
+    ``p x p`` computation on the unit's cross-products (batched over units)
+    rather than an ``n_i x n_i`` factorisation.
+    """
+    chol = _chol_from_z(z, p)
+    sigma2 = np.exp(2.0 * z[-1])
+    m_mat = (
+        np.eye(p)
+        + np.einsum("ji,ujk,kl->uil", chol, summary["xtx"], chol) / sigma2
+    )
+    m_chol = np.linalg.cholesky(m_mat)
+    logdet_v = (
+        summary["n"] * np.log(sigma2)
+        + 2.0 * np.log(np.diagonal(m_chol, axis1=1, axis2=2)).sum()
+    )
+    lxy = np.einsum("ji,uj->ui", chol, summary["xty"])
+    lxa = np.einsum("ji,ujk->uik", chol, summary["xta"])
+    m_lxy = np.linalg.solve(m_mat, lxy[..., None])[..., 0]
+    m_lxa = np.linalg.solve(m_mat, lxa)
+    y_v_y = (summary["yty"] - np.sum(lxy * m_lxy) / sigma2) / sigma2
+    gls_rhs = (
+        summary["aty"] - np.einsum("uik,ui->k", lxa, m_lxy) / sigma2
+    ) / sigma2
+    gls_information = (
+        summary["ata"] - np.einsum("uik,uil->kl", lxa, m_lxa) / sigma2
+    ) / sigma2
+
+    gamma = np.linalg.solve(gls_information, gls_rhs)
+    quad = y_v_y - 2.0 * gamma @ gls_rhs + gamma @ gls_information @ gamma
+    sign, logdet_info = np.linalg.slogdet(gls_information)
+    if sign <= 0:
+        raise np.linalg.LinAlgError("GLS information not positive definite")
+    neg_reml = 0.5 * (logdet_v + quad + (logdet_info if reml else 0.0))
+    return neg_reml, gamma, chol @ chol.T, sigma2
+
+
+def reml_estimate_woodbury(
+    y_list: "list[npt.NDArray]",
+    x_mat_list: "list[npt.NDArray]",
+    cov_init: npt.NDArray,
+    sigma2_init: float,
+    a_mat_list: "list[npt.NDArray]",
+    reml: bool = True,
+) -> tuple[npt.NDArray, npt.NDArray, float, bool, float]:
+    """
+    :func:`reml_estimate` evaluated through the Woodbury identity: the same
+    objective, at a cost independent of the number of measurements per
+    unit, searched by BFGS (with a Nelder-Mead fallback). With
+    ``reml=False`` it maximises the plain (ML) likelihood instead.
+    Used inside the step-stress clock iteration, where the step is repeated
+    many times.
+
+    Returns ``(gamma, Sigma, sigma2, converged, objective)`` with
+    ``objective`` the minimised negative (RE)ML log-likelihood on the
+    original scale of the data.
+    """
+    p = x_mat_list[0].shape[1]
+    # Column scaling: the REML fit is equivariant to rescaling the design
+    # columns (Sigma becomes D Sigma D, the fixed effects divide by their
+    # scale, the objective shifts by a constant), and with path parameters
+    # of very different sizes it keeps the optimisation well conditioned.
+    x_scale = _column_scale(x_mat_list)
+    a_scale = _column_scale(a_mat_list)
+    x_scaled = [x / x_scale for x in x_mat_list]
+    a_scaled = [a / a_scale for a in a_mat_list]
+    # Centring: GLS is equivariant to shifting y by A beta0, so take out an
+    # OLS fit of the fixed effects first. Otherwise y' V^-1 y and the GLS
+    # terms are huge and nearly cancel, and the round-off swamps the
+    # finite-difference gradient.
+    beta0, *_ = np.linalg.lstsq(
+        np.vstack(a_scaled), np.concatenate(y_list), rcond=None
+    )
+    summary = _unit_summaries(
+        [y - a @ beta0 for y, a in zip(y_list, a_scaled)],
+        x_scaled,
+        a_scaled,
+    )
+    cov_init = np.asarray(cov_init, dtype=float) * np.outer(x_scale, x_scale)
+
+    def objective(z: npt.NDArray) -> float:
+        try:
+            value = _reml_pieces_woodbury(z, summary, p, reml)[0]
+        except np.linalg.LinAlgError:
+            return _LARGE
+        return value if np.isfinite(value) else _LARGE
+
+    z0 = _z_from_init(cov_init, sigma2_init, p)
+    # the objective is smooth in z, so a quasi-Newton search converges in a
+    # few hundred evaluations; Nelder-Mead polishes when it does not
+    # the log-likelihood (and its gradient) grows with the number of
+    # measurements, so the gradient tolerance does too
+    result = minimize(
+        objective,
+        z0,
+        method="BFGS",
+        jac="3-point",
+        options={"gtol": 1e-6 * summary["n"]},
+    )
+    # status 2 is BFGS's "precision loss": the finite-difference gradient
+    # is at its noise floor, i.e. the optimum to numerical accuracy
+    converged = bool(result.success or result.status == 2)
+    if not converged:
+        polish = minimize(
+            objective,
+            result.x if result.fun < _LARGE else z0,
+            method="Nelder-Mead",
+            options={
+                "maxiter": 20_000,
+                "maxfev": 20_000,
+                "xatol": 1e-9,
+                "fatol": 1e-12 * max(abs(float(result.fun)), 1.0),
+            },
+        )
+        if polish.fun <= result.fun:
+            result = polish
+            converged = bool(polish.success)
+    objective_value, gamma, covariance, sigma2 = _reml_pieces_woodbury(
+        result.x, summary, p, reml
+    )
+    covariance = covariance / np.outer(x_scale, x_scale)
+    # undo the column scaling's constant shift of the objective: the
+    # random-effects scaling cancels in V, the fixed-effects one enters only
+    # the REML logdet term
+    if reml:
+        objective_value += float(np.sum(np.log(a_scale)))
+    gamma = (gamma + beta0) / a_scale
+    return gamma, covariance, sigma2, converged, objective_value
+
+
+def _column_scale(mats: list) -> npt.NDArray:
+    """Root-mean-square of each design column over all units (1 where a
+    column is identically zero)."""
+    stacked = np.vstack(mats)
+    rms = np.sqrt(np.mean(stacked**2, axis=0))
+    return np.where(rms > 0, rms, 1.0)
+
+
 def _prior_precision(cov: npt.NDArray, sigma2: float) -> npt.NDArray:
     """Inverse of ``Sigma`` with its eigenvalues floored positive.
 

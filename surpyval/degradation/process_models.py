@@ -51,10 +51,8 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.univariate.regression.tvc_schedule import (
-    StepSchedule,
-    segments_from_origin,
-)
+
+from ._clock import StressClock, stress_row
 
 __all__ = [
     "WienerProcess",
@@ -149,24 +147,6 @@ def _increments_and_stress(
     return np.concatenate(dts), np.concatenate(dys), z_int
 
 
-def _stress_row(Z: Any, q: int) -> npt.NDArray:
-    """Validate one constant stress row with ``q`` covariates."""
-    z = np.asarray(Z, dtype=float)
-    if z.ndim == 2 and z.shape[0] == 1:
-        z = z[0]
-    z = np.atleast_1d(z)
-    if z.shape != (q,):
-        raise ValueError(
-            "Z must be a single stress row with {} covariate(s), or a "
-            "StepSchedule for a stress profile; got shape {}".format(
-                q, z.shape
-            )
-        )
-    if not np.isfinite(z).all():
-        raise ValueError("Z must contain only finite values")
-    return z
-
-
 def _stress_design(
     z_int: npt.NDArray, stress_ref: Any
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
@@ -191,7 +171,7 @@ def _stress_design(
     if stress_ref is None:
         z_ref = z_int.mean(axis=0)
     else:
-        z_ref = _stress_row(stress_ref, q)
+        z_ref = stress_row(stress_ref, q)
     scale = z_int.std(axis=0)
     return (z_int - z_ref) / scale, z_ref, scale
 
@@ -216,76 +196,6 @@ def _minimise(fun: Callable, x0: npt.NDArray) -> npt.NDArray:
             "likelihood"
         )
     return np.asarray(best.x, dtype=float)
-
-
-class _Clock:
-    """
-    The process clock under a stress path, ``tau(t) = int_0^t AF(z(s)) ds``.
-
-    ``Z`` is one constant stress row (``tau`` is then ``AF * t``) or a
-    :class:`~surpyval.StepSchedule` describing a piecewise-constant profile,
-    in which case ``tau`` is piecewise linear with slope ``AF`` of the stress
-    in force.
-    """
-
-    def __init__(self, model: "FirstPassageProcessModel", Z: Any) -> None:
-        self.model = model
-        self.schedule: "StepSchedule | None" = None
-        self.rate: "float | None" = None
-        if isinstance(Z, StepSchedule):
-            assert model.gamma is not None
-            if Z.p != model.gamma.size:
-                raise ValueError(
-                    "the StepSchedule has {} covariate(s) but the model was "
-                    "fitted with {}".format(Z.p, model.gamma.size)
-                )
-            self.schedule = Z
-        else:
-            self.rate = model.acceleration_factor(Z)
-
-    def _knots(self, horizon: float) -> tuple[npt.NDArray, npt.NDArray]:
-        assert self.schedule is not None
-        finite_edges = self.schedule.edges[np.isfinite(self.schedule.edges)]
-        horizon = max(horizon, float(finite_edges.max()) + 1.0, 1.0)
-        starts, ends, Zs = segments_from_origin(self.schedule, horizon)
-        af = np.array([self.model.acceleration_factor(z) for z in Zs])
-        knots_t = np.concatenate([[starts[0]], ends])
-        knots_tau = np.concatenate([[0.0], np.cumsum(af * (ends - starts))])
-        return knots_t, knots_tau
-
-    def tau(self, t: npt.NDArray) -> npt.NDArray:
-        if self.rate is not None:
-            return self.rate * t
-        finite = t[np.isfinite(t)]
-        knots_t, knots_tau = self._knots(float(finite.max(initial=0.0)))
-        out = np.interp(t, knots_t, knots_tau)
-        return np.where(np.isposinf(t), np.inf, out)
-
-    def rate_at(self, t: npt.NDArray) -> npt.NDArray:
-        if self.rate is not None:
-            return np.full_like(t, self.rate, dtype=float)
-        finite = t[np.isfinite(t)]
-        knots_t, knots_tau = self._knots(float(finite.max(initial=0.0)))
-        slopes = np.diff(knots_tau) / np.diff(knots_t)
-        idx = np.searchsorted(knots_t, t, side="right") - 1
-        return slopes[np.clip(idx, 0, len(slopes) - 1)]
-
-    def inverse(self, tau: npt.NDArray) -> npt.NDArray:
-        """The calendar time at which the clock reads ``tau``."""
-        tau = np.asarray(tau, dtype=float)
-        if self.rate is not None:
-            return tau / self.rate
-        finite = tau[np.isfinite(tau)]
-        target = float(finite.max(initial=0.0))
-        horizon = 1.0
-        knots_t, knots_tau = self._knots(horizon)
-        for _ in range(200):
-            if knots_tau[-1] >= target:
-                break
-            horizon = 2.0 * float(knots_t[-1])
-            knots_t, knots_tau = self._knots(horizon)
-        out = np.interp(tau, knots_tau, knots_t)
-        return np.where(np.isposinf(tau), np.inf, out)
 
 
 class ProcessRUL:
@@ -432,10 +342,10 @@ class FirstPassageProcessModel(SerialisableMixin):
                 "This process model was fitted without stress, so it has no "
                 "acceleration factor"
             )
-        z = _stress_row(Z, self.gamma.size)
+        z = stress_row(Z, self.gamma.size)
         return float(np.exp(self.gamma @ (z - self.stress_ref)))
 
-    def _clock(self, Z: Any) -> "_Clock | None":
+    def _clock(self, Z: Any) -> "StressClock | None":
         """The clock for stress ``Z``, validating the argument."""
         if not self.is_accelerated:
             if Z is not None:
@@ -450,7 +360,8 @@ class FirstPassageProcessModel(SerialisableMixin):
                 "row for a constant stress, or a StepSchedule for a stress "
                 "profile."
             )
-        return _Clock(self, Z)
+        assert self.gamma is not None
+        return StressClock(self.acceleration_factor, self.gamma.size, Z)
 
     def _stress_repr(self) -> str:
         if self.gamma is None or self.stress_ref is None:

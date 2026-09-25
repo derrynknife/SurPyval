@@ -8,6 +8,13 @@ to get that unit's pseudo failure time, and a lifetime distribution is
 fitted to the pseudo failure times. Units whose fitted path never
 reaches the threshold are treated as right censored at their last
 observed time.
+
+With ``acceleration="clock"`` the stress -- which may change during a
+unit's test, as in a step-stress test -- speeds up the clock of every
+unit's path: the path is the ordinary path model evaluated on the
+reference-stress time the unit has aged, the pseudo failure times are
+reference-stress lifetimes, and life under any stress profile follows from
+the reference-stress life distribution. See :mod:`.step_stress`.
 """
 
 import inspect
@@ -20,6 +27,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from scipy.integrate import quad
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -44,8 +52,14 @@ from ._bounds import (
     bootstrap_cb,
     life_parameter_covariance,
 )
+from ._clock import StressClock, stress_row
 from .path_models import PATH_MODELS, PathModel, get_path_model
 from .population import reml_estimate, reml_estimate_nonlinear
+from .step_stress import (
+    clock_units,
+    mixed_model_estimate,
+    profile_least_squares,
+)
 from .stress import (
     LinkedPathModel,
     fixed_effect_names,
@@ -363,6 +377,19 @@ class DegradationModel(SerialisableMixin):
         parameters *given* the stress -- the scatter left after the
         stress effect is removed, unlike the pooled ``path_param_cov``
         which mixes the stress levels.
+    acceleration : str or None
+        ``"clock"`` when stress was modelled as speeding up the clock of
+        every unit's path (``acceleration="clock"`` in
+        :meth:`DegradationAnalysis.fit`); ``None`` otherwise. The path
+        parameters, their population, the pseudo failure times and the
+        life model are then all on the reference-stress clock, and ``Z``
+        holds the stress rows aligned to ``x``.
+    gamma : ndarray or None
+        The stress coefficients of the clock: a unit at stress ``z`` ages
+        ``exp(gamma' (z - stress_ref))`` times faster than at the
+        reference stress.
+    stress_ref : ndarray or None
+        The reference stress of the clock.
     """
 
     x: npt.NDArray
@@ -390,6 +417,9 @@ class DegradationModel(SerialisableMixin):
     path_param_fixed: "npt.NDArray | None"
     path_param_fixed_names: "list[str] | None"
     path_param_link_cov: "npt.NDArray | None"
+    acceleration: "str | None"
+    gamma: "npt.NDArray | None"
+    stress_ref: "npt.NDArray | None"
     # Recorded after construction so the bootstrap bounds can rerun the fit.
     _distribution: Any
     _how: str
@@ -417,6 +447,9 @@ class DegradationModel(SerialisableMixin):
         path_param_fixed: "npt.NDArray | None" = None,
         path_param_fixed_names: "list[str] | None" = None,
         path_param_link_cov: "npt.NDArray | None" = None,
+        acceleration: "str | None" = None,
+        gamma: "npt.ArrayLike | None" = None,
+        stress_ref: "npt.ArrayLike | None" = None,
     ) -> None:
         self.x = x
         self.y = y
@@ -439,6 +472,13 @@ class DegradationModel(SerialisableMixin):
         self.path_param_fixed = path_param_fixed
         self.path_param_fixed_names = path_param_fixed_names
         self.path_param_link_cov = path_param_link_cov
+        self.acceleration = acceleration
+        self.gamma = _optional_array(
+            None if gamma is None else np.atleast_1d(gamma).tolist()
+        )
+        self.stress_ref = _optional_array(
+            None if stress_ref is None else np.atleast_1d(stress_ref).tolist()
+        )
         self._unit_index = {unit: idx for idx, unit in enumerate(units)}
 
     # -- serialisation -----------------------------------------------------
@@ -518,8 +558,20 @@ class DegradationModel(SerialisableMixin):
                 "path_param_link_cov": _optional_list(
                     self.path_param_link_cov
                 ),
+                **self._clock_dict(),
             }
         )
+
+    def _clock_dict(self) -> dict:
+        """The clock's entries for :meth:`to_dict` (none for other models,
+        whose dicts are unchanged)."""
+        if self.acceleration is None:
+            return {}
+        return {
+            "acceleration": self.acceleration,
+            "gamma": _optional_list(self.gamma),
+            "stress_ref": _optional_list(self.stress_ref),
+        }
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "DegradationModel":
@@ -569,6 +621,9 @@ class DegradationModel(SerialisableMixin):
             path_param_link_cov=_optional_array(
                 model_dict.get("path_param_link_cov")
             ),
+            acceleration=model_dict.get("acceleration"),
+            gamma=model_dict.get("gamma"),
+            stress_ref=model_dict.get("stress_ref"),
         )
         # Recorded so bootstrap bounds can rerun the pipeline; the original
         # distribution object is not serialised, so bounds default to the
@@ -579,8 +634,91 @@ class DegradationModel(SerialisableMixin):
 
     @property
     def is_accelerated(self) -> bool:
-        """True when the life model is a covariate (ADT) regression model."""
-        return isinstance(self.life_model, ParametricRegressionModel)
+        """True when life depends on stress: the life model is a covariate
+        (ADT) regression model, or stress accelerates the clock
+        (``acceleration="clock"``)."""
+        return self._is_clock or isinstance(
+            self.life_model, ParametricRegressionModel
+        )
+
+    @property
+    def _is_clock(self) -> bool:
+        return self.acceleration == "clock"
+
+    def acceleration_factor(self, Z: Any) -> float:
+        """
+        How much faster a unit ages at stress ``Z`` than at the reference
+        stress: ``exp(gamma' (z - stress_ref))``, for a model fitted with
+        ``acceleration="clock"``.
+
+        A unit held at ``Z`` degrades along its path this many times
+        faster, and a life at the reference stress divides by it to give
+        the life at ``Z``.
+
+        Parameters
+        ----------
+        Z : array like
+            One stress row.
+        """
+        if not self._is_clock or self.gamma is None:
+            raise ValueError(
+                "acceleration_factor is defined for a model fitted with "
+                "acceleration='clock'"
+            )
+        assert self.stress_ref is not None
+        z = stress_row(Z, self.gamma.size)
+        return float(np.exp(self.gamma @ (z - self.stress_ref)))
+
+    def _clock(self, Z: Any) -> StressClock:
+        """The clock for stress ``Z`` (a row or a StepSchedule)."""
+        if Z is None:
+            raise ValueError(
+                "This step-stress (acceleration='clock') model's life "
+                "depends on stress; pass Z -- one stress row for a constant "
+                "stress, or a StepSchedule for a stress profile."
+            )
+        assert self.gamma is not None
+        return StressClock(self.acceleration_factor, self.gamma.size, Z)
+
+    def _unit_clock(self, unit: Any, t: npt.NDArray) -> npt.NDArray:
+        """
+        A training unit's reference-stress time at calendar times ``t``,
+        from its recorded stress history; beyond its last measurement the
+        last stress is held.
+        """
+        assert self.Z is not None
+        mask = np.flatnonzero(self.i == unit)
+        order = mask[np.argsort(self.x[mask], kind="stable")]
+        x_unit = self.x[order]
+        rates = np.array([self.acceleration_factor(z) for z in self.Z[order]])
+        tau = np.cumsum(np.diff(np.concatenate([[0.0], x_unit])) * rates)
+        knots_t = np.concatenate([[0.0], x_unit])
+        knots_tau = np.concatenate([[0.0], tau])
+        t = np.asarray(t, dtype=float)
+        out = np.interp(t, knots_t, knots_tau)
+        beyond = t > x_unit[-1]
+        return np.where(beyond, tau[-1] + rates[-1] * (t - x_unit[-1]), out)
+
+    def _unit_calendar_time(self, unit: Any, tau: float) -> float:
+        """The calendar time at which a training unit's clock reads ``tau``
+        (the inverse of :meth:`_unit_clock`)."""
+        assert self.Z is not None
+        mask = np.flatnonzero(self.i == unit)
+        order = mask[np.argsort(self.x[mask], kind="stable")]
+        x_unit = self.x[order]
+        knots_t = np.concatenate([[0.0], x_unit])
+        knots_tau = self._unit_clock(unit, knots_t)
+        if tau <= knots_tau[-1]:
+            return float(np.interp(tau, knots_tau, knots_t))
+        rate = self.acceleration_factor(self.Z[order][-1])
+        return float(x_unit[-1] + (tau - knots_tau[-1]) / rate)
+
+    def _refuse_clock(self, what: str) -> None:
+        if self._is_clock:
+            raise NotImplementedError(
+                "{} is not yet available for a step-stress "
+                "(acceleration='clock') model".format(what)
+            )
 
     @property
     def _reg(self) -> ParametricRegressionModel:
@@ -606,8 +744,17 @@ class DegradationModel(SerialisableMixin):
         return None
 
     def path(self, x: npt.ArrayLike, unit: Any) -> npt.NDArray:
-        """Evaluate the fitted degradation path of ``unit`` at ``x``."""
+        """
+        Evaluate the fitted degradation path of ``unit`` at ``x``.
+
+        For a step-stress (``acceleration="clock"``) model ``x`` is
+        calendar time: the path is evaluated on the unit's
+        reference-stress clock, from its recorded stress history (the last
+        stress held beyond its last measurement).
+        """
         idx = self._unit_index[unit]
+        if self._is_clock:
+            x = self._unit_clock(unit, np.asarray(x, dtype=float))
         return self.path_model.path(x, *self.path_params[idx])
 
     # -- the stress-conditional path population (``links``) ----------------
@@ -736,6 +883,7 @@ class DegradationModel(SerialisableMixin):
             Returns ``nan`` (with a warning) if the fitted path never
             reaches the threshold.
         """
+        self._refuse_clock("predict_failure_time")
         x_arr, y_arr = self._handle_new_trajectory(x, y)
         params = self.path_model.fit(x_arr, y_arr)
         t = float(self.path_model.inv_path(self.threshold, *params))
@@ -763,6 +911,7 @@ class DegradationModel(SerialisableMixin):
         predicted to have already failed); ``nan`` (with a warning)
         means the fitted path never reaches the threshold.
         """
+        self._refuse_clock("predict_remaining_life")
         x_arr, y_arr = self._handle_new_trajectory(x, y)
         return self.predict_failure_time(x_arr, y_arr) - float(x_arr.max())
 
@@ -828,6 +977,7 @@ class DegradationModel(SerialisableMixin):
             Posterior medians, credible intervals, failure
             probabilities, and the parameter posterior.
         """
+        self._refuse_clock("predict_rul")
         # a numerically-zero variance (exact path fits) makes the
         # posterior degenerate; compare against the scale of y
         noise_floor = np.finfo(float).eps * float(np.mean(self.y**2))
@@ -995,17 +1145,39 @@ class DegradationModel(SerialisableMixin):
         # accelerated model evaluates its regression at stress ``Z``, the
         # plain model evaluates its fitted life distribution. The named
         # methods below each carried this body verbatim.
+        if self._is_clock:
+            return self._clock_life_fn(name, x, Z)
         Z = self._predict_Z(Z)
         if self.is_accelerated:
             return getattr(self._reg, name)(x, Z)
         return getattr(self.life_model, name)(x)
+
+    def _clock_life_fn(
+        self, name: str, x: npt.ArrayLike, Z: Any
+    ) -> npt.NDArray:
+        """
+        A life function under the stress ``Z`` for a step-stress model: the
+        reference-stress life at the clock time ``tau(x)``. The density and
+        hazard also carry the clock's rate at ``x`` (the ``AF`` of the
+        stress in force).
+        """
+        clock = self._clock(Z)
+        t = np.atleast_1d(np.asarray(x, dtype=float))
+        out = np.asarray(getattr(self.life_model, name)(clock.tau(t)))
+        if name in ("df", "hf"):
+            out = out * clock.rate_at(t)
+        return out
 
     def sf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
         Survival function of the fitted life model.
 
         For an accelerated-degradation model (fitted with covariates) the
-        stress vector ``Z`` at which to evaluate life is required.
+        stress vector ``Z`` at which to evaluate life is required. For a
+        step-stress model (``acceleration="clock"``) ``Z`` is one stress row
+        or a :class:`~surpyval.StepSchedule` stress profile, and life is the
+        reference-stress life at the clock time, ``S(t) = S0(tau(t))``; the
+        same holds for every life method below.
         """
         return self._life_fn("sf", x, Z)
 
@@ -1033,6 +1205,10 @@ class DegradationModel(SerialisableMixin):
         models do not, so the quantile at stress ``Z`` is obtained by
         numerically inverting the survival function.
         """
+        if self._is_clock:
+            clock = self._clock(Z)
+            ref = np.atleast_1d(np.asarray(self.life_model.qf(p), dtype=float))
+            return clock.inverse(ref)
         Z = self._predict_Z(Z)
         if self.is_accelerated:
             return self._reg_qf(p, Z)
@@ -1046,10 +1222,36 @@ class DegradationModel(SerialisableMixin):
         integrating the survival function (the regression model has no closed
         ``mean``).
         """
+        if self._is_clock:
+            return self._clock_mean(Z)
         Z = self._predict_Z(Z)
         if self.is_accelerated:
             return self._reg_mean(Z)
         return self.life_model.mean()
+
+    def _clock_mean(self, Z: Any) -> float:
+        """Mean life under ``Z`` for a step-stress model: the reference mean
+        over ``AF`` at a constant stress, else the integral of ``sf`` (split
+        at the profile's step times)."""
+        clock = self._clock(Z)
+        if clock.rate is not None:
+            return float(self.life_model.mean()) / clock.rate
+        upper = float(
+            np.ravel(
+                clock.inverse(np.atleast_1d(self.life_model.qf(1 - 1e-12)))
+            )[0]
+        )
+        assert clock.schedule is not None
+        edges = clock.schedule.edges
+        points = edges[np.isfinite(edges) & (edges > 0) & (edges < upper)]
+        val, _ = quad(
+            lambda t: float(np.ravel(self.sf(t, Z))[0]),
+            0.0,
+            upper,
+            points=points if points.size else None,
+            limit=200,
+        )
+        return float(val)
 
     def random(
         self,
@@ -1064,6 +1266,13 @@ class DegradationModel(SerialisableMixin):
         inverse-transform sampling of the fitted survival function (the
         regression models do not all expose ``random`` directly).
         """
+        if self._is_clock:
+            clock = self._clock(Z)
+            rng = np.random.default_rng(random_state)
+            u = rng.uniform(size=size)
+            return clock.inverse(
+                np.asarray(self.life_model.qf(u), dtype=float)
+            )
         Z = self._predict_Z(Z)
         if self.is_accelerated:
             rng = np.random.default_rng(random_state)
@@ -1110,6 +1319,7 @@ class DegradationModel(SerialisableMixin):
         InducedFailureDistribution
             The Monte-Carlo induced failure-time distribution.
         """
+        self._refuse_clock("induced_life")
         linked: "LinkedPathModel | None" = None
         stress: "list[float] | None" = None
         if Z is not None or self.links is not None:
@@ -1223,6 +1433,7 @@ class DegradationModel(SerialisableMixin):
         the delta-method / generated-regressor correction
         ``H^{-1} + sum_i v_i (dphi/dt_i)(dphi/dt_i)'``.
         """
+        self._refuse_clock("life_parameter_covariance")
         if self.is_accelerated:
             raise NotImplementedError(
                 "The two-stage life-parameter covariance is not implemented "
@@ -1287,6 +1498,7 @@ class DegradationModel(SerialisableMixin):
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
+        self._refuse_clock("cb")
         valid = ("sf", "R", "ff", "F", "Hf")
         if on not in valid:
             raise ValueError("`on` must be one of {}".format(valid))
@@ -1340,11 +1552,15 @@ class DegradationModel(SerialisableMixin):
             start, end = x_unit.min(), x_unit.max()
             if self.c[idx] == 0:
                 pseudo = self.pseudo_failure_times[idx]
+                if self._is_clock:
+                    # the calendar time the unit's clock reaches its
+                    # reference-stress failure time, holding its last stress
+                    pseudo = self._unit_calendar_time(unit, pseudo)
                 start, end = min(start, pseudo), max(end, pseudo)
             x_plot = np.linspace(start, end, 200)
             (line,) = ax.plot(
                 x_plot,
-                self.path_model.path(x_plot, *self.path_params[idx]),
+                self.path(x_plot, unit),
                 linewidth=1,
                 alpha=0.8,
             )
@@ -1378,6 +1594,30 @@ class DegradationModel(SerialisableMixin):
         )
 
     def __repr__(self) -> str:
+        if self._is_clock:
+            assert self.gamma is not None and self.stress_ref is not None
+            param_string = "\n".join(
+                f"{name:>10}: {p}"
+                for p, name in zip(
+                    self.life_model.params, self.life_model.dist.param_names
+                )
+            )
+            return (
+                "Degradation Analysis SurPyval Model"
+                "\n==================================="
+                f"\nPath Model          : {self.path_model.name}"
+                f"\nThreshold           : {self.threshold}"
+                f"\nNumber of Units     : {len(self.units)}"
+                f"\nCensored Units      : {int((self.c == 1).sum())}"
+                "\nAcceleration        : clock (step-stress)"
+                "\nStress coefficients : "
+                + np.array2string(self.gamma, precision=6)
+                + "\nReference stress    : "
+                + np.array2string(self.stress_ref, precision=6)
+                + f"\nLife Distribution   : {self.life_model.dist.name} "
+                "(reference stress)"
+                "\nParameters          :\n" + param_string
+            )
         if self.is_accelerated:
             names = self.life_model.parameter_names()
             dist_name = self.life_model.distribution.name
@@ -1468,6 +1708,8 @@ class DegradationAnalysis_:
         population_method: str = "moments",
         Z: npt.ArrayLike | None = None,
         links: "dict[str, str] | None" = None,
+        acceleration: "str | None" = None,
+        stress_ref: npt.ArrayLike | None = None,
     ) -> DegradationModel:
         """
         Fit a degradation analysis model.
@@ -1547,6 +1789,35 @@ class DegradationAnalysis_:
             ``links={"b": "log"}`` with the linear path lets the
             degradation rate ``b`` accelerate log-linearly with stress
             while the intercept ``a`` (the initial state) is common.
+        acceleration : {None, "clock"}, optional
+            ``"clock"`` models stress as speeding up the clock of every
+            unit's path, which allows ``Z`` to change *during* a unit's
+            test (a step-stress test) as well as between units. A unit
+            at stress ``z`` ages ``AF(z) = exp(gamma' (z - stress_ref))``
+            times faster than at the reference stress, and its path is
+            the path model evaluated on the reference-stress time it has
+            aged, ``tau(t) = integral of AF(z(s)) ds``. ``Z`` is then one
+            row per measurement giving the stress applied over the
+            interval that *ends* at that measurement (the first interval
+            starts at time zero, so times must be non-negative). The path
+            parameters, their population and the pseudo failure times
+            are all on the reference-stress clock; ``distribution`` is
+            fitted to those reference-stress lifetimes, and the
+            prediction methods take the stress as ``Z`` -- one stress row
+            or a :class:`~surpyval.StepSchedule` -- to give life under any
+            stress history, ``F(t) = F0(tau(t))``. The stress
+            coefficients are stored as ``gamma``. With
+            ``population_method="moments"`` they are estimated by
+            profile least squares, which needs units whose stress changes
+            during the test (a unit held at one stress can absorb any
+            acceleration into its own path parameters); with ``"reml"``
+            by the mixed model, which also uses the differences between
+            units at different stresses. Cannot be combined with
+            ``links`` or ``path="best"``.
+        stress_ref : array like, optional
+            The reference stress for ``acceleration="clock"`` (usually the
+            use condition), one row. Defaults to the mean stress over the
+            measurement intervals.
 
         Returns
         -------
@@ -1573,17 +1844,52 @@ class DegradationAnalysis_:
                 "got {}".format(len(units))
             )
 
+        if acceleration not in (None, "clock"):
+            raise ValueError(
+                "acceleration must be None or 'clock', got {!r}".format(
+                    acceleration
+                )
+            )
+        if acceleration is None and stress_ref is not None:
+            raise ValueError(
+                "stress_ref is the reference stress of acceleration='clock' "
+                "and is only used with it"
+            )
+        is_best = isinstance(path, str) and path.lower() == "best"
+        if acceleration == "clock":
+            self._check_clock_arguments(Z, links, is_best, distribution, x_arr)
+
         path_selection = None
-        if isinstance(path, str) and path.lower() == "best":
+        if is_best:
             path_model, path_selection = self._select_path_model(
                 x_arr, y_arr, i_arr, units
             )
         else:
             path_model = get_path_model(path)
 
+        # Stage-3 accelerated degradation: stress speeds up every unit's
+        # clock, and the path is fitted on the reference-stress time.
+        x_path = x_arr
+        Z_rows = gamma = z_ref = clock_population = None
+        if acceleration == "clock":
+            x_path, Z_rows, gamma, z_ref, clock_population = self._fit_clock(
+                x_arr,
+                y_arr,
+                i_arr,
+                units,
+                Z,
+                stress_ref,
+                path_model,
+                population_method,
+            )
+
         # Stage-2 accelerated degradation: the path parameters depend on
         # stress, modelled on a link scale by a wrapped path model.
-        Z_units = None if Z is None else self._handle_Z(Z, i_arr, units)
+        Z_units = (
+            None
+            if Z is None or acceleration == "clock"
+            else self._handle_Z(Z, i_arr, units)
+        )
         linked: "LinkedPathModel | None" = None
         if links is not None:
             if Z_units is None:
@@ -1610,7 +1916,7 @@ class DegradationAnalysis_:
 
         for idx, unit in enumerate(units):
             mask = i_arr == unit
-            x_unit, y_unit = x_arr[mask], y_arr[mask]
+            x_unit, y_unit = x_path[mask], y_arr[mask]
             if len(np.unique(x_unit)) < n_params:
                 raise ValueError(
                     "Unit {} needs measurements at {} or more distinct "
@@ -1678,8 +1984,11 @@ class DegradationAnalysis_:
                 )
             # the moment estimates are the starting values; a
             # linear-in-parameters path is an exact linear mixed model,
-            # a nonlinear one is fitted by FOCE linearisation
-            if path_model.linear_in_parameters:
+            # a nonlinear one is fitted by FOCE linearisation. A clock fit
+            # has already estimated its population with its clock.
+            if clock_population is not None:
+                reml_mean, reml_cov, reml_var, converged = clock_population
+            elif path_model.linear_in_parameters:
                 reml_mean, reml_cov, reml_var, converged = reml_estimate(
                     y_by_unit,
                     design_by_unit,
@@ -1785,17 +2094,190 @@ class DegradationAnalysis_:
             path_param_sample_cov=path_param_sample_cov,
             population_method=population_method,
             path_selection=path_selection,
-            Z=Z_units,
+            Z=Z_rows if acceleration == "clock" else Z_units,
             links=links,
             path_param_fixed=path_param_fixed,
             path_param_fixed_names=path_param_fixed_names,
             path_param_link_cov=path_param_link_cov,
+            acceleration=acceleration,
+            gamma=gamma,
+            stress_ref=z_ref,
         )
         # Recorded so the bootstrap confidence bounds can rerun the pipeline
         # (with the selected path model held fixed) on resampled units.
         model._distribution = distribution
         model._how = how
         return model
+
+    @staticmethod
+    def _check_clock_arguments(
+        Z: Any,
+        links: Any,
+        is_best: bool,
+        distribution: Any,
+        x_arr: npt.NDArray,
+    ) -> None:
+        """The combinations ``acceleration="clock"`` does not support."""
+        if Z is None:
+            raise ValueError(
+                "acceleration='clock' speeds up each unit's clock by its "
+                "stress, so the stress covariates Z must be given"
+            )
+        if links is not None:
+            raise ValueError(
+                "links and acceleration='clock' cannot be combined: the clock "
+                "model accelerates every path parameter's effect together, "
+                "while links let stress change the path's shape. A shape "
+                "change under a stress that varies during the test is not "
+                "supported"
+            )
+        if is_best:
+            raise ValueError(
+                "path='best' is not supported with acceleration='clock'; "
+                "choose the path model"
+            )
+        if _is_regression_fitter(distribution):
+            raise ValueError(
+                "With acceleration='clock' the life model is the "
+                "reference-stress life distribution, fitted to the pseudo "
+                "failure times on the reference-stress clock; stress enters "
+                "through the clock, so pass a plain distribution (e.g. "
+                "Weibull) rather than a regression fitter"
+            )
+        if (x_arr < 0).any():
+            raise ValueError(
+                "With acceleration='clock' the measurement times must be "
+                "non-negative: every unit's clock starts at time zero"
+            )
+
+    @staticmethod
+    def _fit_clock(
+        x_arr: npt.NDArray,
+        y_arr: npt.NDArray,
+        i_arr: npt.NDArray,
+        units: npt.NDArray,
+        Z: Any,
+        stress_ref: Any,
+        path_model: PathModel,
+        population_method: str,
+    ) -> tuple[
+        npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, "tuple | None"
+    ]:
+        """
+        Estimate the accelerated clock of ``acceleration="clock"``.
+
+        Returns ``(tau, Z_rows, gamma, stress_ref, population)``: every
+        measurement's reference-stress time (aligned to ``x``), the
+        validated stress rows, the stress coefficients on the scale of
+        ``Z``, the reference stress, and -- for
+        ``population_method="reml"`` -- the REML population
+        ``(mu, Sigma, sigma2, converged)`` at that clock (``None`` for
+        moments).
+        """
+        Z_rows = np.asarray(Z, dtype=float)
+        if Z_rows.ndim == 1:
+            Z_rows = Z_rows.reshape(-1, 1)
+        if Z_rows.ndim != 2 or len(Z_rows) != len(x_arr):
+            raise ValueError(
+                "Z must have one row per measurement (same length as x, y "
+                "and i); got shape {} for {} measurements".format(
+                    np.shape(Z), len(x_arr)
+                )
+            )
+        if Z_rows.shape[1] == 0 or not np.isfinite(Z_rows).all():
+            raise ValueError(
+                "Z must have at least one column and only finite values"
+            )
+        q = Z_rows.shape[1]
+
+        # the stress over each measurement interval of positive length --
+        # what the data can say about the acceleration
+        dt = np.empty_like(x_arr)
+        for unit in units:
+            mask = np.flatnonzero(i_arr == unit)
+            order = mask[np.argsort(x_arr[mask], kind="stable")]
+            dt[order] = np.diff(np.concatenate([[0.0], x_arr[order]]))
+        exposed = dt > 0
+        z_int = Z_rows[exposed]
+        design = np.column_stack([np.ones(len(z_int)), z_int])
+        if len(z_int) == 0 or np.linalg.matrix_rank(design) < q + 1:
+            raise ValueError(
+                "the stress coefficients cannot be estimated: Z needs at "
+                "least two distinct stress levels across the measurement "
+                "intervals, and no covariate may be constant or a "
+                "combination of the others"
+            )
+        within = np.vstack(
+            [
+                z_int[i_arr[exposed] == unit]
+                - z_int[i_arr[exposed] == unit].mean(axis=0)
+                for unit in units
+                if (i_arr[exposed] == unit).any()
+            ]
+        )
+        # on the scale of the stress spread, so round-off in the deviations
+        # of a unit held at one stress does not count as a step
+        scale = z_int.std(axis=0)
+        stepped = (
+            np.linalg.matrix_rank(
+                within / scale, tol=1e-9 * np.sqrt(len(within))
+            )
+            == q
+        )
+        if population_method == "moments" and not stepped:
+            raise ValueError(
+                "With population_method='moments' the stress coefficients "
+                "are estimated from units whose stress changes during the "
+                "test -- a unit held at one stress absorbs any acceleration "
+                "into its own path parameters -- and the stress does not "
+                "change enough within units to identify them. Use "
+                "population_method='reml', which also uses the differences "
+                "between units tested at different stresses."
+            )
+        z_ref = (
+            z_int.mean(axis=0)
+            if stress_ref is None
+            else stress_row(stress_ref, q)
+        )
+        data = clock_units(x_arr, y_arr, i_arr, units, Z_rows, z_ref, scale)
+
+        if stepped:
+            g = profile_least_squares(data, path_model, q)
+        else:
+            g = np.zeros(q)
+        population = None
+        if population_method == "reml":
+            theta = np.array([path_model.fit(u.tau(g), u.y) for u in data])
+            resid = np.concatenate(
+                [
+                    u.y - path_model.path(u.tau(g), *t)
+                    for u, t in zip(data, theta)
+                ]
+            )
+            dof = max(resid.size - theta.size, 1)
+            cov, _ = psd_project(np.atleast_2d(np.cov(theta, rowvar=False)))
+            g, converged, population = mixed_model_estimate(
+                data,
+                path_model,
+                g,
+                theta,
+                theta.mean(axis=0),
+                cov,
+                float(resid @ resid) / dof,
+            )
+            if not converged:
+                warnings.warn(
+                    "The mixed-model estimate of the stress coefficients did "
+                    "not report convergence; gamma may be inaccurate",
+                    stacklevel=3,
+                )
+
+        tau = np.empty_like(x_arr)
+        for unit, unit_data in zip(units, data):
+            mask = np.flatnonzero(i_arr == unit)
+            order = mask[np.argsort(x_arr[mask], kind="stable")]
+            tau[order] = unit_data.tau(g)
+        return tau, Z_rows, g / scale, z_ref, population
 
     @staticmethod
     def _fit_stress_population(
@@ -2016,7 +2498,9 @@ class DegradationAnalysis_:
                 raise ValueError(
                     "Z must be constant within each unit (unit {} has "
                     "varying covariates); a unit is tested at a single "
-                    "stress".format(unit)
+                    "stress. For a step-stress test, where a unit's stress "
+                    "changes during the test, fit with "
+                    "acceleration='clock'".format(unit)
                 )
             Z_units[idx] = rows[0]
         return Z_units
