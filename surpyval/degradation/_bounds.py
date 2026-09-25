@@ -331,10 +331,10 @@ def bootstrap_cb(
             if Z is not None
             else ""
         )
-        if clock and model._distribution is None:
+        if model._distribution is None:
             detail = (
-                " (a model restored from a dict does not keep its "
-                "distribution fitter, which the refits need)"
+                " (the model does not know the lifetime-distribution "
+                "fitter the refits need)"
             )
         raise RuntimeError(
             "The degradation bootstrap produced too few successful refits "

@@ -202,3 +202,38 @@ def test_degradation_model_accelerated_round_trip():
 def test_degradation_model_rejects_wrong_dict():
     with pytest.raises(ValueError, match="DegradationModel"):
         DegradationModel.from_dict({"model": "Other"})
+
+
+def _stress_data(seed=0):
+    rng = np.random.default_rng(seed)
+    x, y, i, Z = [], [], [], []
+    for u in range(12):
+        s = [1.0, 2.0, 3.0][u % 3]
+        rate = rng.lognormal(np.log(0.5 * s), 0.2)
+        for t in np.arange(1.0, 11.0):
+            x.append(t)
+            y.append(rate * t + rng.normal(0, 0.1))
+            i.append(u)
+            Z.append([s])
+    return tuple(map(np.array, (x, y, i, Z)))
+
+
+@pytest.mark.parametrize("distribution", ["LogNormal", "Weibull", "WeibullPH"])
+def test_a_reloaded_model_gives_the_same_bootstrap_bounds(distribution):
+    # from_dict left the refit fitter unset, so every bootstrap refit of a
+    # reloaded model failed
+    import surpyval as surv
+
+    x, y, i, Z = _stress_data()
+    dist = getattr(surv, distribution)
+    kwargs, at = {}, {}
+    if distribution != "LogNormal":
+        kwargs, at = {"Z": Z}, {"Z": [2.0]}
+    model = DegradationAnalysis.fit(
+        x, y, i, threshold=3.0, path="linear", distribution=dist, **kwargs
+    )
+    restored = surv.from_dict(json.loads(json.dumps(model.to_dict())))
+    t = np.array([5.0, 8.0])
+    band = model.cb(t, method="bootstrap", n_boot=25, seed=1, **at)
+    again = restored.cb(t, method="bootstrap", n_boot=25, seed=1, **at)
+    np.testing.assert_allclose(again, band)

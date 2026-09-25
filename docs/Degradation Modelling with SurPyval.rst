@@ -1426,8 +1426,8 @@ Use ``to_json`` / ``from_json`` for a file directly, or the package-level
 path parameters, the population, the pseudo failure times, the life model
 (plain or accelerated, through its own serialisation), and for accelerated
 models the stresses, ``links`` fixed effects or the clock's ``gamma`` and
-``stress_ref`` — so every prediction method works on the reloaded model. The
-one exception is the *bootstrap* confidence bound: it reruns the whole fit, and
-the lifetime-distribution fitter it needs is not stored, so after a reload use
-the analytic bound (``method="analytic"``, where the model supports it) or
-refit.
+``stress_ref`` — so every prediction method works on the reloaded model,
+including the *bootstrap* confidence bound. That bound reruns the whole fit on
+resampled units; the fitter it reruns (the lifetime distribution, or for an
+accelerated model the regression fitter such as ``WeibullPH`` or
+``AFT(Weibull)``) is recovered from the restored life model.

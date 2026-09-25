@@ -78,6 +78,19 @@ def _optional_array(value: "list | None") -> "npt.NDArray | None":
     return None if value is None else np.array(value, dtype=float)
 
 
+def _life_fitter(life_model: Any) -> Any:
+    """The fitter that produced ``life_model``, for refitting it.
+
+    A regression model keeps its regression fitter as ``model``; a plain
+    parametric model's fitter is its ``dist``. ``None`` if neither is
+    there.
+    """
+    fitter = getattr(life_model, "model", None)
+    if fitter is not None and _is_regression_fitter(fitter):
+        return fitter
+    return getattr(life_model, "dist", None)
+
+
 def _is_regression_fitter(fitter: Any) -> bool:
     """True if ``fitter.fit`` takes a covariate matrix ``Z`` (i.e. it is one of
     the regression fitters -- AFT, PH, PO, additive hazards, accelerated
@@ -625,10 +638,13 @@ class DegradationModel(SerialisableMixin):
             gamma=model_dict.get("gamma"),
             stress_ref=model_dict.get("stress_ref"),
         )
-        # Recorded so bootstrap bounds can rerun the pipeline; the original
-        # distribution object is not serialised, so bounds default to the
-        # analytic method after a reload.
-        out._distribution = None
+        # Recorded so bootstrap bounds can rerun the pipeline. The fitter is
+        # not serialised as such, but the restored life model carries it:
+        # a regression life model keeps its regression fitter (e.g.
+        # ``WeibullPH`` or ``AFT(Weibull)``), a plain one its distribution.
+        # Leaving this as None made every bootstrap refit fail after a
+        # reload.
+        out._distribution = _life_fitter(out.life_model)
         out._how = model_dict.get("how", "MLE")
         return out
 
