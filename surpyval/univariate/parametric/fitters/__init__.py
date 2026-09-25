@@ -200,9 +200,7 @@ def add_to_funcs(
         # identity, so the bound was silently not enforced.
         D = 10
         lo, width = float(low), float(upp) - float(low)
-        funcs.append(
-            lambda x: D * np.arctanh((2 * (x - lo) / width) - 1)
-        )
+        funcs.append(lambda x: D * np.arctanh((2 * (x - lo) / width) - 1))
         inv_f.append(lambda x: lo + width * (np.tanh(x / D) + 1) / 2)
     elif upp is None:
         funcs.append(lambda x: (inv_adj_relu(x - np.copy(low))))
