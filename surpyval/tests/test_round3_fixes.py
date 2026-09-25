@@ -32,8 +32,11 @@ class TestAlphaCompositionRemoved:
 class TestMCFConfidenceBounds:
     @staticmethod
     def _model():
+        # The items' event counts differ at the queried times: with the
+        # Lawless-Nadeau variance, items that have had the same number of
+        # events so far give zero variance (and zero-width bounds).
         return NonParametricCounting.fit(
-            x=[4, 5, 6, 8, 10, 12], i=[1, 2, 1, 2, 1, 2], c=[0] * 6
+            x=[4, 5, 6, 8, 10, 12], i=[1, 1, 2, 1, 1, 2], c=[0] * 6
         )
 
     def test_two_sided_off_grid_queries(self):
