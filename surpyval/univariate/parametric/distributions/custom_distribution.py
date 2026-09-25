@@ -180,23 +180,23 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
             return value if np.isfinite(value) else np.inf
 
         n_combinations = int(np.prod([len(g) for g in grids]))
+        best: "list[float]" = list(default)
+        best_value = neg_ll(best)
         if n_combinations <= 512:
-            best, best_value = default, neg_ll(default)
             for candidate in itertools.product(*grids):
                 value = neg_ll(list(candidate))
                 if value < best_value:
                     best, best_value = list(candidate), value
         else:
             # too many to enumerate: coordinate-wise sweeps from the default
-            best, best_value = list(default), neg_ll(default)
             for _ in range(3):
                 for k, grid in enumerate(grids):
                     for value_k in grid:
-                        candidate = list(best)
-                        candidate[k] = value_k
-                        value = neg_ll(candidate)
+                        trial = list(best)
+                        trial[k] = value_k
+                        value = neg_ll(trial)
                         if value < best_value:
-                            best, best_value = candidate, value
+                            best, best_value = trial, value
 
         out = np.array(best, dtype=float)
         if offset:
@@ -234,6 +234,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         if low is None and high is None:
             return [0.0] + [m for m in (1.0, -1.0, scale, -scale)]
         if high is None:
+            assert low is not None
             return [float(low) + m for m in magnitudes]
         if low is None:
             return [float(high) - m for m in magnitudes]
