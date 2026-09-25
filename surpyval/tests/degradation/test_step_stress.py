@@ -376,3 +376,26 @@ def test_woodbury_estimate_matches_reml_estimate():
     assert mean_w == pytest.approx(mean, rel=1e-5)
     assert cov_w == pytest.approx(cov, rel=1e-3, abs=1e-8)
     assert s2_w == pytest.approx(s2, rel=1e-5)
+
+
+def test_reml_on_paths_with_very_different_time_scales():
+    # exponential paths whose time scales differ ~8x between units -- what a
+    # clock makes of units run at different constant stresses. The REML step
+    # used to run for many minutes on this (an absolute function tolerance
+    # the objective's round-off could not meet); it is now well under a
+    # second.
+    rng = np.random.default_rng(0)
+    t = np.arange(10.0, 300.0 + 1e-9, 10.0)
+    xs, ys, ii = [], [], []
+    for k in range(20):
+        tau = t * [1.0, 3.04, 7.93][k % 3]
+        a, b = rng.normal([1.0, 0.002], [0.1, 0.0003])
+        xs.append(tau)
+        ys.append(a * np.exp(b * tau) + rng.normal(0, 0.05, t.size))
+        ii.append(np.full(t.size, k))
+    x, y, i = (np.concatenate(v) for v in (xs, ys, ii))
+    m = DegradationAnalysis.fit(
+        x, y, i, threshold=5.0, path="exponential", population_method="reml"
+    )
+    assert m.path_param_mean == pytest.approx([1.0, 0.002], rel=0.05)
+    assert np.sqrt(m.measurement_var) == pytest.approx(0.05, rel=0.05)

@@ -4,6 +4,21 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **REML population fits are 20-60x faster.** ``population_method="reml"``
+  -- the plain and stress-dependent (``links``) populations, linear and
+  nonlinear paths -- now evaluates the same REML objective through the
+  Woodbury identity (a ``p x p`` computation per unit instead of an
+  ``n_i x n_i`` factorisation) and searches it by BFGS with a
+  Nelder-Mead fallback. The Nelder-Mead search it replaces used an
+  absolute function tolerance that round-off could prevent it from
+  meeting, and then ran to its 20,000-evaluation cap in every
+  Lindstrom-Bates iteration: a nonlinear fit whose units' time scales
+  differ several-fold ran for more than ten minutes, and now takes
+  0.05 s. The estimates move only within the optimiser tolerance (at
+  most ~1e-5 relative across the fingerprinted REML fits, with the REML
+  objective at the new optimum equal to the old to 3e-10); moments fits
+  are bit-identical. The degradation test suite runs in half the time.
+
 - **Accelerated degradation, Stage 2: stress-conditional predictions**
   (<#155>, second half). A model fitted with ``links`` now uses its
   stress-conditional path population, ``eta ~ N(D(z) gamma, Sigma)``
