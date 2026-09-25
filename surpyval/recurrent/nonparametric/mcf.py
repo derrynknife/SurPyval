@@ -416,11 +416,14 @@ class NonParametricCounting(SerialisableMixin):
         n : array like, optional
             Count of events at each row. Defaults to 1.
         tl : array like or scalar, optional
-            Left-truncation (delayed-entry) time per item. An item only
+            Left-truncation (delayed-entry) time of each item: a scalar for
+            every item, or one value per row (the same on every row of an
+            item). An item only
             enters the at-risk set once observation begins at ``tl``, so
             earlier event times are estimated over a smaller risk set.
         tr : array like or scalar, optional
-            Right-truncation time per item: the end of its observation
+            Right-truncation time of each item, given like ``tl``: the end
+            of its observation
             window. The item stays in the at-risk set up to ``tr`` and
             leaves it after, exactly as if it had an end-of-observation
             (``c=1``) row at ``tr`` -- the same window-close the parametric

@@ -461,7 +461,8 @@ class ProportionalIntensityModel(
         ----------
 
         events: int
-            Number of events to simulate per sequence.
+            Each sequence is simulated to its ``events + 1``-th event, and
+            the returned MCF is kept only where it is below ``events``.
         Z: array_like
             Covariate vector applied to every simulated sequence.
         items: int, optional
@@ -521,9 +522,10 @@ class ProportionalIntensityModel(
         Warnings
         --------
 
-        A sequence is terminated early and right-censored at its last event if
-        an interarrival time falls below ``tol`` or it reaches ``max_events``
-        before T. A warning is raised in either case.
+        A sequence is ended early at its last event, which is kept as an
+        observed event (no censoring row at ``T``), if an interarrival time
+        falls below ``tol`` or it reaches ``max_events`` before T. A warning
+        is raised in either case.
         """
         self._sim_Z = np.asarray(Z, dtype=float)
         return super().time_terminated_simulation(

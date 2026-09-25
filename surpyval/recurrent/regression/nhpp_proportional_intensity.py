@@ -317,10 +317,13 @@ class ProportionalIntensityNHPP:
         x : array_like
             The event times, pooled over items (each row belongs to the item
             named in ``i``).
-        Z : array_like
-            Covariate matrix, one row per row of ``x``. Each row's
-            covariates apply over the interval from the item's previous row
-            to this one.
+        Z : array_like or dict
+            Covariates: a matrix with one row per row of ``x`` (a 1-D array
+            is a single covariate), or a ``{item: covariates}`` dict. They
+            describe the item and should be the same on all of its rows.
+            (The likelihood applies each row's values over the interval
+            ending at that row, but the window close at ``tr`` and the
+            diagnostics use the item's first row.)
         i : array_like, optional
             Identity of the item each row belongs to. Defaults to all rows
             belonging to one item.
@@ -334,15 +337,19 @@ class ProportionalIntensityNHPP:
         t : array_like, optional
             (N, 2) array of [left, right] truncation bounds per observation.
         tl : array_like or scalar, optional
-            Left truncation (delayed entry) time per item; the observation of
-            each item begins here. Scalar broadcasts to all items.
+            Left truncation (delayed entry) time of each item; the
+            observation of each item begins here. A scalar applies to every
+            item; an array has one value per row (the same on every row of
+            an item).
         tr : array_like or scalar, optional
-            Right truncation time per item; the observation window closes here,
+            Right truncation time of each item, given like ``tl``; the
+            observation window closes here,
             so the baseline intensity is integrated out to ``tr`` even without
             an explicit right-censoring (``c=1``) row.
         dist : CountingProcess, optional
             The baseline intensity model: ``Duane`` (the default),
-            ``CrowAMSAA`` or ``CoxLewis`` from ``surpyval.recurrent``.
+            ``CrowAMSAA`` or ``CoxLewis`` from ``surpyval.recurrent``. With
+            ``HPP`` the model is the same as ``ProportionalIntensityHPP``.
         init : array_like, optional
             Initial parameter estimates: the baseline parameters followed by
             the covariate coefficients.

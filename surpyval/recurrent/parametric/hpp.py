@@ -23,9 +23,11 @@ from surpyval.utils.recurrent_utils import handle_xicn
 @singleton_fitter
 class HPP(CountingProcess):
     """
-    Represents the Homogeneous Poisson Process (HPP) model.
-    This class includes methods to evaluate various statistical functions of
-    the model and perform parameter estimation based on input data.
+    The homogeneous Poisson process: events at the constant rate
+    ``lambda``, so :math:`\\Lambda(t) = \\lambda t`. Its maximum-likelihood
+    rate is the number of events divided by the total time under
+    observation. ``HPP`` is an instance of this class; ``fit`` and
+    ``from_params`` return a ``ParametricRecurrenceModel``.
 
     Examples
     --------
@@ -360,9 +362,12 @@ class HPP(CountingProcess):
         t : array_like, optional
             (N, 2) array of [left, right] truncation bounds per observation.
         tl : array_like or scalar, optional
-            Left truncation (delayed entry) time per item.
+            Left truncation (delayed entry) time of each item: a scalar for
+            every item, or one value per row (the same on every row of an
+            item).
         tr : array_like or scalar, optional
-            Right truncation time per item.
+            Right truncation time of each item, given like ``tl``; the
+            observation window closes there, as a ``c=1`` row would close it.
         init : array_like, optional
             Initial parameter estimates for the optimization.
         windows : dict, optional

@@ -246,9 +246,12 @@ class CauseSpecificNHPP(SerialisableMixin):
         e : array like
             Event type (mark) for each row. ``None``/``NaN`` for censored rows.
         tl : array like or scalar, optional
-            Left-truncation (delayed-entry) time per item.
+            Left-truncation (delayed-entry) time of each item: a scalar for
+            every item, or one value per row (the same on every row of an
+            item).
         tr : array like or scalar, optional
-            Right-truncation time per item.
+            Right-truncation time of each item, given like ``tl``. It closes
+            the item's window only when the item has no ``c=1`` row.
         dist : counting-process fitter, optional
             The intensity model fitted per cause (``CrowAMSAA`` by default).
         how : str, optional

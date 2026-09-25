@@ -199,10 +199,13 @@ class NHPPFitter(IntensityModel):
         t: array_like, optional
             (N, 2) array of [left, right] truncation bounds per observation.
         tl: array_like or scalar, optional
-            Left truncation (delayed entry) time per item; the observation of
-            each item begins here. Scalar broadcasts to all items.
+            Left truncation (delayed entry) time of each item; the
+            observation of each item begins here. A scalar applies to every
+            item; an array has one value per row (the same on every row of
+            an item).
         tr: array_like or scalar, optional
-            Right truncation time per item.
+            Right truncation time of each item, given like ``tl``; the
+            observation window closes there, as a ``c=1`` row would close it.
         how: str, optional
             Specifies the fitting method to use, either 'MLE' for Maximum
             Likelihood Estimation or 'MSE' for Mean Square Error (least

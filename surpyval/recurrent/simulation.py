@@ -213,7 +213,8 @@ class RecurrenceSimulationMixin:
         ----------
 
         events: int
-            Number of events to simulate per sequence.
+            Each sequence is simulated to its ``events + 1``-th event (see
+            the notes).
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
         seed: int or numpy.random.Generator, optional
@@ -299,7 +300,9 @@ class RecurrenceSimulationMixin:
         ----------
 
         events: int
-            Number of events to simulate.
+            Each sequence is simulated to its ``events + 1``-th event, and
+            the returned MCF is kept only where it is below ``events``
+            (beyond that the items are dropping out of observation).
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
         seed: int or numpy.random.Generator, optional
@@ -361,9 +364,10 @@ class RecurrenceSimulationMixin:
         Warnings
         --------
 
-        A sequence is terminated early and right-censored at its last event if
-        an interarrival time falls below ``tol`` or it reaches ``max_events``
-        before T. A warning is raised in either case.
+        A sequence is ended early at its last event, which is kept as an
+        observed event (no censoring row at ``T``), if an interarrival time
+        falls below ``tol`` or it reaches ``max_events`` before T. A warning
+        is raised in either case.
         """
         xicn = self._simulate_time_xicn(T, items, tol, max_events, seed)
 

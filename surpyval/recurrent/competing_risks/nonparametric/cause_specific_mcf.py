@@ -203,11 +203,14 @@ class CauseSpecificMCF(SerialisableMixin):
         e : array like
             Event type (mark) for each row. ``None`` for censored rows.
         tl : array like or scalar, optional
-            Left-truncation (delayed-entry) time per item. The at-risk set
+            Left-truncation (delayed-entry) time of each item: a scalar for
+            every item, or one value per row (the same on every row of an
+            item). The at-risk set
             is shared across causes, so a delayed entry shrinks the risk set
             for every cause until the item enters at ``tl``.
         tr : array like or scalar, optional
-            Right-truncation time per item: the end of its observation
+            Right-truncation time of each item, given like ``tl``: the end of
+            its observation
             window. The item stays in the (shared) at-risk set up to ``tr``,
             exactly as if it had an end-of-observation (``c=1``) row there.
 

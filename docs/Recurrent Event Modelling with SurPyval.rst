@@ -85,8 +85,8 @@ event must fall inside the item's window (the intensity models also accept
 them together as an ``(N, 2)`` array ``t``). Items observed over several
 disjoint periods use ``windows`` (see `Gapped (multi-window) observation`_).
 The intensity models accept all of these (see `Delayed entry and right
-truncation`_ for a worked example); the non-parametric MCF accepts ``tl`` and
-``windows``; the renewal models need each item watched from new.
+truncation`_ for a worked example); the non-parametric MCF accepts ``tl``,
+``tr`` and ``windows``; the renewal models need each item watched from new.
 
 Non-Parametric Counting Model with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -235,8 +235,9 @@ items differing in their rates (see :doc:`Recurrent Event Analysis`). ``mcf`` an
 The ``NonParametricCounting`` model also supports **left truncation** (delayed
 entry): an item that was already in service before observation began only joins
 the at-risk set once its entry time is reached, so events before that entry are
-estimated over a smaller risk set. Pass a per-item (or scalar) entry time with
-``tl``:
+estimated over a smaller risk set. Pass the entry time with ``tl``, either as
+a scalar for every item or as one value per row (the same on every row of an
+item):
 
 .. jupyter-execute::
 
@@ -1139,14 +1140,17 @@ Each cause's curve is an ordinary ``NonParametricCounting`` estimate, available
 as ``model.models[cause]``; ``mcf`` and ``mcf_cb`` take the cause as an
 argument (``mcf_cb`` passes any other keyword, such as ``confidence`` or
 ``bound``, on to that estimate). The data may carry delayed entry (``tl``),
-which shrinks the shared risk set, but, as for the overall MCF, not right
-truncation or counts of events:
+which shrinks the shared risk set, and right truncation (``tr``), which keeps
+an item in it up to ``tr``, but, as for the overall MCF, not counts of events.
+When every event carries a cause, the causes' MCFs add up to the overall MCF;
+an event row whose mark is missing counts towards no cause:
 
 .. jupyter-execute::
 
     print("causes          :", model.event_types)
     print("MCF of A at 4.5 :", model.mcf(4.5, "A"))
     print("MCF of B at 4.5 :", model.mcf(4.5, "B"))
+    print("overall at 4.5  :", NonParametricCounting.fit(x, i, c).mcf(4.5))
 
 For a parametric picture, ``CauseSpecificNHPP`` fits one intensity model per
 cause (``CrowAMSAA`` by default; ``HPP``, ``Duane`` and ``CoxLewis`` can be

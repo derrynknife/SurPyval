@@ -9,9 +9,19 @@ from .nhpp_fitter import NHPPFitter
 @singleton_fitter
 class CoxLewis(NHPPFitter):
     """
-    A class to represent the Cox-Lewis model for non-homogeneous Poisson
-    processes (NHPP). This model is used in reliability analysis to predict
-    failure rates based on historical data.
+    The Cox-Lewis (log-linear) non-homogeneous Poisson process, with
+
+    .. math::
+        \\lambda(t) = e^{\\alpha + \\beta t}, \\qquad
+        \\Lambda(t) = \\frac{e^{\\alpha}}{\\beta}
+        \\left(e^{\\beta t} - 1\\right).
+
+    ``alpha`` is the log of the intensity at ``t = 0`` and ``beta`` its
+    proportional change per unit time: positive is deteriorating, negative
+    improving. With a negative ``beta`` the cumulative intensity levels off
+    at ``exp(alpha) / -beta``, and ``inv_cif`` returns ``inf`` beyond it.
+    ``CoxLewis`` is an instance of this class; ``fit`` and ``from_params``
+    return a ``ParametricRecurrenceModel``.
 
     Examples
     --------
