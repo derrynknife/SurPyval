@@ -413,9 +413,10 @@ class FirstPassageProcessModel(SerialisableMixin):
         """
         Failure (CDF) of the first-passage time to the threshold.
 
-        For a model fitted with stress, ``Z`` is required: one stress row
-        for a constant stress, or a :class:`~surpyval.StepSchedule` for a
-        stress profile. The same applies to every method below.
+        For a model fitted with stress, ``Z`` is required: one stress row for a
+        constant stress, or a
+        :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` for
+        a stress profile. The same applies to every method below.
         """
         clock = self._clock(Z)
         scalar = np.isscalar(t)
@@ -535,9 +536,10 @@ class FirstPassageProcessModel(SerialisableMixin):
         alpha_ci : float, optional
             Tail probability of the returned interval. Default ``0.05``.
         Z : array like or StepSchedule, optional
-            For a model fitted with stress: the stress the unit will run
-            at from now on -- one row for a constant stress, or a
-            :class:`~surpyval.StepSchedule` whose time zero is *now*.
+            For a model fitted with stress: the stress the unit will run at
+            from now on -- one row for a constant stress, or a
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+            whose time zero is *now*.
         """
         clock = self._clock(Z)
         distance = self.threshold - float(current_degradation)

@@ -541,6 +541,29 @@ PATH_MODELS: dict[str, PathModel] = {
     "michaelis-menten": MichaelisMentenPath,
 }
 
+# Display name (``PathModel.name``, lower-cased) -> registry key. The
+# display name is not always the key ("Offset Exponential" vs
+# "offset-exponential"), and serialised models written before the key
+# was stored carry the display name, so both must resolve.
+_KEY_BY_DISPLAY_NAME: dict[str, str] = {
+    model.name.lower(): key for key, model in PATH_MODELS.items()
+}
+
+
+def path_model_key(path_model: PathModel) -> str:
+    """
+    The name under which ``path_model`` can be resolved again.
+
+    For a built-in path model this is its ``PATH_MODELS`` key (so
+    ``get_path_model(path_model_key(m))`` returns the built-in model);
+    a custom :class:`PathModel` is not registered, so its ``name`` is
+    returned as the best available label.
+    """
+    for key, model in PATH_MODELS.items():
+        if type(model) is type(path_model):
+            return key
+    return path_model.name
+
 
 def get_path_model(path: "str | PathModel") -> PathModel:
     """
@@ -550,14 +573,16 @@ def get_path_model(path: "str | PathModel") -> PathModel:
     of the registered names in ``PATH_MODELS`` (case-insensitive):
     ``"linear"``, ``"quadratic"``, ``"exponential"``,
     ``"offset-exponential"``, ``"power"``, ``"logarithmic"``,
-    ``"lloyd-lipow"``, ``"gompertz"``, ``"michaelis-menten"``.
-    (``"best"`` — automatic selection — is handled by
+    ``"lloyd-lipow"``, ``"gompertz"``, ``"michaelis-menten"``. A built-in
+    model's display ``name`` (e.g. ``"Offset Exponential"``) is accepted
+    too. (``"best"`` — automatic selection — is handled by
     ``DegradationAnalysis.fit``, not here.)
     """
     if isinstance(path, PathModel):
         return path
     if isinstance(path, str):
         key = path.lower()
+        key = _KEY_BY_DISPLAY_NAME.get(key, key)
         if key in PATH_MODELS:
             return PATH_MODELS[key]
         raise ValueError(

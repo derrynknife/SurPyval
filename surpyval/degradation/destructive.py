@@ -46,7 +46,11 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
 
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
 from surpyval.univariate.parametric import LogNormal, Normal
 
 # Time-transform bases phi(t): (callable, display name). The linear predictor
@@ -78,7 +82,7 @@ def _resolve_distribution(distribution: Any) -> Any:
     return distribution
 
 
-class DestructiveDegradationModel:
+class DestructiveDegradationModel(SerialisableMixin):
     """
     Result of :meth:`DestructiveDegradation.fit`.
 
@@ -209,8 +213,10 @@ class DestructiveDegradationModel:
         rng = np.random.default_rng(seed)
         if self.data is None:
             raise ValueError(
-                "Bootstrap bounds need the fit data, which this "
-                "deserialised model does not carry."
+                "Bootstrap bounds need the fit data, which this model "
+                "does not carry (it was restored from a dictionary "
+                "written before the data was stored); refit it to get "
+                "bounds."
             )
         x, y, c = self.data["x"], self.data["y"], self.data["c"]
         n = x.shape[0]
@@ -246,29 +252,64 @@ class DestructiveDegradationModel:
     # -- serialisation ----------------------------------------------------
 
     def to_dict(self) -> dict:
-        """Serialise to a plain JSON-safe dict."""
-        return stamp_schema(
-            {
-                "model": "DestructiveDegradationModel",
-                "distribution": self.distribution.name,
-                "transform": self.transform,
-                "direction": self.direction,
-                "beta": self.beta.tolist(),
-                "sigma": float(self.sigma),
-                "threshold": float(self.threshold),
-            }
-        )
+        """
+        Serialise this fitted model to a plain, JSON-serialisable dict.
+
+        The fit data ``(x, y, c)`` is stored along with the fitted
+        parameters -- as ``DegradationModel`` stores its raw data -- so
+        the restored model reproduces the original's predictions *and*
+        its bootstrap :meth:`cb` (with the same seed, exactly).
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        out: dict = {
+            "model": "DestructiveDegradationModel",
+            "distribution": self.distribution.name,
+            "transform": self.transform,
+            "direction": self.direction,
+            "beta": self.beta.tolist(),
+            "sigma": float(self.sigma),
+            "threshold": float(self.threshold),
+            "neg_ll": float(self._neg_ll),
+            "transform_scores": (
+                None
+                if self.transform_scores is None
+                else {
+                    str(k): float(v) for k, v in self.transform_scores.items()
+                }
+            ),
+            "data": (
+                None
+                if self.data is None
+                else {
+                    "x": np.asarray(self.data["x"], dtype=float).tolist(),
+                    "y": np.asarray(self.data["y"], dtype=float).tolist(),
+                    "c": np.asarray(self.data["c"], dtype=int).tolist(),
+                }
+            ),
+        }
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, d: dict) -> "DestructiveDegradationModel":
-        """Rebuild a model from :meth:`to_dict`."""
-        if d.get("model") != "DestructiveDegradationModel":
-            got = d.get("model")
-            raise ValueError(
-                "dict is not a DestructiveDegradationModel "
-                "(model={!r})".format(got)
-            )
+        """
+        Rebuild a model from a :meth:`to_dict` dictionary.
+
+        Dictionaries written before the fit data was stored still load;
+        the model they give predicts, but its :meth:`cb` raises because
+        there is no data to resample.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        require_model_tag(
+            d, "DestructiveDegradationModel", "a destructive degradation model"
+        )
         dist = _resolve_distribution(d["distribution"])
+        data = d.get("data")
         return cls(
             distribution=dist,
             transform=d["transform"],
@@ -276,8 +317,17 @@ class DestructiveDegradationModel:
             beta=np.asarray(d["beta"], dtype=float),
             sigma=float(d["sigma"]),
             threshold=float(d["threshold"]),
-            data=None,
-            neg_ll=np.nan,
+            data=(
+                None
+                if data is None
+                else {
+                    "x": np.asarray(data["x"], dtype=float),
+                    "y": np.asarray(data["y"], dtype=float),
+                    "c": np.asarray(data["c"], dtype=int),
+                }
+            ),
+            neg_ll=float(d.get("neg_ll", np.nan)),
+            transform_scores=d.get("transform_scores"),
         )
 
     def __repr__(self) -> str:

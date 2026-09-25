@@ -42,10 +42,11 @@ class StressClock:
     The clock under a stress path, ``tau(t) = int_0^t AF(z(s)) ds``.
 
     ``Z`` is one constant stress row (``tau`` is then ``AF * t``) or a
-    :class:`~surpyval.StepSchedule` describing a piecewise-constant profile,
-    in which case ``tau`` is piecewise linear with slope ``AF`` of the stress
-    in force. ``acceleration_factor`` maps one stress row to its ``AF`` and
-    ``q`` is the number of covariates the model was fitted with.
+    :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+    describing a piecewise-constant profile, in which case ``tau`` is piecewise
+    linear with slope ``AF`` of the stress in force. ``acceleration_factor``
+    maps one stress row to its ``AF`` and ``q`` is the number of covariates the
+    model was fitted with.
     """
 
     def __init__(
@@ -118,11 +119,11 @@ class HistoryClock:
     stress.
 
     ``Z_rows`` holds the stress over each measurement interval (one row per
-    measurement, the interval ending at it; the first starts at time zero).
-    Up to the last measurement the clock is that history; after it, it runs
-    under ``Z_future`` -- a stress row or a :class:`~surpyval.StepSchedule`
-    whose time zero is the last measurement -- or, by default, the last
-    stress held.
+    measurement, the interval ending at it; the first starts at time zero). Up
+    to the last measurement the clock is that history; after it, it runs under
+    ``Z_future`` -- a stress row or a
+    :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` whose
+    time zero is the last measurement -- or, by default, the last stress held.
     """
 
     def __init__(

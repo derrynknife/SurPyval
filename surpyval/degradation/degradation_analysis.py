@@ -53,7 +53,12 @@ from ._bounds import (
     life_parameter_covariance,
 )
 from ._clock import HistoryClock, StressClock, stress_row
-from .path_models import PATH_MODELS, PathModel, get_path_model
+from .path_models import (
+    PATH_MODELS,
+    PathModel,
+    get_path_model,
+    path_model_key,
+)
 from .population import reml_estimate, reml_estimate_nonlinear
 from .step_stress import (
     clock_units,
@@ -538,7 +543,10 @@ class DegradationModel(SerialisableMixin):
                 "i": np.asarray(self.i).tolist(),
                 "units": np.asarray(self.units).tolist(),
                 "threshold": float(self.threshold),
-                "path_model": self.path_model.name,
+                # The registry key (what ``path=`` accepts), not the
+                # display name: the two differ for some models
+                # ("offset-exponential" vs "Offset Exponential").
+                "path_model": path_model_key(self.path_model),
                 "path_params": np.asarray(
                     self.path_params, dtype=float
                 ).tolist(),
@@ -591,8 +599,10 @@ class DegradationModel(SerialisableMixin):
         """
         Rebuild a degradation model from a :meth:`to_dict` dictionary.
 
-        The path model is resolved by name and the life model by its own
-        ``from_dict``; both are restricted to the known types.
+        The path model is resolved by name (its ``PATH_MODELS`` key, or
+        the display name that older dictionaries stored) and the life
+        model by its own ``from_dict``; both are restricted to the known
+        types.
 
         See Also
         --------
@@ -937,10 +947,11 @@ class DegradationModel(SerialisableMixin):
             stress over the interval ending at it), or one row for a
             constant stress. The path is fitted on the unit's clock.
         Z_future : array like or StepSchedule, optional
-            For a step-stress model, the stress from the last measurement
-            on: one row, or a :class:`~surpyval.StepSchedule` whose time
-            zero is the last measurement. Defaults to holding the last
-            stress.
+            For a step-stress model, the stress from the last measurement on:
+            one row, or a
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+            whose time zero is the last measurement. Defaults to holding the
+            last stress.
 
         Returns
         -------
@@ -1061,10 +1072,11 @@ class DegradationModel(SerialisableMixin):
             reference-stress failure time is mapped back to calendar time
             along the unit's history and ``Z_future``.
         Z_future : array like or StepSchedule, optional
-            For a step-stress model, the stress from the last measurement
-            on: one row, or a :class:`~surpyval.StepSchedule` whose time
-            zero is the last measurement. Defaults to holding the last
-            stress. Refused for other models.
+            For a step-stress model, the stress from the last measurement on:
+            one row, or a
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+            whose time zero is the last measurement. Defaults to holding the
+            last stress. Refused for other models.
 
         Returns
         -------
@@ -1274,10 +1286,11 @@ class DegradationModel(SerialisableMixin):
 
         For an accelerated-degradation model (fitted with covariates) the
         stress vector ``Z`` at which to evaluate life is required. For a
-        step-stress model (``acceleration="clock"``) ``Z`` is one stress row
-        or a :class:`~surpyval.StepSchedule` stress profile, and life is the
-        reference-stress life at the clock time, ``S(t) = S0(tau(t))``; the
-        same holds for every life method below.
+        step-stress model (``acceleration="clock"``) ``Z`` is one stress row or
+        a :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+        stress profile, and life is the reference-stress life at the clock
+        time, ``S(t) = S0(tau(t))``; the same holds for every life method
+        below.
         """
         return self._life_fn("sf", x, Z)
 
@@ -1415,7 +1428,8 @@ class DegradationModel(SerialisableMixin):
             parameters. Refused for a model without ``links``, unless it
             is a step-stress (``acceleration="clock"``) model: then ``Z``
             is required, as one stress row or a
-            :class:`~surpyval.StepSchedule`, and each draw's
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
+            and each draw's
             reference-stress failure time is read along that stress's
             clock. The returned distribution records a constant stress
             row as its ``stress``; under a profile it records none.
@@ -1639,11 +1653,11 @@ class DegradationModel(SerialisableMixin):
             Stress vector at which to evaluate the bound; required for an
             accelerated model, rejected for a plain one. For a step-stress
             (``acceleration="clock"``) model it is one stress row or a
-            :class:`~surpyval.StepSchedule`, and only
-            ``method='bootstrap'`` is available: units are resampled with
-            their stress histories and the clock is re-estimated on each
-            resample (with the model's ``population_method``, so a
-            ``"reml"`` model's bootstrap takes correspondingly longer).
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
+            and only ``method='bootstrap'`` is available: units are resampled
+            with their stress histories and the clock is re-estimated on each
+            resample (with the model's ``population_method``, so a ``"reml"``
+            model's bootstrap takes correspondingly longer).
 
         Returns
         -------
@@ -1969,9 +1983,11 @@ class DegradationAnalysis_:
             parameters, their population and the pseudo failure times
             are all on the reference-stress clock; ``distribution`` is
             fitted to those reference-stress lifetimes, and the
-            prediction methods take the stress as ``Z`` -- one stress row
-            or a :class:`~surpyval.StepSchedule` -- to give life under any
-            stress history, ``F(t) = F0(tau(t))``. The stress
+            prediction methods take the stress as ``Z`` (one stress row
+            or a
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`)
+            to give life under any stress history,
+            ``F(t) = F0(tau(t))``. The stress
             coefficients are stored as ``gamma``. With
             ``population_method="moments"`` they are estimated by
             profile least squares, which needs units whose stress changes

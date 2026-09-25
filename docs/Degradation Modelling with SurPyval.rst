@@ -1649,11 +1649,20 @@ seed the reloaded model reproduces the original's band exactly:
     print(saveable.cb(grid, method="bootstrap", n_boot=50, seed=1).round(3))
     print(reloaded.cb(grid, method="bootstrap", n_boot=50, seed=1).round(3))
 
-A few limits. The path model is stored by *name* and resolved among the
-built-in ones, so a model fitted with a custom ``PathModel`` subclass (like
-the square-root path above) cannot be rebuilt. ``DegradationModel``, the
-process models and ``InducedFailureDistribution`` also have ``to_json(path)``
-and ``from_json(path)`` for writing a file directly (``surpyval.from_json``
-reads any of them); the destructive model has only ``to_dict`` /
-``from_dict``, and it does not store its data, so a reloaded destructive
-model predicts but cannot compute bootstrap bounds.
+Every one of these models also has ``to_json(path)`` and ``from_json(path)``
+for writing a file directly (``surpyval.from_json`` reads any of them). The
+destructive model stores its specimens as well, so a reloaded one reproduces
+its bootstrap bounds in the same way:
+
+.. jupyter-execute::
+
+    from surpyval.degradation import DestructiveDegradationModel
+
+    reloaded_destructive = DestructiveDegradationModel.from_dict(best.to_dict())
+    print(np.allclose(best.cb([25.0, 35.0], n_boot=20, seed=2),
+                      reloaded_destructive.cb([25.0, 35.0], n_boot=20, seed=2)))
+
+One limit: the path model is stored by its *name* (the ``path=`` string, such
+as ``"offset-exponential"``) and resolved among the built-in ones, so a model
+fitted with a custom ``PathModel`` subclass (like the square-root path above)
+cannot be rebuilt.
