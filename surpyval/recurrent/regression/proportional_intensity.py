@@ -36,15 +36,19 @@ class ProportionalIntensityModel(
     >>> from surpyval.datasets import load_rossi_static
     >>> from surpyval.recurrent import CrowAMSAA
     >>> from surpyval.recurrent import ProportionalIntensityNHPP
+    >>> import numpy as np
     >>> data = load_rossi_static()
     >>> x = data['week'].values
+    >>> # in this copy of the data ``arrest`` is 1 for a subject still free
+    >>> # (censored) at week 52, so it is already a censoring flag
     >>> c = data['arrest'].values
+    >>> i = np.arange(len(x))  # one item per subject
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
-    >>> model = ProportionalIntensityNHPP.fit(x, Z, c, dist=CrowAMSAA)
+    >>> model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
     >>> type(model).__name__
     'ProportionalIntensityModel'
     >>> model.cif([1, 2, 3], Z.mean(axis=0))
-    array([8.84210972e-07, 2.79074784e-05, 2.10220821e-04])
+    array([0.00107511, 0.00284451, 0.00502557])
     """
 
     # Populated by the fitters; declared for the type checker.
@@ -211,11 +215,23 @@ class ProportionalIntensityModel(
         kind: {'cumulative_hazard', 'pit', 'martingale'}, optional
             ``'cumulative_hazard'`` returns the rescaled interarrival times
             ``cif(t_k) - cif(t_{k-1})`` of every observed event (pooled across
-            items), which are iid Exp(1) under the fitted model. ``'pit'``
+            items); see below for how far they are iid Exp(1). ``'pit'``
             applies the probability integral transform ``1 - exp(-e)`` to
-            those residuals, giving iid U(0, 1) values. ``'martingale'``
-            returns one residual per item: its observed event count minus the
-            count the model expects over its observation window.
+            those residuals (U(0, 1) under the same conditions).
+            ``'martingale'`` returns one residual per item: its observed
+            event count minus the count the model expects over its
+            observation window.
+
+            Only complete gaps (event to event) are returned. When an
+            item's observation ends at a window close rather than at an
+            event, its final gap is censored and left out, and that
+            selection makes the returned residuals smaller than Exp(1) on
+            average -- noticeably so with few events per item (a mean
+            near 0.66 with about three events per item). So they are
+            exactly iid Exp(1) only for failure-truncated items; otherwise
+            read a Q-Q plot against Exp(1) with this downward bias in
+            mind, or use ``cramer_von_mises``, which conditions on each
+            item's window correctly.
 
         Returns
         -------

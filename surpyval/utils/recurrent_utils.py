@@ -386,11 +386,21 @@ def handle_xicn(
     Z_arr: npt.NDArray | None = None
     if Z is not None:
         if isinstance(Z, dict):
-            Z_arr = np.array([Z[ii] for ii in i])
+            missing = [ii for ii in np.unique(i).tolist() if ii not in Z]
+            if missing:
+                raise ValueError(
+                    "Z has no covariates for item(s) {}".format(missing)
+                )
+            # a scalar value is a single covariate (it used to give a 1-D
+            # array and an IndexError further on)
+            Z_arr = np.array(
+                [np.atleast_1d(np.asarray(Z[ii], dtype=float)) for ii in i]
+            )
         else:
-            Z_arr = np.array(Z, ndmin=2)
-    # TODO: Z as a dict where the keys are the item numbers and the arrays
-    # are the covariates for each i at all times (x)
+            Z_arr = np.asarray(Z, dtype=float)
+            if Z_arr.ndim == 1:
+                # one covariate: a value per row, not one row of values
+                Z_arr = Z_arr.reshape(-1, 1)
 
     if x.shape[0] != i.shape[0]:
         raise ValueError("x and i must have the same length")

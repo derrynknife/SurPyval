@@ -120,12 +120,28 @@ class CauseSpecificMCF(SerialisableMixin):
         plot_bounds: bool = True,
         ax: Any = None,
     ) -> Any:
-        """Overlay the MCF of every cause on a single axis."""
+        """Overlay the MCF of every cause on a single axis.
+
+        With ``plot_bounds`` each cause's pointwise ``confidence`` bounds
+        are drawn as dashed steps in the colour of its MCF.
+        """
         if ax is None:
             ax = plt.gcf().gca()
         for cause in self.event_types:
             model = self.models[cause]
-            ax.step(model.x, model.mcf_hat, where="post", label=str(cause))
+            (line,) = ax.step(
+                model.x, model.mcf_hat, where="post", label=str(cause)
+            )
+            if plot_bounds and model.var is not None:
+                cb = model.mcf_cb(model.x, confidence=confidence)
+                ax.step(
+                    model.x,
+                    cb,
+                    where="post",
+                    color=line.get_color(),
+                    linestyle="--",
+                    linewidth=0.8,
+                )
         ax.legend()
         return ax
 

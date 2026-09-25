@@ -408,7 +408,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         Generalized Renewal SurPyval Model
         ==================================
         Distribution        : Normal
-        Fitted by           : MLE
+        Fitted by           : given parameters (not fitted)
         Kijima Type         : i
         Restoration Factor  : 0.2
         Parameters          :

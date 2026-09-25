@@ -8,7 +8,9 @@ Three consequences are used:
 
 - the rescaled interarrival times ``L(t_k) - L(t_{k-1})`` are iid Exp(1)
   (cumulative-hazard residuals), so ``1 - exp(-e)`` are iid U(0, 1)
-  (probability-integral-transform residuals);
+  (probability-integral-transform residuals). Only complete gaps are
+  returned; an item's final gap is censored when its window closes before
+  an event, and dropping it biases the returned residuals low;
 - the observed count minus the expected count over each item's window is a
   martingale evaluated at the window close (martingale residuals);
 - conditional on the number of events an item has in its observation
@@ -98,8 +100,10 @@ def cumulative_hazard_residuals(data: Any, cif: Any) -> np.ndarray:
     """
     Rescaled interarrival times ``cif(t_k) - cif(t_{k-1})`` for every
     observed event (with ``t_0`` each item's entry time), pooled across
-    items in sorted-item then time order. Under the fitted model these are
-    iid Exp(1).
+    items in sorted-item then time order. Under the fitted model the
+    complete gaps are Exp(1), but each time-truncated item's final,
+    censored gap is not returned, and that selection pulls the returned
+    values below Exp(1) on average (see the model ``residuals`` methods).
 
     ``cif`` is either a single callable used for every item (an unconditional
     model) or an ``item -> callable`` mapping (a regression model, whose

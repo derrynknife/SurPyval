@@ -45,9 +45,19 @@ class LikelihoodInferenceMixin:
 
     def _check_fitted(self) -> None:
         if not hasattr(self, "_neg_ll"):
+            if getattr(self, "how", None) == "MSE":
+                reason = (
+                    "a how='MSE' fit minimises squared error on the MCF "
+                    "and has no likelihood; refit with how='MLE'."
+                )
+            else:
+                reason = (
+                    "a model built from parameters (from_params or "
+                    "fit_from_parameters) has no likelihood."
+                )
             raise ValueError(
-                "Inference is only available for models fitted from data; "
-                "fit_from_parameters does not compute a likelihood."
+                "Likelihood inference is only available for models fitted "
+                "from data by maximum likelihood: " + reason
             )
 
     def _check_has_data(self, what: str) -> None:

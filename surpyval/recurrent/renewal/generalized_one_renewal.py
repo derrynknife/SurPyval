@@ -358,7 +358,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         G1 Renewal SurPyval Model
         =========================
         Distribution        : Weibull
-        Fitted by           : MLE
+        Fitted by           : given parameters (not fitted)
         Restoration Factor  : 0.2
         Parameters          :
              alpha: 10

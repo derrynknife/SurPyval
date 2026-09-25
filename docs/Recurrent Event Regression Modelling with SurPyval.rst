@@ -17,8 +17,9 @@ Both fitters take the recurrent ``x`` / ``i`` / ``c`` / ``n`` arrays exactly as
 the models without covariates do (including ``tl`` / ``tr`` truncation and
 interval-counted rows), plus the covariates ``Z`` as the **second** argument:
 ``fit(x, Z, i=..., c=...)``. ``Z`` is either a 2-D array with one row per row
-of ``x`` (repeat an item's covariates on each of its rows), or a dictionary
-mapping each item id to its list of covariate values. The covariates describe
+of ``x`` (repeat an item's covariates on each of its rows; a 1-D array is one
+covariate), or a dictionary mapping each item id to its covariate values (a
+list, or a plain number for a single covariate). The covariates describe
 the item and should be constant within it.
 
 Proportional-Intensity HPP
@@ -201,25 +202,20 @@ within the precision that thirty motors allow of the true 2.0 and 2.7.
 
 .. note::
 
-    The default ``Duane`` baseline describes the same power-law model, so it
-    should reach the same maximum likelihood. But its scale parameter ``b`` is
-    usually a very small number, and the optimiser starts every parameter at
-    one, so it can stop at a poorer solution. Always compare the fit with an
-    alternative; if ``Duane`` falls short, give it a starting point (``init``)
-    from the fit without covariates, followed by one zero per coefficient.
+    The default ``Duane`` baseline describes the same power-law model in a
+    different parameterisation, so it reaches the same maximum likelihood.
+    Its scale parameter ``b`` is usually a very small number, which a fixed
+    starting point would sit orders of magnitude away from; the fit
+    therefore starts from the baseline fitted *without* covariates, with
+    every coefficient at zero. Pass ``init`` (baseline parameters followed
+    by one value per coefficient) to start somewhere else.
 
 .. jupyter-execute::
 
-    default = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c)
-    start = [*Duane.fit(x, i, c).params, 0.0, 0.0]
-    started = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, init=start)
+    duane = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c)
 
-    print("Duane, default start       AIC:", round(default.aic, 2))
-    print("Duane, start from no-Z fit AIC:", round(started.aic, 2))
-    print("Crow-AMSAA                 AIC:", round(fleet.aic, 2))
-
-With a good start the Duane and Crow-AMSAA baselines agree exactly; from the
-default start the Duane fit stopped short of the optimum.
+    print("Duane      AIC:", round(duane.aic, 2))
+    print("Crow-AMSAA AIC:", round(fleet.aic, 2))
 
 Prediction and simulation
 ~~~~~~~~~~~~~~~~~~~~~~~~~

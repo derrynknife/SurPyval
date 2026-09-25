@@ -46,7 +46,10 @@ class CrowAMSAA(NHPPFitter):
     def __init__(self) -> None:
         self.name = "Crow-AMSAA"
         self.param_names = ["alpha", "beta"]
-        self.bounds = ((0, None), (None, None))
+        # beta > 0: the intensity beta / alpha**beta * x**(beta - 1) and
+        # log(beta) are undefined below zero (a negative beta was allowed and
+        # the optimiser could stop there, with a decreasing MCF).
+        self.bounds = ((0, None), (0, None))
         self.support = (0.0, np.inf)
 
     def cif(self, x: Boxable, *params: Boxable) -> Boxable:

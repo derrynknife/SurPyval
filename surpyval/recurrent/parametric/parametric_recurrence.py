@@ -15,6 +15,13 @@ from surpyval.serialisation import (
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 
+# How the model was obtained, as the repr reports it.
+_FITTED_BY = {
+    "MLE": "MLE",
+    "MSE": "MSE (least squares on the MCF)",
+    "from_params": "given parameters (not fitted)",
+}
+
 
 class ParametricRecurrenceModel(
     SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
@@ -114,7 +121,8 @@ class ParametricRecurrenceModel(
             "Parametric Recurrence SurPyval Model"
             + "\n=================================="
             + f"\nProcess             : {self.dist.name}"
-            + "\nFitted by           : MLE"
+            + "\nFitted by           : "
+            + _FITTED_BY.get(getattr(self, "how", "MLE"), "MLE")
             + "\nParameters          :\n"
             + param_string
         )
@@ -206,13 +214,25 @@ class ParametricRecurrenceModel(
         kind: {'cumulative_hazard', 'pit', 'martingale'}, optional
             ``'cumulative_hazard'`` returns the rescaled interarrival times
             ``cif(t_k) - cif(t_{k-1})`` of every observed event (pooled
-            across items), which are iid Exp(1) under the fitted model.
+            across items); see below for how far they are iid Exp(1).
             ``'pit'`` applies the probability integral transform
-            ``1 - exp(-e)`` to those residuals, giving iid U(0, 1) values.
+            ``1 - exp(-e)`` to those residuals (U(0, 1) under the same
+            conditions).
             ``'martingale'`` returns one residual per (sorted-unique) item:
             its observed event count minus the count the model expects over
             its observation window; positive values mean the item saw more
             events than predicted.
+
+            Only complete gaps (event to event) are returned. When an
+            item's observation ends at a window close rather than at an
+            event, its final gap is censored and left out, and that
+            selection makes the returned residuals smaller than Exp(1) on
+            average -- noticeably so with few events per item (a mean
+            near 0.66 with about three events per item). So they are
+            exactly iid Exp(1) only for failure-truncated items; otherwise
+            read a Q-Q plot against Exp(1) with this downward bias in
+            mind, or use ``cramer_von_mises``, which conditions on each
+            item's window correctly.
 
         Returns
         -------

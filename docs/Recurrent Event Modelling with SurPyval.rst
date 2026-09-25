@@ -212,14 +212,18 @@ parametric model.
 
 Confidence bounds come from ``mcf_cb``. By default they are two-sided 95%
 bounds, returned as ``[lower, upper]`` columns and computed on the log scale
-so they cannot go negative; ``bound="lower"`` or ``"upper"`` gives a one-sided
-bound and ``confidence`` sets the level. ``mcf`` and ``mcf_cb`` also accept
+so they cannot go negative (``bound_type="normal"`` gives the symmetric
+estimate :math:`\pm` *z* standard errors instead); ``bound="lower"`` or
+``"upper"`` gives a one-sided bound and ``confidence`` sets the level. The
+variance behind them is the Lawless-Nadeau robust variance, which allows for
+items differing in their rates (see :doc:`Recurrent Event Analysis`). ``mcf`` and ``mcf_cb`` also accept
 ``interp="linear"`` to join the steps with straight lines instead:
 
 .. jupyter-execute::
 
     print("95% bounds at 6.5  :", model.mcf_cb(6.5).round(2))
     print("90% upper at 6.5   :", model.mcf_cb(6.5, bound="upper", confidence=0.9).round(2))
+    print("normal bounds, 6.5 :", model.mcf_cb(6.5, bound_type="normal").round(2))
     print("linear MCF at 6.5  :", model.mcf(6.5, interp="linear").round(3))
 
 The ``NonParametricCounting`` model also supports **left truncation** (delayed
@@ -463,13 +467,23 @@ standard errors and confidence bounds are not available for such a fit:
     mse = CrowAMSAA.fit(x, i, c, how="MSE")
     print("MSE params:", mse.params.round(3))
     print("MLE params:", ca.params.round(3))
+    try:
+        mse.aic
+    except ValueError as err:
+        print(err)
 
-Similarly, ``from_params`` (on the three NHPP models) builds a model from
-known parameters without any data. It predicts and simulates like a fitted
-model, but has no likelihood or data, so inference, diagnostics and ``plot``
-are not available. The HPP has no ``from_params``; to get an HPP with rate
-:math:`\lambda`, use ``CrowAMSAA.from_params([1 / rate, 1.0])``, since a
-power law with :math:`\beta = 1` is an HPP.
+Similarly, ``from_params`` (on ``HPP``, ``CrowAMSAA``, ``Duane`` and
+``CoxLewis``) builds a model from known parameters without any data. It
+predicts and simulates like a fitted model, but has no likelihood or data, so
+inference, diagnostics and ``plot`` are not available. Each model's summary
+says how it was obtained (``Fitted by : MLE``, ``MSE ...`` or ``given
+parameters``):
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import HPP
+
+    HPP.from_params([0.5])
 
 Simulating from a fitted model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1030,8 +1044,8 @@ argument:
     print("MCF of B at 4.5 :", model.mcf(4.5, "B"))
 
 For a parametric picture, ``CauseSpecificNHPP`` fits one intensity model per
-cause (``CrowAMSAA`` by default; ``Duane`` and ``CoxLewis`` can be passed as
-``dist``). A marked Poisson process decomposes into independent thinned
+cause (``CrowAMSAA`` by default; ``HPP``, ``Duane`` and ``CoxLewis`` can be
+passed as ``dist``). A marked Poisson process decomposes into independent thinned
 Poisson processes, so each cause is fitted to its own events over the full
 observation window — other-cause events are ignored, exactly like a censored
 period.
@@ -1080,7 +1094,9 @@ cause-specific MCF of the same data is the non-parametric check:
     pump_mcf = CauseSpecificMCF.fit(x, i, c, e=e)
     ax = pump_mcf.plot()
 
-Each ``model.models[cause]`` is an ordinary fitted recurrence model, so it
+The dashed steps are each cause's pointwise confidence bounds
+(``confidence`` sets the level, ``plot_bounds=False`` hides them). Each
+``model.models[cause]`` is an ordinary fitted recurrence model, so it
 carries the full ``cif`` / ``iif``, inference and diagnostic behaviour shown
 above; ``model.cif(x, cause)`` and ``model.iif(x, cause)`` are shortcuts, and
 ``total_cif`` sums the causes for the overall event intensity. Both classes

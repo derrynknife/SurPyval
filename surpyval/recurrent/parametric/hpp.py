@@ -264,7 +264,10 @@ class HPP(CountingProcess):
         return negll_func
 
     def fit_from_recurrent_data(
-        self, data: RecurrentEventData, init: "ArrayLike | None" = None
+        self,
+        data: RecurrentEventData,
+        how: str = "MLE",
+        init: "ArrayLike | None" = None,
     ) -> Any:
         """
         Fits the HPP model to recurrent data and returns the fitted model.
@@ -273,6 +276,9 @@ class HPP(CountingProcess):
         ----------
         data : object
             An object containing the recurrent data.
+        how : str, optional
+            Only ``"MLE"``; accepted so the HPP can stand wherever an NHPP
+            baseline is fitted (for example ``CauseSpecificNHPP``).
         init : array_like, optional
             Initial parameter values for the optimization.
 
@@ -289,6 +295,12 @@ class HPP(CountingProcess):
         out.bounds = ((0, None),)
         out.support = (0.0, np.inf)
         out.name = "Homogeneous Poisson Process"
+        if how != "MLE":
+            raise ValueError(
+                "The HPP is fitted by maximum likelihood only; how must be "
+                "'MLE', got {!r}".format(how)
+            )
+        out.how = "MLE"
 
         neg_ll = self.create_negll_func(data)
         jac = jacobian(neg_ll)
@@ -369,3 +381,29 @@ class HPP(CountingProcess):
             windows=windows,
         )
         return self.fit_from_recurrent_data(data, init=init)
+
+    def from_params(self, params: ArrayLike) -> ParametricRecurrenceModel:
+        """
+        Create an HPP model from a known rate, without fitting.
+
+        Parameters
+        ----------
+        params : array_like
+            ``[rate]``, the constant event rate.
+
+        Returns
+        -------
+        ParametricRecurrenceModel
+        """
+        params = np.atleast_1d(np.asarray(params, dtype=float))
+        if params.shape != (1,) or not params[0] > 0:
+            raise ValueError("an HPP takes one positive rate, [rate]")
+        model = ParametricRecurrenceModel()
+        model.params = params
+        model.dist = self
+        model.param_names = ["lambda"]
+        model.bounds = ((0, None),)
+        model.support = (0.0, np.inf)
+        model.name = "Homogeneous Poisson Process"
+        model.how = "from_params"
+        return model

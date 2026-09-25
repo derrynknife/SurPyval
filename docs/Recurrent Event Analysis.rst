@@ -148,11 +148,31 @@ The MCF function is the non-parametric estimator of the number of events that
 will occur up to x. So once we fit a model we can then estimate the expected
 number of events that will occur up to time x by using the MCF function.
 
-SurPyval attaches a variance to :math:`\hat{M}` (accumulated over the event
-times) and, by default, reports confidence bounds on the log scale,
-:math:`\hat{M} \exp(\pm z \sqrt{\widehat{\text{Var}}} / \hat{M})`, so that the
-bounds cannot go below zero. These are *pointwise* bounds: each one covers the
-MCF at a single time, not the whole curve at once.
+SurPyval attaches the Lawless-Nadeau robust variance to :math:`\hat{M}`
+[LawlessNadeau1995]_. Write :math:`\delta_k(t)` for whether item :math:`k` is
+at risk at :math:`t`, :math:`n_k(t)` for its events there and
+:math:`\hat{m}(t) = d(t)/r(t)` for the MCF's jump. Then
+
+.. math::
+
+    \widehat{\text{Var}}\,\hat{M}(t) = \sum_k \Big[ \sum_{t_j \le t}
+    \frac{\delta_k(t_j)}{r(t_j)} \big( n_k(t_j) - \hat{m}(t_j) \big)
+    \Big]^2 .
+
+Each item's deviations from the average are added up over time *before* they
+are squared. An item that fails more often than average does so at every
+step, and those deviations reinforce each other; the variance includes that
+within-item covariance, so it stays honest when items differ in their rates
+and does not assume the events form a Poisson process. (A per-step variance
+that squares each step on its own misses this and can be several times too
+small.) With a single item there is nothing to compare the item with, and the
+variance is zero.
+
+By default the confidence bounds are computed on the log scale,
+:math:`\hat{M} \exp(\pm z \sqrt{\widehat{\text{Var}}} / \hat{M})`, so that
+the bounds cannot go below zero; ``bound_type="normal"`` gives the plain
+:math:`\hat{M} \pm z \sqrt{\widehat{\text{Var}}}`. These are *pointwise*
+bounds: each one covers the MCF at a single time, not the whole curve at once.
 
 Non-Parametric estimation for recurrent events has the same limitations as does
 single event survival analysis. The main one being that it is not possible to
@@ -1028,6 +1048,10 @@ References
 
 .. [Cook2007] Cook, R.J. and Lawless, J.F., 2007. *The Statistical Analysis of
    Recurrent Events*. Springer.
+
+.. [LawlessNadeau1995] Lawless, J.F. and Nadeau, C., 1995. Some simple robust
+   methods for the analysis of recurrent events. *Technometrics*, 37(2),
+   pp.158-168.
 
 .. [Nelson2003] Nelson, W.B., 2003. *Recurrent Events Data Analysis for Product
    Repairs, Disease Recurrences, and Other Applications*. ASA-SIAM Series on

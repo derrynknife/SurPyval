@@ -150,12 +150,22 @@ class NonParametricCounting(SerialisableMixin):
             )
         if bound_type == "exp":
             # Exponential Greenwood confidence
-            mcf_cb = self.mcf_hat * np.exp(
-                stat * np.sqrt(self.var) / self.mcf_hat
+            # Before the first event (possible for one cause of a
+            # cause-specific MCF) the estimate and its variance are both
+            # 0, and so are the bounds -- not 0/0.
+            positive = self.mcf_hat > 0
+            ratio = np.divide(
+                np.sqrt(self.var),
+                self.mcf_hat,
+                out=np.zeros_like(self.mcf_hat, dtype=float),
+                where=positive,
             )
+            mcf_cb = self.mcf_hat * np.exp(stat * ratio)
         else:
-            # Normal Greenwood confidence
-            mcf_cb = self.mcf_hat + np.sqrt(self.var * self.mcf_hat**2) * stat
+            # Normal (Wald) bounds: estimate +- z * standard error. This
+            # used to scale the standard error by the estimate again
+            # (sqrt(var * mcf**2)), giving far too wide, negative bounds.
+            mcf_cb = self.mcf_hat + np.sqrt(self.var) * stat
         # Let's not assume we can predict above the highest measurement
         if interp == "step":
             # Select by query position FIRST, then mask the query-length
@@ -225,9 +235,18 @@ class NonParametricCounting(SerialisableMixin):
     def from_xrd(
         cls, x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
     ) -> "NonParametricCounting":
-        """Build the Nelson-Aalen MCF and its Lawless-Nadeau variance
-        from an ``(x, r, d)`` triple; the single home of the estimator
-        (cause-specific MCF used to carry a drifted copy)."""
+        """Build the Nelson-Aalen MCF from an ``(x, r, d)`` triple; the
+        single home of the estimator (cause-specific MCF used to carry a
+        drifted copy).
+
+        An ``(x, r, d)`` triple does not say which item each event came
+        from, so the variance here is the per-step (naive) one: each
+        step's increments are treated as independent of every other
+        step's. That is right for a Poisson process but understates the
+        variance when items differ in their rates, because it has no
+        within-item covariance. :meth:`fit` has the per-item data and
+        replaces it with the Lawless-Nadeau robust variance.
+        """
         out = cls()
         x, r, d = np.asarray(x), np.asarray(r), np.asarray(d)
         out.x, out.r, out.d = x, r, d
@@ -246,6 +265,7 @@ class NonParametricCounting(SerialisableMixin):
     ) -> "NonParametricCounting":
         reject_unsupported_nonparametric(data, "NonParametricCounting")
         out = type(self).from_xrd(*data.to_xrd())
+        out.var = _lawless_nadeau_var(data, out.x, out.r, out.d)
         out.data = data
         return out
 
@@ -292,3 +312,57 @@ class NonParametricCounting(SerialisableMixin):
         """
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, windows=windows)
         return self.fit_from_recurrent_data(data)
+
+
+def _lawless_nadeau_var(
+    data: RecurrentEventData,
+    x: npt.NDArray,
+    r: npt.NDArray,
+    d: npt.NDArray,
+) -> npt.NDArray:
+    """The Lawless-Nadeau robust variance of the Nelson-Aalen MCF.
+
+    With :math:`\\delta_k(t)` item ``k``'s at-risk indicator,
+    :math:`n_k(t)` its events at ``t`` and :math:`\\hat{m}(t) = d(t)/r(t)`
+    the MCF increment,
+
+    .. math::
+
+        \\widehat{Var}\\,\\hat{M}(t) = \\sum_k \\Big[ \\sum_{t_j \\le t}
+        \\frac{\\delta_k(t_j)}{r(t_j)} \\big(n_k(t_j) -
+        \\hat{m}(t_j)\\big) \\Big]^2 .
+
+    Each item's deviations are summed over time *before* squaring, so
+    an item with a high rate throughout adds its covariance across
+    steps; that is what makes the variance robust to items differing in
+    their rates (it does not assume a Poisson process). Items split
+    into observation windows are regrouped under their original item.
+    With a single item there is nothing to compare it with, and the
+    variance is zero.
+    """
+    x_out = data.midpoints if data.x.ndim == 2 else data.x
+    is_event = (data.c == 0) | (data.c == 2) | (data.c == -1)
+    col = np.searchsorted(x, x_out)
+    dm = np.where(r > 0, d / np.where(r > 0, r, 1), 0.0)
+    inv_r = np.where(r > 0, 1.0 / np.where(r > 0, r, 1), 0.0)
+    window_map = getattr(data, "window_map", None) or {}
+
+    clusters: dict = {}
+    for item in data.items:
+        rows = data.i == item
+        entry = data.tl[rows][0]
+        exit_ = data.x[rows].max()
+        at_risk = (entry <= x) & (x <= exit_)
+        n_k = np.bincount(
+            col[rows & is_event],
+            weights=data.n[rows & is_event],
+            minlength=len(x),
+        )
+        dev = at_risk * inv_r * (n_k - dm)
+        key = window_map[item][0] if item in window_map else item
+        clusters[key] = clusters.get(key, 0.0) + dev
+
+    total = np.zeros(len(x))
+    for dev in clusters.values():
+        total += np.cumsum(dev) ** 2
+    return total

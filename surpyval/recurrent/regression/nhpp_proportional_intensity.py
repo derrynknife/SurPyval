@@ -154,6 +154,33 @@ class ProportionalIntensityNHPP:
 
         return negll_func
 
+    @staticmethod
+    def _baseline_start(data: Any, dist: Any) -> np.ndarray:
+        """Default baseline start: the covariate-free fit of ``dist``.
+
+        Starting every baseline parameter at one put Duane's ``b`` -- often
+        1e-3 or smaller -- orders of magnitude from its optimum, and
+        Nelder-Mead stopped short of it while reporting success (AICs
+        5-40 worse than the same model fitted as Crow-AMSAA). The fit that
+        ignores the covariates is the natural start, with coefficients 0;
+        if it fails, the old unit start is used.
+        """
+        fallback = np.ones(len(dist.param_names))
+        try:
+            with np.errstate(all="ignore"):
+                base = dist.fit_from_recurrent_data(data)
+            start = np.asarray(base.params, dtype=float)
+        except Exception:
+            return fallback
+        if start.shape != fallback.shape or not np.all(np.isfinite(start)):
+            return fallback
+        for value, (low, high) in zip(start, dist.bounds):
+            if (low is not None and value <= low) or (
+                high is not None and value >= high
+            ):
+                return fallback
+        return start
+
     def fit_from_recurrent_data(
         self,
         data: Any,
@@ -172,9 +199,8 @@ class ProportionalIntensityNHPP:
         num_covariates = data.Z.shape[1]
         expected = len(dist.param_names) + num_covariates
         if init is None:
-            # Default start: unit baseline parameters, zero coefficients.
             init = np.append(
-                np.ones(len(dist.param_names)), np.zeros(num_covariates)
+                self._baseline_start(data, dist), np.zeros(num_covariates)
             )
         else:
             # User-supplied starting values were previously overwritten
@@ -189,11 +215,33 @@ class ProportionalIntensityNHPP:
 
         neg_ll = self.create_negll_func(data, dist)
 
+        # Search on an unconstrained scale: a baseline parameter bounded
+        # below (Duane's b, Crow-AMSAA's alpha and beta) is optimised as the
+        # log of its distance from the bound. Nelder-Mead on the natural
+        # scale, with parameters differing by orders of magnitude, stopped
+        # well short of the optimum on as few as nine parameters. A
+        # gradient search does the work and Nelder-Mead polishes it.
+        bounds = list(dist.bounds) + [(None, None)] * num_covariates
+        to_natural, to_search = _unconstraining_maps(bounds)
+
+        def objective(u: np.ndarray) -> float:
+            with np.errstate(all="ignore"):
+                value = neg_ll(to_natural(u))
+            return float(value) if np.isfinite(value) else 1e300
+
+        u0 = to_search(init)
+        res = minimize(objective, u0, method="BFGS")
         res = minimize(
-            neg_ll,
-            init,
+            objective,
+            res.x,
             method="Nelder-Mead",
+            options={
+                "maxfev": 2000 * expected,
+                "xatol": 1e-8,
+                "fatol": 1e-10,
+            },
         )
+        res.x = to_natural(res.x)
         out.res = res
         out.params = res.x[: len(dist.param_names)]
         out.coeffs = res.x[len(dist.param_names) :]
@@ -266,3 +314,40 @@ class ProportionalIntensityNHPP:
         """
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
         return self.fit_from_recurrent_data(data, dist, init)
+
+
+def _unconstraining_maps(bounds: list) -> tuple[Callable, Callable]:
+    """Maps between natural parameters and an unconstrained search space.
+
+    ``(low, None)`` becomes ``low + exp(u)``, ``(None, high)`` becomes
+    ``high - exp(u)``, a finite ``(low, high)`` a logistic between them,
+    and ``(None, None)`` is left alone. Starting values on or outside a
+    bound are nudged inside it.
+    """
+    lows = [b[0] for b in bounds]
+    highs = [b[1] for b in bounds]
+
+    def to_natural(u: np.ndarray) -> np.ndarray:
+        out = np.array(u, dtype=float)
+        for k, (low, high) in enumerate(zip(lows, highs)):
+            if low is not None and high is not None:
+                out[k] = low + (high - low) / (1.0 + np.exp(-u[k]))
+            elif low is not None:
+                out[k] = low + np.exp(u[k])
+            elif high is not None:
+                out[k] = high - np.exp(u[k])
+        return out
+
+    def to_search(v: np.ndarray) -> np.ndarray:
+        out = np.array(v, dtype=float)
+        for k, (low, high) in enumerate(zip(lows, highs)):
+            if low is not None and high is not None:
+                frac = np.clip((v[k] - low) / (high - low), 1e-12, 1 - 1e-12)
+                out[k] = np.log(frac / (1.0 - frac))
+            elif low is not None:
+                out[k] = np.log(max(v[k] - low, 1e-12 * max(1.0, abs(low))))
+            elif high is not None:
+                out[k] = np.log(max(high - v[k], 1e-12 * max(1.0, abs(high))))
+        return out
+
+    return to_natural, to_search

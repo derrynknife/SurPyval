@@ -35,6 +35,8 @@ class CountingProcess(ABC):
 
     #: Names of the model's parameters (see the class docstring).
     param_names: list
+    #: ``(low, high)`` bounds per parameter, ``None`` for unbounded.
+    bounds: tuple
 
     @abstractmethod
     def iif(self, x: Boxable, *params: Boxable) -> Boxable:

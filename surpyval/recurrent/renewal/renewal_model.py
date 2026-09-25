@@ -218,12 +218,24 @@ class RenewalModel(
 
         kind: {'cumulative_hazard', 'pit', 'martingale'}, optional
             ``'cumulative_hazard'`` returns the rescaled interarrival
-            increments of every observed event (pooled across items), which
-            are iid Exp(1) under the fitted model. ``'pit'`` applies the
-            probability integral transform ``1 - exp(-e)`` to those residuals,
-            giving iid U(0, 1) values. ``'martingale'`` returns one residual
-            per item: its observed event count minus the compensator (the sum
-            of the rescaled increments) accumulated over its observation.
+            increments of every observed event (pooled across items); see
+            below for how far they are iid Exp(1). ``'pit'`` applies the
+            probability integral transform ``1 - exp(-e)`` to those residuals
+            (U(0, 1) under the same conditions). ``'martingale'`` returns
+            one residual per item: its observed event count minus the
+            compensator (the sum of the rescaled increments) accumulated
+            over its observation.
+
+            Only complete gaps (event to event) are returned. When an
+            item's observation ends at a window close rather than at an
+            event, its final gap is censored and left out, and that
+            selection makes the returned residuals smaller than Exp(1) on
+            average -- noticeably so with few events per item (a mean
+            near 0.66 with about three events per item). So they are
+            exactly iid Exp(1) only for failure-truncated items; otherwise
+            read a Q-Q plot against Exp(1) with this downward bias in
+            mind, or use ``cramer_von_mises``, which conditions on each
+            item's window correctly.
 
         Returns
         -------
@@ -335,7 +347,12 @@ class RenewalModel(
             title,
             "=" * len(title),
             "{:<20}: {}".format(self._dist_label, self.model.dist.name),
-            "Fitted by           : MLE",
+            "Fitted by           : "
+            + (
+                "MLE"
+                if hasattr(self, "_neg_ll")
+                else "given parameters (not fitted)"
+            ),
         ]
         if getattr(self, "kijima_type", None) is not None:
             lines.append(f"Kijima Type         : {self.kijima_type}")
