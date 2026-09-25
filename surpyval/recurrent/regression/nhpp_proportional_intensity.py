@@ -6,6 +6,7 @@ from scipy.optimize import minimize
 from scipy.special import gammaln
 
 from surpyval.recurrent.inference import observed_event_count
+from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.utils.fitter import singleton_fitter
@@ -254,7 +255,7 @@ class ProportionalIntensityNHPP:
         # well short of the optimum on as few as nine parameters. A
         # gradient search does the work and Nelder-Mead polishes it.
         bounds = list(dist.bounds) + [(None, None)] * num_covariates
-        to_natural, to_search = _unconstraining_maps(bounds)
+        to_natural, to_search = unconstraining_maps(bounds)
 
         def objective(u: np.ndarray) -> float:
             with np.errstate(all="ignore"):
@@ -355,40 +356,3 @@ class ProportionalIntensityNHPP:
         """
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
         return self.fit_from_recurrent_data(data, dist, init)
-
-
-def _unconstraining_maps(bounds: list) -> tuple[Callable, Callable]:
-    """Maps between natural parameters and an unconstrained search space.
-
-    ``(low, None)`` becomes ``low + exp(u)``, ``(None, high)`` becomes
-    ``high - exp(u)``, a finite ``(low, high)`` a logistic between them,
-    and ``(None, None)`` is left alone. Starting values on or outside a
-    bound are nudged inside it.
-    """
-    lows = [b[0] for b in bounds]
-    highs = [b[1] for b in bounds]
-
-    def to_natural(u: np.ndarray) -> np.ndarray:
-        out = np.array(u, dtype=float)
-        for k, (low, high) in enumerate(zip(lows, highs)):
-            if low is not None and high is not None:
-                out[k] = low + (high - low) / (1.0 + np.exp(-u[k]))
-            elif low is not None:
-                out[k] = low + np.exp(u[k])
-            elif high is not None:
-                out[k] = high - np.exp(u[k])
-        return out
-
-    def to_search(v: np.ndarray) -> np.ndarray:
-        out = np.array(v, dtype=float)
-        for k, (low, high) in enumerate(zip(lows, highs)):
-            if low is not None and high is not None:
-                frac = np.clip((v[k] - low) / (high - low), 1e-12, 1 - 1e-12)
-                out[k] = np.log(frac / (1.0 - frac))
-            elif low is not None:
-                out[k] = np.log(max(v[k] - low, 1e-12 * max(1.0, abs(low))))
-            elif high is not None:
-                out[k] = np.log(max(high - v[k], 1e-12 * max(1.0, abs(high))))
-        return out
-
-    return to_natural, to_search

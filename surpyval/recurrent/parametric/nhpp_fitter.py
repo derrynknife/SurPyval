@@ -5,6 +5,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.inference import observed_event_count
 from surpyval.recurrent.parametric.counting_process import IntensityModel
 from surpyval.recurrent.parametric.parametric_recurrence import (
@@ -112,25 +113,37 @@ class NHPPFitter(IntensityModel):
         x_unqiue, r, d = data.to_xrd()
         mcf_hat = np.cumsum(d / r)
 
-        def fun(params: np.ndarray) -> float:
-            return np.sum((self.cif(x_unqiue, *params) - mcf_hat) ** 2)
+        # Both searches run on an unconstrained scale: with the bounds
+        # given to the optimiser it clipped trial points onto them, and a
+        # positive parameter of exactly 0 (Crow-AMSAA's alpha) divided by
+        # zero in the intensity.
+        to_natural, to_search = unconstraining_maps(list(self.bounds))
 
-        res = minimize(fun, param_init, bounds=self.bounds)
-        param_init = res.x
+        def fun(u: np.ndarray) -> float:
+            with np.errstate(all="ignore"):
+                value = np.sum(
+                    (self.cif(x_unqiue, *to_natural(u)) - mcf_hat) ** 2
+                )
+            return float(value) if np.isfinite(value) else 1e300
+
+        res = minimize(fun, to_search(np.asarray(param_init, dtype=float)))
+        u_init = res.x
 
         ll_func = None
         if how == "MSE":
-            params = res.x
+            params = to_natural(res.x)
 
         elif how == "MLE":
             ll_func = self.create_negll_func(data)
-            res = minimize(
-                ll_func,
-                param_init,
-                method="Nelder-Mead",
-                bounds=self.bounds,
-            )
-            params = res.x
+            natural_ll = ll_func
+
+            def search_ll(u: np.ndarray) -> float:
+                with np.errstate(all="ignore"):
+                    value = natural_ll(to_natural(u))
+                return float(value) if np.isfinite(value) else 1e300
+
+            res = minimize(search_ll, u_init, method="Nelder-Mead")
+            params = to_natural(res.x)
 
         model = ParametricRecurrenceModel()
         model.mcf_hat = mcf_hat
