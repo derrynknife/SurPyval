@@ -99,20 +99,32 @@ v0.21.0 (unreleased)
   - ``gamma``, ``stress_ref``, ``acceleration_factor(Z)``; ``path(t,
     unit)`` and ``plot`` follow each unit's own stress history.
     Serialised and shown in the ``repr``.
-  - Not yet for clock models (each raises ``NotImplementedError``):
-    ``predict_rul``, ``predict_failure_time``,
-    ``predict_remaining_life``, ``induced_life``, ``cb`` and
-    ``life_parameter_covariance``. ``links`` and ``path="best"`` cannot
-    be combined with the clock.
+  - Prediction for a monitored unit on its own clock: ``predict_rul``,
+    ``predict_failure_time`` and ``predict_remaining_life`` take the
+    unit's stress history as ``Z`` (one row per measurement, or one row)
+    and the planned stress from its last measurement as ``Z_future`` (a
+    row or a ``StepSchedule`` starting now; by default the last stress
+    is held). The posterior is taken against the reference-stress
+    population and each draw's failure time is mapped back to calendar
+    time along the history and the plan.
+  - ``induced_life(Z=...)`` under a stress row or a profile, and
+    two-stage bootstrap bounds ``cb(..., Z=..., method="bootstrap")``
+    that resample units with their stress histories and re-estimate the
+    clock on every refit. The analytic correction and
+    ``life_parameter_covariance`` are not derived for a clock model
+    (its pseudo failure times also depend on the estimated clock) and
+    say so, pointing to the bootstrap. ``links`` and ``path="best"``
+    cannot be combined with the clock.
 
-  Every existing fit is bit-identical (118 fingerprinted outputs of
-  plain, REML, nonlinear, ``path="best"``, Stage-1 and ``links`` models,
+  The clock leaves every existing fit bit-identical (118 fingerprinted
+  outputs of plain, REML, nonlinear, ``path="best"``, Stage-1 and ``links`` models,
   and the 84 process-model outputs); the only change is that the error
   for a ``Z`` that varies within a unit now points to
   ``acceleration="clock"``. The process models' clock moved to a shared
   module unchanged, and the REML step gained a Woodbury-identity variant
   used by the clock fit. The theory page gains a section on the
-  accelerated clock and the how-to a step-stress worked example.
+  accelerated clock and the how-to a step-stress worked example,
+  including remaining life under two stress plans.
 
 v0.20.0 (23 September 2026)
 ---------------------------

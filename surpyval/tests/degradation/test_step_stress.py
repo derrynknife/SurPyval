@@ -324,12 +324,140 @@ def test_prediction_argument_validation(model):
         lambda: model.predict_rul([10.0], [1.2]),
         lambda: model.predict_failure_time([10.0, 20.0], [1.2, 1.4]),
         lambda: model.predict_remaining_life([10.0, 20.0], [1.2, 1.4]),
-        lambda: model.induced_life(),
-        lambda: model.cb([100.0]),
+    ):
+        with pytest.raises(ValueError, match="stress history"):
+            call()
+    with pytest.raises(ValueError, match="one row of 1 covariate"):
+        model.predict_rul([10.0, 20.0, 30.0], [1.2, 1.4, 1.6], Z=[1, 2])
+    with pytest.raises(ValueError, match="non-negative"):
+        model.predict_failure_time([-10.0, 20.0], [1.2, 1.4], Z=[Z_USE])
+    with pytest.raises(ValueError, match="depends on stress"):
+        model.induced_life()
+    for call in (
+        lambda: model.cb([100.0], Z=PROFILE),
         lambda: model.life_parameter_covariance(),
     ):
-        with pytest.raises(NotImplementedError, match="step-stress"):
+        with pytest.raises(NotImplementedError, match="bootstrap"):
             call()
+
+
+def test_models_without_a_clock_refuse_its_arguments():
+    x, y, i, _ = simulate(n_units=6, stepped=False)
+    plain = DegradationAnalysis.fit(x, y, i, threshold=THRESHOLD)
+    with pytest.raises(ValueError, match="Z_future"):
+        plain.predict_rul([10.0], [1.2], Z_future=[Z_USE])
+    with pytest.raises(ValueError, match="Z_future"):
+        plain.predict_failure_time([10.0, 20.0], [1.2, 1.4], Z_future=[1])
+    with pytest.raises(ValueError, match="takes Z only"):
+        plain.predict_failure_time([10.0, 20.0], [1.2, 1.4], Z=[Z_USE])
+
+
+# -- predictions for a new unit (part B) -----------------------------------
+
+
+@pytest.fixture(scope="module")
+def exact_model():
+    """Noise-free training data: the clock is recovered exactly."""
+    x, y, i, Z = simulate(n_units=8, noise=0.0)
+    return fit(x, y, i, Z)
+
+
+def _new_unit(until=150.0, a=0.9, b=0.022):
+    """A noise-free unit on the test profile up to ``until``, and its true
+    failure time if the profile then carries on (100 C from 200 h)."""
+    t = np.arange(10.0, until + 1e-9, 10.0)
+    z = stress_at(t)
+    y = a + b * np.cumsum(10.0 * af(z))
+    tau_star = (THRESHOLD - a) / b
+    knots_tau = np.concatenate([[0.0], np.cumsum(100.0 * af(Z_LEVELS[:2]))])
+    if tau_star <= knots_tau[-1]:
+        truth = np.interp(tau_star, knots_tau, [0.0, 100.0, 200.0])
+    else:
+        truth = 200.0 + (tau_star - knots_tau[-1]) / af(Z_LEVELS[2])
+    return t, y, z, truth
+
+
+def test_failure_time_along_the_history_and_a_planned_future(exact_model):
+    t, y, z, truth = _new_unit()
+    # from 150 h: 50 more hours at 75 C, then 100 C -- the test profile
+    plan = StepSchedule.from_changepoints(
+        [0, 50], [[Z_LEVELS[1]], [Z_LEVELS[2]]]
+    )
+    ft = exact_model.predict_failure_time(t, y, Z=z, Z_future=plan)
+    assert ft == pytest.approx(truth, rel=1e-5)
+    rl = exact_model.predict_remaining_life(t, y, Z=z, Z_future=plan)
+    assert rl == pytest.approx(truth - 150.0, rel=1e-5)
+    # holding the last stress (75 C) instead ages the unit more slowly
+    held = exact_model.predict_failure_time(t, y, Z=z)
+    assert held > ft
+
+
+def test_constant_stress_history_is_a_rescaled_clock(model):
+    # any fitted clock gives the exact answer for a unit held at one
+    # stress: its rate absorbs the acceleration factor
+    hot = [Z_LEVELS[2]]
+    t = np.arange(5.0, 31.0, 5.0)
+    y = 0.9 + 0.022 * af(Z_LEVELS[2]) * t
+    truth = (THRESHOLD - 0.9) / 0.022 / af(Z_LEVELS[2])
+    assert model.predict_failure_time(t, y, Z=hot) == pytest.approx(truth)
+    rows = np.full(t.size, Z_LEVELS[2])
+    assert model.predict_failure_time(t, y, Z=rows) == pytest.approx(truth)
+
+
+def test_predict_rul_on_the_clock(model):
+    t, y, z, truth = _new_unit()
+    plan = StepSchedule.from_changepoints(
+        [0, 50], [[Z_LEVELS[1]], [Z_LEVELS[2]]]
+    )
+    noisy = y + np.random.default_rng(9).normal(0.0, NOISE, y.size)
+    pred = model.predict_rul(t, noisy, Z=z, Z_future=plan, random_state=1)
+    lo, hi = pred.failure_time_interval
+    assert lo < truth < hi
+    assert pred.rul == pytest.approx(pred.failure_time - 150.0)
+    assert pred.prob_failed == 0.0
+    # the posterior is on the reference-stress path parameters
+    assert pred.posterior_mean == pytest.approx([0.9, 0.022], rel=0.15)
+    # low-noise training data and a long, noise-free trajectory: the
+    # posterior settles on the truth
+    x, y_low, i, Z = simulate(n_units=8, noise=0.01)
+    low_noise = fit(x, y_low, i, Z)
+    t2, y2, z2, truth2 = _new_unit(until=190.0)
+    rest = StepSchedule.from_changepoints(
+        [0, 10], [[Z_LEVELS[1]], [Z_LEVELS[2]]]
+    )
+    settled = low_noise.predict_rul(
+        t2, y2, Z=z2, Z_future=rest, random_state=0
+    )
+    assert settled.failure_time == pytest.approx(truth2, rel=2e-3)
+    # a unit already past the threshold
+    done = model.predict_rul(t, y + 20.0, Z=z, random_state=0)
+    assert done.prob_failed > 0.99
+
+
+def test_induced_life_under_a_stress(model):
+    ref = model.induced_life(Z=[Z_USE], random_state=0)
+    hot = model.induced_life(Z=[Z_LEVELS[2]], random_state=0)
+    assert np.allclose(
+        hot.samples, ref.samples / model.acceleration_factor([Z_LEVELS[2]])
+    )
+    assert hot.stress == pytest.approx([Z_LEVELS[2]])
+    induced = model.induced_life(Z=PROFILE, random_state=0)
+    assert induced.stress is None
+    assert induced.median() == pytest.approx(
+        float(model.qf(0.5, Z=PROFILE)[0]), rel=0.03
+    )
+
+
+def test_bootstrap_bounds_under_a_profile(model):
+    t = np.array([200.0, 240.0])
+    band = model.cb(t, Z=PROFILE, method="bootstrap", n_boot=20, seed=1)
+    assert band.shape == (2, 2)
+    assert np.all(band[:, 0] <= band[:, 1])
+    sf = model.sf(t, Z=PROFILE)
+    assert np.all((band[:, 0] <= sf + 0.05) & (sf - 0.05 <= band[:, 1]))
+    restored = DegradationModel.from_dict(model.to_dict())
+    with pytest.raises(RuntimeError, match="restored from a dict"):
+        restored.cb(t, Z=PROFILE, method="bootstrap", n_boot=5, seed=1)
 
 
 def test_acceleration_factor_needs_a_clock_model():
