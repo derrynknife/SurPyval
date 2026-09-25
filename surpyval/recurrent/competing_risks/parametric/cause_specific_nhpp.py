@@ -25,6 +25,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 
+from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
@@ -340,7 +341,9 @@ class CauseSpecificNHPP(SerialisableMixin):
         return total
 
     def plot(self, ax: Any = None) -> Any:
-        """Overlay the fitted cause-specific CIFs on a single axis."""
+        """Overlay the fitted cause-specific CIFs on a single axis, over
+        the observed time range of the data they were fitted to."""
+        require_data(self, "plot")
         if ax is None:
             ax = plt.gcf().gca()
         x_plot = np.linspace(0, float(self.data.x.max()), 200)

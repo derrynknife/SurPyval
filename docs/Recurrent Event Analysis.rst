@@ -140,9 +140,10 @@ always decrease after each observed event. When doing recurrent event analysis
 an item will remain in the at risk set since it will be healed/repaired and
 returned to service/health to continue with life. In SurPyval an item is in
 the risk set from its entry time (zero, or its left-truncation time) up to and
-including its last recorded time — its right-censoring time, or its last event
-if it has no censoring row. An item therefore only leaves the risk set when it
-leaves *observation*, never because it had an event.
+including the end of its observation — its right-truncation time ``tr`` if it
+has one, otherwise its last recorded time (its right-censoring time, or its
+last event if it has no censoring row). An item therefore only leaves the risk
+set when it leaves *observation*, never because it had an event.
 
 The MCF function is the non-parametric estimator of the number of events that
 will occur up to x. So once we fit a model we can then estimate the expected
@@ -180,8 +181,8 @@ extrapolate an estimate of the MCF function beyond the last observed event. This
 is because when doing non-parametric analysis we make no assumptions about the
 shape of the curve and cannot therefore extrapolate beyond the last observed event.
 SurPyval returns ``nan`` for times beyond the last observed time (the latest
-event or end-of-observation row of any item). Two further assumptions are
-worth stating:
+event, end-of-observation row or right-truncation time of any item). Two
+further assumptions are worth stating:
 
 - **Independent end of observation.** Items must not leave observation *because*
   they were about to have an event (or because they had many). If units with a
@@ -192,19 +193,22 @@ worth stating:
   of the curve is noisy. The widening confidence bounds show this.
 
 The non-parametric MCF currently accepts exact event times, right-censored
-end-of-observation rows, left truncation (delayed entry) and gapped
-observation windows. Interval-counted data, left-censored counts and right
-truncation are rejected rather than silently mishandled; use a parametric
-intensity model for those.
+end-of-observation rows, left truncation (delayed entry), right truncation
+and gapped observation windows. A right-truncation time ``tr`` ends the
+item's observation window exactly as an end-of-observation row at ``tr``
+would, the same window-close the parametric intensity models integrate to.
+Interval-counted data and left-censored counts are rejected rather than
+silently mishandled; use a parametric intensity model for those.
 
 The risk-set counts :math:`d_i` and :math:`r_i` alone only support a simpler,
 per-step variance, which squares each step's deviations on its own and so
-treats every step as independent of every other. That is the right
-answer for a Poisson process but understates the uncertainty whenever items
-differ in their rates. SurPyval uses it in only two places: an MCF built
-directly from ``(x, r, d)`` arrays (``NonParametricCounting.from_xrd``), which
-do not record which item had each event, and, for now, the cause-specific MCF
-(see `Competing Risks: Marked Recurrent Events`_).
+treats every step as independent of every other. Assuming the :math:`d_i`
+events at a time all happened to different items, a step's deviations sum to
+:math:`d_i (r_i - d_i) / r_i^3`. That is the right answer for a Poisson
+process but understates the uncertainty whenever items differ in their rates.
+SurPyval uses it only for an MCF built directly from ``(x, r, d)`` arrays
+(``NonParametricCounting.from_xrd``), which do not record which item had each
+event.
 
 Parametric Recurrent Event Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -859,11 +863,11 @@ The virtual-age and history-dependent models (Kijima, G1, ARA, ARI) cannot:
 the virtual age at entry depends on the unobserved failures before entry, so
 those models require the process to be observed from the start.
 
-The non-parametric MCF handles delayed entry through the risk set — an item is
-only counted at risk from its entry time, so early event times are averaged
-over the items actually being watched — but does not yet accept right
-truncation. The trend tests (below) assume every item is observed from time
-zero.
+The non-parametric MCF handles both through the risk set — an item is only
+counted at risk from its entry time, so early event times are averaged over
+the items actually being watched, and it stays at risk up to its
+right-truncation time, just as it would up to a right-censored row there.
+The trend tests (below) assume every item is observed from time zero.
 
 Model Checking: Residuals, Trend Tests, and Goodness of Fit
 -----------------------------------------------------------
@@ -987,13 +991,16 @@ classical goodness-of-fit test.
 
 For the imperfect-repair models the compensator is the running sum of the
 conditional (virtual-age or reduced-intensity) increments described above.
-Uniformity is then exact for failure-truncated items and an approximation for
-time-truncated ones, whose window close is itself history-dependent, and the
-bootstrap resimulates each item as a new item with its observed number of
-events. Every bootstrap replicate is a full refit, so the test is slow for
-the imperfect-repair models; a small number of replicates gives only a coarse
-p-value (with :math:`B` replicates the smallest possible p-value is
-:math:`1/(B + 1)`).
+Uniformity is then exact for failure-truncated items and only approximate for
+time-truncated ones, whose window close is itself history-dependent. The
+bootstrap resimulates each item the way it was observed — a failure-truncated
+item with its observed number of events, a time-truncated one over its window
+to the same end-of-observation time, with however many events the model gives
+it there — so the bootstrap statistics share that approximation and the
+p-value accounts for it. Every bootstrap replicate is a full refit, so the
+test is slow for the imperfect-repair models; a small number of replicates
+gives only a coarse p-value (with :math:`B` replicates the smallest possible
+p-value is :math:`1/(B + 1)`).
 
 Choosing a model
 ~~~~~~~~~~~~~~~~
@@ -1016,9 +1023,10 @@ There is no single right model, but a sensible order of work is:
    the imperfect-repair models. Compare the Kijima types, the G1 process and
    several ARA/ARI memories by their information criteria; all are fitted to
    the same event times by maximum likelihood, so their AIC values are on a
-   common footing. (Prefer AIC to BIC across families: BIC's sample size is
-   the number of data rows, censoring rows included, for every model except
-   ARI, which counts only the failures.) Check the winner with residuals.
+   common footing, and so are their BIC values: every recurrent model takes
+   BIC's sample size to be the number of exactly observed events
+   (end-of-observation rows do not count), as SurPyval's univariate models
+   do. Check the winner with residuals.
 5. **If events come from several distinct mechanisms,** analyse them per
    cause (next section); **if items differ systematically** (environment, duty
    cycle, design version), move to the regression models on the
@@ -1053,11 +1061,11 @@ because an event of one type does not remove the item from observation, an
 event of another type can still follow it, so no adjustment for the other
 causes is needed.
 
-One difference from the overall MCF: SurPyval currently attaches the simpler
-per-step variance (see `Non-Parametric - Mean Cumulative Function`_), not the
-Lawless-Nadeau robust one, to each cause-specific MCF. Its confidence bounds
-are therefore only trustworthy when items do not differ much in their rates
-of that cause; otherwise they are too narrow.
+Each cause-specific MCF carries the Lawless-Nadeau robust variance (see
+`Non-Parametric - Mean Cumulative Function`_) of that cause's events: an event
+of another cause counts as a non-event, while the item stays in the shared
+risk set. So its confidence bounds, like the overall MCF's, allow for items
+differing in their rates of that cause.
 
 Parametrically, a marked Poisson process has an elegant structure: the
 cause-specific processes are **independent thinned Poisson processes**. An

@@ -5,6 +5,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.recurrent.inference import observed_event_count
 from surpyval.recurrent.parametric.counting_process import IntensityModel
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
@@ -145,7 +146,7 @@ class NHPPFitter(IntensityModel):
         if ll_func is not None:
             model._neg_ll = ll_func
             model._mle = np.asarray(params, dtype=float)
-            model._n_obs = len(data.x)
+            model._n_obs = observed_event_count(data)
         return model
 
     def fit(

@@ -327,16 +327,7 @@ class ARI(RenewalFitMixin):
         )
         rho, *dist_params = params
         out = self._make_model(dist, dist_params, rho, m)
-        # Only the observed failures (c == 0) contribute an intensity term, so
-        # they are the events that enter the BIC sample size.
-        self._attach_inference(
-            out,
-            neg_ll,
-            [rho, *dist_params],
-            int((data.c == 0).sum()),
-            res,
-            data,
-        )
+        self._attach_inference(out, neg_ll, [rho, *dist_params], res, data)
         return out
 
     @staticmethod

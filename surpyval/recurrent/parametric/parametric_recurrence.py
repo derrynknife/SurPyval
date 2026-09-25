@@ -334,8 +334,11 @@ class ParametricRecurrenceModel(
         GoodnessOfFitResult
             The observed statistic and its bootstrap p-value.
         """
-        self._check_fitted()
+        # Data first: a restored or from_params model has neither data nor
+        # likelihood, and the missing data is the more useful message; an
+        # MSE fit has data but no likelihood to refit by.
         self._check_has_data("cramer_von_mises")
+        self._check_fitted()
         return diagnostics.cramer_von_mises(self, n_boot=n_boot, seed=seed)
 
     def cif_cb(
@@ -350,8 +353,8 @@ class ParametricRecurrenceModel(
         The variance of the fitted CIF is propagated from the parameter
         covariance (the inverse observed information) through the CIF's
         gradient, and the bounds are computed on the log scale -- the same
-        construction as the exponential Greenwood bounds on the nonparametric
-        MCF -- so they cannot go negative.
+        construction as the default (``bound_type="exp"``) bounds on the
+        nonparametric MCF -- so they cannot go negative.
 
         Parameters
         ----------
@@ -411,6 +414,7 @@ class ParametricRecurrenceModel(
         matplotlib axes
             An axes object with the plot.
         """
+        self._check_has_data("plot")
         x, r, d = self.data.to_xrd()
         if ax is None:
             ax = plt.gcf().gca()

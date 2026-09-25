@@ -5,7 +5,9 @@ The non-parametric mean cumulative function (MCF) estimator for
 recurrent events: the expected number of events per item by time
 :math:`t`, estimated without assuming a process. It supports exact
 events, right-censored end-of-observation rows, left truncation (delayed
-entry) and gapped multi-window observation, and gives confidence bounds
+entry), right truncation (``tr``, which ends an item's observation like an
+end-of-observation row there) and gapped multi-window observation, and gives
+confidence bounds
 from the Lawless-Nadeau robust variance via ``mcf_cb``.
 ``NonParametricCounting.fit`` returns a fitted instance of the class
 below.

@@ -103,13 +103,21 @@ def test_cause_specific_mcf_shares_truncated_risk_set():
     np.testing.assert_array_equal(model.r, [1, 2, 2, 2, 2, 1])
 
 
-def test_nonparametric_rejects_right_truncation():
-    # Right truncation is not yet handled by the risk-set construction; the
-    # nonparametric MCF must fail rather than silently ignore tr.
-    with pytest.raises(ValueError, match="right truncation"):
-        NonParametricCounting.fit(
-            np.array([3.0, 7.0]), np.array([1, 1]), tr=10.0
-        )
+def test_nonparametric_right_truncation_closes_the_window():
+    # A finite tr ends the item's observation window there: the MCF is the
+    # one an end-of-observation (c=1) row at tr would give.
+    truncated = NonParametricCounting.fit(
+        np.array([3.0, 7.0, 5.0]), np.array([1, 1, 2]), tr=10.0
+    )
+    censored = NonParametricCounting.fit(
+        np.array([3.0, 7.0, 10.0, 5.0, 10.0]),
+        np.array([1, 1, 1, 2, 2]),
+        c=np.array([0, 0, 1, 0, 1]),
+    )
+    np.testing.assert_array_equal(truncated.x, censored.x)
+    np.testing.assert_array_equal(truncated.r, [2, 2, 2, 2])
+    np.testing.assert_allclose(truncated.mcf_hat, censored.mcf_hat)
+    np.testing.assert_allclose(truncated.var, censored.var)
 
 
 def test_nonparametric_rejects_left_censoring():
@@ -141,8 +149,6 @@ def test_cause_specific_mcf_rejects_unsupported():
     e = ["a", "b", None]
     with pytest.raises(ValueError, match="left-censored"):
         CauseSpecificMCF.fit(x, i, c=np.array([-1, 0, 1]), e=e)
-    with pytest.raises(ValueError, match="right truncation"):
-        CauseSpecificMCF.fit(x, i, c=np.array([0, 0, 1]), e=e, tr=10.0)
 
 
 def test_cause_specific_mcf_scalar_truncation_broadcasts():

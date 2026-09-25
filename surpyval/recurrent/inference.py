@@ -10,15 +10,49 @@ import numpy as np
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 
 
+def observed_event_count(data: Any) -> int:
+    """
+    The number of exactly observed events (``c=0`` rows, weighted by ``n``)
+    in recurrent data: the sample size ``n`` of every recurrent model's
+    BIC. End-of-observation (``c=1``) rows are not events, and censored
+    counts are not exact observations, so neither adds to it -- the same
+    convention as BIC for the univariate models. (Each model used to pick
+    its own: most counted every row, ARI only its failures, so BICs were
+    not comparable across families.)
+    """
+    c = np.asarray(data.c)
+    return int(np.asarray(data.n)[c == 0].sum())
+
+
+def require_data(model: Any, what: str) -> None:
+    """
+    Raise an informative ``ValueError`` when ``model`` carries no data.
+
+    Only a model fitted from data keeps it: one built from parameters
+    (``from_params`` / ``fit_from_parameters``) never had any, and one
+    restored with ``from_dict`` / ``from_json`` does not store it. Every
+    method that reads the fitted data (residuals, trend tests, goodness of
+    fit, plots against the data) calls this first, so none of them fails
+    with a bare ``AttributeError``.
+    """
+    if getattr(model, "data", None) is None:
+        raise ValueError(
+            "{} requires a model fitted from data; models built from "
+            "parameters (from_params / fit_from_parameters) or restored "
+            "with from_dict / from_json carry no data.".format(what)
+        )
+
+
 class LikelihoodInferenceMixin:
     """
     Likelihood-based inference for fitted recurrent-event models.
 
     The fitting routine must set ``_neg_ll`` (the negative log-likelihood in
     natural parameter space), ``_mle`` (the fitted parameter vector in that
-    same space) and ``_n_obs`` (the number of events contributing to the
-    likelihood). Models built with ``fit_from_parameters`` (or by a non-
-    likelihood method such as MSE) carry no likelihood and these methods raise.
+    same space) and ``_n_obs`` (the number of exactly observed events, from
+    :func:`observed_event_count`: BIC's sample size). Models built with
+    ``fit_from_parameters`` (or by a non-likelihood method such as MSE) carry
+    no likelihood and these methods raise.
 
     This is shared by every fitted recurrent model that has a likelihood: the
     renewal / imperfect-repair models (``RenewalModel``), the parametric
@@ -61,11 +95,7 @@ class LikelihoodInferenceMixin:
             )
 
     def _check_has_data(self, what: str) -> None:
-        if not hasattr(self, "data"):
-            raise ValueError(
-                "{} requires a model fitted from data; fit_from_parameters "
-                "models carry no data.".format(what)
-            )
+        require_data(self, what)
 
     def _parameter_names(self) -> list:
         """
@@ -107,11 +137,15 @@ class LikelihoodInferenceMixin:
     def bic(self) -> float:
         """
         The Bayesian information criterion, :math:`k \\ln n - 2\\ln L`,
-        with ``n`` the number of rows of data the model was fitted to
-        (events and end-of-observation rows). Lower is better.
+        with ``n`` the number of exactly observed events (``c=0`` rows) the
+        model was fitted to -- end-of-observation rows and censored counts
+        do not add to it, as for BIC everywhere in SurPyval. Lower is
+        better. NaN when the data has no exactly observed event.
         """
         self._check_fitted()
         k = self._mle.size
+        if self._n_obs < 1:
+            return float("nan")
         return k * np.log(self._n_obs) - 2.0 * self.log_likelihood
 
     def covariance(self) -> np.ndarray:

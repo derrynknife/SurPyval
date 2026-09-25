@@ -7,6 +7,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import root
 from scipy.special import gammaln
 
+from surpyval.recurrent.inference import observed_event_count
 from surpyval.recurrent.parametric.counting_process import (
     Boxable,
     CountingProcess,
@@ -321,7 +322,7 @@ class HPP(CountingProcess):
         # machinery sees ``_neg_ll(_mle)`` with ``_mle`` the fitted rate.
         out._neg_ll = lambda params: neg_ll(np.log(np.asarray(params)))
         out._mle = np.asarray(out.params, dtype=float)
-        out._n_obs = len(data.x)
+        out._n_obs = observed_event_count(data)
 
         return out
 

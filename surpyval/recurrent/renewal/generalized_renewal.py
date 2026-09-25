@@ -297,9 +297,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         q, *dist_params = params
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, q, kijima)
-        self._attach_inference(
-            out, neg_ll, [q, *dist_params], len(data.x), res, data
-        )
+        self._attach_inference(out, neg_ll, [q, *dist_params], res, data)
         return out
 
     def fit(

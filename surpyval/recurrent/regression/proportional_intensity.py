@@ -239,6 +239,7 @@ class ProportionalIntensityModel(
         numpy array
             The residuals.
         """
+        self._check_has_data("residuals")
         cif_map = self._item_cif_map()
         if kind in ("cumulative_hazard", "pit"):
             e = diagnostics.cumulative_hazard_residuals(self.data, cif_map)
@@ -276,6 +277,7 @@ class ProportionalIntensityModel(
             The test result, carrying the statistic, p-value and suggested
             trend direction.
         """
+        self._check_has_data("trend_test")
         return diagnostics.trend_test(
             self.data, test=test, alternative=alternative
         )
@@ -311,6 +313,7 @@ class ProportionalIntensityModel(
         GoodnessOfFitResult
             The observed statistic and its bootstrap p-value.
         """
+        self._check_has_data("cramer_von_mises")
         return diagnostics.cramer_von_mises_regression(
             self, n_boot=n_boot, seed=seed
         )
@@ -398,7 +401,7 @@ class ProportionalIntensityModel(
         ax : matplotlib.axes.Axes
             The axes the data was plotted on.
         """
-
+        self._check_has_data("plot")
         x, r, d = self.data.to_xrd()
         if ax is None:
             ax = plt.gcf().gca()

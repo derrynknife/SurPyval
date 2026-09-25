@@ -61,7 +61,8 @@ class NonParametricCounting(SerialisableMixin):
         plain, JSON-serialisable dict.
 
         Stores the step arrays that ``mcf``/``mcf_cb`` read: the event times
-        ``x``, the estimate ``mcf_hat`` and its variance ``var``.
+        ``x``, the estimate ``mcf_hat`` and its variance ``var`` (the
+        Lawless-Nadeau robust variance for a fitted MCF).
         The raw ``data`` is not stored (it is only needed to re-fit or to plot
         raw counts).
 
@@ -181,8 +182,8 @@ class NonParametricCounting(SerialisableMixin):
             If the model carries no variance (an MCF built from simulated
             data).
         """
-        # Greenwood's variance with a normal (z) critical value. Ref found:
-        # http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
+        # The stored variance (Lawless-Nadeau robust for a fitted MCF, the
+        # per-step one for ``from_xrd``) with a normal (z) critical value.
         if bound_type not in ["exp", "normal"]:
             raise ValueError("'bound_type' must be in ['exp', 'normal']")
         if dist != "z":
@@ -214,7 +215,7 @@ class NonParametricCounting(SerialisableMixin):
                 "confidence bounds are unavailable."
             )
         if bound_type == "exp":
-            # Exponential Greenwood confidence
+            # Log-scale (exponential) bounds
             # Before the first event (possible for one cause of a
             # cause-specific MCF) the estimate and its variance are both
             # 0, and so are the bounds -- not 0/0.
@@ -321,28 +322,50 @@ class NonParametricCounting(SerialisableMixin):
         cls, x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
     ) -> "NonParametricCounting":
         """Build the Nelson-Aalen MCF from an ``(x, r, d)`` triple; the
-        single home of the estimator (cause-specific MCF used to carry a
-        drifted copy).
+        single home of the estimator.
 
         An ``(x, r, d)`` triple does not say which item each event came
-        from, so the variance here is the per-step (naive) one: each
-        step's increments are treated as independent of every other
-        step's. That is right for a Poisson process but understates the
-        variance when items differ in their rates, because it has no
-        within-item covariance. :meth:`fit` has the per-item data and
-        replaces it with the Lawless-Nadeau robust variance.
+        from, so the variance here is the per-step (naive) one, which
+        assumes that the ``d`` events at a time all happened to different
+        items (so ``d <= r``; a step with more events than items at risk
+        makes the variance NaN from there on). Each of the ``r`` items at
+        risk then contributes 1 or 0 events, and the step's increment
+        ``d / r`` has estimated variance
+
+        .. math::
+
+            \\frac{1}{r^2} \\sum_k \\Big(n_k - \\frac{d}{r}\\Big)^2
+            = \\frac{d (r - d)}{r^3},
+
+        the squared deviations of the items' counts from the step's mean
+        :math:`d/r`. Steps are treated as independent of one another. That
+        is right for a Poisson process but understates the variance when
+        items differ in their rates, because it has no within-item
+        covariance. :meth:`fit` (and ``CauseSpecificMCF``) have the per-item
+        data and replace it with the Lawless-Nadeau robust variance.
+
+        Examples
+        --------
+        Two events at a time when three items are at risk:
+
+        >>> from surpyval.recurrent import NonParametricCounting
+        >>> model = NonParametricCounting.from_xrd([1.0], [3], [2])
+        >>> model.mcf_hat, model.var
+        (array([0.66666667]), array([0.07407407]))
         """
         out = cls()
         x, r, d = np.asarray(x), np.asarray(r), np.asarray(d)
         out.x, out.r, out.d = x, r, d
         out.mcf_hat = np.cumsum(d / r)
-        var = (
-            1.0
-            / r**2
-            * (d * (1 - 1.0 / r) ** 2 + (r - d) * (0 - 1.0 / r) ** 2)
-        )
-        var = (d > 0).astype(int) * var
-        out.var = np.cumsum(var)
+        # Centred on the step's mean d / r. It used to be centred on 1 / r
+        # (the mean only when d == 1), which overstated the variance of
+        # tied steps; for d == 1 the two agree. d (r - d) / r^3 is 0 when
+        # there are no events, so no masking is needed. More events than
+        # items at risk breaks the one-event-per-item assumption, and the
+        # triple cannot say how the events were shared out, so the
+        # variance from that step on is unknown (NaN), not negative.
+        step_var = np.where(d <= r, d * (r - d) / r**3, np.nan)
+        out.var = np.cumsum(step_var)
         return out
 
     def fit_from_recurrent_data(
@@ -397,8 +420,11 @@ class NonParametricCounting(SerialisableMixin):
             enters the at-risk set once observation begins at ``tl``, so
             earlier event times are estimated over a smaller risk set.
         tr : array like or scalar, optional
-            Right-truncation time per item. Not yet supported: a finite
-            value raises a ``ValueError``.
+            Right-truncation time per item: the end of its observation
+            window. The item stays in the at-risk set up to ``tr`` and
+            leaves it after, exactly as if it had an end-of-observation
+            (``c=1``) row at ``tr`` -- the same window-close the parametric
+            NHPP fits integrate to.
         windows : dict, optional
             Gapped (multi-window) observation: a mapping ``{item: [(start,
             end), ...]}`` giving each item's disjoint observation windows.
@@ -437,6 +463,7 @@ def _lawless_nadeau_var(
     x: npt.NDArray,
     r: npt.NDArray,
     d: npt.NDArray,
+    counted: "npt.NDArray | None" = None,
 ) -> npt.NDArray:
     """The Lawless-Nadeau robust variance of the Nelson-Aalen MCF.
 
@@ -457,20 +484,29 @@ def _lawless_nadeau_var(
     into observation windows are regrouped under their original item.
     With a single item there is nothing to compare it with, and the
     variance is zero.
+
+    ``counted`` is an optional row mask restricting which events count
+    (``n_k``); ``d`` must count the same events. The cause-specific MCF
+    passes the rows of one cause, so the other causes' events count as
+    non-events while the risk set stays shared.
     """
     x_out = data.midpoints if data.x.ndim == 2 else data.x
     is_event = (data.c == 0) | (data.c == 2) | (data.c == -1)
+    if counted is not None:
+        is_event = is_event & counted
     col = np.searchsorted(x, x_out)
     dm = np.where(r > 0, d / np.where(r > 0, r, 1), 0.0)
     inv_r = np.where(r > 0, 1.0 / np.where(r > 0, r, 1), 0.0)
     window_map = getattr(data, "window_map", None) or {}
+    # The same windows the risk set ``r`` was built from, so each item's
+    # at-risk indicator agrees with its share of ``r`` (including a
+    # right-truncation close past its last row).
+    entry, exit_ = data.item_observation_windows()
 
     clusters: dict = {}
-    for item in data.items:
+    for item, entry_k, exit_k in zip(data.items, entry, exit_):
         rows = data.i == item
-        entry = data.tl[rows][0]
-        exit_ = data.x[rows].max()
-        at_risk = (entry <= x) & (x <= exit_)
+        at_risk = (entry_k <= x) & (x <= exit_k)
         n_k = np.bincount(
             col[rows & is_event],
             weights=data.n[rows & is_event],

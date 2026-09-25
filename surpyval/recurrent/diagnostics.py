@@ -520,6 +520,48 @@ def cramer_von_mises_regression(
     return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, seed)
 
 
+def _simulate_renewal_item(
+    model: Any,
+    rng: Any,
+    count: int,
+    close: "float | None",
+    max_events: int = 10_000,
+    tol: float = 1e-8,
+) -> tuple[list, list]:
+    """
+    Resimulate one item from a fitted renewal / virtual-age model the way it
+    was observed. A failure-truncated item (``close`` is ``None``) was watched
+    until its ``count``-th event, so exactly ``count`` events are drawn, all
+    exact. A time-truncated item was watched to a fixed ``close``, so events
+    are drawn until the next one would fall after ``close`` and the item ends
+    in an end-of-observation (``c=1``) row there -- its event count is random,
+    as it was in the data. Returns the item's ``(x, c)`` rows.
+
+    A sequence whose interarrival times collapse (below ``tol``, the model
+    heading for infinitely many events before ``close``) or that reaches
+    ``max_events`` cannot be observed to ``close``; that raises
+    ``ValueError`` so the bootstrap counts the replicate as failed.
+    """
+    sample = model._new_sequence_sampler()
+    x: list = []
+    running = 0.0
+    if close is None:
+        for _ in range(count):
+            running += sample(rng.uniform())
+            x.append(running)
+        return x, [0] * count
+    while True:
+        step = sample(rng.uniform())
+        running += step
+        if running > close:
+            return [*x, close], [0] * len(x) + [1]
+        if step < tol or len(x) >= max_events:
+            raise ValueError(
+                "simulated sequence did not reach its observation close"
+            )
+        x.append(running)
+
+
 def cramer_von_mises_renewal(
     model: Any, n_boot: int = 200, seed: "int | None" = None
 ) -> "GoodnessOfFitResult":
@@ -530,43 +572,46 @@ def cramer_von_mises_renewal(
 
     These processes have no marginal cumulative intensity, so the transforms
     use the compensator built from each interval's rescaled increment (the
-    conditional-intensity residual). The bootstrap simulates, for every item,
-    a fresh sequence with the item's observed number of events from the fitted
-    model, refits the full imperfect-repair model, and recomputes the
-    statistic -- so the p-value accounts for the restoration and lifetime /
-    intensity parameters having been estimated. It is therefore markedly
-    slower than the residual diagnostics (each replicate is a multi-start
-    optimisation).
+    conditional-intensity residual). The bootstrap resimulates every item
+    from the fitted model the way it was observed (see
+    :func:`_simulate_renewal_item`), refits the full imperfect-repair model,
+    and recomputes the statistic -- so the p-value accounts for the
+    restoration and lifetime / intensity parameters having been estimated.
+    It is therefore markedly slower than the residual diagnostics (each
+    replicate is a multi-start optimisation).
     """
     from surpyval.utils.recurrent_utils import handle_xicn
 
     data = model.data
     fitter = model._fitter
     increments = fitter._rescaled_increments(model, data)
-    # The observed per-item event counts drive the (count-terminated)
-    # bootstrap: each item is resimulated with the same number of events.
-    counts = [
-        int((data.c[data.i == item] == 0).sum()) for item in np.unique(data.i)
-    ]
+    # How each item was observed drives its resimulation: an item whose
+    # last row is an end-of-observation (c=1) row was watched to that fixed
+    # time (time truncated); otherwise it was watched until its last event
+    # (failure truncated), and its event count is what was fixed. The
+    # bootstrap used to resimulate every item failure-truncated, which
+    # misrepresents a fixed-window item's random event count.
+    schemes = []
+    for item in np.unique(data.i):
+        mask = data.i == item
+        c_item = data.c[mask]
+        count = int((c_item == 0).sum())
+        close = float(data.x[mask][-1]) if c_item[-1] == 1 else None
+        schemes.append((count, close))
 
     def simulate_refit(rng: Any) -> tuple:
-        x_b, i_b = [], []
-        new_id = 0
-        for count in counts:
-            if count < 1:
-                continue
-            new_id += 1
-            child = int(rng.integers(0, 2**31 - 1))
-            sim = model.count_terminated_simulation_data(
-                count - 1, items=1, seed=child
-            )
-            x_b.extend(np.asarray(sim.x, dtype=float).tolist())
-            i_b.extend([new_id] * sim.x.size)
-        if len(x_b) < 2:
+        x_b, i_b, c_b = [], [], []
+        for item_id, (count, close) in enumerate(schemes, start=1):
+            x_item, c_item = _simulate_renewal_item(model, rng, count, close)
+            x_b.extend(x_item)
+            c_b.extend(c_item)
+            i_b.extend([item_id] * len(x_item))
+        if int(np.sum(np.asarray(c_b) == 0)) < 2:
             raise ValueError("too few simulated events to refit")
         sim_data = handle_xicn(
             np.asarray(x_b, dtype=float),
             np.asarray(i_b),
+            np.asarray(c_b),
             as_recurrent_data=True,
         )
         refit = fitter._refit(model, sim_data)

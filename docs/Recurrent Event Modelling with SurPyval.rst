@@ -249,10 +249,25 @@ estimated over a smaller risk set. Pass a per-item (or scalar) entry time with
     model = NonParametricCounting.fit(x, i=i, c=c, tl=1.0)
     model.mcf(4)
 
-Right truncation (a finite ``tr``) is not yet supported by the non-parametric
-risk-set construction, and neither are counts of events (``c=2`` or ``c=-1``
-rows); SurPyval raises an error for these rather than return a wrong MCF. For
-such data use a parametric intensity model.
+**Right truncation** works the same way at the other end: a finite ``tr``
+ends an item's observation there, so the item stays at risk up to ``tr``
+exactly as it would with an end-of-observation (``c=1``) row at ``tr``. Here
+item 1 is watched until 5, so it is still at risk at item 2's event at 4
+even though its own last event was at 3:
+
+.. jupyter-execute::
+
+    x = [2, 3, 3, 4, 6]
+    i = [1, 1, 2, 2, 2]
+
+    model = NonParametricCounting.fit(x, i=i, tr=[5, 5, 8, 8, 8])
+    print("x :", model.x)
+    print("r :", model.r)
+
+Counts of events (``c=2`` or ``c=-1`` rows) are not yet supported by the
+non-parametric risk-set construction; SurPyval raises an error for these
+rather than return a wrong MCF. For such data use a parametric intensity
+model.
 
 Trend tests before fitting
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -859,17 +874,12 @@ Process.
 
 .. jupyter-execute::
 
-    import warnings
     from surpyval import Weibull
     from surpyval.recurrent import GeneralizedOneRenewal, NonParametricCounting
     import numpy as np
     x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
 
-    with warnings.catch_warnings():
-        # the optimiser's search reaches q = -1, where the likelihood takes
-        # log(0); numpy warns about it, but it does not affect the fit
-        warnings.simplefilter("ignore", RuntimeWarning)
-        model = GeneralizedOneRenewal.fit(x, dist=Weibull)
+    model = GeneralizedOneRenewal.fit(x, dist=Weibull)
     model
 
 We can see that the restoration factor is quite similar. What is interesting is
@@ -1194,10 +1204,9 @@ cause-specific MCF of the same data is the non-parametric check:
 
 The dashed steps are each cause's pointwise confidence bounds
 (``confidence`` sets the level, ``plot_bounds=False`` hides them). They use
-the simpler per-step variance rather than the Lawless-Nadeau robust variance
-of ``NonParametricCounting.fit`` (see :doc:`Recurrent Event Analysis`), so
-when pumps differ in how often they suffer a cause the bounds are too narrow;
-treat them as a lower limit on the uncertainty.
+the same Lawless-Nadeau robust variance as ``NonParametricCounting.fit`` (see
+:doc:`Recurrent Event Analysis`), computed from that cause's events, so they
+allow for pumps differing in how often they suffer a cause.
 
 Each ``pumps.models[cause]`` is an ordinary fitted recurrence model, so it
 carries the full ``cif`` / ``iif``, inference and diagnostic behaviour shown

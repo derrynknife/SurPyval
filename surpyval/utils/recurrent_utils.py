@@ -30,19 +30,13 @@ def reject_unsupported_nonparametric(
     """
     The nonparametric MCF estimators (``NonParametricCounting`` and
     ``CauseSpecificMCF``) currently only support exact events (``c=0``) and
-    right-censored end-of-observation rows (``c=1``), with at most a left
-    truncation (delayed entry) on the observation window. Right truncation,
-    left censoring and interval censoring are not yet handled correctly by the
-    risk-set construction, so reject them up front rather than silently
-    returning a wrong MCF.
+    right-censored end-of-observation rows (``c=1``), on an observation window
+    that may be left truncated (delayed entry, ``tl``) and right truncated
+    (``tr``, which closes the window like an end-of-observation row). Left
+    and interval censoring are not yet handled correctly by the risk-set
+    construction, so reject them up front rather than silently returning a
+    wrong MCF.
     """
-    if np.any(np.isfinite(np.asarray(data.tr))):
-        raise ValueError(
-            "{} does not support right truncation (finite tr) yet.".format(
-                model_name
-            )
-        )
-
     c = np.asarray(data.c)
     if np.any(c == -1):
         raise ValueError(

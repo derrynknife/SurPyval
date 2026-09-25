@@ -123,7 +123,20 @@ class RecurrentEventData:
             else:
                 x_out = self.x
 
-            x_unique = np.unique(x_out)
+            entry, exit_ = self.item_observation_windows()
+
+            # A finite right-truncation time closes the item's window just
+            # as an end-of-observation (c=1) row there would, so it joins
+            # the time grid (with no events) exactly as that row would.
+            item_tr = np.array(
+                [self.tr[self.i == item][0] for item in self.items]
+            )
+            truncated_exit = exit_[np.isfinite(item_tr)]
+            x_unique = np.unique(
+                np.concatenate([x_out, truncated_exit])
+                if truncated_exit.size
+                else x_out
+            )
 
             # TODO: consider having the presence of left-censored
             # data use the midpoints instead of the end value of the left
@@ -138,30 +151,49 @@ class RecurrentEventData:
                     for xi in x_unique
                 ]
             )
-            # Each item is at risk over its observation window: from its
-            # entry time up to and including its last observed time.
-            #
-            # The exit time is the item's maximum x (its last event or its
-            # right-censoring time). The entry time is the item's left
-            # truncation bound ``tl`` (delayed entry); when no truncation is
-            # supplied ``tl`` defaults to -inf, so the item is at risk from
-            # the start and this reduces to the all-enter-at-origin case. An
-            # item with a delayed entry only joins the risk set once ``x``
-            # reaches its ``tl``, so event times before that entry see a
-            # correspondingly smaller risk set (ignoring ``tl`` here would
-            # inflate the MCF).
-            max_x = np.array(
-                [self.x[self.i == item].max() for item in self.items]
-            )
-            entry = np.array(
-                [self.tl[self.i == item][0] for item in self.items]
-            )
+            # Each item is at risk over its observation window, from its
+            # entry up to and including its exit (see
+            # ``item_observation_windows``). An item with a delayed entry
+            # only joins the risk set once ``x`` reaches its ``tl``, so event
+            # times before that entry see a correspondingly smaller risk set
+            # (ignoring ``tl`` here would inflate the MCF).
             r = np.array(
-                [((entry <= xi) & (xi <= max_x)).sum() for xi in x_unique]
+                [((entry <= xi) & (xi <= exit_)).sum() for xi in x_unique]
             )
 
             self.xrd = x_unique, r, d
         return self.xrd
+
+    def item_observation_windows(
+        self,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        The ``(entry, exit)`` observation window of each item, aligned with
+        :attr:`items`.
+
+        The entry is the item's left-truncation bound ``tl`` (delayed
+        entry); with no truncation it is -inf, so the item is at risk from
+        the start. The exit is the item's last recorded time (its last event
+        or its end-of-observation ``c=1`` row) or, when the item carries a
+        finite right-truncation time ``tr``, that ``tr``: observation of the
+        item ends there, exactly as if it had an end-of-observation row at
+        ``tr``. This is the same window-close the NHPP likelihoods integrate
+        to (see :meth:`get_right_truncation_close`).
+
+        Returns
+        -------
+        tuple of numpy.ndarray
+            ``(entry, exit)``, one value per item.
+        """
+        x_upper = self.x if self.x.ndim == 1 else self.x[:, 1]
+        entry, exit_ = [], []
+        for item in self.items:
+            mask = self.i == item
+            entry.append(float(self.tl[mask][0]))
+            last = float(x_upper[mask].max())
+            tr_item = float(self.tr[mask][0])
+            exit_.append(max(last, tr_item) if np.isfinite(tr_item) else last)
+        return np.array(entry, dtype=float), np.array(exit_, dtype=float)
 
     @property
     def event_types(self) -> list:

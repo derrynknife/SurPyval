@@ -315,10 +315,13 @@ class RenewalModel(
         and the statistic measures their departure from uniformity. Because the
         restoration and lifetime / intensity parameters were estimated from the
         same data, the p-value is a parametric bootstrap: each item is
-        resimulated from the fitted model with its observed number of events,
-        the full model is refitted, and the statistic recomputed. Each
-        replicate is a multi-start optimisation, so this is much slower than
-        the residual diagnostics.
+        resimulated from the fitted model the way it was observed -- an
+        item whose last row is an end-of-observation (``c=1``) row over the
+        same window, with however many events the model gives it there, and
+        a failure-truncated item with its observed number of events -- the
+        full model is refitted, and the statistic recomputed. Each replicate
+        is a multi-start optimisation, so this is much slower than the
+        residual diagnostics.
 
         Parameters
         ----------

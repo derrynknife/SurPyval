@@ -136,29 +136,47 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         dist: Any,
     ) -> Callable:
         def negll_func(params: np.ndarray) -> float:
-            ll = 0
             q = params[0]
             dist_params = params[1:]
+            # Nelder-Mead's box bounds clip trial points onto the closed
+            # bounds, so the optimiser does evaluate q = -1 (every scale
+            # (1 + q) ** j with j > 0 is zero) and distribution parameters
+            # at their limits (a Weibull alpha of 0). The likelihood is zero
+            # there, so say so with inf rather than dividing by zero.
+            if not q > -1 or _outside_open_bounds(dist_params, dist.bounds):
+                return np.inf
+            # log((1 + q) ** j) in log space, so a q near -1 does not
+            # underflow the scale to zero.
+            log1p_q = np.log1p(q)
 
-            for item in set(i):
-                mask_item = i == item
-                x_item = np.atleast_1d(x[mask_item])
-                c_item = np.atleast_1d(c[mask_item])
-                n_item = np.atleast_1d(n[mask_item])
-                for j in range(0, len(x_item)):
-                    # The jth interarrival is the base lifetime scaled by
-                    # cj = (1 + q) ** j. Scaling the random variable by cj is
-                    # equivalent to evaluating the base distribution on a
-                    # rescaled time axis: f_j(x) = f0(x / cj) / cj and
-                    # S_j(x) = S0(x / cj).
-                    cj = (1.0 + q) ** j
-                    xj = x_item[j] / cj
-                    if c_item[j] == 0:
-                        ll += n_item[j] * (
-                            dist.log_df(xj, *dist_params) - np.log(cj)
-                        )
-                    elif c_item[j] == 1:
-                        ll += n_item[j] * dist.log_sf(xj, *dist_params)
+            ll = 0.0
+            # Far from the optimum the rescaled times can still overflow
+            # (x / c_j -> inf) and the densities underflow to zero. That
+            # only happens where the likelihood is negligible, and a
+            # non-finite total is returned as inf below, so the arithmetic
+            # warnings on the way there carry no information.
+            with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+                for item in set(i):
+                    mask_item = i == item
+                    x_item = np.atleast_1d(x[mask_item])
+                    c_item = np.atleast_1d(c[mask_item])
+                    n_item = np.atleast_1d(n[mask_item])
+                    for j in range(0, len(x_item)):
+                        # The jth interarrival is the base lifetime scaled
+                        # by cj = (1 + q) ** j. Scaling the random variable
+                        # by cj is equivalent to evaluating the base
+                        # distribution on a rescaled time axis:
+                        # f_j(x) = f0(x / cj) / cj and S_j(x) = S0(x / cj).
+                        log_cj = j * log1p_q
+                        xj = x_item[j] * np.exp(-log_cj)
+                        if c_item[j] == 0:
+                            ll += n_item[j] * (
+                                dist.log_df(xj, *dist_params) - log_cj
+                            )
+                        elif c_item[j] == 1:
+                            ll += n_item[j] * dist.log_sf(xj, *dist_params)
+            if not np.isfinite(ll):
+                return np.inf
             return -ll
 
         return negll_func
@@ -255,12 +273,12 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
         else:
             inits = None
-        res = self._multistart(fit_once, inits, init)
+        res = self._multistart(fit_once, inits, init, neg_ll)
 
         underlying_model = dist.from_params(list(res.x[1:]))
         q = res.x[0]
         out = self._make_model(underlying_model, q)
-        self._attach_inference(out, neg_ll, res.x, len(data.x), res, data)
+        self._attach_inference(out, neg_ll, res.x, res, data)
         return out
 
     def fit(
@@ -371,3 +389,14 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         self._check_dist_eligible(dist)
         model = dist.from_params(params)
         return self._make_model(model, q)
+
+
+def _outside_open_bounds(params: np.ndarray, bounds: Any) -> bool:
+    """Whether any parameter is on or beyond its (open) bound; ``None``
+    marks an unbounded side."""
+    for p, (lower, upper) in zip(params, bounds):
+        if (lower is not None and not p > lower) or (
+            upper is not None and not p < upper
+        ):
+            return True
+    return False

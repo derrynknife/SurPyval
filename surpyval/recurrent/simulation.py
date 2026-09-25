@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 from scipy.stats import uniform
 
+from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.nonparametric import NonParametricCounting
 
 STALLED_WARNING = (
@@ -426,11 +427,7 @@ class RecurrenceSimulationMixin:
         matplotlib axes
             The axes with the plot.
         """
-        if not hasattr(self, "data"):
-            raise ValueError(
-                "plot requires a model fitted from data; fit_from_parameters "
-                "models carry no data to compare against."
-            )
+        require_data(self, "plot")
         x, r, d = self.data.to_xrd()
         if ax is None:
             ax = plt.gcf().gca()

@@ -4,6 +4,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
+from surpyval.recurrent.inference import observed_event_count
 from surpyval.univariate.parametric.fitters import bounds_convert
 
 
@@ -70,6 +71,7 @@ class RenewalFitMixin:
         fit_once: Callable,
         inits: "list | None",
         user_init: "ArrayLike | None",
+        neg_ll: "Callable | None" = None,
     ) -> Any:
         """
         Drive the multi-start fit. ``fit_once(x0) -> OptimizeResult`` runs the
@@ -77,11 +79,27 @@ class RenewalFitMixin:
         ``init`` every start in ``inits`` is tried and the converged result
         with the lowest objective is returned; a user ``init`` is run once.
 
+        With ``neg_ll`` (the natural-space negative log-likelihood) the
+        starts at which it is not finite are skipped: they lie outside the
+        model's support (e.g. an ARI repair efficiency that drives the
+        intensity negative), where every vertex of Nelder-Mead's initial
+        simplex is typically infinite too. The simplex can then neither
+        move nor converge -- it only runs out its iterations, with scipy
+        warning about ``inf - inf`` in its convergence test -- and the
+        start was going to be discarded as unconverged anyway.
+
         Raises ``ValueError`` with the shared messages when nothing converges.
         """
+
+        def feasible(x0: Any) -> bool:
+            if neg_ll is None:
+                return True
+            return bool(np.isfinite(neg_ll(np.asarray(x0, dtype=float))))
+
         if user_init is None:
             assert inits is not None
-            results = [res for res in map(fit_once, inits) if res.success]
+            starts = [x0 for x0 in inits if feasible(x0)]
+            results = [res for res in map(fit_once, starts) if res.success]
             if not results:
                 raise ValueError(
                     "Could not find a good solution. "
@@ -89,6 +107,12 @@ class RenewalFitMixin:
                 )
             return results[int(np.argmin([res.fun for res in results]))]
 
+        if not feasible(user_init):
+            raise ValueError(
+                "The provided `init` has zero likelihood (it is outside "
+                "the model's support for this data). Try a different "
+                "initial guess."
+            )
         res = fit_once(user_init)
         if not res.success:
             raise ValueError(
@@ -141,7 +165,7 @@ class RenewalFitMixin:
             inits = [[r0, *dist_init_params] for r0 in restoration_inits]
         else:
             inits = None
-        res = self._multistart(fit_once, inits, init)
+        res = self._multistart(fit_once, inits, init, neg_ll)
         return res, inv_trans(res.x)
 
     def _attach_inference(
@@ -149,7 +173,6 @@ class RenewalFitMixin:
         model: Any,
         neg_ll: Callable,
         mle: ArrayLike,
-        n_obs: int,
         res: Any,
         data: Any,
     ) -> Any:
@@ -157,7 +180,9 @@ class RenewalFitMixin:
         Store the fit artefacts and the attributes
         :class:`LikelihoodInferenceMixin` needs: ``_neg_ll`` (the negative
         log-likelihood in natural parameter space), ``_mle`` (the fitted
-        parameters in that space) and ``_n_obs``. Also keeps a reference to
+        parameters in that space) and ``_n_obs`` (the exactly observed
+        events, BIC's sample size, counted the same way for every model).
+        Also keeps a reference to
         the fitter (``_fitter``) so the fitted model can reuse its
         family-specific rescaled-increment (time-rescaling residual) logic.
         """
@@ -166,5 +191,5 @@ class RenewalFitMixin:
         model._fitter = self
         model._neg_ll = neg_ll
         model._mle = np.asarray(mle, dtype=float)
-        model._n_obs = int(n_obs)
+        model._n_obs = observed_event_count(data)
         return model
