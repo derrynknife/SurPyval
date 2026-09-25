@@ -4,7 +4,7 @@ Data Wrangling Examples
 
 Every SurPyval fitter takes data in the same form: values ``x``, censoring flags ``c``, counts ``n`` and truncation ``t`` (or ``tl`` and ``tr``), described in :doc:`Conventions`. Data rarely arrives that way. It comes as a list of failures and a list of survivors, as text with "+" marks, as a spreadsheet of install and removal dates, or as counts found at each inspection. This page shows how to get from each of these to something ``fit()`` accepts. The general recipe is always the same: decide, for each item, *what is known about its value* (exact, above a value, below a value, or between two values) and *whether it could have been missed altogether* (truncation), then write that down as ``x``, ``c``, ``n`` and ``t``.
 
-Lets just say we have a list of right censored data and a list of failures. How can we wrangle these into data for the :code:`fit()` method to accept?
+Let's say we have a list of failures and a list of right censored (suspended) values. How can we wrangle these into data for the :code:`fit()` method to accept?
 
 .. jupyter-execute::
 
@@ -294,10 +294,20 @@ non-parametric estimators think in:
    * - ``xrd_to_xcnt(x, r, d)``
      - ``xrd`` → ``xcnt``
    * - ``xcn_to_fs(x, c, n)``
-     - ``xcnt`` → failure / suspension lists
+     - ``x``, ``c``, ``n`` (no truncation) → failure / suspension lists
    * - ``xcnt_handler(x, c, n, t, xl, xr, tl, tr)``
      - validates any ``xcnt`` input and returns it grouped and sorted, as the
        fitters see it
+   * - ``SurpyvalData(x, c, n, t, xl, xr, tl, tr)``
+     - the same validation, returned as the object the fitters use
+       internally; ``.to_xrd()`` gives its ``xrd`` form and ``to_json`` /
+       ``from_json`` save and restore it
+   * - ``fsli_handler(f, s, l, i)``, ``xrd_handler(x, r, d)``
+     - validate data already in the ``fsli`` or ``xrd`` layout (for example,
+       more deaths than items at risk is an error)
+   * - ``handle_xicn(x, i, c, n, ...)``
+     - validates recurrent event data (``xicnt``) and returns the
+       ``RecurrentEventData`` object the recurrent models use
 
 The conversions are not all lossless, and it pays to know where they drop
 information:

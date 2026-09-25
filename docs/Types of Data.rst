@@ -58,7 +58,7 @@ In each case the item is *in* the data set: we know it exists and that it failed
      - :math:`x_l < X \leq x_r`
      - failures found at periodic inspections
 
-Survival analysis has several methods for handling censored data in the parametric and non-parametric analysis. Surpyval is able to handle an input that has an arbitrary combination of observed and left, right, and intervally censored failure data. Although, not all methods can handle all types of data. This is covered in the sections on each of the estimation and fitting methods, and summarised at the end of this page.
+Survival analysis has several methods for handling censored data in the parametric and non-parametric analysis. Surpyval is able to handle an input that has an arbitrary combination of observed and left, right, and intervally censored failure data, although not all methods can handle all types of data. This is covered in the sections on each of the estimation and fitting methods, and summarised at the end of this page.
 
 Flagging censoring in SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -87,7 +87,7 @@ The two fits differ, and they should: the inspection data carries less informati
 
 A few rules make the flags unambiguous:
 
-- An interval censored row (``c = 2``) must have two values, ``[lower, upper]``, with ``lower < upper``. Every other row has a single value. If ``x`` has two columns, a row whose two values are equal is an exact observation.
+- An interval censored row (``c = 2``) must have two values, ``[lower, upper]``, with ``lower < upper``. Every other row has a single value. If ``x`` is given as two columns, a row that is not an interval repeats its value, ``[v, v]``, and its flag says whether it is observed, left censored or right censored (flagging such a row ``2`` is an error).
 - An interval with an infinite end is really a one-sided censoring, and SurPyval converts it: ``[v, inf]`` becomes right censored at ``v`` and ``[-inf, v]`` becomes left censored at ``v``. This is convenient when data comes as "last seen working" and "first seen failed" columns (see :doc:`Data Wrangler Examples`).
 - If ``c`` is not given but ``x`` has two columns, each row with different values is flagged as interval censored and each row with equal values as observed.
 
@@ -143,7 +143,7 @@ In biostatistics left truncation is known as 'late-entry', this is because in cl
 
 Right truncated data is when you only observe a value because it happened below some time. For example, in the light bulb experiment, I received some of the bulbs that passed the burn in test. That is, I received some of the bulbs that survived the original 500 hours of testing. But if the failed bulbs were then given to an engineering team to investigate possible design changes that will improve reliability; they will have a series of failure times that must be below 500 hours. That is, from their perspective, they have data that is right truncated. There is one condition to this situation, they must not know how many other bulbs were tested. If they knew how many other bulbs were tested, they would know how many would fail after 500 hours. That is, they would know that all the other bulbs are right censored. So for our engineers investigating the failed bulbs, they must be ignorant of how many other bulbs were actually tested for the right truncation to work for them. In many applications we do know how many were under test and therefore right truncation becomes right censoring, but from our engineers' circumstance, we can see that their data is right truncated.
 
-Parametric and non-parametric analysis can both handle left truncated data. This is explained further in the estimation methods for both these methods. Right truncation can be handled in surpyval with parametric analysis, with Maximum Likelihood Estimation and, when every observation shares the same truncation value, with Maximum Product Spacing; non-parametrically it is handled by the Turnbull estimator. This is also explained in their respective sections of these notes.
+Parametric and non-parametric analysis can both handle left truncated data. This is explained further in the estimation methods for both these methods. Right truncation can be handled in surpyval with parametric analysis, with Maximum Likelihood Estimation, with Maximum Product Spacing when every observation shares the same truncation value, and with probability plotting using the Turnbull heuristic; non-parametrically it is handled by the Turnbull estimator. This is also explained in their respective sections of these notes.
 
 In surpyval, passing truncated data to the fitting method looks like:
 
@@ -252,7 +252,7 @@ Not every estimator can use every type of data. For the univariate estimators:
      - Yes
      - With ``heuristic="Turnbull"``
      - With ``heuristic="Turnbull"``
-     - Yes
+     - Yes, with the (default) Nelson-Aalen, Kaplan-Meier, Fleming-Harrington or Turnbull heuristic
      - With ``heuristic="Turnbull"``
    * - Mean Square Error (MSE)
      - Yes

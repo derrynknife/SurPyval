@@ -4,7 +4,7 @@ Handy References - Aide-mémoire
 Relationship between functions of a probability distribution
 ------------------------------------------------------------
 
-There exists a relationship between each of the functions of a distribution and the others. This can be very useful to keep in mind when understanding how surpyval works. For example, the Nelson-Aalen estimator is used to estimate the cumulative hazard function (Hf), the below relationships is how distribution for this can be used to estimate the survival function, or the cdf.
+Each of the functions of a distribution can be computed from any of the others. This is very useful to keep in mind when understanding how SurPyval works. For example, the Nelson-Aalen estimator estimates the cumulative hazard function (``Hf``), and the relationships below turn that estimate into a survival function or a CDF.
 
 .. image:: images/relationships.png
   :align: center
@@ -52,7 +52,7 @@ The identities in the table, written out:
 
 The hazard is the one that most often causes confusion. It is not a probability: it is a *conditional rate*, and it can be greater than one. Its shape is what distinguishes infant mortality (decreasing hazard), random failures (constant hazard) and wear-out (increasing hazard); it is also the quantity that proportional hazards models act on.
 
-Every SurPyval model computes all five, so the identities can be checked directly:
+Every univariate SurPyval model, parametric or non-parametric, has all five methods, so the identities can be checked directly. (A non-parametric estimate is a step function, so its ``hf`` and ``df`` are the sizes of the jumps between the points you ask for, not rates; ``smoothed_hf`` gives a smoothed hazard rate. See :doc:`Non-Parametric SurPyval Modelling`.)
 
 .. jupyter-execute::
 
@@ -90,7 +90,7 @@ Two more families are in SurPyval: the proportional odds (PO) model multiplies t
 
 When the life parameter is a scale parameter of time, as the :math:`\alpha` of the Weibull or LogLogistic is, an AL model with :math:`\alpha(x) = \alpha_0 / \phi(x)` is exactly the AFT model :math:`R_0(\phi(x) t)`, which is why the two terms are often used interchangeably. They differ when the life parameter enters the distribution differently, for example the mean of a Normal distribution, where changing the mean shifts the distribution rather than stretching it.
 
-SurPyval has implementations, and even a general constructor, for AFT, AL, and PH models: ``surv.AFT(dist)``, ``surv.AcceleratedLife(dist, life_model)`` and ``surv.PH(dist)`` build a model from any suitable distribution, and common combinations are ready-made (``surv.WeibullAFT``, ``surv.WeibullPH``, ...). Each of which can handle arbitrary censoring, and the parametric regression fitters accept truncation through ``t``.
+SurPyval has implementations, and even a general constructor, for each of these families: ``surv.AFT(dist)``, ``surv.AcceleratedLife(dist, life_model)``, ``surv.PH(dist)``, ``surv.PO(dist)`` and ``surv.AH(dist)`` build a model from any suitable distribution, and common combinations are ready-made (``surv.WeibullAFT``, ``surv.WeibullPH``, ``surv.WeibullPO``, ...). Each of them can handle arbitrary censoring, and accepts truncation through ``t``.
 
 The Weibull is both AFT and PH
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

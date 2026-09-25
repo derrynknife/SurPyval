@@ -1,10 +1,46 @@
 Contributing
 ============
 
-If you want to contribute to SurPyval, please do! Please review the current open `feature reqeusts 
-<https://github.com/derrynknife/SurPyval/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement>`_ to see if your desired feature is in the requests. If not, please raise a new one to notify the community. We can assign you feature for you to branch and develop.
+If you want to contribute to SurPyval, please do! Please review the current open `feature requests
+<https://github.com/derrynknife/SurPyval/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement>`_ to see if your desired feature is in the requests. If not, please raise a new one to notify the community. We can assign the feature to you to branch and develop.
 
-SurPyval is in the process of complying with the PEP8 standard so please make all contributions as per that standard.
+Setting up
+----------
+
+SurPyval supports Python 3.11, 3.12 and 3.13. From a clone of the repository,
+install the package in editable mode with the test and development tools, and
+the pre-commit hooks:
+
+.. code-block:: bash
+
+    pip install -r requirements_dev.txt   # installs -e .[tests] plus the tools
+    pre-commit install
+
+Code style is enforced rather than requested. The pre-commit hooks
+(``.pre-commit-config.yaml``) run isort, pyupgrade (Python 3.11+ syntax),
+black (line length 79), flake8 and mypy on every commit, and the lint job in
+continuous integration runs ``flake8``, ``mypy`` and ``black --check`` on the
+``surpyval`` package. mypy is strict about annotations: every function in the
+package must be type annotated (``disallow_untyped_defs``); only the tests and
+the ``surpyval.alpha`` tree are exempt.
+
+To run the tests as continuous integration does:
+
+.. code-block:: bash
+
+    python -m pytest -n auto --ignore=surpyval/tests/alpha --run-ml
+    python -m pytest --doctest-modules surpyval --ignore=surpyval/tests --ignore=surpyval/alpha
+
+The first line is the test suite (``-n auto`` spreads it over your cores, and
+``--run-ml`` includes the slow survival tree and forest tests, which are
+skipped by default). The second executes the ``>>>`` examples in the
+docstrings and checks their printed output, so a docstring example is a
+tested promise like any other. ``--run-invariants`` opts in to a slower
+combinatorial sweep of the parametric fitting paths, worth running after
+changing a likelihood, an initial guess or an optimiser.
+
+Describe any change a user would notice in ``docs/changelog.rst``, under the
+unreleased version at the top.
 
 Branching and releases
 ----------------------
@@ -35,9 +71,16 @@ than on every push to every branch. Not every job runs on every event:
    * - Pull request into ``master`` (the release)
      - lint, the test suite across three interpreters, and the
        documentation build (about ten minutes)
-   * - Push to ``master`` / tag
+   * - Push to ``master``
      - lint and the test suite; Read the Docs rebuilds the hosted
        documentation
+   * - Push of a ``v*`` tag
+     - ``.github/workflows/publish.yml`` checks that the tag matches the
+       version in ``pyproject.toml``, builds the package and publishes it
+       to PyPI; Read the Docs builds the tagged documentation
+
+The test job also runs the docstring examples (twice: once as text, once
+forcing a numerical comparison of every number) and reports coverage.
 
 The test suite and the documentation build are both gated at the release
 rather than on every pull request because of what they cost: the suite is
@@ -54,8 +97,9 @@ release's worth of commits to search through rather than one. So:
 
 * Run the suite locally before pushing, and across more than one interpreter
   when you have touched anything numerical. ``scripts/check_all_pythons.py``
-  does exactly that -- it runs what continuous integration would have run, on
-  3.11, 3.12 and 3.13:
+  does exactly that -- it runs the test suite and the doctests as continuous
+  integration would (not lint, which runs on every pull request anyway, and
+  not the documentation build), on 3.11, 3.12 and 3.13:
 
   .. code-block:: bash
 
@@ -99,8 +143,9 @@ of them instead of stopping at the first.
 When writing documentation, prefer ``.. jupyter-execute::`` over static
 ``.. code-block:: python`` blocks with pasted outputs or screenshots. All
 cells in a page share one kernel, so later cells can use variables defined
-in earlier ones. If a cell intentionally emits a warning, add the
-``:stderr:`` option so the warning is rendered in the page rather than
-failing the build log.
-
-
+in earlier ones. Anything a cell writes to stderr fails the build, so cells
+must run without warnings: fix the example (better data or arguments) rather
+than hide a warning. Only when the warning is itself the point being taught,
+add the ``:stderr:`` option so it is rendered in the page. Seed any
+randomness, so the numbers quoted in the text are the numbers the build
+prints.

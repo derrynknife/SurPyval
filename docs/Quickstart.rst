@@ -3,6 +3,8 @@ Quickstart
 
 
 So, you know what survival analysis is and you just want to see what this can do.
+(If you have not installed it yet: ``pip install surpyval``; it needs Python
+3.11 or later.)
 
 Everything in *SurPyval* follows one pattern. A **fitter** (``surv.Weibull``,
 ``surv.KaplanMeier``, ``surv.CoxPH``, ...) has a ``fit()`` method that takes
@@ -61,7 +63,7 @@ Censored data: one extra argument
 ---------------------------------
 
 Real data is rarely this complete. Suppose the test had been stopped at 100
-million revolutions: the six bearings still running at that point have not
+million revolutions: the five bearings still running at that point have not
 failed, all we know is that their lives are *longer than* 100. These are
 **right censored** observations, flagged with ``c = 1`` (an observed failure
 is ``c = 0``):
@@ -81,11 +83,11 @@ is ``c = 0``):
     print("ignoring them             :", naive_model.params)
 
 The censored fit recovers parameters close to the fit on the complete data.
-The naive fit, which pretends the six survivors failed at exactly 100,
+The naive fit, which pretends the five survivors failed at exactly 100,
 underestimates the scale :math:`\alpha` (the characteristic life) and
 overstates the shape :math:`\beta`: it concludes that the bearings wear out
 sooner and more abruptly than they do. Throwing away information about
-survivors *always* biases a life estimate downwards, which is why getting
+survivors systematically biases a life estimate downwards, which is why getting
 censoring right is the heart of survival analysis. :doc:`Types of Data` explains
 every kind of censoring and truncation SurPyval supports.
 
@@ -145,7 +147,7 @@ Regression
 
 Regression models let the life depend on covariates ``Z`` (a stress, a
 treatment, a design option). Each row of ``Z`` holds the covariates of the
-matching row of ``x``. Here half the units run in condition ``Z = 1``, which
+matching row of ``x``. Here about half the units run in condition ``Z = 1``, which
 lengthens life by a factor of :math:`e^{0.7} \approx 2`:
 
 .. jupyter-execute::
@@ -165,7 +167,9 @@ The accelerated failure time (AFT) model multiplies *time* by
 condition 1 runs the clock at about :math:`e^{-0.6} \approx 0.55` of the speed
 of condition 0. Other families act on the hazard (``WeibullPH``,
 ``CoxPH``), on the odds (``WeibullPO``) or add to the hazard
-(``AdditiveHazards``). Theory: :doc:`regression analysis`. How-to:
+(``AdditiveHazards``), and ``AcceleratedLife`` makes a life parameter
+follow an engineering life-stress relationship such as the Arrhenius or
+power law. Theory: :doc:`regression analysis`. How-to:
 :doc:`Regression Modelling with SurPyval`.
 
 Competing risks

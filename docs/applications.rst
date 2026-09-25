@@ -1,7 +1,7 @@
 Example Applications
 ====================
 
-This section documents some of the applications that SurPyval as a survival analysis toolkit can be useful to you, no matter what discipline you need it for.
+This section works through complete analyses from several fields, to show how SurPyval can be useful to you whatever your discipline. Each example touches ideas explained elsewhere: censoring (:doc:`Types of Data`), limited failure populations, offsets and saving models (:doc:`Conventions`), and custom distributions (:doc:`Parametric SurPyval Modelling`).
 
 Boston House Prices
 -------------------
@@ -99,7 +99,7 @@ A ``CustomDistribution`` only needs the cumulative hazard function; SurPyval der
 
 Much better! The knot sits at about half the cap, near $25,000, which is where the 'disconnect' in the earlier plots was.
 
-It must be said that this is a bit 'hacky'. There is no theory that we are using to guide the choice of the spline model, we are simply finding the best fit to the data. For example, this model would not able to be used for extrapolation too far beyond $50,000, this is because the model is limited to 97.1% of houses (the fitted :math:`p`). A separate spline would be needed to model those data. The extra flexibility also has a cost: five parameters plus :math:`p` can fit almost any smooth curve, so a better fit on its own is weak evidence that the model is right. However, the example shows the importance of censoring and the power of the surpyval API!
+It must be said that this is a bit 'hacky'. There is no theory that we are using to guide the choice of the spline model, we are simply finding the best fit to the data. For example, this model could not be used for extrapolation too far beyond $50,000, this is because the model is limited to 97.1% of houses (the fitted :math:`p`). A separate spline would be needed to model those data. The extra flexibility also has a cost: five parameters plus :math:`p` can fit almost any smooth curve, so a better fit on its own is weak evidence that the model is right. However, the example shows the importance of censoring and the power of the surpyval API!
 
 
 Applied Reliability Engineering
@@ -171,7 +171,6 @@ This can be implemented in surpyval with relative ease: a ``CustomDistribution``
 We now have a GM distribution object that can be used to fit data. But we need some data:
 
 .. jupyter-execute::
-    :stderr:
 
     # GM qf()
     def qf(p, params):
@@ -224,12 +223,12 @@ which is one minus the conditional survival, ``cs(2, 60)``: the probability of s
 
 From the results above, you can see that the probability of death over the two year interval is approximately 3.0%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $3,019.39. Therefore, to make a profit, the policy will need to cost more than $3,019.39. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $3,321.33. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $138.39 for two years (in the case of death the amount owing can be subtracted from the payout). Using the unconditional probability instead would have underpriced the policy by about 15%, because it spreads part of the risk over the people who never reach 60.
 
-Although this is a basic example, as insurance companies would have much more sophisticated models, it shows the basics of how demographic and actuarial data can be used. This shows the application of surpyval to actuarial and demogrphic studies.
+Although this is a basic example, as insurance companies would have much more sophisticated models, it shows the basics of how demographic and actuarial data can be used. This shows the application of surpyval to actuarial and demographic studies.
 
 Applied Reliability Engineering - 2
 -----------------------------------
 
-In reliability engineering you can come across the case where a new product has been built that is similar in design to a previous, but has better materias, geometry, seals.. etc. You have data from the tests of the old product and new results for the same test on the new product. The only problem, the new product only had one failure in the test! What will you do?
+In reliability engineering you can come across the case where a new product has been built that is similar in design to a previous, but has better materials, geometry, seals, etc. You have data from the tests of the old product and new results for the same test on the new product. The only problem, the new product only had one failure in the test! What will you do?
 
 Given the similarities, it is common to use the same shape parameter, the :math:`\beta` value, from a similar product as an initial estimate. In this case, we may need to know the reliability of the item in the field. We can create a model of this new product, but first the old product:
 
@@ -257,16 +256,16 @@ The characteristic life of the new bearing is over 10 times higher! Quite an imp
 Social Science / Criminology
 ----------------------------
 
-Another application of surpyval is when encountering extreme values. The Weibull distribution is one of the limiting cases of the Generalized Extreme Value distribution. In other words, the Weibull distribution is the distribution that can model the strength of a chain because it can model the extreme value, in this case the minimum, of a collection of distributions. A chain is as only as strong as it's weakest link. If there are many many links in a chain (which is a fair assumption) then links of which follow a known strength distribution, then the strength of the chain will will follow a Weibull distribution. It is for this reason that the Weibull distribution is so widely used.
+Another application of surpyval is when encountering extreme values. The Weibull distribution is one of the limiting cases of the Generalized Extreme Value distribution. In other words, the Weibull distribution is the distribution that can model the strength of a chain because it can model the extreme value, in this case the minimum, of a collection of distributions. A chain is only as strong as its weakest link. If a chain has many links, each with a strength drawn from the same distribution (bounded below, as strengths are), then the strength of the chain will approximately follow a Weibull distribution. It is for this reason that the Weibull distribution is so widely used.
 
-Another extreme value is the maximum. The maximum extreme value distribution is the Frechet distribution. But, if you simply inverse a minimum, you can get a maxmimum. Therefore, if we know our data is following a process of finding a maximum, then we can use the Weibull distribution to model the phenonmena.
+Another extreme value is the maximum. The maximum extreme value distribution is the Frechet distribution. But the reciprocal of a maximum is the minimum of the reciprocals, :math:`1/\max_i x_i = \min_i (1/x_i)`. Therefore, if we know our data is following a process of finding a maximum, we can model the reciprocals of the data with the Weibull distribution.
 
 .. warning::
     This may be a distressing topic for some readers.
 
-Social scientists and criminologists are interested in understanding the phenomena of mass shootings in an effort to eliminate the scourge from society. A mass shooting is an extreme event, and an extreme event can be modelled to understand the risks of future occurence, and with that understanding, the effect of interventions can also be understood.
+Social scientists and criminologists are interested in understanding the phenomena of mass shootings in an effort to eliminate the scourge from society. A mass shooting is an extreme event, and an extreme event can be modelled to understand the risks of future occurrence, and with that understanding, the effect of interventions can also be understood.
 
-Using the gun violence data from `Kaggle <https://www.kaggle.com/jameslko/gun-violence-data>`_ we can model the process. That is, if we take the maximum number of deaths in a given month over several years, we have data that can be used to estimate the probability of something even worse occuring. This data covers the period from 2013 to 2018, see Kaggle for more details.
+Using the gun violence data from `Kaggle <https://www.kaggle.com/jameslko/gun-violence-data>`_ we can model the process. That is, if we take the maximum number of deaths in a given month over several years, we have data that can be used to estimate the probability of something even worse occurring. This data covers the period from 2013 to 2018, see Kaggle for more details.
 
 .. code:: python
 
@@ -288,7 +287,7 @@ Using the gun violence data from `Kaggle <https://www.kaggle.com/jameslko/gun-vi
 .. image:: images/applications-crime-1.png
     :align: center
 
-It is worth reminding that since we have taken the inverse, it is the lower values that represent more victims. And it is the extremes that we are trying to capture. You can see from the above plot that the model does not fit the data from 0.02 to 0.1 very well. We can try using a different approach
+It is worth remembering that since we have taken the reciprocal, it is the lower values that represent more victims. And it is the extremes that we are trying to capture. You can see from the above plot that the model does not fit the data from 0.02 to 0.1 very well. We can try a different approach: probability plotting with an offset.
 
 .. code:: python
 
@@ -299,7 +298,7 @@ It is worth reminding that since we have taken the inverse, it is the lower valu
 .. image:: images/applications-crime-2.png
     :align: center
 
-You can see that this model is a much better description of the data. However, the problem is that it cannot have a real interpretation. Because the offset is negative, that means there is a non-zero probability of 0, which because the data was inversed, means that there is a non-zero probability of having a shooting with infinite victims. This model is therefore not a good option for such extreme extrapolations. The model can however, be used to estimate the probabiltiy of having a shooting as bad or worse than the most extreme event up to 2040.
+You can see that this model is a much better description of the data. However, the problem is that it cannot have a real interpretation. Because the offset is negative, there is a non-zero probability of values at and below 0, which, because we took reciprocals, means that there is a non-zero probability of having a shooting with infinite victims. This model is therefore not a good option for such extreme extrapolations. The model can however, be used to estimate the probability of having a shooting as bad or worse than the most extreme event up to 2040.
 
 .. code:: python
 
@@ -314,17 +313,16 @@ You can see that this model is a much better description of the data. However, t
 
     (1.6077640040390584, 96.98325003600236)
 
-The model estimates that there is an approximately 1.6% chance of an event killing 50 or more people in a given month, which may seem low, however, because there are 216 months between 2022 and 2040 the chances of not having as extreme an event over that time period becomes horrifyingly small. The model suggests that the probability of having a month in which an event with more than 50 people will be killed, has a 97.0% chance of happening from 2022 to 2040. Chilling.
+The model estimates that there is an approximately 1.6% chance of an event killing 50 or more people in a given month, which may seem low, however, because there are 216 months between 2022 and 2040 the chances of not having as extreme an event over that time period becomes horrifyingly small. The model suggests a 97.0% chance that, between 2022 and 2040, there is at least one month with an event in which 50 or more people are killed. Chilling.
 
-This is a bit higher than other reports of the same prediction, see [Duwe]_ who report at 35% probability, which is some, but not even close to complete, relief.
+This is a lot higher than other forecasts of the same event, see [Duwe]_ who report a 35% probability, which is some, but not even close to complete, relief.
 
 Economics
 ---------
 
-Economists are interested in the times between recessions. This information helps them formulate policy prescriptions that may (or may not) reduce the duration of a recession, or the time between recessions. Using data from Tadeu Cristino et al. [TC]_ we can use real data to estimate the probability of a recession.
+Economists are interested in the times between recessions. This information helps them formulate policy prescriptions that may (or may not) reduce the duration of a recession, or the time between recessions. Using data from Tadeu Cristino et al. [TC]_ on the US business cycle, we can estimate the distribution of the time from the end of one recession to the start of the next.
 
 .. jupyter-execute::
-    :stderr:
 
     import numpy as np
     import pandas as pd
@@ -370,7 +368,7 @@ We can communicate what the expected time between recessions is:
 
     model.mean()
 
-Therefore the average growth period is 1,178 days, or about 3.2 years between recessions.
+Therefore the average growth period is 1,178 days, or about 3.2 years between recessions (the plain average of the 33 observed expansions is 1,179 days, so the model and the data agree).
 
 References
 ----------

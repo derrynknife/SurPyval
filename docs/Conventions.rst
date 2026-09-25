@@ -7,15 +7,15 @@ This page is the reference for the conventions the rest of the documentation rel
 Data Formats
 ------------
 
-The conventional formats use in surpyval are:
+The conventional formats used in SurPyval are:
 
 - xcnt = x variables, with c as the censoring scheme, n as the counts, and t as the truncation
 - xrd  = x variables, with the risk set, r, at x and the deaths, d, also at x
 - xicnt = x variables, with c as the censoring scheme, n as the counts, and t as the truncation, and i as the item number
 
-All functions in surpyval have default handling conditions for c and n. That is,
+All functions in SurPyval have default handling for c and n. That is,
 if these variables aren't passed, it is assumed that there was one observation
-and it was a failure for every x. Truncation defaults to none (an observation
+and it was a failure (``c = 0``, ``n = 1``) for every x. Truncation defaults to none (an observation
 window of :math:`(-\infty, \infty)`). For recurrent event models, if i is not passed
 it is assumed that it is all from the same item.
 
@@ -86,15 +86,13 @@ Recurrent event data (items that fail, are repaired and fail again) adds ``i``, 
 Variable Names
 --------------
 
-Before discussing the formats, the conventions for variable names needs to be clarified.
-
-For single event survival models we use, the xcnt format. These mean:
+The same variable names are used everywhere in SurPyval, in code and in these pages. For single event survival models, the xcnt format, they mean:
 
 - x  = The random variable (time, stress etc.) array. For interval censored rows the entry is a pair ``[lower, upper]``.
 - xl = The random variable (time, stress etc.) array for the left interval of interval censored data.
 - xr = The random variable (time, stress etc.) array for the right interval of interval censored data.
 - c  = An array with the censor flag for each x
-- n  = The count array associated with x. Must be positive integers.
+- n  = The count array associated with x: the number of items that share the row's value, flag and truncation. Must be positive integers (it is a count, not a weight).
 - t  = the truncation values for the left and right truncation at x (must be two dim, or use tl and tr instead)
 - tl = one dimensional array or scalar value. If an array it is the value at which each value of x is left truncated. If a scalar all values of x are left truncated at the same value.
 - tr = one dimensional array or scalar value. If an array it is the value at which each value of x is right truncated. If a scalar all values of x are right truncated at the same value.
@@ -173,7 +171,7 @@ The conventions for single event SurPyval models are that each object returned f
 - :code:`hf()` - The (instantaneous) hazard function
 - :code:`Hf()` - The cumulative hazard function
 
-These are the functions :math:`f(x)`, :math:`F(x)`, :math:`R(x)`, :math:`h(x)` and :math:`H(x)`; how each can be computed from any of the others is shown in :doc:`Handy References - Aide-mémoire`. Most single event models also provide:
+These are the functions :math:`f(x)`, :math:`F(x)`, :math:`R(x)`, :math:`h(x)` and :math:`H(x)`; how each can be computed from any of the others is shown in :doc:`Handy References - Aide-mémoire`. One caution: a non-parametric estimate (Kaplan-Meier and the others) is a step function, so its ``hf()`` and ``df()`` are the sizes of the jumps between the points you ask for, not rates, and change with how finely you space them; ``smoothed_hf()`` gives a kernel-smoothed hazard rate instead. Most single event models also provide:
 
 - :code:`qf()` - The quantile function, the inverse of the CDF. ``qf(0.1)`` is the B10 life.
 - :code:`cb()` - Confidence bounds on a function (the survival function by default).
@@ -181,7 +179,7 @@ These are the functions :math:`f(x)`, :math:`F(x)`, :math:`R(x)`, :math:`h(x)` a
 - :code:`random()` - Random samples from the model.
 - :code:`plot()` - A plot of the model against the data it was fitted to.
 
-For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.dist.param_names``, and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits.
+For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.dist.param_names`` (each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, X)`` for the conditional survival :math:`R(x + X)/R(X)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
 
 Models from other areas follow the same pattern with one extra argument:
 
@@ -253,7 +251,7 @@ Every fitted SurPyval model can be saved and restored:
 - ``model.to_dict()`` returns a dictionary of plain Python types (strings, numbers, lists), so it can be written as JSON or stored directly in a document database such as MongoDB.
 - ``model.to_json(path)`` writes that dictionary to a JSON file.
 - ``surpyval.from_dict(d)`` and ``surpyval.from_json(path)`` restore a model **of whichever class wrote it**. You do not need to know whether the file holds a Weibull, a Kaplan-Meier estimate, a Cox model or a recurrence model; the readers work it out from the dictionary.
-- Each model class also has its own ``from_dict`` / ``from_json`` for when the class is known in advance; these raise a ``ValueError`` if handed a dictionary written by a different class.
+- Each model class also has its own ``from_dict`` / ``from_json`` for when the class is known in advance (for example ``surv.Parametric.from_dict`` or ``surv.NonParametric.from_dict``; note these are the *model* classes, not fitters such as ``surv.Weibull`` or ``surv.KaplanMeier``). They raise a ``ValueError`` if handed a dictionary written by a different class.
 
 .. jupyter-execute::
 
