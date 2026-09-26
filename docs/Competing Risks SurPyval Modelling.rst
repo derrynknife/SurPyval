@@ -465,7 +465,8 @@ competing-risks analogue of the log-rank test, but with an important
 distinction: where a cause-specific log-rank compares the instantaneous
 *hazards* of a cause, Gray's test compares the *incidence* — the CIFs directly.
 It does this by keeping competing-cause failures in the subdistribution risk
-set with an inverse-probability-of-censoring weight, rather than removing them.
+set, rather than removing them, with each group's risk set estimated from that
+group's own data (and so its own censoring distribution).
 Reach for it when the clinical or engineering question is "how many fail of this
 cause", not "how fast".
 
@@ -501,19 +502,19 @@ Here two groups have genuinely different cause-1 incidence:
 The tiny ``p``-value correctly flags the difference in cause-1 incidence. The
 result is a named tuple ``(statistic, df, p_value, cause, groups)``; ``df`` is
 the number of groups minus one, so more than two groups are compared in one
-test. The statistic is a weighted log-rank test on the subdistribution risk
-set. It is close to Gray's original statistic but not identical to it (the
-:doc:`Competing Risks Analysis` page explains the difference), so expect
-small differences from R's ``cmprsk``.
+test. The statistic is Gray's (1988): an observed-minus-expected count of
+cause-1 failures on the subdistribution risk sets, with Gray's asymptotic
+variance (the :doc:`Competing Risks Analysis` page gives the formulas).
 
 Calibration
 ~~~~~~~~~~~
 
 On data where the groups share the same incidence the test is calibrated,
 returning ``p``-values spread over ``[0, 1]`` — including under censoring,
-which is where the inverse-probability weighting earns its keep. A quick
-check: simulate many pairs of groups with identical cause-specific hazards and
-independent censoring, and count how often ``p < 0.05``:
+and when the groups are censored differently. A quick check: simulate many
+pairs of groups with identical cause-specific hazards and independent
+censoring, and count how often ``p < 0.05``. The second pair of groups is
+censored very differently, exponentially with means 2 and 50:
 
 .. jupyter-execute::
 
@@ -527,20 +528,24 @@ independent censoring, and count how often ``p < 0.05``:
         e = np.where(x == cz, None, np.where(t1 < t2, 1, 2)).astype(object)
         return x, e
 
-    p_values = []
-    for _ in range(200):
-        x0, e0 = simulate_cr(100, 0.1, 0.2, 10.0)
-        x1, e1 = simulate_cr(100, 0.1, 0.2, 10.0)
-        res = gray_test(np.concatenate([x0, x1]), np.concatenate([e0, e1]),
-                        np.repeat([0, 1], 100), cause=1)
-        p_values.append(res.p_value)
-    print("rejection rate at 5%%: %.3f" % np.mean(np.array(p_values) < 0.05))
+    def rejection_rate(cens_mean_0, cens_mean_1, n=100, reps=200):
+        p_values = []
+        for _ in range(reps):
+            x0, e0 = simulate_cr(n, 0.1, 0.2, cens_mean_0)
+            x1, e1 = simulate_cr(n, 0.1, 0.2, cens_mean_1)
+            res = gray_test(np.concatenate([x0, x1]),
+                            np.concatenate([e0, e1]),
+                            np.repeat([0, 1], n), cause=1)
+            p_values.append(res.p_value)
+        return np.mean(np.array(p_values) < 0.05)
 
-The rejection rate is close to the nominal 5%, as it should be when the null
-hypothesis is true. Both groups here share one censoring distribution, which
-the test assumes: it weights with a single censoring Kaplan-Meier for the
-pooled sample, and when the groups are censored very differently it rejects
-too often (see the :doc:`Competing Risks Analysis` page).
+    print("same censoring:      rejection rate at 5%%: %.3f"
+          % rejection_rate(10.0, 10.0))
+    print("different censoring: rejection rate at 5%%: %.3f"
+          % rejection_rate(2.0, 50.0))
+
+Both rejection rates are close to the nominal 5%, as they should be when the
+null hypothesis is true.
 
 Gray's test versus a cause-specific log-rank
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -582,8 +587,8 @@ mechanism behind cause 1, the log-rank is the relevant test; if it is whether
 they differ in how many units end up failing from cause 1, it is Gray's.
 
 The ``rho`` argument weights each event time by
-:math:`\{1 - \hat{F}(t^-)\}^{\rho}`, where :math:`\hat{F}` is the pooled CIF of
-the cause. The default ``rho=0`` is the standard test; ``rho > 0`` emphasises
+:math:`\{1 - \hat{F}^0(t^-)\}^{\rho}`, where :math:`\hat{F}^0` is Gray's
+pooled CIF of the cause. The default ``rho=0`` is the standard test; ``rho > 0`` emphasises
 differences in *early* incidence:
 
 .. jupyter-execute::

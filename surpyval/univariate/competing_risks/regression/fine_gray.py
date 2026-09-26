@@ -45,6 +45,11 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.competing_risks.labels import (
+    label_from_native,
+    label_mask,
+    ordered_labels,
+)
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.ipcw import censoring_survival, step_at
 from surpyval.utils.linalg import safe_inv
@@ -65,10 +70,11 @@ def _fit_cause(
     p-values, the baseline cumulative subdistribution hazard (as sorted event
     times and the cumulative hazard at each), and the optimiser result.
     """
-    is_event = (c == 0) & (e == cause)
+    is_cause = label_mask(e, cause)
+    is_event = (c == 0) & is_cause
     if not is_event.any():
         raise ValueError(f"No observed events for cause {cause!r}")
-    is_competing = (c == 0) & (e != cause)
+    is_competing = (c == 0) & ~is_cause
 
     # Censoring-survival for the IPCW weights.
     g_times, g_vals = censoring_survival(x, c == 1, n)
@@ -140,6 +146,33 @@ def _fit_cause(
     }
 
 
+def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
+    """
+    The covariate row for each of ``n_x`` query times, shape ``(n_x, p)``.
+
+    ``Z`` is one covariate vector (a scalar for one covariate, a 1-D array
+    of ``p`` values or a single row), used at every time, or one row per
+    time, paired with the times in order. Any other shape is refused: a
+    ``Z`` of several rows used to be flattened into one long vector (a
+    shape error from the matrix product) or broadcast against the times.
+    """
+    Z_arr = np.asarray(Z, dtype=float)
+    if Z_arr.ndim <= 1:
+        Z_arr = Z_arr.reshape(1, -1)
+    if Z_arr.ndim != 2 or Z_arr.shape[1] != p:
+        raise ValueError(
+            "Z must hold {} covariate(s) per row, got shape {}.".format(
+                p, np.shape(Z)
+            )
+        )
+    if Z_arr.shape[0] not in (1, n_x):
+        raise ValueError(
+            "Z has {} rows for {} times: give one covariate row, used at "
+            "every time, or one row per time.".format(Z_arr.shape[0], n_x)
+        )
+    return np.broadcast_to(Z_arr, (n_x, p))
+
+
 class FineGrayModel(SerialisableMixin):
     """
     A fitted Fine-Gray subdistribution-hazard model for one cause of interest.
@@ -198,7 +231,7 @@ class FineGrayModel(SerialisableMixin):
         require_model_tag(model_dict, "FineGrayModel", "a Fine-Gray model")
         return cls(
             {
-                "cause": model_dict["cause"],
+                "cause": label_from_native(model_dict["cause"]),
                 "beta": np.array(model_dict["beta"], dtype=float),
                 "se": np.array(model_dict["se"], dtype=float),
                 "p_values": np.array(model_dict["p_values"], dtype=float),
@@ -221,15 +254,17 @@ class FineGrayModel(SerialisableMixin):
 
     def cif(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """
-        Cumulative incidence of the cause of interest at times ``x`` for a
-        single covariate vector ``Z``: ``1 - exp(-Lambda0(x) * exp(beta'Z))``.
-        The CIF is flat before the first event time and after the last (the
-        baseline is a step function estimated only on the observed range).
+        Cumulative incidence of the cause of interest at times ``x``:
+        ``1 - exp(-Lambda0(x) * exp(beta'Z))``. ``Z`` is one covariate
+        vector (a 1-D array or a single row), used at every time, or one
+        row per time in ``x`` (row ``i`` with ``x[i]``). The CIF is flat
+        before the first event time and after the last (the baseline is a
+        step function estimated only on the observed range).
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.asarray(Z, dtype=float).ravel()
+        x = np.atleast_1d(np.asarray(x, dtype=float)).ravel()
+        rows = paired_covariate_rows(Z, x.size, np.size(self.beta))
         H0 = step_at(self._times, self._cumhaz, x, before=0.0)
-        return 1.0 - np.exp(-H0 * np.exp(Z @ self.beta))
+        return 1.0 - np.exp(-H0 * np.exp(rows @ self.beta))
 
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """One minus the cumulative incidence (the cause-of-interest-free
@@ -323,9 +358,7 @@ class FineGray_:
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 
-        causes = sorted(
-            {ei for ei in e if ei is not None}, key=lambda v: str(v)
-        )
+        causes = ordered_labels(e)
         if cause is None:
             if len(causes) != 1:
                 raise ValueError(

@@ -164,10 +164,11 @@ normalised data in ``data`` (``None`` for ``from_params``); ``params`` holds the
 Margins can also be passed **already fitted**. With ``how="IFM"`` they are
 used as they are and only the copula parameter is estimated. This is useful
 when a margin has been fitted with options the copula fit does not pass on,
-or reused from an earlier analysis. (With ``how="MLE"`` a fitted margin only
-supplies the starting values: it is re-estimated jointly as a plain
-distribution of its family, so an offset, limited-failure or zero-inflated
-option it was fitted with is dropped. Use IFM for such margins.)
+or reused from an earlier analysis. (With ``how="MLE"`` a fitted margin
+supplies the starting values and is re-estimated jointly with the copula
+with the same configuration: an offset, limited-failure or zero-inflated
+option is kept, and so are its ``fixed`` parameters. A non-parametric
+margin, which has no parameters to re-estimate, needs IFM.)
 
 .. jupyter-execute::
 
@@ -465,8 +466,9 @@ measures, and a correlated sampler. Points are given as rows ``[x1, x2]``:
 
 ``ff`` is an alias of ``cdf``. For Clayton the lower tail-dependence
 coefficient is :math:`2^{-1/\theta} \approx 0.71` and the upper one is zero.
-Spearman's rho is estimated by simulation for the Clayton, Gumbel and Frank
-copulas, so treat its third decimal place with caution.
+Spearman's rho is estimated by simulation for the Clayton and Gumbel copulas
+(closed forms are used for Frank, Gaussian and Independence), so for those
+two treat its third decimal place with caution.
 
 Conditional probabilities
 ~~~~~~~~~~~~~~~~~~~~~~~~~

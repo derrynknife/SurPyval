@@ -301,7 +301,7 @@ whichever ``method`` (``"Nelson-Aalen"``, the default, or ``"Kaplan-Meier"``)
 is requested; the shared helper
 :func:`~surpyval.univariate.competing_risks.aalen_johansen.aalen_johansen_iif`
 implements the weighting once for the non-parametric CIF, the cause-specific
-Cox CIF and the pooled CIF inside Gray's test. So ``cif`` and ``iif`` do not
+Cox CIF and the per-group CIFs inside Gray's test. So ``cif`` and ``iif`` do not
 depend on ``method``.
 
 Alongside the CIFs, the fitted model also carries the cause-specific
@@ -451,20 +451,21 @@ Most model quantities are closed-form combinations of the per-cause models:
 the all-cause survival is :math:`\prod_k S_k(t)`, the all-cause hazard is
 :math:`\sum_k h_k(t)`, and the instantaneous incidence of cause :math:`k` is
 :math:`f_k(t)\prod_{j\neq k} S_j(t)`. The CIF integral generally has no closed
-form, so SurPyval evaluates it numerically, by the trapezoidal rule on 4,000
-equally spaced points from 0 to the largest requested time, and
-:math:`F_k(\infty)` is evaluated at a time by which the causes have
-essentially played out (a very high quantile of each cause). An equally spaced
-grid is accurate when the incidence builds up smoothly over the range asked
-for, as in the examples on the how-to page. It is not when most of the mass
-sits in a small part of that range: a query that also asks for a time far
-beyond the others coarsens the grid for all of them, a density that is
-infinite at zero (a Weibull shape below one) puts mass the grid cannot
-resolve next to zero, and for a very heavy-tailed cause (a LogNormal with a
-large :math:`\sigma`) the high quantile used for :math:`F_k(\infty)` is so
-far out that the probabilities of the causes no longer sum to one. In those
-cases, compare with the all-cause ``ff``, which is exact: the CIFs should
-sum to it.
+form, so SurPyval evaluates it numerically, on the cause's own probability
+scale: substituting :math:`p = F_k(u)`,
+
+.. math::
+
+    \mathrm{CIF}_k(t) = \int_0^{F_k(t)} \prod_{j\neq k}
+    S_j\big(F_k^{-1}(p)\big)\,dp ,
+
+an integral over a finite interval of a bounded, monotone function, which
+adaptive quadrature evaluates to about ten significant digits for each
+requested time. It stays accurate when the requested times span many orders of
+magnitude, when a density is infinite at zero (a Weibull shape below one) and
+for very heavy-tailed causes, and :math:`F_k(\infty)` is the same integral
+up to :math:`F_k(\infty)` (1, or the cure fraction), with no finite horizon to
+choose. The CIFs of the causes sum to the all-cause ``ff`` to that accuracy.
 
 Because the parametric model is a full generative model, it can also be
 **simulated**: draw a latent time from every cause's distribution and keep the
@@ -673,73 +674,86 @@ a population that is also being depleted by the competing causes.
 
 Gray's test achieves this by modifying the risk set. Instead of removing
 subjects who fail from a competing cause (as a cause-specific analysis would),
-it keeps them in the **subdistribution risk set** with an
-inverse-probability-of-censoring weight
+it keeps them in the **subdistribution risk set**, which Gray estimates within
+each group :math:`g` as
 
 .. math::
 
-    w_j(t) = \frac{\hat{G}(t)}{\hat{G}(x_j)},
+    R_g(t) = \frac{Y_g(t)\,\{1 - \hat{F}_g(t^-)\}}{\hat{S}_g(t^-)},
 
-where :math:`\hat{G}` is the Kaplan-Meier estimate of the censoring
-distribution. Subjects who have already failed from a competing cause therefore
-continue to count — with a decaying weight — which is precisely what makes the
-comparison one of incidence rather than of instantaneous rate. Under the null
-hypothesis of equal CIFs the resulting statistic is approximately
-:math:`\chi^2` distributed with :math:`G - 1` degrees of freedom for :math:`G`
-groups. Reach for it when the question is "how many fail of this
-cause", and for the cause-specific log-rank when the question is "how fast".
+with :math:`Y_g` the number at risk in the group, :math:`\hat{F}_g` its
+Aalen-Johansen CIF of the cause and :math:`\hat{S}_g` its all-cause
+Kaplan-Meier survival. Since :math:`Y_g(t)/\hat{S}_g(t^-)` estimates the
+group's size times its probability of still being uncensored, this is the
+inverse-probability-of-censoring weighted risk set of the Fine-Gray model
+(below), with a censoring distribution estimated separately in every group:
+subjects who have already failed from a competing cause continue to count —
+with a weight that decays as the group's censoring accrues — which is
+precisely what makes the comparison one of incidence rather than of
+instantaneous rate. Under the null hypothesis of equal CIFs the resulting
+statistic is approximately :math:`\chi^2` distributed with :math:`G - 1`
+degrees of freedom for :math:`G` groups. Reach for it when the question is
+"how many fail of this cause", and for the cause-specific log-rank when the
+question is "how fast".
 
 The statistic
 ~~~~~~~~~~~~~
 
-SurPyval computes the test as a weighted log-rank comparison on the weighted
-sub-distribution risk set (the same weights :math:`w_i(t)` as in the Fine-Gray
-model above). At each distinct time :math:`\tau` at which the cause of
-interest occurs, let :math:`R_g(\tau) = \sum_{i \in g} n_i w_i(\tau)` be the
-weighted risk set of group :math:`g`, :math:`R = \sum_g R_g`,
-:math:`d_g(\tau)` the number of cause-of-interest events in group :math:`g`
-and :math:`d = \sum_g d_g`. Under the null hypothesis that every group has the
-same CIF, the events should be shared out in proportion to the weighted risk
-sets, so the test accumulates observed-minus-expected counts and a
-hypergeometric variance:
+SurPyval computes Gray's statistic [Gray1988cr]_. At each distinct time
+:math:`\tau` at which the cause of interest occurs, let :math:`R = \sum_g
+R_g`, :math:`d_g(\tau)` be the number of cause-of-interest events in group
+:math:`g` and :math:`d = \sum_g d_g`. Under the null hypothesis that every
+group has the same CIF, the events should be shared out in proportion to the
+subdistribution risk sets, so the test accumulates observed-minus-expected
+counts
 
 .. math::
 
-    U_g = \sum_\tau W(\tau)\Big[d_g(\tau) - d(\tau)\frac{R_g(\tau)}{R(\tau)}\Big],
-    \qquad
-    V = \sum_\tau W(\tau)^2\, \frac{d\,(R - d)}{R - 1}
-        \big[\operatorname{diag}(p) - p\,p^{\top}\big],
-    \quad p_g = R_g / R .
+    U_g = \sum_\tau W(\tau)\Big[d_g(\tau) - d(\tau)\frac{R_g(\tau)}{R(\tau)}\Big].
 
-Dropping one group to make :math:`V` invertible, the statistic
-:math:`U^{\top} V^{-1} U` is referred to a :math:`\chi^2` distribution with
-(number of groups :math:`- 1`) degrees of freedom. The weight
-:math:`W(\tau) = \{1 - \hat{F}(\tau^-)\}^{\rho}` uses the pooled
-Aalen-Johansen CIF of the cause; the default :math:`\rho = 0` (every event time
-weighted equally) is the standard test, and :math:`\rho > 0` down-weights late
-event times, making the test more sensitive to differences in early
-incidence.
+Its variance is not the hypergeometric variance of an ordinary log-rank test:
+the risk sets :math:`R_g` are themselves estimates, built from each group's
+incidence and survival, so failures from the *competing* causes add
+variability too. Gray linearises :math:`U` in each group's counting-process
+martingales, of the cause and of the competing causes, which gives
 
-This construction is SurPyval's own, and it is close to, but not identical
-with, Gray's original statistic. Gray [Gray1988cr]_ estimates the censoring
-distribution separately within each group and derives a variance from the
-asymptotic theory of the CIF estimators; SurPyval uses one censoring
-Kaplan-Meier :math:`\hat{G}` for the pooled sample and the hypergeometric
-variance of an ordinary log-rank test computed on the weighted risk sets. The
-two give very similar answers when the groups are censored in the same way,
-and then the test is calibrated in simulation (the how-to page checks this),
-although p-values will not match R's ``cmprsk::cuminc`` to many digits.
+.. math::
 
-The pooled :math:`\hat{G}` is also the test's main limitation: it assumes the
-censoring distribution is the same in every group. If one group is censored
-much more heavily than another, the pooled weights are too large for one
-group's competing failures and too small for the other's, the expected counts
-are biased, and the test rejects a true null too often — increasingly so as
-the sample grows. In a simulation with identical cause-specific hazards in two
-groups of 100, censored exponentially with means 2 and 50, about 13% of the
-p-values fell below 0.05, and with 1,000 per group about 90% did. Check that
-the groups' censoring patterns are similar (for example with a Kaplan-Meier
-curve of the censoring times per group) before relying on the test.
+    V_{gh} = \sum_r \sum_u \Big[A_{gr}(u)\,A_{hr}(u)\,d_{r}(u)
+             + B_{gr}(u)\,B_{hr}(u)\,d^{c}_{r}(u)\Big],
+
+with :math:`d_r` and :math:`d^c_r` the failures from the cause and from the
+competing causes in group :math:`r` at time :math:`u`,
+
+.. math::
+
+    A_{gr}(u) &= \frac{c_{gr}(u)}{R_r(u)}
+                - \frac{\hat{F}^c_r(u)\,Q_{gr}(u)}{Y_r(u)}, \qquad
+    B_{gr}(u) = -\frac{\{1 - \hat{F}^0(u)\}\,Q_{gr}(u)}{Y_r(u)}, \\
+    Q_{gr}(u) &= \sum_{\tau > u} c_{gr}(\tau)\,
+                 \frac{d(\tau)/R(\tau)}{1 - \hat{F}^0(\tau^-)}, \qquad
+    c_{gr}(\tau) = W(\tau)\,R_g(\tau)\Big[\delta_{gr}
+                 - \frac{R_r(\tau)}{R(\tau)}\Big],
+
+where :math:`\hat{F}^c_r` is group :math:`r`'s cumulative incidence of the
+competing causes and :math:`\hat{F}^0(t) = 1 - \prod_{\tau \le t}\{1 -
+d(\tau)/R(\tau)\}` Gray's pooled CIF of the cause. Dropping one group to
+make :math:`V` invertible, the statistic :math:`U^{\top} V^{-1} U` is
+referred to a :math:`\chi^2` distribution with (number of groups
+:math:`- 1`) degrees of freedom. The weight :math:`W(\tau) = \{1 -
+\hat{F}^0(\tau^-)\}^{\rho}`; the default :math:`\rho = 0` (every event
+time weighted equally) is the standard test, and :math:`\rho > 0`
+down-weights late event times, making the test more sensitive to differences
+in early incidence.
+
+Because every group's risk set carries its own censoring estimate, the test
+does not need the groups to be censored alike. In a simulation with identical
+cause-specific hazards in two groups censored exponentially with means 2 and
+50, about 5% of the p-values fell below 0.05 with 100, 400 and 1,000 units per
+group, and the variance :math:`V` matched the simulated variance of :math:`U`.
+R's ``cmprsk::cuminc`` implements the same test; SurPyval follows Gray's paper
+and has been checked by simulation rather than against ``cmprsk``, whose
+conventions at tied times may differ in detail.
 
 A useful way to see the difference from a cause-specific log-rank: imagine two
 groups with *identical* cause-1 hazards but a much larger cause-2 hazard in the

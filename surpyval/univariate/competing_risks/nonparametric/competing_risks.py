@@ -23,6 +23,10 @@ from surpyval.serialisation import (
 from surpyval.univariate.competing_risks.aalen_johansen import (
     aalen_johansen_iif,
 )
+from surpyval.univariate.competing_risks.labels import (
+    label_from_native,
+    ordered_labels,
+)
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier as km
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen as na
 from surpyval.utils import (
@@ -123,7 +127,10 @@ class CompetingRisks(SerialisableMixin):
             model_dict, "CompetingRisks", "a competing-risks model"
         )
         out = cls()
-        out.event_idx_map = {k: int(v) for k, v in model_dict["event_idx_map"]}
+        out.event_idx_map = {
+            label_from_native(k): int(v)
+            for k, v in model_dict["event_idx_map"]
+        }
         out.n_event_types = int(model_dict["n_event_types"])
         # dicts written before the method was stored reported exp(-H)
         out.method = model_dict.get("method", "Nelson-Aalen")
@@ -140,7 +147,10 @@ class CompetingRisks(SerialisableMixin):
 
     def _f(self, f: str, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         validate_event(self.event_idx_map, event)
-        idx, rev = _get_idx(self.x, x)
+        # Look up a flat copy of the query and give the result its shape
+        # back: the sort-based index of a 2-D query spread it over 4-D.
+        shape = np.shape(np.atleast_1d(x))
+        idx, rev = _get_idx(self.x, np.ravel(x))
 
         if f == "h":
             arr = self.h0_e
@@ -160,7 +170,7 @@ class CompetingRisks(SerialisableMixin):
         # would otherwise wrap to the *last* step value; every step function
         # here (hazard, cumulative hazard, IIF, CIF) is zero before the
         # first event time.
-        return np.where(idx[rev] < 0, 0.0, out)
+        return np.where(idx[rev] < 0, 0.0, out).reshape(shape)
 
     def hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
@@ -299,10 +309,11 @@ class CompetingRisks(SerialisableMixin):
         x : array_like
             Failure or censoring times.
         e : array_like
-            The cause of each failure: labels of one sortable type (all
-            integers, or all strings, ...), since the causes are sorted to
-            fix their order in ``event_idx_map``. A missing value (``None``,
-            ``NaN``) marks a right-censored row.
+            The cause of each failure: any hashable labels (integers,
+            strings, tuples, or a mix); they are sorted to fix their order
+            in ``event_idx_map`` (labels of different types by type name,
+            then text). A missing value (``None``, ``NaN``) marks a
+            right-censored row.
         c : array_like, optional
             Censoring flags: 0 a failure (with a cause in ``e``), 1
             right-censored (with ``e`` missing). Derived from ``e`` if not
@@ -334,17 +345,12 @@ class CompetingRisks(SerialisableMixin):
         """
         x, c, n, e = validate_cr_inputs(x, c, n, e, method)
 
-        # Get unique event types
-        unique_e = set(e)
-        # Remove None type, which relates to censored obs
-        # np.unique doesn't work since it can't handle None
-        if None in unique_e:
-            unique_e.remove(None)
-
-        # Count number of unique event types.
-        # Ordering is stable over repeats due to sort.
-        n_event_types = len(unique_e)
-        event_idx_map = {state: i for i, state in enumerate(sorted(unique_e))}
+        # The causes in a fixed order (censored rows have no cause), the
+        # same for every competing-risks class; labels of different types
+        # (1 and "b") are ordered too.
+        causes = ordered_labels(e)
+        n_event_types = len(causes)
+        event_idx_map = {state: i for i, state in enumerate(causes)}
 
         # Get the x, r, d format agnostic of event.
         unique_x, r, d = surv.xcnt_to_xrd(x, c, n)

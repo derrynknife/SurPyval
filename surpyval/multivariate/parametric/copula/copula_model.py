@@ -91,9 +91,15 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         """``P(X_other <= x_other | X_d = x_d)`` -- the copula h-function.
 
         ``given_dim=0`` conditions on the first series, giving
-        :math:`P(X_2 \\le x_2 \\mid X_1 = x_1)`; any other value
-        conditions on the second.
+        :math:`P(X_2 \\le x_2 \\mid X_1 = x_1)`; ``given_dim=1``
+        conditions on the second. Any other value raises ``ValueError``
+        (it used to be read silently as ``1``).
         """
+        if given_dim not in (0, 1):
+            raise ValueError(
+                f"given_dim must be 0 or 1 (the series conditioned on), got "
+                f"{given_dim!r}."
+            )
         x, u, v = self._uv(x)
         if given_dim == 0:
             return onp.asarray(self.copula.du(u, v, *self.params))
@@ -105,12 +111,22 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         size: "int | tuple[int, ...]",
         random_state: "int | None" = None,
     ) -> npt.NDArray:
-        """Draw ``size`` (an integer) correlated samples: an array of shape
-        ``(size, 2)``, one row per draw."""
-        u, v = self.copula.sample_uv(size, self.params, random_state)
-        x1 = onp.asarray(self.margins[0].qf(u))
-        x2 = onp.asarray(self.margins[1].qf(v))
-        return onp.column_stack([x1, x2])
+        """Draw correlated samples: an array of shape ``(size, 2)`` for an
+        integer ``size``, one row per draw, or ``(*size, 2)`` for a tuple
+        (the two series on the last axis)."""
+        shape: tuple[int, ...] = (
+            (int(size),)
+            if isinstance(size, (int, onp.integer))
+            else tuple(size)
+        )
+        count = int(onp.prod(shape))
+        # Draw flat, then shape: the margins' quantile functions and
+        # ``column_stack`` treat a 2-D draw as extra columns, so a (2, 3)
+        # request came back as (2, 6).
+        u, v = self.copula.sample_uv(count, self.params, random_state)
+        x1 = onp.asarray(self.margins[0].qf(u), dtype=float).ravel()
+        x2 = onp.asarray(self.margins[1].qf(v), dtype=float).ravel()
+        return onp.column_stack([x1, x2]).reshape(shape + (2,))
 
     # -- dependence summaries --------------------------------------------
     def kendall_tau(self) -> float:

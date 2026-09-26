@@ -21,6 +21,11 @@ from surpyval.serialisation import (
 from surpyval.univariate.competing_risks.aalen_johansen import (
     aalen_johansen_iif,
 )
+from surpyval.univariate.competing_risks.labels import (
+    label_from_native,
+    label_mask,
+    ordered_labels,
+)
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression.regression_data import (
     restore_covariate_meta,
@@ -28,12 +33,13 @@ from surpyval.univariate.regression.regression_data import (
 )
 from surpyval.utils import (
     _get_idx,
+    is_missing_event,
     validate_fine_gray_inputs,
     wrangle_and_check_form_and_Z_cols,
 )
 from surpyval.utils.ipcw import step_at as _step
 
-from .fine_gray import FineGray, FineGrayModel
+from .fine_gray import FineGray, FineGrayModel, paired_covariate_rows
 
 
 class CompetingRisksProportionalHazards(SerialisableMixin):
@@ -141,7 +147,8 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         model = cls()
         model.how = model_dict["how"]
         model.event_idx_map = {
-            k: int(v) for k, v in model_dict["event_idx_map"]
+            label_from_native(k): int(v)
+            for k, v in model_dict["event_idx_map"]
         }
         model.n_event_types = int(model_dict["n_event_types"])
         model.x = np.array(model_dict["x"], dtype=float)
@@ -304,27 +311,45 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         self, x: npt.ArrayLike, Z: npt.ArrayLike, event: Any
     ) -> npt.NDArray:
         """
-        Cumulative incidence of cause ``event`` at ``x`` for one covariate
-        vector ``Z``: the probability of failing from that cause by ``x``
-        with the other causes acting. The cause-specific (``how="Cox"``) model
+        Cumulative incidence of cause ``event`` at ``x`` for covariates
+        ``Z``: the probability of failing from that cause by ``x`` with the
+        other causes acting. The cause-specific (``how="Cox"``) model
         integrates the cause's hazard against the all-cause product-limit
         survival; the Fine-Gray model evaluates the subdistribution
         directly.
+
+        ``Z`` is one covariate vector (a 1-D array or a single row), used
+        at every time, or one row per time in ``x`` (row ``i`` with
+        ``x[i]``), as for :meth:`sf` and :meth:`Hf`. ``event`` must be one
+        of the fitted causes.
         """
+        if event is None or event not in self.event_idx_map:
+            causes = list(self.event_idx_map)
+            raise ValueError(
+                f"`event` must be one of the fitted causes {causes}, got "
+                f"{event!r}."
+            )
         if self.how == "Fine-Gray":
             # Direct subdistribution CIF: 1 - exp(-H0_k(x) exp(beta'Z)).
             return self._fg_model(event).cif(x, Z)
 
-        # Cause-specific CIF: integrate this cause's hazard against the
-        # all-cause survival. Index and reverse index in case x is unordered.
-        idx, rev = _get_idx(self.x, x)
-
-        S, shares = self._product_limit_survival(Z)
+        x_flat = np.atleast_1d(np.asarray(x, dtype=float)).ravel()
+        rows = paired_covariate_rows(Z, x_flat.size, self.betas.shape[1])
         e_i = self.event_idx_map[event]
-        cif = aalen_johansen_iif(S, shares[e_i]).cumsum()
-
-        # Times before the first event would wrap to the last value (#253).
-        return np.where(idx[rev] < 0, 0.0, cif[idx][rev])
+        out = np.empty(x_flat.size)
+        # One incidence curve per distinct covariate row, read at the times
+        # paired with that row.
+        uniq, inverse = np.unique(rows, axis=0, return_inverse=True)
+        inverse = np.ravel(inverse)
+        for u, z in enumerate(uniq):
+            at = np.flatnonzero(inverse == u)
+            S, shares = self._product_limit_survival(z)
+            cif = aalen_johansen_iif(S, shares[e_i]).cumsum()
+            idx = np.searchsorted(self.x, x_flat[at], side="right") - 1
+            # Times before the first event would wrap to the last value
+            # (#253).
+            out[at] = np.where(idx < 0, 0.0, cif[np.maximum(idx, 0)])
+        return out
 
     def _product_limit_survival(
         self, Z: npt.ArrayLike
@@ -408,18 +433,14 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         CompetingRisksProportionalHazards
             The fitted model. Predictions still take a covariate array ``Z``.
         """
-        import pandas as pd
-
         Z, mask, form, feature_names, model_spec = (
             wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
         )
         sub = df.loc[mask]
         x = sub[x_col].values
         # A censored row's cause is ``None``; accept a blank/NaN cell for it.
-        e = np.array(
-            [None if pd.isna(v) else v for v in sub[e_col].values],
-            dtype=object,
-        )
+        e = sub[e_col].to_numpy(dtype=object).copy()
+        e[[is_missing_event(v) for v in e]] = None
         c = sub[c_col].values if c_col is not None else None
         n = sub[n_col].values if n_col is not None else None
 
@@ -513,24 +534,20 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 
-        unique_e = set(e)
-        if None in unique_e:
-            unique_e.remove(None)
         # A fixed order for the causes (a set's iteration order depends on
         # the hash seed for strings), so ``betas`` rows are reproducible.
-        try:
-            causes = sorted(unique_e)
-        except TypeError:
-            causes = sorted(unique_e, key=lambda v: (type(v).__name__, str(v)))
+        causes = ordered_labels(e)
+        if not causes:
+            raise ValueError("No observed events: every row is censored.")
 
         n_event_types = len(causes)
 
         event_idx_map = {state: i for i, state in enumerate(causes)}
 
-        betas = np.zeros((len(unique_e), Z.shape[1]))
+        betas = np.zeros((n_event_types, Z.shape[1]))
         unique_x = np.unique(x)
 
-        baselines = np.zeros((len(unique_e), len(unique_x)))
+        baselines = np.zeros((n_event_types, len(unique_x)))
         # Best initial assumption is to assume there is no risk
         # beta_init = np.zeros(Z.shape[1])
 
@@ -544,7 +561,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             # treating every other cause (and censoring) as right-censored.
             results = []
             for i, event in enumerate(causes):
-                c_e = np.where(e == event, 0, 1)
+                c_e = np.where(label_mask(e, event), 0, 1)
                 cox_model = CoxPH.fit(x, Z, c_e, n, method=tie_method)
 
                 results.append(cox_model.res)

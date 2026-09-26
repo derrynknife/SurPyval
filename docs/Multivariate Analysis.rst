@@ -269,11 +269,12 @@ Clayton-like.
 
 In SurPyval, Kendall's tau is computed in closed form for all five families
 (Frank's through a numerically evaluated Debye integral), and so are
-Spearman's rho for the Gaussian and Independence copulas and the
-tail-dependence coefficients (which are zero except for Clayton and Gumbel).
-Spearman's rho for Clayton, Gumbel and Frank is estimated from a fixed-seed
-sample of 50,000 draws from the copula, so it is accurate to roughly two
-decimal places.
+Spearman's rho for the Gaussian, Independence and Frank copulas (Frank's is
+:math:`1 - 12\{D_1(\theta) - D_2(\theta)\}/\theta`, with :math:`D_k` the
+Debye functions) and the tail-dependence coefficients (which are zero except
+for Clayton and Gumbel). Spearman's rho for Clayton and Gumbel is estimated
+from a fixed-seed sample of 50,000 draws from the copula, so it is accurate
+to roughly two decimal places.
 
 Choosing a family
 ~~~~~~~~~~~~~~~~~
@@ -459,9 +460,10 @@ required and exactly two series are supported. With ``how="IFM"`` [JoeXu1996mv]_
    series, honouring that series' censoring codes (interval-censored entries
    through ``xl``/``xr``), the row counts ``n`` and that series' own truncation
    window; margins passed as already-fitted models are used as they are
-   (under ``how="MLE"`` they only supply starting values, and are
-   re-estimated as plain distributions of their family, without any offset,
-   limited-failure or zero-inflated option);
+   (under ``how="MLE"`` they supply the starting values and are re-estimated
+   with the configuration they were fitted with: the same offset,
+   limited-failure or zero-inflated option, and any ``fixed`` parameters kept
+   at their values);
 2. with the margins fixed, the copula parameter is chosen to maximise the joint
    log-likelihood above (censoring operations and truncation divisor
    included). The search is a Nelder-Mead search on an unconstrained
@@ -525,12 +527,10 @@ Some further points worth knowing:
   ``ValueError``.
 - Margin probabilities are kept a tiny distance (:math:`10^{-10}`) inside
   :math:`(0, 1)` to keep the Archimedean formulas finite.
-- The formulas are evaluated in double precision, which bounds the usable
-  strength of dependence. Frank's CDF overflows once :math:`\theta` exceeds
-  about 37 (:math:`\tau \approx 0.9`): its log-likelihood becomes
-  infinite, and a little further on its sampler no longer returns uniform
-  margins. For such strongly dependent data use another family, or check a
-  Frank fit's ``kendall_tau()`` against the data's.
+- The Frank and Clayton formulas are evaluated in log space, from terms that
+  neither cancel nor overflow, so they stay accurate however strong the
+  dependence (Frank's sampler also inverts its h-function in closed form).
+  The Gaussian copula's :math:`\rho` is kept within :math:`\pm 0.9999`.
 - Only bivariate models are supported; more than two series raise a
   ``NotImplementedError``.
 
