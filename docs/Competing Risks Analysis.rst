@@ -606,20 +606,35 @@ inverse-probability-of-censoring weight
 
     w_i(t) = \begin{cases}
        1 & x_i \geq t \quad \text{(still under observation)},\\[2pt]
-       \hat{G}(t)/\hat{G}(x_i) & x_i < t \text{ and failed from a competing cause},\\[2pt]
+       \hat{G}(t^-)/\hat{G}(x_i^-) & x_i < t \text{ and failed from a competing cause},\\[2pt]
        0 & \text{otherwise (censored, or failed from cause } k \text{, before } t),
     \end{cases}
 
 where :math:`\hat{G}(t)` is the Kaplan-Meier estimate of the *censoring*
 survival function :math:`P(C > t)` (the censored rows play the role of
-"events"). :math:`\hat{G}(t)/\hat{G}(x_i)` is the estimated probability that
-the unit would have remained uncensored from :math:`x_i` to :math:`t`. One
+"events"; everyone with :math:`x_j \geq s` is at risk of censoring at
+:math:`s`) and :math:`\hat{G}(t^-)` its value just before :math:`t`.
+:math:`\hat{G}(t^-)/\hat{G}(x_i^-)` is the estimated probability that the
+unit would have remained uncensored from :math:`x_i` to :math:`t`. One
 :math:`\hat{G}` is estimated from the whole sample, which assumes the
-censoring does not depend on the covariates. :math:`\hat{G}` is evaluated
-right-continuously, at :math:`t` and :math:`x_i` themselves; R's
-``cmprsk::crr`` uses the values just before them, so the two differ slightly
-when censoring times coincide with event times (they agree when there are no
-such ties). The
+censoring does not depend on the covariates.
+
+Taking :math:`\hat{G}` just before each time settles ties: when a censoring
+and an event happen at the same recorded time, the event is taken to come
+first, so the censorings at :math:`t` do not yet reduce the weights at
+:math:`t`, and the censorings at :math:`x_i` do not count against a unit that
+failed from a competing cause at :math:`x_i`. This is the weight of R's
+``cmprsk::crr``, :math:`\hat{G}(t^-)/\hat{G}(x_i^-)` with :math:`\hat{G}`
+the reverse Kaplan-Meier (``crr`` reads its censoring curve at
+``ftime*(1 - 100*.Machine$double.eps)``), and SurPyval's coefficients and
+likelihood reproduce a transcription of ``crr``'s code on data with such ties.
+When no censoring time equals an event time the left limits are simply
+:math:`\hat{G}(t)` and :math:`\hat{G}(x_i)`. (SurPyval 0.20 and earlier used
+:math:`\hat{G}(t)/\hat{G}(x_i)` and so differed slightly from ``crr`` on
+tied data. R's ``survival::finegray`` also evaluates
+:math:`\hat{G}` just before each time, but it removes the failures at a tied
+time from the censoring risk set there, so on tied data its weights can
+differ slightly from ``crr``'s and SurPyval's.) The
 coefficients maximise the weighted partial log-likelihood
 
 .. math::
@@ -751,9 +766,15 @@ does not need the groups to be censored alike. In a simulation with identical
 cause-specific hazards in two groups censored exponentially with means 2 and
 50, about 5% of the p-values fell below 0.05 with 100, 400 and 1,000 units per
 group, and the variance :math:`V` matched the simulated variance of :math:`U`.
-R's ``cmprsk::cuminc`` implements the same test; SurPyval follows Gray's paper
-and has been checked by simulation rather than against ``cmprsk``, whose
-conventions at tied times may differ in detail.
+R's ``cmprsk::cuminc`` implements the same test. The subdistribution risk
+set :math:`R_g(t)` is formed as in ``cmprsk``, from the number at risk at
+:math:`t` and the survival just before :math:`t`; :math:`Y_g(t)/\hat{S}_g(t^-)`
+is the group size times its censoring survival just before :math:`t`, so a
+censoring tied with a failure counts after it, the same ordering as the
+Fine-Gray weights above. Elsewhere SurPyval follows Gray's paper and has been
+checked by simulation rather than against ``cmprsk``: the pooled incidence
+:math:`\hat{F}^0` in the weight and the variance, and the variance at tied
+failure times, may differ from ``cmprsk``'s in detail.
 
 A useful way to see the difference from a cause-specific log-rank: imagine two
 groups with *identical* cause-1 hazards but a much larger cause-2 hazard in the

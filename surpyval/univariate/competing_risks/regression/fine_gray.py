@@ -24,10 +24,18 @@ positive coefficient raises the incidence of cause :math:`k`.
 Independent right-censoring is handled by inverse-probability-of-censoring
 weighting (IPCW): a subject who has already failed from a competing cause
 stays in the subdistribution risk set with a time-varying weight
-:math:`G(t)/G(x_i)`, where :math:`G` is the Kaplan-Meier estimate of the
+:math:`G(t-)/G(x_i-)`, where :math:`G` is the Kaplan-Meier estimate of the
 censoring-time survival function. Subjects who are censored, or who have
 already had the event of interest, leave the risk set. The partial likelihood
 is the Breslow form of this weighted risk set.
+
+:math:`G` is evaluated just before each time, as R's ``cmprsk::crr`` does
+(its ``uuu`` is the censoring Kaplan-Meier at ``ftime-``): an event and a
+censoring at the same instant are ordered event first, so the censorings at
+:math:`t` do not yet reduce the weight at :math:`t`, nor count against a
+competing failure at :math:`x_i`. :math:`G` itself is ``survfit``'s reverse
+Kaplan-Meier, as in ``crr``. With no censoring time equal to an event time
+the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 """
 
 from typing import Any
@@ -51,7 +59,7 @@ from surpyval.univariate.competing_risks.labels import (
     ordered_labels,
 )
 from surpyval.utils import validate_fine_gray_inputs
-from surpyval.utils.ipcw import censoring_survival, step_at
+from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
 
 
@@ -76,18 +84,21 @@ def _fit_cause(
         raise ValueError(f"No observed events for cause {cause!r}")
     is_competing = (c == 0) & ~is_cause
 
-    # Censoring-survival for the IPCW weights.
+    # Censoring survival for the IPCW weights, taken just before each time,
+    # G(t-), as cmprsk::crr does: at a time shared by events and censorings
+    # the events come first, so the censorings there must not yet thin the
+    # weights (evaluating G(t) counted them against the events they tie with).
+    # G(x_i-) > 0 for every row: row i (a positive count) is at risk and
+    # uncensored at every earlier censoring time, so no step before x_i can
+    # reach zero and the ratio below needs no guard.
     g_times, g_vals = censoring_survival(x, c == 1, n)
-    # G is >= its last positive value; guard the ratio against division by a
-    # zero tail (times beyond the last censoring-KM step).
-    g_floor = g_vals[g_vals > 0].min() if np.any(g_vals > 0) else 1.0
-    G_x = np.maximum(step_at(g_times, g_vals, x, before=1.0), g_floor)
+    G_x = step_left_limit(g_times, g_vals, x, before=1.0)
 
     event_times = x[is_event]
-    G_t = step_at(g_times, g_vals, event_times, before=1.0)
+    G_t = step_left_limit(g_times, g_vals, event_times, before=1.0)
 
     # Subdistribution risk-set weight matrix W (n_events x N), independent of
-    # beta: 1 for the ordinary risk set (x_i >= t_j); G(t_j)/G(x_i) for a
+    # beta: 1 for the ordinary risk set (x_i >= t_j); G(t_j-)/G(x_i-) for a
     # subject who already failed from a competing cause (x_i < t_j); 0 for a
     # censored subject or one that already had the event of interest.
     at_risk = x[None, :] >= event_times[:, None]
@@ -296,9 +307,13 @@ class FineGray_:
 
     Estimated by inverse-probability-of-censoring weighting (IPCW), with one
     Kaplan-Meier censoring distribution for the whole sample, so censoring
-    is assumed not to depend on the covariates. ``FineGray`` (from
-    ``surpyval.univariate.competing_risks``) is an instance of this class;
-    its ``fit`` returns a
+    is assumed not to depend on the covariates. A subject that failed from
+    a competing cause at :math:`x_i` keeps the weight
+    :math:`\\hat G(t-)/\\hat G(x_i-)` at a later event time :math:`t`: the
+    censoring survival is taken just before each time, so a censoring tied
+    with an event counts after it, as in R's ``cmprsk::crr``. ``FineGray``
+    (from ``surpyval.univariate.competing_risks``) is an instance of this
+    class; its ``fit`` returns a
     :class:`~surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel`.
     """
 
@@ -352,9 +367,9 @@ class FineGray_:
         >>> e = np.where(t_c < np.minimum(t_a, t_b), None, first)
         >>> model = FineGray.fit(x, Z, e, cause="a")
         >>> model.beta.round(3)
-        array([0.907])
+        array([0.908])
         >>> model.cif([5, 10], [[1]]).round(4)
-        array([0.5808, 0.7394])
+        array([0.5808, 0.7395])
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 

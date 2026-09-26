@@ -684,6 +684,16 @@ Things to watch:
 - The Fine-Gray model is fitted for one cause at a time. To model every cause,
   use ``CompetingRisksProportionalHazards`` with ``how="Fine-Gray"`` (below);
   the separate fits are not constrained to be mutually consistent.
+- Censoring times tied with event times (common when times are recorded in
+  whole days or months) follow R's ``cmprsk::crr``: the event is taken to
+  come first. A unit that failed from a competing cause at :math:`x_i` keeps
+  the weight :math:`\hat{G}(t^-)/\hat{G}(x_i^-)` at a later event time
+  :math:`t`, with :math:`\hat{G}` the Kaplan-Meier estimate of the censoring
+  survival taken just before each time, so censorings at :math:`t` or at
+  :math:`x_i` do not count against the events there. These are ``crr``'s
+  weights; without such ties the left limits are just :math:`\hat{G}(t)`
+  and :math:`\hat{G}(x_i)`. See
+  :doc:`Competing Risks Analysis` for the details.
 
 The fitted model serialises like the other competing-risks models; the
 optimiser result (``model.res``) is not stored:

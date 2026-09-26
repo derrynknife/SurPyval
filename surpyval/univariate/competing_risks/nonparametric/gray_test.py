@@ -118,8 +118,13 @@ def gray_test(
     ignores the variability of the estimated risk sets. The pooled
     incidence in the variance and in the ``rho`` weight is Gray's
     ``F^0(t) = 1 - prod_{s <= t} (1 - d(s) / R(s))``. R's ``cmprsk``
-    implements the same test; its numerical conventions at tied times may
-    differ slightly.
+    implements the same test and forms ``R_g`` the same way: ``Y_g(t)``
+    counts the rows censored at ``t`` and ``S_g`` is taken just before
+    ``t``, so ``Y_g(t) / S_g(t-)`` is the group size times its censoring
+    survival just before ``t`` -- a censoring tied with a failure counts
+    after it, as in ``FineGray``'s weights. The pooled ``F^0`` (in the
+    weight and the variance) and the variance at tied failure times follow
+    Gray's paper and may differ from ``cmprsk``'s code in detail.
 
     Examples
     --------
