@@ -164,7 +164,7 @@ def test_xrd_handler():
 
     with pytest.raises(
         ValueError,
-        match="'r' at risk item count array cannot have any negative values",
+        match="'r' at risk item counts must be positive",
     ):
         xrd_handler([1, 2, 3], [1, -2, 3], [1, 2, 3])
 

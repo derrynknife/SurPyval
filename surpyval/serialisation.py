@@ -22,6 +22,7 @@ the core univariate families are identified by their
 """
 
 import json
+import numbers
 import os
 from importlib import import_module
 from pathlib import Path
@@ -146,6 +147,122 @@ def stamp_schema(model_dict: dict) -> dict:
     return model_dict
 
 
+def check_schema(model_dict: dict) -> int:
+    """Return the ``"schema"`` version of a serialised dictionary, refusing
+    one this SurPyval cannot read.
+
+    The version is an integer (``to_dict`` always writes one). Anything
+    else is refused rather than guessed at: ``"2"`` and ``2.0`` used to
+    slip past the version check, which only looked at ``int`` values, and
+    were then read as if they were the current layout. A dictionary with
+    no ``"schema"`` key predates versioning and reads as schema 0.
+    """
+    schema = model_dict.get("schema", 0)
+    # ``bool`` is an ``int`` subclass, but ``True`` is not a version.
+    if isinstance(schema, bool) or not isinstance(schema, numbers.Integral):
+        raise ValueError(
+            "The serialised model's 'schema' must be an integer version"
+            f" number, got {schema!r}."
+        )
+    schema = int(schema)
+    if schema < 0:
+        raise ValueError(
+            f"The serialised model's 'schema' version {schema} is invalid:"
+            " versions are non-negative."
+        )
+    if schema > SCHEMA_VERSION:
+        raise ValueError(
+            f"This serialised model uses schema version {schema}, but "
+            f"this version of SurPyval reads schema versions up to "
+            f"{SCHEMA_VERSION}. Upgrade surpyval to load it."
+        )
+    return schema
+
+
+def check_parameters(dist: Any, params: Any) -> None:
+    """Refuse parameters a distribution cannot take, naming the culprit.
+
+    A serialised dictionary is plain data, so a hand-edited or corrupted
+    one could restore a model with, say, a negative Weibull scale, which
+    then answered every query with NaN or nonsense. ``from_params`` has
+    always refused such values; this applies the same bounds (the
+    distribution's ``bounds``, ``None`` meaning unbounded) to restored
+    parameters. A value *at* a bound is let through, since a fit may
+    legitimately end there; NaN is always refused. Distributions without
+    ``bounds`` are not checked.
+    """
+    values = np.atleast_1d(np.asarray(params, dtype=float))
+    names = list(getattr(dist, "param_names", []) or [])
+    if np.isnan(values).any():
+        raise ValueError(
+            f"The serialised parameters of '{getattr(dist, 'name', dist)}'"
+            " contain NaN."
+        )
+    bounds = getattr(dist, "bounds", None)
+    if bounds is None or values.ndim != 1 or len(bounds) != values.size:
+        return
+    for idx, ((low, high), value) in enumerate(zip(bounds, values)):
+        if (low is not None and value < low) or (
+            high is not None and value > high
+        ):
+            name = names[idx] if idx < len(names) else f"#{idx}"
+            raise ValueError(
+                f"The serialised parameter {name}={float(value)!r} of"
+                f" '{getattr(dist, 'name', dist)}' is outside its bounds"
+                f" {(low, high)}."
+            )
+
+
+def _check_restored_parametric(model: Any) -> None:
+    """Bounds-check a restored univariate parametric model, including the
+    limited-failure-population ``p`` and zero-inflation ``f0`` fractions,
+    which are probabilities."""
+    check_parameters(model.dist, model.params)
+    for flag, attr in (("lfp", "p"), ("zi", "f0")):
+        if getattr(model, flag, False):
+            value = float(getattr(model, attr))
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(
+                    f"The serialised '{attr}'={value!r} is a proportion and"
+                    " must be in [0, 1]."
+                )
+    if getattr(model, "offset", False) and not np.isfinite(
+        float(getattr(model, "gamma", 0.0))
+    ):
+        raise ValueError("The serialised offset 'gamma' must be finite.")
+
+
+def read_model_dict(reader: Any, model_dict: dict) -> Any:
+    """``reader.from_dict(model_dict)`` with the checks every reader needs.
+
+    Shared by the package-level :func:`from_dict` and every class's
+    ``from_json``, so a model read either way gets the same schema check,
+    the same error for a missing entry and the same parameter check.
+    """
+    check_schema(model_dict)
+    # The class readers index the dictionary directly, so a truncated or
+    # hand-edited one surfaced as a bare ``KeyError: 'distribution'``
+    # from deep inside a reader. Name the missing entry instead.
+    try:
+        model = reader.from_dict(model_dict)
+    except KeyError as err:
+        key = err.args[0] if err.args else None
+        name = getattr(reader, "__name__", type(reader).__name__)
+        raise ValueError(
+            "The serialised model dictionary is incomplete or corrupt: it"
+            f" has no {key!r} entry, which {name}.from_dict needs."
+        ) from err
+    # Only the core univariate parametric dictionary carries no "model"
+    # tag; tagged models that also say "parametric" (mixtures, ...) keep
+    # their parameters in other shapes.
+    if (
+        model_dict.get("parameterization") == "parametric"
+        and "model" not in model_dict
+    ):
+        _check_restored_parametric(model)
+    return model
+
+
 def _resolve(module_name: str, class_name: str) -> Any:
     return getattr(import_module(module_name), class_name)
 
@@ -194,7 +311,13 @@ class SerialisableMixin:
     def from_json(cls, fp: str | os.PathLike) -> Any:
         """Load a model from a JSON file written by :meth:`to_json`."""
         with open(fp, "r") as f:
-            return cls.from_dict(json.load(f))
+            model_dict = json.load(f)
+        if not isinstance(model_dict, dict):
+            raise ValueError(
+                "Expected a serialised model dict, got "
+                f"{type(model_dict).__name__}"
+            )
+        return read_model_dict(cls, model_dict)
 
 
 def from_dict(model_dict: dict) -> Any:
@@ -218,8 +341,12 @@ def from_dict(model_dict: dict) -> Any:
     ------
     ValueError
         If the dictionary is not recognisable as a serialised SurPyval
-        model, was written by a newer SurPyval (a higher ``"schema"``
-        version), or names a distribution the reader does not know --
+        model, lacks an entry its reader needs (the message names it), has
+        a ``"schema"`` that is not a non-negative integer or was written
+        by a newer SurPyval (a higher ``"schema"`` version), holds
+        parameters outside the distribution's bounds (for a univariate
+        parametric model), or names a distribution the reader does not
+        know --
         which includes every ``CustomDistribution`` and ``Discretize``
         distribution, since only SurPyval's own distributions are
         resolved by name.
@@ -247,23 +374,21 @@ def from_dict(model_dict: dict) -> Any:
             f"{type(model_dict).__name__}"
         )
 
-    schema = model_dict.get("schema", 0)
-    if isinstance(schema, int) and schema > SCHEMA_VERSION:
-        raise ValueError(
-            f"This serialised model uses schema version {schema}, but "
-            f"this version of SurPyval reads schema versions up to "
-            f"{SCHEMA_VERSION}. Upgrade surpyval to load it."
-        )
+    # Before dispatch too: a model class added by a newer SurPyval is
+    # unknown here, and "upgrade" is the useful answer for it.
+    check_schema(model_dict)
 
     tag = model_dict.get("model")
-    if isinstance(tag, str) and tag in _TAGGED_MODELS:
-        return _resolve(_TAGGED_MODELS[tag], tag).from_dict(model_dict)
-
     parameterization = model_dict.get("parameterization")
-    if parameterization in _PARAMETERIZATIONS:
-        return _resolve(*_PARAMETERIZATIONS[parameterization]).from_dict(
-            model_dict
-        )
+    if isinstance(tag, str) and tag in _TAGGED_MODELS:
+        reader = _resolve(_TAGGED_MODELS[tag], tag)
+    elif parameterization in _PARAMETERIZATIONS:
+        reader = _resolve(*_PARAMETERIZATIONS[parameterization])
+    else:
+        reader = None
+
+    if reader is not None:
+        return read_model_dict(reader, model_dict)
 
     described = ", ".join(
         f"{k}={model_dict[k]!r}"

@@ -41,8 +41,15 @@ Some details differ between families:
   (non-parametric) work after restoring. ``to_json`` never stores the
   data.
 - The degenerate ``NeverOccurs`` and ``InstantlyOccurs`` distributions
-  have ``to_dict`` but no ``to_json``; write their dictionary with
-  ``json.dump``.
+  have no fitted state: the class itself is the model, so ``to_dict``,
+  ``to_json``, ``from_dict`` and ``from_json`` are called on the class
+  (``NeverOccurs.to_json(path)``), and ``surpyval.from_json`` returns the
+  class.
+- Every reader checks the ``"schema"`` (an integer no newer than this
+  SurPyval), names the entry a truncated or hand-edited dictionary is
+  missing, and refuses the parameters of a univariate parametric model
+  that fall outside the distribution's bounds, each with a
+  ``ValueError``.
 - These cannot be saved and raise an error from ``to_dict``: a
   stratified Cox model, an accelerated-life model with a user-defined
   life model, a regression fitted with a formula that uses a

@@ -305,9 +305,9 @@ non-parametric estimators think in:
        when given a ``pathlib.Path``; a string is parsed as JSON text)
    * - ``fsli_handler(f, s, l, i)``, ``xrd_handler(x, r, d)``
      - validate data already in the ``fsli`` or ``xrd`` layout (for example,
-       more deaths than items at risk is an error). ``xrd_handler`` does
-       not check that the times are distinct and increasing; make sure
-       they are
+       more deaths than items at risk is an error). ``xrd_handler`` sorts
+       rows given out of order, carrying ``r`` and ``d`` with their time,
+       and refuses a time listed twice
    * - ``handle_xicn(x, i, c, n, ...)``
      - validates recurrent event data (``xicnt``) and returns the
        ``RecurrentEventData`` object the recurrent models use
@@ -322,9 +322,10 @@ information:
 - ``xrd_to_xcnt`` cannot recover left truncation, and raises an error if the
   risk set ever grows from one time to the next.
 - ``xcn_to_fs`` returns only the observed (``c = 0``) and right censored
-  (``c = 1``) values; left and interval censored rows are left out. It
-  does not validate its input, so pass one-column ``x`` and whole-number
-  counts.
+  (``c = 1``) values; left and interval censored rows are left out. The
+  counts must be whole numbers, and ``c`` and ``n`` the same length as
+  ``x``; the two-column ``x`` that ``xcnt_handler`` returns for interval
+  data is accepted.
 
 Observed and right censored ``xcnt`` data folds into the ``xrd`` form, the count at risk
 and the number of deaths at each distinct time:

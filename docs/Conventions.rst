@@ -43,7 +43,7 @@ When you call ``fit()``, SurPyval validates the arrays, converts them to numpy, 
     data = surv.SurpyvalData(x=[1, 2, 3, [4, 5], 2], c=[0, 1, 0, 2, 1], tl=0)
     print(data)
 
-Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals. And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``). Parametric fitters accept a ``SurpyvalData`` object directly through ``fit_from_surpyval_data``, and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself. ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` parses a string as JSON *text*, so to read a file pass a ``pathlib.Path``: ``SurpyvalData.from_json(Path("data.json"))``.
+Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``). Parametric fitters accept a ``SurpyvalData`` object directly through ``fit_from_surpyval_data``, and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself. ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` parses a string as JSON *text*, so to read a file pass a ``pathlib.Path``: ``SurpyvalData.from_json(Path("data.json"))``.
 
 The xrd format
 ~~~~~~~~~~~~~~
@@ -61,7 +61,7 @@ Converting between the two formats loses information in both directions, so the 
 
 - ``xcnt_to_xrd`` needs data that is observed or right censored (``c`` of 0 or 1) and not right truncated. Left censored and interval censored data have no single time at which to count a death, so they need the Turnbull estimator instead.
 - ``xrd_to_xcnt`` recovers the individual observed and right censored values from ``r`` and ``d``. It cannot recover left truncation: if the risk set ever *grows* between two times (items entering late), the per-item entry times are lost, and the function raises an error rather than returning a different study.
-- xrd data given directly (to ``xrd_to_xcnt``, or to ``KaplanMeier.from_xrd`` and the other non-parametric ``from_xrd`` methods) must list each time once, in increasing order, as ``xcnt_to_xrd`` returns it. This is not checked: rows out of order are read in the order given, and give a wrong estimate.
+- xrd data given directly (to ``xrd_to_xcnt``, or to ``KaplanMeier.from_xrd`` and the other non-parametric ``from_xrd`` methods) must list each time once, as ``xcnt_to_xrd`` returns it. Each ``(x, r, d)`` row stands on its own, so rows given out of order are sorted by time (keeping their ``r`` and ``d``); a time listed twice is an error, since there is no single risk set to use for it.
 
 The xicnt format
 ~~~~~~~~~~~~~~~~
@@ -271,7 +271,7 @@ Almost every fitted SurPyval model can be saved and restored (the exceptions are
     print(type(restored_weibull).__name__, restored_weibull.params)
     print(type(restored_km).__name__, restored_km.sf(6), km.sf(6))
 
-Every dictionary carries a ``"schema"`` version number. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread.
+Every dictionary carries a ``"schema"`` version number, an integer. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say).
 
 A restored model keeps what it needs to make predictions, but by default **not the data it was fitted to**. A univariate parametric model also keeps its covariance matrix, so ``cb`` (Wald bounds) works, and its fitted negative log-likelihood, so ``neg_ll()`` and ``aic()`` work; a parametric regression model keeps its covariance too. Anything that needs the data, such as ``plot()``, the sample-size-based criteria (``bic()``, ``aic_c()``), bootstrap or likelihood-ratio confidence bounds, residuals and diagnostics, raises an error on a restored model. What each family keeps is described on its how-to page; recurrent-event models, for example, keep no covariance, so their ``cif_cb`` needs a refit.
 

@@ -6,7 +6,7 @@ from collections import defaultdict
 import numpy as np
 import numpy.typing as npt
 from formulaic import Formula
-from pandas import DataFrame, Series, isna
+from pandas import DataFrame, isna
 
 COX_PH_METHODS = ["breslow", "efron", "exact", "kalbfleisch-prentice", "kp"]
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
@@ -272,8 +272,9 @@ def fsli_handler(
     ------
     ValueError
         If no data is given, if ``f``, ``s`` or ``l`` is not
-        one-dimensional, if ``i`` is not of shape ``(k, 2)``, or if an
-        interval's lower value is not below its upper value.
+        one-dimensional, if ``i`` is not of shape ``(k, 2)``, if any value
+        is NaN, or if an interval's lower value is not below its upper
+        value.
 
     Returns
     -------
@@ -324,20 +325,47 @@ def fsli_handler(
         raise ValueError("'l' array must be one-dimensional")
 
     if (i.ndim != 2) and (i.size != 0):
-        raise ValueError("'i' array must be one-dimensional")
+        raise ValueError(
+            "'i' array must be two-dimensional: one [lower, upper] pair"
+            " per interval, of shape (k, 2)"
+        )
 
     if len(i) > 0:
         if i.shape[1] != 2:
-            raise ValueError("'i' array must be of shape (?, 2)")
+            raise ValueError("'i' array must be of shape (k, 2)")
+
+    # NaN compares false with everything, so it slipped past every check
+    # below and into the fitted data (xcnt_handler refuses it in 'x').
+    for name, arr in (("f", f), ("s", s), ("l", l), ("i", i)):
+        if np.isnan(arr).any():
+            raise ValueError(f"'{name}' cannot contain NaN values")
 
     if i.size != 0:
         if (i[:, 0] >= i[:, 1]).any():
             raise ValueError(
-                "Lower interval must not be greater than or equal to the \
-                upper interval"
+                "Lower interval must not be greater than or equal to the"
+                " upper interval"
             )
 
     return f, s, l, i
+
+
+def _whole_number_array(values: npt.ArrayLike, name: str) -> npt.NDArray:
+    """``values`` as an integer array, refusing anything not a whole number.
+
+    An integer-valued float array such as ``[5.0, 4.0]`` is accepted: that
+    is how counts arrive from a DataFrame column with a missing value, or
+    after any arithmetic, and ``astype(int, casting="safe")`` used to refuse
+    it. Fractions, NaN and infinities are refused, as are booleans' string
+    cousins -- anything numpy cannot read as a number.
+    """
+    try:
+        arr = np.asarray(values, dtype=np.float64)
+    except (ValueError, TypeError):
+        raise ValueError(f"'{name}' must be an array of integers.")
+    if not np.isfinite(arr).all() or (arr != np.floor(arr)).any():
+        raise ValueError(f"'{name}' must be an array of integers.")
+    return arr.astype(int)
 
 
 def xrd_handler(
@@ -345,16 +373,21 @@ def xrd_handler(
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Takes a combination of 'x', 'r', and 'd' arrays and ensures that the data
-    is feasible: the arrays are one-dimensional and the same length, ``r``
-    and ``d`` hold integers (an integer-valued float array such as
-    ``[5.0, 4.0]`` is refused), every ``r`` is at least one, no ``d`` is
-    negative and no ``d`` exceeds its ``r``.
+    is feasible: the arrays are one-dimensional and the same length, ``x``
+    has no NaN and no repeated time, ``r`` and ``d`` hold whole numbers
+    (integer-valued floats such as ``[5.0, 4.0]`` are accepted), every
+    ``r`` is at least one, no ``d`` is negative and no ``d`` exceeds its
+    ``r``.
+
+    xrd data lists each distinct time once, with the number at risk and
+    the number of deaths *at that time*. Each ``(x, r, d)`` row is
+    therefore self-contained, so rows given out of order are sorted by
+    ``x`` (carrying their ``r`` and ``d`` with them) rather than refused.
+    A repeated time is refused: there is no unambiguous way to merge two
+    rows that each claim to be the risk set at that time.
 
     Does not check that ``r`` decreases, as it can grow when there is
-    left truncation (late entry). Nor does it check that ``x`` is sorted
-    and free of repeats: xrd data lists each distinct time once, in
-    increasing order, and rows given out of order are used in the order
-    given.
+    left truncation (late entry).
 
     Parameters
     ----------
@@ -369,11 +402,17 @@ def xrd_handler(
     ----------
 
     x: array
-        array of values of variable for which observations were made.
+        array of values of variable for which observations were made,
+        in increasing order.
     r: array
         array of at risk items at each value of x
     d: array
         array of failures / deaths at each value of x
+
+    Raises
+    ------
+    ValueError
+        If any of the rules above is broken.
 
     Examples
     --------
@@ -389,6 +428,11 @@ def xrd_handler(
     array([5, 4, 3, 2, 1])
     >>> d
     array([1, 1, 1, 1, 1])
+
+    Rows out of order are sorted together:
+
+    >>> xrd_handler([3, 1, 2], [2, 5, 4], [1, 1, 1])
+    (array([1., 2., 3.]), array([5, 4, 2]), array([1, 1, 1]))
     """
 
     try:
@@ -398,15 +442,8 @@ def xrd_handler(
             "'x' must be an array of scalar numbers with real values."
         )
 
-    try:
-        r = np.array(r).astype(int, casting="safe")
-    except Exception:
-        raise ValueError("'r' must be an array of integers.")
-
-    try:
-        d = np.array(d).astype(int, casting="safe")
-    except Exception:
-        raise ValueError("'d' must be an array of integers.")
+    r = _whole_number_array(r, "r")
+    d = _whole_number_array(d, "d")
 
     if x.ndim != 1:
         raise ValueError("'x' must be a one dimensional array")
@@ -416,12 +453,19 @@ def xrd_handler(
     if x.shape != d.shape:
         raise ValueError("'x' array not the same length as 'd' array")
 
+    if x.size == 0:
+        raise ValueError("'x' is empty: xrd data needs at least one time")
+
+    if np.isnan(x).any():
+        raise ValueError("'x' cannot contain NaN values")
+
     if (d < 0).any():
         raise ValueError("'d' array cannot have any negative values")
 
     if (r <= 0).any():
         raise ValueError(
-            "'r' at risk item count array cannot have any negative values"
+            "'r' at risk item counts must be positive: every listed time"
+            " needs at least one item at risk"
         )
 
     if (d > r).any():
@@ -429,42 +473,77 @@ def xrd_handler(
             "cannot have more deaths/failures than there are items at risk"
         )
 
+    # Every estimator walks the rows in order, multiplying (or summing)
+    # one step per row, so unsorted rows used to give a silently wrong
+    # curve (and xrd_to_xcnt wrong rows). The rows are independent
+    # triples, so sorting them together is exact.
+    order = np.argsort(x, kind="stable")
+    x, r, d = x[order], r[order], d[order]
+    if (np.diff(x) == 0).any():
+        raise ValueError(
+            "'x' has repeated times ({}): xrd data lists each distinct"
+            " time once, with all the deaths at that time in one row".format(
+                np.unique(x[1:][np.diff(x) == 0])
+            )
+        )
+
     return x, r, d
 
 
 def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
     """
-    Coerce the ``x`` variable of xcnt-format data into a numpy array.
+    Coerce the ``x`` variable of xcnt-format data into a float numpy array.
 
-    Accepts a 1D array of event values, or a 2D array / list-of-pairs of
-    ``[left, right]`` interval bounds. Validates dimensionality, the interval
-    ordering (``left <= right``) and the absence of NaNs. Shared by the
-    univariate (``xcnt_handler``) and recurrent (``handle_xicn``) handlers.
+    Accepts a scalar (a single observation), a 1D array of event values,
+    or a 2D array / list-of-pairs of ``[left, right]`` interval bounds. In
+    a list (or tuple), any element that is itself a list, tuple or array
+    is an interval row, and the scalar elements are rows with equal ends.
+    Validates dimensionality, the absence of NaNs and the interval
+    ordering (``left <= right``). Shared by the univariate
+    (``xcnt_handler``) and recurrent (``handle_xicn``) handlers.
     """
-    if isinstance(x, list):
-        if any(isinstance(v, list) for v in x):
-            x_ndarray = np.empty(shape=(len(x), 2))
-            for idx, val in enumerate(x):
-                val_arr = np.atleast_1d(val)
-                if len(val_arr) > 2:
-                    raise ValueError(
-                        "Each element of 'x' must be either scalar or"
-                        " array-like of no more than length 2"
-                    )
-                x_ndarray[idx, :] = val_arr
-            x = x_ndarray
-        else:
-            x = np.array(x)
-    elif isinstance(x, Series):
-        x = np.array(x)
+    if isinstance(x, (list, tuple)) and any(
+        isinstance(v, (list, tuple, np.ndarray)) and np.ndim(v) > 0 for v in x
+    ):
+        # A ragged mix of scalars and pairs. Only lists used to be
+        # recognised as pairs, so ``[1, (2, 3), 4]`` reached np.array and
+        # failed with numpy's "inhomogeneous shape" error.
+        x_ndarray = np.empty(shape=(len(x), 2))
+        for idx, val in enumerate(x):
+            try:
+                val_arr = np.atleast_1d(np.asarray(val, dtype=float))
+            except (ValueError, TypeError):
+                raise ValueError(
+                    "Each element of 'x' must be a number or a [left, right]"
+                    " pair of numbers"
+                )
+            if val_arr.ndim != 1 or len(val_arr) not in (1, 2):
+                raise ValueError(
+                    "Each element of 'x' must be either scalar or"
+                    " array-like of no more than length 2"
+                )
+            x_ndarray[idx, :] = val_arr
+        x = x_ndarray
     else:
-        # A copy: the handlers rewrite interval endpoints in place (an
-        # infinite endpoint becomes a one-sided censoring), which must not
-        # reach the caller's array -- refitting it gave a different answer.
-        x = np.array(x)
+        # Always a copy: the handlers rewrite interval endpoints in place
+        # (an infinite endpoint becomes a one-sided censoring), which must
+        # not reach the caller's array -- refitting it gave a different
+        # answer. ``atleast_1d``: a scalar is one observation (it used to
+        # fail with "tuple index out of range").
+        try:
+            x = np.atleast_1d(np.array(x, dtype=float))
+        except (ValueError, TypeError):
+            raise ValueError(
+                "Variable 'x' must be numbers, or [left, right] pairs of"
+                " numbers"
+            )
 
     if x.ndim > 2:
         raise ValueError("Variable 'x' array must be one or two dimensional")
+    # Before the ordering check, which NaN would fail with a misleading
+    # "left intervals must be less than ..." message.
+    if np.isnan(x).any():
+        raise ValueError("Variable 'x' cannot contain NaN values")
     if x.ndim == 2:
         if x.shape[1] != 2:
             raise ValueError(
@@ -476,8 +555,6 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
                 "All left intervals must be less than or equal to right"
                 " intervals"
             )
-    if np.isnan(x).any():
-        raise ValueError("Variable 'x' cannot contain NaN values")
     return x
 
 
@@ -489,9 +566,10 @@ def format_truncation(
 ) -> npt.NDArray:
     """
     Build the ``(n_rows, 2)`` truncation array from either a ``t`` matrix or
-    separate ``tl``/``tr`` bounds (scalars broadcast to all rows). The default
-    window is the whole real line ``[-inf, inf]``. Shared by ``xcnt_handler``
-    and ``handle_xicn``.
+    separate ``tl``/``tr`` bounds (scalars, including 0-d arrays, broadcast
+    to all rows). The default window is the whole real line
+    ``[-inf, inf]``. NaN bounds are refused. Shared by ``xcnt_handler`` and
+    ``handle_xicn``.
     """
     if t is not None and ((tl is not None) or (tr is not None)):
         raise ValueError(
@@ -505,19 +583,8 @@ def format_truncation(
         return np.vstack([tl_arr, tr_arr]).T
 
     if (tl is not None) or (tr is not None):
-        if tl is None:
-            tl_arr = np.ones(n_rows) * -np.inf
-        elif np.isscalar(tl):
-            tl_arr = np.ones(n_rows) * float(tl)  # type: ignore[arg-type]
-        else:
-            tl_arr = np.array(tl, dtype=float)
-
-        if tr is None:
-            tr_arr = np.ones(n_rows) * np.inf
-        elif np.isscalar(tr):
-            tr_arr = np.ones(n_rows) * float(tr)  # type: ignore[arg-type]
-        else:
-            tr_arr = np.array(tr, dtype=float)
+        tl_arr = _truncation_bound(tl, "tl", -np.inf, n_rows)
+        tr_arr = _truncation_bound(tr, "tr", np.inf, n_rows)
 
         if tl_arr.ndim > 1 or tr_arr.ndim > 1:
             raise ValueError(
@@ -528,21 +595,113 @@ def format_truncation(
             raise ValueError(
                 "Truncation array must be same length as variable array"
             )
-        return np.vstack([tl_arr, tr_arr]).T
+        t = np.vstack([tl_arr, tr_arr]).T
+    else:
+        try:
+            t = np.array(t, dtype=float)
+        except (ValueError, TypeError):
+            raise ValueError("Truncation bounds 't' must be numbers")
+        if t.ndim != 2:
+            raise ValueError("Truncation ndarray must be 2 dimensional")
+        if t.shape[0] != n_rows:
+            raise ValueError(
+                "Truncation ndarray must be same shape as variable array"
+            )
+        if t.shape[1] != 2:
+            raise ValueError(
+                "Truncation array must have shape (n, 2) with left and right"
+                " bounds"
+            )
 
-    t = np.array(t, dtype=float)
-    if t.ndim != 2:
-        raise ValueError("Truncation ndarray must be 2 dimensional")
-    if t.shape[0] != n_rows:
+    # NaN compares false with everything, so a NaN bound passed every
+    # validity check and then meant something different to each fitter:
+    # "no truncation" to the parametric likelihood, a divide-by-zero in
+    # Kaplan-Meier's risk sets, a third answer from Turnbull. A missing
+    # bound is spelled -inf (left) or inf (right).
+    if np.isnan(t).any():
         raise ValueError(
-            "Truncation ndarray must be same shape as variable array"
-        )
-    if t.shape[1] != 2:
-        raise ValueError(
-            "Truncation array must have shape (n, 2) with left and right"
-            " bounds"
+            "Truncation bounds must not contain NaN: use -inf for no left"
+            " truncation and inf for no right truncation"
         )
     return t
+
+
+def _truncation_bound(
+    bound: "npt.ArrayLike | Number | None",
+    name: str,
+    default: float,
+    n_rows: int,
+) -> npt.NDArray:
+    """One truncation bound as a float array, broadcasting a scalar.
+
+    ``np.ndim`` rather than ``np.isscalar``: a 0-d array such as
+    ``np.array(0.5)`` is not a "scalar" to numpy, so it used to be kept
+    0-d and crash the length check with "tuple index out of range".
+    """
+    if bound is None:
+        return np.full(n_rows, default)
+    try:
+        arr = np.array(bound, dtype=float)
+    except (ValueError, TypeError):
+        raise ValueError(f"Truncation bound '{name}' must be numbers")
+    if arr.ndim == 0:
+        return np.full(n_rows, float(arr))
+    return arr
+
+
+def _check_truncation_bounds(
+    x: npt.NDArray, c: npt.NDArray, t: npt.NDArray
+) -> None:
+    """Refuse a row that cannot have been seen inside its truncation window.
+
+    The window is ``(tl, tr]`` and a row's event time ``X`` must be able
+    to fall in it. A single value (observed, or censored on one side) is
+    held to the same rules whether ``x`` has one column or two -- the
+    two-column path used to allow a value at exactly ``tl``:
+
+    * ``tl < x``: at ``x == tl`` the observation window has zero length
+      (#260); a left censored ``X <= tl`` is likewise impossible.
+    * ``x <= tr``, and for a right censored row ``x < tr``: censored at
+      ``tr`` means ``tr < X <= tr``, an empty set. The likelihood for it
+      is ``log 0`` and the fit failed with a stream of warnings.
+
+    An interval row ``[xl, xr]`` means ``xl < X <= xr``, so it may start
+    at ``tl`` (``tl <= xl``) and must end by ``tr`` (``xr <= tr``).
+    """
+    lo = x if x.ndim == 1 else x[:, 0]
+    hi = x if x.ndim == 1 else x[:, 1]
+    point = lo == hi
+    has_tl = np.isfinite(t[:, 0])
+    has_tr = np.isfinite(t[:, 1])
+
+    if (has_tl & point & (t[:, 0] >= lo)).any():
+        # Strictly less: under the (entry, exit] risk-interval convention
+        # a value at exactly its own left-truncation time has a
+        # zero-length observation window — contradictory data that
+        # previously slipped through and silently distorted the Turnbull
+        # estimate (#260).
+        raise ValueError(
+            "All left truncated values must be strictly less than the"
+            + " respective observed values: a value at its own left"
+            + " truncation time has a zero-length observation window."
+        )
+    if (has_tl & ~point & (t[:, 0] > lo)).any():
+        raise ValueError(
+            "All left truncated values must be less than the respective"
+            + " observed values: an interval cannot start below its own"
+            + " left truncation time"
+        )
+    if (has_tr & (hi > t[:, 1])).any():
+        raise ValueError(
+            "All right truncated values must be greater than the"
+            + " respective observed values"
+        )
+    if (has_tr & point & (c == 1) & (lo >= t[:, 1])).any():
+        raise ValueError(
+            "A right censored value must be strictly less than its right"
+            + " truncation time: censored at tr, the event would have to"
+            + " lie after tr and at or before it."
+        )
 
 
 def xcnt_handler(
@@ -560,18 +719,23 @@ def xcnt_handler(
     Main handler that ensures any input to a surpyval fitter meets the
     requirements to be used in one of the parametric or nonparametric fitters.
 
-    It converts the inputs to numpy arrays and checks them: ``x`` has no
-    NaN; ``c`` holds only -1, 0 and 1 (and 2 for a two-column ``x``);
-    ``n`` holds positive whole numbers; the truncation window of each row
-    has its left bound below its right bound; and each value lies
-    strictly above its left truncation bound and at or below its right
-    one (for two-column ``x``, the lower value may equal the left
-    bound). For two-column ``x``, a row with equal values is not an
-    interval, a row with different values must be flagged 2 (when ``c``
-    is given), and an infinite end turns the row into one-sided
-    censoring: ``[v, inf]`` becomes right censored at ``v`` and
-    ``[-inf, v]`` left censored at ``v``. Identical rows are then merged
-    (their counts summed) and the rows sorted with :func:`xcnt_sort`.
+    It converts the inputs to numpy arrays and checks them: ``x`` is not
+    empty and has no NaN (a scalar is one observation); ``c`` holds only
+    -1, 0 and 1 (and 2 for a two-column ``x``); ``n`` holds positive
+    whole numbers; the truncation bounds have no NaN and the window of
+    each row has its left bound below its right bound. For two-column
+    ``x``, a row with equal values is not an interval, a row with
+    different values must be flagged 2 (when ``c`` is given), and an
+    infinite end turns the row into one-sided censoring: ``[v, inf]``
+    becomes right censored at ``v`` and ``[-inf, v]`` left censored at
+    ``v``. If no interval is left, ``x`` is returned with one column.
+
+    Each row must then fit its truncation window ``(tl, tr]``: a single
+    value lies strictly above ``tl`` and at or below ``tr`` -- strictly
+    below ``tr`` if it is right censored -- whether ``x`` has one column
+    or two; an interval ``[xl, xr]`` needs ``tl <= xl`` and
+    ``xr <= tr``. Identical rows are then merged (their counts summed)
+    and the rows sorted with :func:`xcnt_sort`.
 
     Parameters
     ----------
@@ -627,9 +791,11 @@ def xcnt_handler(
     ------
     ValueError
         If the inputs break any of the rules above: for example ``x`` and
-        ``xl``/``xr`` both given, arrays of different lengths, a NaN in
-        ``x``, an unknown censoring flag, a count that is not a positive
-        whole number, or a value at or below its own left truncation.
+        ``xl``/``xr`` both given, empty ``x``, arrays of different
+        lengths, a NaN in ``x`` or in a truncation bound, an unknown
+        censoring flag, a count that is not a positive whole number, a
+        value at or below its own left truncation, or a right censored
+        value at its own right truncation.
 
     Examples
     --------
@@ -638,25 +804,25 @@ def xcnt_handler(
     >>> x = [1, 2, 3, 4, 5]
     >>> c = [0, 0, 1, 1, 1]
     >>> n = [1, 1, 1, 1, 1]
-    >>> t = [[0, 5], [0, 5], [0, 5], [0, 5], [0, 5]]
+    >>> t = [[0, 6], [0, 6], [0, 6], [0, 6], [0, 6]]
     >>> xcnt_handler(x, c, n, t)
     (array([1., 2., 3., 4., 5.]),
     array([0, 0, 1, 1, 1]),
     array([1, 1, 1, 1, 1]),
-    array([[0., 5.],
-            [0., 5.],
-            [0., 5.],
-            [0., 5.],
-            [0., 5.]]))
-    >>> xcnt_handler(x, c, n, tl=0, tr=5)
+    array([[0., 6.],
+            [0., 6.],
+            [0., 6.],
+            [0., 6.],
+            [0., 6.]]))
+    >>> xcnt_handler(x, c, n, tl=0, tr=6)
     (array([1., 2., 3., 4., 5.]),
     array([0, 0, 1, 1, 1]),
     array([1, 1, 1, 1, 1]),
-    array([[0., 5.],
-            [0., 5.],
-            [0., 5.],
-            [0., 5.],
-            [0., 5.]]))
+    array([[0., 6.],
+            [0., 6.],
+            [0., 6.],
+            [0., 6.],
+            [0., 6.]]))
     >>> xl = [1, 2, 3, 4, 5]
     >>> xr = [2, 3, 4, 5, 6]
     >>> xcnt_handler(xl=xl, xr=xr)
@@ -702,9 +868,15 @@ def xcnt_handler(
 
     x = coerce_xcnt_x(x)
 
+    # Without this an empty sample built a model (Kaplan-Meier) that
+    # failed later on first use, or failed inside a reduction with
+    # "zero-size array to reduction operation" (parametric).
+    if x.shape[0] == 0:
+        raise ValueError("'x' is empty: at least one observation is needed")
+
     # logic for censoring flag
     if c is not None:
-        c = np.array(c)
+        c = np.atleast_1d(np.array(c))
         if c.ndim != 1:
             raise ValueError("Censoring flag array must be one dimensional")
 
@@ -756,14 +928,19 @@ def xcnt_handler(
             c[x[:, 0] != x[:, 1]] = 2
 
     if n is not None:
-        n = np.array(n)
+        try:
+            n = np.atleast_1d(np.array(n, dtype=float))
+        except (ValueError, TypeError):
+            raise ValueError("Count array 'n' must contain integer values")
         if n.ndim != 1:
             raise ValueError("Count array must be one dimensional")
         if n.shape[0] != x.shape[0]:
             raise ValueError(
                 "count array must be same length as variable array."
             )
-        if not np.equal(n, np.floor(n)).all():
+        # isfinite as well: floor(inf) == inf, so an infinite count passed
+        # the whole-number test and became garbage in the integer cast.
+        if not (np.isfinite(n) & np.equal(n, np.floor(n))).all():
             raise ValueError("Count array 'n' must contain integer values")
         if not (n > 0).all():
             raise ValueError("count array can't be 0 or less")
@@ -778,34 +955,11 @@ def xcnt_handler(
             "All left truncated values must be less than right truncated"
             + " values"
         )
-    if x.ndim == 2:
-        if ((t[:, 0] > x[:, 0]) & (np.isfinite(t[:, 0]))).any():
-            raise ValueError(
-                "All left truncated values must be less than the respective"
-                + " observed values"
-            )
-        elif ((t[:, 1] < x[:, 1]) & (np.isfinite(t[:, 1]))).any():
-            raise ValueError(
-                "All right truncated values must be greater than the"
-                + " respective observed values"
-            )
-    else:
-        # Strictly less: under the (entry, exit] risk-interval convention a
-        # value at exactly its own left-truncation time has a zero-length
-        # observation window — contradictory data that previously slipped
-        # through and silently distorted the Turnbull estimate (#260).
-        if ((t[:, 0] >= x) & np.isfinite(t[:, 0])).any():
-            raise ValueError(
-                "All left truncated values must be strictly less than the"
-                + " respective observed values: a value at its own left"
-                + " truncation time has a zero-length observation window."
-            )
-        elif (t[:, 1] < x).any():
-            raise ValueError(
-                "All right truncated values must be greater than the"
-                + " respective observed values"
-            )
 
+    # One-sided rows are converted *before* the truncation checks: they
+    # compared their infinite end with the bound, so ``[5, inf]`` with
+    # ``tr=10`` was refused although the equivalent one-column fit (5,
+    # right censored) was accepted.
     if x.ndim == 2:
         if np.isinf(x).all(axis=1).any():
             raise ValueError(
@@ -822,6 +976,18 @@ def xcnt_handler(
         mask = np.isinf(x[:, 0])
         x[mask, 0] = x[mask, 1]
         c[mask] = -1
+
+        # With no interval left the second column carries nothing, so hand
+        # back the one-column form every fitter accepts. Kaplan-Meier,
+        # Nelson-Aalen, the probability-plot and moment fitters,
+        # xcnt_to_xrd and several regression fitters only take a 1-D x,
+        # and used to crash ("object too deep for desired array") on
+        # ``xl``/``xr`` data with no real intervals, e.g. from a DataFrame
+        # with separate left and right columns.
+        if (x[:, 0] == x[:, 1]).all():
+            x = x[:, 0].copy()
+
+    _check_truncation_bounds(x, c, t)
 
     x = x.astype(float)
     c = c.astype(int)
@@ -877,9 +1043,16 @@ def xcn_to_fs(
 
     Notes
     -----
-    The inputs are not validated (use :func:`xcnt_handler` first if in
-    doubt): ``x`` must be one-dimensional, and a non-integer count is
-    truncated to an integer.
+    A two-column ``x`` (as :func:`xcnt_handler` returns for interval
+    data) is accepted: its interval rows are dropped like any other
+    non-0/1 flag, and every other row must have equal ends.
+
+    Raises
+    ------
+    ValueError
+        If ``c`` or ``n`` is not the same length as ``x``, a count is not
+        a non-negative whole number, or an observed or right censored row
+        of a two-column ``x`` has different ends.
 
     Examples
     --------
@@ -887,14 +1060,46 @@ def xcn_to_fs(
     >>> xcn_to_fs([1, 2, 5], [0, 1, 0], [2, 1, 1])
     (array([1, 1, 5]), array([2]))
     """
-    x = np.array(x)
+    # Validated because the conversion is silent otherwise: a count of
+    # 1.7 was truncated to one item, a length mismatch surfaced as an
+    # IndexError, and a two-column x crashed inside np.repeat.
+    x = np.atleast_1d(np.array(x))
+    if x.ndim == 2 and x.shape[1] == 2:
+        interval = x[:, 0] != x[:, 1]
+        if c is None:
+            c = np.where(interval, 2, 0)
+        c = np.atleast_1d(np.array(c))
+        if c.shape != interval.shape:
+            raise ValueError("'c' must be the same length as 'x'")
+        if (interval & ((c == 0) | (c == 1))).any():
+            raise ValueError(
+                "An observed or right censored row of a two-column 'x' must"
+                " have equal ends"
+            )
+        x = x[:, 0]
+    elif x.ndim != 1:
+        raise ValueError(
+            "'x' must be one-dimensional, or two columns of [left, right]"
+        )
     if c is None:
-        c = np.zeros_like(x)
-    if n is None:
-        n = np.ones_like(x).astype(int)
+        c = np.zeros(x.shape, dtype=int)
+    c = np.atleast_1d(np.array(c))
+    if c.shape != x.shape:
+        raise ValueError("'c' must be the same length as 'x'")
 
-    c = np.array(c)
-    n = np.array(n).astype(int)
+    if n is None:
+        n = np.ones(x.shape, dtype=int)
+    try:
+        n_float = np.atleast_1d(np.array(n, dtype=float))
+    except (ValueError, TypeError):
+        raise ValueError("Counts 'n' must be non-negative whole numbers")
+    if n_float.shape != x.shape:
+        raise ValueError("'n' must be the same length as 'x'")
+    if not (
+        np.isfinite(n_float) & (n_float == np.floor(n_float)) & (n_float >= 0)
+    ).all():
+        raise ValueError("Counts 'n' must be non-negative whole numbers")
+    n = n_float.astype(int)
 
     f = np.repeat(x[c == 0], n[c == 0])
     s = np.repeat(x[c == 1], n[c == 1])
@@ -1062,9 +1267,9 @@ def xrd_to_xcnt(
     observed row, and the items that leave the risk set without dying
     between ``x[j]`` and ``x[j + 1]``, ``r[j] - d[j] - r[j + 1]``, become
     right censored rows at ``x[j]`` (after the last time, ``r - d``).
-    The times must be distinct and in increasing order; this is not
-    checked. The result has no truncation and no left or interval
-    censoring.
+    The input is validated with :func:`xrd_handler`, so the times must be
+    distinct; rows out of order are sorted first. The result has no
+    truncation and no left or interval censoring.
 
     Note: left truncation cannot be recovered from the xrd format because
     the at-risk count `r` collapses per-subject truncation times into a
@@ -1095,8 +1300,9 @@ def xrd_to_xcnt(
     Raises
     ------
     ValueError
-        If the risk set grows from one time to the next (late entry),
-        which the xcnt output cannot represent.
+        If :func:`xrd_handler` refuses the data, or if the risk set grows
+        from one time to the next (late entry), which the xcnt output
+        cannot represent.
 
     Examples
     --------
@@ -1117,6 +1323,10 @@ def xrd_to_xcnt(
            [-inf,  inf],
            [-inf,  inf]])
     """
+    # Validated (and sorted) like every other xrd input: the growth check
+    # and the drop-out arithmetic below assume distinct, increasing times,
+    # and used to return the wrong rows for unsorted ones.
+    x, r, d = xrd_handler(x, r, d)
     n_f = np.copy(d)
     x_f = np.copy(x)
     mask = n_f != 0
@@ -1269,6 +1479,12 @@ def fsl_to_xcnt(
     if l is None:
         l = []
 
+    # np.unique keeps NaN, so it used to become a row of the output.
+    named: list[tuple[str, npt.ArrayLike]] = [("f", f), ("s", s), ("l", l)]
+    for name, values in named:
+        if np.isnan(np.asarray(values, dtype=float)).any():
+            raise ValueError(f"'{name}' cannot contain NaN values")
+
     x_f, n_f = np.unique(f, return_counts=True)
     c_f = np.zeros_like(x_f)
 
@@ -1391,12 +1607,106 @@ def resolve_cr_censoring(
     Returns the canonicalised event array (object dtype, ``None`` for censored)
     and the censoring flag (unchanged if supplied, otherwise derived).
     """
-    e = np.asarray(e, dtype=object)
+    if isinstance(e, (list, tuple)):
+        # One element per row, whatever it is: ``np.asarray`` would split a
+        # tuple cause label (``("a", 1)``) into a column of its own.
+        values = list(e)
+        e = np.empty(len(values), dtype=object)
+        for i, v in enumerate(values):
+            e[i] = v
+    else:
+        e = np.asarray(e, dtype=object)
     missing = np.array([is_missing_event(v) for v in e], dtype=bool)
-    e = np.array([None if m else v for v, m in zip(e, missing)], dtype=object)
+    e = e.copy()
+    e[missing] = None
     if c is None:
         c = np.where(missing, 1, 0)
     return e, np.asarray(c)
+
+
+def check_covariate_rows(Z: npt.ArrayLike, n_rows: int) -> None:
+    """Refuse a covariate array whose row count does not match the data.
+
+    Every regression fitter pairs covariate row ``i`` with observation
+    ``i``; a mismatch used to surface as a bare ``IndexError`` from deep
+    inside a boolean mask, which says nothing about the cause.
+    """
+    Z_rows = np.shape(Z)[0] if np.ndim(Z) > 0 else 1
+    if Z_rows != n_rows:
+        raise ValueError(
+            "Z has {} row(s) but there are {} observations; give one "
+            "covariate row per observation.".format(Z_rows, n_rows)
+        )
+
+
+def _caller_stacklevel() -> int:
+    """The ``stacklevel`` that attributes a warning to the first frame
+    outside surpyval: the fit and ``fit_from_df`` paths reach the warning
+    through different depths of library code."""
+    import os
+    import sys
+
+    package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    frame = sys._getframe(1)
+    level = 1
+    while frame is not None and os.path.abspath(
+        frame.f_code.co_filename
+    ).startswith(package_dir + os.sep):
+        frame = frame.f_back  # type: ignore[assignment]
+        level += 1
+    return level
+
+
+def finite_covariate_mask(Z: npt.ArrayLike) -> npt.NDArray:
+    """Mask of the rows of ``Z`` whose covariates are all finite.
+
+    A NaN or infinite covariate has no place in any regression likelihood:
+    it makes the objective nan, and an optimiser that sees nan at every
+    point returns its starting values as though they were a fit. Every
+    regression fitter therefore drops such rows -- and says how many, so
+    the loss of data is never silent. Raises if no row is left.
+    """
+    Z_arr = np.asarray(Z, dtype=float)
+    if Z_arr.ndim == 0:
+        Z_arr = Z_arr.reshape(1, 1)
+    finite = np.isfinite(Z_arr.reshape(Z_arr.shape[0], -1)).all(axis=1)
+    dropped = int((~finite).sum())
+    if dropped:
+        if dropped == finite.shape[0]:
+            raise ValueError(
+                "Every row has a missing (NaN) or infinite covariate value; "
+                "there is nothing to fit."
+            )
+        warnings.warn(
+            "Dropped {} of {} rows with a missing (NaN) or infinite "
+            "covariate value.".format(dropped, finite.shape[0]),
+            UserWarning,
+            stacklevel=_caller_stacklevel(),
+        )
+    return finite
+
+
+def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
+    """Materialise a formula (or a fitted ``ModelSpec``) against ``df``
+    with one row per row of ``df``.
+
+    ``formulaic`` drops rows with a missing value by default, which
+    misaligns the matrix with every other column taken from ``df`` (the
+    times, censoring flags, counts). Its ``na_action="ignore"`` keeps the
+    rows but silently codes a missing *categorical* as the reference
+    level. So the rows are dropped as usual and then put back as all-nan
+    rows, which callers either drop (with a warning) when fitting or turn
+    into nan predictions in place.
+    """
+    positional = df.reset_index(drop=True)
+    if isinstance(source, str):
+        model_matrix = Formula(source).get_model_matrix(positional, **kwargs)
+    else:
+        model_matrix = source.get_model_matrix(positional, **kwargs)
+    spec = model_matrix.model_spec
+    if len(model_matrix) != len(positional):
+        model_matrix = model_matrix.reindex(range(len(positional)))
+    return model_matrix, spec
 
 
 def wrangle_and_check_form_and_Z_cols(
@@ -1419,8 +1729,6 @@ def wrangle_and_check_form_and_Z_cols(
         if len(unknown) > 0:
             raise ValueError("{} not in dataframe columns".format(unknown))
         Z = df[Z_cols].values.astype(float)
-        mask = ~df[Z_cols].isna().any(axis=1).values
-        Z = Z[mask]
         form = None
         feature_names = list(Z_cols)
         model_spec = None
@@ -1430,15 +1738,18 @@ def wrangle_and_check_form_and_Z_cols(
         # baseline hazard plays that role, and a full one-hot is collinear
         # with it (#252). An explicit "0 + ..." formula opts out.
         form = Formula(formula)
-        model_matrix = form.get_model_matrix(df, na_action="ignore")
-        model_spec = model_matrix.model_spec
+        model_matrix, model_spec = formula_model_matrix(formula, df)
         if "Intercept" in model_matrix.columns:
             model_matrix = model_matrix.drop(columns=["Intercept"])
         feature_names = list(model_matrix.columns)
         Z = model_matrix.values.astype(float)
-        mask = ~np.any(np.isnan(Z), axis=1)
 
-    return Z, mask, form, feature_names, model_spec
+    # The same row mask for both branches, applied here to Z and returned so
+    # the caller applies it to the times, flags and counts too. The formula
+    # branch used to build the mask but never apply it to Z, so any missing
+    # value made Z one row short of x.
+    mask = finite_covariate_mask(Z)
+    return Z[mask], mask, form, feature_names, model_spec
 
 
 def wrangle_Z(Z: npt.ArrayLike) -> tuple[npt.NDArray, npt.NDArray]:
@@ -1753,11 +2064,18 @@ def validate_coxph(
         np.array(a).astype(float) for a in [x_a, c_a, n_a, tl_a]
     )
 
-    Z_arr, mask = wrangle_Z(np.array(Z).astype(float))
+    Z_arr = np.array(Z).astype(float)
+    if Z_arr.ndim == 1:
+        Z_arr = Z_arr.reshape(-1, 1)
+    elif Z_arr.ndim != 2:
+        raise ValueError("Covariate matrix must be two dimensional")
+    check_covariate_rows(Z_arr, x_a.shape[0])
+    # Rows with a NaN / infinite covariate are dropped with a warning, as
+    # every regression fitter does (wrangle_Z dropped NaN silently and let
+    # an infinity through to the partial likelihood).
+    mask = finite_covariate_mask(Z_arr)
     x_a, c_a, n_a, tl_a = (arr[mask] for arr in (x_a, c_a, n_a, tl_a))
-    Z_arr = Z_arr.astype(float)
-
-    check_Z_and_x(Z_arr, x_a)
+    Z_arr = Z_arr[mask]
 
     return x_a, c_a, n_a, tl_a, Z_arr
 
@@ -1776,6 +2094,9 @@ def validate_fine_gray_inputs(
 
     e_arr = np.array(e)
     Z_arr, mask = wrangle_Z(Z)
+    # ``mask`` has one entry per covariate row: check the count before it
+    # indexes the data (a mismatch was a bare IndexError from the mask).
+    check_covariate_rows(mask, x_a.shape[0])
     x_a, c_a, n_a, e_arr = (arr[mask] for arr in (x_a, c_a, n_a, e_arr))
 
     # Set all dtypes to float. Very poor results otherwise.

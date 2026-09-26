@@ -103,7 +103,14 @@ The rows come back sorted, which is how SurPyval stores data internally: the fir
 
 The same data can be given as two separate arrays with ``xl`` and ``xr`` in place of ``x``, which is often more natural when every row is an interval.
 
-Two-column ``x`` (or ``xl`` and ``xr``) is read by the maximum likelihood fitters, the parametric regression fitters, ``CoxPH`` and Turnbull. The Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the MPP, MPS, MSE and MOM methods, and the Buckley-James, additive hazards, frailty and competing risks fitters currently need one-column ``x``, even when no row is an interval. If none is, convert first and pass the first column: ``x, c, n, t = surpyval.xcnt_handler(xl=..., xr=...)`` and then ``surpyval.KaplanMeier.fit(x[:, 0], c, n)``.
+If, after the one-sided rows are converted, no row is an interval, the two columns carry nothing extra and SurPyval stores ``x`` as a single column. Two-column data with no real intervals, such as a DataFrame with separate left and right columns that are always equal, is therefore accepted by every fitter, including those that cannot use intervals (Kaplan-Meier, Nelson-Aalen, Fleming-Harrington, and the MPP, MPS, MSE and MOM methods). Real intervals need a fitter that handles them, such as maximum likelihood or Turnbull.
+
+.. jupyter-execute::
+
+    km = surpyval.KaplanMeier.fit(xl=[3, 5, 8, 9], xr=[3, 5, np.inf, 9])
+    print(km.x, km.sf([4, 6]))
+
+In a list, any element that is a pair, whether a list, a tuple or an array, is an interval row: ``[1, (2, 3), 4]`` is the same as ``[1, [2, 3], 4]``.
 
 Condensing repeated values with counts
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -183,7 +190,8 @@ Ignoring the truncation, the fit only ever sees bulbs that were strong enough to
 Rules and conventions for truncation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- **A value must lie strictly above its left truncation.** An item that entered observation at :math:`t_l` can only be seen to fail *after* :math:`t_l`, so SurPyval rejects a value equal to its own left truncation bound (it would have a zero-length observation window). Right truncation must be at or above the value.
+- **A value must lie strictly above its left truncation.** An item that entered observation at :math:`t_l` can only be seen to fail *after* :math:`t_l`, so SurPyval rejects a value equal to its own left truncation bound (it would have a zero-length observation window). Right truncation must be at or above the value, and strictly above a right censored value: an item censored at exactly :math:`t_r` would have to fail after :math:`t_r` and at or before it. These rules are the same whether ``x`` has one column or two. An interval :math:`(x_l, x_r]` may start at its left truncation (:math:`t_l \le x_l`) and must end by its right truncation (:math:`x_r \le t_r`). One-sided rows such as ``[v, inf]`` are converted before they are checked, so they behave exactly like the one-column form.
+- **Truncation bounds cannot be NaN.** Use ``-inf`` for no left truncation and ``inf`` for no right truncation; a NaN bound is an error.
 - **Risk sets use the (entry, exit] convention.** For the non-parametric estimators, an item with left truncation :math:`t_l` and value :math:`x` is counted in the risk set at every time :math:`s` with :math:`t_l < s \le x`. An item entering at exactly the time of someone else's failure is therefore *not* at risk for that failure. This is the convention used by R's ``survival`` package and by lifelines.
 - **Censoring and truncation combine.** A right censored item that was also right truncated at :math:`t_r` is known to have failed in :math:`(x, t_r]`, and a left censored item that was also left truncated at :math:`t_l` failed in :math:`(t_l, x]`. SurPyval uses these intervals in the likelihood automatically, so no special handling is needed on your part.
 

@@ -1,7 +1,3 @@
-from typing import Any
-
-import numpy.typing as npt
-
 """The two degenerate lifetime distributions.
 
 ``InstantlyOccurs`` is the point mass at zero (every unit has already
@@ -18,10 +14,58 @@ the model: every method is a classmethod and the classes serialise by
 name alone.
 """
 
+import json
+import os
+from typing import Any
+
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.distribution import Distribution
-from surpyval.serialisation import stamp_schema
+from surpyval.serialisation import (
+    read_model_dict,
+    require_model_tag,
+    stamp_schema,
+)
+
+# The serialisation of the two classes. They are the model themselves
+# (every method is a classmethod), so the instance-method ``to_json`` of
+# ``SerialisableMixin`` does not fit; these are its classmethod
+# counterparts. ``to_json`` used to be missing altogether, although the
+# package reader ``surpyval.from_json`` was registered for both classes.
+
+
+def _degenerate_to_dict(cls: type[Any]) -> dict[str, Any]:
+    return stamp_schema({"model": cls.name})
+
+
+def _degenerate_from_dict(
+    cls: type[Any], model_dict: dict[str, Any]
+) -> type[Distribution]:
+    # The tag is the whole of the model, so check it: any dictionary at
+    # all used to "restore" as whichever class was asked.
+    require_model_tag(model_dict, cls.name, f"the {cls.name} distribution")
+    return cls
+
+
+def _degenerate_to_json(
+    cls: type[Distribution], fp: str | os.PathLike
+) -> None:
+    with open(fp, "w+") as f:
+        json.dump(_degenerate_to_dict(cls), f)
+
+
+def _degenerate_from_json(
+    cls: type[Distribution], fp: str | os.PathLike
+) -> type[Distribution]:
+    with open(fp, "r") as f:
+        model_dict = json.load(f)
+    if not isinstance(model_dict, dict):
+        raise ValueError(
+            "Expected a serialised model dict, got "
+            f"{type(model_dict).__name__}"
+        )
+    return read_model_dict(cls, model_dict)
 
 
 class NeverOccurs(Distribution):
@@ -63,11 +107,22 @@ class NeverOccurs(Distribution):
 
     @classmethod
     def to_dict(cls) -> dict[str, Any]:
-        return stamp_schema({"model": cls.name})
+        return _degenerate_to_dict(cls)
 
     @classmethod
     def from_dict(cls, model_dict: dict[str, Any]) -> type["Distribution"]:
-        return cls
+        return _degenerate_from_dict(cls, model_dict)
+
+    @classmethod
+    def to_json(cls, fp: str | os.PathLike) -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        _degenerate_to_json(cls, fp)
+
+    @classmethod
+    def from_json(cls, fp: str | os.PathLike) -> type["Distribution"]:
+        """Load the distribution from a JSON file written by
+        :meth:`to_json`."""
+        return _degenerate_from_json(cls, fp)
 
 
 class InstantlyOccurs(Distribution):
@@ -111,8 +166,19 @@ class InstantlyOccurs(Distribution):
 
     @classmethod
     def to_dict(cls) -> dict[str, Any]:
-        return stamp_schema({"model": cls.name})
+        return _degenerate_to_dict(cls)
 
     @classmethod
     def from_dict(cls, model_dict: dict[str, Any]) -> type["Distribution"]:
-        return cls
+        return _degenerate_from_dict(cls, model_dict)
+
+    @classmethod
+    def to_json(cls, fp: str | os.PathLike) -> None:
+        """Write :meth:`to_dict` to ``fp`` as JSON."""
+        _degenerate_to_json(cls, fp)
+
+    @classmethod
+    def from_json(cls, fp: str | os.PathLike) -> type["Distribution"]:
+        """Load the distribution from a JSON file written by
+        :meth:`to_json`."""
+        return _degenerate_from_json(cls, fp)

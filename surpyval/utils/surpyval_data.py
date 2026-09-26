@@ -289,7 +289,6 @@ class SurpyvalData:
         Turnbull estimator is
         fitted and its (possibly fractional) numbers at risk and deaths are
         returned; the ``estimator`` parameter is used only in that case.
-        Two-column ``x`` with no interval rows is not supported.
 
         Parameters
         ----------
