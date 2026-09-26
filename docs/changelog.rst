@@ -4,6 +4,78 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Bug fixes found in the third documentation review.** This review
+  probed the documented behaviour adversarially (identities, round trips,
+  cross-method agreement, edge cases). Each fix has a regression test
+  that fails on the old code.
+
+  *Wrong results that are now correct.*
+
+  - **Degradation:** the default two-sided analytic ``cb`` band was a 90%
+    band (each side used the full ``alpha_ci``). Units already past the
+    threshold at their first measurement were treated as survivors; they
+    are left-censored there. Wiener ``sf``/``ff`` returned NaN for low
+    noise; ``GammaProcessModel.mean`` could be negative; zero Gamma
+    increments are censored below a ``resolution`` instead of a 1e-12
+    nudge.
+  - **Gray's test** is Gray's (1988) statistic with group-specific
+    censoring; the pooled version rejected a true null up to 89% of the
+    time when groups were censored differently.
+  - **Parametric competing risks:** ``cif`` and ``probability_of_cause``
+    are integrated per query instead of on a fixed grid (they could sum
+    to 0.81, or 0.0005).
+  - **Recurrent events:** GRP/ARA simulation was wrong at long horizons
+    and NHPP simulation failed past ~745 expected events; renewal fits
+    could keep a worse optimum than one they found (boundary optima such
+    as ARA ``rho -> 1``); left-censored counts now cover ``(tl, x]``.
+  - **Regression:** a missing or infinite covariate made PH/AH/frailty
+    return their starting values (rows are now dropped with a warning in
+    every fitter); stratified Cox ``predict_tvc`` used the first
+    stratum's baseline; Lin-Ying predictions depended on covariate
+    centring; counts were treated as clusters in robust standard errors,
+    ``check_ph`` ranks and the Buckley-James bootstrap; some AFT/PO fits
+    stopped short of the maximum (``PO(Weibull)`` by 5.5 nats) and are
+    finished by a gradient-based optimiser.
+  - **Parametric:** ``cs`` ignored ``p``, ``f0`` and the offset;
+    likelihood-ratio bands collapsed onto the estimate when the inner
+    search failed (Geometric coverage 0.65); the mixture EM stalled on a
+    ``log(0)``; ExpoWeibull and ``CustomDistribution`` moments were wrong
+    away from unit scale; MPS and MSE were not scale invariant; raw
+    distribution functions were evaluated outside their support;
+    ``bic()`` was ``-inf`` without exact failures; LogNormal and Gamma
+    hazards overflowed in the far tail.
+  - **Non-parametric:** ``qf``/``median`` had no round-off tolerance (the
+    median of 1..30 was 16); ``band()`` critical values were ~1.5% low;
+    log-rank counted groups never at risk in its degrees of freedom; the
+    Turnbull identifiability warning fired on correct fits.
+  - **Copulas:** Frank overflowed for :math:`\theta \gtrsim 37` and
+    Clayton collapsed at extreme :math:`\theta`; joint MLE dropped
+    pre-fitted margins' options; automatic derivatives summed over
+    broadcast axes.
+  - **Data layer:** NaN truncation bounds were read differently by each
+    fitter; unsorted xrd input gave a wrong estimate.
+
+  *Crashes and unclear errors.* Two-column ``x`` without intervals now
+  works in every fitter; truncation rules are identical for one- and
+  two-column ``x``; bad ``fixed``/``init``/``bound``/``how`` arguments,
+  wrong covariate row counts, degenerate data, out-of-range parameters
+  in ``from_params``/``fit_from_parameters``, non-integer data for
+  discrete distributions and corrupt serialised dictionaries raise clear
+  errors. Models restored without their data explain what needs it.
+
+  *Serialisation.* Discretize, ``CustomDistribution`` (after
+  re-construction), ``NeverOccurs``/``InstantlyOccurs``, destructive
+  degradation models with any distribution, and competing-risks models
+  with mixed or tuple labels round-trip; Cox dictionaries are strict
+  JSON; likelihood-ratio bounds work after a ``with_data`` restore.
+
+  *Behaviour changes to note.* BIC's sample size for univariate models
+  counts every non-right-censored failure; ``aic_c`` is NaN when
+  :math:`N \le k + 1`; recurrent covariates must be constant within an
+  item; Cox ``model.phi`` is a method; stratified ``sf_tvc`` requires
+  ``stratum=``; ``band()``'s ``n_sims``/``random_state`` are deprecated;
+  two-column ``x`` without intervals is stored as one column.
+
 - **Bug fixes found in the second documentation review.** Each was
   reproduced first and has a regression test that fails on the old code;
   documentation describing the old behaviour was updated.
