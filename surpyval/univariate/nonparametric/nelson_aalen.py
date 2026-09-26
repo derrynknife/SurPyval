@@ -1,7 +1,10 @@
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.univariate.nonparametric.fleming_harrington import _snap
+from surpyval.univariate.nonparametric.fleming_harrington import (
+    _snap,
+    _snap_array,
+)
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
 )
@@ -34,7 +37,16 @@ def nelson_aalen_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
 
 
 def nelson_aalen(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
-    H = np.cumsum(d / r)
+    # The Turnbull EM hands over expected counts carrying round-off. Past
+    # the last event the risk set is 0 in exact arithmetic but came out as
+    # 9e-16 on alternate iterations: 0 / 9e-16 = 0 kept the survival up
+    # while 0 / 0 dropped it to zero, so the EM flipped between the two and
+    # never converged. Counts that are whole numbers up to round-off are
+    # taken as those whole numbers, as the Fleming-Harrington does.
+    r = _snap_array(r)
+    d = _snap_array(d)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        H = np.cumsum(d / r)
     H[np.isnan(H)] = np.inf
     R = np.exp(-H)
     return R

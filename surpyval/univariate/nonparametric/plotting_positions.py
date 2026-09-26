@@ -124,9 +124,17 @@ def plotting_positions(
         0 for a censored item)
     F : numpy array
         estimate of F to use in plotting positions. Only the rows with
-        ``d > 0`` are meant to be plotted: for the rank heuristics a
-        censored row carries the previous failure's value (0 before the
-        first failure), and for ``'Filliben'`` it is NaN.
+        ``d > 0`` are meant to be plotted: for the rank heuristics and
+        ``'Filliben'`` a censored row carries the previous failure's value
+        (0 before the first failure).
+
+    Raises
+    ------
+
+    ValueError
+        If the heuristic is unknown, the data need an estimator the
+        heuristic is not (left or interval censoring, truncation), or
+        ``'Modal'`` is used with a single item.
 
     Examples
     --------
@@ -201,6 +209,14 @@ def plotting_positions(
         r = np.linspace(N, 1, num=N)
 
         A, B = HEURISTIC_AB[heuristic]
+        # The modal position (i - 1) / (N - 1) is 0 / 0 for one item (a
+        # uniform variable has no mode); it used to come back as NaN with
+        # a numpy RuntimeWarning, then be filled in as F = 0.
+        if N + B == 0:
+            raise ValueError(
+                "The '{}' heuristic, (i - {:g}) / (N - {:g}), needs at "
+                "least two items".format(heuristic, A, -B)
+            )
 
         F = (ranks - A) / (N + B)
         R = 1 - Series(F).ffill().fillna(0).values

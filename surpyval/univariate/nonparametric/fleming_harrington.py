@@ -30,6 +30,15 @@ def _snap(v: float) -> float:
     return float(v)
 
 
+def _snap_array(v: npt.ArrayLike) -> npt.NDArray:
+    """``_snap`` applied elementwise, vectorised for use inside the EM."""
+    v = np.asarray(v, dtype=float)
+    nearest = np.round(v)
+    with np.errstate(invalid="ignore"):
+        close = np.abs(v - nearest) <= 1e-9 * np.maximum(1.0, np.abs(nearest))
+    return np.where(close, nearest, v)
+
+
 def _ladder_steps(r_i: float, d_i: float) -> int:
     """Number of whole 1/r terms in the tie ladder, or -1 if the
     ladder exhausts the risk set (the hazard diverges)."""

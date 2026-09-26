@@ -212,7 +212,8 @@ Starting the curve at zero
 A fitted curve starts at the first observed value, so ``cb()`` is ``nan`` and ``plot()`` draws
 nothing before it. If you know every item was new at some time (usually 0), pass
 ``set_lower_limit``: it adds that value to the ladder with the full risk set and no failures, so the
-estimate and its bounds are 1 there. It changes nothing else, and it is ignored by the ``Turnbull``
+estimate and its bounds are 1 there. It must be below the smallest value in the data (a
+``ValueError`` otherwise); it changes nothing else, and it is ignored by the ``Turnbull``
 estimator.
 
 .. jupyter-execute::
@@ -237,7 +238,7 @@ If your data are already tabulated as times, numbers at risk and numbers of fail
 
 The three rows show the ordering :math:`R_{KM} \leq R_{FH} \leq R_{NA}` discussed on the theory page. The Kaplan-Meier is one minus the empirical CDF, while the other two never reach zero.
 
-If you only have a survival curve (the values and the survival at each) you can wrap it with ``surv.NonParametric.fit_from_ecdf(x, R)`` to get ``sf``, ``ff``, ``qf`` and so on. Without the at-risk and failure counts there is no variance, so such a model cannot produce confidence bounds.
+If you only have a survival curve (the values and the survival at each) you can wrap it with ``surv.NonParametric.fit_from_ecdf(x, R)`` to get ``sf``, ``ff``, ``qf`` and so on (``x`` must be increasing and ``R`` non-increasing, within [0, 1]). Without the at-risk and failure counts there is no variance, so such a model cannot produce confidence bounds; draw it with ``plot(plot_bounds=False)``.
 
 Plotting positions for probability plots
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -284,7 +285,7 @@ A fitted model can be written to a plain dictionary (or a JSON file) and read ba
     print(with_data.bootstrap_cb([3], B=50, random_state=0),
           model.bootstrap_cb([3], B=50, random_state=0))
 
-``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). ``to_json`` has no such option, so to keep the data in a file write the dictionary yourself, ``json.dump(model.to_dict(with_data=True), f)``, and read it back with ``surv.from_json``. For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
+``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``to_json`` has no such option, so to keep the data in a file write the dictionary yourself, ``json.dump(model.to_dict(with_data=True), f)``, and read it back with ``surv.from_json``. For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
 
 
 Right Censored Data
@@ -374,9 +375,9 @@ to resampled data. Here is a simulated sample of 60 items with random right cens
 The band is wider than the pointwise bounds, as it must be, and the bootstrap interval is close
 to the pointwise one here, a sign that the asymptotic formula is adequate for this sample. ``band()`` takes
 ``method='hall-wellner'`` (default) or ``method='nair'`` (the equal-precision band), ``alpha_ci``,
-and ``bound_type`` (``'exp'`` by default, as for ``cb()``). Its critical value is simulated from
-``n_sims`` (10,000) Brownian-bridge paths with a fixed ``random_state`` (1), so results are
-reproducible. ``bootstrap_cb()`` takes ``B`` (200 resamples), ``random_state``, ``alpha_ci`` and a
+and ``bound_type`` (``'exp'`` by default, as for ``cb()``). Its critical value, that of the
+limiting Brownian bridge over the range the band covers, is computed numerically rather than
+simulated, so results are accurate and reproducible. ``bootstrap_cb()`` takes ``B`` (200 resamples), ``random_state``, ``alpha_ci`` and a
 one-sided ``bound``; it always bounds the survival function.
 
 .. jupyter-execute::
@@ -740,7 +741,7 @@ Be aware, though, that the truncated NPMLE is a delicate object: on some data it
 situations it can and raises a warning rather than silently returning a meaningless curve:
 
 - ``degenerate`` is set, with a warning, if the survival estimate collapses (for example all probability mass escaping below every entry time);
-- ``exploitable_mass`` is the share of the fitted mass in pieces that some item could have failed in but that lie outside another item's truncation window. Healthy fits can have a sizeable share, but above 0.9 surpyval warns that the estimate is not identifiable;
+- ``exploitable_mass`` is the share of the fitted mass in pieces where mass raises the likelihood at no cost: some item could have failed there, and no item whose truncation window covers the piece is ruled out from failing there. If such pieces exist and the EM does not converge, or they hold more than 0.9 of the mass, surpyval warns that the estimate is not identifiable;
 - ``converged`` is ``False`` if the EM ran out of iterations (with a warning saying so, unless one of the more specific warnings above was raised instead).
 
 The classic trap is left censoring combined with two or more distinct entry times. Here two of
@@ -768,9 +769,9 @@ Nearly all of the mass has been pushed into the region before the later entry ti
 raises one item's likelihood at no cost to the others, and the survival curve has collapsed. Raising
 ``max_iter`` would not help: the likelihood has no interior maximum. With a common entry time the
 same data fit without complaint. Treat any Turnbull estimate that came with a warning with suspicion.
-The ``exploitable_mass`` screen is a heuristic, though, and can also fire on data that do identify
-the curve (exact failures with right truncation, for instance); the section *What the data cannot
-tell you* of :doc:`Non-Parametric Estimation` says how to tell the two apart.
+Data that do identify the curve, such as exact failures with right truncation or with staggered
+entry, have no such pieces and fit without the warning; the section *What the data cannot tell
+you* of :doc:`Non-Parametric Estimation` describes the conditions.
 
 Some Issues with the Turnbull Estimate
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -826,8 +827,10 @@ those differences into a chi-squared statistic with ``k - 1`` degrees of freedom
     result = logrank(x, group)
     print(result)
 
-The second argument, ``Z``, holds a group label for each value (any labels will do; with
-:math:`k` distinct labels the test has :math:`k - 1` degrees of freedom). The result's
+The second argument, ``Z``, holds a group label for each value (any labels will do except NaN or
+``None``, which raise an error; with :math:`k` distinct labels the test has :math:`k - 1` degrees
+of freedom, counting, as R's ``survdiff`` does, only groups with a positive expected number of
+failures: a group never at risk at a failure time carries no information). The result's
 ``statistic``, ``dof``, ``p_value`` and ``weighting`` are available as attributes. The test
 accepts right censored data through ``c`` (0 observed, 1 right censored; left or interval
 censored values raise an error) and counts through ``n``. Here the study is stopped at time 15,

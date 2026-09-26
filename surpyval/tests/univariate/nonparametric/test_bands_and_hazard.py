@@ -15,14 +15,9 @@ def test_hall_wellner_critical_value_approaches_kolmogorov():
     # Over the whole [0, 1] interval the supremum of |Brownian bridge|
     # has the Kolmogorov distribution; its 0.95 quantile is ~1.358.
     cv = NonParametric._band_critical_value(
-        1e-4,
-        1 - 1e-4,
-        0.05,
-        standardized=False,
-        n_sims=20000,
-        random_state=1,
+        1e-4, 1 - 1e-4, 0.05, standardized=False
     )
-    assert np.isclose(cv, 1.358, atol=0.05)
+    assert np.isclose(cv, 1.358, atol=0.001)
 
 
 def test_band_contains_pointwise_bounds():
@@ -79,7 +74,7 @@ def test_band_simultaneous_coverage():
         grid = model.x
         S_true = np.exp(-grid)
         pw = model.cb(grid)
-        band = model.band(n_sims=2000, random_state=1)
+        band = model.band()
         f = np.isfinite(band[:, 0])
         pw_cover += np.all((pw[f, 0] <= S_true[f]) & (S_true[f] <= pw[f, 1]))
         band_cover += np.all(

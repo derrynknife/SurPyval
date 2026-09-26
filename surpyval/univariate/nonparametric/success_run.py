@@ -42,7 +42,8 @@ def success_run(
     ------
 
     ValueError
-        If both ``confidence`` and ``alpha`` are given.
+        If both ``confidence`` and ``alpha`` are given, ``n`` is not a
+        positive number, or the significance level is not in [0, 1].
 
     Examples
     --------
@@ -66,5 +67,16 @@ def success_run(
         alpha = 1 - confidence
     elif alpha is None:
         alpha = 0.05
+    # A run of no successes demonstrates nothing; n = 0 used to fail as a
+    # ZeroDivisionError and a negative n returned a "probability" above 1.
+    if not n > 0:
+        raise ValueError(
+            "'n' must be a positive number of successes; got {}".format(n)
+        )
+    if not 0 <= alpha <= 1:
+        raise ValueError(
+            "The confidence (and alpha) must be between 0 and 1; got "
+            "alpha = {}".format(alpha)
+        )
 
     return np.power(alpha, 1.0 / n)

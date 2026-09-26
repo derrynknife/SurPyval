@@ -1,5 +1,6 @@
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 from scipy.stats import chi2
 
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
@@ -17,7 +18,9 @@ class LogRankResult:
     statistic : float
         The chi-squared test statistic.
     dof : int
-        The degrees of freedom (number of groups - 1).
+        The degrees of freedom: the number of groups with a positive
+        expected number of events, minus one (R's ``survdiff``
+        convention).
     p_value : float
         The p-value of the test.
     weighting : str
@@ -70,11 +73,12 @@ def _logrank_z_v(
     weighting: str,
     rho: float,
     gamma: float,
-) -> tuple[npt.NDArray, npt.NDArray]:
-    """Per-stratum (or whole-sample) weighted log-rank ``(z, V)``.
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Per-stratum (or whole-sample) weighted log-rank ``(z, V, E)``.
 
     Returns the length-``k`` vector of weighted observed-minus-expected
-    counts and its ``k x k`` covariance, using the fixed group order
+    counts, its ``k x k`` covariance and the length-``k`` vector of
+    (unweighted) expected event counts, using the fixed group order
     ``groups`` so contributions from different strata are aligned and can be
     summed. A group absent from this stratum simply contributes zeros.
     """
@@ -106,7 +110,7 @@ def _logrank_z_v(
     )
     m = event_times.size
     if m == 0:
-        return np.zeros(k), np.zeros((k, k))
+        return np.zeros(k), np.zeros((k, k)), np.zeros(k)
 
     r_gt = np.zeros((k, m))
     d_gt = np.zeros((k, m))
@@ -149,7 +153,7 @@ def _logrank_z_v(
             delta = 1.0 if a == b else 0.0
             V[a, b] = (w**2 * hyper * prop[a] * (delta - prop[b])).sum()
 
-    return z, V
+    return z, V, expected.sum(axis=1)
 
 
 def logrank(
@@ -179,8 +183,12 @@ def logrank(
         Array of observations of the random variables.
     Z : array like
         Array of group labels for each observation. Any hashable values
-        can be used; the test has len(unique(Z)) - 1 degrees of
-        freedom.
+        other than NaN or None can be used. The test has one degree of
+        freedom fewer than the number of groups with a positive expected
+        number of events (as R's ``survdiff``): a group that is never at
+        risk at an event time carries no information and is left out. If
+        fewer than two groups have expected events there is nothing to
+        compare, and the statistic is 0 with ``dof`` 0 and a p-value of 1.
     c : array like, optional
         Array of censoring flags. 0 is observed and 1 is right
         censored. Left or interval censored data cannot be used with
@@ -214,7 +222,9 @@ def logrank(
         statistic. This removes a nuisance factor -- one whose baseline
         hazard differs across strata -- from the comparison, so groups are
         only ever compared against others in the same stratum. The degrees
-        of freedom are unchanged (number of groups minus one).
+        of freedom are counted as for an unstratified test, from the
+        expected events summed over the strata. NaN or None labels are
+        refused.
 
     Returns
     -------
@@ -228,9 +238,10 @@ def logrank(
     ------
 
     ValueError
-        If there are fewer than two groups, ``Z`` or ``strata`` does not
-        have one label per value, the weighting is unknown, or the data
-        have left or interval censoring.
+        If there are fewer than two groups, ``Z``, ``c``, ``n`` or
+        ``strata`` does not have one entry per value, a group or stratum
+        label is missing (NaN or None), the weighting is unknown, or the
+        data have left or interval censoring.
 
     Examples
     --------
@@ -268,6 +279,14 @@ def logrank(
         raise ValueError("'Z' must be a 1D array of group labels")
     if len(Z) != len(np.atleast_1d(x)):
         raise ValueError("'Z' must have a label for each observation")
+    # A missing label is not a group. NaN != NaN, so a NaN label used to
+    # become an extra group whose rows every ``Z == g`` mask then missed:
+    # the rows were dropped and the degrees of freedom went up by one.
+    if pd.isna(Z).any():
+        raise ValueError(
+            "'Z' has missing (NaN or None) group labels; drop those rows "
+            "or give them a label"
+        )
 
     groups = np.unique(Z)
     if groups.size < 2:
@@ -276,22 +295,40 @@ def logrank(
     x = np.atleast_1d(x)
     c_arr = None if c is None else np.atleast_1d(c)
     n_arr = None if n is None else np.atleast_1d(n)
+    # Checked here: a short ``c`` or ``n`` used to fail as an IndexError
+    # from the boolean group mask.
+    for name, arr in (("c", c_arr), ("n", n_arr)):
+        if arr is not None and arr.shape != x.shape:
+            raise ValueError(
+                "'{}' must have one entry for each observation; got {} "
+                "for {} observations".format(name, arr.size, x.size)
+            )
 
     k = groups.size
     n_strata = None
     if strata is None:
-        z, V = _logrank_z_v(x, Z, c_arr, n_arr, groups, weighting, rho, gamma)
+        z, V, E = _logrank_z_v(
+            x, Z, c_arr, n_arr, groups, weighting, rho, gamma
+        )
     else:
         strata = np.asarray(strata)
         if len(strata) != len(x):
             raise ValueError("'strata' must have a label for each observation")
+        # As for Z: every ``strata == s`` mask missed a NaN stratum, so its
+        # rows silently dropped out of the test.
+        if pd.isna(strata).any():
+            raise ValueError(
+                "'strata' has missing (NaN or None) labels; drop those rows "
+                "or give them a stratum"
+            )
         z = np.zeros(k)
         V = np.zeros((k, k))
+        E = np.zeros(k)
         unique_strata = np.unique(strata)
         n_strata = int(unique_strata.size)
         for s in unique_strata:
             mask = strata == s
-            z_s, V_s = _logrank_z_v(
+            z_s, V_s, E_s = _logrank_z_v(
                 x[mask],
                 Z[mask],
                 None if c_arr is None else c_arr[mask],
@@ -303,15 +340,27 @@ def logrank(
             )
             z += z_s
             V += V_s
+            E += E_s
 
-    # The covariance matrix is singular (rows sum to zero); drop the
-    # last group
-    z_r = z[:-1]
-    V_r = V[:-1, :-1]
-    statistic = safe_quadform(V_r, z_r)
-
-    dof = k - 1
-    p_value = float(chi2.sf(statistic, dof))
+    # Only groups expected to have events carry information, as in R's
+    # ``survdiff``: a group never at risk at an event time has zero
+    # observed-minus-expected and zero variance, and counting it (as the
+    # number of labels did) added a degree of freedom for nothing and
+    # deflated the p-value. The covariance matrix of the rest is singular
+    # (rows sum to zero), so the last of them is dropped.
+    informative = E > 0
+    z_r = z[informative][:-1]
+    V_r = V[np.ix_(informative, informative)][:-1, :-1]
+    dof = int(informative.sum()) - 1
+    if dof < 1:
+        # No event anywhere, or every risk set holds one group only:
+        # there is nothing to compare. R reports a zero statistic; the
+        # p-value stays 1 (no evidence against the null), as it was.
+        statistic = 0.0
+        p_value = 1.0
+    else:
+        statistic = safe_quadform(V_r, z_r)
+        p_value = float(chi2.sf(statistic, dof))
 
     if weighting == "fleming-harrington":
         weighting = "fleming-harrington(rho={}, gamma={})".format(rho, gamma)

@@ -162,7 +162,7 @@ class NonParametricFitter:
             value with no deaths (and the risk set of the first time), so
             the estimate starts at ``R = 1`` from this value, typically 0,
             rather than from the first observed time. It must be below
-            the smallest observed value (this is not checked).
+            the smallest observed value (a ``ValueError`` otherwise).
 
         tol : float, optional
             Turnbull only. The EM stops once the largest change in any
@@ -191,8 +191,9 @@ class NonParametricFitter:
         ValueError
             If the data has left- (``c=-1``) or interval- (``c=2``) censored
             or right truncated observations and the estimator is not
-            ``Turnbull``, or if a ``Turnbull`` fit is given an unknown
-            ``turnbull_estimator``.
+            ``Turnbull``, if a ``Turnbull`` fit is given an unknown
+            ``turnbull_estimator``, if an exactly observed value is
+            infinite, or if ``set_lower_limit`` is not below the data.
 
         Examples
         --------
@@ -235,6 +236,18 @@ class NonParametricFitter:
             x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
         )
 
+        # An exactly observed failure at infinity is not an observation.
+        # It used to be counted as a failure at x = inf, a ladder step the
+        # curve then dropped to zero at; a unit that never failed is right
+        # censored (c=1).
+        exact_x = x[c == 0] if x.ndim == 1 else x[c == 0].ravel()
+        if not np.isfinite(exact_x).all():
+            raise ValueError(
+                "Exactly observed values (c=0) must be finite; an item that "
+                "had not failed by the end of observation is right censored "
+                "(c=1)."
+            )
+
         data: dict[str, Any] = {}
         data["x"] = x
         data["c"] = c
@@ -273,6 +286,14 @@ class NonParametricFitter:
             estimator = self.how
 
         if set_lower_limit is not None:
+            # The ladder must stay sorted: ``sf`` and ``qf`` search it. A
+            # limit at or above the first value used to be prepended all the
+            # same, giving e.g. ``[2, 1, 2, 3]`` and a wrong curve.
+            if not set_lower_limit < x[0]:
+                raise ValueError(
+                    "'set_lower_limit' must be below the smallest value in "
+                    "the data ({}); got {}.".format(x[0], set_lower_limit)
+                )
             x = np.hstack([[set_lower_limit], x])
             r = np.hstack([[r[0]], r])
             d = np.hstack([[0], d])
@@ -296,9 +317,10 @@ class NonParametricFitter:
         ----------
 
         x : array like
-            The distinct event times, in increasing order (the order is
-            not checked, and ``r`` and ``d`` are paired with ``x`` as
-            given).
+            The distinct event times. Rows given out of order are sorted
+            by ``x``, carrying their ``r`` and ``d`` with them (see
+            :func:`~surpyval.utils.xrd_handler`, which also refuses a
+            repeated time).
 
         r : array like
             Array of at risk items. For each value of x the r array is
