@@ -144,6 +144,16 @@ time. Such a unit is treated as **right censored at its last observed time**
 (it had not failed by then, as far as we know), and that censoring is carried
 into the step-3 fit, with a warning so that you know it happened.
 
+The opposite case is a unit that is **already past the threshold at its first
+measurement**: its fitted path crossed :math:`D` at or before time zero. It has
+failed — only we do not know when, beyond "before it was first measured" — so
+it is treated as **left censored at its first measurement time** (its first
+positive time, if the measurements start at zero), again with a warning.
+Counting it as never reaching :math:`D` would turn the worst unit into a
+survivor. Which side of :math:`D` counts as failed is read from the units whose
+paths do cross it (rising through it, or falling), so a unit trending *away*
+from the threshold on the good side is still one that never reaches it.
+
 The path model
 ~~~~~~~~~~~~~~
 
@@ -270,7 +280,10 @@ draw many :math:`\theta` from the posterior, compute :math:`g^{-1}(D; \theta)`
 for each, and read the median and a credible interval off the draws. Two
 probabilities come along for free: the fraction of draws whose failure time is
 already in the past (the unit has *probably* already crossed :math:`D`), and the
-fraction whose path never reaches :math:`D` at all.
+fraction whose path never reaches :math:`D` at all. A draw whose path is already
+past :math:`D` at the unit's first measurement (it crossed at or before time
+zero) has failed: it counts as a failure at time zero, not as "never fails".
+Quantiles that reach into the never-fails fraction are infinite.
 
 The population path-parameter distribution
 ------------------------------------------
@@ -420,7 +433,10 @@ Some draws may describe a path that never reaches :math:`D` (a non-increasing
 slope, say). They contribute an infinite failure time — a *defective* "never
 fails" mass. That is a real prediction, not a numerical accident: if a fraction
 of the population never fails, the population has no finite mean life, and
-quantiles that reach into that fraction are infinite too.
+quantiles that reach into that fraction are infinite too. At the other end, a
+draw whose path is already past :math:`D` at the earliest measurement time
+crossed it at or before time zero; it counts as a failure at time zero, an atom
+of the distribution there.
 
 The induced distribution's chief use is as a **diagnostic**. The
 pseudo-failure fit and the induced distribution reach the population life two
@@ -459,8 +475,10 @@ Two corrections are available.
           \frac{\partial\hat\phi}{\partial T_i}^{\!\top},
 
   and bounds on survival (or anything else) follow by one more delta step,
-  taken on the logit scale so they stay inside :math:`(0, 1)`. It is fast — no
-  refitting.
+  taken on the logit scale so they stay inside :math:`(0, 1)`; a two-sided
+  band puts :math:`\alpha/2` in each tail. It is fast — no refitting. (In a
+  simulation with twelve units, the nominal 95 % band covered the true
+  reliability in 92–98 % of 400 runs, depending on the time.)
 * **Bootstrap.** Resample whole units with replacement, rerun the entire
   pipeline (path fits, pseudo failure times, life fit) on each resample, and
   take percentiles of the resulting curves. Slower, but it makes no
@@ -537,8 +555,10 @@ Any SurPyval regression fitter can be used instead of AFT.
 
 **Estimation** is the ordinary censored maximum-likelihood regression of the
 triples :math:`(\hat T_i, c_i, z_i)` — a unit whose path never reaches
-:math:`D` enters as right censored, exactly as in the plain analysis. The
-stress must therefore be one value per unit: this model has no notion of a
+:math:`D` enters as right censored (and one already past it at its first
+measurement as left censored), exactly as in the plain analysis. The stress
+effect needs at least two stress levels, so the fit refuses a single one. The
+stress must be one value per unit: this model has no notion of a
 stress that changes during a test. **Prediction**: :math:`S(t \mid z)` is the
 life distribution of a unit held at the constant stress :math:`z` for its
 whole life, and its quantiles and mean are read off it numerically. The
@@ -976,7 +996,8 @@ The mean life :math:`D/\mu` — distance to failure over average speed — is
 intuitive, and the shape controls how tightly failure times cluster around it
 (more diffusion, more scatter). The drift must be positive for the life to be
 well defined: with :math:`\mu \le 0` the process is not reliably heading toward
-the threshold, so the fit refuses.
+the threshold, so the fit refuses. So does it for noise-free data
+(:math:`\hat\sigma = 0`), which is a deterministic line, not a Wiener process.
 
 The Gamma process
 ~~~~~~~~~~~~~~~~~
@@ -1004,7 +1025,12 @@ For a given :math:`\alpha` the best :math:`\beta` has a closed form,
 rate), so the fit is a one-dimensional search over :math:`\alpha` with
 :math:`\beta` profiled out. A decrease between two measurements is impossible
 under this model, so data with one is refused, with a pointer to the Wiener
-process.
+process. An increment of exactly zero is possible in data but has probability
+zero under the model: it means the change was below the measurement
+resolution :math:`\delta`, so it enters the likelihood as censored,
+:math:`P(\Delta W \le \delta)` (``resolution``, by default the smallest
+positive increment in the data — the grid step of rounded readings), and
+:math:`\alpha` and :math:`\beta` are then found jointly.
 
 **Life.** Because the path only goes up, it has crossed :math:`D` by time
 :math:`t` exactly when its level at :math:`t` is at least :math:`D`:

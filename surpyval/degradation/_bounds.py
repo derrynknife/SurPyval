@@ -98,15 +98,16 @@ def pseudo_time_variances(model: Any) -> npt.NDArray:
     ``J_i`` the path Jacobian at the fitted parameters), and the pseudo failure
     time ``t_i = inv_path(threshold; theta_i)`` has variance
     ``grad' Cov(theta_i) grad`` by the delta method. Censored units (whose
-    "pseudo failure time" is an observed censoring time, not an extrapolation)
-    get zero.
+    "pseudo failure time" is an observed censoring time, not an extrapolation
+    -- right censored at the last measurement, or left censored at the first
+    for a unit already past the threshold) get zero.
     """
     v = np.zeros(len(model.units))
     sigma2 = float(model.measurement_var)
     if not sigma2 > 0:
         return v  # exact path fits: no first-stage uncertainty
     for idx, unit in enumerate(model.units):
-        if model.c[idx] == 1:
+        if model.c[idx] != 0:
             continue
         theta = model.path_params[idx]
         x_unit = model.x[model.i == unit]
@@ -122,7 +123,9 @@ def pseudo_time_variances(model: Any) -> npt.NDArray:
 
 def _life_loglik(model: Any, phi: npt.NDArray, t: npt.ArrayLike) -> float:
     """Life-model log-likelihood at parameters ``phi`` and pseudo failure
-    times ``t`` (events use the density, censored units the survival)."""
+    times ``t`` (events use the density, right-censored units the
+    survival, and units already past the threshold at their first
+    measurement -- left censored there -- the CDF)."""
     lm = model.life_model
     gamma = float(getattr(lm, "gamma", 0.0) or 0.0)
     xt = np.asarray(t, dtype=float) - gamma
@@ -130,7 +133,8 @@ def _life_loglik(model: Any, phi: npt.NDArray, t: npt.ArrayLike) -> float:
     with np.errstate(divide="ignore", invalid="ignore"):
         logf = np.log(np.clip(lm.dist.df(xt, *phi), tiny, None))
         logs = np.log(np.clip(lm.dist.sf(xt, *phi), tiny, None))
-    contrib = np.where(model.c == 0, logf, logs)
+        logF = np.log(np.clip(lm.dist.ff(xt, *phi), tiny, None))
+    contrib = np.where(model.c == 0, logf, np.where(model.c == -1, logF, logs))
     return float(np.sum(contrib))
 
 
@@ -221,8 +225,11 @@ def analytic_cb(
     se = _delta_se(sf_of, phi, cov)
 
     if bound == "two-sided":
-        sf_lo = _logit_bound(sf_hat, se, alpha_ci, "lower")
-        sf_hi = _logit_bound(sf_hat, se, alpha_ci, "upper")
+        # Each side is a one-sided bound, so it takes half the total tail
+        # probability: with the full ``alpha_ci`` per side the "95%" band
+        # was really a 90% one.
+        sf_lo = _logit_bound(sf_hat, se, alpha_ci / 2.0, "lower")
+        sf_hi = _logit_bound(sf_hat, se, alpha_ci / 2.0, "upper")
         if on in ("sf", "R"):
             return np.stack([sf_lo, sf_hi], axis=-1)
         elif on in ("ff", "F"):

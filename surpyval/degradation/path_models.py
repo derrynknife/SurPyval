@@ -348,12 +348,20 @@ class QuadraticPath_(PathModel):
         """First positive time at which the parabola reaches ``y``."""
         a, b, c = params
         y = np.asarray(y, dtype=float)
-        with np.errstate(divide="ignore", invalid="ignore"):
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             linear_root = (y - a) / b
             disc = b**2 - 4.0 * c * (a - y)
             sqrt_disc = np.sqrt(np.where(disc >= 0, disc, np.nan))
-            root_minus = (-b - sqrt_disc) / (2.0 * c)
-            root_plus = (-b + sqrt_disc) / (2.0 * c)
+            # The textbook (-b +/- sqrt(disc)) / 2c cancels catastrophically
+            # for the root near the linear one when the curvature is tiny
+            # (a quadratic fitted to straight-line data has c ~ 1e-17 and
+            # gave a crossing at 42.75 instead of 16). The conjugate form
+            # adds terms of one sign only, and its second root tends to
+            # the linear root (y - a) / b as c -> 0.
+            sign_b = np.where(np.asarray(b) >= 0, 1.0, -1.0)
+            q = -0.5 * (b + sign_b * sqrt_disc)
+            root_minus = q / c
+            root_plus = (a - y) / q
             root_minus = np.where(
                 np.isfinite(root_minus) & (root_minus > 0),
                 root_minus,

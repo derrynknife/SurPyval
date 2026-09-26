@@ -274,6 +274,26 @@ takes into account, and a warning says which unit it was:
     print(caught[0].message)
     print("censored flags:", with_flat.c)
 
+The opposite case is a unit that is **already past the threshold** at its first
+measurement — its fitted path crossed 450 at or before time zero. It has
+failed, only we do not know when, so it is left censored at its first
+measurement time (flag ``-1``), again with a warning; the summary counts it as
+"Failed Before Start". Which side of the threshold counts as failed is read
+from the units that do cross it, so the flat unit above, trending away on the
+good side, still never reaches it:
+
+.. jupyter-execute::
+
+    x_early = np.concatenate([x, times])
+    y_early = np.concatenate([y, 470 + 0.3 * times + rng.normal(0, 1.0, times.size)])
+    i_early = np.concatenate([i, np.full(times.size, 98)])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with_early = DegradationAnalysis.fit(x_early, y_early, i_early, threshold=450.0)
+    print(caught[0].message)
+    print("censored flags:", with_early.c)
+
 **Decreasing degradation.** Nothing changes when the measurement falls toward
 the threshold instead of rising to it. Here eight LEDs lose light output
 exponentially from about 100 %, and a lamp has failed once it is below 70 % of
@@ -338,7 +358,9 @@ time):
 
 If the fitted path crossed the threshold between time zero and the last
 measurement, the predicted failure time is in the past and the remaining life
-is negative. If the new unit's fitted path
+is negative. A trajectory already past the threshold at its first measurement
+returns the non-positive time at which its fitted path crossed. If the new
+unit's fitted path
 never reaches the threshold (it is not degrading), both return ``nan`` with a
 warning. The trajectory needs at least as many measurements as the path has
 parameters, at two or more distinct times. For a population-level view instead
@@ -369,7 +391,9 @@ through the threshold crossing by Monte Carlo:
 
 ``pred`` is a :class:`~surpyval.degradation.degradation_analysis.RULPrediction`; ``pred.samples``
 holds the Monte Carlo failure times (``inf`` for draws whose path never reaches
-the threshold) and ``posterior_cov`` the posterior covariance. ``alpha_ci`` sets
+the threshold, so the median or an interval end is ``inf`` when that many draws
+never fail; ``0`` for draws already past the threshold at the first
+measurement, which count as failed) and ``posterior_cov`` the posterior covariance. ``alpha_ci`` sets
 the interval level, ``n_samples`` the number of draws, and ``random_state``
 makes the draws reproducible.
 
@@ -614,7 +638,9 @@ non-increasing slope, say). Those contribute an ``inf`` failure time — a
 defective *"never fails"* mass reported as ``prob_never_fails`` — and once the
 quantiles reach into that mass they, and the ``mean``, become ``inf``. This is
 the correct behaviour: if a fraction of the population genuinely never fails,
-the population has no finite mean life. Finally, ``induced_life`` needs a
+the population has no finite mean life. At the other end, a draw whose path is
+already past the threshold at the earliest measurement time crossed it at or
+before time zero; it counts as a failure at time zero. Finally, ``induced_life`` needs a
 single population of paths: an accelerated (covariate) model pools every
 stress level, so it is refused there unless the path parameters are modelled
 against stress (``links``, below), in which case it takes the stress ``Z`` to
@@ -667,8 +693,9 @@ resamples whole units and reruns the whole pipeline:
     model.cb(np.array([500.0, 600.0]), on='sf', method='bootstrap',
              n_boot=100, seed=0)
 
-Both methods take ``on`` (``"sf"``, ``"ff"`` or ``"Hf"``), ``alpha_ci`` and
-``bound`` (``"two-sided"``, ``"lower"`` or ``"upper"``). The bounds describe
+Both methods take ``on`` (``"sf"``, ``"ff"`` or ``"Hf"``), ``alpha_ci`` (the
+total tail probability: a two-sided band has ``alpha_ci / 2`` in each tail, so
+the default is a 95 % band) and ``bound`` (``"two-sided"``, ``"lower"`` or ``"upper"``). The bounds describe
 the *life model*; the stochastic-process and destructive models further down
 have their own uncertainty story (the destructive model offers bootstrap bounds;
 the process models do not yet report parameter uncertainty).
@@ -687,7 +714,8 @@ section takes them in that order.
 The simplest: pass the stress as ``Z`` to :meth:`DegradationAnalysis.fit <surpyval.degradation.degradation_analysis.DegradationAnalysis_.fit>`.
 ``Z`` is aligned to ``x`` (one row per measurement, one column per stress
 variable) and must be constant within each unit — a unit is tested at a single
-stress. The paths are fitted exactly as before, and step three fits a
+stress — while the units must span at least two stress levels (the fit refuses
+a single one: the stress effect could not be told from the baseline). The paths are fitted exactly as before, and step three fits a
 *regression* life model to the pseudo failure times instead of a plain
 distribution, with each unit's stress as its covariate, so life can be
 predicted at any stress. A plain distribution is wrapped automatically in an
@@ -1168,7 +1196,8 @@ and it is worth being clear about what each one *means*:
   larger drift means faster wear-out and a shorter life.
 * :math:`\sigma` — the **diffusion** (or volatility). This is the size of the
   random wobble around that average trend. With :math:`\sigma = 0` the process
-  would be a perfectly straight line :math:`\mu t`; the bigger :math:`\sigma`,
+  would be a perfectly straight line :math:`\mu t` (noise-free data, which the
+  fit refuses: that is not a Wiener process); the bigger :math:`\sigma`,
   the more the path jitters up and down and the more spread-out the failure
   times become. (Wiener degradation models, including extensions with
   unit-to-unit random effects, are surveyed in [Wang2010]_.)
@@ -1397,6 +1426,26 @@ something meaningless — the message points you at the Wiener process instead:
 
     # this data dips from 5 back to 3 -- not allowed for a monotone process
     GammaProcess.fit([0, 1, 2], [0.0, 5.0, 3.0], [1, 1, 1], threshold=10.0)
+
+An increment of exactly **zero** is allowed, but a gamma increment is never
+exactly zero, so it means the change was too small to register: it enters the
+likelihood as censored below the measurement resolution,
+:math:`P(\Delta W \le \delta)`. ``resolution`` sets :math:`\delta`; by
+default it is the smallest positive increment in the data, which for readings
+rounded to a grid is the grid step. Here the wear readings are rounded to the
+nearest 0.5, as a coarse gauge would give them:
+
+.. jupyter-execute::
+
+    y_gauge = np.round(y / 0.5) * 0.5
+    dy = np.diff(y_gauge)[np.diff(i) == 0]
+    print("zero increments:", int((dy == 0).sum()), "of", dy.size)
+    GammaProcess.fit(x, y_gauge, i, threshold=threshold)
+
+The mean life, 14.7, stays close to the 15.3 of the unrounded readings; the
+shape rate moves further (4.2 against 3.0), because rounding also coarsens
+every non-zero increment, which the censoring does not undo. Treating the
+zeros as tiny positive increments instead would put the shape rate at 0.37.
 
 Choosing between Wiener and Gamma
 ---------------------------------

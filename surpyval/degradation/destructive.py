@@ -40,6 +40,7 @@ moves), the standard destructive-degradation / degradation-distribution model
 (Meeker & Escobar).
 """
 
+from numbers import Number
 from typing import Any
 
 import numpy as np
@@ -51,7 +52,8 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.univariate.parametric import LogNormal, Normal
+from surpyval.univariate.parametric import LogNormal
+from surpyval.univariate.parametric.parametric import resolve_distribution
 
 # Time-transform bases phi(t): (callable, display name). The linear predictor
 # is loc(t) = beta0 + beta1 * phi(t); the free parameters are the regression
@@ -67,19 +69,26 @@ _TRANSFORMS = {
 # the log scale, so ordinary-least-squares initial values use log(y).
 _LOG_RESPONSE = {"LogNormal", "LogLogistic"}
 
-_DIST_BY_NAME = {"Normal": Normal, "LogNormal": LogNormal}
-
 
 def _resolve_distribution(distribution: Any) -> Any:
+    """
+    The response distribution, given as the fitter or its name.
+
+    A name resolves through the package's distribution registry (the same
+    lookup the parametric models' ``from_dict`` uses), so every
+    distribution ``fit`` accepts -- and hence every name ``to_dict`` can
+    write -- reads back; only ``Normal`` and ``LogNormal`` used to, so a
+    model fitted with, say, ``Logistic`` could be saved but not loaded.
+    """
     if isinstance(distribution, str):
-        if distribution not in _DIST_BY_NAME:
-            raise ValueError(
-                "distribution {!r} is not a known destructive-degradation "
-                "response; use one of {} or pass the distribution object "
-                "directly".format(distribution, sorted(_DIST_BY_NAME))
-            )
-        return _DIST_BY_NAME[distribution]
+        return resolve_distribution(distribution)
     return distribution
+
+
+def _transform_ok(transform: str, x: npt.NDArray) -> bool:
+    """Whether the time transform is finite at every time in ``x``."""
+    with np.errstate(all="ignore"):
+        return bool(np.isfinite(_TRANSFORMS[transform][0](x)).all())
 
 
 class DestructiveDegradationModel(SerialisableMixin):
@@ -453,7 +462,10 @@ class DestructiveDegradation_:
             ``-1`` left-censored (below the test floor). Default all observed.
         distribution : Parametric or str, optional
             Location-scale response distribution -- ``LogNormal`` (default,
-            positive response) or ``Normal``, as the object or its name.
+            positive response), ``Normal``, or another such as
+            ``Logistic`` or ``LogLogistic`` -- as the object or its name.
+            A distribution with positive support needs every measurement
+            positive.
         transform : str, optional
             Time transform :math:`\varphi(t)` for the location: ``"linear"``,
             ``"log"``, ``"sqrt"``, ``"reciprocal"``, or ``"best"`` to pick the
@@ -511,6 +523,22 @@ class DestructiveDegradation_:
             )
         if not np.isin(c, (-1, 0, 1)).all():
             raise ValueError("c must be 0 (observed), 1 (right) or -1 (left)")
+        # Bad input used to fit silently to nonsense or fail deep inside
+        # the least-squares start (``LinAlgError: SVD did not converge``,
+        # with LAPACK noise on stderr); refuse it up front instead.
+        if not (np.isfinite(x).all() and np.isfinite(y).all()):
+            raise ValueError("x and y must contain only finite values")
+        if isinstance(threshold, np.ndarray) and threshold.ndim == 0:
+            threshold = threshold.item()
+        if not isinstance(threshold, Number) or not np.isfinite(threshold):
+            raise ValueError("threshold must be a finite number")
+        if dist.support[0] >= 0 and np.any(y <= 0):
+            raise ValueError(
+                "the {} response distribution has positive support, but "
+                "some measurements are zero or negative; use a "
+                "distribution on the real line (e.g. Normal) for this "
+                "response".format(dist.name)
+            )
 
         if direction == "auto":
             # Direction from the sign of the (raw-time) trend in the data.
@@ -528,6 +556,8 @@ class DestructiveDegradation_:
             fits = {}
             n = x.shape[0]
             for name in _TRANSFORMS:
+                if not _transform_ok(name, x):
+                    continue  # e.g. log(t) or 1/t with a time of zero
                 try:
                     beta, sigma, nll = self._fit_one(dist, name, x, y, c)
                 except Exception:
@@ -553,6 +583,13 @@ class DestructiveDegradation_:
                     "transform must be one of {} or 'best'".format(
                         sorted(_TRANSFORMS)
                     )
+                )
+            if not _transform_ok(transform, x):
+                raise ValueError(
+                    "the {!r} time transform, {}, is not finite at every "
+                    "measurement time (it needs positive times); use "
+                    "another transform or drop the non-positive "
+                    "times".format(transform, _TRANSFORMS[transform][1])
                 )
             beta, sigma, nll = self._fit_one(dist, transform, x, y, c)
             transform_scores = None
