@@ -29,8 +29,14 @@ import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.utils import (
+    check_covariate_rows,
+    finite_covariate_mask,
+    xcnt_handler,
+)
 from surpyval.utils.linalg import numerical_hessian
 
+from .._fit_skeleton import require_finite_fit, warn_if_not_converged
 from ..regression_data import design_matrix_from_df
 from .frailty_model import FrailtyModel
 
@@ -219,7 +225,9 @@ class FrailtyFitter:
             Observed times.
         Z : array_like, optional
             Covariates ``(n_obs, p)``. Omit for a frailty model with no
-            covariates (a pure random-effects survival model).
+            covariates (a pure random-effects survival model). Rows with a
+            missing or infinite covariate are dropped (with their group
+            labels), with a warning.
         c : array_like, optional
             Censoring flags: ``0`` event, ``1`` right-censored (the only two
             supported). Defaults to all events.
@@ -254,23 +262,43 @@ class FrailtyFitter:
         >>> model.beta.round(3), round(model.theta, 3)
         (array([0.399]), 0.432)
         """
-        x = np.asarray(x, dtype=float).ravel()
-        n_obs = x.shape[0]
-        c = (
-            np.zeros(n_obs, dtype=int)
-            if c is None
-            else np.asarray(c, dtype=int).ravel()
-        )
-        w = np.ones(n_obs) if n is None else np.asarray(n, dtype=float).ravel()
-        if groups is None:
-            raise ValueError("'groups' (a cluster label per row) is required.")
-        groups = np.asarray(groups).ravel()
-
+        # Through the data handler first, in the caller's row order: the
+        # documented ragged form ``[10, [11, 13], ...]`` is not a
+        # rectangular array, and ``np.asarray(x, dtype=float)`` on it raised
+        # a raw numpy error.
+        x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
+        c = np.asarray(c_h, dtype=int).ravel()
         if not np.all(np.isin(c, (0, 1))):
             raise ValueError(
                 "Frailty fitting supports only observed (c=0) and "
                 "right-censored (c=1) data."
             )
+        x = np.asarray(x_h, dtype=float)
+        if x.ndim == 2:
+            # Two columns with no interval row: xl == xr on every row.
+            x = x[:, 0]
+        n_obs = x.shape[0]
+        w = np.asarray(n_h, dtype=float).ravel()
+        if groups is None:
+            raise ValueError("'groups' (a cluster label per row) is required.")
+        groups = np.asarray(groups).ravel()
+        if groups.shape[0] != n_obs:
+            raise ValueError(
+                "'groups' has {} label(s) but there are {} observations; "
+                "give one group label per row.".format(groups.shape[0], n_obs)
+            )
+
+        if Z is not None:
+            Zc = np.atleast_2d(np.asarray(Z, dtype=float))
+            if Zc.shape[0] != n_obs and Zc.shape[1] == n_obs:
+                # A single covariate given as a row.
+                Zc = Zc.T
+            check_covariate_rows(Zc, n_obs)
+            keep = finite_covariate_mask(Zc)
+            if not keep.all():
+                x, c, w, groups, Zc = (a[keep] for a in (x, c, w, groups, Zc))
+                n_obs = x.shape[0]
+
         if int((c == 0).sum()) == 0:
             raise ValueError("At least one event (c=0) is required.")
 
@@ -287,9 +315,6 @@ class FrailtyFitter:
             n_beta = 0
             feature_names = None
         else:
-            Zc = np.atleast_2d(np.asarray(Z, dtype=float))
-            if Zc.shape[0] != n_obs:
-                Zc = Zc.T
             n_beta = Zc.shape[1]
             feature_names = None
 
@@ -301,7 +326,16 @@ class FrailtyFitter:
                 [np.asarray(base, float), np.zeros(n_beta), [0.5]]
             )
         else:
-            init_nat = np.asarray(init, dtype=float)
+            init_nat = np.asarray(init, dtype=float).ravel()
+            n_params = self.k_dist + n_beta + 1
+            if init_nat.shape[0] != n_params:
+                raise ValueError(
+                    "`init` has {} value(s) but the model has {} parameters: "
+                    "the {} distribution parameter(s), {} coefficient(s) and "
+                    "theta, in that order.".format(
+                        init_nat.shape[0], n_params, self.k_dist, n_beta
+                    )
+                )
 
         def obj_unc(u: npt.NDArray) -> float:
             nat = to_nat(u, n_beta)
@@ -315,7 +349,18 @@ class FrailtyFitter:
                 method="Nelder-Mead",
                 options={"maxiter": 10000, "xatol": 1e-8, "fatol": 1e-8},
             )
-            res = minimize(obj_unc, res.x, method="BFGS")
+            polished = minimize(obj_unc, res.x, method="BFGS")
+        # BFGS often stops on "precision loss" at the optimum Nelder-Mead
+        # already found; keep whichever is better, and say so only if
+        # neither converged.
+        converged = bool(res.success or polished.success)
+        if np.isfinite(polished.fun) and (
+            polished.fun <= res.fun or not np.isfinite(res.fun)
+        ):
+            res = polished
+        require_finite_fit(float(res.fun))
+        if not converged:
+            warn_if_not_converged(res)
         nat = to_nat(res.x, n_beta)
 
         dist_params = nat[: self.k_dist]

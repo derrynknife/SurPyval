@@ -242,11 +242,14 @@ fitter accepts:
 - the Lin-Ying (``AdditiveHazards``), Buckley-James and frailty fitters take
   observed and right-censored data only, and say so if given anything else.
 
-Remove rows with a missing (``NaN``) covariate before fitting. ``CoxPH``,
-``AdditiveHazards`` and ``BuckleyJames`` drop such rows from array input
-themselves, but the parametric and frailty fitters do not, and
-``fit_from_df`` with a ``formula`` fails when one of the formula's columns
-has a missing value.
+A row with a missing (``NaN``) or infinite covariate cannot enter any of
+these likelihoods, so every fitter drops it — from the times, flags, counts
+and truncation too — and warns with the number of rows dropped. The same
+goes for ``fit_from_df``, with named columns or a ``formula``. (The
+time-varying-covariate fits are the exception: dropping one interval would
+change a subject's history, so they refuse a missing covariate instead.)
+Predicting from a DataFrame row with a missing covariate gives ``nan`` for
+that row, in its place.
 
 Each family also has a ``fit_from_df`` that names DataFrame columns instead
 (see `Fitting from a DataFrame: formulas and categorical covariates`_).
@@ -870,8 +873,9 @@ guess if it is left out:
 
 The residual diagnostics and robust errors above assume a single baseline, so
 they are not available on a stratified model; the coefficients and their
-model-based ``p``-values are. A stratified model can also not be serialised,
-nor evaluated along a covariate path with ``sf_tvc``.
+model-based ``p``-values are. A stratified model can also not be serialised.
+Along a covariate path, ``sf_tvc``, ``Hf_tvc`` and ``predict_tvc`` take the
+same ``stratum`` argument.
 
 
 Semi-Parametric — Buckley-James (AFT)
@@ -1330,12 +1334,11 @@ distribution:
     model = PO(Weibull).fit(x=x, Z=Z, c=c)
     model
 
-This fit tells a much weaker story — small coefficients, and an interaction
-with the same sign as in the PH fit — which is a warning rather than a
-finding: with 11 failures and four covariates the Weibull-PO fit is poorly
-determined, and `Model Selection`_ below shows it fits these data clearly
-worse than the PH/AFT description. The choice of baseline matters as much in
-the PO family as in any other.
+The Weibull baseline tells the same story as the logistic one: every
+coefficient has the opposite sign to the PH fit, as the survival-odds
+convention requires. With 11 failures and four covariates, though, none of
+these fits is well determined, and `Model Selection`_ below shows the data
+cannot separate the PO description from the PH/AFT one.
 
 The fading effect is easiest to see on data simulated from a PO model. Below,
 a log-logistic baseline has its survival odds multiplied by :math:`e^{1}` for
@@ -2140,14 +2143,13 @@ with a Weibull baseline, and try a second baseline for AFT and PO:
         print(f'{name:12s}  AIC={m.aic():6.2f}  BIC={m.bic():6.2f}')
 
 The PH and AFT rows are identical — for a Weibull baseline they are the same
-model (see `Accelerated Failure Time (AFT)`_). The Weibull PO model fits
-clearly worse, but that is a verdict on the *pair* (family, baseline): with a
-logistic baseline, proportional odds comes within one AIC unit of the Weibull
-PH/AFT model, and the log-normal AFT is about three units behind. Differences
-of a unit or two are not meaningful — with 11 failures the data cannot
-separate these descriptions — so compare each family at its best baseline
-before ruling it out, and let the purpose and the diagnostics decide between
-close contenders.
+model (see `Accelerated Failure Time (AFT)`_). Proportional odds comes within
+one AIC unit of them with either baseline, and the log-normal AFT is about
+three units behind, so the choice of baseline matters here as much as the
+choice of family. Differences of a unit or two are not meaningful — with 11
+failures the data cannot separate these descriptions — so compare each family
+at its best baseline before ruling it out, and let the purpose and the
+diagnostics decide between close contenders.
 
 A note of caution: AIC and BIC compare how well a model fits the *observed
 data*, not whether the model's assumptions are correct. A PH model with a lower

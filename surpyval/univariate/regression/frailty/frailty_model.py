@@ -225,6 +225,12 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         """
         if self.covariance is None:
             raise ValueError("No covariance was stored for this model.")
+        if name not in self.param_names:
+            raise ValueError(
+                "Unknown parameter {!r}; expected one of {}".format(
+                    name, self.param_names
+                )
+            )
         idx = self.param_names.index(name)
         est = self._param_vector()[idx]
         se = float(_standard_error(self.covariance[idx, idx]))

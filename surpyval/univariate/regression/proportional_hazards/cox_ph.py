@@ -6,6 +6,7 @@
 # Copyright 2022 Cartiga LLC
 
 
+import warnings
 from copy import copy
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -25,7 +26,12 @@ from surpyval.univariate.nonparametric import (
     NelsonAalen,
     Turnbull,
 )
-from surpyval.utils import validate_coxph, validate_coxph_df_inputs
+from surpyval.utils import (
+    _caller_stacklevel,
+    check_covariate_rows,
+    validate_coxph,
+    validate_coxph_df_inputs,
+)
 
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from .tvc import handle_tvc, handle_tvc_timeline
@@ -520,24 +526,31 @@ def _solve_beta_and_p_values(
     from the observed information; shared by ``fit`` and
     ``_fit_stratified`` so the most-patched block in this file exists
     exactly once."""
-    # Have found that root finding is faster than minimization. ``jac``
-    # returns (score, hessian), hence ``jac=True``.
-    res = root(jac, beta_init, jac=True, tol=tol)
+    # Where the likelihood is monotone (below) the coefficients run off
+    # towards infinity and the risk-set sums underflow to 0 on the way;
+    # the resulting log(0) and 0/0 are that divergence, which is reported
+    # by name below, not as a stream of RuntimeWarnings.
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        # Have found that root finding is faster than minimization. ``jac``
+        # returns (score, hessian), hence ``jac=True``.
+        res = root(jac, beta_init, jac=True, tol=tol)
 
-    # MINPACK's hybr root-finder can stall on delayed-entry data with
-    # staggered risk sets (e.g. the start-stop representation used for
-    # time-varying covariates) even though the partial log-likelihood is
-    # well behaved there. Fall back to a direct minimisation of the
-    # negative partial log-likelihood whenever root-finding fails to
-    # converge or lands at a worse point, so such fits still succeed.
-    if not res.success:
-        fallback = minimize(
-            lambda b: float(neg_ll(b)), beta_init, method="BFGS"
-        )
-        if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
-            res = fallback
+        # MINPACK's hybr root-finder can stall on delayed-entry data with
+        # staggered risk sets (e.g. the start-stop representation used for
+        # time-varying covariates) even though the partial log-likelihood
+        # is well behaved there. Fall back to a direct minimisation of the
+        # negative partial log-likelihood whenever root-finding fails to
+        # converge or lands at a worse point, so such fits still succeed.
+        if not res.success:
+            fallback = minimize(
+                lambda b: float(neg_ll(b)), beta_init, method="BFGS"
+            )
+            if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
+                res = fallback
 
-    hessian_matrix = jac(res.x)[1]
+        hessian_matrix = jac(res.x)[1]
+        info_at_start = jac(beta_init)[1]
+    _warn_if_monotone(hessian_matrix, info_at_start)
     # An exactly singular information matrix raises before the
     # pseudo-inverse fallback can run (#259); route it there.
     try:
@@ -557,6 +570,34 @@ def _solve_beta_and_p_values(
         z_score = res.x / np.sqrt(var)
     p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
     return res, p_values
+
+
+def _warn_if_monotone(info: npt.NDArray, info_at_start: npt.NDArray) -> None:
+    """Warn when the partial likelihood has no finite maximum.
+
+    When a covariate separates the events from the survivors (every
+    failure at each event time has the largest -- or smallest -- value in
+    its risk set), the partial likelihood keeps increasing as that
+    coefficient grows, and the fit stops wherever the optimiser gave up
+    (``beta`` of 35 with a p-value of 1 on such data). The symptom is that
+    the information for that coefficient has collapsed: the risk sets'
+    weighted covariate variance goes to 0 as the coefficient grows.
+    """
+    d = np.diag(np.atleast_2d(info))
+    d0 = np.diag(np.atleast_2d(info_at_start))
+    diverged = np.flatnonzero(
+        (d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0)
+    )
+    if diverged.size:
+        warnings.warn(
+            "Monotone partial likelihood: it keeps increasing as coefficient"
+            "(s) {} grow without bound, so the estimate is infinite (the "
+            "covariate separates the events from the survivors). The "
+            "reported value, its standard error and its p-value are "
+            "meaningless; consider removing or coarsening the covariate, "
+            "or a penalised fit.".format(diverged.tolist()),
+            stacklevel=_caller_stacklevel(),
+        )
 
 
 def _combine_generators(gens: list) -> tuple[Callable, Callable]:
@@ -1059,7 +1100,8 @@ class CoxPH_:
         x: array-like
             The observed times of the events.
         Z: array-like
-            The covariates of the model, one row per observation.
+            The covariates of the model, one row per observation. Rows with
+            a missing or infinite covariate are dropped, with a warning.
         c: array-like, optional
             The censoring indicator. 0 if observed (event),
             1 if right-censored. Defaults to all observed. Left-censored
@@ -1097,7 +1139,11 @@ class CoxPH_:
 
         model: SemiParametricRegressionModel
             The fitted model: ``params`` (also ``beta``) are the
-            coefficients and ``p_values`` their Wald p-values.
+            coefficients and ``p_values`` their Wald p-values. If a
+            covariate separates the events from the survivors the partial
+            likelihood has no finite maximum; the fit then warns
+            ("monotone partial likelihood") and the coefficient is
+            meaningless.
 
         Examples
         --------
@@ -1143,7 +1189,6 @@ class CoxPH_:
         model.baseline_method = "breslow"
         model.res = res
         model.beta = copy(res.x)
-        model.phi = lambda Z: np.exp(Z @ model.beta)
         model.params = res.x
 
         # Retain the per-observation training data (before ``baseline``
@@ -1191,6 +1236,11 @@ class CoxPH_:
         strata = np.asarray(strata)
         if len(strata) != len(np.atleast_1d(x)):
             raise ValueError("'strata' must have a label for each observation")
+        if Z is not None:
+            # Checked before the per-stratum split, whose boolean mask
+            # would otherwise raise a bare IndexError on a Z of the wrong
+            # length.
+            check_covariate_rows(np.asarray(Z), len(strata))
 
         labels = np.unique(strata)
         per_stratum = []
@@ -1227,7 +1277,6 @@ class CoxPH_:
         model.baseline_method = "breslow"
         model.res = res
         model.beta = copy(res.x)
-        model.phi = lambda Z: np.exp(Z @ model.beta)
         model.params = res.x
         model.is_stratified = True
         model.strata_labels = list(labels)
@@ -1291,8 +1340,8 @@ class CoxPH_:
         formula: str, optional
             A ``formulaic`` formula for the covariates (e.g.
             ``"age + site"``), instead of ``Z_cols``; categorical columns get
-            reference-level coding. Rows with a missing covariate are
-            dropped when ``Z_cols`` is used.
+            reference-level coding. Rows with a missing covariate (in
+            ``Z_cols`` or a formula column) are dropped, with a warning.
         method: str, optional
             The tie-handling method: ``'breslow'``, ``'efron'``, ``'exact'``
             or ``'kalbfleisch-prentice'`` (alias ``'kp'``). See :meth:`fit`.

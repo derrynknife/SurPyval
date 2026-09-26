@@ -288,7 +288,9 @@ class ProportionalHazardsFitter(
         x : array_like
             The observed event times.
         Z : array_like
-            The covariates to fit the model to.
+            The covariates to fit the model to, one row per observation.
+            Rows with a missing or infinite covariate are dropped, with a
+            warning.
         c : array_like, optional
             The censoring indicators.
         n : array_like, optional

@@ -177,7 +177,8 @@ class ProportionalOddsFitter(
             The observed event times.
         Z : array_like
             The covariate matrix, one row per observation (a 1-D array is
-            read as a single covariate).
+            read as a single covariate). Rows with a missing or infinite
+            covariate are dropped, with a warning.
         c : array_like, optional
             The censoring indicators (0 observed, 1 right, -1 left, 2
             interval). Defaults to all observed.

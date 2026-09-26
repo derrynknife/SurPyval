@@ -64,32 +64,32 @@ def truncation_correction(
     lo_finite = np.isfinite(tl)
     hi_finite = np.isfinite(tr)
 
-    # Substitute a finite stand-in before any distribution function is
-    # called: autograd evaluates every branch of a ``np.where``, so an
-    # infinity reaching one of them would poison the gradient of the
-    # branch that was selected even though its value is discarded.
-    present = np.concatenate([tl[lo_finite], tr[hi_finite]])
-    stand_in = float(present[0]) if present.size else 1.0
-    tl_safe = np.where(lo_finite, tl, stand_in)
-    tr_safe = np.where(hi_finite, tr, stand_in)
+    # Each window shape is evaluated only when some row has it, and with a
+    # stand-in taken from the rows that do: autograd evaluates every branch
+    # of a ``np.where``, so an infinity (or, in a branch no row uses, a
+    # bound at which the function is -inf -- ``log F(0)`` for the usual
+    # left truncation at 0) reaching one of them would poison the gradient
+    # of the selected branch, and warned "divide by zero" from every
+    # ``covariance``/``cb`` call made outside the fit's error suppression.
+    def stand_in(values: Any, rows: Any) -> Any:
+        return np.where(rows, values, values[rows][0])
 
-    window = np.maximum(
-        model.ff(tr_safe, Z, *params) - model.ff(tl_safe, Z, *params), _TINY
-    )
-
-    log_mass = np.where(
-        lo_finite & hi_finite,
-        np.log(window),
-        np.where(
-            lo_finite,
-            model.log_sf(tl_safe, Z, *params),  # (tl, inf)
-            np.where(
-                hi_finite,
-                model.log_ff(tr_safe, Z, *params),  # (-inf, tr)
-                0.0,  # untruncated: log(1)
-            ),
-        ),
-    )
+    log_mass: Boxable = np.zeros(tl.shape[0])
+    both = lo_finite & hi_finite
+    if both.any():
+        tl_b, tr_b = stand_in(tl, both), stand_in(tr, both)
+        window = np.maximum(
+            model.ff(tr_b, Z, *params) - model.ff(tl_b, Z, *params), _TINY
+        )
+        log_mass = np.where(both, np.log(window), log_mass)
+    left = lo_finite & ~hi_finite  # (tl, inf)
+    if left.any():
+        log_left = model.log_sf(stand_in(tl, left), Z, *params)
+        log_mass = np.where(left, log_left, log_mass)
+    right = ~lo_finite & hi_finite  # (-inf, tr)
+    if right.any():
+        log_right = model.log_ff(stand_in(tr, right), Z, *params)
+        log_mass = np.where(right, log_right, log_mass)
     return (data.n_t * log_mass).sum()
 
 

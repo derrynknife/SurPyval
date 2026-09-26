@@ -304,7 +304,8 @@ class AdditiveHazardsFitter(
         x : array_like
             The observed event times.
         Z : array_like
-            The covariate matrix (one row per observation).
+            The covariate matrix (one row per observation). Rows with a
+            missing or infinite covariate are dropped, with a warning.
         c : array_like, optional
             The censoring indicators (0 observed, 1 right, -1 left, 2
             interval).

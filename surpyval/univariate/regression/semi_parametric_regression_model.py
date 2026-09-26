@@ -60,7 +60,6 @@ class SemiParametricRegressionModel(SerialisableMixin):
     tl: Any
     h0: npt.NDArray
     H0: npt.NDArray
-    phi: Callable[..., npt.NDArray]
     p_values: npt.NDArray
     #: The fit's score/Hessian and negative-partial-log-likelihood
     #: closures (the scalar value is ``_neg_log_like``).
@@ -90,6 +89,18 @@ class SemiParametricRegressionModel(SerialisableMixin):
         columns recorded at fit time when a pandas DataFrame is passed.
         """
         return prepare_Z(Z, self.feature_names, self._model_spec)
+
+    def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+        """
+        The hazard multiplier :math:`e^{\beta' Z}` for covariates ``Z``: a
+        single row, one row per prediction, a DataFrame for a model fitted
+        with ``fit_from_df``, or a scalar for a one-covariate model (as the
+        parametric families accept; it used to fail in the matrix product).
+        """
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        if Z_arr.ndim == 0:
+            Z_arr = Z_arr.reshape(1)
+        return np.exp(Z_arr @ np.asarray(self.beta, dtype=float))
 
     def __repr__(self) -> str:
         out = (
@@ -146,7 +157,14 @@ class SemiParametricRegressionModel(SerialisableMixin):
             "is_tvc": bool(self.is_tvc),
         }
         if getattr(self, "tl", None) is not None:
-            out["tl"] = np.asarray(self.tl, dtype=float).tolist()
+            tl = np.asarray(self.tl, dtype=float)
+            # No delayed entry is stored as -inf, which json writes as the
+            # non-standard ``-Infinity`` that strict parsers reject. Omit
+            # the array when no row has an entry time, and write a missing
+            # one as ``null`` otherwise; from_dict reads both back as -inf
+            # (and still reads the -inf of older dicts).
+            if np.isfinite(tl).any():
+                out["tl"] = [float(v) if np.isfinite(v) else None for v in tl]
         if getattr(self, "p_values", None) is not None:
             out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
         if getattr(self, "_neg_log_like", None) is not None:
@@ -175,14 +193,16 @@ class SemiParametricRegressionModel(SerialisableMixin):
         out.d = np.array(model_dict["d"], dtype=float)
         out.h0 = np.array(model_dict["h0"], dtype=float)
         out.H0 = np.array(model_dict["H0"], dtype=float)
-        # phi is fully determined by beta
-        out.phi = lambda Z: np.exp(np.asarray(Z, dtype=float) @ out.beta)
+        # phi is fully determined by beta (the ``phi`` method).
         out.tie_method = model_dict["tie_method"]
         out.baseline_method = model_dict["baseline_method"]
         out.is_tvc = bool(model_dict.get("is_tvc", False))
         out.tl = (
-            np.array(model_dict["tl"], dtype=float)
-            if "tl" in model_dict
+            np.array(
+                [-np.inf if v is None else v for v in model_dict["tl"]],
+                dtype=float,
+            )
+            if model_dict.get("tl") is not None
             else None
         )
         if "p_values" in model_dict:
@@ -244,7 +264,6 @@ class SemiParametricRegressionModel(SerialisableMixin):
         increment is 0. ``Z`` is one row (used for every ``x``) or one row
         per ``x``, paired in the order given.
         """
-        Z = self._prepare_Z(Z)
         bx, bh0, _ = self._baseline_arrays(stratum)
         return self._baseline_step(bx, bh0, x) * self.phi(Z)
 
@@ -260,7 +279,6 @@ class SemiParametricRegressionModel(SerialisableMixin):
         ``phi(Z)``. ``Z`` is one row (used for every ``x``) or one row per
         ``x``, paired in the order given.
         """
-        Z = self._prepare_Z(Z)
         bx, _, bH0 = self._baseline_arrays(stratum)
         return self._baseline_step(bx, bH0, x) * self.phi(Z)
 
@@ -359,6 +377,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         xr: npt.ArrayLike,
         Z: npt.ArrayLike,
         times: "npt.ArrayLike | None" = None,
+        stratum: Any = None,
     ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray]":
         r"""
         Survival for a subject whose covariates vary over time.
@@ -385,6 +404,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
         times : array_like, optional
             Times at which to return survival. Defaults to the fitted baseline
             jump times that fall within the covariate path.
+        stratum : optional
+            For a stratified fit, the stratum whose baseline hazard to use
+            (required there, as for :meth:`sf`).
 
         Returns
         -------
@@ -412,14 +434,16 @@ class SemiParametricRegressionModel(SerialisableMixin):
         # ``side="right"`` credited a jump at a change time to the NEW
         # covariate, contradicting the likelihood). Times outside the path
         # are clamped to the first/last interval (covariate held constant).
-        base_t = self.x
+        # A stratified fit has one baseline per stratum; the first stratum's
+        # used to be taken silently.
+        base_t, base_h0, _ = self._baseline_arrays(stratum)
         if times is None:
             within = (base_t > xl_a[0]) & (base_t <= xr_a[-1])
             query = base_t[within]
         else:
             query = np.atleast_1d(np.asarray(times, dtype=float))
 
-        Hf = self._tvc_cumhaz(query, xl_a, Z_a)
+        Hf = self._tvc_cumhaz(query, xl_a, Z_a, base_t, base_h0)
         return query, np.exp(-Hf), Hf
 
     def _tvc_cumhaz(
@@ -427,6 +451,8 @@ class SemiParametricRegressionModel(SerialisableMixin):
         query: npt.NDArray,
         starts: npt.NDArray,
         Zseg: npt.NDArray,
+        base_t: npt.NDArray,
+        base_h0: npt.NDArray,
     ) -> npt.NDArray:
         r"""
         Cumulative hazard of the fitted baseline at each ``query`` time for a
@@ -438,14 +464,14 @@ class SemiParametricRegressionModel(SerialisableMixin):
 
         summing the baseline-hazard jumps ``h0`` at the fitted event times
         weighted by the multiplier of the covariate *active* at each jump.
+        ``base_t``/``base_h0`` are the baseline (of the stratum, if any).
         """
-        base_t = self.x
         # (xl, xr] convention, matching the fit: the old covariate is at
         # risk at exactly its stop time (#259).
         active = np.searchsorted(starts, base_t, side="left") - 1
         active = np.clip(active, 0, starts.shape[0] - 1)
         phi = np.exp(Zseg[active] @ self.beta)
-        H_cum = np.cumsum(self.h0 * phi)
+        H_cum = np.cumsum(base_h0 * phi)
         idx = np.searchsorted(base_t, query, side="right") - 1
         last = H_cum.shape[0] - 1
         return np.where(idx >= 0, H_cum[np.clip(idx, 0, last)], 0.0)
@@ -455,6 +481,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | Any",
         xl: "npt.ArrayLike | None" = None,
+        stratum: Any = None,
     ) -> npt.NDArray:
         r"""
         Cumulative hazard for a covariate following a step schedule ``Z(t)``.
@@ -479,13 +506,11 @@ class SemiParametricRegressionModel(SerialisableMixin):
             times).
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
+        stratum : optional
+            For a stratified fit, the stratum whose baseline hazard to use
+            (required there, as for :meth:`sf`).
         """
-        if self.is_stratified:
-            raise NotImplementedError(
-                "time-varying-covariate evaluation is not defined for a "
-                "stratified Cox fit (each stratum carries its own baseline "
-                "hazard); pick a stratum's model first"
-            )
+        base_t, base_h0, _ = self._baseline_arrays(stratum)
         from .tvc_schedule import as_step_schedule, segments_from_origin
 
         schedule = as_step_schedule(Z, xl)
@@ -500,7 +525,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         if t_max <= 0:
             raise ValueError("x must contain a positive time")
         starts, _, Zseg = segments_from_origin(schedule, t_max)
-        return self._tvc_cumhaz(xq, starts, Zseg)
+        return self._tvc_cumhaz(xq, starts, Zseg, base_t, base_h0)
 
     def sf_tvc(
         self,
@@ -508,6 +533,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         Z: "npt.ArrayLike | Any",
         xl: "npt.ArrayLike | None" = None,
         given: "float | None" = None,
+        stratum: Any = None,
     ) -> npt.NDArray:
         r"""
         Survival for a covariate following a step (piecewise-constant) schedule
@@ -536,15 +562,18 @@ class SemiParametricRegressionModel(SerialisableMixin):
             If supplied, return the *conditional* survival given the item has
             survived to age ``given``:
             ``S(x | given) = exp(-(H(x) - H(given)))``.
+        stratum : optional
+            For a stratified fit, the stratum whose baseline hazard to use
+            (required there, as for :meth:`sf`).
 
         Returns
         -------
         ndarray
             Survival at each ``x`` (conditional on ``given`` when supplied).
         """
-        H = self.Hf_tvc(x, Z, xl)
+        H = self.Hf_tvc(x, Z, xl, stratum=stratum)
         if given is not None:
             given = float(given)
             if given > 0:
-                H = H - self.Hf_tvc(given, Z, xl)[0]
+                H = H - self.Hf_tvc(given, Z, xl, stratum=stratum)[0]
         return np.exp(-H)

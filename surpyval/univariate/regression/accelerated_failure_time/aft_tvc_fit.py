@@ -36,7 +36,6 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -161,6 +160,9 @@ def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
 from .._fit_skeleton import (  # noqa: E402
     LogLinearPhi,
     MirroredDistributionAttrs,
+    check_fixed_and_init,
+    optimise_nm_tnc,
+    require_finite_fit,
 )
 
 
@@ -306,6 +308,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             **{k: v + self.k_dist for k, v in phi_param_map.items()},
         }
 
+        check_fixed_and_init(fixed, None, param_map)
         transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
             grp["exit"], bounds, fixed, param_map
         )
@@ -316,11 +319,10 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             def fun(pars: npt.NDArray) -> float:
                 return like.neg_ll(None, *inv_trans(const(pars)))
 
-            res = minimize(
-                fun, init, method="Nelder-Mead", options={"maxiter": 1000}
-            )
-            res2 = minimize(fun, res.x, method="TNC")
-            res = res2 if res2.success else res
+            # The same Nelder-Mead then TNC ladder as the ordinary AFT fit,
+            # which says so when neither rung converged.
+            res = optimise_nm_tnc(fun, init)
+        require_finite_fit(float(res.fun))
 
         params = inv_trans(const(res.x))
 

@@ -123,12 +123,22 @@ class TVCFitMixin:
         # proportional_hazards package imports this mixin).
         from .proportional_hazards.tvc import handle_tvc
 
-        x, c_arr, n_arr, tl, Z_arr, _ = handle_tvc(i, xl, xr, c, Z, n)
+        x, c_arr, n_arr, tl, Z_arr, ident = handle_tvc(i, xl, xr, c, Z, n)
         t = np.column_stack([tl, np.full(tl.shape[0], np.inf)])
         model = self.fit(  # type: ignore[attr-defined]
             x=x, Z=Z_arr, c=c_arr, n=n_arr, t=t, **kwargs
         )
         model.is_tvc = True
+        # aic_c counts subjects, each weighted by its last interval's count
+        # (as the AFT time-varying fit does), not interval rows: splitting
+        # a subject's follow-up into more intervals leaves the likelihood
+        # unchanged and must leave aic_c unchanged too. handle_tvc returns
+        # the rows grouped by subject in entry order.
+        _, first, counts = np.unique(
+            ident, return_index=True, return_counts=True
+        )
+        model.n_subjects = int(first.shape[0])
+        model._ic_n_total = float(n_arr[first + counts - 1].sum())
         return model
 
     def fit_tvc_timeline(

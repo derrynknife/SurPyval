@@ -16,6 +16,8 @@ import numpy.typing as npt
 import pandas as pd
 from formulaic import Formula
 
+from surpyval.utils import formula_model_matrix
+
 if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
 
@@ -82,8 +84,11 @@ def design_matrix_from_df(
         )
 
     if formula is not None:
-        model_matrix = Formula(formula).get_model_matrix(df)
-        model_spec = model_matrix.model_spec
+        # One row per row of ``df`` (all-nan where a formula column is
+        # missing): formulaic's default drops such rows, which left ``Z``
+        # shorter than the times taken from the same frame. The fitter then
+        # drops the nan rows from every array together, with a warning.
+        model_matrix, model_spec = formula_model_matrix(formula, df)
         model_matrix = drop_intercept(model_matrix)
         feature_names = list(model_matrix.columns)
         Z = np.asarray(model_matrix, dtype=float)
@@ -138,8 +143,11 @@ def prepare_Z(
         return np.asarray(Z)
 
     if model_spec is not None:
-        model_matrix = drop_intercept(model_spec.get_model_matrix(Z))
-        return np.asarray(model_matrix, dtype=float)
+        # A row with a missing value comes back as an all-nan row -- so its
+        # prediction is nan, in place -- rather than being dropped, which
+        # shifted every later prediction onto the wrong ``x``.
+        model_matrix, _ = formula_model_matrix(model_spec, Z)
+        return np.asarray(drop_intercept(model_matrix), dtype=float)
 
     if feature_names is not None:
         unknown = [c for c in feature_names if c not in Z.columns]

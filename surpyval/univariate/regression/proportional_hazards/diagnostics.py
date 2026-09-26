@@ -48,12 +48,20 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
             "errors are not available for stratified Cox models (each stratum "
             "has its own baseline hazard)."
         )
-    if getattr(model, "kind", None) != "Cox" or not hasattr(
-        model, "_fit_data"
-    ):
+    if getattr(model, "kind", None) != "Cox":
         raise NotImplementedError(
             "Residuals and the proportional-hazards test are implemented for "
             "Cox proportional-hazards models fit with CoxPH.fit / fit_from_df."
+        )
+    if not hasattr(model, "_fit_data"):
+        # A Cox model rebuilt by from_dict keeps its coefficients and
+        # baseline, not the per-observation data; it used to be told it
+        # was not "fit with CoxPH.fit".
+        raise ValueError(
+            "Residuals, the proportional-hazards test and robust standard "
+            "errors need the per-observation data the model was fitted to, "
+            "which a model restored with from_dict / from_json does not "
+            "carry. Call them on the fitted model, or refit."
         )
     return model._fit_data
 
@@ -300,7 +308,11 @@ def robust_covariance(
     ----------
     cluster : array_like, optional
         A cluster label per observation (same length and order as the fitting
-        data). ``None`` treats every observation as its own cluster.
+        data). ``None`` treats every observation as its own cluster. Counts
+        ``n`` are frequency weights: without ``cluster`` a row with ``n = 3``
+        is three independent observations (three clusters), with it the
+        three share the row's label -- either way the result equals that of
+        the data written out one row per observation.
 
     Returns
     -------
@@ -308,17 +320,34 @@ def robust_covariance(
         The ``p x p`` robust covariance matrix. Its diagonal square-roots are
         the robust standard errors (see :meth:`robust_standard_errors`).
     """
-    _require_cox(model)
+    data = _require_cox(model)
     dfbeta = compute_residuals(model, "dfbeta")  # (n_obs, p)
     n_obs = dfbeta.shape[0]
+    # The counts ``n`` are frequency weights: a row with count 3 is three
+    # independent observations, each its own cluster, exactly as the fit and
+    # the model-based covariance treat it. A row's dfbeta is its count times
+    # one observation's, so the default (unclustered) sandwich sums
+    # n * (dfbeta / n)^2 per row -- squaring the row total counted the row
+    # as a single cluster of n perfectly correlated copies.
+    n_w = np.asarray(data["n"], dtype=float)
 
     if cluster is None and getattr(model, "is_tvc", False):
         # Start-stop rows of one subject are correlated by construction, so
-        # a TVC fit defaults to clustering by subject (#259).
-        cluster = getattr(model, "tvc_subject_ids", None)
+        # a TVC fit defaults to clustering by subject (#259). A subject's
+        # count is again a frequency weight: that many independent subjects
+        # with the same history.
+        subject_ids = getattr(model, "tvc_subject_ids", None)
+        if subject_ids is not None:
+            labels, inv_idx = np.unique(subject_ids, return_inverse=True)
+            unit = np.zeros((labels.size, dfbeta.shape[1]))
+            np.add.at(unit, inv_idx, dfbeta / n_w[:, None])
+            weight = np.zeros(labels.size)
+            np.maximum.at(weight, inv_idx, n_w)
+            return (weight[:, None] * unit).T @ unit
 
     if cluster is None:
-        grouped = dfbeta
+        unit = dfbeta / n_w[:, None]
+        return (n_w[:, None] * unit).T @ unit
     else:
         cluster = np.asarray(cluster)
         if cluster.shape[0] != n_obs:
@@ -377,15 +406,33 @@ def _transform_times(
     if transform == "identity":
         return t.astype(float)
     if transform == "log":
+        if np.any(t <= 0):
+            raise ValueError(
+                "The 'log' transform needs positive event times; there is "
+                "an event at time {}. Use transform='km' (the default), "
+                "'rank' or 'identity'.".format(float(np.min(t)))
+            )
         return np.log(t)
     if transform == "rank":
-        # Average ranks for tied event times (scipy.stats.rankdata), as
-        # in R / lifelines; ordinal argsort ranks split ties arbitrarily
-        # and changed the statistic on tied data (#279). The constant
-        # offset relative to 0-based ranks cancels in the centring.
-        from scipy.stats import rankdata
-
-        return rankdata(t).astype(float)
+        # Average ranks for tied event times, as in R / lifelines; ordinal
+        # argsort ranks split ties arbitrarily and changed the statistic on
+        # tied data (#279). With count weights each event record stands
+        # for ``n`` tied events, so its rank is the average rank of its
+        # copies among all weighted events -- the rank it has in the
+        # expanded data. (Unweighted, this is scipy's average rank.) The
+        # constant offset relative to 0-based ranks cancels in the
+        # centring.
+        w = (
+            np.ones(t.shape[0])
+            if fit_data is None
+            else np.asarray(fit_data["n"], dtype=float)[
+                np.asarray(fit_data["c"]) == 0
+            ]
+        )
+        uniq, inv = np.unique(t, return_inverse=True)
+        w_at = np.bincount(inv.ravel(), weights=w, minlength=uniq.size)
+        before = np.concatenate([[0.0], np.cumsum(w_at)[:-1]])
+        return (before + (w_at + 1.0) / 2.0)[inv.ravel()]
     if transform == "km":
         # Scale-free transform (Grambsch-Therneau default): 1 - KM(t) with
         # the Kaplan-Meier estimate fit on the *full* data, so censoring
@@ -447,6 +494,9 @@ def check_ph(
     under tied event times for Efron fits (#279). The ``"rank"``
     transform uses average ranks for ties (R's convention); lifelines'
     ``"rank"`` is a cumulative event count and differs on tied data.
+    Counts ``n`` are frequency weights, so an event row with ``n = 3`` is
+    ranked as three tied events, exactly as the data written out row by
+    row would be. The ``"log"`` transform needs positive event times.
     """
     _require_cox(model)
     if transform not in _TRANSFORMS:

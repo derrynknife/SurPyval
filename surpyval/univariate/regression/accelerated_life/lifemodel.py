@@ -19,6 +19,15 @@ class LifeModel(ABC):
     ``PowerExponential``.
     """
 
+    #: The number of stress columns ``Z`` has (``None`` when it depends on
+    #: the data, as for ``GeneralLogLinear``). Lets a single 1-D row
+    #: ``[T, V]`` be read as one two-stress row rather than two stresses.
+    n_stresses: "int | None" = 1
+    #: Stress columns that must be strictly positive: the life model takes
+    #: a power or logarithm of them (``Z**n``, ``log Z``), or reads them as
+    #: an absolute temperature.
+    positive_stress_columns: "tuple[int, ...]" = ()
+
     def __init__(
         self,
         name: str,

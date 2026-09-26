@@ -45,8 +45,9 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import (
+    check_covariate_rows,
+    finite_covariate_mask,
     wrangle_and_check_form_and_Z_cols,
-    wrangle_Z,
     xcnt_handler,
 )
 
@@ -133,6 +134,36 @@ def _wls_slope(Z: npt.NDArray, Y: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     A = (w[:, None] * Zc).T @ Zc
     b = (w * (Y - Ybar))[None, :] @ Zc
     return np.linalg.solve(A, b.ravel())
+
+
+def _check_design(Z: npt.NDArray, w: npt.NDArray) -> None:
+    """Refuse covariates the least-squares step cannot resolve.
+
+    The slope is fitted with the intercept profiled out, so a covariate
+    must vary across the observations: a constant covariate (or a single
+    observation) leaves nothing after centring, and collinear covariates
+    leave a singular system. Both used to escape as a bare
+    ``LinAlgError: Singular matrix``.
+    """
+    Zc = Z - (w[:, None] * Z).sum(axis=0) / w.sum()
+    A = (w[:, None] * Zc).T @ Zc
+    scale = (w[:, None] * Z**2).sum(axis=0)
+    flat = np.diag(A) <= 1e-12 * np.maximum(scale, np.finfo(float).tiny)
+    if np.any(flat):
+        raise ValueError(
+            "Covariate(s) {} are constant across the observations (or there "
+            "are too few observations), so the Buckley-James slope cannot "
+            "be estimated: the intercept is profiled out, and a constant "
+            "covariate is exactly that intercept.".format(
+                np.flatnonzero(flat).tolist()
+            )
+        )
+    d = np.sqrt(np.diag(A))
+    if np.linalg.matrix_rank(A / np.outer(d, d), tol=1e-10) < A.shape[0]:
+        raise ValueError(
+            "The covariates are collinear, so the Buckley-James slope "
+            "cannot be estimated; drop the redundant covariate(s)."
+        )
 
 
 def _fit_beta(
@@ -288,9 +319,13 @@ class BuckleyJamesModel(SerialisableMixin):
         Z = self._prepare_Z(Z)
         Z = np.asarray(Z, dtype=float).ravel()
         # beta is the accelerated-failure (negated) slope, so the residual
-        # r = log t - gamma'Z = log t + beta'Z.
-        r = np.log(x) + Z @ self.beta
-        return self._resid_sf(r)
+        # r = log t - gamma'Z = log t + beta'Z. At and below time 0 nothing
+        # has failed: survival 1 (log(0) = -inf gives that already, but
+        # warned, and a negative time gave nan).
+        positive = x > 0
+        with np.errstate(divide="ignore"):
+            r = np.log(np.where(positive, x, 1.0)) + Z @ self.beta
+        return np.where(positive, self._resid_sf(r), 1.0)
 
     def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """Failure probability ``1 - sf(x, Z)`` for a single covariate
@@ -314,8 +349,11 @@ class BuckleyJamesModel(SerialisableMixin):
 
         Buckley-James has no simple closed-form standard error, so uncertainty
         is obtained by resampling observations with replacement, refitting, and
-        taking percentiles of the coefficient distribution. Returns an
-        ``(n_coef, 2)`` array of ``[lower, upper]`` bounds.
+        taking percentiles of the coefficient distribution. Counts ``n`` are
+        frequency weights, so the observations resampled are the rows
+        expanded by their counts: the bounds are those of the data written
+        out one row per observation. Returns an ``(n_coef, 2)`` array of
+        ``[lower, upper]`` bounds.
         """
         if self._data is None:
             raise ValueError(
@@ -324,14 +362,27 @@ class BuckleyJamesModel(SerialisableMixin):
             )
         Y, delta, Z, w = self._data
         rng = np.random.default_rng(seed)
-        n = Y.shape[0]
+        # The counts ``w`` are frequency weights: a row with count 3 is
+        # three observations, as the fit itself treats it. The bootstrap
+        # therefore resamples the *observations* -- the rows expanded by
+        # their counts -- rather than the rows, which treated each count as
+        # one cluster and gave intervals too wide for the data. (With unit
+        # counts the two are the same draw.)
+        units = np.repeat(np.arange(Y.shape[0]), np.round(w).astype(int))
+        whole = np.allclose(w, np.round(w)) and units.size > 0
         boot = []
         for _ in range(n_boot):
-            idx = rng.integers(0, n, size=n)
+            if whole:
+                idx = units[rng.integers(0, units.size, size=units.size)]
+                w_b = np.ones(idx.size)
+            else:
+                # Fractional weights have no expansion; draw new counts in
+                # proportion to them instead.
+                counts = rng.multinomial(Y.shape[0], w / w.sum())
+                idx = np.flatnonzero(counts)
+                w_b = w[idx] * counts[idx]
             try:
-                g, _, _ = _fit_beta(
-                    Y[idx], delta[idx], Z[idx], w[idx], 1e-5, 100
-                )
+                g, _, _ = _fit_beta(Y[idx], delta[idx], Z[idx], w_b, 1e-5, 100)
                 boot.append(-g)  # report in the accelerated-failure sign
             except np.linalg.LinAlgError:
                 continue
@@ -394,7 +445,13 @@ class BuckleyJames_:
             Censoring flags: 0 observed, 1 right-censored. Left and interval
             censoring are not supported. Defaults to all observed.
         n : array_like, optional
-            Counts per row (case weights). Defaults to 1.
+            Counts per row (frequency weights). Defaults to 1.
+
+        Rows with a missing or infinite covariate are dropped, with a
+        warning. A covariate that is constant across the observations (or
+        a single observation) cannot be separated from the intercept, and
+        collinear covariates cannot be separated from each other; both
+        raise a ``ValueError``.
         tol : float, optional
             Convergence tolerance on the coefficient step. Default 1e-5.
         max_iter : int, optional
@@ -427,21 +484,33 @@ class BuckleyJames_:
         array([0.7366, 0.2693])
         """
         x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
-        Z_arr, mask = wrangle_Z(Z)
-        x_a = np.asarray(x_h, dtype=float)[mask]
-        c_a = np.asarray(c_h, dtype=float)[mask]
-        n_a = np.asarray(n_h, dtype=float)[mask]
-        Z_a = np.asarray(Z_arr, dtype=float)
-
+        c_a = np.asarray(c_h, dtype=float)
         if np.any((c_a != 0) & (c_a != 1)):
             raise ValueError(
                 "Buckley-James supports only observed (c=0) and "
                 "right-censored (c=1) data."
             )
+        x_a = np.asarray(x_h, dtype=float)
+        if x_a.ndim == 2:
+            # Two columns with no interval row: xl == xr on every row.
+            x_a = x_a[:, 0]
+        Z_a = np.asarray(Z, dtype=float)
+        if Z_a.ndim == 1:
+            Z_a = Z_a.reshape(-1, 1)
+        elif Z_a.ndim != 2:
+            raise ValueError("Covariate matrix must be two dimensional")
+        check_covariate_rows(Z_a, x_a.shape[0])
+        # Rows with a NaN / infinite covariate are dropped with a warning,
+        # as in every regression fitter (NaN rows used to go silently).
+        mask = finite_covariate_mask(Z_a)
+        x_a, c_a, Z_a = x_a[mask], c_a[mask], Z_a[mask]
+        n_a = np.asarray(n_h, dtype=float)[mask]
+
         if np.any(x_a <= 0):
             raise ValueError(
                 "Buckley-James models log(time); all times must be positive."
             )
+        _check_design(Z_a, n_a)
 
         Y = np.log(x_a)
         delta = (c_a == 0).astype(float)

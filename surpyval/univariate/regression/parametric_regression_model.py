@@ -88,6 +88,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     #: parameter covariance; lets them produce confidence bounds without the
     #: original data. ``None`` on freshly fitted models.
     _restored_covariance: "npt.NDArray | None" = None
+    #: True on models rebuilt by :meth:`from_dict`, which carry no data.
+    _restored: bool = False
 
     # Attributes populated after construction (by ``fit`` / ``from_params``).
     # Declared here so static type checkers know their types.
@@ -343,6 +345,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # fixed parameters (and the accelerated-life placeholder) stored the
         # full parameter-vector length.
         out.k = len(params) - len(out.fixed)
+        out._restored = True
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
@@ -435,6 +438,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         fn: Any,
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
+        below_support: float,
     ) -> npt.NDArray:
         # The shared body of the five distribution functions below: coerce
         # ``x``, resolve DataFrame covariates against the fit-time design,
@@ -443,7 +447,21 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if isinstance(x, list):
             x = np.array(x)
         Z = self._prepare_Z(Z)
-        return fn(x, Z, *self.params)
+        # Below the support (a negative time for a positive distribution)
+        # nothing has happened yet: survival 1, and 0 for the others. The
+        # distribution functions gave nan there, with a RuntimeWarning, and
+        # warned "divide by zero" at 0 itself for the log-based ones, where
+        # the value is already right.
+        lower = self.distribution.support[0]
+        below = np.asarray(x) < lower
+        if np.any(below):
+            inside = lower + 1.0 if np.isfinite(lower) else 0.0
+            x = np.where(below, inside, x)
+        with np.errstate(divide="ignore"):
+            out = fn(x, Z, *self.params)
+        if np.any(below):
+            out = np.where(below, below_support, out)
+        return out
 
     def sf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -486,7 +504,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.sf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.9812, 0.9382, 0.7429])
         """
-        return self._eval(self.model.sf, x, Z)
+        return self._eval(self.model.sf, x, Z, 1.0)
 
     # Families whose survival along a step-valued covariate path has an exact
     # closed form. Proportional and additive hazards accumulate a *cumulative
@@ -605,12 +623,17 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         for a, b, z in zip(starts, ends, Zseg):
             zrow = np.asarray(z, dtype=float).reshape(1, -1)
             upper = np.clip(xq, a, b)
-            hi = np.asarray(
-                self.model.Hf(upper, zrow, *self.params), dtype=float
-            ).ravel()
-            lo = np.asarray(
-                self.model.Hf(np.array([a]), zrow, *self.params), dtype=float
-            ).ravel()
+            # The first segment starts at 0, where a log-time baseline
+            # (LogNormal, LogLogistic) evaluates log(0) = -inf on its way to
+            # the correct H = 0; that is not worth a warning.
+            with np.errstate(divide="ignore"):
+                hi = np.asarray(
+                    self.model.Hf(upper, zrow, *self.params), dtype=float
+                ).ravel()
+                lo = np.asarray(
+                    self.model.Hf(np.array([a]), zrow, *self.params),
+                    dtype=float,
+                ).ravel()
             H = H + (hi - lo)
         return H
 
@@ -745,7 +768,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.ff([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0188, 0.0618, 0.2571])
         """
-        return self._eval(self.model.ff, x, Z)
+        return self._eval(self.model.ff, x, Z, 0.0)
 
     def df(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -789,7 +812,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.df([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0326, 0.0524, 0.1289])
         """
-        return self._eval(self.model.df, x, Z)
+        return self._eval(self.model.df, x, Z, 0.0)
 
     def hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -834,7 +857,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0332, 0.0559, 0.1735])
         """
-        return self._eval(self.model.hf, x, Z)
+        return self._eval(self.model.hf, x, Z, 0.0)
 
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -880,7 +903,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.Hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0189, 0.0638, 0.2972])
         """
-        return self._eval(self.model.Hf, x, Z)
+        return self._eval(self.model.Hf, x, Z, 0.0)
 
     def random(
         self, size: int, Z: "npt.ArrayLike | pd.DataFrame"
@@ -939,10 +962,31 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             f"random() is not implemented for {self.kind} models."
         )
 
+    def _require_data(self, what: str) -> None:
+        """Refuse, by name, an operation that needs the fitted data.
+
+        A model rebuilt by :meth:`from_dict` keeps its parameters, stored
+        covariance and log-likelihood but not the data it was fitted to,
+        and used to fail with ``AttributeError: no attribute 'data'``.
+        """
+        if getattr(self, "data", None) is None:
+            raise ValueError(
+                "{} needs the data the model was fitted to, which a model "
+                "restored with from_dict / from_json does not carry. Call it "
+                "on the fitted model, or refit.".format(what)
+            )
+
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin.
     def _ic_counts(self) -> tuple[int, int]:
+        self._require_data("bic() / aic_c()")
         n, c = self.data.n, self.data.c
-        return n[c == 0].sum(), n.sum()
+        # A time-varying-covariate fit has one row per interval, but each
+        # subject is one observation of the survival process, so the
+        # small-sample correction counts subjects -- as the AFT
+        # time-varying fit already did. Splitting a subject's time into more
+        # intervals must not change aic_c.
+        total = getattr(self, "_ic_n_total", None)
+        return n[c == 0].sum(), n.sum() if total is None else total
 
     # ``self.k`` is the number of estimated parameters, so the AIC/BIC
     # penalties and the AIC_c correction all use it (the mixin's defaults).
@@ -956,6 +1000,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # without the original data.
         if getattr(self, "_restored_covariance", None) is not None:
             return
+        if getattr(self, "_restored", False):
+            # Restored without a covariance: to_dict stores one only when
+            # it was finite at fit time, and the data are not stored.
+            raise ValueError(
+                "Confidence bounds are unavailable: this model was restored "
+                "from a dict that carries no parameter covariance (it could "
+                "not be computed when the model was saved), and a restored "
+                "model does not keep the data to recompute it."
+            )
         if not hasattr(self, "data") or getattr(self, "res", None) is None:
             raise ValueError(
                 "Confidence bounds are only available for models fit from "
@@ -1001,11 +1054,17 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             full[free] = free_vals
             return self.model.neg_ll(self.data, *full)
 
-        H = numerical_hessian(neg_ll_free, p_hat[free])
+        step = self._hessian_step(p_hat)[free]
+        H = numerical_hessian(neg_ll_free, p_hat[free], step)
         bad = not np.all(np.isfinite(H))
         if not bad:
+            # Invert in step-scaled coordinates: with a parameter many
+            # orders of magnitude from the others the raw information
+            # matrix is too ill-conditioned to invert directly.
             try:
-                cov_free = np.linalg.inv(H)
+                cov_free = np.linalg.inv(H * np.outer(step, step)) * np.outer(
+                    step, step
+                )
             except np.linalg.LinAlgError:
                 bad = True
         if bad:
@@ -1018,6 +1077,42 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             return np.full((n, n), np.nan)
         cov[np.ix_(free, free)] = cov_free
         return cov
+
+    def _parameter_bounds(self) -> list:
+        """``(lower, upper)`` for every entry of ``params``: the
+        distribution's support bounds, then the life model's parameter
+        bounds for an accelerated-life model (the other families'
+        coefficients are unbounded)."""
+        n_phi = len(self.params) - self.k_dist
+        phi_bounds: Any = ((None, None),) * n_phi
+        if self.kind == "Accelerated Life":
+            declared = getattr(self.reg_model, "phi_bounds", phi_bounds)
+            if callable(declared):
+                declared = declared(np.asarray(self.data.Z))
+            phi_bounds = declared
+        return [*self.distribution.bounds, *phi_bounds]
+
+    def _hessian_step(self, p_hat: npt.NDArray) -> npt.NDArray:
+        """Finite-difference step for the covariance Hessian.
+
+        The usual ``eps**(1/3) * max(|p|, 1e-2)``, except that a parameter
+        closer to one of its bounds than a few steps gets a step relative
+        to that distance. The absolute floor is far larger than, say, an
+        accelerated-life coefficient of 5.6e-22 (``InversePower``'s ``a``
+        for lives in the thousands), so the difference stepped outside the
+        support and the covariance came back nan.
+        """
+        h = np.finfo(float).eps ** (1.0 / 3.0)
+        step = h * np.maximum(np.abs(p_hat), 1e-2)
+        for i, (lower, upper) in enumerate(self._parameter_bounds()):
+            gaps = [
+                p_hat[i] - lower if lower is not None else np.inf,
+                upper - p_hat[i] if upper is not None else np.inf,
+            ]
+            gap = min(gaps)
+            if 0 < gap < 10 * step[i]:
+                step[i] = h * gap
+        return step
 
     def standard_errors(self) -> npt.NDArray:
         """
@@ -1173,6 +1268,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             Total tail probability of the band. Default 0.05.
         """
 
+        self._require_data("plot()")
         if ax is None:
             ax = plt.gca()
 
