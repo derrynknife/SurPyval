@@ -1442,10 +1442,55 @@ nearest 0.5, as a coarse gauge would give them:
     print("zero increments:", int((dy == 0).sum()), "of", dy.size)
     GammaProcess.fit(x, y_gauge, i, threshold=threshold)
 
-The mean life, 14.7, stays close to the 15.3 of the unrounded readings; the
-shape rate moves further (4.2 against 3.0), because rounding also coarsens
-every non-zero increment, which the censoring does not undo. Treating the
-zeros as tiny positive increments instead would put the shape rate at 0.37.
+The mean life, 14.7, stays close to the 15.3 of the unrounded readings, but the
+shape rate does not (4.2 against 3.0): rounding also coarsens every *non-zero*
+increment — a true 0.8 is read as 0.5 or 1.0 depending on where the path sat in
+its bins — and censoring the zeros does not undo that. If you know the gauge
+step, say so with ``gauge``. Each reading then means only that the true level
+lies somewhere in the gauge bin around it (``[r - 0.25, r + 0.25)`` here), and
+the likelihood of a unit is the probability that its path passes through all of
+its bins:
+
+.. jupyter-execute::
+
+    GammaProcess.fit(x, y_gauge, i, threshold=threshold, gauge=0.5)
+
+The shape rate is back at 3.08 against the 2.97 of the unrounded readings, and
+the mean life at 15.37 against 15.35. The coarser the gauge, the more this
+matters. With a step of 1.0 — the size of a typical increment — the censored
+fit more than doubles the shape rate and cuts the mean life from 15.3 to 12.6,
+while the quantised fit barely moves:
+
+.. jupyter-execute::
+
+    y_coarse = np.round(y / 1.0) * 1.0
+    for label, kwargs in [("zeros censored", {}), ("gauge=1.0", {"gauge": 1.0})]:
+        fit = GammaProcess.fit(x, y_coarse, i, threshold=threshold, **kwargs)
+        print(f"{label:15s} alpha {fit.alpha:.2f}  beta {fit.beta:.2f}  "
+              f"mean life {fit.mean():.2f}")
+
+A few details of the option:
+
+* Rounded increments are not independent: two neighbouring increments share the
+  rounding error of the reading between them. The default
+  ``gauge_method="exact"`` therefore follows each unit's path with a forward
+  recursion over its readings (a fraction of a second for the 960 increments
+  here). ``gauge_method="independent"`` multiplies the probabilities of the
+  single rounded increments instead; it is several times faster and also nearly
+  unbiased, but its estimates scatter more.
+* ``rounding`` says how the gauge rounds: ``"nearest"`` (the default, bins
+  ``[r - δ/2, r + δ/2)``) or ``"floor"`` (bins ``[r, r + δ)``, a gauge that
+  truncates). With every reading off the gauge only the differences between
+  bins count, so the convention does not change the fit; it does when the first
+  reading is exact — new units at exactly zero wear, as here — which you state
+  with ``exact_start=True``.
+* ``gauge`` replaces ``resolution`` (the zeros are part of the model), and the
+  differences between a unit's readings must be whole multiples of it — an
+  error otherwise usually means the step or its units are wrong. Stress ``Z``
+  works exactly as without a gauge.
+* A gauge much coarser than the scatter a unit builds up over the whole test
+  cannot tell a random path from a straight line; ``alpha`` and ``beta`` then
+  grow large together, while their ratio and the mean life stay well estimated.
 
 Choosing between Wiener and Gamma
 ---------------------------------

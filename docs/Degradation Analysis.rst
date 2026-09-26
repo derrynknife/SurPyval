@@ -1032,6 +1032,92 @@ resolution :math:`\delta`, so it enters the likelihood as censored,
 positive increment in the data — the grid step of rounded readings), and
 :math:`\alpha` and :math:`\beta` are then found jointly.
 
+**Readings from a coarse gauge.** Censoring the zeros still takes every
+non-zero increment at face value. When the readings come from a gauge whose
+step :math:`\delta` is comparable to the increments, those are rounded too — a
+true increment of 0.4 is read as 0 or 0.5, one of 0.6 as 0.5 or 1 — and the fit
+is biased: for wear with a mean increment of 0.5 read to the nearest 0.5, the
+censored fit puts :math:`\alpha` at 5.2 against 2.2 for the unrounded readings,
+and the mean life at 17.5 against 21.2. Given the step (``gauge``), the fit
+uses the likelihood of what was actually observed. A reading :math:`r_j` says
+only that the true level lies in its **bin**,
+
+.. math::
+
+    B_j = [r_j - \delta/2,\ r_j + \delta/2) \quad (\texttt{rounding="nearest"}),
+    \qquad
+    B_j = [r_j,\ r_j + \delta) \quad (\texttt{rounding="floor"}),
+
+and the likelihood of a unit is the probability that its path passes through
+all of its bins,
+
+.. math::
+
+    L = P\bigl(W(t_0) \in B_0,\ W(t_1) \in B_1,\ \dots,\ W(t_n) \in B_n\bigr).
+
+The rounded increments are not independent — two neighbouring increments share
+the rounding error of the reading between them — but the process is Markov, so
+:math:`L` is a forward recursion. With :math:`f_j` the density of the level at
+:math:`t_j` jointly with the path having passed through :math:`B_0, \dots,
+B_j`, and :math:`g_j` the density of the increment
+:math:`\mathrm{Gamma}(\alpha\,\Delta\tau_j, \beta)`,
+
+.. math::
+
+    f_0 = \text{uniform on } B_0, \qquad
+    f_j(y) = \int_{B_{j-1}} f_{j-1}(u)\, g_j(y - u)\, du \quad (y \in B_j),
+    \qquad
+    L = \int_{B_n} f_n(y)\, dy.
+
+SurPyval splits every bin into :math:`m = 16` cells of width :math:`h =
+\delta/m` and carries the probability of each cell forward, taking the level as
+uniform within a cell. The step to a cell a distance :math:`d` higher then has
+probability
+
+.. math::
+
+    p(d) = \frac{H(d + h) - 2H(d) + H(d - h)}{h},
+    \qquad
+    H(x) = \int_0^x G_j(s)\, ds
+         = x\,P(k_j, \beta x) - \frac{k_j}{\beta} P(k_j + 1, \beta x),
+
+with :math:`G_j` the increment CDF, :math:`k_j = \alpha\,\Delta\tau_j` and
+:math:`P` the regularised lower incomplete gamma function. The increment's
+distribution is integrated exactly, so the infinite density at zero of a shape
+below one does no harm; the within-cell approximation's error falls as
+:math:`h^2`, and with 16 cells the log-likelihood is within about
+:math:`10^{-4}` per increment of its limit (checked against direct quadrature
+and Monte Carlo path probabilities). The steps depend only on the offset between
+cells, so an increment costs :math:`2m + 1` evaluations of :math:`H`. Stress
+enters through :math:`\Delta\tau_j` exactly as in the ordinary fit.
+
+With a single cell per bin the recursion collapses to the product of the
+probabilities :math:`p(\Delta_j)` (with :math:`h = \delta`) of the single
+recorded increments — each one's exact probability on its own, ignoring their
+dependence. That is ``gauge_method="independent"``, several times cheaper than
+the default ``"exact"``. In 50 simulated data sets like the example above (10
+units of 20 readings, :math:`\alpha = 2`, :math:`\beta = 4`, mean life 20.25)
+read to the nearest 0.5, the median :math:`\alpha` is 4.7 for the censored fit,
+2.00 for the exact and 1.96 for the independent quantised fits, with standard
+deviations 0.25 and 0.27 (0.19 from unrounded readings); both give a mean life
+of 20.2–20.3, against 16.9 for the censored fit. With a gauge of 1.0 the
+censored fit's :math:`\alpha` is above 20, the quantised fits stay near 2, and
+the independent approximation's spread grows to 0.56 against 0.33 for the exact
+one. Treating each increment instead as interval-censored in :math:`[\max(\Delta
+- \delta, 0),\ \Delta + \delta]`, a cruder approximation, does not remove the
+bias.
+
+The level at a unit's first reading is taken as uniform over its bin. Only the
+differences between the bins then enter :math:`L`, so the two rounding
+conventions give the same fit. When the first reading is exact instead — new
+units at exactly zero wear, not read off the gauge — ``exact_start=True``
+starts the path at the point :math:`r_0`, which the convention places in the
+middle (``"nearest"``) or at the bottom (``"floor"``) of its bin. Finally, a
+gauge much coarser than the scatter a unit builds up over the whole test cannot
+tell a random path from a straight line: :math:`\alpha` and :math:`\beta` then
+grow large together, while their ratio (the mean rate) and the mean life stay
+well estimated.
+
 **Life.** Because the path only goes up, it has crossed :math:`D` by time
 :math:`t` exactly when its level at :math:`t` is at least :math:`D`:
 

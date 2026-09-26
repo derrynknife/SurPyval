@@ -176,9 +176,15 @@ def _stress_design(
     return (z_int - z_ref) / scale, z_ref, scale
 
 
-def _minimise(fun: Callable, x0: npt.NDArray) -> npt.NDArray:
-    """BFGS, falling back to (and polishing with) Nelder-Mead."""
-    best = minimize(fun, x0, method="BFGS")
+def _minimise(
+    fun: Callable, x0: npt.NDArray, jac: "str | None" = None
+) -> npt.NDArray:
+    """BFGS, falling back to (and polishing with) Nelder-Mead.
+
+    ``jac="3-point"`` takes central-difference gradients, for an objective
+    whose round-off noise swamps forward differences (BFGS then stops on
+    "precision loss" and the slow fallback does the work)."""
+    best = minimize(fun, x0, method="BFGS", jac=jac)
     if not (best.success and np.isfinite(best.fun)):
         nm = minimize(
             fun,
@@ -195,6 +201,145 @@ def _minimise(fun: Callable, x0: npt.NDArray) -> npt.NDArray:
             "the process fit did not converge to a finite likelihood"
         )
     return np.asarray(best.x, dtype=float)
+
+
+def _unit_steps(i: npt.ArrayLike) -> tuple[npt.NDArray, npt.NDArray]:
+    """
+    For each pooled increment of :func:`_increments`, its unit (numbered
+    ``0, 1, ...`` over the units that have increments) and its position
+    along that unit's path (``0`` for the first increment).
+    """
+    _, counts = np.unique(np.atleast_1d(np.asarray(i)), return_counts=True)
+    counts = counts[counts >= 2] - 1
+    unit = np.repeat(np.arange(len(counts)), counts)
+    step = np.concatenate([np.arange(c) for c in counts])
+    return unit, step
+
+
+def _gauge_cell_probabilities(
+    delta: npt.NDArray, k: npt.NDArray, beta: float, h: float, m: int
+) -> npt.NDArray:
+    """
+    Cell-to-cell step probabilities of the quantised gamma likelihood.
+
+    For each increment (recorded difference ``delta`` between the bins,
+    gamma shape ``k``), the probability that a level uniform over a cell
+    of width ``h`` moves into the cell ``d = delta + r h`` above it, for
+    ``r = -(m - 1), ..., m - 1``: ``(H(d + h) - 2 H(d) + H(d - h)) / h``,
+    with ``H(x)`` the integral from 0 to ``x`` of the ``Gamma(k, beta)``
+    CDF. Returns an array of shape ``(len(delta), 2 m - 1)``.
+
+    ``H`` is used in the lower tail, where it is small. In the upper tail
+    ``H(x)`` is ``x - k / beta`` plus a tiny remainder that its second
+    difference would cancel away, so there the stencil uses that remainder,
+    ``S(x) = E[(W - x)+]``, instead: the two differ by a linear function,
+    which second differences ignore. Each form is evaluated only where a
+    stencil needs it, and ``H(x) = 0`` (``S(x) = k / beta - x``) for
+    ``x <= 0`` without special functions -- half the points of a zero
+    increment.
+    """
+    r = np.arange(-m, m + 1)
+    x = delta[:, None] + r[None, :] * h
+    kk = np.broadcast_to(k[:, None], x.shape)
+    mean = np.broadcast_to((k / beta)[:, None], x.shape)
+    H = np.zeros(x.shape)
+    S = mean - x
+    lo = (x > 0) & (x < mean + h)
+    bx = beta * x[lo]
+    H[lo] = x[lo] * gammainc(kk[lo], bx) - mean[lo] * gammainc(
+        kk[lo] + 1.0, bx
+    )
+    hi = (x > 0) & (x >= mean - h)
+    bx = beta * x[hi]
+    S[hi] = mean[hi] * gammaincc(kk[hi] + 1.0, bx) - x[hi] * gammaincc(
+        kk[hi], bx
+    )
+    d2_H = H[:, 2:] - 2.0 * H[:, 1:-1] + H[:, :-2]
+    d2_S = S[:, 2:] - 2.0 * S[:, 1:-1] + S[:, :-2]
+    # one form per stencil, chosen by its centre
+    upper = x[:, 1:-1] >= mean[:, 1:-1]
+    return np.maximum(np.where(upper, d2_S, d2_H), 0.0) / h
+
+
+def _gauge_point_probabilities(
+    offset: npt.NDArray, k: npt.NDArray, beta: float, h: float, m: int
+) -> npt.NDArray:
+    """
+    The probabilities that a gamma increment of shape ``k`` from a known
+    level lands in each of the ``m`` cells of width ``h`` of a bin whose
+    bottom is ``offset`` above that level. Shape ``(len(offset), m)``.
+    """
+    x = np.maximum(offset[:, None] + np.arange(m + 1)[None, :] * h, 0.0)
+    kk = np.broadcast_to(k[:, None], x.shape)
+    lower = gammainc(kk, beta * x)
+    upper = gammaincc(kk, beta * x)
+    # differences of the CDF below the mean, of the survival function above
+    # it, so neither tail cancels away
+    by_cdf = lower[:, 1:] - lower[:, :-1]
+    by_sf = upper[:, :-1] - upper[:, 1:]
+    below = x[:, 1:] <= (k / beta)[:, None]
+    return np.maximum(np.where(below, by_cdf, by_sf), 0.0)
+
+
+def _quantised_log_likelihood(
+    delta: npt.NDArray,
+    i: npt.ArrayLike,
+    gauge: float,
+    m: int,
+    start: "float | None",
+) -> Callable[[npt.NDArray, float], float]:
+    """
+    The log-likelihood of gauge-rounded gamma-process readings, as a
+    function of the increments' shapes ``k`` (pooled order, as from
+    :func:`_increments`) and the rate ``beta``.
+
+    ``delta`` holds the recorded increments (whole multiples of
+    ``gauge``) and ``i`` the unit labels of the readings. Each bin is split
+    into ``m`` cells, and the probability of the path is carried forward
+    one reading at a time -- all units together -- as a distribution over
+    the cells of the current bin. It starts uniform over the first bin, or,
+    with ``start``, at the point ``start`` above the first bin's bottom.
+    """
+    unit, step = _unit_steps(i)
+    n_units = int(unit.max()) + 1
+    # sort by position along the path, then unit: the recursion advances
+    # every unit one reading at a time, over contiguous blocks of rows
+    order = np.lexsort((unit, step))
+    unit, delta = unit[order], delta[order]
+    bounds = np.searchsorted(step[order], np.arange(step.max() + 2))
+    h = gauge / m
+    # T[a, b], the step from cell a to cell b, is the cell probability at
+    # offset b - a: column b - a + m - 1
+    toeplitz = np.arange(m)[None, :] - np.arange(m)[:, None] + (m - 1)
+    # the first increment of each unit, from a known start, is from a point
+    n_point = int(bounds[1]) if start is not None else 0
+    tiny = np.finfo(float).tiny
+
+    def log_lik(k: npt.NDArray, beta: float) -> float:
+        k = k[order]
+        steps = _gauge_cell_probabilities(
+            delta[n_point:], k[n_point:], beta, h, m
+        )[:, toeplitz]
+        prob = np.full((n_units, m), 1.0 / m)
+        ll = 0.0
+        for lo, hi in zip(bounds[:-1], bounds[1:]):
+            u = unit[lo:hi]
+            if lo < n_point:
+                assert start is not None
+                new = _gauge_point_probabilities(
+                    delta[lo:hi] - start, k[lo:hi], beta, h, m
+                )
+            else:
+                first, last = lo - n_point, hi - n_point
+                new = np.einsum("na,nab->nb", prob[u], steps[first:last])
+            total = new.sum(axis=1)
+            ll += float(np.sum(np.log(np.maximum(total, tiny))))
+            # keep the filtered distribution, normalised so a long path
+            # does not underflow; its scale is already in ``ll``
+            prob[u] = new / np.maximum(total, tiny)[:, None]
+        return ll
+
+    return log_lik
 
 
 class ProcessRUL:
@@ -1084,6 +1229,10 @@ class GammaProcess:
         Z: npt.ArrayLike | None = None,
         stress_ref: npt.ArrayLike | None = None,
         resolution: "float | None" = None,
+        gauge: "float | None" = None,
+        rounding: str = "nearest",
+        exact_start: bool = False,
+        gauge_method: str = "exact",
     ) -> "GammaProcessModel":
         """
         Fit a Gamma-process degradation model by maximum likelihood.
@@ -1097,6 +1246,33 @@ class GammaProcess:
         resolution: it enters the likelihood as censored,
         ``P(increment <= resolution)``. Data without zero increments is
         fitted by the ordinary likelihood.
+
+        That treats every *non-zero* increment as exact, which is fine when
+        the readings are much finer than the increments. When they come
+        from a coarse gauge -- a step comparable to the increments -- every
+        increment is rounded, and the fit is biased (``alpha`` can come out
+        at double or half its value, see the example below). Pass
+        the gauge step as ``gauge`` to fit the quantised likelihood
+        instead: a reading ``r`` then means the true level lies somewhere
+        in the gauge bin around ``r``, and the likelihood of a unit is the
+        probability that its whole path passes through its recorded bins.
+        The increments of a path are not independent once rounded (two
+        consecutive increments share the rounding error of the reading
+        between them), so ``gauge_method="exact"`` evaluates that path
+        probability by a forward recursion over each unit's readings,
+        carrying the distribution of the true level across its bin (on a
+        grid of cells, integrated exactly within each cell).
+        ``gauge_method="independent"`` is a cheaper approximation that
+        multiplies the exact probabilities of the single recorded increments,
+        ignoring their dependence; it is nearly unbiased too, but less
+        efficient. The true level at a unit's first reading is taken to be
+        uniform over its bin, unless ``exact_start`` says it is known.
+
+        A gauge coarser than the scatter a unit's degradation builds up
+        over the whole test leaves the readings unable to tell a random
+        path from a straight line: ``alpha`` and ``beta`` then run off to
+        large values together, while their ratio (the mean rate) and the
+        mean life stay well estimated.
 
         Parameters
         ----------
@@ -1124,7 +1300,34 @@ class GammaProcess:
             The measurement resolution: an increment recorded as zero is
             taken to be somewhere in ``[0, resolution]``. Defaults to the
             smallest positive increment in the data (for readings rounded to
-            a grid, the grid step). Only used when some increment is zero.
+            a grid, the grid step). Only used when some increment is zero,
+            and not with ``gauge``, which models the zeros itself.
+        gauge : float, optional
+            The step of the gauge the readings were rounded to. Given, the
+            fit uses the quantised likelihood described above; the
+            differences between readings of a unit must then be whole
+            multiples of it. The default, ``None``, keeps the likelihood
+            above (exact non-zero increments, censored zeros).
+        rounding : {"nearest", "floor"}, optional
+            How the gauge rounds, with ``gauge``: ``"nearest"`` (the
+            default) means a reading ``r`` stands for a true level in
+            ``[r - gauge/2, r + gauge/2)``; ``"floor"`` (a gauge that
+            truncates, or a counter that ticks once a whole step is
+            complete) means ``[r, r + gauge)``. Only differences between
+            bins enter the likelihood, so the convention changes the fit
+            only together with ``exact_start``.
+        exact_start : bool, optional
+            With ``gauge``: ``True`` if each unit's first reading is its
+            exact true level (for instance new units at zero wear, not read
+            off the gauge), so that later bins are placed relative to it by
+            ``rounding``. The default, ``False``, treats the first reading
+            as a gauge reading like the rest.
+        gauge_method : {"exact", "independent"}, optional
+            With ``gauge``: ``"exact"`` (the default) for the path
+            likelihood, ``"independent"`` for the cheaper approximation
+            that treats the rounded increments as independent. The exact
+            method costs several times as much: a few hundred increments
+            take a fraction of a second, ten thousand a few seconds.
 
         Returns
         -------
@@ -1155,7 +1358,38 @@ class GammaProcess:
         Mean time to failure: 209.183
         >>> model.sf([150, 200]).round(4)
         array([1.    , 0.8477])
+
+        The same wear read off a gauge with a step of 2. Rounding turns
+        increments of about 5 into 4s and 6s, so fitted as exact increments
+        they look far more variable than they are and ``alpha`` halves;
+        the quantised likelihood puts it back near the 2.61 of the
+        unrounded readings:
+
+        >>> y_gauge = np.round(y / 2.0) * 2.0
+        >>> naive = GammaProcess.fit(t, y_gauge, i, threshold=100)
+        >>> quantised = GammaProcess.fit(t, y_gauge, i, 100, gauge=2.0)
+        >>> print(round(naive.alpha, 2), round(quantised.alpha, 2))
+        1.07 2.16
         """
+        if gauge is not None:
+            return cls._quantised_fit(
+                x,
+                y,
+                i,
+                threshold,
+                Z,
+                stress_ref,
+                resolution,
+                float(gauge),
+                rounding,
+                exact_start,
+                gauge_method,
+            )
+        if rounding != "nearest" or exact_start or gauge_method != "exact":
+            raise ValueError(
+                "rounding, exact_start and gauge_method describe the gauge, "
+                "so they are only meaningful with gauge"
+            )
         if Z is None:
             if stress_ref is not None:
                 raise ValueError("stress_ref is only meaningful with Z")
@@ -1271,6 +1505,132 @@ class GammaProcess:
         v0 = np.concatenate([[np.log(alpha0), np.log(beta0)], np.zeros(q)])
         v = _minimise(neg_ll, v0)
         return float(np.exp(v[0])), float(np.exp(v[1])), v[2:]
+
+    #: Cells each gauge bin is split into by the exact quantised
+    #: likelihood. The discretisation error falls as the square of the cell
+    #: width; sixteen puts the log-likelihood within about 1e-4 per
+    #: increment of the limit (checked against Monte Carlo path
+    #: probabilities), far inside the sampling error of the estimates.
+    _GAUGE_CELLS = 16
+
+    @classmethod
+    def _quantised_fit(
+        cls,
+        x: npt.ArrayLike,
+        y: npt.ArrayLike,
+        i: npt.ArrayLike,
+        threshold: float,
+        Z: Any,
+        stress_ref: Any,
+        resolution: "float | None",
+        gauge: float,
+        rounding: str,
+        exact_start: bool,
+        gauge_method: str,
+    ) -> "GammaProcessModel":
+        """
+        Maximum likelihood for readings rounded to a gauge of step
+        ``gauge``: the probability that each unit's true path passes
+        through the gauge bins of its readings.
+
+        The level at a unit's ``j``-th reading lies in a bin of width
+        ``gauge``, and the bins of consecutive readings are ``Delta_j`` (the
+        recorded increment) apart. Split every bin into ``m`` cells of
+        width ``h``, and carry the probability of each cell forward along
+        the path; within a cell the level is taken as uniform, so the
+        step from cell ``a`` of one bin to cell ``b`` of the next is an
+        increment into a window ``d = Delta_j + (b - a) h`` away, with
+        probability ``(H(d + h) - 2 H(d) + H(d - h)) / h`` where ``H`` is
+        the integral of the gamma CDF (:func:`_gauge_cell_probabilities`).
+        The uniform level within a cell is the only approximation -- the
+        increment's distribution is integrated exactly, even the singular
+        density of a shape below one -- and its error falls as ``h**2``.
+        With one cell per bin (``gauge_method="independent"``) the
+        recursion reduces to the product of the single-increment
+        probabilities.
+        """
+        if resolution is not None:
+            raise ValueError(
+                "resolution and gauge are alternatives: resolution censors "
+                "the zero increments alone, while gauge models every reading "
+                "as rounded (zeros included), so pass only gauge"
+            )
+        if not (np.isfinite(gauge) and gauge > 0):
+            raise ValueError(
+                "gauge must be a positive, finite number, got {!r}".format(
+                    gauge
+                )
+            )
+        if rounding not in ("nearest", "floor"):
+            raise ValueError(
+                'rounding must be "nearest" or "floor", got {!r}'.format(
+                    rounding
+                )
+            )
+        if gauge_method not in ("exact", "independent"):
+            raise ValueError(
+                'gauge_method must be "exact" or "independent", got '
+                "{!r}".format(gauge_method)
+            )
+        s: "npt.NDArray | None" = None
+        if Z is None:
+            if stress_ref is not None:
+                raise ValueError("stress_ref is only meaningful with Z")
+            dt, dy = _increments(x, y, i)
+        else:
+            dt, dy, z_int = _increments_and_stress(x, y, i, Z)
+            assert z_int is not None
+            s, z_ref, scale = _stress_design(z_int, stress_ref)
+
+        # Recorded increments, snapped to whole gauge steps (readings such
+        # as 12.3 - 12.2 carry floating-point noise). A difference that is
+        # not a whole number of steps cannot come from this gauge, which
+        # usually means the wrong step (or units) was given.
+        steps = dy / gauge
+        whole = np.round(steps)
+        if np.any(np.abs(steps - whole) > 1e-6 * np.maximum(1.0, whole)):
+            raise ValueError(
+                "the readings are not on the grid of gauge = {:g}: the "
+                "differences between a unit's readings must be whole "
+                "multiples of the gauge step".format(gauge)
+            )
+        delta = whole * gauge
+        cls._check_monotone(delta)
+        zero, _ = cls._zero_increments(delta, gauge)
+
+        m = cls._GAUGE_CELLS if gauge_method == "exact" else 1
+        # With an exact start the level begins at a point of the first bin:
+        # its middle when rounding to nearest, its bottom when flooring.
+        start = None
+        if exact_start:
+            start = 0.5 * gauge if rounding == "nearest" else 0.0
+        log_lik = _quantised_log_likelihood(delta, i, gauge, m, start)
+
+        def neg_ll(v: npt.NDArray) -> float:
+            # per increment, so the optimiser's absolute gradient tolerance
+            # does not tighten with the size of the data (see below)
+            dtau = dt if s is None else dt * np.exp(s @ v[2:])
+            ll = log_lik(np.exp(v[0]) * dtau, float(np.exp(v[1])))
+            return -ll / len(dt)
+
+        # the censored fit (zeros censored at the gauge step, every other
+        # increment exact) is the starting point
+        alpha0, beta0, g0 = cls._censored_fit(dt, delta, zero, gauge, s)
+        v0 = np.concatenate([[np.log(alpha0), np.log(beta0)], g0])
+        # The recursion sums many second differences, so the log-likelihood
+        # carries round-off noise (around 1e-13 for a few hundred
+        # increments, growing with their number) -- enough to spoil forward
+        # difference gradients, and to stall BFGS short of an absolute
+        # gradient tolerance on a large data set, leaving the slow
+        # Nelder-Mead fallback to finish. Central differences on the
+        # per-increment log-likelihood avoid both.
+        v = _minimise(neg_ll, v0, jac="3-point")
+        alpha, beta = float(np.exp(v[0])), float(np.exp(v[1]))
+        if s is None:
+            return GammaProcessModel(alpha, beta, threshold)
+        return GammaProcessModel(
+            alpha, beta, threshold, gamma=v[2:] / scale, stress_ref=z_ref
+        )
 
     @staticmethod
     def _check_monotone(dy: npt.NDArray) -> None:
