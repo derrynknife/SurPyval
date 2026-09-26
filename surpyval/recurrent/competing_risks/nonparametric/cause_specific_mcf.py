@@ -21,6 +21,7 @@ from numpy.typing import ArrayLike
 from surpyval.recurrent.nonparametric.mcf import (
     NonParametricCounting,
     _lawless_nadeau_var,
+    _observation_origin,
 )
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -50,6 +51,7 @@ def _cause_model(data: Any, cause: Any) -> Any:
     # non-events for it, while each item stays in the (shared) risk set.
     is_cause = np.array([ei == cause for ei in data.e], dtype=bool)
     model.var = _lawless_nadeau_var(data, x, r, d, counted=is_cause)
+    model.origin = _observation_origin(data)
     return model
 
 

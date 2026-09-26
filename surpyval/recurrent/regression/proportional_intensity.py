@@ -139,7 +139,7 @@ class ProportionalIntensityModel(
 
             out.dist = recurrent.ProportionalIntensityHPP
             out.bounds = ((0, None),)
-            out.support = (0.0, np.inf)
+            out.support = (-np.inf, np.inf)
         else:
             out.dist = intensity_dist_by_name(model_dict["dist"])
         out.param_names = list(model_dict["param_names"])

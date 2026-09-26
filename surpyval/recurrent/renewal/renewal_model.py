@@ -1,6 +1,7 @@
 from typing import Any, Callable
 
 import numpy as np
+from scipy.optimize import brentq
 
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
@@ -9,6 +10,104 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+
+#: Below this cumulative hazard the quantile function is accurate enough to
+#: invert it: ``1 - p = exp(-H)`` then carries a relative error of about
+#: ``eps * exp(H)``, which is 5e-8 at 20 (an error of 3e-9 in ``H``).
+_QF_HAZARD_LIMIT = 20.0
+
+
+def conditional_gap(lifetime: Any, v: float, u: float) -> float:
+    """
+    Draw the time to the next failure of an item whose virtual age is
+    ``v``, from the uniform ``u``, for a virtual-age renewal model with the
+    lifetime distribution ``lifetime``.
+
+    The residual life ``X`` from age ``v`` has ``P(X > x) = S(v + x) /
+    S(v)``, so ``H(v + X) = H(v) - log(u)``: the draw adds an Exp(1) amount
+    to the cumulative hazard ``H`` and inverts it. Working with ``H``
+    rather than the survival function keeps this exact at long horizons.
+    The old draw, ``qf(1 - u * sf(v)) - v``, lost all precision once
+    ``sf(v)`` fell below about 1e-16 (an expected count of about 37), so
+    the next age came back as ``v`` itself and the simulated MCF went flat.
+
+    ``H`` is inverted with the quantile function while that is accurate
+    (see ``_QF_HAZARD_LIMIT``) and by root finding beyond it.
+    """
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        h_v = float(lifetime.Hf(v))
+        target = h_v - float(np.log(u))
+    if np.isinf(h_v) and h_v > 0:
+        # No survival past age v (the end of a bounded support): the item
+        # fails at once.
+        return 0.0
+    if not np.isfinite(target):
+        # u == 0: an infinitely late event.
+        return np.inf
+    if target <= _QF_HAZARD_LIMIT:
+        x = float(lifetime.qf(-np.expm1(-target)))
+    else:
+        x = _invert_cumulative_hazard(lifetime, v, target)
+    return max(x - v, 0.0)
+
+
+def _cumulative_hazard(lifetime: Any) -> Callable:
+    """``H`` of ``lifetime`` as a scalar function. For a plain model (no
+    offset, cure fraction or zero-inflation -- what the renewal fitters
+    build) the distribution's own ``Hf`` is called directly: the model
+    method's argument handling costs fifty times the arithmetic, and the
+    root finder calls it dozens of times per draw."""
+    if (
+        getattr(lifetime, "p", None) == 1
+        and getattr(lifetime, "f0", None) == 0
+        and not getattr(lifetime, "gamma", 0)
+    ):
+        dist_hf = lifetime.dist.Hf
+        params = [float(p) for p in lifetime.params]
+        lower = lifetime.dist.support[0]
+
+        def hf(x: float) -> float:
+            return 0.0 if x < lower else float(dist_hf(x, *params))
+
+        return hf
+    return lambda x: float(lifetime.Hf(x))
+
+
+def _invert_cumulative_hazard(lifetime: Any, v: float, target: float) -> float:
+    """Solve ``H(x) = target`` for ``x > v`` (where ``H(v) < target``)."""
+    hazard = _cumulative_hazard(lifetime)
+
+    def g(x: float) -> float:
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            return hazard(x) - target
+
+    lo = float(v)
+    step = max(abs(lo), 1.0)
+    hi = lo + step
+    for _ in range(2000):
+        g_hi = g(hi)
+        if not g_hi < 0:
+            break
+        lo, step = hi, 2.0 * step
+        hi = lo + step
+    # Past a bounded support H can be inf or nan; bisect until hi is a
+    # finite point at or above the target so the root is bracketed.
+    for _ in range(200):
+        if np.isfinite(g(hi)):
+            break
+        mid = 0.5 * (lo + hi)
+        if g(mid) < 0:
+            lo = mid
+        else:
+            hi = mid
+    g_hi = g(hi)
+    if not np.isfinite(g_hi):
+        # H jumps to infinity at the end of the support: fail there.
+        return lo
+    if g_hi == 0:
+        return hi
+    xtol = 4 * np.finfo(float).eps * max(abs(lo), abs(hi), 1e-300)
+    return float(brentq(g, lo, hi, xtol=xtol))
 
 
 class RenewalModel(
@@ -62,6 +161,9 @@ class RenewalModel(
     kijima_type: Any
     #: Set by the fitter for the ARA/ARI families (memory); absent otherwise.
     m: Any
+    #: How the parameters were obtained: ``"MLE"`` for a fit, otherwise
+    #: given (``fit_from_parameters``). Kept through serialisation.
+    how: str = "from_params"
 
     def __init__(
         self,
@@ -122,6 +224,7 @@ class RenewalModel(
             "dist": self.model.dist.name,
             "params": np.asarray(self.model.params, dtype=float).tolist(),
             "restoration": float(self.restoration),
+            "how": self.how,
         }
         if getattr(self, "kijima_type", None) is not None:
             out["kijima_type"] = self.kijima_type
@@ -143,7 +246,6 @@ class RenewalModel(
         to_dict, to_json, from_json
         """
         import surpyval.recurrent as recurrent
-        from surpyval.recurrent.serialisation import intensity_dist_by_name
 
         require_model_tag(model_dict, "RenewalModel", "a renewal model")
         family = model_dict["family"]
@@ -155,7 +257,16 @@ class RenewalModel(
         }
         if family not in fitters:
             raise ValueError("Unknown renewal family {!r}".format(family))
-        fitter = fitters[family]
+        out = cls._rebuild(fitters[family], family, model_dict)
+        # A reloaded fit still says it was fitted by MLE (it carries no
+        # likelihood, as a reloaded parametric model does not).
+        out.how = model_dict.get("how", "from_params")
+        return out
+
+    @staticmethod
+    def _rebuild(fitter: Any, family: str, model_dict: dict) -> "RenewalModel":
+        from surpyval.recurrent.serialisation import intensity_dist_by_name
+
         params = model_dict["params"]
         restoration = model_dict["restoration"]
 
@@ -353,7 +464,7 @@ class RenewalModel(
             "Fitted by           : "
             + (
                 "MLE"
-                if hasattr(self, "_neg_ll")
+                if hasattr(self, "_neg_ll") or self.how == "MLE"
                 else "given parameters (not fitted)"
             ),
         ]

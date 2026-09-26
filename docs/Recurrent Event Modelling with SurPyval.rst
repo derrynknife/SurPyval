@@ -223,7 +223,8 @@ estimate :math:`\pm` *z* standard errors instead); ``bound="lower"`` or
 ``"upper"`` gives a one-sided bound and ``confidence`` sets the level. The
 variance behind them is the Lawless-Nadeau robust variance, which allows for
 items differing in their rates (see :doc:`Recurrent Event Analysis`). ``mcf`` and ``mcf_cb`` also accept
-``interp="linear"`` to join the steps with straight lines instead:
+``interp="linear"`` to join the steps with straight lines instead (the
+estimate and its bounds both rising from 0 at time 0 to the first event):
 
 .. jupyter-execute::
 

@@ -13,6 +13,8 @@ from surpyval.utils.recurrent_utils import (
     reject_gapped_observation,
     reject_left_truncation,
     validate_renewal_censoring,
+    validate_renewal_times,
+    validate_restoration,
 )
 
 
@@ -250,6 +252,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        validate_renewal_times(
+            data, dist, type(self).__name__, every_gap_from_new=True
+        )
 
         neg_ll = self.create_negll_func(
             data.interarrival_times, data.i, data.c, data.n, dist
@@ -266,14 +271,26 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                 method="Nelder-Mead",
             )
 
+        def polish(res: Any) -> Any:
+            return fit_once(res.x)
+
         if init is None:
             dist_params = dist.fit(
                 data.interarrival_times, data.c, data.n
             ).params
             inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
         else:
+            init = np.atleast_1d(np.asarray(init, dtype=float))
+            if init.shape != (1 + len(dist.param_names),):
+                raise ValueError(
+                    "init must have {} values ([q, {}]); got {}.".format(
+                        1 + len(dist.param_names),
+                        ", ".join(dist.param_names),
+                        init.size,
+                    )
+                )
             inits = None
-        res = self._multistart(fit_once, inits, init, neg_ll)
+        res = self._multistart(fit_once, inits, init, neg_ll, polish)
 
         underlying_model = dist.from_params(list(res.x[1:]))
         q = res.x[0]
@@ -387,6 +404,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
               beta: 2
         """
         self._check_dist_eligible(dist)
+        validate_restoration(q, "q", (-1, None), open_lower=True)
         model = dist.from_params(params)
         return self._make_model(model, q)
 

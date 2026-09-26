@@ -10,7 +10,7 @@ from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.utils.fitter import singleton_fitter
-from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 from .proportional_intensity import ProportionalIntensityModel
 
@@ -82,6 +82,7 @@ class ProportionalIntensityNHPP:
         x_o, x_o_prev = s["x_o"], s["x_o_prev"]
         x_right, x_right_prev = s["x_right"], s["x_right_prev"]
         x_left, n_left = s["x_left"], s["n_left"]
+        x_left_prev = s["x_left_prev"]
         x_i_l, x_i_r, n_i = s["x_i_l"], s["x_i_r"], s["n_i"]
         x_close_last, x_close_tr = s["x_close_last"], s["x_close_tr"]
 
@@ -128,8 +129,10 @@ class ProportionalIntensityNHPP:
             )
             ll += (phi_right * delta_cif_right).sum()
 
-            # ll of left censored
-            delta_cif_left = dist.cif(x_left, *dist_params)
+            # ll of left censored: the count over (entry, x]
+            delta_cif_left = dist.cif(x_left, *dist_params) - dist.cif(
+                x_left_prev, *dist_params
+            )
             phi_exponents_left = np.dot(Z_left, beta_coeffs)
             phi_left = np.exp(phi_exponents_left)
             ll += (
@@ -225,6 +228,7 @@ class ProportionalIntensityNHPP:
                 "`dist` must be a CountingProcess instance "
                 "(e.g. Duane, CrowAMSAA, CoxLewis); got {!r}".format(dist)
             )
+        validate_nhpp_data(data, dist)
         out = ProportionalIntensityModel()
         out.dist = dist
         out.data = data
@@ -320,10 +324,9 @@ class ProportionalIntensityNHPP:
         Z : array_like or dict
             Covariates: a matrix with one row per row of ``x`` (a 1-D array
             is a single covariate), or a ``{item: covariates}`` dict. They
-            describe the item and should be the same on all of its rows.
-            (The likelihood applies each row's values over the interval
-            ending at that row, but the window close at ``tr`` and the
-            diagnostics use the item's first row.)
+            describe the item (they are static), so they must be the same
+            on every row of an item; values that change within an item
+            raise a ``ValueError``.
         i : array_like, optional
             Identity of the item each row belongs to. Defaults to all rows
             belonging to one item.

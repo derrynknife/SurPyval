@@ -11,7 +11,8 @@ from surpyval.recurrent.nonparametric import NonParametricCounting
 
 STALLED_WARNING = (
     "Some sequences produced a near-zero interarrival time (< tol) before "
-    "reaching T, indicating a possible asymptote; they were terminated early "
+    "reaching T: their events pile up towards a finite time (a possible "
+    "asymptote, such as a G1 process with q < 0), so they were ended early "
     "at their last event."
 )
 MAX_EVENTS_WARNING = (
@@ -57,14 +58,17 @@ class RecurrenceSimulationMixin:
         ).tolist()
 
     def clear_simulation(self) -> None:
-        del self.us
+        self.__dict__.pop("us", None)
 
     def get_uniform_random_number(self) -> float:
-        try:
-            return self.us.pop()
-        except IndexError:
+        # The pool is created on first use, so this also works on a model
+        # that has not simulated yet (a restored or ``from_params`` one);
+        # it used to raise ``AttributeError: 'us'`` there.
+        us = self.__dict__.get("us")
+        if not us:
             self.initialize_simulation()
-            return self.us.pop()
+            us = self.us
+        return us.pop()
 
     def _cif_args(self) -> tuple:
         """
@@ -83,7 +87,7 @@ class RecurrenceSimulationMixin:
         The next event is sampled by inverting the cumulative intensity
         conditional on the time of the previous event: given the CIF value at
         ``x_prev``, a uniform ``ui`` maps to the next event time via
-        ``inv_cif(-log(ui) + cif(x_prev))``. Any per-family arguments (e.g. the
+        ``inv_cif(cif(x_prev) - log(ui))``. Any per-family arguments (e.g. the
         covariate vector) come from :meth:`_cif_args`.
         """
         cif_args = self._cif_args()
@@ -91,8 +95,12 @@ class RecurrenceSimulationMixin:
 
         def sample(ui: float) -> float:
             nonlocal x_prev
-            u_adj = ui * np.exp(-self.cif(x_prev, *cif_args))
-            xi = self.inv_cif(-np.log(u_adj), *cif_args) - x_prev
+            # Added on the cumulative-intensity scale. This used to go
+            # through ui * exp(-cif(x_prev)), which underflows to 0 once
+            # the expected count passes about 745, so every later event
+            # landed at inv_cif(inf).
+            target = self.cif(x_prev, *cif_args) - np.log(ui)
+            xi = float(np.squeeze(self.inv_cif(target, *cif_args))) - x_prev
             x_prev += xi
             return xi
 

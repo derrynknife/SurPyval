@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.typing as npt
 
 from surpyval.recurrent.parametric.counting_process import Boxable
 from surpyval.utils.fitter import singleton_fitter
@@ -61,14 +62,20 @@ class CoxLewis(NHPPFitter):
         # time unit; the old (0, None) bound silently pinned such fits
         # at alpha = 0 (#286).
         self.bounds = ((None, None), (None, None))
-        self.support = (0.0, np.inf)
+        # The log-linear intensity is defined at any time, so an item
+        # observed from a negative ``tl`` may have events at negative times.
+        self.support = (-np.inf, np.inf)
 
     def cif(self, x: Boxable, *params: Boxable) -> Boxable:
         # The Cox-Lewis intensity is log-linear, so its cumulative intensity
-        # is the integral of ``exp(alpha + beta * x)`` from 0 to ``x``.
+        # is the integral of ``exp(alpha + beta * x)`` from 0 to ``x``,
+        # ``exp(alpha) * (exp(beta x) - 1) / beta``. Written with expm1 and
+        # its beta -> 0 limit ``exp(alpha) * x`` (an HPP): the direct form
+        # is 0/0 at beta = 0 and loses digits for a tiny beta.
         alpha = params[0]
         beta = params[1]
-        return np.exp(alpha) / beta * (np.exp(beta * x) - 1.0)
+        x = np.asarray(x, dtype=float)
+        return np.exp(alpha) * _expm1_over(beta, x)
 
     def iif(self, x: Boxable, *params: Boxable) -> Boxable:
         alpha = params[0]
@@ -86,8 +93,22 @@ class CoxLewis(NHPPFitter):
         # For an improving system (beta < 0) the cumulative intensity is
         # bounded above by exp(alpha) / -beta, so counts at or beyond that
         # asymptote are never reached: return inf rather than log of a
-        # non-positive number.
-        arg = 1.0 + np.asarray(N, dtype=float) * beta * np.exp(-alpha)
-        reached = arg > 0.0
-        safe_arg = np.where(reached, arg, 1.0)
-        return np.where(reached, np.log(safe_arg) / beta, np.inf)
+        # non-positive number. log1p and the beta -> 0 limit
+        # ``N exp(-alpha)`` keep a tiny or zero beta exact.
+        scaled = np.asarray(N, dtype=float) * np.exp(-alpha)
+        arg = scaled * beta
+        reached = arg > -1.0
+        safe_arg = np.where(reached, arg, 0.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.where(
+                beta == 0,
+                scaled,
+                np.log1p(safe_arg) / np.where(beta == 0, 1.0, beta),
+            )
+        return np.where(reached, ratio, np.inf)
+
+
+def _expm1_over(beta: Boxable, x: npt.NDArray) -> Boxable:
+    """``(exp(beta * x) - 1) / beta``, with its limit ``x`` at beta = 0."""
+    safe_beta = np.where(beta == 0, 1.0, beta)
+    return np.where(beta == 0, x, np.expm1(beta * x) / safe_beta)

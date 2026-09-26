@@ -17,7 +17,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_event_data import RecurrentEventData
-from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 
 @singleton_fitter
@@ -60,7 +60,10 @@ class HPP(CountingProcess):
     def __init__(self) -> None:
         self.param_names = ["lambda"]
         self.bounds = ((0, None),)
-        self.support = (0.0, np.inf)
+        # A constant rate is defined at any time, so an item observed from
+        # a negative ``tl`` may have events at negative times (the support
+        # check in the fit only restricts the power-law models).
+        self.support = (-np.inf, np.inf)
         self.name = "Homogeneous Poisson Process"
 
     # The base contract is variadic (*params); HPP's one parameter
@@ -191,7 +194,10 @@ class HPP(CountingProcess):
 
         if has_left_censoring:
             left_mask = c == -1
-            x_left = x_l[left_mask]
+            # A left-censored count covers the item's window from its entry
+            # (its first row, so the previous time is the entry: ``tl``, or
+            # the origin 0), not from time 0 whatever ``tl`` says.
+            x_left = x_l[left_mask] - x_prev_r[left_mask]
             n_left = n[left_mask]
             log_xl = np.log(x_left)
             n_log_x_left = n_left * log_xl
@@ -297,7 +303,7 @@ class HPP(CountingProcess):
 
         out.param_names = ["lambda"]
         out.bounds = ((0, None),)
-        out.support = (0.0, np.inf)
+        out.support = (-np.inf, np.inf)
         out.name = "Homogeneous Poisson Process"
         if how != "MLE":
             raise ValueError(
@@ -305,6 +311,7 @@ class HPP(CountingProcess):
                 "'MLE', got {!r}".format(how)
             )
         out.how = "MLE"
+        validate_nhpp_data(data, self)
 
         neg_ll = self.create_negll_func(data)
         jac = jacobian(neg_ll)
@@ -313,7 +320,17 @@ class HPP(CountingProcess):
         if init is None:
             init = [0.0]
         else:
-            init = np.atleast_1d(np.log(init))
+            init = np.atleast_1d(np.asarray(init, dtype=float))
+            # The search runs on log(rate), so a start of 0 (or below) was
+            # -inf / nan and came back as a rate of 0 with warnings.
+            if init.shape != (1,) or not (
+                np.isfinite(init[0]) and init[0] > 0
+            ):
+                raise ValueError(
+                    "init must be one positive, finite rate, [rate]; got "
+                    "{!r}".format(init.tolist())
+                )
+            init = np.log(init)
 
         res = root(jac, init, jac=hess)
         out.res = res
@@ -437,7 +454,7 @@ class HPP(CountingProcess):
         model.dist = self
         model.param_names = ["lambda"]
         model.bounds = ((0, None),)
-        model.support = (0.0, np.inf)
+        model.support = (-np.inf, np.inf)
         model.name = "Homogeneous Poisson Process"
         model.how = "from_params"
         return model

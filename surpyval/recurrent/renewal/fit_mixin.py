@@ -51,6 +51,22 @@ class RenewalFitMixin:
         return dist_params
 
     @staticmethod
+    def _renewal_dist_params(data: Any, dist: Any) -> "np.ndarray | None":
+        """
+        The distribution fitted to the interarrival times, the MLE of an
+        ordinary renewal process (perfect repair), or ``None`` if that fit
+        fails.
+        """
+        try:
+            params = np.asarray(
+                dist.fit(data.interarrival_times, data.c, data.n).params,
+                dtype=float,
+            )
+        except Exception:
+            return None
+        return params if np.all(np.isfinite(params)) else None
+
+    @staticmethod
     def _bounds_transform(
         data_x: np.ndarray, bounds: list, param_names: list
     ) -> tuple[Callable, Callable]:
@@ -72,12 +88,22 @@ class RenewalFitMixin:
         inits: "list | None",
         user_init: "ArrayLike | None",
         neg_ll: "Callable | None" = None,
+        polish: "Callable | None" = None,
     ) -> Any:
         """
         Drive the multi-start fit. ``fit_once(x0) -> OptimizeResult`` runs the
         optimiser from a single natural-space start ``x0``. With no user
-        ``init`` every start in ``inits`` is tried and the converged result
-        with the lowest objective is returned; a user ``init`` is run once.
+        ``init`` every start in ``inits`` is tried and the result with the
+        lowest (finite) objective is returned; a user ``init`` is run once.
+
+        A start that stops at Nelder-Mead's evaluation cap still counts.
+        When the maximum is on the boundary of the parameter space (an ARA
+        repair efficiency ``rho -> 1``, a Kijima ``q -> 0``) the search runs
+        off towards an infinite transformed parameter and never meets the
+        convergence test, so the start that found the best likelihood was
+        the one discarded, and a worse local optimum was returned as the
+        MLE. ``polish(res) -> OptimizeResult`` restarts the search from
+        such a result, and the better of the two is kept.
 
         With ``neg_ll`` (the natural-space negative log-likelihood) the
         starts at which it is not finite are skipped: they lie outside the
@@ -88,7 +114,8 @@ class RenewalFitMixin:
         warning about ``inf - inf`` in its convergence test -- and the
         start was going to be discarded as unconverged anyway.
 
-        Raises ``ValueError`` with the shared messages when nothing converges.
+        Raises ``ValueError`` with the shared messages when no start reaches
+        a finite likelihood.
         """
 
         def feasible(x0: Any) -> bool:
@@ -96,16 +123,28 @@ class RenewalFitMixin:
                 return True
             return bool(np.isfinite(neg_ll(np.asarray(x0, dtype=float))))
 
+        def usable(res: Any) -> bool:
+            return bool(np.isfinite(res.fun))
+
+        def polished(res: Any) -> Any:
+            if res.success or polish is None:
+                return res
+            again = polish(res)
+            if usable(again) and again.fun <= res.fun:
+                return again
+            return res
+
         if user_init is None:
             assert inits is not None
             starts = [x0 for x0 in inits if feasible(x0)]
-            results = [res for res in map(fit_once, starts) if res.success]
+            results = [res for res in map(fit_once, starts) if usable(res)]
             if not results:
                 raise ValueError(
                     "Could not find a good solution. "
                     + "Try using `init` for better initial guess."
                 )
-            return results[int(np.argmin([res.fun for res in results]))]
+            best = results[int(np.argmin([res.fun for res in results]))]
+            return polished(best)
 
         if not feasible(user_init):
             raise ValueError(
@@ -114,12 +153,12 @@ class RenewalFitMixin:
                 "initial guess."
             )
         res = fit_once(user_init)
-        if not res.success:
+        if not usable(res):
             raise ValueError(
                 "Optimization with the provided `init` did not "
                 "converge. Try a different initial guess."
             )
-        return res
+        return polished(res)
 
     def _fit_restoration_ml(
         self,
@@ -131,6 +170,7 @@ class RenewalFitMixin:
         restoration_inits: tuple,
         dist_init_params: "np.ndarray | None",
         init: "ArrayLike | None",
+        renewal_restoration: "float | None" = None,
     ) -> tuple[Any, np.ndarray]:
         """
         The transform-space fitting spine shared by ``ARA``, ``ARI`` and
@@ -140,6 +180,14 @@ class RenewalFitMixin:
         supplies its restoration parameter's name, bounds and start grid,
         and the initial distribution parameters (``None`` when a user
         ``init`` is given). Returns ``(res, natural_params)``.
+
+        ``renewal_restoration`` is a restoration value next to the one at
+        which the family is an ordinary renewal process (perfect repair:
+        ARA ``rho = 1``, Kijima ``q = 0``). One more start is made there,
+        with the distribution fitted to the interarrival times -- that
+        boundary's own MLE. From the grid's starts, which share the
+        first-event fit, the search can settle on a local maximum at the
+        other end and miss a perfect-repair maximum altogether.
 
         ``GeneralizedOneRenewal`` does not use this: its likelihood only
         needs ``q > -1``, so it optimises directly under box bounds
@@ -151,21 +199,46 @@ class RenewalFitMixin:
             [restoration_name, *dist.param_names],
         )
 
+        def objective(p: np.ndarray) -> float:
+            return neg_ll(inv_trans(p))
+
         def fit_once(x0: np.ndarray) -> Any:
             return minimize(
-                lambda p: neg_ll(inv_trans(p)),
+                objective,
                 transform(np.asarray(x0, dtype=float)),
                 method="Nelder-Mead",
             )
+
+        def polish(res: Any) -> Any:
+            # Restart from where a capped search stopped (``res.x`` is
+            # already in the transformed space).
+            return minimize(objective, res.x, method="Nelder-Mead")
 
         if init is None:
             # The caller supplies initial distribution parameters whenever
             # it does not supply a full ``init``.
             assert dist_init_params is not None
             inits = [[r0, *dist_init_params] for r0 in restoration_inits]
+            if renewal_restoration is not None:
+                renewal = self._renewal_dist_params(data, dist)
+                if renewal is not None and not np.allclose(
+                    renewal, dist_init_params
+                ):
+                    inits.append([renewal_restoration, *renewal])
         else:
+            init = np.atleast_1d(np.asarray(init, dtype=float))
+            expected = 1 + len(dist.param_names)
+            if init.shape != (expected,):
+                raise ValueError(
+                    "init must have {} values ([{}, {}]); got {}.".format(
+                        expected,
+                        restoration_name,
+                        ", ".join(dist.param_names),
+                        init.size,
+                    )
+                )
             inits = None
-        res = self._multistart(fit_once, inits, init, neg_ll)
+        res = self._multistart(fit_once, inits, init, neg_ll, polish)
         return res, inv_trans(res.x)
 
     def _attach_inference(
@@ -188,6 +261,7 @@ class RenewalFitMixin:
         """
         model.res = res
         model.data = data
+        model.how = "MLE"
         model._fitter = self
         model._neg_ll = neg_ll
         model._mle = np.asarray(mle, dtype=float)

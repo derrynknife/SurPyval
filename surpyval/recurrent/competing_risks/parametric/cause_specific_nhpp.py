@@ -251,7 +251,9 @@ class CauseSpecificNHPP(SerialisableMixin):
             item).
         tr : array like or scalar, optional
             Right-truncation time of each item, given like ``tl``. It closes
-            the item's window only when the item has no ``c=1`` row.
+            the item's window, as a ``c=1`` row does; an item with both
+            must have them at the same time (a ``c=1`` row before ``tr``
+            raises a ``ValueError``).
         dist : counting-process fitter, optional
             The intensity model fitted per cause (``CrowAMSAA`` by default).
         how : str, optional

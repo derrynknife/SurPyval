@@ -7,7 +7,7 @@ from scipy.special import gammaln
 
 from surpyval.recurrent.inference import observed_event_count
 from surpyval.utils.fitter import singleton_fitter
-from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 from .proportional_intensity import ProportionalIntensityModel
 
@@ -135,7 +135,10 @@ class ProportionalIntensityHPP:
             x_right = 0.0
 
         if has_left_censoring:
-            x_left = x_l[c == -1]
+            # The count covers the item's window from its entry (``tl``, or
+            # the origin 0) -- the row is the item's first, so its previous
+            # time is that entry.
+            x_left = x_l[c == -1] - x_prev_r[c == -1]
             n_left = n[c == -1]
             Z_left = Z[c == -1]
             log_xl = np.log(x_left)
@@ -245,10 +248,9 @@ class ProportionalIntensityHPP:
         Z : array_like or dict
             Covariates: a matrix with one row per row of ``x`` (a 1-D array
             is a single covariate), or a ``{item: covariates}`` dict. They
-            describe the item and should be the same on all of its rows.
-            (The likelihood applies each row's values over the interval
-            ending at that row, but the window close at ``tr`` and the
-            diagnostics use the item's first row.)
+            describe the item (they are static), so they must be the same
+            on every row of an item; values that change within an item
+            raise a ``ValueError``.
         i : array_like, optional
             Identity of the item each row belongs to. Defaults to all rows
             belonging to one item.
@@ -320,8 +322,11 @@ class ProportionalIntensityHPP:
 
         out.param_names = ["lambda"]
         out.bounds = ((0, None),)
-        out.support = (0.0, np.inf)
+        out.support = (-np.inf, np.inf)
 
+        # With no events the likelihood only rewards a lower rate: the fit
+        # ran to a rate of 0 with log(0) warnings.
+        validate_nhpp_data(data, self)
         num_covariates = data.Z.shape[1]
         if init is None:
             # Use the right endpoint for interval-censored (2D) observations
@@ -331,7 +336,11 @@ class ProportionalIntensityHPP:
             _, _inv = np.unique(data.i, return_inverse=True)
             _max_x = np.full(_inv.max() + 1, -np.inf)
             np.maximum.at(_max_x, _inv, _x_max)
-            rate = (data.n[data.c == 0]).sum() / _max_x.sum()
+            with np.errstate(divide="ignore", invalid="ignore"):
+                rate = (data.n[data.c == 0]).sum() / _max_x.sum()
+            if not (np.isfinite(rate) and rate > 0):
+                # e.g. only counts (c=-1 / c=2) and no exact events
+                rate = 1.0
             init = np.append(np.log(rate), np.zeros(num_covariates))
         else:
             # User-supplied starting values were previously overwritten
@@ -342,6 +351,11 @@ class ProportionalIntensityHPP:
                 raise ValueError(
                     f"init must have {1 + num_covariates} values (baseline "
                     f"rate + {num_covariates} coefficients); got {init.size}."
+                )
+            if not (np.isfinite(init[0]) and init[0] > 0):
+                raise ValueError(
+                    "the baseline rate in init must be positive and finite; "
+                    f"got {init[0]!r}"
                 )
             init = np.append(np.log(init[0]), init[1:])
 

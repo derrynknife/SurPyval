@@ -12,7 +12,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
 from surpyval.utils.recurrent_event_data import RecurrentEventData
-from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 
 class NHPPFitter(IntensityModel):
@@ -24,6 +24,7 @@ class NHPPFitter(IntensityModel):
         x_o, x_o_prev = s["x_o"], s["x_o_prev"]
         x_right, x_right_prev = s["x_right"], s["x_right_prev"]
         x_left, n_left = s["x_left"], s["n_left"]
+        x_left_prev = s["x_left_prev"]
         x_i_l, x_i_r, n_i = s["x_i_l"], s["x_i_r"], s["n_i"]
         x_close_last, x_close_tr = s["x_close_last"], s["x_close_tr"]
 
@@ -45,8 +46,10 @@ class NHPPFitter(IntensityModel):
                 self.cif(x_right_prev, *params) - self.cif(x_right, *params)
             )
 
-            # ll of left censored
-            left_delta_cif = self.cif(x_left, *params)
+            # ll of left censored: the count over (entry, x]
+            left_delta_cif = self.cif(x_left, *params) - self.cif(
+                x_left_prev, *params
+            )
             ll += (
                 n_left * np.log(left_delta_cif)
                 - (left_delta_cif)
@@ -105,10 +108,23 @@ class NHPPFitter(IntensityModel):
             An instance of the ParametricRecurrenceModel class containing the
             fitted model, estimated parameters, and other relevant attributes.
         """
+        if how not in ("MLE", "MSE"):
+            raise ValueError(
+                "how must be 'MLE' or 'MSE'; got {!r}".format(how)
+            )
+        validate_nhpp_data(data, self)
         if init is None:
             param_init = self.parameter_initialiser(data.x)
         else:
-            param_init = np.array(init)
+            param_init = np.atleast_1d(np.asarray(init, dtype=float))
+            if param_init.shape != (len(self.param_names),):
+                raise ValueError(
+                    "init must have {} values ({}); got {}.".format(
+                        len(self.param_names),
+                        ", ".join(self.param_names),
+                        param_init.size,
+                    )
+                )
 
         x_unqiue, r, d = data.to_xrd()
         mcf_hat = np.cumsum(d / r)
@@ -185,6 +201,11 @@ class NHPPFitter(IntensityModel):
         x: array_like
             The event times, pooled over items (each row belongs to the item
             named in ``i``), measured from the start of each item's life.
+            The power-law models (``CrowAMSAA``, ``Duane``) are defined for
+            times from 0 and need events at positive times; ``CoxLewis``
+            also takes negative times inside a negative ``tl`` window.
+            Data with no events, or with a single event and no observation
+            after it, raise a ``ValueError``.
         i: array_like, optional
             Identity of the item each row belongs to. Defaults to all rows
             belonging to one item.

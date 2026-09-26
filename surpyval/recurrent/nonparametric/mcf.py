@@ -52,6 +52,10 @@ class NonParametricCounting(SerialisableMixin):
     #: ``None`` on simulated models, which carry no variance.
     var: "npt.NDArray | None"
     data: RecurrentEventData
+    #: Where observation begins: the MCF is 0 from here to the first event
+    #: and undefined (NaN) before it. That is time 0 unless an item enters
+    #: earlier (a negative ``tl``), which makes negative times observed.
+    origin: float = 0.0
 
     # -- serialisation -----------------------------------------------------
 
@@ -75,7 +79,16 @@ class NonParametricCounting(SerialisableMixin):
                 "model": "NonParametricCounting",
                 "x": np.asarray(self.x, dtype=float).tolist(),
                 "mcf_hat": np.asarray(self.mcf_hat, dtype=float).tolist(),
-                "var": np.asarray(self.var, dtype=float).tolist(),
+                # A simulated MCF has no variance; ``None`` (JSON null)
+                # keeps it that way on reload. ``asarray(None)`` stored a
+                # NaN, and the restored ``mcf_cb`` returned NaN bounds
+                # instead of saying there are none.
+                "var": (
+                    None
+                    if self.var is None
+                    else np.asarray(self.var, dtype=float).tolist()
+                ),
+                "origin": float(self.origin),
             }
         )
 
@@ -94,7 +107,14 @@ class NonParametricCounting(SerialisableMixin):
         out = cls()
         out.x = np.array(model_dict["x"], dtype=float)
         out.mcf_hat = np.array(model_dict["mcf_hat"], dtype=float)
-        out.var = np.array(model_dict["var"], dtype=float)
+        var = model_dict["var"]
+        # Older files stored a missing variance as a single NaN; read that
+        # (and null) as no variance.
+        var_arr = None if var is None else np.array(var, dtype=float)
+        if var_arr is not None and var_arr.ndim == 0 and np.isnan(var_arr):
+            var_arr = None
+        out.var = var_arr
+        out.origin = float(model_dict.get("origin", 0.0))
         return out
 
     def mcf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
@@ -113,27 +133,46 @@ class NonParametricCounting(SerialisableMixin):
         Returns
         -------
         numpy array
-            The MCF at each ``x``: 0 before the first event time and NaN
-            beyond the last observed time (and, for ``"step"``, at
-            negative times).
+            The MCF at each ``x``: 0 before the first event time (for
+            ``"linear"``, rising from 0 at the origin to the first event),
+            and NaN beyond the last observed time and before the origin.
+            The origin is time 0, or the earliest entry when an item enters
+            before it (a negative ``tl``).
         """
-        x = np.atleast_1d(x)
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        grid, values = self._curve_from_origin(self.mcf_hat)
         # Let's not assume we can predict above the highest measurement
         if interp == "step":
             idx = np.searchsorted(self.x, x, side="right") - 1
-            mcf = self.mcf_hat[idx]
-            mcf[np.where(x < self.x.min())] = 0
-            mcf[np.where(x > self.x.max())] = np.nan
-            mcf[np.where(x < 0)] = np.nan
-            return mcf
+            mcf = self.mcf_hat[np.clip(idx, 0, None)].astype(float)
+            mcf[idx < 0] = 0
         elif interp == "linear":
-            mcf = np.hstack([[0], self.mcf_hat])
-            x_data = np.hstack([[0], self.x])
-            mcf = np.interp(x, x_data, mcf)
-            mcf[np.where(x > self.x.max())] = np.nan
-            return mcf
+            mcf = np.interp(x, grid, values)
         else:
             raise ValueError("`interp` must be either 'step' or 'linear'")
+        mcf[(x > self.x.max()) | (x < self._origin())] = np.nan
+        return mcf
+
+    def _origin(self) -> float:
+        """Where observation begins; never after the first time on the
+        grid (a from_xrd triple may start below 0)."""
+        return float(min(getattr(self, "origin", 0.0), self.x.min()))
+
+    def _curve_from_origin(
+        self, values: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The grid and ``values`` with the MCF's starting point, 0 at the
+        origin, prepended (unless the first time is the origin itself), for
+        linear interpolation. ``values`` may be ``(k, len(x))``."""
+        origin = self._origin()
+        values = np.asarray(values, dtype=float)
+        if self.x.min() > origin:
+            zero = np.zeros(values.shape[:-1] + (1,))
+            return (
+                np.hstack([[origin], self.x]),
+                np.concatenate([zero, values], axis=-1),
+            )
+        return np.asarray(self.x, dtype=float), values
 
     def mcf_cb(
         self,
@@ -149,9 +188,10 @@ class NonParametricCounting(SerialisableMixin):
 
         Two-sided bounds return one row per query with columns ordered
         ``[lower, upper]`` (matching the parametric ``cif_cb``); one-sided
-        bounds return a 1-D array. Queries below the first observed time
-        return 0; queries above the last observed time (or negative)
-        return NaN, mirroring :meth:`mcf`.
+        bounds return a 1-D array. Queries before the first event return 0
+        (for ``interp="linear"``, bounds rising from 0 at the origin, as
+        the MCF does); queries after the last observed time or before the
+        origin return NaN, mirroring :meth:`mcf`.
 
         Parameters
         ----------
@@ -233,6 +273,7 @@ class NonParametricCounting(SerialisableMixin):
             # (sqrt(var * mcf**2)), giving far too wide, negative bounds.
             mcf_cb = self.mcf_hat + np.sqrt(self.var) * stat
         # Let's not assume we can predict above the highest measurement
+        invalid = (x > self.x.max()) | (x < self._origin())
         if interp == "step":
             # Select by query position FIRST, then mask the query-length
             # result: the masks used to be applied to the grid-length
@@ -241,8 +282,7 @@ class NonParametricCounting(SerialisableMixin):
             # IndexError for more queries than bounds (#285).
             idx = np.searchsorted(self.x, x, side="right") - 1
             safe_idx = np.clip(idx, 0, None)
-            below = (x < self.x.min()) | (idx < 0)
-            invalid = (x > self.x.max()) | (x < 0)
+            below = idx < 0
             if bound == "two-sided":
                 mcf_cb = mcf_cb[:, safe_idx].T
                 mcf_cb[below, :] = 0
@@ -252,13 +292,17 @@ class NonParametricCounting(SerialisableMixin):
                 mcf_cb[below] = 0
                 mcf_cb[invalid] = np.nan
         elif interp == "linear":
+            # From 0 at the origin, as the linear MCF itself is: before the
+            # first event the bounds used to be held at the first event's,
+            # so they did not contain the interpolated MCF.
+            grid, bounds = self._curve_from_origin(mcf_cb)
             if bound == "two-sided":
-                R1 = np.interp(x, self.x, mcf_cb[0, :])
-                R2 = np.interp(x, self.x, mcf_cb[1, :])
+                R1 = np.interp(x, grid, bounds[0, :])
+                R2 = np.interp(x, grid, bounds[1, :])
                 mcf_cb = np.vstack([R1, R2]).T
             else:
-                mcf_cb = np.interp(x, self.x, mcf_cb)
-            mcf_cb[np.where(x > self.x.max())] = np.nan
+                mcf_cb = np.interp(x, grid, bounds)
+            mcf_cb[invalid] = np.nan
         return mcf_cb
 
     def plot(
@@ -387,6 +431,7 @@ class NonParametricCounting(SerialisableMixin):
         out = type(self).from_xrd(*data.to_xrd())
         out.var = _lawless_nadeau_var(data, out.x, out.r, out.d)
         out.data = data
+        out.origin = _observation_origin(data)
         return out
 
     def fit(
@@ -459,6 +504,15 @@ class NonParametricCounting(SerialisableMixin):
         """
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, windows=windows)
         return self.fit_from_recurrent_data(data)
+
+
+def _observation_origin(data: RecurrentEventData) -> float:
+    """Where the MCF starts: time 0, or the earliest entry ``tl`` when an
+    item enters before 0 (its negative times are then observed; the MCF
+    used to be NaN there)."""
+    tl = np.asarray(data.tl, dtype=float)
+    finite = tl[np.isfinite(tl)]
+    return float(min(0.0, finite.min())) if finite.size else 0.0
 
 
 def _lawless_nadeau_var(

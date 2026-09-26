@@ -142,24 +142,25 @@ class RecurrentEventData:
             # data use the midpoints instead of the end value of the left
             # censored interval.
 
-            d = np.array(
-                [
-                    self.n[
-                        (x_out == xi)
-                        & ((self.c == 0) | (self.c == 2) | (self.c == -1))
-                    ].sum()
-                    for xi in x_unique
-                ]
-            )
+            # Counted and risk-set sizes by sorted lookup rather than one
+            # pass over the data per time point: that was quadratic, and a
+            # simulated MCF has tens of thousands of distinct times.
+            is_event = (self.c == 0) | (self.c == 2) | (self.c == -1)
+            d = np.bincount(
+                np.searchsorted(x_unique, x_out[is_event]),
+                weights=self.n[is_event],
+                minlength=len(x_unique),
+            ).astype(self.n.dtype)
             # Each item is at risk over its observation window, from its
             # entry up to and including its exit (see
             # ``item_observation_windows``). An item with a delayed entry
             # only joins the risk set once ``x`` reaches its ``tl``, so event
             # times before that entry see a correspondingly smaller risk set
-            # (ignoring ``tl`` here would inflate the MCF).
-            r = np.array(
-                [((entry <= xi) & (xi <= exit_)).sum() for xi in x_unique]
-            )
+            # (ignoring ``tl`` here would inflate the MCF). The count is
+            # those entered by ``xi`` less those that left before it.
+            r = np.searchsorted(
+                np.sort(entry), x_unique, side="right"
+            ) - np.searchsorted(np.sort(exit_), x_unique, side="left")
 
             self.xrd = x_unique, r, d
         return self.xrd
@@ -351,6 +352,10 @@ class RecurrentEventData:
             "x_right": x_l[mask_right] if mask_right.any() else empty,
             "x_right_prev": prev[mask_right] if mask_right.any() else empty,
             "x_left": x_l[mask_left] if mask_left.any() else empty,
+            # A left-censored count is the item's first row, so its previous
+            # time is the item's entry (``tl``, or the origin 0): the count
+            # covers (entry, x], not (0, x].
+            "x_left_prev": x_prev_l[mask_left] if mask_left.any() else empty,
             "n_left": n[mask_left] if mask_left.any() else empty,
             "x_i_l": x_l[mask_i] if mask_i.any() else empty,
             "x_i_r": (

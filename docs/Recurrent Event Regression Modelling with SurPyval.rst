@@ -20,7 +20,8 @@ interval-counted rows), plus the covariates ``Z`` as the **second** argument:
 of ``x`` (repeat an item's covariates on each of its rows; a 1-D array is one
 covariate), or a dictionary mapping each item id to its covariate values (a
 list, or a plain number for a single covariate). The covariates describe
-the item and should be constant within it. Both fitters also take ``init``,
+the item and must be constant within it: values that change between an
+item's rows raise a ``ValueError``. Both fitters also take ``init``,
 the starting values for the search: the baseline parameters on their natural
 scale followed by one value per coefficient. Gapped observation
 (``windows``) is not available with covariates.

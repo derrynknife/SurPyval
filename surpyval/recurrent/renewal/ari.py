@@ -15,7 +15,9 @@ from surpyval.utils.recurrent_utils import (
     reject_gapped_observation,
     reject_left_truncation,
     validate_memory,
+    validate_nhpp_data,
     validate_renewal_censoring,
+    validate_restoration,
 )
 
 
@@ -310,6 +312,10 @@ class ARI(RenewalFitMixin):
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        # The baseline is an NHPP intensity, with the same needs: some
+        # events, times inside its support (no event at t = 0 for a power
+        # law) and more than one failure-truncated event.
+        validate_nhpp_data(data, dist)
 
         neg_ll = self.create_negll_func(data, dist, m)
         base_params0 = (
@@ -436,4 +442,5 @@ class ARI(RenewalFitMixin):
             A model built from the supplied parameters, for simulation.
         """
         validate_memory(m)
+        validate_restoration(rho, "rho", (0, 1))
         return self._make_model(dist, dist_params, rho, m)
