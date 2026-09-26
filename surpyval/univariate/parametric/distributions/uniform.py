@@ -44,8 +44,21 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
-        x = data.x
-        return np.array([np.min(x) - 1.0, np.max(x) + 1.0], dtype=float)
+        x = np.asarray(data.x, dtype=float)
+        x = x[np.isfinite(x)]
+        lo, hi = float(np.min(x)), float(np.max(x))
+        # The start must lie strictly outside the data (the likelihood is
+        # zero otherwise), and the margin must scale with the data. It was
+        # a fixed 1.0: on data in thousandths the start was a thousand
+        # times wider than the sample, and the search never recovered from
+        # it. (max - min) / (n - 1) is the complete-sample MPS estimate
+        # of the margin, so the start is usually close to the answer too.
+        spread = hi - lo
+        if spread > 0:
+            pad = spread / max(x.size - 1, 1)
+        else:
+            pad = abs(hi) if hi != 0 else 1.0
+        return np.array([lo - pad, hi + pad], dtype=float)
 
     def sf(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""

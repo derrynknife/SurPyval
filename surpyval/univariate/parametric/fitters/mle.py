@@ -11,7 +11,10 @@ from numdifftools import Hessian  # type: ignore
 from scipy.optimize import OptimizeResult, minimize
 
 from surpyval import np
-from surpyval.univariate.parametric.fitters import preconditioned_bfgs
+from surpyval.univariate.parametric.fitters import (
+    preconditioned_bfgs,
+    search_floor,
+)
 
 
 def mle(model: "Parametric") -> Any:
@@ -122,8 +125,18 @@ def mle(model: "Parametric") -> Any:
             else:
                 x0 = best_result.x
             if method == "BFGS":
+                # Scaled per parameter (see ``search_floor``) and per
+                # observation: the negative log-likelihood itself moves
+                # with the data's units, so ``|f(x0)|`` is not a scale
+                # free normaliser for it (see ``preconditioned_bfgs``).
                 res = preconditioned_bfgs(
-                    fun, x0, (offset, lfp, zi, True), jac_i, opts
+                    fun,
+                    x0,
+                    (offset, lfp, zi, True),
+                    jac_i,
+                    opts,
+                    floor=search_floor(model),
+                    obj_scale=float(np.sum(model.data["n"])),
                 )
             else:
                 res = minimize(

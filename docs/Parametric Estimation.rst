@@ -230,8 +230,13 @@ on :math:`\alpha`, and a ``CustomDistribution`` integrates
 :math:`k x^{k-1} R(x)` (which needs no derivative of the cumulative hazard) in
 pieces between its quantiles.
 
-The optimiser (BFGS) runs to a tight tolerance and, if the moments are still
-not matched, polishes the answer with Nelder-Mead. If the scaled mismatch above
+The optimiser (BFGS, on the rescaled search described in
+:ref:`numerical-mle`) runs to a tight tolerance and, if the
+moments are still not matched, polishes the answer with Nelder-Mead. The
+scaling by :math:`\hat{s}` applies however many moments are matched -- with
+one free parameter the objective is the error in the mean in standard
+deviations -- so the mismatch, and the optimiser's stopping test with it, is
+the same whatever units the data are in. If the scaled mismatch above
 is still larger than :math:`10^{-2}` SurPyval warns that the parameters may be
 unreliable. A healthy fit lands far below that: at about :math:`10^{-12}` when
 the moment equations have an exact solution, or at about :math:`10^{-3}` when
@@ -510,8 +515,8 @@ Like MPP, MSE handles censoring through the non-parametric estimate, so right,
 left and interval censoring are all accepted. It does not yet support
 truncation (SurPyval raises ``NotImplementedError``), and like MPP it carries
 no likelihood-based measure of uncertainty, so an MSE fit has no confidence
-bounds. The minimisation is done with BFGS using the automatic gradient,
-escalating to Newton-CG and then to the derivative-free Nelder-Mead if a method
+bounds. The minimisation is done with BFGS using the automatic gradient, on
+the rescaled search described in :ref:`numerical-mle`, escalating to Newton-CG and then to the derivative-free Nelder-Mead if a method
 fails.
 
 Maximum Likelihood Estimation (MLE)
@@ -716,6 +721,8 @@ always go to the optimiser. A closed-form fit reports ``optimizer`` as
     print("failures / time :", 3 / np.sum(x - np.array(tl)))
     print("optimizer       :", model.optimizer)
 
+.. _numerical-mle:
+
 How SurPyval finds the maximum
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -766,11 +773,27 @@ worth knowing what they are, because they explain the warnings you may see.
 4. **An optimiser ladder.** BFGS runs first; if it does not converge SurPyval
    tries TNC, then Newton-CG, then the derivative-free Nelder-Mead and Powell,
    and stops at the first that succeeds. Before BFGS runs, the search is
-   rescaled so that the starting point is of order one in every coordinate and
-   the objective is divided by its starting magnitude. That does not move the
-   optimum, but it makes the convergence test mean the same thing whether your
-   data are measured in hours or seconds, and for ten observations or a
-   million.
+   rescaled coordinate by coordinate, each :math:`u` divided by the magnitude
+   of its starting value, and the objective is divided by the number of
+   observations. That does not move the optimum, but it makes the convergence
+   test mean the same thing whether your data are measured in hours or
+   seconds, and for ten observations or a million. A starting value near zero
+   cannot set its own unit, so each coordinate has a floor that suits the
+   space it is searched in: 1 for a bounded parameter, whose :math:`u` is
+   (for values near the bound) the log of its distance from the bound and so
+   already in relative units, and the data's standard deviation, capped at
+   1, for an unbounded one, whose :math:`u` is the parameter itself, in the
+   data's units. The result is that fits are *equivariant* under a change of
+   units, in either direction: fitting :math:`k x` gives the fit to :math:`x`
+   with every scale or location parameter multiplied by :math:`k` (a rate
+   divided by it, a log-location shifted by :math:`\ln k`) and every shape
+   parameter unchanged -- to five significant figures or better for any
+   :math:`k` from :math:`10^{-4}` to :math:`10^{5}`. MPS, MSE and MOM search
+   the same way, dividing by the objective's starting magnitude instead:
+   their objectives are dimensionless, so that magnitude does not change with
+   the data's units. (An offset fit is the exception: its starting point,
+   :math:`\min(x) - 1`, is not in the data's units, so its result can depend
+   on them.)
 5. **Checks.** Before fitting, SurPyval refuses data that cannot pin the
    parameters down: if there are fewer distinct non-right-censored values than
    free parameters the likelihood has a flat (or unbounded) direction and no
@@ -1187,7 +1210,8 @@ Turnbull heuristic). Spacings are increments of a continuous CDF, so MPS is not
 available for discrete distributions. And MPS has no likelihood curvature to
 offer, so an MPS fit carries no confidence bounds (its ``neg_ll`` and
 information criteria are still available). The objective is minimised with
-BFGS with the automatic gradient, escalating to Newton-CG and then to the
+BFGS with the automatic gradient, on the rescaled search described in
+:ref:`numerical-mle`, escalating to Newton-CG and then to the
 derivative-free Nelder-Mead if needed; if that too fails,
 SurPyval warns ("MPS FAILED: Try alternate estimation method").
 

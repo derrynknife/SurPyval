@@ -12,6 +12,7 @@ def fallback_minimize(
     jac: Callable[..., Any] | None,
     hess: Callable[..., Any] | None,
     newton_tol: float | None = None,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> Any:
     """
     Minimise ``fun`` with BFGS and the supplied jacobian, escalating to
@@ -37,6 +38,8 @@ def fallback_minimize(
     zero, and a zero hessian makes Newton-CG stop at the initial guess
     while reporting success, so there is nothing to escalate to and
     Nelder-Mead should take over instead.
+
+    ``floor`` is passed through to ``preconditioned_bfgs``.
     """
     assert jac is not None and hess is not None
     with np.errstate(all="ignore"):
@@ -45,7 +48,7 @@ def fallback_minimize(
         # gradient threshold, so MPS and MSE were not scale invariant:
         # a Weibull MPS fit to data in thousands stopped 1% short of the
         # optimum and reported success.
-        res = preconditioned_bfgs(fun, init, args, jac)
+        res = preconditioned_bfgs(fun, init, args, jac, floor=floor)
         # Which rung produced the answer, reported as ``model.optimizer``
         res.optimizer = "BFGS"
 
@@ -103,12 +106,53 @@ def _usable(res: Any) -> bool:
     return bool(np.all(np.isfinite(res.x)) and np.isfinite(res.fun))
 
 
+def search_floor(model: Any) -> npt.NDArray:
+    """Per-component ``floor`` for ``preconditioned_bfgs`` on a fit.
+
+    One entry per free parameter, in the transformed space the search
+    runs in (see ``bounds_convert``):
+
+    - A parameter with a bound is searched, within 1 of the bound, as the
+      log of its distance from it (or as a scaled arctanh between two
+      bounds); further out it is linear and ``|u0|`` sets the scale. The
+      log's natural unit is 1 at every data scale, so the floor is 1, as
+      it always was: at ``u0 = 0`` -- a Weibull shape of exactly 1, say --
+      the scale must not collapse.
+    - An unbounded parameter (a location, a Uniform or Beta4 endpoint,
+      the LogNormal's ``mu``) is searched as itself. Its natural unit is
+      its own magnitude, or the data's spread when it starts near zero
+      -- a Normal fitted to data straddling the origin. The floor is
+      that spread, capped at the old floor of 1 so that nothing changes
+      for data of order 1 and up: in particular the LogNormal's ``mu`` is
+      in log units, where 1 is already the natural unit, and must not
+      get a floor of 1e5 from data in the hundred thousands.
+
+    The spread is the standard deviation of the finite observed values
+    (interval endpoints included), which scales exactly with the data.
+    """
+    bounds = model.bounds
+    fixed_idx = set(model.fitting_info["fixed_idx"])
+    x = np.asarray(model.data["x"], dtype=float)
+    x = x[np.isfinite(x)]
+    spread = float(np.std(x)) if x.size > 1 else 0.0
+    unbounded_floor = min(spread, 1.0) if spread > 0 else 1.0
+    return np.array(
+        [
+            unbounded_floor if (low is None and upp is None) else 1.0
+            for i, (low, upp) in enumerate(bounds)
+            if i not in fixed_idx
+        ]
+    )
+
+
 def preconditioned_bfgs(
     fun: Callable[..., Any],
     x0: npt.NDArray,
     args: tuple[Any, ...] = (),
     jac: Callable[..., Any] | None = None,
     options: dict[str, Any] | None = None,
+    floor: "float | npt.ArrayLike" = 1.0,
+    obj_scale: float | None = None,
 ) -> Any:
     """BFGS on a diagonally rescaled copy of the search vector.
 
@@ -131,7 +175,7 @@ def preconditioned_bfgs(
 
     Rescaling the search fixes the cause instead. With
 
-        s = max(|u0|, 1),   v = u / s,   g(v) = f(s v)
+        s = max(|u0|, floor),   v = u / s,   g(v) = f(s v)
 
     the starting point is order 1 in every component whatever units the
     data is in, and since ``dg/dv = s * df/du`` -- ``s`` growing like the
@@ -139,9 +183,33 @@ def preconditioned_bfgs(
     tests is order 1 too. scipy's own default then means the same thing
     at every scale, so no tolerance is passed at all.
 
+    The floor keeps a component that starts at or near zero from being
+    scaled away to nothing, and its right value depends on the space the
+    search runs in. The univariate fitters search transformed
+    parameters (see ``bounds_convert``): a parameter with a bound is
+    searched as the log of its distance from the bound when that is
+    below 1 (or as an arctanh between two bounds), a coordinate whose
+    natural unit is 1 whatever the data scale -- there ``u0 = 0`` just
+    means "one unit from the bound", and a floor of 1 is right. An
+    unbounded parameter is searched as itself, in the units of the
+    data, and a fixed floor of 1 is right only for data of order 1 or
+    larger. Below that the floor, not ``|u0|``, set the scale: a Beta4
+    endpoint at 1e-3 was searched in steps a thousand times its own
+    size, BFGS lost precision, and the fit ended on TNC, whose
+    tolerances are absolute, 0.1% off. Those callers pass a
+    per-component ``floor`` (see ``search_floor``); the default of 1
+    keeps every other caller as it was.
+
     Dividing through by ``|f(x0)|`` does the same job for the other
     scale: the objective is a sum over observations, so its gradient
-    grows like ``n`` even when the data magnitude is fixed.
+    grows like ``n`` even when the data magnitude is fixed. A caller
+    that knows the count better passes it as ``obj_scale``. Maximum
+    likelihood does: a negative log-likelihood is not itself scale free
+    -- multiplying the data by ``k`` adds ``log k`` per failure to it --
+    so ``|f(x0)|`` was 100 for a Beta4 sample of 100, 1250 for the same
+    sample multiplied by 1e5, and the convergence test loosened
+    twelvefold with it. Dividing by ``n`` gives the gradient per
+    observation, which is the same at every scale.
 
     The mapping is linear, diagonal and fixed before the search begins,
     so it cannot move the optimum; it changes the route taken and the
@@ -150,22 +218,27 @@ def preconditioned_bfgs(
     step, which builds its own hessian at the returned point -- sees
     exactly what it saw before. scipy's own ``res.hess_inv`` would be in
     scaled units, and is not used anywhere.
+
+    With ``jac=None`` scipy differences the scaled objective, so the
+    finite-difference step is relative to each component's scale too.
     """
     x0 = np.asarray(x0, dtype=float)
-    scale = np.maximum(np.abs(x0), 1.0)
+    scale = np.maximum(np.abs(x0), np.asarray(floor, dtype=float))
 
-    f0 = float(fun(x0, *args))
-    obj_scale = max(abs(f0), 1.0) if np.isfinite(f0) else 1.0
+    if obj_scale is None:
+        f0 = float(fun(x0, *args))
+        divisor = max(abs(f0), 1.0) if np.isfinite(f0) else 1.0
+    else:
+        divisor = float(obj_scale)
 
     def scaled_fun(v: npt.NDArray, *inner: Any) -> Any:
-        return fun(scale * v, *inner) / obj_scale
-
-    assert jac is not None
+        return fun(scale * v, *inner) / divisor
 
     def scaled_jac(v: npt.NDArray, *inner: Any) -> Any:
+        assert jac is not None
         return (
             scale * np.asarray(jac(scale * v, *inner), dtype=float)
-        ) / obj_scale
+        ) / divisor
 
     opts = dict(options or {})
     opts["gtol"] = 1e-6
@@ -179,7 +252,7 @@ def preconditioned_bfgs(
         options=opts,
     )
     res.x = res.x * scale
-    res.fun = res.fun * obj_scale
+    res.fun = res.fun * divisor
     return res
 
 
