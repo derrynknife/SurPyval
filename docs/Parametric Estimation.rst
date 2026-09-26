@@ -223,8 +223,12 @@ The moments of an offset distribution are themselves computed exactly. If
 
 so only the moments of the un-shifted distribution are needed. Those come from
 each distribution's closed form where one exists, and from numerical
-integration of :math:`x^{k} f(x)` otherwise (for a ``CustomDistribution``, of
-:math:`k x^{k-1} R(x)`, which needs no derivative of the cumulative hazard).
+integration otherwise, on the distribution's own scale so that the answer is
+as accurate for data in thousandths as in thousands: the exponentiated Weibull
+integrates over :math:`t = (x/\alpha)^{\beta}`, whose density does not depend
+on :math:`\alpha`, and a ``CustomDistribution`` integrates
+:math:`k x^{k-1} R(x)` (which needs no derivative of the cumulative hazard) in
+pieces between its quantiles.
 
 The optimiser (BFGS) runs to a tight tolerance and, if the moments are still
 not matched, polishes the answer with Nelder-Mead. If the scaled mismatch above
@@ -445,7 +449,12 @@ An offset (``offset=True``, see below) cannot be read off a line, because
 shifting :math:`x` bends the plot. SurPyval therefore searches for the shift
 :math:`\gamma < \min(x)` that makes the transformed points *most* linear -- it
 maximises their Pearson correlation -- and then fits the line to
-:math:`x - \gamma`.
+:math:`x - \gamma`. (The Exponential and Rayleigh, whose plots stay straight
+under a shift, read :math:`\gamma` off the line's intercept instead; should
+that land at or past the first failure, the offset is set just below it and the
+line refitted.) Here :math:`\min(x)` is the smallest value whose failure was
+seen -- exact, left or interval censored -- so that every such observation
+stays inside the support.
 
 Probability plotting has real weaknesses. The transformation stretches the
 tails, so a least-squares line gives the extreme points far more influence
@@ -674,13 +683,22 @@ it:
   values it is no longer the MLE: a unit known to survive past :math:`r`
   contributes :math:`(b - r)/(b - a)`, which grows with :math:`b`, so the
   maximum of the likelihood can have :math:`b` well above the largest value
-  (and, for left censoring, :math:`a` below the smallest). There is no closed
-  form then, but the likelihood vanishes the moment :math:`a` passes the
+  (and, for left censoring, :math:`a` below the smallest). There is no general
+  closed form then, but the likelihood vanishes the moment :math:`a` passes the
   smallest exact or left-censored value or :math:`b` the largest exact or
-  right-censored one, and the maximum usually sits on one of those edges, so
-  SurPyval searches that region with the edges as simple bounds (L-BFGS-B),
-  which lands on an edge exactly. It refuses interval-censored data, and data
-  whose smallest (largest) value is left (right) censored or truncated.
+  right-censored one, and the maximum usually sits on one of those edges.
+  Without left censoring :math:`a` is on its edge (the likelihood only
+  improves as it rises), and :math:`b` is the root of the likelihood's
+  derivative beyond the largest value, or that value itself; without right
+  censoring, symmetrically; with both, :math:`b` is profiled out and the same
+  search is made for :math:`a`. That includes data whose largest value is
+  right censored: with :math:`N` units, :math:`k` of them censored at
+  :math:`r` above every failure and :math:`\hat{a}` the smallest failure,
+  :math:`\hat{b} = (N r - k \hat{a})/(N - k)`. It refuses interval-censored
+  data, data with no exactly observed value (any range containing the
+  censoring points then explains them equally well), and truncated data whose
+  censored values pull a bound to the truncation point, beyond which the
+  truncated likelihood is flat.
 
 A request for an offset, a limited failure population, zero inflation or any
 fixed parameter adds structure that these formulas do not solve, so such fits
@@ -1047,9 +1065,15 @@ model has them),
     \mathrm{BIC} = k \ln d + 2\,\mathrm{nll},
 
 where :math:`\mathrm{nll} = -\ell(\hat{\theta})` is ``neg_ll()``, :math:`N`
-is the total number of units and :math:`d` is the number of exactly observed
-failures. Using the failures rather than all units in the BIC penalty follows
+is the total number of units and :math:`d` is the number of failures: every
+unit whose failure was seen, exactly or within a left- or interval-censored
+window, leaving out only the right-censored units that have not failed. Using
+the failures rather than all units in the BIC penalty follows
 [Volinsky2000bic]_: a censored unit carries less information than a failure.
+(For exact and right-censored data, :math:`d` is the number of exact failures;
+counting only those made :math:`d = 0` and the BIC :math:`-\infty` for purely
+interval-censored data.) :math:`\mathrm{AIC_{c}}` exists only for
+:math:`N > k + 1`; with fewer units ``aic_c()`` returns ``nan``.
 Lower is better. Because the likelihood is a property of the parameters and the
 data, not of how they were found, these criteria are available after a fit by
 *any* method (but not for a model built with ``from_params``, which has no

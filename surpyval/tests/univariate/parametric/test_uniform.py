@@ -15,8 +15,12 @@ def test_impermitted_truncation():
     x = np.sort(x)
     tr = np.ones_like(x) * np.inf
     tr[-1] = 100
-    with pytest.raises(ValueError):
-        Uniform.fit(x, tr=tr)
+    # Truncation beyond the data does not change the exact-data MLE (it
+    # used to be refused whenever the largest value was truncated).
+    assert (
+        pytest.approx(np.array([x.min(), x.max()]))
+        == Uniform.fit(x, tr=tr).params
+    )
 
     tr = np.ones_like(x) * np.inf
     tr[-2] = 100
@@ -29,6 +33,7 @@ def test_impermitted_truncation():
     x = np.sort(x)
     tl = np.ones_like(x) * np.inf
     tl[0] = -1
+    # Every other value sits below its left truncation point: invalid data
     with pytest.raises(ValueError):
         Uniform.fit(x, tl=tl)
 
@@ -55,8 +60,14 @@ def test_impermitted_censoring():
     x = np.sort(x)
     c = np.zeros_like(x)
     c[-1] = 1
-    with pytest.raises(ValueError):
-        Uniform.fit(x, c)
+    # Censoring at the maximum has the closed form b = (N r - k a)/(N - k)
+    # (it used to be refused).
+    n = len(x)
+    np.testing.assert_allclose(
+        Uniform.fit(x, c).params,
+        [x.min(), (n * x[-1] - x.min()) / (n - 1)],
+        rtol=1e-6,
+    )
 
     # A right-censored value below the maximum is fittable, but (min, max)
     # is not its MLE: the censored term (b - r) / (b - a) grows with b, so
@@ -73,5 +84,14 @@ def test_impermitted_censoring():
     x = np.sort(x)
     c = np.zeros_like(x)
     c[0] = -1
-    with pytest.raises(ValueError):
-        Uniform.fit(x, c=c)
+    # Symmetrically for left censoring at the minimum
+    np.testing.assert_allclose(
+        Uniform.fit(x, c=c).params,
+        [(n * x[0] - x.max()) / (n - 1), x.max()],
+        rtol=1e-6,
+        atol=1e-6,
+    )
+
+    # With no exactly observed value there is no MLE at all
+    with pytest.raises(ValueError, match="exactly observed"):
+        Uniform.fit([2.0, 5.0, 6.0], c=[1, -1, -1])

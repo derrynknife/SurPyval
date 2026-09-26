@@ -6,6 +6,7 @@ from scipy.stats import geom
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
+    eulerian_numbers,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -132,8 +133,14 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         r"""The ``m``-th raw moment :math:`E[T^{m}]`.
 
         Infinite unless :math:`a > m` (the survival decays like
-        :math:`k^{-a}`). Exact for ``m`` of 1 and 2; higher moments are
-        summed over the mass function out to the ``1 - 1e-6`` quantile.
+        :math:`k^{-a}`), and otherwise exact: mixing the Geometric's
+        :math:`E[T^{m} \mid p] = p^{-m} \sum_{i} A(m, i) (1 - p)^{i}`
+        (:math:`A` the Eulerian numbers) over :math:`p \sim
+        \mathrm{Beta}(a, b)` gives
+
+        .. math::
+            E[T^{m}] = \sum_{i=0}^{m-1} A(m, i)\,
+            \frac{B(a - m,\, b + i)}{B(a, b)} .
 
         Examples
         --------
@@ -165,10 +172,16 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
             return 2.0 * c * (c - 1.0) / ((a - 1.0) * (a - 2.0)) - c / (
                 a - 1.0
             )
-        # No closed form for general m; sum out to a far quantile.
-        upper = int(self.qf(1.0 - 1e-6, a, b))
-        k = np.arange(1, upper + 1, dtype=float)
-        return np.sum(k**m * self.df(k, a, b))
+        # The general case of the two above. A sum over the mass function
+        # to the 1 - 1e-6 quantile used to stand in for it, and lost the
+        # heavy tail: 32.28 against 33.25 for m = 3 at a = 5, b = 3.
+        log_norm = self._log_beta(a, b)
+        return float(
+            sum(
+                A * np.exp(self._log_beta(a - m, b + i) - log_norm)
+                for i, A in enumerate(eulerian_numbers(m))
+            )
+        )
 
     def _mom(self, x: npt.NDArray) -> tuple[float, float]:
         r"""Method-of-moments estimate, solved in closed form.

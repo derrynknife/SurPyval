@@ -514,9 +514,10 @@ def test_lr_bounds_respect_user_fixed_parameters():
     assert lr[0] == pytest.approx(wald[0], rel=0.05)
     assert lr[1] == pytest.approx(wald[1], rel=0.05)
 
-    # A confidence bound on the fixed parameter itself is undefined.
-    with pytest.raises(ValueError, match="fixed at fit time"):
-        m.param_cb("beta", method="lr")
+    # The fixed parameter itself is known: the same degenerate interval as
+    # the Wald method gives (it used to raise for 'lr' only).
+    assert np.array_equal(m.param_cb("beta", method="lr"), [5.0, 5.0])
+    assert np.array_equal(m.param_cb("beta"), [5.0, 5.0])
 
     # The LR function band must bracket the point estimate with the fixed
     # parameter pinned.

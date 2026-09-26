@@ -90,6 +90,8 @@ class SingleProbabilityMixin:
         model = Parametric(self, "MLE", None, False, False, False)
         p = (x_arr * n_arr).sum() / n_arr.sum()
         model.params = np.array([p])
+        # As from_dict sets it, so a fitted and a restored model agree.
+        self._set_support(model, False)  # type: ignore[attr-defined]
         return model
 
     # Narrower than ParametricFitter.from_params, which takes
@@ -133,4 +135,5 @@ class SingleProbabilityMixin:
 
         model = Parametric(self, "given parameters", None, False, False, False)
         model.params = np.atleast_1d(prob)
+        self._set_support(model, False)  # type: ignore[attr-defined]
         return model

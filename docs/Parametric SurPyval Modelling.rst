@@ -208,7 +208,9 @@ Every function of the distribution is a method of the model. As well as the
 five functions above there is the quantile function ``qf`` (the inverse of
 the CDF, so ``model.qf(0.1)`` is the "B10 life" by which 10% have failed), the
 conditional survival ``cs(x, X)`` (the probability of surviving a further
-``x`` given survival to ``X``), and the summary statistics:
+``x`` given survival to ``X``, the ratio :math:`R(X + x)/R(X)` of the model's
+own survival function, so it counts any never-failing or zero-inflated
+proportion and any offset), and the summary statistics:
 
 .. jupyter-execute::
 
@@ -340,8 +342,11 @@ negative log-likelihood but, by default, not the data. So a restored model can
 still give Wald confidence bounds, ``neg_ll()`` and ``aic()``, but not the
 criteria that need the sample size (``bic()``, ``aic_c()``), ``plot()``, or
 likelihood-ratio bounds -- each says so if asked. Pass ``with_data=True`` to
-``to_dict`` to keep the data, which restores ``plot()`` and every information
-criterion; for likelihood-ratio bounds, refit.
+``to_dict`` to keep the data, which restores ``plot()``, every information
+criterion and the likelihood-ratio bounds. A model of a ``Discretize``
+distribution is saved and restored the same way; one of a
+``CustomDistribution`` is restored once the same distribution has been
+constructed again (see :doc:`CustomDistribution <univariate/custom>`).
 
 Using censored data
 -------------------
@@ -1445,7 +1450,7 @@ Every distribution used so far is *continuous* -- a failure time can be any posi
      - any continuous ``dist`` on :math:`[0, \infty)`
      - that of ``dist``, grouped into whole cycles
 
-along with the ``Poisson``, a count on :math:`\{0, 1, 2, \dots\}`. They are used exactly like the continuous distributions -- the same ``fit()`` call, the same ``sf``, ``ff``, ``hf``, ``Hf`` and ``df`` methods, and the same support for censoring, truncation, and counts. Two meanings shift slightly, and are explained in :doc:`Parametric Estimation`: ``df`` is the probability *mass* :math:`P(T = k)` and ``sf`` is :math:`P(T > k)`.
+along with the ``Poisson``, a count on :math:`\{0, 1, 2, \dots\}`. They are used exactly like the continuous distributions -- the same ``fit()`` call, the same ``sf``, ``ff``, ``hf``, ``Hf`` and ``df`` methods, and the same support for censoring, truncation, and counts. Two meanings shift slightly, and are explained in :doc:`Parametric Estimation`: ``df`` is the probability *mass* :math:`P(T = k)` and ``sf`` is :math:`P(T > k)`. The data (and any truncation bounds) must be whole numbers; ``fit`` refuses anything else rather than guess how to round it.
 
 The ``Geometric`` distribution is the discrete analogue of the ``Exponential``: each cycle fails independently with a constant probability ``p``, so it is *memoryless*. It models the number of cycles until the first failure.
 
@@ -1790,8 +1795,9 @@ the names of the parameters, the bounds of the parameters, and the distribution 
     Gompertz = surv.CustomDistribution(name, Hf, param_names, bounds, support)
 
 The cumulative hazard function must have the signature ``(x, *params)``, and
-the names ``p``, ``gamma`` and ``f0`` are reserved for the limited failure
-population, offset and zero-inflation parameters. Everything else is derived:
+the names ``gamma`` and ``f0`` are reserved for the offset and zero-inflation
+parameters (a parameter may be called ``p``: the limited-failure proportion of
+such a model is then ``lfp_p``, as for the Geometric). Everything else is derived:
 the hazard and the density are obtained by automatically differentiating the
 cumulative hazard, and the survival function is :math:`e^{-H(x)}` (see
 :doc:`CustomDistribution API <univariate/custom>`).

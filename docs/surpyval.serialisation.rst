@@ -55,11 +55,12 @@ Some details differ between families:
   life model, a regression fitted with a formula that uses a
   data-dependent transform (such as ``scale()``), and a copula of a
   custom family.
-- A model of a ``CustomDistribution`` or of a ``Discretize(...)``
-  distribution is written, but ``from_dict`` cannot rebuild it (it only
-  resolves SurPyval's own distributions by name) and raises a
-  ``ValueError``. Save its ``params`` and rebuild it with the
-  distribution's ``from_params``.
+- A model of a ``Discretize(...)`` distribution is read back like any
+  other. A model of a ``CustomDistribution`` stores the distribution's
+  name only (its cumulative hazard is a Python function):
+  ``from_dict`` reads it back in a session that has constructed the same
+  ``CustomDistribution`` again, and otherwise raises a ``ValueError``
+  saying so.
 - The dictionaries can hold ``inf`` and ``-inf`` (an untruncated bound, a
   cumulative hazard after the last death). Python's ``json`` module and
   BSON store these, but they are not strict JSON, so a strict parser in

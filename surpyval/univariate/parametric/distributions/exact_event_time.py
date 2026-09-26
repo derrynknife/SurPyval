@@ -219,11 +219,23 @@ class ExactEventTime_(ParametricFitter):
             )
         max_r = np.max(x[c == 1])
         min_l = np.min(x[c == -1])
+        # "Not yet" at max_r and "already" at min_l bracket T only when
+        # max_r < min_l. Otherwise the checks contradict each other and no
+        # T has any likelihood; the midpoint of the reversed pair used to
+        # be returned as if it were an estimate.
+        if not max_r < min_l:
+            raise ValueError(
+                "The checks contradict each other: the event had not yet "
+                f"happened at {max_r:g} (c=1) but had already happened at "
+                f"{min_l:g} (c=-1). Every 'not yet' check must come before "
+                "every 'already' check."
+            )
 
         T = (max_r + min_l) / 2.0
 
         model = Parametric(self, "MLE", None, False, False, False)
         model.params = np.array([T])
+        self._set_support(model, False)
         return model
 
     def from_params(
@@ -241,7 +253,9 @@ class ExactEventTime_(ParametricFitter):
         """
         reject_structural_params(self.name, gamma, p, f0)
         model = Parametric(self, "from_params", None, False, False, False)
-        model.params = np.array([params])
+        # T given bare or as a one-element list, like every from_params
+        model.params = np.atleast_1d(np.asarray(params, dtype=float)).ravel()
+        self._set_support(model, False)
         return model
 
 

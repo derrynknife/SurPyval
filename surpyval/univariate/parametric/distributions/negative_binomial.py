@@ -1,3 +1,5 @@
+from math import comb
+
 import numpy.typing as npt
 from autograd.scipy.special import gammaln
 from scipy.stats import nbinom
@@ -5,6 +7,7 @@ from scipy.stats import nbinom
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
+    stirling2_numbers,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -112,21 +115,35 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         return 1.0 + r * (1.0 - p) / p
 
     def moment(self, m: int, r: Boxable, p: Boxable) -> Boxable:
-        r"""The ``m``-th raw moment :math:`E[T^{m}]`.
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`, exactly.
 
-        Summed over the mass function out to the ``1 - 1e-9`` quantile,
-        so it agrees with the exact value to about seven significant
-        figures.
+        With :math:`T = 1 + Y`, the factorial moments of :math:`Y` are
+        :math:`E[(Y)_{j}] = r (r + 1) \cdots (r + j - 1)\,((1 - p)/p)^{j}`;
+        the Stirling numbers of the second kind turn them into raw moments
+        of :math:`Y`, and the binomial expansion of :math:`(1 + Y)^{m}`
+        into those of :math:`T`. ``moment(1)`` is ``mean()``.
 
         Examples
         --------
         >>> from surpyval import NegativeBinomial
         >>> NegativeBinomial.moment(2, 3.0, 0.4)
-        np.float64(41.499997892103195)
+        41.5
         """
-        upper = int(self.qf(1.0 - 1e-9, r, p))
-        k = np.arange(1, upper + 1, dtype=float)
-        return np.sum(k**m * self.df(k, r, p))
+        if m == 0:
+            return 1.0
+        if m == 1:
+            return self.mean(r, p)
+        # A sum over the mass function to the 1 - 1e-9 quantile used to
+        # stand in for this, and lost the eighth digit.
+        odds = (1.0 - p) / p
+        factorial: list = [1.0]
+        for j in range(1, m + 1):
+            factorial.append(factorial[-1] * (r + j - 1.0) * odds)
+        raw_y = [
+            sum(s * factorial[i] for i, s in enumerate(stirling2_numbers(j)))
+            for j in range(m + 1)
+        ]
+        return float(sum(comb(m, j) * raw_y[j] for j in range(m + 1)))
 
     def random(
         self, size: int | tuple[int, ...], r: Boxable, p: Boxable

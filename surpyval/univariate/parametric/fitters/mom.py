@@ -161,6 +161,9 @@ def mom(model: "Parametric") -> Any:
         np.array(init),
         args=(dist, inv_trans, const, offset, moments),
     )
+    # scipy's default here (no bounds or constraints); reported as
+    # ``model.optimizer``
+    res.optimizer = "BFGS"
     if not res.success or res.fun > 1e-8:
         res_nm = minimize(
             mom_fun,
@@ -171,6 +174,7 @@ def mom(model: "Parametric") -> Any:
         )
         if np.isfinite(res_nm.fun) and res_nm.fun < res.fun:
             res = res_nm
+            res.optimizer = "Nelder-Mead"
     # The objective is a sum of squared standardised-moment differences
     # (see ``mom_fun``), so this threshold is in those units. Healthy
     # fits land in one of two places: ~1e-12 when the moment equations

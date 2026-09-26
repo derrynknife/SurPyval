@@ -346,10 +346,9 @@ def from_dict(model_dict: dict) -> Any:
         by a newer SurPyval (a higher ``"schema"`` version), holds
         parameters outside the distribution's bounds (for a univariate
         parametric model), or names a distribution the reader does not
-        know --
-        which includes every ``CustomDistribution`` and ``Discretize``
-        distribution, since only SurPyval's own distributions are
-        resolved by name.
+        know -- which includes a ``CustomDistribution`` that has not been
+        constructed again in this session (a dictionary stores only its
+        name, since its cumulative hazard is a Python function).
 
     Notes
     -----

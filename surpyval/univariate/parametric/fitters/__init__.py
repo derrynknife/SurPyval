@@ -40,7 +40,14 @@ def fallback_minimize(
     """
     assert jac is not None and hess is not None
     with np.errstate(all="ignore"):
-        res = minimize(fun, init, method="BFGS", jac=jac, args=args)
+        # BFGS through the same rescaling maximum likelihood uses (see
+        # ``preconditioned_bfgs``). Plain BFGS stops on an absolute
+        # gradient threshold, so MPS and MSE were not scale invariant:
+        # a Weibull MPS fit to data in thousands stopped 1% short of the
+        # optimum and reported success.
+        res = preconditioned_bfgs(fun, init, args, jac)
+        # Which rung produced the answer, reported as ``model.optimizer``
+        res.optimizer = "BFGS"
 
         failed = (
             (res.success is False)
@@ -57,18 +64,43 @@ def fallback_minimize(
                 tol=newton_tol,
                 args=args,
             )
-            if newton.success and np.isfinite(newton.fun):
+            # Only an improvement replaces what BFGS found. BFGS often
+            # reports "precision loss" *at* the optimum, and a Newton-CG
+            # run from the cold start can then "succeed" at a worse point,
+            # which used to be taken anyway (a Normal MSE fit to data in
+            # thousandths landed 1% off that way).
+            if (
+                newton.success
+                and np.isfinite(newton.fun)
+                and not (_usable(res) and res.fun <= newton.fun)
+            ):
                 res = newton
+                res.optimizer = "Newton-CG"
 
         # The last rung is derivative free, as described above. It used to
         # be scipy's default method, which with no jacobian passed is BFGS
         # on finite differences: the method that had just failed with an
         # exact gradient, retried with a worse one -- and no help at all
-        # for the zero-hessian case, whose gradients are the problem.
+        # for the zero-hessian case, whose gradients are the problem. It
+        # runs from the cold start, as it always has, and also from the
+        # best point found so far, which it then polishes rather than
+        # discards (Nelder-Mead never ends worse than its start); the
+        # better answer is kept. Either start alone can end in the worse
+        # of two optima.
         if (res.success is False) or (np.isnan(res.x).any()):
-            res = minimize(fun, init, method="Nelder-Mead", args=args)
+            starts = [init] + ([res.x] if _usable(res) else [])
+            for x0 in starts:
+                nm = minimize(fun, x0, method="Nelder-Mead", args=args)
+                if not (_usable(res) and res.fun < nm.fun):
+                    res = nm
+                    res.optimizer = "Nelder-Mead"
 
     return res
+
+
+def _usable(res: Any) -> bool:
+    """A result with finite parameters and a finite objective."""
+    return bool(np.all(np.isfinite(res.x)) and np.isfinite(res.fun))
 
 
 def preconditioned_bfgs(

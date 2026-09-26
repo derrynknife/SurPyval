@@ -4,6 +4,7 @@ from scipy.stats import uniform
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
+    eulerian_numbers,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -111,23 +112,28 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return 1.0 / p
 
     def moment(self, m: int, p: Boxable) -> Boxable:
-        r"""The ``m``-th raw moment :math:`E[T^{m}]`.
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`, exactly:
 
-        Summed over the mass function out to the ``1 - 1e-9`` quantile,
-        so it agrees with the exact value to about seven significant
-        figures.
+        .. math::
+            E[T^{m}] = p^{-m} \sum_{i=0}^{m-1} A(m, i)\,(1 - p)^{i}
+
+        with :math:`A(m, i)` the Eulerian numbers, so ``moment(1)`` is
+        ``mean()``.
 
         Examples
         --------
         >>> from surpyval import Geometric
         >>> Geometric.moment(2, 0.2)
-        np.float64(44.99999065187732)
+        45.0
         """
-        # Non-central moment E[T^m] by a truncated sum over the pmf out to a
-        # far quantile (no simple closed form for general m).
-        upper = int(self.qf(1.0 - 1e-9, p))
-        k = np.arange(1, upper + 1, dtype=float)
-        return np.sum(k**m * self.df(k, p))
+        if m == 0:
+            return 1.0
+        if m == 1:
+            return self.mean(p)
+        # The old sum over the mass function stopped at the 1 - 1e-9
+        # quantile, so moment(1) and mean() disagreed in the eighth digit.
+        q = 1.0 - p
+        return sum(a * q**i for i, a in enumerate(eulerian_numbers(m))) / p**m
 
     def random(self, size: int | tuple[int, ...], p: Boxable) -> npt.NDArray:
         """Draw ``size`` cycle counts by inverting the CDF (see ``qf``).

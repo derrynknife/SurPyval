@@ -512,13 +512,18 @@ def test_fixed_event_probability_is_unchanged_and_separate():
         np.testing.assert_allclose(
             FixedEventProbability.sf(x, P_BERN), 1 - P_BERN
         )
-    # Its F is constant, so it still has no density, hazard rate, quantile
-    # or mean: the mass is an atom rather than a density, and there is no
-    # time axis to invert or average over.
-    for absent in ("df", "hf", "qf", "mean"):
+    # Its F is constant, so it still has no density, hazard rate or
+    # quantile: the mass is an atom rather than a density, and there is no
+    # time axis to invert. Its moments are those of the 0/1 event
+    # indicator, and ``mean`` (once missing while ``moment`` existed) is
+    # the first of them.
+    for absent in ("df", "hf", "qf"):
         assert not any(
             absent in k.__dict__ for k in type(FixedEventProbability).__mro__
         ), absent
+    assert FixedEventProbability.mean(P_BERN) == FixedEventProbability.moment(
+        1, P_BERN
+    )
     # ``Hf`` is the exception, and is present. -ln R(x) is a perfectly good
     # constant, exactly as for ExactEventTime, whose Hf exists while its hf
     # does not. Its absence was not a design decision but an omission: the

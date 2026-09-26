@@ -45,6 +45,31 @@ distributions: list[OptimisedFitMixin] = [
 METRICS = ["aic", "aic_c", "bic", "neg_ll"]
 
 
+def _candidate_names(names: Iterable[str] | None, argument: str) -> set[str]:
+    """The lower-cased distribution names in ``include`` / ``exclude``.
+
+    Matched without regard to case, and checked: a name that is not a
+    candidate (a typo, or a distribution ``fit_best`` does not try) used
+    to leave ``include`` with nothing to fit and ``fit_best`` returning
+    ``None`` in silence.
+    """
+    if names is None:
+        return set()
+    if isinstance(names, str):
+        # A bare name, not an iterable of its characters
+        names = [names]
+    wanted = {str(name).lower() for name in names}
+    known = {dist.name.lower() for dist in distributions}
+    unknown = sorted(wanted - known)
+    if unknown:
+        raise ValueError(
+            f"Unknown distribution name(s) in `{argument}`: {unknown}. "
+            "fit_best tries "
+            f"{sorted(dist.name for dist in distributions)}."
+        )
+    return wanted
+
+
 def fit_best(
     x: npt.ArrayLike,
     c: npt.ArrayLike | None = None,
@@ -79,11 +104,12 @@ def fit_best(
         The model-selection criterion to minimise: ``"aic"`` (default),
         ``"aic_c"``, ``"bic"`` or ``"neg_ll"``.
     include : iterable of str, optional
-        Only try distributions with these names. Mutually exclusive
-        with ``exclude``.
+        Only try distributions with these names (matched without regard
+        to case; a name that is not a candidate raises a ``ValueError``).
+        Mutually exclusive with ``exclude``.
     exclude : iterable of str, optional
-        Try every candidate except distributions with these names.
-        Mutually exclusive with ``include``.
+        Try every candidate except distributions with these names, checked
+        in the same way. Mutually exclusive with ``include``.
 
     Returns
     -------
@@ -100,8 +126,8 @@ def fit_best(
     >>> x = Weibull.random(50, 10, 2)
     >>> model = fit_best(x, metric="bic")
     """
-    include_set = set(include) if include is not None else set()
-    exclude_set = set(exclude) if exclude is not None else set()
+    include_set = _candidate_names(include, "include")
+    exclude_set = _candidate_names(exclude, "exclude")
 
     if metric not in METRICS:
         raise ValueError(
@@ -113,11 +139,13 @@ def fit_best(
 
     if len(exclude_set) > 0:
         candidates = [
-            dist for dist in distributions if dist.name not in exclude_set
+            dist
+            for dist in distributions
+            if dist.name.lower() not in exclude_set
         ]
     elif len(include_set) > 0:
         candidates = [
-            dist for dist in distributions if dist.name in include_set
+            dist for dist in distributions if dist.name.lower() in include_set
         ]
     else:
         candidates = distributions

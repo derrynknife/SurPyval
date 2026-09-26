@@ -106,11 +106,21 @@ class InformationCriteriaMixin:
         `Bayesian Information Criterion for Censored Survival Models
         <https://www.jstor.org/stable/2677130>`_.
 
+        Notes
+        -----
+        The sample size in the penalty :math:`k \ln d` is the number of
+        observed events :math:`d` that each model's ``_ic_counts`` reports
+        (for a univariate parametric model, every unit whose failure was
+        observed, exactly or within a left- or interval-censored window).
+        Should that be zero, the number of units is used instead, so the
+        criterion is always finite: :math:`\ln 0` made it :math:`-\infty`,
+        and so the "best" model of any comparison.
         """
         if hasattr(self, "_bic"):
             return self._bic
-        n_observed, _ = self._ic_counts()
-        self._bic = self._ic_k() * np.log(n_observed) + 2 * self.neg_ll()
+        n_observed, n_total = self._ic_counts()
+        n_penalty = n_observed if n_observed > 0 else n_total
+        self._bic = self._ic_k() * np.log(n_penalty) + 2 * self.neg_ll()
         return self._bic
 
     def aic(self) -> float:
@@ -163,10 +173,22 @@ class InformationCriteriaMixin:
         >>> model = Weibull.fit(x)
         >>> model.aic_c()
         np.float64(529.1774241880189)
+
+        Notes
+        -----
+        The correction :math:`(2k^2 + 2k)/(N - k - 1)`, with :math:`N` the
+        number of observations, only exists for :math:`N > k + 1`. With
+        fewer observations the corrected criterion is undefined and
+        ``nan`` is returned (the formula gave ``inf`` at
+        :math:`N = k + 1`, and a value *below* ``aic()`` for smaller
+        :math:`N`, which would have won a comparison).
         """
         if hasattr(self, "_aic_c"):
             return self._aic_c
         k = self._ic_k_aic_c()
         _, n = self._ic_counts()
-        self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
+        if n - k - 1 <= 0:
+            self._aic_c = float("nan")
+        else:
+            self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
         return self._aic_c

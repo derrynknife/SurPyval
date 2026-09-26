@@ -48,6 +48,21 @@ def _rr_fit(a: npt.NDArray, b: npt.NDArray) -> Any:
     return np.array([1.0, intercept])
 
 
+def _offset_cap(x: npt.NDArray, c: npt.NDArray) -> float:
+    """The value an MPP offset must stay below.
+
+    Every row whose failure has been seen -- exact, left censored, or an
+    interval -- must lie above the offset, or the fitted model gives it no
+    probability (a density or window probability of zero, an infinite
+    negative log-likelihood). A right-censored row may sit below it.
+    """
+    x = np.asarray(x, dtype=float)
+    c = np.asarray(c)
+    upper = x[:, 1] if x.ndim == 2 else x
+    seen = upper[(c != 1) & np.isfinite(upper)]
+    return float(np.min(seen)) if seen.size else np.inf
+
+
 def mpp_from_ecfd(
     dist: Any, x: npt.ArrayLike, F: npt.ArrayLike
 ) -> dict[str, Any]:
@@ -108,6 +123,33 @@ def mpp(model: "Parametric") -> dict[str, Any]:
         )
         results["params"] = np.atleast_1d(results["params"])
         results.setdefault("gamma", 0.0)
+        cap = _offset_cap(x, c)
+        if offset and not results["gamma"] < cap:
+            # The regression intercept alone places the offset, and it
+            # can land past the first failure (an Exponential fit to data
+            # starting at 5.001 put it at 5.355), leaving that failure
+            # outside the support. The best line with the offset in the
+            # support has it at the edge, so the offset is set just below
+            # the first failure and the rest refitted with it held there.
+            finite = np.asarray(x, dtype=float)
+            finite = finite[np.isfinite(finite)]
+            spread = float(np.ptp(finite)) if finite.size else 0.0
+            gamma = cap - 1e-6 * (spread if spread > 0 else max(abs(cap), 1))
+            t_shift = None if t is None else np.asarray(t, dtype=float) - gamma
+            refit = dist.mpp(
+                np.asarray(x, dtype=float) - gamma,
+                c,
+                n,
+                t=t_shift,
+                heuristic=heuristic,
+                rr=rr,
+                on_d_is_0=on_d_is_0,
+                offset=False,
+            )
+            results = {
+                "params": np.atleast_1d(refit["params"]),
+                "gamma": gamma,
+            }
         return results
 
     x_, r, d, F = plotting_positions(
@@ -137,7 +179,9 @@ def mpp(model: "Parametric") -> dict[str, Any]:
     y_pp = dist.mpp_y_transform(y_pp)
 
     if offset:
-        x_min = np.min(x_pp)
+        # Below the first plotted failure, and below every other seen
+        # failure too (see ``_offset_cap``).
+        x_min = min(np.min(x_pp), _offset_cap(x, c))
 
         def fun(gamma: float) -> Any:
             g = x_min - np.exp(-gamma)

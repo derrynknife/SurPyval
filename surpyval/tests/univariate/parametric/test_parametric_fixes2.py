@@ -362,5 +362,7 @@ def test_mps_truncation_messages_have_no_space_run():
 
 def test_censored_uniform_reports_its_search_as_the_optimizer():
     censored = surv.Uniform.fit([0, 9.9, 9.9, 9.9, 10], c=[0, 1, 1, 1, 0])
-    assert censored.optimizer.startswith("L-BFGS-B")
+    # The search is a root of the likelihood's derivative (it was
+    # L-BFGS-B, which stopped short of the optimum)
+    assert censored.optimizer.startswith("brentq")
     assert surv.Uniform.fit([1.0, 2.0, 3.0, 5.0]).optimizer == "closed-form"

@@ -172,9 +172,14 @@ class RoystonParmarModel(SerialisableMixin):
     # -- distribution functions -------------------------------------------
 
     def sf(self, t: Any) -> np.ndarray:
-        """Survival function at ``t``."""
+        """Survival function at ``t``: 1 at and before time 0 (the spline
+        is in ``log t``, which does not exist there, so this came back nan)
+        and 0 at infinity, as in the likelihood (see ``_sf_at``)."""
+        t = np.asarray(t, dtype=float)
         with np.errstate(all="ignore"):
-            return _sf_from_eta(self._eta(t), self.scale)
+            out = _sf_from_eta(self._eta(t), self.scale)
+        out = np.where(t <= 0.0, 1.0, out)
+        return np.where(np.isposinf(t), 0.0, out)
 
     def ff(self, t: Any) -> np.ndarray:
         """Failure (CDF) function ``1 - sf(t)``."""
@@ -182,7 +187,8 @@ class RoystonParmarModel(SerialisableMixin):
 
     def Hf(self, t: Any) -> np.ndarray:
         """Cumulative hazard ``-log sf(t)``."""
-        return -np.log(self.sf(t))
+        # + 0.0 turns the -0.0 of -log(1) at t <= 0 into 0.0
+        return -np.log(self.sf(t)) + 0.0
 
     def hf(self, t: Any) -> np.ndarray:
         """Hazard rate ``df(t) / sf(t)``."""
@@ -195,7 +201,10 @@ class RoystonParmarModel(SerialisableMixin):
             eta = self._eta(t)
             sp = self._eta_deriv(t)
             _, log_negdS = _scale_terms(eta, self.scale)
-            return np.exp(log_negdS + np.log(sp) - np.log(t))
+            out = np.exp(log_negdS + np.log(sp) - np.log(t))
+        # Nothing fails at or before time 0 (nan there before), nor at
+        # infinity; with sf = 1 there, hf and Hf are 0 too.
+        return np.where((t <= 0.0) | np.isposinf(t), 0.0, out)
 
     def qf(self, q: Any) -> np.ndarray:
         """Quantile function: the time at which ``ff(t) = q``."""

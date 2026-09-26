@@ -5,6 +5,7 @@ from scipy.stats import poisson
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
+    stirling2_numbers,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -104,23 +105,25 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         return mu
 
     def moment(self, m: int, mu: Boxable) -> Boxable:
-        r"""The ``m``-th raw moment :math:`E[T^{m}]`.
-
-        Summed over the mass function out to the ``1 - 1e-9`` quantile,
-        so it agrees with the exact value to about seven significant
-        figures.
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`, exactly: the
+        Touchard polynomial :math:`\sum_{j} S(m, j)\,\mu^{j}` (the
+        factorial moments of a Poisson are :math:`\mu^{j}`; :math:`S` are
+        the Stirling numbers of the second kind), so ``moment(1)`` is
+        ``mean()``.
 
         Examples
         --------
         >>> from surpyval import Poisson
         >>> Poisson.moment(2, 3.0)
-        np.float64(11.999999794454748)
+        12.0
         """
-        # Non-central moment E[T^m] by a truncated sum over the pmf out to a
-        # far quantile (no simple closed form for general m).
-        upper = int(poisson.ppf(1.0 - 1e-9, mu))
-        k = np.arange(0, upper + 1, dtype=float)
-        return np.sum(k**m * self.df(k, mu))
+        if m == 1:
+            return self.mean(mu)
+        # A sum over the mass function to the 1 - 1e-9 quantile used to
+        # stand in for this, and lost the eighth digit.
+        return float(
+            sum(s * mu**j for j, s in enumerate(stirling2_numbers(m)))
+        )
 
     def random(self, size: int | tuple[int, ...], mu: Boxable) -> npt.NDArray:
         """Draw ``size`` Poisson counts (as floats).
