@@ -463,7 +463,16 @@ required and exactly two series are supported. With ``how="IFM"`` [JoeXu1996mv]_
    (under ``how="MLE"`` they supply the starting values and are re-estimated
    with the configuration they were fitted with: the same offset,
    limited-failure or zero-inflated option, and any ``fixed`` parameters kept
-   at their values);
+   at their values). A margin can also be **non-parametric** (the class
+   ``surpyval.KaplanMeier``, say, or a fitted non-parametric model), which
+   gives the semi-parametric estimator of [GenestGhoudiRivest1995mv]_: the
+   margin's step CDF, rescaled by :math:`N/(N+1)` so the largest values stay
+   inside the unit square, replaces :math:`F_j`, and the margin contributes no
+   density term (a step function has none, and it would not depend on
+   :math:`\theta`). The copula parameter then rests on no assumption about
+   the margins' shapes; the likelihood is a pseudo-likelihood, so its value
+   and the criteria compare copula families with the same margins only, and
+   ``k`` counts the copula parameters (plus any parametric margin's);
 2. with the margins fixed, the copula parameter is chosen to maximise the joint
    log-likelihood above (censoring operations and truncation divisor
    included). The search is a Nelder-Mead search on an unconstrained
@@ -555,3 +564,8 @@ simulating correlated lifetimes and defining a new copula family — see the
 .. [Nelsen2006mv] Nelsen, R. B. (2006). *An Introduction to Copulas*
    (2nd ed.). Springer. The standard reference for the families, dependence
    measures and tail dependence used on this page.
+
+
+.. [GenestGhoudiRivest1995mv] Genest, C., Ghoudi, K. and Rivest, L.-P.
+   (1995). A semiparametric estimation procedure of dependence parameters in
+   multivariate families of distributions. *Biometrika*, 82(3), 543-552.

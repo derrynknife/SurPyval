@@ -170,6 +170,17 @@ with the same configuration: an offset, limited-failure or zero-inflated
 option is kept, and so are its ``fixed`` parameters. A non-parametric
 margin, which has no parameters to re-estimate, needs IFM.)
 
+A margin can also be **non-parametric**: pass ``surpyval.KaplanMeier`` (or a
+fitted non-parametric model) to estimate the dependence without assuming any
+margin's shape. This is the semi-parametric estimator described in
+:doc:`Multivariate Analysis`; its likelihood compares copula families that
+share the same margins, not margin choices:
+
+.. jupyter-execute::
+
+    semi = Clayton.fit(data, margins=[surv.KaplanMeier, surv.KaplanMeier])
+    print("theta, Kaplan-Meier margins:", semi.params.round(3))
+
 .. jupyter-execute::
 
     m1 = surv.Weibull.fit(x1)

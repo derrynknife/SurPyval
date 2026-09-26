@@ -117,6 +117,13 @@ def fit_best(
         The fitted model that minimises ``metric``, or ``None`` when no
         candidate converged.
 
+    Raises
+    ------
+    ValueError
+        If candidates fitted but none has a finite ``metric`` -- for
+        ``"aic_c"``, when every candidate has at least as many parameters
+        as observed failures minus one.
+
     Examples
     --------
     >>> from surpyval import fit_best
@@ -152,6 +159,7 @@ def fit_best(
 
     measure = np.inf
     model: Parametric | None = None
+    n_fitted = 0
     for dist in candidates:
         try:
             temp_model = dist.fit(x, c, n, t)
@@ -160,7 +168,21 @@ def fit_best(
             warnings.warn(str(e))
             warnings.warn(f"{dist.name} distribution failed to fit")
             continue
+        n_fitted += 1
         if tmp_measure < measure:
             measure = tmp_measure
             model = temp_model
+    if model is None and n_fitted > 0:
+        # Every candidate fitted but none has a finite value of the
+        # metric: AIC_c is undefined (nan) once the sample size d is at
+        # most k + 1, which with heavy censoring can hold for every
+        # candidate. Returning None here read as "nothing converged".
+        raise ValueError(
+            f"{n_fitted} candidate(s) fitted, but none has a finite "
+            f"{metric!r}. AIC_c needs more observed failures than "
+            "parameters plus one; compare with metric='aic' instead."
+            if metric == "aic_c"
+            else f"{n_fitted} candidate(s) fitted, but none has a finite "
+            f"{metric!r}."
+        )
     return model

@@ -107,3 +107,13 @@ def test_a_restored_model_keeps_its_likelihood():
     # a model built from parameters still has no likelihood
     with pytest.raises(ValueError, match="fit with data"):
         surv.Weibull.from_params([10.0, 2.0]).neg_ll()
+
+
+def test_fit_best_says_why_when_no_candidate_has_a_finite_aic_c():
+    # three failures and many survivors: d = 3 <= k + 1 for every
+    # two-parameter candidate, so AIC_c is undefined for all of them
+    x = [1.0, 2.0, 3.0] + [10.0] * 20
+    c = [0, 0, 0] + [1] * 20
+    with pytest.raises(ValueError, match="metric='aic'"):
+        surv.fit_best(x, c=c, metric="aic_c", include=["Weibull"])
+    assert surv.fit_best(x, c=c, metric="aic", include=["Weibull"]) is not None

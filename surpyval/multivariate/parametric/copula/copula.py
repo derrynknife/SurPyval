@@ -260,21 +260,45 @@ class Copula:
         tl: Any,
         tr: Any,
     ) -> dict:
-        """Transform one dimension's data into copula (u-space) arrays."""
-        u = onp.clip(onp.asarray(margin.ff(x), dtype=float), _EPS, 1 - _EPS)
+        """Transform one dimension's data into copula (u-space) arrays.
+
+        A non-parametric margin (e.g. a fitted ``KaplanMeier``) gives the
+        semi-parametric pseudo-likelihood of Genest, Ghoudi and Rivest
+        (1995): its step CDF is rescaled by ``N/(N+1)`` so the largest
+        values stay inside the unit square, and it contributes no density
+        term -- a step function has none, and the term would not depend
+        on the copula parameter anyway.
+        """
+        semiparametric = _is_nonparametric(margin)
+        scale = 1.0
+        if semiparametric:
+            n_units = float(onp.max(getattr(margin, "r", [len(x)])))
+            scale = n_units / (n_units + 1.0)
+        u = onp.clip(
+            scale * onp.asarray(margin.ff(x), dtype=float), _EPS, 1 - _EPS
+        )
         # An interval may start at the edge of a margin's support (0 for a
         # LogNormal, whose ff takes log(0) = -inf on the way to the correct
         # value 0); that is not an error, so it is not reported as one.
         with onp.errstate(divide="ignore"):
-            ulo = onp.asarray(margin.ff(xl), dtype=float)
-            uhi = onp.asarray(margin.ff(xr), dtype=float)
+            ulo = scale * onp.asarray(margin.ff(xl), dtype=float)
+            uhi = scale * onp.asarray(margin.ff(xr), dtype=float)
         ulo = onp.clip(ulo, _EPS, 1 - _EPS)
         uhi = onp.clip(uhi, _EPS, 1 - _EPS)
-        with onp.errstate(divide="ignore"):
-            logf = onp.log(onp.clip(onp.asarray(margin.df(x)), _TINY, None))
+        if semiparametric:
+            logf = onp.zeros(onp.shape(u))
+        else:
+            with onp.errstate(divide="ignore"):
+                logf = onp.log(
+                    onp.clip(onp.asarray(margin.df(x)), _TINY, None)
+                )
         has_trunc = bool(onp.isfinite(tl).any() or onp.isfinite(tr).any())
-        ul = _ff_where_finite(margin, tl, 0.0)
-        ur = _ff_where_finite(margin, tr, 1.0)
+        ul = scale * _ff_where_finite(margin, tl, 0.0)
+        ur = onp.where(
+            onp.isfinite(onp.asarray(tr, dtype=float)),
+            scale * _ff_where_finite(margin, tr, 1.0),
+            1.0,
+        )
         return {
             "c": onp.asarray(c, dtype=int),
             "u": u,
@@ -318,8 +342,11 @@ class Copula:
             configuration: it is re-estimated jointly with the copula with
             the same offset, limited-failure or zero-inflated option, and
             any parameters it was fitted with ``fixed`` stay at their
-            values. A non-parametric margin can only be used with
-            ``"IFM"``.
+            values. A non-parametric margin (a class such as
+            ``surpyval.KaplanMeier``, or a fitted non-parametric model) can
+            only be used with ``"IFM"``: it gives the semi-parametric
+            pseudo-likelihood estimator, and the likelihood and criteria
+            then compare copula families with the same margins only.
         how : {"IFM", "MLE"}
             ``"IFM"`` (default) fits each margin independently then the
             single copula parameter (robust two-stage estimation).
@@ -381,10 +408,14 @@ class Copula:
             theta = self._fit_theta(margin_models, data, init)
             # A margin passed already fitted is used as it is, so only the
             # margins fitted here count as estimated parameters.
+            # A non-parametric margin has no parameter vector: the
+            # criteria then count the copula's parameters only (and are a
+            # pseudo-likelihood's, for comparing copula families with the
+            # same margins).
             k = len(self.param_names) + sum(
-                len(m.params)
+                len(getattr(m, "params", ()))
                 for m, given in zip(margin_models, margins)
-                if hasattr(given, "fit")
+                if hasattr(given, "fit") and not _is_nonparametric(m)
             )
         else:
             theta, margin_models = self._fit_joint(
@@ -774,6 +805,13 @@ def _broadcast_pair(u: Any, v: Any) -> tuple:
     """
     zeros = onp.zeros(onp.broadcast_shapes(onp.shape(u), onp.shape(v)))
     return u + zeros, v + zeros
+
+
+def _is_nonparametric(margin: Any) -> bool:
+    """True for a fitted non-parametric margin (a step CDF, no params)."""
+    from surpyval.distribution import NonParametricDistribution
+
+    return isinstance(margin, NonParametricDistribution)
 
 
 def _ff_where_finite(margin: Any, t: Any, fill: float) -> npt.NDArray:
