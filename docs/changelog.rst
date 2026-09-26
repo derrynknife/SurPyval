@@ -4,6 +4,59 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Design changes approved after the third documentation review.**
+
+  - **One sample size for BIC and AIC_c.** Every model that reports a BIC
+    or AIC_c uses the number of observed failures (exact, left- and
+    interval-censored, weighted by their counts), or the number of
+    observations when there is none. Recurrent-event models count
+    observed events; copulas count rows in which at least one series
+    failed. Previously univariate models counted failures for BIC but all
+    units for AIC_c, regression counted exact failures only (``-inf``
+    without one), recurrent models counted exact events (NaN without
+    one), and copula and Royston-Parmar models counted every row.
+    Univariate BIC on exact and right-censored data is unchanged; AIC_c on
+    censored data now uses the failures. Restored models store the sample
+    size (``"ic_n"``), so ``bic()`` and ``aic_c()`` work without the data.
+    ``fit_best(metric="aic_c")`` raises a clear error when no candidate
+    has a finite AIC_c instead of returning ``None``.
+  - **Fine-Gray follows cmprsk on tied times.** The censoring weights are
+    :math:`\hat{G}(t-)/\hat{G}(x_i-)`, with the censoring Kaplan-Meier read
+    just before each time, as in R's ``cmprsk::crr``. Results are
+    unchanged when no censoring time equals an event time.
+  - **Readings from a coarse gauge.** ``GammaProcess.fit(gauge=...)`` (with
+    ``rounding``, ``exact_start`` and ``gauge_method``) maximises the
+    probability that each unit's path passes through its recorded gauge
+    bins. With a gauge step near the mean increment, taking rounded
+    increments at face value more than doubled ``alpha`` and shrank
+    stress coefficients; the gauge likelihood recovers the unrounded
+    estimates. The default fit is unchanged.
+  - **Scale-equivariant parametric fits.** Every continuous distribution
+    and method, with or without an offset, now gives the same answer in
+    any units from 1e-4 to 1e5: the search is scaled per coordinate, MLE
+    normalises its objective per observation, MOM uses the scaled search,
+    MPS no longer evaluates the CDF at the support edge, and offsets start
+    one data spacing (not one unit) below the smallest value, with MPP
+    searching the offset in the data's spacing. At a data scale of 1e-3,
+    Rayleigh MOM had been 1.2% off, Uniform MPS 0.15% and Beta4 MLE 0.1%,
+    and many offset fits never left their start. Fits in their own units
+    move by about 1e-6 relative, towards the optimum.
+  - **Strict-JSON serialisation.** ``to_dict``/``to_json`` no longer emit
+    ``NaN``/``Infinity``: non-finite values are written as ``null`` and
+    listed under ``"non_finite"`` (JSON Pointers by kind), and every reader
+    restores them. The schema version is 2; older dictionaries and files
+    still load. ``to_json(path, with_data=True)`` works for ``Parametric``
+    and ``NonParametric``, and every class-level ``from_dict`` applies the
+    package reader's checks.
+  - **Non-parametric copula margins.** Under ``how="IFM"`` a margin can be
+    ``KaplanMeier`` (or any fitted non-parametric model), giving the
+    semi-parametric estimator of Genest, Ghoudi and Rivest (1995); it
+    used to crash.
+  - **Datasets.** ``load_framingham``, ``load_pbc2`` and
+    ``load_support2`` expose bundled data that had no loader; the
+    undocumented ``synthetic_dataset.csv`` is removed. The G1 example data
+    are credited to Kaminskiy and Krivtsov (2010).
+
 - **Bug fixes found in the third documentation review.** This review
   probed the documented behaviour adversarially (identities, round trips,
   cross-method agreement, edge cases). Each fix has a regression test
