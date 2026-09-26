@@ -5,11 +5,12 @@ if TYPE_CHECKING:
     from ..parametric import Parametric
 
 import numpy.typing as npt
-from scipy.optimize import minimize
+from scipy.optimize import minimize, minimize_scalar
 from scipy.stats import pearsonr
 
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
+from surpyval.univariate.parametric.fitters import offset_step
 
 
 def _rr_fit(a: npt.NDArray, b: npt.NDArray) -> Any:
@@ -182,14 +183,44 @@ def mpp(model: "Parametric") -> dict[str, Any]:
         # Below the first plotted failure, and below every other seen
         # failure too (see ``_offset_cap``).
         x_min = min(np.min(x_pp), _offset_cap(x, c))
+        # The offset is searched as ``u``, the log of its distance below
+        # ``x_min`` in the data's own unit (see ``offset_step``). It was
+        # the log of the distance in absolute units, so the search always
+        # began one unit below the data: a hair below it for data in the
+        # hundreds of thousands, where the correlation is flat in ``u``
+        # and the search stopped where it began (a Weibull fit put the
+        # offset at -8.4e9 for data starting at 5e5), and a thousand
+        # spreads below it for data in thousandths. Measured in the
+        # data's unit the correlation is the same function of ``u``
+        # whatever the units, so the search is too.
+        step = offset_step(x)
 
-        def fun(gamma: float) -> Any:
-            g = x_min - np.exp(-gamma)
+        def fun(u: npt.NDArray) -> Any:
+            g = x_min - step * np.exp(-u[0])
             out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
             return out
 
-        res = minimize(fun, 0.0)
-        gamma = x_min - np.exp(-res.x[0])
+        res = minimize(fun, np.zeros(1))
+        u = float(res.x[0])
+        # The correlation is very flat near its peak, and BFGS's stopping
+        # test -- an absolute gradient of 1e-5 -- is met while ``u`` is
+        # still 1e-4 away from it: offsets 5e-5 short, differing between
+        # otherwise identical fits from the last digits of the finite
+        # differences. A bounded Brent search in a unit either side
+        # polishes that to the peak; it is derivative free, so it cannot
+        # stop early on a flat gradient, and the bracket keeps it from
+        # running off to either limit when the peak is at one of them.
+        # The polish is kept only if it improves the correlation.
+        if np.isfinite(u) and np.isfinite(res.fun):
+            polish = minimize_scalar(
+                lambda v: fun(np.array([v])),
+                bounds=(u - 1.0, u + 1.0),
+                method="bounded",
+                options={"xatol": 1e-10},
+            )
+            if np.isfinite(polish.fun) and polish.fun < res.fun:
+                u = float(polish.x)
+        gamma = x_min - step * np.exp(-u)
         x_pp = x_pp - gamma
 
     x_pp = dist.mpp_x_transform(x_pp)

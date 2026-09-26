@@ -11,6 +11,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
+    _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -56,7 +57,10 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         x = data.x
         # sqrt(E[x^2] / 2) is the closed-form uncensored MLE for sigma
         if offset:
-            gamma_init = np.min(x) - 1.0
+            # The fitter's starting offset (see ``_offset_start``), not
+            # ``min(x) - 1``: a step of one unit is a thousand spreads
+            # for data in thousandths, and sigma seeded that far out.
+            gamma_init = _offset_start(x)
             sigma_init = np.sqrt(np.mean((x - gamma_init) ** 2) / 2)
             return np.array([gamma_init, sigma_init], dtype=float)
         # A one-tuple, not the bare scalar this used to return. Rayleigh

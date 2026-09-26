@@ -145,6 +145,32 @@ def search_floor(model: Any) -> npt.NDArray:
     )
 
 
+def offset_step(x: npt.ArrayLike) -> float:
+    """The data's own unit for an offset: the mean spacing of the sorted
+    finite values, their range over ``n - 1``.
+
+    An offset is found as a distance below the smallest value, and how
+    far below is only meaningful relative to the data's scale. The
+    offset searches used to measure it in absolute units -- the fitters
+    started one unit below the data, and the probability plot searched
+    ``exp(-u)`` below it from ``u = 0`` -- so the start, and with it the
+    answer, depended on the units the data were recorded in. The mean
+    spacing scales exactly with the data and is, like the gap between the
+    offset and the first failure, a distance *between* observations
+    rather than their overall size.
+
+    A single value, or a sample whose values are all equal, has no
+    spacing; its own magnitude stands in (and 1 for a sample of zeros).
+    """
+    finite = np.sort(np.asarray(x, dtype=float).ravel())
+    finite = finite[np.isfinite(finite)]
+    lo = float(finite[0])
+    step = (float(finite[-1]) - lo) / max(finite.size - 1, 1)
+    if not step > 0:
+        step = abs(lo) if lo != 0 else 1.0
+    return step
+
+
 def preconditioned_bfgs(
     fun: Callable[..., Any],
     x0: npt.NDArray,
@@ -296,7 +322,16 @@ def add_to_funcs(
     i: int,
     funcs: list[Callable[..., Any]],
     inv_f: list[Callable[..., Any]],
+    unit: float = 1.0,
 ) -> None:
+    """Append the map of one parameter to the unbounded search space, and
+    its inverse.
+
+    A parameter with one bound is searched as the log of its distance
+    from the bound where that distance is below ``unit``, and linearly
+    beyond it (``adj_relu``). ``unit`` is 1 except in an offset fit: see
+    ``bounds_convert``.
+    """
     if (low is None) and (upp is None):
         funcs.append(lambda x: x)
         inv_f.append(lambda x: x)
@@ -313,11 +348,11 @@ def add_to_funcs(
         funcs.append(lambda x: D * np.arctanh((2 * (x - lo) / width) - 1))
         inv_f.append(lambda x: lo + width * (np.tanh(x / D) + 1) / 2)
     elif upp is None:
-        funcs.append(lambda x: (inv_adj_relu(x - np.copy(low))))
-        inv_f.append(lambda x: (adj_relu(x) + np.copy(low)))
+        funcs.append(lambda x: (inv_adj_relu((x - np.copy(low)) / unit)))
+        inv_f.append(lambda x: (unit * adj_relu(x) + np.copy(low)))
     elif low is None:
-        funcs.append(lambda x: inv_rev_adj_relu(x - np.copy(upp)))
-        inv_f.append(lambda x: np.copy(upp) + rev_adj_relu(x))
+        funcs.append(lambda x: inv_rev_adj_relu((x - np.copy(upp)) / unit))
+        inv_f.append(lambda x: np.copy(upp) + unit * rev_adj_relu(x))
 
 
 def bounds_convert(
@@ -325,12 +360,24 @@ def bounds_convert(
     bounds: Sequence[tuple[float | None, float | None]],
     fixed: dict[str, float] | None,
     param_map: dict[str, int],
+    units: Sequence[float] | None = None,
 ) -> tuple[Any, ...]:
     """
     This function is used to transform the parameters from the bounded
     parameter space to the unbounded parameter space. This is an improvement
     over using the scipy.optimize.minimize function's bounds parameter as
     it allows us to avoid the use of the constrained optimization methods.
+
+    ``units`` gives, per parameter, the distance from a one-sided bound
+    at which its map switches from logarithmic to linear (1 for all of
+    them by default; see ``add_to_funcs``). With a unit of 1 the switch
+    is at a fixed value, so a parameter measured in the data's units --
+    an offset's distance below the first observation, a scale -- is
+    searched as a log for data in thousandths and linearly for data in
+    thousands: a different search at every scale. An offset fit passes
+    each parameter's own starting distance from its bound instead (see
+    ``_offset_search_units`` in ``parametric_fitter``), which makes its
+    search the same whatever units the data is in.
     """
     bounded_to_unbounded_transforms: list[Callable[..., Any]] = []
     unbounded_to_bounded_transforms: list[Callable[..., Any]] = []
@@ -342,6 +389,7 @@ def bounds_convert(
             i,
             bounded_to_unbounded_transforms,
             unbounded_to_bounded_transforms,
+            1.0 if units is None else float(units[i]),
         )
 
     def transform_params_to_unbounded(params: npt.NDArray) -> Any:

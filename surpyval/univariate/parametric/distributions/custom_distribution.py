@@ -14,6 +14,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
+    _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -428,8 +429,9 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
 
         out = np.array(best, dtype=float)
         if offset:
-            gamma = float(np.min(x[np.isfinite(x)])) - 1.0
-            out = np.concatenate([[gamma], out])
+            # The fitter's own starting offset, a step on the data's
+            # scale below the smallest value (see ``_offset_start``)
+            out = np.concatenate([[_offset_start(x)], out])
         return out
 
     def _alternative_base_starts(
@@ -446,9 +448,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
             dtype=float,
         )
         if offset:
-            x = np.asarray(data.x, dtype=float)
-            gamma = float(np.min(x[np.isfinite(x)])) - 1.0
-            fixed = np.concatenate([[gamma], fixed])
+            fixed = np.concatenate([[_offset_start(data.x)], fixed])
         return [fixed]
 
     @staticmethod

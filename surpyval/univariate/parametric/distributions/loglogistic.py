@@ -7,6 +7,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
+    _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -31,14 +32,24 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             # ``xcnt_handler`` round trip that used to open this branch
             # is gone. It never had anything to re-derive: no caller has
             # ever passed ``t`` down to an initialiser.
+            #
+            # alpha and beta are seeded as for an unshifted fit, from the
+            # probability plot of the data shifted by the fitter's own
+            # starting offset (see ``_offset_start``). The seed was the
+            # sum of the unshifted values over the number of failures and
+            # a shape of 2: for data well clear of zero the scale came
+            # out several times too large, and the search's first step
+            # to correct it overshot so far below zero, where the scale
+            # is searched as a log, that it underflowed -- in data units
+            # of thousands the fit ended on Nelder-Mead at the starting
+            # offset.
             x, c, n = data.x, data.c, data.n
-            flag = (c == 0).astype(int)
-            value_range = np.max(x) - np.min(x)
-            gamma_init = np.min(x) - value_range / 10
-            return np.array(
-                [gamma_init, x.sum() / (n * flag).sum(), 2.0],
-                dtype=float,
+            gamma_init = _offset_start(x)
+            shifted = self.fit_from_surpyval_data(
+                SurpyvalData(x - gamma_init, c, n, group_and_sort=False),
+                how="MPP",
             )
+            return np.array([gamma_init, *shifted.params], dtype=float)
         else:
             return np.asarray(
                 self.fit_from_surpyval_data(data, how="MPP").params,

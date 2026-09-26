@@ -10,6 +10,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
+    _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -81,12 +82,11 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             # with a true beta of 2 the seed came back at beta = 23 and
             # the MLE then failed outright, falling back to MPP.
             #
-            # min(x) - 1 rather than a fraction of the range because the
-            # fitter overwrites the returned offset with exactly that
-            # (see ParametricFitter.fit_from_surpyval_data); seeding
+            # ``_offset_start`` because the fitter overwrites the returned
+            # offset with exactly that (see ``_initial_guess``); seeding
             # alpha and beta against a different shift than the one
             # actually installed defeats the point of shifting at all.
-            gamma = np.min(x) - 1.0
+            gamma = _offset_start(x)
             alpha, beta = self._gumbel_seed(x - gamma, c, n, refine=True)
             return np.array([gamma, alpha, beta, 1.0], dtype=float)
         return np.array(

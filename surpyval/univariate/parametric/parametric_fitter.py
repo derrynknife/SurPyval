@@ -15,7 +15,7 @@ from surpyval.utils import _check_x_not_empty
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..nonparametric import plotting_positions as pp
-from .fitters import bounds_convert
+from .fitters import bounds_convert, offset_step
 from .fitters.closed_form import closed_form_results
 from .fitters.mle import mle
 from .fitters.mom import mom
@@ -66,6 +66,73 @@ from .parametric import Parametric
 # data; in this one it destroys the thing being computed.
 Numeric = npt.NDArray | float
 Boxable = npt.NDArray | float | ArrayBox
+
+
+def _offset_start(x: npt.ArrayLike) -> float:
+    """Starting offset: just below the smallest value, by a step on the
+    data's own scale.
+
+    It was ``min(x) - 1``, a step of one *unit*, so the start depended on
+    the units the data were recorded in: at a scale of 1e-3 it sat a
+    thousand spreads below the data, where the likelihood is flat in the
+    offset and the search never moved it, and at 1e5 it was a hair below
+    the smallest value. The step is now the mean spacing of the sorted
+    finite values (see ``offset_step``), which scales with the data.
+
+    Every offset initialiser seeds its other parameters from the data
+    shifted by this same value, since the fitter installs it as the
+    starting offset: shape and scale seeds taken against a different
+    shift describe a different distribution from the one the search
+    starts at.
+    """
+    finite = np.asarray(x, dtype=float).ravel()
+    return float(np.min(finite[np.isfinite(finite)])) - offset_step(x)
+
+
+def _offset_search_units(
+    init: npt.NDArray,
+    bounds: "tuple[tuple[float | None, float | None], ...]",
+) -> list[float]:
+    """Per-parameter ``units`` for ``bounds_convert`` in an offset fit.
+
+    A parameter with one bound is searched as the log of its distance
+    from the bound below one unit, and linearly above it. With a unit of
+    1 the switch sits at a fixed *value*, so which half a parameter is
+    searched in depends on the data's units: a Weibull scale is searched
+    as a log for data in thousandths and linearly for data in thousands.
+    The search is then a different one at every scale. For most fits
+    both routes lead to the same optimum, but an offset fit has a ridge
+    along which the offset, scale and shape trade off, and there they do
+    not: an ExpoWeibull MSE fit to data in ten-thousandths wandered for
+    800 iterations and ended 13% of the data's spread from the fit to
+    the same data in its own units, and a LogLogistic scale that started
+    several times too large was stepped so far into the log half, in
+    data units of thousands, that it underflowed.
+
+    Each one-sided parameter's unit is therefore its own starting
+    distance from its bound -- for the offset, the step below the
+    smallest observation (see ``_offset_start``). Every such parameter
+    starts at the switch, a searched value of 0, and the search in them
+    is the same whatever the data's units: a scale's start and its unit
+    both scale with the data, a shape's are both unchanged. A parameter
+    that starts on its bound (or at a non-finite value) keeps a unit of
+    1; the other kinds of bound ignore the unit.
+
+    Only offset fits use this, to leave every other fit's search exactly
+    as it was.
+    """
+    units = [1.0] * len(bounds)
+    for i, (low, upp) in enumerate(bounds):
+        if (low is None) == (upp is None):
+            continue
+        if upp is None:
+            assert low is not None
+            distance = float(init[i]) - float(low)
+        else:
+            distance = float(upp) - float(init[i])
+        if np.isfinite(distance) and distance > 0:
+            units[i] = distance
+    return units
 
 
 def reject_structural_params(
@@ -1754,7 +1821,7 @@ class OptimisedFitMixin:
 
                 if offset:
                     x_nonzero = x[x != 0] if zi else x
-                    init[0] = x_nonzero.min() - 1.0
+                    init[0] = _offset_start(x_nonzero)
 
         if lfp:
             _, _, _, F = pp(x_init, c_init, n_init, heuristic="Nelson-Aalen")
@@ -1857,7 +1924,7 @@ class OptimisedFitMixin:
             except Exception:
                 return None
         if offset:
-            base[0] = float(x.min()) - 1.0
+            base[0] = _offset_start(x)
         if not np.all(np.isfinite(base)):
             return None
         p0 = float(np.clip(n[observed].sum() / n.sum(), 1e-3, 0.999))
@@ -2214,13 +2281,9 @@ turnbull_estimator
             model.tr = tr[0]
 
         if how != "MPP":
-            transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
+            _, _, _, _, not_fixed = bounds_convert(
                 surv_data.x, model.bounds, fixed, model.param_map
             )
-            fitting_info["inv_trans"] = inv_trans
-            fitting_info["const"] = const
-            fitting_info["fixed_idx"] = fixed_idx
-
             # ``len``-based check: comparing an ndarray to ``[]`` raises a
             # broadcast error (#261).
             if init is None or len(np.atleast_1d(init)) == 0:
@@ -2237,6 +2300,20 @@ turnbull_estimator
                 for name, value in fixed.items():
                     full_init[model.param_map[name]] = value
                 init = full_init
+
+            # An offset fit searches every parameter with one bound in
+            # units of its own starting distance from that bound (see
+            # ``_offset_search_units``); any other fit in units of 1.
+            units = (
+                _offset_search_units(init, model.bounds) if offset else None
+            )
+            transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
+                surv_data.x, model.bounds, fixed, model.param_map, units
+            )
+            fitting_info["inv_trans"] = inv_trans
+            fitting_info["const"] = const
+            fitting_info["fixed_idx"] = fixed_idx
+
             init = transform(init)
             init = init[not_fixed]  # type: ignore[index]
             fitting_info["init"] = init

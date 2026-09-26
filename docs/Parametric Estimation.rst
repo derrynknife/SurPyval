@@ -175,7 +175,7 @@ This is to say that the method of moments solution for the parameter of the expo
     print("1 / mean(x)  :", 1 / x.mean())
     print("MOM estimate :", surv.Exponential.fit(x, how='MOM').params[0])
 
-This is an easy result. When we extend to other distributions with more than one parameter, we need one equation per unknown: a distribution with :math:`k` free parameters is matched on its first :math:`k` moments, and an offset adds one more parameter and so one more moment. Such simple analytical solutions are not always available. A few distributions have them -- the Uniform, Beta and Beta-Geometric solve their moment equations in closed form, and SurPyval uses those solutions directly when there is no offset and nothing is fixed -- but in general numeric optimisation is needed. SurPyval uses numeric optimisation to compute the parameters for these distributions.
+This is an easy result. When we extend to other distributions with more than one parameter, we need one equation per unknown: a distribution with :math:`k` free parameters is matched on its first :math:`k` moments, and an offset adds one more parameter and so one more moment. Such simple analytical solutions are not always available. A few distributions have them -- the Uniform, Beta and Beta-Geometric solve their moment equations in closed form, and SurPyval uses those solutions directly when there is no offset and nothing is fixed; an offset LogNormal matches its mean, variance and skewness in closed form too -- but in general numeric optimisation is needed. SurPyval uses numeric optimisation to compute the parameters for these distributions.
 
 One closed form is SurPyval's own choice and worth knowing about: for the
 LogNormal, ``how='MOM'`` matches the mean and variance of :math:`\ln x`, not
@@ -245,6 +245,16 @@ If the model's moments are not finite at all -- at the starting point, or
 anywhere the search goes -- the objective is undefined and SurPyval raises a
 ``ValueError`` rather than return a fit; pass an ``init`` at which the moments
 exist, or use MLE.
+
+An offset LogNormal is not searched for at all when it can be solved. Its
+skewness depends on :math:`\sigma` alone, :math:`(w + 2)\sqrt{w - 1}` with
+:math:`w = e^{\sigma^{2}}`, so the sample's skewness gives :math:`\sigma`,
+the variance :math:`e^{2\mu} w (w - 1)` then gives :math:`\mu` and the mean
+the offset. The mismatch has a second, spurious minimum with the offset pressed
+against the smallest observation, and a search could end in either depending
+on its route. The optimiser takes over only when a parameter is fixed or
+the solution does not exist -- a sample with no positive skew, or one whose
+solution puts the offset at or above the smallest value.
 
 Fixing a parameter (``fixed=``) reduces :math:`K`: a fixed parameter is known,
 so it needs no equation of its own. A Weibull with :math:`\beta` fixed at 2,
@@ -454,7 +464,10 @@ An offset (``offset=True``, see below) cannot be read off a line, because
 shifting :math:`x` bends the plot. SurPyval therefore searches for the shift
 :math:`\gamma < \min(x)` that makes the transformed points *most* linear -- it
 maximises their Pearson correlation -- and then fits the line to
-:math:`x - \gamma`. (The Exponential and Rayleigh, whose plots stay straight
+:math:`x - \gamma`. The search is over the log of the distance below
+:math:`\min(x)` measured in the data's mean spacing, so that it is the same
+search whatever units the data are in, and it is finished by a bracketed
+Brent search, because the correlation is very flat near its peak. (The Exponential and Rayleigh, whose plots stay straight
 under a shift, read :math:`\gamma` off the line's intercept instead; should
 that land at or past the first failure, the offset is set just below it and the
 line refitted.) Here :math:`\min(x)` is the smallest value whose failure was
@@ -735,8 +748,10 @@ worth knowing what they are, because they explain the warnings you may see.
    ``CustomDistribution``, which knows nothing about its parameters, from the
    best log-likelihood on a coarse grid of magnitudes. Interval-censored points
    are imputed at their midpoints and left-censored points half way to the
-   smallest value, for this purpose only. An offset starts at
-   :math:`\min(x) - 1`, a limited-failure :math:`p` at the Nelson-Aalen
+   smallest value, for this purpose only. An offset starts below the
+   smallest value by the data's mean spacing (their range over
+   :math:`n - 1`), a step that scales with the data, and the other parameters
+   are seeded from the data shifted by that start; a limited-failure :math:`p` at the Nelson-Aalen
    estimate of the fraction failed (capped at 0.6), and a zero-inflation
    :math:`f_{0}` at the observed fraction of zeros.
 2. **More than one start, when it matters.** Some likelihoods have more than
@@ -767,6 +782,15 @@ worth knowing what they are, because they explain the warnings you may see.
      bounds a custom distribution declares);
    - unbounded: :math:`u = \theta`.
 
+   In an offset fit the one-sided map is taken in units of each parameter's
+   own starting distance from its bound -- :math:`u = \ln((\theta - L) / d_{0})`
+   below :math:`d_{0} = \theta_{0} - L` and linear above it -- rather than in
+   units of 1. With a unit of 1 the switch sits at a fixed value, so the
+   offset's distance below the smallest observation, or a scale, was searched
+   as a log for data in thousandths and linearly for data in thousands: a
+   different search at every scale, and along the ridge an offset fit has
+   (below) not always one that found the same optimum.
+
    The likelihood's gradient and Hessian come from automatic differentiation
    (``autograd``), which is why custom distributions must use
    ``autograd.numpy``.
@@ -791,9 +815,9 @@ worth knowing what they are, because they explain the warnings you may see.
    :math:`k` from :math:`10^{-4}` to :math:`10^{5}`. MPS, MSE and MOM search
    the same way, dividing by the objective's starting magnitude instead:
    their objectives are dimensionless, so that magnitude does not change with
-   the data's units. (An offset fit is the exception: its starting point,
-   :math:`\min(x) - 1`, is not in the data's units, so its result can depend
-   on them.)
+   the data's units. Offset fits are equivariant too: their start and their
+   search (step 3) are in the data's units, and the offset itself is
+   multiplied by :math:`k`.
 5. **Checks.** Before fitting, SurPyval refuses data that cannot pin the
    parameters down: if there are fewer distinct non-right-censored values than
    free parameters the likelihood has a flat (or unbounded) direction and no

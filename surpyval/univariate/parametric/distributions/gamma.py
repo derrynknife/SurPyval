@@ -9,6 +9,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
+    _offset_start,
 )
 from surpyval.utils.autograd_gamma_compat import gammainc as agammainc
 from surpyval.utils.autograd_gamma_compat import gammainccln as agammainccln
@@ -98,7 +99,12 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             # ``1 / 12s`` the estimate explodes: 649 for a true shape of
             # 3. Together these made MSE and MOM offset fits return
             # silent nonsense.
-            gamma_init = np.min(x) - 1.0
+            #
+            # The shift is the fitter's starting offset (see
+            # ``_offset_start``). It was ``min(x) - 1``, a thousand
+            # spreads below data in thousandths, which seeded a shape in
+            # the tens of thousands that the search never came back from.
+            gamma_init = _offset_start(x)
             alpha, beta = self._moment_estimate(x - gamma_init)
             return np.array([gamma_init, alpha, beta], dtype=float)
         return np.asarray(self._moment_estimate(x), dtype=float)

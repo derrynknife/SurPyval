@@ -373,8 +373,22 @@ def test_offset_initialiser_puts_the_offset_first(dist, dist_params):
     )
     assert len(init) == len(dist_params) + 1
 
-    # Slot 0 is the offset: just below the smallest observation.
-    assert init[0] == pytest.approx(x.min() - 1.0)
+    # Slot 0 is the offset: strictly below the smallest observation, by
+    # a step on the data's own scale (its mean spacing), not a fixed
+    # unit -- so the same data in other units starts at the same place.
+    step = x.min() - init[0]
+    assert 0 < step < np.ptp(x)
+    rescaled = np.asarray(
+        dist._initial_guess(
+            SurpyvalData(x * 1e-3, c, n, group_and_sort=False),
+            True,
+            False,
+            False,
+            "Nelson-Aalen",
+        ),
+        dtype=float,
+    )
+    assert rescaled[0] == pytest.approx(init[0] * 1e-3, rel=1e-9)
     assert np.isfinite(init[1:]).all()
     assert (init[1:] > 0).all()
 
@@ -590,7 +604,11 @@ def test_expoweibull_offset_seeds_from_shifted_data():
     # The offset the fitter will actually install, so that the seed is
     # taken against the same shift it will be optimised under.
     assert gamma < x.min()
-    assert gamma == pytest.approx(x.min() - 1.0)
+    assert gamma == pytest.approx(
+        ExpoWeibull._initial_guess(
+            SurpyvalData(x), True, False, False, "Nelson-Aalen"
+        )[0]
+    )
 
 
 # -- information criteria for every fit method --------------------------

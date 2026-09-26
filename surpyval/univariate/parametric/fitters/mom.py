@@ -135,6 +135,16 @@ def mom(model: "Parametric") -> Any:
         and not model.fitting_info["fixed_idx"]
     ):
         return {"params": np.atleast_1d(dist._mom(x_)), "gamma": 0.0}
+    # Likewise an exact offset solution, where the distribution has one
+    # and the sample admits it (see ``LogNormal._mom_offset``)
+    if (
+        hasattr(dist, "_mom_offset")
+        and offset
+        and not model.fitting_info["fixed_idx"]
+    ):
+        closed = dist._mom_offset(x_)
+        if closed is not None:
+            return {"params": np.atleast_1d(closed[1:]), "gamma": closed[0]}
 
     # One equation per *free* parameter. A fixed parameter is known, so
     # matching a moment for it too over-determined the system: the fit
