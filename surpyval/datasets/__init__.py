@@ -143,7 +143,8 @@ def load_g1_kaminskiy_krivtsov() -> pd.DataFrame:
 
     .. [4] Kaminskiy, M.P. and Krivtsov, V.V. (2010).
            G1-renewal process as repairable system model.
-           Reliability Engineering and System Safety, 95(1), 1-9.
+           Reliability: Theory & Applications, 1(3) (issue 18), 7-14.
+           arXiv:1006.3718.
     """
     x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
 
@@ -459,3 +460,141 @@ def load_meeker_lfp() -> pd.DataFrame:
     s = np.ones(total_tested - len(f)) * 1370
     x, c, n, _ = fs_to_xcnt(f, s)
     return pd.DataFrame({"x": x, "c": c, "n": n})
+
+
+def load_framingham() -> pd.DataFrame:
+    """
+    The Framingham Heart Study teaching dataset, from [13]_.
+
+    A longitudinal extract: 4434 participants (``RANDID``) examined at up
+    to three visits (``PERIOD`` 1-3, 11627 rows), with the risk factors
+    measured at each visit (``SEX`` 1 male / 2 female, ``AGE``,
+    ``TOTCHOL``, ``SYSBP``, ``DIABP``, ``CURSMOKE``, ``CIGPDAY``, ``BMI``,
+    ``DIABETES``, ``BPMEDS``, ``HEARTRTE``, ``GLUCOSE``, ``educ``,
+    ``HDLC``, ``LDLC``; ``TIME`` is the visit's day since baseline) and
+    ``PREV*`` flags for conditions present at the visit.
+
+    Follow-up is 24 years (8766 days). Each outcome has an event flag and
+    a time in days: ``DEATH``/``TIMEDTH``, ``ANGINA``/``TIMEAP``,
+    ``HOSPMI``/``TIMEMI``, ``MI_FCHD``/``TIMEMIFC``, ``ANYCHD``/``TIMECHD``,
+    ``STROKE``/``TIMESTRK``, ``CVD``/``TIMECVD`` and
+    ``HYPERTEN``/``TIMEHYP``. A flag of 1 means the event happened at that
+    time, so ``c = 1 - flag``; outcome columns repeat on every visit row,
+    so take one row per participant (e.g. ``PERIOD == 1``) for a
+    time-to-event fit. 1550 participants died during follow-up.
+
+    The teaching data are anonymised and perturbed by the NHLBI; they are
+    meant for learning methods, not for publishing epidemiological
+    results.
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_framingham
+    >>> df = load_framingham()
+    >>> baseline = df[df["PERIOD"] == 1]
+    >>> km = surpyval.KaplanMeier.fit(
+    ...     baseline["TIMEDTH"] / 365.25, c=1 - baseline["DEATH"]
+    ... )
+    >>> km.sf([10, 20]).round(3)
+    array([0.903, 0.732])
+
+    References
+    ----------
+    .. [13] National Heart, Lung, and Blood Institute, Biologic Specimen
+           and Data Repository Information Coordinating Center (BioLINCC).
+           Framingham Heart Study Longitudinal Data Documentation
+           (teaching dataset).
+    """
+
+    data_path = importlib.resources.files(data_module) / "framingham.csv"
+    return pd.read_csv(data_path)
+
+
+def load_pbc2() -> pd.DataFrame:
+    """
+    The Mayo Clinic primary biliary cirrhosis (PBC) trial, longitudinal
+    version, from [14]_.
+
+    312 patients (``id``) randomised to D-penicillamine or placebo
+    (``drug``), with repeated laboratory measurements: one row per visit
+    (1945 rows), ``year`` being the visit time in years since
+    enrolment. Per-patient columns (repeated on every row) are ``years``,
+    the follow-up time in years, and ``status`` (``"alive"``,
+    ``"transplanted"`` or ``"dead"``) at that time; ``status2`` is 1 for
+    death and 0 otherwise (alive or transplanted), so for survival with
+    transplantation treated as censoring ``c = 1 - status2``. 140
+    patients died and 29 were transplanted. The per-visit covariates are
+    ``ascites``, ``hepatomegaly``, ``spiders``, ``edema``, ``serBilir``,
+    ``serChol``, ``albumin``, ``alkaline``, ``SGOT``, ``platelets``,
+    ``prothrombin`` and ``histologic``; ``age`` and ``sex`` are at
+    baseline and ``sno.`` is a row index.
+
+    Transplantation is a competing event for death, so the data also
+    suit :doc:`competing risks </Competing Risks SurPyval Modelling>`
+    (causes from ``status``).
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_pbc2
+    >>> df = load_pbc2()
+    >>> patients = df.groupby("id").first()
+    >>> km = surpyval.KaplanMeier.fit(
+    ...     patients["years"], c=1 - patients["status2"]
+    ... )
+    >>> km.sf([5, 10]).round(3)
+    array([0.712, 0.479])
+
+    References
+    ----------
+    .. [14] Murtaugh, P.A., Dickson, E.R., Van Dam, G.M., Malinchoc, M.,
+           Grambsch, P.M., Langworthy, A.L. and Gips, C.H. (1994) Primary
+           biliary cirrhosis: prediction of short-term survival based on
+           repeated patient visits. Hepatology, 20(1), 126-134. (Data as
+           distributed in the R package JM, Rizopoulos, D.)
+    """
+
+    data_path = importlib.resources.files(data_module) / "pbc2.csv"
+    return pd.read_csv(data_path)
+
+
+def load_support2() -> pd.DataFrame:
+    """
+    The SUPPORT study of seriously ill hospitalised adults, from [15]_.
+
+    9105 patients, one row each (``sno`` is a row index). ``d.time`` is
+    the follow-up time in days and ``death`` 1 for a death during
+    follow-up (6201 patients), so ``c = 1 - death``; ``hospdead`` flags a
+    death in hospital and ``slos`` is the days from study entry to
+    discharge. ``dzgroup``/``dzclass`` give the disease group (acute
+    respiratory failure or multiple organ system failure, CHF, COPD,
+    cirrhosis, colon or lung cancer, coma). The remaining columns are
+    demographics (``age``, ``sex``, ``race``, ``edu``, ``income``),
+    comorbidity and severity scores (``num.co``, ``scoma``, ``sps``,
+    ``aps``, ``avtisst``), physiology on day 3 (``meanbp``, ``wblc``,
+    ``hrt``, ``resp``, ``temp``, ``pafi``, ``alb``, ``bili``, ``crea``,
+    ``sod``, ``ph``, ``glucose``, ``bun``, ``urine``), costs, activities
+    of daily living and the study's own model and physician survival
+    estimates (``surv2m``, ``surv6m``, ``prg2m``, ``prg6m``). Many
+    physiology columns have missing values.
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_support2
+    >>> df = load_support2()
+    >>> km = surpyval.KaplanMeier.fit(df["d.time"], c=1 - df["death"])
+    >>> km.sf([30, 365]).round(3)
+    array([0.729, 0.446])
+
+    References
+    ----------
+    .. [15] Knaus, W.A., Harrell, F.E., Lynn, J., et al. (1995) The
+           SUPPORT prognostic model: objective estimates of survival for
+           seriously ill hospitalized adults. Annals of Internal Medicine,
+           122(3), 191-203.
+    """
+
+    data_path = importlib.resources.files(data_module) / "support2.csv"
+    return pd.read_csv(data_path)

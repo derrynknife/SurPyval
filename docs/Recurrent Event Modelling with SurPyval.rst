@@ -858,12 +858,12 @@ G1 Modelling can easily be done with SurPyval:
     model
 
 
-This data is from [1]_ and shows the inter-arrival times, and not the total
+This data is from Kaminskiy and Krivtsov's paper introducing the G1
+Renewal Process [1]_ and shows the inter-arrival times, and not the total
 time to each event. We therefore need to take the cumulative sum of all the
 times before passing it to the ``fit`` method (the cumulative times are also
 available as ``surpyval.datasets.load_g1_kaminskiy_krivtsov()``). These are
-the results Kaminskiy and Krivtsov report in their paper [2]_ introducing the
-G1 Renewal Process: :math:`q \approx 0.232` and a mean time to the first
+the results the paper reports: :math:`q \approx 0.232` and a mean time to the first
 failure of :math:`1/0.2092 \approx 4.78`. The inter-arrival times grow over
 the life of the system, and the positive restoration factor says each repair
 leaves the system better than new: the expected time to the next failure grows
@@ -1280,6 +1280,4 @@ non-parametric MCF keeps its variance, so ``mcf_cb`` still works.)
 References
 ----------
 
-.. [1] Basu, A.P. and Rigdon, S.E., 2000. Statistical methods for the reliability of repairable systems. John Wiley & Sons.
-
-.. [2] Kaminskiy, M.P. and Krivtsov, V.V., 2010. G1-renewal process as repairable system model. Reliability: Theory & Applications, 1(3) (issue 18), pp.7-14. arXiv:1006.3718.
+.. [1] Kaminskiy, M.P. and Krivtsov, V.V., 2010. G1-renewal process as repairable system model. Reliability: Theory & Applications, 1(3) (issue 18), pp.7-14. arXiv:1006.3718.
