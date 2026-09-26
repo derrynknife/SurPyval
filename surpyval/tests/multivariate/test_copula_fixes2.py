@@ -224,7 +224,7 @@ def test_likelihood_survives_serialisation(clayton_data):
     assert restored.bic() == m.bic()
     # a dict written before the likelihood was stored has none
     old = m.to_dict()
-    for key in ["neg_ll", "k", "n_obs"]:
+    for key in ["neg_ll", "k", "ic_n"]:
         del old[key]
     with pytest.raises(ValueError):
         surv.from_dict(old).neg_ll()

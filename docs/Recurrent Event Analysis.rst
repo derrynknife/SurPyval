@@ -1024,9 +1024,10 @@ There is no single right model, but a sensible order of work is:
    several ARA/ARI memories by their information criteria; all are fitted to
    the same event times by maximum likelihood, so their AIC values are on a
    common footing, and so are their BIC values: every recurrent model takes
-   BIC's sample size to be the number of exactly observed events
-   (end-of-observation rows do not count), as SurPyval's univariate models
-   do. Check the winner with residuals.
+   BIC's sample size to be the number of observed events -- exact ones plus
+   the events in left- and interval-censored counts, with
+   end-of-observation rows not counting -- the rule of every SurPyval model
+   (see :ref:`information-criteria`). Check the winner with residuals.
 5. **If events come from several distinct mechanisms,** analyse them per
    cause (next section); **if items differ systematically** (environment, duty
    cycle, design version), move to the regression models on the

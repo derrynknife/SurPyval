@@ -1049,6 +1049,8 @@ cost more (every bound is an optimisation), they need the original data, and
 they are not yet available for offset, limited-failure-population or
 zero-inflated models.
 
+.. _information-criteria:
+
 Comparing models: information criteria
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1061,19 +1063,44 @@ model has them),
 .. math::
 
     \mathrm{AIC} = 2k + 2\,\mathrm{nll}, \qquad
-    \mathrm{AIC_{c}} = \mathrm{AIC} + \frac{2k^{2} + 2k}{N - k - 1}, \qquad
+    \mathrm{AIC_{c}} = \mathrm{AIC} + \frac{2k^{2} + 2k}{d - k - 1}, \qquad
     \mathrm{BIC} = k \ln d + 2\,\mathrm{nll},
 
-where :math:`\mathrm{nll} = -\ell(\hat{\theta})` is ``neg_ll()``, :math:`N`
-is the total number of units and :math:`d` is the number of failures: every
-unit whose failure was seen, exactly or within a left- or interval-censored
-window, leaving out only the right-censored units that have not failed. Using
-the failures rather than all units in the BIC penalty follows
-[Volinsky2000bic]_: a censored unit carries less information than a failure.
-(For exact and right-censored data, :math:`d` is the number of exact failures;
-counting only those made :math:`d = 0` and the BIC :math:`-\infty` for purely
-interval-censored data.) :math:`\mathrm{AIC_{c}}` exists only for
-:math:`N > k + 1`; with fewer units ``aic_c()`` returns ``nan``.
+where :math:`\mathrm{nll} = -\ell(\hat{\theta})` is ``neg_ll()`` and
+:math:`d` is the sample size of both corrections, defined by one rule used by
+every model in SurPyval that reports a BIC or an :math:`\mathrm{AIC_{c}}`:
+
+.. note::
+
+    **The sample-size rule.** :math:`d` is the number of **observed
+    failures**: the exact, left-censored and interval-censored observations,
+    each weighted by its count ``n``. Right-censored observations, which have
+    not failed, are left out. If there is no observed failure, :math:`d` is
+    the number of observations (again weighted by ``n``) instead, so the
+    criteria stay finite.
+
+    - *Univariate parametric, Royston-Parmar and regression models* (including
+      frailty and time-varying-covariate fits) count units. A
+      time-varying-covariate subject is one unit however many intervals its
+      follow-up is split into, and it counts as a failure when its last
+      interval ends in one.
+    - *Recurrent-event models* count observed events: each exact event, and
+      every event in a left- or interval-censored count. The
+      end-of-observation rows are not events.
+    - *Copula models* count joint rows in which at least one series failed; a
+      row right-censored in every series adds nothing.
+
+Using the failures rather than all units follows [Volinsky2000bic]_: a
+censored unit carries less information than a failure. For exact and
+right-censored data, :math:`d` is the number of exact failures. Counting only
+exact failures, as some models once did, made :math:`d = 0` and the BIC
+:math:`-\infty` for purely interval-censored data. Because every model
+counts the same way, a univariate fit, a regression and a recurrent-event model
+of the same data penalise with the same :math:`d`, and their criteria differ
+only through their likelihoods and parameter counts.
+:math:`\mathrm{AIC_{c}}` exists only for :math:`d > k + 1`; otherwise
+``aic_c()`` returns ``nan``.
+
 Lower is better. Because the likelihood is a property of the parameters and the
 data, not of how they were found, these criteria are available after a fit by
 *any* method (but not for a model built with ``from_params``, which has no

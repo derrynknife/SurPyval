@@ -7,6 +7,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 import surpyval
+from surpyval.serialisation import decode_non_finite, encode_non_finite
 from surpyval.utils import xcnt_handler
 
 
@@ -379,6 +380,11 @@ class SurpyvalData:
         """
         Serialize SurpyvalData to JSON format.
 
+        The JSON is strict: the infinite truncation bounds (and any other
+        non-finite value) are written as ``null`` and recorded under
+        ``"non_finite"``, which :meth:`from_json` reads back (see
+        :doc:`/surpyval.serialisation`).
+
         Parameters
         ----------
         filepath : str | Path, optional
@@ -399,11 +405,19 @@ class SurpyvalData:
         if self.Z is not None:
             data["Z"] = self.Z.tolist()
 
+        # Strict JSON, as for the models: the -inf/inf truncation bounds
+        # (and any other non-finite value) are written as null with a
+        # "non_finite" record of what each stood for (see
+        # surpyval.serialisation.encode_non_finite), not as the
+        # ``Infinity`` literals strict parsers reject.
+        encode_non_finite(data)
         if filepath:
-            Path(filepath).write_text(json.dumps(data, indent=2))
+            Path(filepath).write_text(
+                json.dumps(data, indent=2, allow_nan=False)
+            )
             return None
 
-        return json.dumps(data)
+        return json.dumps(data, allow_nan=False)
 
     @classmethod
     def from_json(cls, source: str | Path) -> "SurpyvalData":
@@ -436,7 +450,9 @@ class SurpyvalData:
         else:
             text = source
 
-        data = json.loads(text)
+        # Files written before the strict-JSON convention hold the
+        # ``Infinity`` literals, which json.loads still reads.
+        data = decode_non_finite(json.loads(text))
 
         x = np.array(data["x"])
         c = np.array(data["c"])

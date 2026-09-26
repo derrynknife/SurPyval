@@ -2120,7 +2120,10 @@ simpler models); BIC additionally penalises by sample size (favouring even
 simpler models with larger datasets). Lower is better for both. In surpyval
 the parameter count :math:`k` is the number of *estimated* parameters — held
 (``fixed``) parameters and the accelerated-life placeholder are not counted —
-and the BIC's sample size is the number of exactly observed failures.
+and the sample size of the BIC (and of AIC\ :sub:`c`) is the number of observed
+failures: exact, left- and interval-censored, the same rule as for every other
+model (see :ref:`information-criteria`), so a regression and the univariate
+fit of the same data use the same sample size.
 
 For the tires data, we can compare the three statistical regression families
 with a Weibull baseline, and try a second baseline for AFT and PO:

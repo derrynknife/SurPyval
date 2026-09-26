@@ -19,14 +19,25 @@ most classes write a ``"model"`` tag equal to their class name, and
 the core univariate families are identified by their
 ``"parameterization"`` (``"parametric"``, ``"non-parametric"`` or
 ``"parametric-regression"``).
+
+The dictionaries are strict JSON: a non-finite float (``inf``, ``-inf``
+or ``nan``) is written as ``null``, and the dictionary that holds it
+records its meaning under ``"non_finite"`` -- ``{"inf": [...], "-inf":
+[...], "nan": [...]}``, each list holding the RFC 6901 JSON Pointers
+(relative to that dictionary) of the values of that kind. Every reader
+puts the original values back; see :func:`encode_non_finite`.
 """
 
+import functools
+import inspect
 import json
+import math
 import numbers
 import os
+from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 
@@ -122,7 +133,26 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # refuse, with a clear error) documents written by a newer SurPyval,
 # and to migrate older layouts where needed. Documents with no
 # ``"schema"`` key predate versioning and read as schema 0.
-SCHEMA_VERSION = 1
+#
+# Schema 2 writes non-finite floats as ``null`` plus a ``"non_finite"``
+# record (see :func:`encode_non_finite`); schema 0 and 1 documents wrote
+# them as the non-standard ``NaN`` / ``Infinity`` / ``-Infinity``
+# literals, which Python's ``json`` (and BSON) read back as floats, so
+# they need no migration. The bump makes an older SurPyval refuse a
+# schema-2 document rather than read its ``null`` values as missing.
+SCHEMA_VERSION = 2
+
+# The key under which a serialised dictionary records the meaning of the
+# ``null`` values that stand in for its non-finite floats.
+NON_FINITE_KEY = "non_finite"
+
+# ``"non_finite"`` kind -> the float it stands for, in the order the
+# kinds are written.
+_NON_FINITE_KINDS: dict[str, float] = {
+    "inf": math.inf,
+    "-inf": -math.inf,
+    "nan": math.nan,
+}
 
 
 def require_model_tag(model_dict: dict, tag: str, human: str) -> None:
@@ -141,8 +171,229 @@ def require_model_tag(model_dict: dict, tag: str, human: str) -> None:
         )
 
 
+def _pointer_token(key: Any) -> str:
+    # RFC 6901 escaping: "~" first, so the "~1" written for "/" is not
+    # itself re-escaped.
+    return str(key).replace("~", "~0").replace("/", "~1")
+
+
+def _non_finite_kind(value: float) -> str:
+    if math.isnan(value):
+        return "nan"
+    return "inf" if value > 0 else "-inf"
+
+
+def _encode(value: Any, pointer: str, found: dict[str, list[str]]) -> Any:
+    """``value`` with native types and its non-finite floats as ``None``,
+    recording each replaced float's pointer in ``found``."""
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    elif isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, dict):
+        return {
+            k: _encode(v, f"{pointer}/{_pointer_token(k)}", found)
+            for k, v in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        items = [
+            _encode(v, f"{pointer}/{j}", found) for j, v in enumerate(value)
+        ]
+        return tuple(items) if isinstance(value, tuple) else items
+    if isinstance(value, float) and not math.isfinite(value):
+        found[_non_finite_kind(value)].append(pointer)
+        return None
+    return value
+
+
+def encode_non_finite(model_dict: dict) -> dict:
+    """Make a serialised dictionary strict JSON, in place.
+
+    ``json.dumps`` writes ``inf``, ``-inf`` and ``nan`` as the literals
+    ``Infinity``, ``-Infinity`` and ``NaN``, which are not JSON: strict
+    parsers (JavaScript's ``JSON.parse``, many databases) refuse the
+    whole document. Yet the values are meaningful in a fitted model --
+    an untruncated bound, the cumulative hazard after the last death, an
+    undefined variance -- so they cannot simply be dropped.
+
+    The convention: each non-finite float is written as ``null``, and
+    the dictionary records what every such ``null`` stood for under
+    ``"non_finite"``, as lists of RFC 6901 JSON Pointers relative to the
+    dictionary, grouped by kind::
+
+        {"H": [0.1, 0.4, null], "greenwood": [0.01, 0.05, null],
+         "non_finite": {"inf": ["/H/2"], "nan": ["/greenwood/2"]}}
+
+    A ``null`` that no pointer names is an ordinary ``None``. Readers put
+    the floats back with :func:`decode_non_finite`, which every
+    ``from_dict`` does; a consumer in another language sees ``null``
+    where no number applies and can use the record to recover the exact
+    values. The kinds with no values are omitted, as is the record
+    itself when the dictionary holds no non-finite float.
+
+    Numpy arrays and scalars are converted to native Python types on the
+    way, so the dictionary is also BSON-native. A record the dictionary
+    already carries (``to_dict`` output re-encoded) is extended, and the
+    records of nested model dictionaries are left in place.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.serialisation import encode_non_finite
+    >>> encode_non_finite({"H": [0.5, np.inf], "var": np.nan})
+    {'H': [0.5, None], 'var': None, 'non_finite': {'inf': ['/H/1'], 'nan': ['/var']}}
+    """  # noqa: E501
+    found: dict[str, list[str]] = {kind: [] for kind in _NON_FINITE_KINDS}
+    for key in list(model_dict):
+        if key != NON_FINITE_KEY:
+            model_dict[key] = _encode(
+                model_dict[key], "/" + _pointer_token(key), found
+            )
+    if any(found.values()):
+        record = dict(model_dict.get(NON_FINITE_KEY) or {})
+        for kind, pointers in found.items():
+            if pointers:
+                record[kind] = list(record.get(kind, [])) + pointers
+        model_dict[NON_FINITE_KEY] = record
+    return model_dict
+
+
+def _corrupt_record(detail: str) -> ValueError:
+    return ValueError(
+        f"The serialised model's {NON_FINITE_KEY!r} record is corrupt:"
+        f" {detail}."
+    )
+
+
+def _parse_record(record: Any) -> dict[str, Any]:
+    """A ``"non_finite"`` record as a trie: path token -> sub-trie, with
+    the restored float at each leaf."""
+    if not isinstance(record, dict):
+        raise _corrupt_record("it is not a dictionary")
+    trie: dict[str, Any] = {}
+    for kind, pointers in record.items():
+        if kind not in _NON_FINITE_KINDS:
+            raise _corrupt_record(
+                f"unknown kind {kind!r}, expected one of"
+                f" {list(_NON_FINITE_KINDS)}"
+            )
+        if not isinstance(pointers, list):
+            raise _corrupt_record(f"the {kind!r} entry is not a list")
+        for pointer in pointers:
+            if not isinstance(pointer, str) or not pointer.startswith("/"):
+                raise _corrupt_record(f"{pointer!r} is not a JSON Pointer")
+            tokens = [
+                t.replace("~1", "/").replace("~0", "~")
+                for t in pointer[1:].split("/")
+            ]
+            node = trie
+            for token in tokens[:-1]:
+                node = node.setdefault(token, {})
+                if not isinstance(node, dict):
+                    raise _corrupt_record(f"{pointer!r} overlaps a value")
+            if tokens[-1] in node:
+                raise _corrupt_record(f"{pointer!r} is listed twice")
+            node[tokens[-1]] = _NON_FINITE_KINDS[kind]
+    return trie
+
+
+def _merge_tries(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    out = dict(a)
+    for token, sub in b.items():
+        if token not in out:
+            out[token] = sub
+        elif isinstance(out[token], dict) and isinstance(sub, dict):
+            out[token] = _merge_tries(out[token], sub)
+        else:
+            raise _corrupt_record("two records name the same value")
+    return out
+
+
+def _decode(value: Any, trie: Any, where: str) -> Any:
+    """``value`` with the ``null`` values ``trie`` names restored; the
+    same object when nothing inside it changes."""
+    if isinstance(trie, float):
+        if value is not None:
+            raise _corrupt_record(
+                f"it names {where}, which holds {value!r}, not null"
+            )
+        return trie
+    if isinstance(value, dict):
+        if NON_FINITE_KEY in value:
+            own = _parse_record(value[NON_FINITE_KEY])
+            trie = own if trie is None else _merge_tries(trie, own)
+        if trie is None:
+            children = {
+                k: _decode(v, None, f"{where}/{k}") for k, v in value.items()
+            }
+        else:
+            children = {}
+            for k, v in value.items():
+                if k != NON_FINITE_KEY:
+                    children[k] = _decode(v, trie.get(str(k)), f"{where}/{k}")
+            missing = set(trie) - {str(k) for k in value}
+            if missing:
+                raise _corrupt_record(
+                    f"it names {where}/{sorted(missing)[0]}, which does"
+                    " not exist"
+                )
+        if children.keys() == value.keys() and all(
+            children[k] is value[k] for k in value
+        ):
+            return value
+        return children
+    if isinstance(value, (list, tuple)):
+        if trie is None:
+            items = [_decode(v, None, where) for v in value]
+        else:
+            items = [
+                _decode(v, trie.get(str(j)), f"{where}/{j}")
+                for j, v in enumerate(value)
+            ]
+            missing = set(trie) - {str(j) for j in range(len(value))}
+            if missing:
+                raise _corrupt_record(
+                    f"it names {where}/{sorted(missing)[0]}, which does"
+                    " not exist"
+                )
+        if all(a is b for a, b in zip(items, value)):
+            return value
+        return tuple(items) if isinstance(value, tuple) else items
+    # A record naming values inside a null is let through: the whole
+    # array was nulled (a hand edit, or a legacy layout rebuilt from a
+    # newer dict), so there is nothing left to restore.
+    if trie is not None and value is not None:
+        raise _corrupt_record(f"it names a path inside the value at {where}")
+    return value
+
+
+def decode_non_finite(model_dict: dict) -> dict:
+    """Undo :func:`encode_non_finite`: the dictionary with every ``null``
+    its ``"non_finite"`` records name put back to ``inf``, ``-inf`` or
+    ``nan``, and the records removed.
+
+    The records of nested model dictionaries are applied too. The input
+    is not modified; a dictionary without records (including those
+    written before schema 2, whose non-finite values were stored as
+    floats) is returned unchanged. A record naming a missing entry or a
+    value that is not ``null`` raises a ``ValueError``.
+
+    Examples
+    --------
+    >>> from surpyval.serialisation import decode_non_finite
+    >>> decode_non_finite(
+    ...     {"H": [0.5, None], "non_finite": {"inf": ["/H/1"]}}
+    ... )
+    {'H': [0.5, inf]}
+    """
+    return _decode(model_dict, None, "")
+
+
 def stamp_schema(model_dict: dict) -> dict:
-    """Stamp the serialisation schema version into a ``to_dict`` output."""
+    """Finish a ``to_dict`` output: make it strict JSON (non-finite floats
+    as ``null``, see :func:`encode_non_finite`) and stamp the
+    serialisation schema version. Every ``to_dict`` ends with it."""
+    encode_non_finite(model_dict)
     model_dict["schema"] = SCHEMA_VERSION
     return model_dict
 
@@ -232,19 +483,28 @@ def _check_restored_parametric(model: Any) -> None:
         raise ValueError("The serialised offset 'gamma' must be finite.")
 
 
-def read_model_dict(reader: Any, model_dict: dict) -> Any:
-    """``reader.from_dict(model_dict)`` with the checks every reader needs.
+# Marks a ``from_dict`` function already wrapped by ``checked_from_dict``.
+_CHECKED_ATTR = "_surpyval_checked_reader"
 
-    Shared by the package-level :func:`from_dict` and every class's
-    ``from_json``, so a model read either way gets the same schema check,
-    the same error for a missing entry and the same parameter check.
-    """
+_Reader = TypeVar("_Reader", bound=Callable[..., Any])
+
+
+def _read_checked(
+    reader: Any, raw: Callable[[Any, dict], Any], model_dict: Any
+) -> Any:
+    """``raw(reader, model_dict)`` with the checks every reader needs."""
+    if not isinstance(model_dict, dict):
+        raise ValueError(
+            "Expected a serialised model dict, got "
+            f"{type(model_dict).__name__}"
+        )
     check_schema(model_dict)
+    model_dict = decode_non_finite(model_dict)
     # The class readers index the dictionary directly, so a truncated or
     # hand-edited one surfaced as a bare ``KeyError: 'distribution'``
     # from deep inside a reader. Name the missing entry instead.
     try:
-        model = reader.from_dict(model_dict)
+        model = raw(reader, model_dict)
     except KeyError as err:
         key = err.args[0] if err.args else None
         name = getattr(reader, "__name__", type(reader).__name__)
@@ -261,6 +521,46 @@ def read_model_dict(reader: Any, model_dict: dict) -> Any:
     ):
         _check_restored_parametric(model)
     return model
+
+
+def checked_from_dict(raw: _Reader) -> _Reader:
+    """Give a class's ``from_dict`` the checks every reader applies.
+
+    The wrapped reader refuses a non-dictionary and a ``"schema"`` it
+    cannot read (:func:`check_schema`), restores the non-finite floats
+    (:func:`decode_non_finite`), turns a ``KeyError`` for a missing entry
+    into a ``ValueError`` naming it, and bounds-checks the parameters of
+    a restored univariate parametric model -- exactly what
+    ``surpyval.from_dict`` and ``from_json`` do. Classes using
+    :class:`SerialisableMixin` get it automatically; others apply it
+    under ``@classmethod``. Applying it twice is harmless.
+    """
+    if getattr(raw, _CHECKED_ATTR, False):
+        return raw
+
+    @functools.wraps(raw)
+    def from_dict(cls: Any, model_dict: dict) -> Any:
+        return _read_checked(cls, raw, model_dict)
+
+    setattr(from_dict, _CHECKED_ATTR, True)
+    return cast(_Reader, from_dict)
+
+
+def read_model_dict(reader: Any, model_dict: dict) -> Any:
+    """``reader.from_dict(model_dict)`` with the checks every reader needs.
+
+    Shared by the package-level :func:`from_dict` and every class's
+    ``from_json``, so a model read either way gets the same schema check,
+    the same error for a missing entry and the same parameter check as a
+    class's own ``from_dict`` (see :func:`checked_from_dict`).
+    """
+    from_dict_method = reader.from_dict
+    # A bound method forwards attribute reads to its function.
+    if getattr(from_dict_method, _CHECKED_ATTR, False):
+        return from_dict_method(model_dict)
+    return _read_checked(
+        reader, lambda _reader, d: from_dict_method(d), model_dict
+    )
 
 
 def _resolve(module_name: str, class_name: str) -> Any:
@@ -288,7 +588,21 @@ def to_native(value: Any) -> Any:
 class SerialisableMixin:
     """Shared ``to_json`` / ``from_json`` plumbing for serialisable
     models: every class keeps only its ``to_dict`` / ``from_dict``
-    pair (this used to be copy-pasted into ~20 classes)."""
+    pair (this used to be copy-pasted into ~20 classes).
+
+    A ``from_dict`` a subclass defines is wrapped by
+    :func:`checked_from_dict` when the class is created, so calling it
+    directly checks the dictionary exactly as ``surpyval.from_dict``
+    does; it used to skip the schema check and let a missing entry
+    escape as a bare ``KeyError``."""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        own = cls.__dict__.get("from_dict")
+        if isinstance(own, classmethod):
+            setattr(
+                cls, "from_dict", classmethod(checked_from_dict(own.__func__))
+            )
 
     if TYPE_CHECKING:
         # The contract every user of this mixin fulfils, declared for
@@ -302,10 +616,35 @@ class SerialisableMixin:
         @classmethod
         def from_dict(cls, model_dict: dict) -> Any: ...
 
-    def to_json(self, fp: str | os.PathLike) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
+    def to_json(self, fp: str | os.PathLike, with_data: bool = False) -> None:
+        """Write :meth:`to_dict` to ``fp`` as strict JSON.
+
+        Parameters
+        ----------
+        fp : str or os.PathLike
+            The file to write.
+        with_data : bool, optional
+            Write ``to_dict(with_data=True)``, which also stores the fitted
+            data, for the models whose ``to_dict`` takes ``with_data``
+            (the univariate ``Parametric`` and ``NonParametric``); a
+            ``TypeError`` for any other model. Defaults to :code:`False`.
+        """
+        # Typed loosely: most models' ``to_dict`` takes no arguments.
+        to_dict: Any = self.to_dict
+        if with_data:
+            if "with_data" not in inspect.signature(to_dict).parameters:
+                raise TypeError(
+                    f"{type(self).__name__}.to_dict does not store the"
+                    " fitted data, so to_json(with_data=True) is not"
+                    " available for it."
+                )
+            model_dict = to_dict(with_data=True)
+        else:
+            model_dict = to_dict()
+        # ``to_dict`` already wrote non-finite floats as null;
+        # ``allow_nan=False`` guarantees the file is strict JSON.
         with open(fp, "w+") as f:
-            json.dump(self.to_dict(), f)
+            json.dump(model_dict, f, allow_nan=False)
 
     @classmethod
     def from_json(cls, fp: str | os.PathLike) -> Any:
@@ -348,14 +687,20 @@ def from_dict(model_dict: dict) -> Any:
         parametric model), or names a distribution the reader does not
         know -- which includes a ``CustomDistribution`` that has not been
         constructed again in this session (a dictionary stores only its
-        name, since its cumulative hazard is a Python function).
+        name, since its cumulative hazard is a Python function). Also if
+        its ``"non_finite"`` record (see :func:`encode_non_finite`) is
+        corrupt. Each class's own ``from_dict`` raises the same errors.
 
     Notes
     -----
     What a restored model keeps differs by family: in general the
     parameters and whatever predictions need, but not the fitted data,
-    so methods that need the data (``plot``, ``bic``, bootstrap and
+    so methods that need the data (``plot``, bootstrap and
     likelihood-ratio bounds, residuals) raise on the restored model.
+    A fitted univariate parametric, regression or copula model keeps
+    the likelihood and sample size of its information criteria, so
+    ``aic`` and ``bic`` (and ``aic_c``, where the model has one) work on
+    its restored copy.
     See "Saving and Loading Models" in the Conventions page.
 
     Examples

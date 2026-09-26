@@ -285,7 +285,7 @@ A fitted model can be written to a plain dictionary (or a JSON file) and read ba
     print(with_data.bootstrap_cb([3], B=50, random_state=0),
           model.bootstrap_cb([3], B=50, random_state=0))
 
-``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``to_json`` has no such option, so to keep the data in a file write the dictionary yourself, ``json.dump(model.to_dict(with_data=True), f)``, and read it back with ``surv.from_json``. For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
+``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``model.to_json(path, with_data=True)`` keeps the data in a file, to be read back with ``surv.from_json``. For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
 
 
 Right Censored Data

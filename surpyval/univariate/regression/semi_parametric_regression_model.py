@@ -158,13 +158,12 @@ class SemiParametricRegressionModel(SerialisableMixin):
         }
         if getattr(self, "tl", None) is not None:
             tl = np.asarray(self.tl, dtype=float)
-            # No delayed entry is stored as -inf, which json writes as the
-            # non-standard ``-Infinity`` that strict parsers reject. Omit
-            # the array when no row has an entry time, and write a missing
-            # one as ``null`` otherwise; from_dict reads both back as -inf
-            # (and still reads the -inf of older dicts).
+            # No delayed entry is stored as -inf. Omit the array when no
+            # row has an entry time; otherwise stamp_schema writes each
+            # -inf as null with a "non_finite" record, like every other
+            # model's non-finite values.
             if np.isfinite(tl).any():
-                out["tl"] = [float(v) if np.isfinite(v) else None for v in tl]
+                out["tl"] = tl.tolist()
         if getattr(self, "p_values", None) is not None:
             out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
         if getattr(self, "_neg_log_like", None) is not None:
@@ -197,6 +196,8 @@ class SemiParametricRegressionModel(SerialisableMixin):
         out.tie_method = model_dict["tie_method"]
         out.baseline_method = model_dict["baseline_method"]
         out.is_tvc = bool(model_dict.get("is_tvc", False))
+        # A bare null (no "non_finite" record) is how schema-1 dicts wrote
+        # a row without delayed entry; it still reads as -inf.
         out.tl = (
             np.array(
                 [-np.inf if v is None else v for v in model_dict["tl"]],

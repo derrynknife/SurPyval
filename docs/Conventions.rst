@@ -250,9 +250,9 @@ Saving and Loading Models
 Almost every fitted SurPyval model can be saved and restored (the exceptions are listed at the end of this section):
 
 - ``model.to_dict()`` returns a dictionary of plain Python types (strings, numbers, lists), so it can be written as JSON or stored directly in a document database such as MongoDB.
-- ``model.to_json(path)`` writes that dictionary to a JSON file.
+- ``model.to_json(path)`` writes that dictionary to a JSON file. The dictionaries and files are strict JSON, readable by any JSON parser (see below for how infinite and NaN values are stored).
 - ``surpyval.from_dict(d)`` and ``surpyval.from_json(path)`` restore a model **of whichever class wrote it**. You do not need to know whether the file holds a Weibull, a Kaplan-Meier estimate, a Cox model or a recurrence model; the readers work it out from the dictionary.
-- Each model class also has its own ``from_dict`` / ``from_json`` for when the class is known in advance (for example ``surv.Parametric.from_dict`` or ``surv.NonParametric.from_dict``; note these are the *model* classes, not fitters such as ``surv.Weibull`` or ``surv.KaplanMeier``). They raise a ``ValueError`` if handed a dictionary written by a different class.
+- Each model class also has its own ``from_dict`` / ``from_json`` for when the class is known in advance (for example ``surv.Parametric.from_dict`` or ``surv.NonParametric.from_dict``; note these are the *model* classes, not fitters such as ``surv.Weibull`` or ``surv.KaplanMeier``). They raise a ``ValueError`` if handed a dictionary written by a different class, and otherwise check a dictionary exactly as ``surpyval.from_dict`` does.
 
 .. jupyter-execute::
 
@@ -271,20 +271,30 @@ Almost every fitted SurPyval model can be saved and restored (the exceptions are
     print(type(restored_weibull).__name__, restored_weibull.params)
     print(type(restored_km).__name__, restored_km.sf(6), km.sf(6))
 
-Every dictionary carries a ``"schema"`` version number, an integer. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say).
+Every dictionary carries a ``"schema"`` version number, an integer. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
 
-A restored model keeps what it needs to make predictions, but by default **not the data it was fitted to**. A univariate parametric model also keeps its covariance matrix, so ``cb`` (Wald bounds) works, and its fitted negative log-likelihood, so ``neg_ll()`` and ``aic()`` work; a parametric regression model keeps its covariance too. Anything that needs the data, such as ``plot()``, the sample-size-based criteria (``bic()``, ``aic_c()``), bootstrap or likelihood-ratio confidence bounds, residuals and diagnostics, raises an error on a restored model. What each family keeps is described on its how-to page; recurrent-event models, for example, keep no covariance, so their ``cif_cb`` needs a refit.
-
-The univariate parametric and non-parametric models can carry their data with them: ``to_dict(with_data=True)`` adds the ``x``, ``c``, ``n`` and ``t`` arrays, and a model restored from that dictionary has ``plot()``, ``bic()``, ``aic_c()`` and likelihood-ratio bounds (``method="lr"``) (parametric) or ``bootstrap_cb()`` (non-parametric) again. ``to_json(path)`` always leaves the data out; to keep it in a file, write ``json.dump(model.to_dict(with_data=True), f)``.
+A fitted model can hold values that are not finite numbers: an untruncated bound is ``-inf`` or ``inf``, a Kaplan-Meier cumulative hazard is ``inf`` after the last death, and a variance can be undefined (``nan``). JSON has no way to write these (Python's ``json`` writes ``Infinity`` and ``NaN``, which JavaScript and many databases refuse), so ``to_dict`` writes each one as ``null`` and records what it stood for under ``"non_finite"``: for each kind (``"inf"``, ``"-inf"``, ``"nan"``) a list of `JSON Pointers <https://www.rfc-editor.org/rfc/rfc6901>`_ to its values, relative to the dictionary holding the record. Every SurPyval reader puts the original values back; another program sees ``null`` where no number applies, and can read the record to recover them. Files written by earlier versions of SurPyval, which contain ``Infinity`` and ``NaN``, still load.
 
 .. jupyter-execute::
 
+    all_die = surv.KaplanMeier.fit([3, 4, 5])
+    d = all_die.to_dict()
+    print(d["H"], d["non_finite"])
+    print(surv.from_dict(d).H)
+
+A restored model keeps what it needs to make predictions, but by default **not the data it was fitted to**. A univariate parametric model also keeps its covariance matrix, so ``cb`` (Wald bounds) works, and its fitted negative log-likelihood and the sample size of its information criteria (see :ref:`information-criteria`), so ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` work; a parametric regression model keeps the same. Anything else that needs the data, such as ``plot()``, bootstrap or likelihood-ratio confidence bounds, residuals and diagnostics, raises an error on a restored model. What each family keeps is described on its how-to page; recurrent-event models, for example, keep no covariance, so their ``cif_cb`` needs a refit.
+
+The univariate parametric and non-parametric models can carry their data with them: ``to_dict(with_data=True)`` adds the ``x``, ``c``, ``n`` and ``t`` arrays, and a model restored from that dictionary has ``plot()`` and likelihood-ratio bounds (``method="lr"``) (parametric) or ``bootstrap_cb()`` (non-parametric) again. ``to_json(path, with_data=True)`` writes that dictionary to a file (``to_json(path)`` leaves the data out, as ``to_dict()`` does); the other models do not store their data, and their ``to_json`` refuses ``with_data=True`` with a ``TypeError``.
+
+.. jupyter-execute::
+
+    print("BIC, restored and fitted:", restored_weibull.bic(), weibull.bic())
     try:
-        restored_weibull.bic()
+        restored_weibull.plot()
     except ValueError as err:
         print("without the data:", str(err)[:60], "...")
 
     with_data = surv.from_dict(weibull.to_dict(with_data=True))
-    print("with the data    :", with_data.bic(), weibull.bic())
+    print("with the data    :", with_data.data["x"])
 
 A few models cannot be saved, and say so when ``to_dict`` is called: a stratified Cox model, an accelerated-life model with a life model of your own, a regression fitted with a formula that uses a data-dependent transform such as ``scale()``, and a copula of a custom family. A model of a distribution made with ``Discretize`` is read back like any other. A model of a ``CustomDistribution`` stores only the distribution's name, since its cumulative hazard is a Python function: it is read back in any session that has constructed the same ``CustomDistribution`` (same name) again, and otherwise ``from_dict`` raises an error that says so. Keep the data (for example with ``SurpyvalData.to_json``) whenever you may need to refit. The full API is in :doc:`surpyval.serialisation`.

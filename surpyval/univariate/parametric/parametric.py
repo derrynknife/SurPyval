@@ -15,7 +15,10 @@ from scipy.stats import uniform
 import surpyval as surv
 from surpyval import ParametricDistribution, np
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
-from surpyval.univariate.information_criteria import InformationCriteriaMixin
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.utils import fsli_to_xcnt
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -200,8 +203,10 @@ class Parametric(
         -------
         Parametric
             The restored model. Methods that need the original data
-            (``plot``, ``bic``, likelihood-ratio bounds) work only if the
-            dictionary was written with ``with_data=True``.
+            (``plot``, likelihood-ratio bounds) work only if the
+            dictionary was written with ``with_data=True``; ``aic``,
+            ``bic`` and ``aic_c`` work from the stored likelihood and
+            sample size either way.
 
         Examples
         --------
@@ -259,6 +264,11 @@ class Parametric(
         if "_neg_ll" in model_dict:
             out._neg_ll = model_dict["_neg_ll"]
 
+        # The sample size of bic() and aic_c(), so they work -- and agree
+        # with the fitted model -- without the data. Dicts written before
+        # this key existed need the data for them.
+        out._ic_n = cls._restored_ic_n(model_dict)
+
         # The parameters fixed at fit time are not estimated, so they do
         # not count towards the k of aic() and bic(); restoring them keeps
         # a round-tripped model's criteria equal to the fitted one's.
@@ -283,22 +293,27 @@ class Parametric(
 
         The dictionary holds the distribution name, the parameters, the
         offset / LFP / ZI settings, the names of any parameters fixed at fit
-        time (``"fixed"``) and, if available, the parameter covariance and
-        fitted negative log-likelihood, so a restored model can compute
-        confidence bounds and ``aic``. Restore it with
+        time (``"fixed"``) and, if available, the parameter covariance,
+        fitted negative log-likelihood and the sample size of BIC and
+        AIC_c (``"ic_n"``), so a restored model can compute confidence
+        bounds, ``aic``, ``bic`` and ``aic_c``. Restore it with
         :meth:`from_dict` or ``surpyval.from_dict``.
 
         Parameters
         ----------
         with_data : bool, optional
             If :code:`True`, also store the ``x``, ``c``, ``n``, ``t`` data
-            the model was fitted to, which ``plot``, ``bic``, ``aic_c``
-            and likelihood-ratio bounds need. Defaults to :code:`False`.
+            the model was fitted to, which ``plot`` and likelihood-ratio
+            bounds need. Defaults to :code:`False`.
+            ``to_json(path, with_data=True)`` writes this to a file.
 
         Returns
         -------
         dict
-            A JSON-serialisable dictionary.
+            A strict-JSON dictionary: non-finite values (such as the
+            untruncated ``-inf``/``inf`` bounds in the data) are ``None``,
+            recorded under ``"non_finite"`` and restored by
+            :meth:`from_dict` (see :doc:`/surpyval.serialisation`).
 
         Examples
         --------
@@ -354,6 +369,9 @@ class Parametric(
             out["cov_matrix"] = self.cov_matrix.tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
+        ic_n = self._ic_sample_size_or_none()
+        if ic_n is not None:
+            out["ic_n"] = ic_n
 
         fixed_idx = sorted(self._user_fixed_idx())
         if fixed_idx:
@@ -1902,15 +1920,12 @@ class Parametric(
                 "to_dict(with_data=True) to keep them)".format(what)
             )
 
-    def _ic_counts(self) -> Any:
+    def _ic_sample_size_from_data(self) -> float:
         self._require_data("This information criterion")
-        n, c = self.data["n"], self.data["c"]
-        # The BIC's d counts every unit whose failure was observed:
-        # exactly, or known to lie in a left- or interval-censored window.
-        # Only right-censored units, which have not failed, are left out
-        # [Volinsky2000bic]. Counting exact failures alone made d = 0 for
-        # purely interval-censored data, and the BIC -inf.
-        return n[c != 1].sum(), n.sum()
+        # The observed failures -- exact, left- or interval-censored --
+        # falling back to the units when there is none; the rule every
+        # model's BIC and AIC_c share (ic_sample_size).
+        return ic_sample_size(self.data["c"], self.data["n"])
 
     def get_plot_data(
         self, heuristic: str = "Nelson-Aalen", alpha_ci: float = 0.05

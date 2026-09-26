@@ -6,7 +6,10 @@ import numpy.typing as npt
 from matplotlib import pyplot as plt
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
-from surpyval.univariate.information_criteria import InformationCriteriaMixin
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.utils.linalg import (
     delta_method_se,
     log_transformed_cb,
@@ -232,6 +235,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             out["covariance"] = np.asarray(cov, dtype=float).tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
+        # The sample size of bic() and aic_c(), which the restored model,
+        # having no data, could not otherwise compute.
+        ic_n = self._ic_sample_size_or_none()
+        if ic_n is not None:
+            out["ic_n"] = ic_n
         return stamp_schema(out)
 
     @classmethod
@@ -357,6 +365,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
+        # Dicts written before "ic_n" existed carry no sample size, and
+        # bic() / aic_c() then say they need the data.
+        out._ic_n = cls._restored_ic_n(model_dict)
         return out
 
     def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
@@ -977,16 +988,20 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
 
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin.
-    def _ic_counts(self) -> tuple[int, int]:
+    def _ic_sample_size_from_data(self) -> float:
         self._require_data("bic() / aic_c()")
-        n, c = self.data.n, self.data.c
-        # A time-varying-covariate fit has one row per interval, but each
-        # subject is one observation of the survival process, so the
-        # small-sample correction counts subjects -- as the AFT
-        # time-varying fit already did. Splitting a subject's time into more
-        # intervals must not change aic_c.
-        total = getattr(self, "_ic_n_total", None)
-        return n[c == 0].sum(), n.sum() if total is None else total
+        # The observed failures (exact, left- or interval-censored), as for
+        # every model's BIC and AIC_c (ic_sample_size); only exact failures
+        # were counted here, unlike the univariate models. A
+        # time-varying-covariate fit has one row per interval, but only a
+        # subject's last interval can end in a failure, so the count is
+        # unchanged by splitting its time into more intervals; the fallback
+        # for data with no failure counts subjects, not interval rows.
+        return ic_sample_size(
+            self.data.c,
+            self.data.n,
+            n_rows=getattr(self, "_ic_n_total", None),
+        )
 
     # ``self.k`` is the number of estimated parameters, so the AIC/BIC
     # penalties and the AIC_c correction all use it (the mixin's defaults).

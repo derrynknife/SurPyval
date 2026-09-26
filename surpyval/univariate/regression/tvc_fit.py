@@ -129,11 +129,12 @@ class TVCFitMixin:
             x=x, Z=Z_arr, c=c_arr, n=n_arr, t=t, **kwargs
         )
         model.is_tvc = True
-        # aic_c counts subjects, each weighted by its last interval's count
-        # (as the AFT time-varying fit does), not interval rows: splitting
-        # a subject's follow-up into more intervals leaves the likelihood
-        # unchanged and must leave aic_c unchanged too. handle_tvc returns
-        # the rows grouped by subject in entry order.
+        # bic and aic_c count observed failures, and fall back (with none)
+        # to subjects, each weighted by its last interval's count (as the
+        # AFT time-varying fit does), not interval rows: splitting a
+        # subject's follow-up into more intervals leaves the likelihood
+        # unchanged and must leave the criteria unchanged too. handle_tvc
+        # returns the rows grouped by subject in entry order.
         _, first, counts = np.unique(
             ident, return_index=True, return_counts=True
         )

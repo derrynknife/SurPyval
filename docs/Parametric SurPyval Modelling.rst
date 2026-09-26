@@ -337,13 +337,13 @@ a Royston-Parmar model or any other SurPyval model (see
     model.to_json(path)
     print(surv.from_json(path).params)
 
-The dictionary holds the parameters, their covariance and the fitted
-negative log-likelihood but, by default, not the data. So a restored model can
-still give Wald confidence bounds, ``neg_ll()`` and ``aic()``, but not the
-criteria that need the sample size (``bic()``, ``aic_c()``), ``plot()``, or
-likelihood-ratio bounds -- each says so if asked. Pass ``with_data=True`` to
-``to_dict`` to keep the data, which restores ``plot()``, every information
-criterion and the likelihood-ratio bounds. A model of a ``Discretize``
+The dictionary holds the parameters, their covariance, the fitted
+negative log-likelihood and the sample size of the information criteria but,
+by default, not the data. So a restored model can still give Wald confidence
+bounds and every information criterion (``neg_ll()``, ``aic()``, ``aic_c()``,
+``bic()``), but not ``plot()`` or likelihood-ratio bounds -- each says so if
+asked. Pass ``with_data=True`` to ``to_dict`` (or ``to_json``) to keep the
+data, which restores ``plot()`` and the likelihood-ratio bounds. A model of a ``Discretize``
 distribution is saved and restored the same way; one of a
 ``CustomDistribution`` is restored once the same distribution has been
 constructed again (see :doc:`CustomDistribution <univariate/custom>`).

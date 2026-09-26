@@ -336,9 +336,18 @@ def test_prediction_from_frame_with_missing_value_is_nan_in_place(fitter):
 
 def test_restored_parametric_model_explains_missing_data():
     x, Z = _ph_data()
-    restored = surpyval.from_dict(WeibullPH.fit(x=x, Z=Z).to_dict())
+    fitted = WeibullPH.fit(x=x, Z=Z)
+    restored = surpyval.from_dict(fitted.to_dict())
     assert np.isfinite(restored.aic())
-    for call in (restored.bic, restored.aic_c, restored.plot):
+    # The dict stores the criteria's sample size, so bic and aic_c work.
+    assert restored.bic() == pytest.approx(fitted.bic())
+    assert restored.aic_c() == pytest.approx(fitted.aic_c())
+    with pytest.raises(ValueError, match="needs the data"):
+        restored.plot()
+    # A dict written before the sample size was stored needs the data.
+    old = fitted.to_dict()
+    del old["ic_n"]
+    for call in (surpyval.from_dict(old).bic, surpyval.from_dict(old).aic_c):
         with pytest.raises(ValueError, match="needs the data"):
             call()
 

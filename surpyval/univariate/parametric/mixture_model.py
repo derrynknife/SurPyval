@@ -142,6 +142,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         counts ``n`` enter the log-likelihood as multipliers -- raising the
         per-component likelihood to ``n`` *before* mixing is wrong, since
         ``sum_i w_i f_i^n != (sum_i w_i f_i)^n`` (#254)."""
+        self._require_fit_data("likelihood()")
         data = self.data
         like_o = self.dist.df(data.x_o, *params)
         like_r = self.dist.sf(data.x_r, *params)
@@ -169,6 +170,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         floor keeps an observation a component cannot explain at a finite,
         heavily penalised value instead.
         """
+        self._require_fit_data("log_likelihood()")
         data = self.data
         dist = self.dist
         out = np.zeros(len(data.x))
@@ -215,6 +217,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         """Observed negative log-likelihood of the mixture: counts multiply
         in the log domain, and truncated observations are conditioned on
         their window through the mixture probability of the window."""
+        self._require_fit_data("neg_ll_of()")
         # log-sum-exp over the components, so the mixture density of an
         # observation is not lost to underflow in any one of them.
         with np.errstate(all="ignore"):
@@ -230,6 +233,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         """EM M-step objective: the (negative) expected complete-data
         log-likelihood over the component labels -- counts times
         responsibilities times each component's log-likelihood."""
+        self._require_fit_data("Q()")
         params = params.reshape(self.m, self.dist.k)
         total = 0.0
         for i in range(self.m):
@@ -581,6 +585,13 @@ class MixtureModel(SerialisableMixin, Distribution):
         x = np.asarray(x, dtype=float)
         X = np.asarray(X, dtype=float)
         return self.sf(x + X) / self.sf(X)
+
+    def _require_fit_data(self, what: str) -> None:
+        # The likelihood pieces also run mid-fit, before ``params`` is
+        # set, so only the data is required; on a restored mixture they
+        # used to fail with ``AttributeError: 'NoneType' ... 'n'``.
+        if self.data is None:
+            self._require_data(what)
 
     def _require_data(self, what: str) -> None:
         if self.params is None:

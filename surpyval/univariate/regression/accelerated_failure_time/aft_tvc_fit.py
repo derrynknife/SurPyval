@@ -37,6 +37,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -354,17 +355,14 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         model.data = edata
         model.is_tvc = True
 
-        # Report information criteria on the *subject* count, not the episode
-        # rows: the accumulated-age likelihood is one term per subject.
-        n_subjects = float(grp["weight"].sum())
-        n_events = float(grp["weight"][grp["event"]].sum())
+        # Report information criteria on the *subjects*, not the episode
+        # rows: the accumulated-age likelihood is one term per subject. The
+        # sample size of bic and aic_c is the shared rule (ic_sample_size):
+        # the subjects whose failure was observed, or all subjects when
+        # none was. With none, bic used to fall back to the episode data.
         model.n_subjects = int(grp["n_subjects"])
-        k = model.k
-        if n_events > 0:
-            model._bic = k * np.log(n_events) + 2 * res.fun
-        if n_subjects - k - 1 > 0:
-            model._aic_c = (2 * k + 2 * res.fun) + (2 * k**2 + 2 * k) / (
-                n_subjects - k - 1
-            )
+        model._ic_n = ic_sample_size(
+            np.where(grp["event"], 0, 1), grp["weight"]
+        )
 
         return model

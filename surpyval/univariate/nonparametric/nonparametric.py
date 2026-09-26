@@ -1834,9 +1834,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         with_data : bool, optional
             Also store the raw ``x``/``c``/``n``/``t`` data the model was
             fitted with (needed to reconstruct a model that can call
-            :meth:`bootstrap_cb`). Defaults to False. ``to_json(path)``
-            writes the dictionary without the data; to keep the data in a
-            file, ``json.dump(model.to_dict(with_data=True), f)``.
+            :meth:`bootstrap_cb`). Defaults to False.
+            ``to_json(path, with_data=True)`` writes this to a file.
 
         Returns
         -------
@@ -1845,7 +1844,11 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             The serialized model. The Turnbull fitting diagnostics
             (``converged``, ``iters``, ``degenerate``,
             ``exploitable_mass``) and the ``bounds``, ``R_upper`` and
-            ``R_lower`` arrays are not stored.
+            ``R_lower`` arrays are not stored. It is strict JSON: the
+            non-finite values (``H`` after the last death, an undefined
+            Greenwood term, untruncated bounds in the data) are ``None``,
+            recorded under ``"non_finite"`` and restored by
+            :meth:`from_dict` (see :doc:`/surpyval.serialisation`).
 
         Examples
         --------

@@ -5,7 +5,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
-from surpyval.recurrent.inference import observed_event_count
+from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
@@ -295,7 +295,7 @@ class ProportionalIntensityNHPP:
         # machinery needs for AIC/BIC/standard errors.
         out._neg_ll = neg_ll
         out._mle = np.asarray(res.x, dtype=float)
-        out._n_obs = observed_event_count(data)
+        out._n_obs = bic_sample_size(data)
 
         return out
 

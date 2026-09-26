@@ -50,6 +50,7 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.utils.linalg import numerical_hessian
 
 _SCALES = ("hazard", "odds", "normal")
@@ -156,6 +157,9 @@ class RoystonParmarModel(SerialisableMixin):
         self.n = 0
         self.n_events = 0
         self._neg_ll = 0.0
+        # The sample size of bic() (see ic_sample_size), from the data at
+        # fit time.
+        self._ic_n = 0.0
 
     # -- linear predictor --------------------------------------------------
 
@@ -298,8 +302,15 @@ class RoystonParmarModel(SerialisableMixin):
         return 2 * self.k + 2 * self._neg_ll
 
     def bic(self) -> float:
-        """The Bayesian information criterion, ``k log(n) + 2 neg_ll``."""
-        return self.k * np.log(self.n) + 2 * self._neg_ll
+        """The Bayesian information criterion, ``k log(d) + 2 neg_ll``.
+
+        ``d`` is the number of observed failures -- exact, left- and
+        interval-censored observations, weighted by their counts -- or the
+        number of observations when there is none: the sample size every
+        SurPyval BIC uses (it was the number of observations here, so a
+        spline fit's BIC was not comparable with the parametric fits').
+        """
+        return self.k * np.log(self._ic_n) + 2 * self._neg_ll
 
     def summary(self) -> str:
         """A text summary of the fit: link scale, knots, likelihood and
@@ -335,6 +346,7 @@ class RoystonParmarModel(SerialisableMixin):
             "n": int(self.n),
             "n_events": int(self.n_events),
             "_neg_ll": to_native(self._neg_ll),
+            "ic_n": float(self._ic_n),
         }
         if self.covariance is not None:
             out["covariance"] = np.asarray(self.covariance, float).tolist()
@@ -353,6 +365,12 @@ class RoystonParmarModel(SerialisableMixin):
         out.n = int(model_dict.get("n", 0))
         out.n_events = int(model_dict.get("n_events", 0))
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
+        if "ic_n" in model_dict:
+            out._ic_n = float(model_dict["ic_n"])
+        else:
+            # Written before the sample size was stored: the exact failures
+            # are the only failures the dict records.
+            out._ic_n = ic_sample_size([0], [out.n_events], n_rows=out.n)
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)
         return out
@@ -558,6 +576,7 @@ class RoystonParmar_:
         )
         model.n_events = int(round(float(n_o.sum())))
         model._neg_ll = float(res.fun)
+        model._ic_n = ic_sample_size(data.c, data.n)
         return model
 
 

@@ -523,8 +523,10 @@ Some further points worth knowing:
   those estimates, and ``aic()``/``bic()`` count as parameters the copula's and
   those of every margin the fit estimated (a margin passed already fitted is
   not re-estimated under IFM, so it does not count); ``bic()`` uses the number
-  of rows. A ``from_params`` model has no likelihood and raises a
-  ``ValueError``.
+  of rows in which at least one series failed (was not right-censored), or of
+  all rows when none did -- the sample-size rule of every SurPyval model (see
+  :ref:`information-criteria`). A ``from_params`` model has no likelihood and
+  raises a ``ValueError``.
 - Margin probabilities are kept a tiny distance (:math:`10^{-10}`) inside
   :math:`(0, 1)` to keep the Archimedean formulas finite.
 - The Frank and Clayton formulas are evaluated in log space, from terms that

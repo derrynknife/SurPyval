@@ -5,7 +5,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
-from surpyval.recurrent.inference import observed_event_count
+from surpyval.recurrent.inference import bic_sample_size
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
@@ -373,7 +373,7 @@ class ProportionalIntensityHPP:
         # and covariate coefficients.
         out._neg_ll = lambda p: neg_ll(np.concatenate([[np.log(p[0])], p[1:]]))
         out._mle = np.concatenate([out.params, out.coeffs])
-        out._n_obs = observed_event_count(data)
+        out._n_obs = bic_sample_size(data)
         # The baseline hazard is this fitter's own constant-rate model, so the
         # fitted model's ``cif``/``iif``/``inv_cif`` (and everything built on
         # them: simulation, ``cif_cb``, ``plot``) delegate back to it.

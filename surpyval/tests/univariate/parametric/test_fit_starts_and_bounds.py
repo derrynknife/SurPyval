@@ -96,8 +96,8 @@ def test_a_restored_model_keeps_its_likelihood():
     restored = surv.from_dict(json.loads(json.dumps(model.to_dict())))
     assert restored.neg_ll() == model.neg_ll()
     assert restored.aic() == model.aic()
-    with pytest.raises(ValueError, match="with_data=True"):
-        restored.bic()
+    # the dict stores the criteria's sample size too
+    assert restored.bic() == model.bic()
     with pytest.raises(ValueError, match="with_data=True"):
         restored.plot()
     with_data = surv.from_dict(

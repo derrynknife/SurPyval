@@ -274,9 +274,10 @@ def test_renewal_cvm_resimulates_time_truncated_items_to_their_window(
         assert len(x2) == 4 and np.all(c2 == 0)
 
 
-def test_bic_undefined_without_exact_events():
-    # Only interval counts: no exactly observed event to count, so BIC is
-    # NaN rather than log(0) = -inf.
+def test_bic_counts_interval_events():
+    # Only interval counts: the five events they hold are observed events,
+    # so BIC's sample size is 5 (it used to count exact events only, and
+    # was NaN here rather than log(0) = -inf).
     model = HPP.fit([[0, 10], [10, 20]], c=[2, 2], n=[2, 3])
-    assert np.isnan(model.bic)
+    assert model.bic == pytest.approx(np.log(5) - 2 * model.log_likelihood)
     assert np.isfinite(model.aic)

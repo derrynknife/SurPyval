@@ -4,7 +4,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
-from surpyval.recurrent.inference import observed_event_count
+from surpyval.recurrent.inference import bic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
 
 
@@ -253,8 +253,8 @@ class RenewalFitMixin:
         Store the fit artefacts and the attributes
         :class:`LikelihoodInferenceMixin` needs: ``_neg_ll`` (the negative
         log-likelihood in natural parameter space), ``_mle`` (the fitted
-        parameters in that space) and ``_n_obs`` (the exactly observed
-        events, BIC's sample size, counted the same way for every model).
+        parameters in that space) and ``_n_obs`` (BIC's sample size, the
+        observed events, counted the same way for every model).
         Also keeps a reference to
         the fitter (``_fitter``) so the fitted model can reuse its
         family-specific rescaled-increment (time-rescaling residual) logic.
@@ -265,5 +265,5 @@ class RenewalFitMixin:
         model._fitter = self
         model._neg_ll = neg_ll
         model._mle = np.asarray(mle, dtype=float)
-        model._n_obs = observed_event_count(data)
+        model._n_obs = bic_sample_size(data)
         return model

@@ -36,7 +36,10 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
-from surpyval.univariate.information_criteria import InformationCriteriaMixin
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 
 from ..regression_data import (
     prepare_Z,
@@ -92,9 +95,9 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         self.n_obs: int = 0
         self.n_events: int = 0
         self.n_groups: int = 0
-        # Count-weighted numbers of events and observations, the sample
-        # sizes of the information criteria (``n_events``/``n_obs`` count
-        # rows).
+        # Count-weighted numbers of events and observations, from which
+        # the sample size of the information criteria follows
+        # (``n_events``/``n_obs`` count rows).
         self.n_events_weighted: float = 0.0
         self.n_obs_weighted: float = 0.0
         self._neg_ll: float = 0.0
@@ -104,8 +107,12 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
 
     # -- information criteria (InformationCriteriaMixin) -------------------
 
-    def _ic_counts(self) -> tuple[int, int]:
-        return self.n_events_weighted, self.n_obs_weighted  # type: ignore
+    def _ic_sample_size_from_data(self) -> float:
+        # The shared rule (ic_sample_size) on the fitted data, which the
+        # stored weighted counts summarise: a frailty fit takes only
+        # events (c=0) and right-censored rows (c=1).
+        n_censored = self.n_obs_weighted - self.n_events_weighted
+        return ic_sample_size([0, 1], [self.n_events_weighted, n_censored])
 
     # -- covariate / frailty resolution ------------------------------------
 

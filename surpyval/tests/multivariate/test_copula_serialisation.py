@@ -25,7 +25,7 @@ def _model(copula, theta):
 def test_round_trip_preserves_predictions(copula, theta):
     m = _model(copula, theta)
     d = m.to_dict()
-    assert d["schema"] == 1
+    assert d["schema"] == surpyval.serialisation.SCHEMA_VERSION
     assert d["parameterization"] == "copula"
     r = surpyval.from_dict(d)
     assert isinstance(r, CopulaModel)

@@ -7,6 +7,7 @@ import numpy.typing as npt
 
 from surpyval.distribution import MultivariateDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.univariate.information_criteria import ic_sample_size
 
 _EPS = 1e-10
 
@@ -44,7 +45,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         self.data = data
         self.method = how
         self.k = k
-        # The fitted negative log-likelihood and weighted row count, computed
+        # The fitted negative log-likelihood and BIC's sample size, computed
         # on first use from ``data`` (or restored by ``from_dict``, which has
         # no data).
         self._neg_ll: "float | None" = None
@@ -186,8 +187,8 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         return self._fit_stats()[0]
 
     def _fit_stats(self) -> tuple[float, float]:
-        """``(neg_ll, n_obs)``: the negative log-likelihood and the weighted
-        row count, computed from the data once (or restored by
+        """``(neg_ll, n_obs)``: the negative log-likelihood and BIC's sample
+        size (see :meth:`bic`), computed from the data once (or restored by
         :meth:`from_dict`)."""
         self._fitted_k()
         if self._neg_ll is None or self._n_obs is None:
@@ -198,7 +199,9 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
                 for d in range(self.data.D)
             ]
             self._neg_ll = self.copula.neg_ll(self.params, dims, self.data.n)
-            self._n_obs = float(onp.sum(self.data.n))
+            # The shared rule of every SurPyval BIC; a joint row counts
+            # when any of its series failed. It was every row here.
+            self._n_obs = ic_sample_size(self.data.c, self.data.n)
         return float(self._neg_ll), float(self._n_obs)
 
     @property
@@ -217,8 +220,11 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
     def bic(self) -> float:
         """
         The Bayesian information criterion, :math:`k \\ln N - 2\\ln L`, with
-        ``N`` the number of joint observations (rows, weighted by ``n``).
-        Lower is better.
+        ``N`` the number of joint observations (rows, weighted by ``n``) in
+        which at least one series failed -- was observed exactly, or left-
+        or interval-censored -- or, when no row has a failure, the number
+        of rows. It is the sample size of every SurPyval BIC: a unit
+        right-censored in every series adds nothing. Lower is better.
         """
         neg_ll, n_obs = self._fit_stats()
         return float(self._fitted_k() * onp.log(n_obs) + 2.0 * neg_ll)
@@ -229,7 +235,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         Serialise to a plain dictionary: the copula family, its
         parameter(s), the fit method and each margin's own ``to_dict``.
         The data is not stored, but for a fitted model the negative
-        log-likelihood, parameter count and row count are, so the
+        log-likelihood, parameter count and BIC's sample size are, so the
         restored model still reports ``neg_ll``/``aic``/``bic``. Restore
         with :meth:`from_dict` or ``surpyval.from_dict``.
         """
@@ -244,7 +250,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             "margins": margins,
         }
         if self._has_likelihood():
-            out["neg_ll"], out["n_obs"] = self._fit_stats()
+            out["neg_ll"], out["ic_n"] = self._fit_stats()
             out["k"] = self._fitted_k()
         return stamp_schema(out)
 
@@ -286,7 +292,13 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         # model (like a ``from_params`` one) has no likelihood to report.
         if "neg_ll" in model_dict:
             model._neg_ll = float(model_dict["neg_ll"])
-            model._n_obs = float(model_dict["n_obs"])
+            # Dicts written before "ic_n" stored the weighted row count,
+            # the sample size BIC then used.
+            model._n_obs = float(
+                model_dict["ic_n"]
+                if "ic_n" in model_dict
+                else model_dict["n_obs"]
+            )
         return model
 
     def __repr__(self) -> str:

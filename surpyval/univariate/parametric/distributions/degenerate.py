@@ -23,6 +23,7 @@ import numpy.typing as npt
 
 from surpyval.distribution import Distribution
 from surpyval.serialisation import (
+    checked_from_dict,
     read_model_dict,
     require_model_tag,
     stamp_schema,
@@ -33,6 +34,8 @@ from surpyval.serialisation import (
 # ``SerialisableMixin`` does not fit; these are its classmethod
 # counterparts. ``to_json`` used to be missing altogether, although the
 # package reader ``surpyval.from_json`` was registered for both classes.
+# Not being mixin users, their ``from_dict`` takes the shared reader
+# checks (schema, ...) from ``checked_from_dict`` explicitly.
 
 
 def _degenerate_to_dict(cls: type[Any]) -> dict[str, Any]:
@@ -52,7 +55,7 @@ def _degenerate_to_json(
     cls: type[Distribution], fp: str | os.PathLike
 ) -> None:
     with open(fp, "w+") as f:
-        json.dump(_degenerate_to_dict(cls), f)
+        json.dump(_degenerate_to_dict(cls), f, allow_nan=False)
 
 
 def _degenerate_from_json(
@@ -110,6 +113,7 @@ class NeverOccurs(Distribution):
         return _degenerate_to_dict(cls)
 
     @classmethod
+    @checked_from_dict
     def from_dict(cls, model_dict: dict[str, Any]) -> type["Distribution"]:
         return _degenerate_from_dict(cls, model_dict)
 
@@ -169,6 +173,7 @@ class InstantlyOccurs(Distribution):
         return _degenerate_to_dict(cls)
 
     @classmethod
+    @checked_from_dict
     def from_dict(cls, model_dict: dict[str, Any]) -> type["Distribution"]:
         return _degenerate_from_dict(cls, model_dict)
 

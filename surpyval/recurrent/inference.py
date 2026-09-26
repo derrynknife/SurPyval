@@ -7,21 +7,23 @@ import numpy as np
 # ``surpyval.utils.linalg`` -- shared with the parametric-regression
 # bounds machinery, which used to carry verbatim copies of them (the
 # drift-prone pattern that produced #288).
+from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 
 
-def observed_event_count(data: Any) -> int:
+def bic_sample_size(data: Any) -> float:
     """
-    The number of exactly observed events (``c=0`` rows, weighted by ``n``)
-    in recurrent data: the sample size ``n`` of every recurrent model's
-    BIC. End-of-observation (``c=1``) rows are not events, and censored
-    counts are not exact observations, so neither adds to it -- the same
-    convention as BIC for the univariate models. (Each model used to pick
-    its own: most counted every row, ARI only its failures, so BICs were
-    not comparable across families.)
+    The sample size ``n`` of every recurrent model's BIC: the number of
+    observed events -- exactly observed (``c=0``), left-censored (``c=-1``,
+    events before ``x``) and interval-censored (``c=2``, events within
+    ``[xl, xr]``), each row weighted by the number of events ``n`` it
+    holds -- or, with none, the (weighted) number of rows. End-of-
+    observation (``c=1``) rows are not events. This is the rule of every
+    SurPyval BIC (:func:`surpyval.univariate.information_criteria.
+    ic_sample_size`); the recurrent models used to count exact events only,
+    and returned NaN without one.
     """
-    c = np.asarray(data.c)
-    return int(np.asarray(data.n)[c == 0].sum())
+    return ic_sample_size(data.c, data.n)
 
 
 def require_data(model: Any, what: str) -> None:
@@ -49,8 +51,8 @@ class LikelihoodInferenceMixin:
 
     The fitting routine must set ``_neg_ll`` (the negative log-likelihood in
     natural parameter space), ``_mle`` (the fitted parameter vector in that
-    same space) and ``_n_obs`` (the number of exactly observed events, from
-    :func:`observed_event_count`: BIC's sample size). Models built with
+    same space) and ``_n_obs`` (BIC's sample size, from
+    :func:`bic_sample_size`). Models built with
     ``fit_from_parameters`` (or by a non-likelihood method such as MSE) carry
     no likelihood and these methods raise.
 
@@ -74,7 +76,7 @@ class LikelihoodInferenceMixin:
     # here so the checker knows their types on the host class.
     _neg_ll: Callable
     _mle: np.ndarray
-    _n_obs: int
+    _n_obs: float
     _fitter: Any
 
     def _check_fitted(self) -> None:
@@ -137,15 +139,15 @@ class LikelihoodInferenceMixin:
     def bic(self) -> float:
         """
         The Bayesian information criterion, :math:`k \\ln n - 2\\ln L`,
-        with ``n`` the number of exactly observed events (``c=0`` rows) the
-        model was fitted to -- end-of-observation rows and censored counts
-        do not add to it, as for BIC everywhere in SurPyval. Lower is
-        better. NaN when the data has no exactly observed event.
+        with ``n`` the number of observed events the model was fitted to:
+        exact, left- and interval-censored, the last two adding the
+        number of events they hold. End-of-observation rows do not add to
+        it, and with no observed event it is the number of rows -- the
+        rule of BIC everywhere in SurPyval (see :func:`bic_sample_size`).
+        Lower is better.
         """
         self._check_fitted()
         k = self._mle.size
-        if self._n_obs < 1:
-            return float("nan")
         return k * np.log(self._n_obs) - 2.0 * self.log_likelihood
 
     def covariance(self) -> np.ndarray:
