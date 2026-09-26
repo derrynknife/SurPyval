@@ -108,7 +108,8 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.sf(x, 3, 4)
         array([0.77337265, 0.71793339, 0.68273014, 0.65668272, 0.63594491])
         """
-        return 1 - self.ff(x, mu, sigma)
+        # norm.sf, not 1 - cdf: the difference is 0 past survival ~1e-16
+        return norm.sf(np.log(x), mu, sigma)
 
     def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -211,7 +212,8 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.hf(x, 3, 4)
         array([0.09734551, 0.05881839, 0.04349249, 0.03500202, 0.02952687])
         """
-        return self.df(x, mu, sigma) / self.sf(x, mu, sigma)
+        # in logs, so the ratio stays finite deep in the tail
+        return np.exp(self.log_df(x, mu, sigma) - self.log_sf(x, mu, sigma))
 
     def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -245,7 +247,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.Hf(x, 3, 4)
         array([0.25699427, 0.33137848, 0.3816556 , 0.4205543 , 0.45264333])
         """
-        return -np.log(self.sf(x, mu, sigma))
+        return -self.log_sf(x, mu, sigma)
 
     def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""

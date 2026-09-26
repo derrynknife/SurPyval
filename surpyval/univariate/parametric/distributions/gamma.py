@@ -137,7 +137,9 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.sf(x, 3, 2)
         array([0.67667642, 0.23810331, 0.0619688 , 0.01375397, 0.0027694 ])
         """
-        return 1 - self.ff(x, alpha, beta)
+        # the upper incomplete gamma directly, not 1 - P: the difference is
+        # 0 past survival ~1e-16
+        return np.exp(self.log_sf(x, alpha, beta))
 
     def ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -252,7 +254,10 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.hf(x, 3, 2)
         array([0.8       , 1.23076923, 1.44      , 1.56097561, 1.63934426])
         """
-        return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
+        # in logs, so the ratio stays finite deep in the tail
+        return np.exp(
+            self.log_df(x, alpha, beta) - self.log_sf(x, alpha, beta)
+        )
 
     def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -288,7 +293,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.Hf(x, 3, 2)
         array([0.39056209, 1.43505064, 2.78112418, 4.28642793, 5.88912614])
         """
-        return -np.log(self.sf(x, alpha, beta))
+        return -self.log_sf(x, alpha, beta)
 
     def qf(self, u: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""

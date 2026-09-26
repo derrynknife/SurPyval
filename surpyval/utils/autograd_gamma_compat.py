@@ -36,12 +36,16 @@ from autograd.tracer import getval
 from scipy.special import betainc as _sc_betainc
 from scipy.special import gammainc as _sc_gammainc
 from scipy.special import gammaincc as _sc_gammaincc
+from scipy.special import gammaln as _sc_gammaln
 
 # The value-or-box union the distributions use (see parametric_fitter):
 # every boundary here may see a plain numpy value or an ArrayBox.
 Boxable = npt.NDArray | float | ArrayBox
 
-_LOG_EPS = 1e-35
+# Floor for the logs of the regularised incomplete functions: the smallest
+# positive double, so log P / log Q stay exact down to scipy's underflow
+# (1e-35 capped a Gamma cumulative hazard at 80.6, far short of the tail).
+_LOG_EPS = float(np.finfo(float).tiny)
 _EPS_H = np.finfo(float).eps ** (1.0 / 3.0)
 
 
@@ -226,7 +230,32 @@ defvjp(
 
 
 def _gammainccln_raw(a: Boxable, x: Boxable) -> Boxable:
-    return np.log(np.clip(_sc_gammaincc(a, x), _LOG_EPS, np.inf))
+    a_arr, x_arr = np.broadcast_arrays(
+        np.asarray(a, dtype=float), np.asarray(x, dtype=float)
+    )
+    q = _sc_gammaincc(a_arr, x_arr)
+    out = np.array(np.log(np.clip(q, _LOG_EPS, np.inf)), dtype=float)
+    # Q(a, x) underflows past ~1e-308 (x of ~700 for a small a), where
+    # a clipped log would cap the Gamma cumulative hazard. There x >> a
+    # and the asymptotic series
+    #   log Q = (a-1) log x - x - log Gamma(a)
+    #           + log(1 + (a-1)/x + (a-1)(a-2)/x^2 + ...)
+    # is accurate; it is summed until the terms stop shrinking.
+    tail = (q < 1e-280) & (x_arr > a_arr)
+    if np.any(tail):
+        at, xt = a_arr[tail], x_arr[tail]
+        total = np.ones_like(xt)
+        term = np.ones_like(xt)
+        for k in range(1, 30):
+            nxt = term * (at - k) / xt
+            if np.all(np.abs(nxt) >= np.abs(term)):
+                break
+            term = np.where(np.abs(nxt) < np.abs(term), nxt, 0.0)
+            total = total + term
+        out[tail] = (
+            (at - 1.0) * np.log(xt) - xt - _sc_gammaln(at) + np.log(total)
+        )
+    return out if out.ndim else float(out)
 
 
 @primitive
