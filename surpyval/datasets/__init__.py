@@ -143,7 +143,7 @@ def load_g1_kaminskiy_krivtsov() -> pd.DataFrame:
 
     .. [4] Kaminskiy, M.P. and Krivtsov, V.V. (2010).
            G1-renewal process as repairable system model.
-           Reliability: Theory & Applications, 1(3) (issue 18), 7-14.
+           Reliability: Theory & Applications, 1(3) (issue 18).
            arXiv:1006.3718.
     """
     x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()

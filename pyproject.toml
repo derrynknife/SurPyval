@@ -9,7 +9,7 @@ description = "A python package for survival analysis"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Derryn Knife", email = "derryn@reliafy.com"},
+    {name = "Derryn Knife", email = "derryn.knife@gmail.com"},
 ]
 requires-python = ">=3.11"
 classifiers = [

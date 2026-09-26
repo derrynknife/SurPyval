@@ -1280,4 +1280,4 @@ non-parametric MCF keeps its variance, so ``mcf_cb`` still works.)
 References
 ----------
 
-.. [1] Kaminskiy, M.P. and Krivtsov, V.V., 2010. G1-renewal process as repairable system model. Reliability: Theory & Applications, 1(3) (issue 18), pp.7-14. arXiv:1006.3718.
+.. [1] Kaminskiy, M.P. and Krivtsov, V.V., 2010. G1-renewal process as repairable system model. Reliability: Theory & Applications, 1(3) (issue 18). arXiv:1006.3718.
