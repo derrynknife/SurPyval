@@ -17,6 +17,7 @@ from scipy.optimize import brentq
 
 from surpyval import np
 from surpyval.multivariate.parametric.copula.copula import _EPS, Copula
+from surpyval.utils.rng import as_generator
 
 
 class IndependenceCopula(Copula):
@@ -286,7 +287,7 @@ class FrankCopula(Copula):
 
         with both sums formed in log space (exact for any ``theta``)."""
         theta = _frank_theta(params[0])
-        rng = onp.random.default_rng(random_state)
+        rng = as_generator(random_state)
         u = rng.uniform(_EPS, 1 - _EPS, size=size)
         w = rng.uniform(_EPS, 1 - _EPS, size=size)
         if theta == 0.0:

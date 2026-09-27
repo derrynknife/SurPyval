@@ -26,6 +26,7 @@ from autograd import elementwise_grad
 from scipy.optimize import minimize
 
 from surpyval import np
+from surpyval.utils.rng import as_generator
 
 # Margin probabilities are kept strictly inside (0, 1): the Archimedean
 # generators blow up at the boundary and the optimiser only ever needs
@@ -121,7 +122,7 @@ class Copula:
         ``dC/du(u, v) = w`` (a CDF in ``v``, hence monotone) by bisection.
         Override for families with a direct sampler (e.g. Gaussian).
         """
-        rng = onp.random.default_rng(random_state)
+        rng = as_generator(random_state)
         u = rng.uniform(_EPS, 1 - _EPS, size=size)
         w = rng.uniform(_EPS, 1 - _EPS, size=size)
         v = self._invert_du(u, w, params)

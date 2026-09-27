@@ -2,7 +2,6 @@ import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
-from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 from scipy.stats import uniform
 
@@ -442,6 +441,8 @@ class RecurrenceSimulationMixin:
         require_data(self, "plot")
         x, r, d = self.data.to_xrd()
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         x_plot = np.linspace(0, float(self.data.x.max()), 200)

@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
-from matplotlib import pyplot as plt
 from scipy.stats import norm
 
 from surpyval.serialisation import (
@@ -333,6 +332,8 @@ class NonParametricCounting(SerialisableMixin):
         matplotlib Axes
         """
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         # Prepend the start point so the step plot always begins from it

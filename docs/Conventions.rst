@@ -203,6 +203,29 @@ The cumulative intensity is the expected number of events by time :math:`x`. It 
     print("h(5), H(5)      :", model.hf(5), model.Hf(5))
     print("median          :", model.qf(0.5))
 
+Random draws and seeds
+~~~~~~~~~~~~~~~~~~~~~~
+
+Every method that draws random numbers -- ``random()``, a copula's ``sample_uv()``, the recurrent-event simulations, and the bootstraps behind confidence bounds such as ``bootstrap_cb()`` -- follows one rule for its seed argument (``random_state`` or ``seed``):
+
+- ``None``, the default, draws from numpy's global random number generator, so ``np.random.seed(...)`` makes every draw reproducible, parametric or not.
+- An int, or a ``numpy.random.Generator``, gives a stream of its own (``numpy.random.default_rng(seed)``) that neither depends on nor advances the global one.
+
+.. jupyter-execute::
+
+    import numpy as np
+
+    km = surv.KaplanMeier.fit([10, 20, 30, 40, 50])
+    weibull = surv.Weibull.from_params([100, 2])
+
+    np.random.seed(0)
+    first = km.random(5), weibull.random(2)
+    np.random.seed(0)
+    second = km.random(5), weibull.random(2)
+    print(first[0], second[0])
+    print(first[1], second[1])
+    print(km.random(5, random_state=1), km.random(5, random_state=1))
+
 Offset, limited failure population and zero-inflation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

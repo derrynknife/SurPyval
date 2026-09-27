@@ -29,6 +29,8 @@ from typing import Any, Callable
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval.utils.rng import as_generator
+
 
 def _validate_diagnostic_data(data: Any, what: str) -> None:
     """
@@ -337,7 +339,7 @@ def _cvm_pvalue(
     u, n_systems = uniforms(data, payload)
     observed = cvm_statistic(u)
 
-    rng = np.random.default_rng(seed)
+    rng = as_generator(seed)
     statistics: list = []
     failures = 0
     while len(statistics) < n_boot and failures < 2 * n_boot:

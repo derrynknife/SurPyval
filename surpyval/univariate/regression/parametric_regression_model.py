@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy.typing as npt
-from matplotlib import pyplot as plt
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import (
@@ -1285,6 +1284,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         self._require_data("plot()")
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gca()
 
         x, r, d = self.data.to_xrd()

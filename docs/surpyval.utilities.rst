@@ -54,6 +54,11 @@ importable directly from ``surpyval``.
 
 .. autofunction:: surpyval.utils.round_sig
 
+Random draws follow one seeding rule (see :doc:`Conventions`); SurPyval
+turns every ``random_state`` or ``seed`` argument into a generator with:
+
+.. autofunction:: surpyval.utils.rng.as_generator
+
 Lower-level helpers in ``surpyval.utils``, used by the handlers above:
 
 .. autofunction:: surpyval.utils.xcnt_sort

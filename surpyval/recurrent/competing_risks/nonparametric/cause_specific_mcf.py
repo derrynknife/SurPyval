@@ -15,7 +15,6 @@ See ``surpyval.univariate.competing_risks`` for the univariate
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 
 from surpyval.recurrent.nonparametric.mcf import (
@@ -142,6 +141,8 @@ class CauseSpecificMCF(SerialisableMixin):
         are drawn as dashed steps in the colour of its MCF.
         """
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
         for cause in self.event_types:
             model = self.models[cause]

@@ -1,7 +1,6 @@
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 
 from surpyval.recurrent import diagnostics
@@ -417,6 +416,8 @@ class ParametricRecurrenceModel(
         self._check_has_data("plot")
         x, r, d = self.data.to_xrd()
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         x_plot = np.linspace(0, self.data.x.max(), 1000)

@@ -54,6 +54,7 @@ from surpyval.serialisation import (
 )
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
+from surpyval.utils.rng import as_generator
 
 # Time-transform bases phi(t): (callable, display name). The linear predictor
 # is loc(t) = beta0 + beta1 * phi(t); the free parameters are the regression
@@ -221,15 +222,16 @@ class DestructiveDegradationModel(SerialisableMixin):
             ``alpha_ci / 2`` in each tail. Default ``'two-sided'``.
         n_boot : int, optional
             Number of bootstrap resamples. Default 200.
-        seed : optional
-            Seed for the resampling.
+        seed : int or numpy.random.Generator, optional
+            Seed or generator for the resampling. ``None`` (the default) seeds
+            from numpy's global RNG, so ``np.random.seed`` controls it.
         """
         if on not in ("sf", "ff", "Hf"):
             raise ValueError("`on` must be one of 'sf', 'ff', 'Hf'")
         if bound not in ("two-sided", "lower", "upper"):
             raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
         t = np.atleast_1d(np.asarray(t, dtype=float))
-        rng = np.random.default_rng(seed)
+        rng = as_generator(seed)
         if self.data is None:
             raise ValueError(
                 "Bootstrap bounds need the fit data, which this model "

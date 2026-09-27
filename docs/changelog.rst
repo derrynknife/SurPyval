@@ -4,6 +4,21 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **One seeding rule for every random draw (#361).** With the default
+  ``random_state=None`` (or ``seed=None``), the non-parametric
+  ``random()`` and ``bootstrap_cb()``, ``ParametricCompetingRisks.random()``,
+  the copulas' ``sample_uv()`` (and so ``random()``), the degradation
+  models' ``random()``, ``induced_life()``, ``predict_rul()`` and bootstrap
+  bounds, the Buckley-James bootstrap and the recurrent-event goodness-of-fit
+  p-values used a fresh OS-seeded generator on every call, so
+  ``np.random.seed`` had no effect on them while it did control
+  ``Parametric.random`` and the recurrent simulations. ``None`` now draws
+  from numpy's global RNG throughout (``surpyval.utils.rng.as_generator``).
+  An explicit seed or ``Generator`` gives the same stream as before. See
+  :doc:`Conventions`.
+- **``import surpyval`` no longer imports matplotlib (#363).** pyplot is
+  imported inside the plotting methods, which saves about 0.3 s on every
+  cold start of a program that never plots. Plotting is unchanged.
 - **Design changes approved after the third documentation review.**
 
   - **One sample size for BIC and AIC_c.** Every model that reports a BIC

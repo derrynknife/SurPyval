@@ -50,6 +50,7 @@ from surpyval.utils import (
     wrangle_and_check_form_and_Z_cols,
     xcnt_handler,
 )
+from surpyval.utils.rng import as_generator
 
 from ..regression_data import (
     restore_covariate_meta,
@@ -361,7 +362,7 @@ class BuckleyJamesModel(SerialisableMixin):
                 "carry"
             )
         Y, delta, Z, w = self._data
-        rng = np.random.default_rng(seed)
+        rng = as_generator(seed)
         # The counts ``w`` are frequency weights: a row with count 3 is
         # three observations, as the fit itself treats it. The bootstrap
         # therefore resamples the *observations* -- the rows expanded by

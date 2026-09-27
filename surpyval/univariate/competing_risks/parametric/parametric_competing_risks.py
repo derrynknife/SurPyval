@@ -48,6 +48,7 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
+from surpyval.utils.rng import as_generator
 
 
 def _validate(
@@ -307,7 +308,7 @@ class ParametricCompetingRisks(SerialisableMixin):
 
         Returns a structured array with fields ``x`` and ``e``.
         """
-        rng = np.random.default_rng(random_state)
+        rng = as_generator(random_state)
         latent = np.column_stack(
             [
                 np.ravel(self.models[k].qf(rng.uniform(size=size)))
