@@ -4,6 +4,42 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Recurrent-event simulations are much faster (#362); seeded results
+  change.** ``mcf``, ``plot``, ``time_terminated_simulation``,
+  ``count_terminated_simulation`` (and their ``..._data`` versions) and the
+  renewal models' ``cramer_von_mises`` bootstrap used to simulate one item
+  and one event at a time, with two model calls per event. Every item is
+  now advanced together, one event per round, with one array operation per
+  round, and the renewal models' root finding is vectorised too. An
+  ``mcf`` over 1000 items is 23-46x faster for the Kijima and ARA models
+  (``GeneralizedRenewal`` with a Weibull lifetime and Kijima II: 2.0 s to
+  0.06 s), 9-18x for ARI and the intensity models, and 4x for the already
+  cheap G1 model. The simulated MCF also no longer
+  computes the Lawless-Nadeau variance it then discarded, which was most of
+  the time for the intensity models with many items. The draws follow the
+  same processes (checked against one-sequence-at-a-time references to
+  round-off), but the uniforms are assigned to events in a different order,
+  so a given ``seed`` now gives different simulated values and bootstrap
+  p-values than in 0.20. The unused uniform-pool helpers
+  ``initialize_simulation``, ``get_uniform_random_number`` and
+  ``clear_simulation`` are removed. Three examples in :doc:`Recurrent Event
+  Modelling with SurPyval` use new seeds so that they still illustrate
+  what the text describes.
+- **One seeding rule for every random draw (#361).** With the default
+  ``random_state=None`` (or ``seed=None``), the non-parametric
+  ``random()`` and ``bootstrap_cb()``, ``ParametricCompetingRisks.random()``,
+  the copulas' ``sample_uv()`` (and so ``random()``), the degradation
+  models' ``random()``, ``induced_life()``, ``predict_rul()`` and bootstrap
+  bounds, the Buckley-James bootstrap and the recurrent-event goodness-of-fit
+  p-values used a fresh OS-seeded generator on every call, so
+  ``np.random.seed`` had no effect on them while it did control
+  ``Parametric.random`` and the recurrent simulations. ``None`` now draws
+  from numpy's global RNG throughout (``surpyval.utils.rng.as_generator``).
+  An explicit seed or ``Generator`` gives the same stream as before. See
+  :doc:`Conventions`.
+- **``import surpyval`` no longer imports matplotlib (#363).** pyplot is
+  imported inside the plotting methods, which saves about 0.3 s on every
+  cold start of a program that never plots. Plotting is unchanged.
 - **Design changes approved after the third documentation review.**
 
   - **One sample size for BIC and AIC_c.** Every model that reports a BIC

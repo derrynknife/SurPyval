@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
-from matplotlib import pyplot as plt
 from scipy.stats import norm
 
 from surpyval.serialisation import (
@@ -333,6 +332,8 @@ class NonParametricCounting(SerialisableMixin):
         matplotlib Axes
         """
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         # Prepend the start point so the step plot always begins from it
@@ -427,9 +428,18 @@ class NonParametricCounting(SerialisableMixin):
         NonParametricCounting
             The fitted estimate.
         """
+        out = self._point_estimate(data)
+        out.var = _lawless_nadeau_var(data, out.x, out.r, out.d)
+        return out
+
+    def _point_estimate(
+        self, data: RecurrentEventData
+    ) -> "NonParametricCounting":
+        """:meth:`fit_from_recurrent_data` without the Lawless-Nadeau
+        variance, which costs about (items x distinct times) and which the
+        simulations, returning only the MCF, discard."""
         reject_unsupported_nonparametric(data, "NonParametricCounting")
         out = type(self).from_xrd(*data.to_xrd())
-        out.var = _lawless_nadeau_var(data, out.x, out.r, out.d)
         out.data = data
         out.origin = _observation_origin(data)
         return out

@@ -51,6 +51,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.rng import as_generator
 
 from ._clock import StressClock, stress_row
 
@@ -709,15 +710,16 @@ class FirstPassageProcessModel(SerialisableMixin):
         ----------
         size : int
             Number of draws.
-        random_state : int, optional
-            Seed for reproducible draws.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for reproducible draws. ``None`` (the default)
+            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
         Z : array like or StepSchedule, optional
             The stress, for a model fitted with ``Z`` (required then);
             each reference-stress draw is carried to calendar time along
             its clock.
         """
         clock = self._clock(Z)
-        rng = np.random.default_rng(random_state)
+        rng = as_generator(random_state)
         draws = self._random0(size, rng)
         return draws if clock is None else clock.inverse(draws)
 

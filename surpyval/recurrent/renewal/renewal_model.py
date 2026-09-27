@@ -1,7 +1,6 @@
 from typing import Any, Callable
 
 import numpy as np
-from scipy.optimize import brentq
 
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
@@ -16,12 +15,95 @@ from surpyval.serialisation import (
 #: ``eps * exp(H)``, which is 5e-8 at 20 (an error of 3e-9 in ``H``).
 _QF_HAZARD_LIMIT = 20.0
 
+_EPS = float(np.finfo(float).eps)
 
-def conditional_gap(lifetime: Any, v: float, u: float) -> float:
+
+def solve_bracketed(
+    g: Callable,
+    lo: np.ndarray,
+    hi: np.ndarray,
+    g_lo: np.ndarray,
+    g_hi: np.ndarray,
+    xtol: float = 0.0,
+    rtol: float = 4 * _EPS,
+    maxiter: int = 400,
+) -> np.ndarray:
     """
-    Draw the time to the next failure of an item whose virtual age is
-    ``v``, from the uniform ``u``, for a virtual-age renewal model with the
-    lifetime distribution ``lifetime``.
+    Solve many bracketed root problems ``g_k(x) = 0`` at once, each with
+    ``g_k(lo_k) < 0 < g_k(hi_k)``. ``g(x, sel)`` evaluates the problems
+    whose indices are ``sel`` at the points ``x``.
+
+    Each step takes a regula falsi point with the Illinois modification
+    (halving the value kept at an end that has not moved for two steps),
+    and bisects instead whenever the last two steps together did not halve
+    the bracket, so every problem converges at least half as fast as
+    bisection, and superlinearly once regula falsi takes hold. No point is
+    taken within the tolerance of an end, so the last step closes the
+    bracket instead of creeping up on the root. A problem is
+    done when its bracket is narrower than ``xtol + rtol * |x|``; the
+    midpoint of the final bracket is returned.
+    """
+    lo = np.array(lo, dtype=float)
+    hi = np.array(hi, dtype=float)
+    g_lo = np.array(g_lo, dtype=float)
+    g_hi = np.array(g_hi, dtype=float)
+    root = lo + 0.5 * (hi - lo)
+    moved = np.zeros(lo.size, dtype=int)  # -1 lo moved last, +1 hi did
+    bisect = np.zeros(lo.size, dtype=bool)
+    # The bracket's width two steps back.
+    earlier = hi - lo
+    active = np.flatnonzero(
+        hi - lo > xtol + rtol * np.maximum(np.abs(lo), np.abs(hi))
+    )
+    for _ in range(maxiter):
+        if not active.size:
+            break
+        a = active
+        lo_a, hi_a, gl, gh = lo[a], hi[a], g_lo[a], g_hi[a]
+        width = hi_a - lo_a
+        mid = lo_a + 0.5 * width
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            falsi = hi_a - gh * width / (gh - gl)
+            x = np.where(bisect[a] | ~np.isfinite(falsi), mid, falsi)
+        # Never evaluate within the tolerance of an end (Brent's tolerance
+        # step). Once one end has converged, regula falsi lands on it (or
+        # past it, by rounding); a point just inside it lets the next sign
+        # change close the bracket.
+        tol = 0.5 * (xtol + rtol * np.maximum(np.abs(lo_a), np.abs(hi_a)))
+        x = np.clip(x, lo_a + tol, hi_a - tol)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            gx = np.asarray(g(x, a), dtype=float)
+        exact = gx == 0
+        below = gx < 0
+        # A NaN counts as past the root, so the bracket still shrinks.
+        above = ~below & ~exact
+        new_lo = np.where(below, x, lo_a)
+        new_hi = np.where(above, x, hi_a)
+        new_gl = np.where(below, gx, gl)
+        new_gh = np.where(above, gx, gh)
+        new_gh = np.where(below & (moved[a] == -1), 0.5 * new_gh, new_gh)
+        new_gl = np.where(above & (moved[a] == 1), 0.5 * new_gl, new_gl)
+        moved[a] = np.where(below, -1, np.where(above, 1, 0))
+        lo[a], hi[a], g_lo[a], g_hi[a] = new_lo, new_hi, new_gl, new_gh
+        new_width = new_hi - new_lo
+        bisect[a] = new_width > 0.5 * earlier[a]
+        earlier[a] = width
+        root[a] = np.where(exact, x, new_lo + 0.5 * new_width)
+        done = exact | (
+            new_width
+            <= xtol + rtol * np.maximum(np.abs(new_lo), np.abs(new_hi))
+        )
+        active = a[~done]
+    return root
+
+
+def conditional_gaps(
+    lifetime: Any, v: np.ndarray, u: np.ndarray
+) -> np.ndarray:
+    """
+    Draw the time to the next failure of items whose virtual ages are
+    ``v``, from the uniforms ``u``, for a virtual-age renewal model with
+    the lifetime distribution ``lifetime``.
 
     The residual life ``X`` from age ``v`` has ``P(X > x) = S(v + x) /
     S(v)``, so ``H(v + X) = H(v) - log(u)``: the draw adds an Exp(1) amount
@@ -34,80 +116,156 @@ def conditional_gap(lifetime: Any, v: float, u: float) -> float:
     ``H`` is inverted with the quantile function while that is accurate
     (see ``_QF_HAZARD_LIMIT``) and by root finding beyond it.
     """
+    v = np.asarray(v, dtype=float)
+    u = np.asarray(u, dtype=float)
+    hazard, quantile = _lifetime_functions(lifetime)
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-        h_v = float(lifetime.Hf(v))
-        target = h_v - float(np.log(u))
-    if np.isinf(h_v) and h_v > 0:
-        # No survival past age v (the end of a bounded support): the item
-        # fails at once.
-        return 0.0
-    if not np.isfinite(target):
-        # u == 0: an infinitely late event.
-        return np.inf
-    if target <= _QF_HAZARD_LIMIT:
-        x = float(lifetime.qf(-np.expm1(-target)))
-    else:
-        x = _invert_cumulative_hazard(lifetime, v, target)
-    return max(x - v, 0.0)
+        h_v = np.broadcast_to(hazard(v), v.shape)
+        target = h_v - np.log(u)
+    # No survival past age v (the end of a bounded support): the item
+    # fails at once.
+    at_once = np.isinf(h_v) & (h_v > 0)
+    # u == 0 (or an undefined H): an infinitely late event.
+    never = ~at_once & ~np.isfinite(target)
+    easy = ~at_once & ~never & (target <= _QF_HAZARD_LIMIT)
+    hard = ~at_once & ~never & ~easy
+    x = np.array(v, dtype=float)
+    if easy.any():
+        x[easy] = quantile(-np.expm1(-target[easy]))
+    if hard.any():
+        x[hard] = _invert_cumulative_hazard(hazard, v[hard], target[hard])
+    gap = np.maximum(x - v, 0.0)
+    gap[at_once] = 0.0
+    gap[never] = np.inf
+    return gap
 
 
-def _cumulative_hazard(lifetime: Any) -> Callable:
-    """``H`` of ``lifetime`` as a scalar function. For a plain model (no
-    offset, cure fraction or zero-inflation -- what the renewal fitters
-    build) the distribution's own ``Hf`` is called directly: the model
-    method's argument handling costs fifty times the arithmetic, and the
-    root finder calls it dozens of times per draw."""
+def _lifetime_functions(lifetime: Any) -> "tuple[Callable, Callable]":
+    """``H`` and the quantile function of ``lifetime``, on arrays. For a
+    plain model (no offset, cure fraction or zero-inflation -- what the
+    renewal fitters build) the distribution's own functions are called
+    directly, skipping the model methods' argument handling."""
     if (
         getattr(lifetime, "p", None) == 1
         and getattr(lifetime, "f0", None) == 0
         and not getattr(lifetime, "gamma", 0)
     ):
-        dist_hf = lifetime.dist.Hf
+        dist = lifetime.dist
         params = [float(p) for p in lifetime.params]
-        lower = lifetime.dist.support[0]
+        lower = dist.support[0]
 
-        def hf(x: float) -> float:
-            return 0.0 if x < lower else float(dist_hf(x, *params))
+        def hazard(x: np.ndarray) -> np.ndarray:
+            x = np.asarray(x, dtype=float)
+            below = x < lower
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                h = dist.Hf(np.where(below, lower, x), *params)
+            return np.where(below, 0.0, np.asarray(h, dtype=float))
 
-        return hf
-    return lambda x: float(lifetime.Hf(x))
+        def quantile(p: np.ndarray) -> np.ndarray:
+            return np.asarray(dist.qf(p, *params), dtype=float)
+
+        return hazard, quantile
+
+    def model_hazard(x: np.ndarray) -> np.ndarray:
+        return np.asarray(lifetime.Hf(x), dtype=float)
+
+    def model_quantile(p: np.ndarray) -> np.ndarray:
+        return np.asarray(lifetime.qf(p), dtype=float)
+
+    return model_hazard, model_quantile
 
 
-def _invert_cumulative_hazard(lifetime: Any, v: float, target: float) -> float:
-    """Solve ``H(x) = target`` for ``x > v`` (where ``H(v) < target``)."""
-    hazard = _cumulative_hazard(lifetime)
+def _invert_cumulative_hazard(
+    hazard: Callable, v: np.ndarray, target: np.ndarray
+) -> np.ndarray:
+    """Solve ``H(x_k) = target_k`` for ``x_k > v_k`` (where ``H(v_k) <
+    target_k``), for every ``k`` at once."""
 
-    def g(x: float) -> float:
+    def g(x: np.ndarray, sel: np.ndarray) -> np.ndarray:
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-            return hazard(x) - target
+            return hazard(x) - target[sel]
 
-    lo = float(v)
-    step = max(abs(lo), 1.0)
+    n = v.size
+    everything = np.arange(n)
+    lo = np.array(v, dtype=float)
+    step = np.maximum(np.abs(lo), 1.0)
     hi = lo + step
+    growing = everything
     for _ in range(2000):
-        g_hi = g(hi)
-        if not g_hi < 0:
+        if not growing.size:
             break
-        lo, step = hi, 2.0 * step
-        hi = lo + step
+        growing = growing[g(hi[growing], growing) < 0]
+        lo[growing] = hi[growing]
+        step[growing] *= 2.0
+        hi[growing] = lo[growing] + step[growing]
     # Past a bounded support H can be inf or nan; bisect until hi is a
     # finite point at or above the target so the root is bracketed.
+    g_hi = g(hi, everything)
     for _ in range(200):
-        if np.isfinite(g(hi)):
+        bad = np.flatnonzero(~np.isfinite(g_hi))
+        if not bad.size:
             break
-        mid = 0.5 * (lo + hi)
-        if g(mid) < 0:
-            lo = mid
-        else:
-            hi = mid
-    g_hi = g(hi)
-    if not np.isfinite(g_hi):
-        # H jumps to infinity at the end of the support: fail there.
-        return lo
-    if g_hi == 0:
-        return hi
-    xtol = 4 * np.finfo(float).eps * max(abs(lo), abs(hi), 1e-300)
-    return float(brentq(g, lo, hi, xtol=xtol))
+        mid = 0.5 * (lo[bad] + hi[bad])
+        up = g(mid, bad) < 0
+        lo[bad[up]] = mid[up]
+        hi[bad[~up]] = mid[~up]
+        g_hi[bad] = g(hi[bad], bad)
+    # H jumps to infinity at the end of the support: fail there.
+    out = np.where(np.isfinite(g_hi), hi, lo)
+    rest = np.flatnonzero(np.isfinite(g_hi) & (g_hi != 0))
+    if rest.size:
+        out[rest] = solve_bracketed(
+            lambda x, sel: g(x, rest[sel]),
+            lo[rest],
+            hi[rest],
+            g(lo[rest], rest),
+            g_hi[rest],
+            xtol=4 * _EPS * 1e-300,
+        )
+    return out
+
+
+class DiscountedMemory:
+    """
+    For sequences simulated together, the discounted sum
+    ``sum_{j < min(m, k)} (1 - rho)^j h_{k - j}`` of the values ``h_1 ..
+    h_k`` recorded so far, newest first: the memory term of the ARA (with
+    the arrival times) and ARI (with the intensities at the failures)
+    models.
+
+    ``record`` is called once per simulation round with the sequences still
+    running, so every sequence it covers has the same number of values. With
+    infinite memory the sum is carried forward, ``S_k = h_k + (1 - rho)
+    S_{k-1}``; with memory ``m`` the last ``m`` rounds are kept and summed.
+    """
+
+    def __init__(self, n: int, rho: float, m: "int | float") -> None:
+        self.n = n
+        self.decay = 1.0 - rho
+        self.infinite = bool(np.isinf(m))
+        self.m = 0 if self.infinite else int(m)
+        self.rounds = 0
+        self.total = np.zeros(n)
+        self.recent: list = []
+
+    def value(self, idx: np.ndarray) -> np.ndarray:
+        if self.infinite:
+            return self.total[idx]
+        out = np.zeros(idx.size)
+        for j, row in enumerate(reversed(self.recent)):
+            out += self.decay**j * row[idx]
+        return out
+
+    def record(self, idx: np.ndarray, values: np.ndarray) -> None:
+        self.rounds += 1
+        if self.infinite:
+            self.total[idx] = values + self.decay * self.total[idx]
+            return
+        row = np.full(self.n, np.nan)
+        row[idx] = values
+        self.recent.append(row)
+        if len(self.recent) > self.m:
+            self.recent.pop(0)
 
 
 class RenewalModel(
@@ -145,8 +303,11 @@ class RenewalModel(
     kind : str
         Display name of the process (e.g. ``"Generalized Renewal"``).
     sampler_factory : callable
-        ``sampler_factory(model) -> sample`` returning a fresh per-sequence
-        sampler ``sample(ui) -> interarrival`` for simulation.
+        ``sampler_factory(model, n) -> step`` returning the simulation
+        sampler for ``n`` sequences simulated together: ``step(idx, u)``
+        draws the next interarrival times of the sequences ``idx`` from the
+        uniforms ``u`` (see
+        :func:`surpyval.recurrent.simulation.simulate_sequences`).
     restoration_bounds : tuple, optional
         Natural-space ``(lower, upper)`` bounds of the restoration parameter
         (e.g. ``(0, 1)`` for ARA/ARI's ``rho``), used by ``param_cb`` to pick
@@ -304,8 +465,8 @@ class RenewalModel(
         # GeneralizedOneRenewal
         return fitter.fit_from_parameters(params, restoration, dist=dist)
 
-    def _new_sequence_sampler(self) -> Callable:
-        return self._sampler_factory(self)
+    def _new_batch_sampler(self, n: int) -> Callable:
+        return self._sampler_factory(self, n)
 
     def _parameter_names(self) -> list:
         # The restoration parameter (``q``/``rho``) leads ``_mle``, followed by

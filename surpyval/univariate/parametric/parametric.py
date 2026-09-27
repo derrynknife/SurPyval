@@ -2,12 +2,10 @@ import warnings
 from collections import namedtuple
 from copy import copy, deepcopy
 from math import comb
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-import matplotlib.pyplot as plt
 import numpy.typing as npt
 from autograd import jacobian
-from matplotlib.axes import Axes
 from scipy.optimize import NonlinearConstraint, brentq, minimize
 from scipy.special import ndtri as z
 from scipy.stats import uniform
@@ -27,6 +25,9 @@ from .probability_plotting import (
     draw_probability_plot,
     probability_plot_data,
 )
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 # Shared inputs for the confidence-bound computations: the fitted parameter
 # vector ``phi_hat`` (core params plus any LFP/ZI parameters), its covariance
@@ -2039,6 +2040,8 @@ class Parametric(
         <Axes: title={'center': 'Weibull Probability Plot'}, ylabel='CDF'>
         """
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         if not hasattr(self, "params"):

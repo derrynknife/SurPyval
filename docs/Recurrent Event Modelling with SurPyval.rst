@@ -411,7 +411,7 @@ Here four systems follow a Crow-AMSAA process with :math:`\alpha = 8` and
     import numpy as np
 
     true_model = CrowAMSAA.from_params([8.0, 1.6])
-    data = true_model.time_terminated_simulation_data(50, items=4, seed=3)
+    data = true_model.time_terminated_simulation_data(50, items=4, seed=49)
     x, i, c = data.x, data.i, data.c
     print("events per system:", [int((c[i == k] == 0).sum()) for k in (1, 2, 3, 4)])
 
@@ -427,7 +427,7 @@ are attributes; lower is better):
 Several lessons are in this small table:
 
 - The HPP is clearly worst: the data has a trend.
-- Crow-AMSAA recovers the true parameters well (roughly 7.6 and 1.6) and has
+- Crow-AMSAA recovers the true parameters well (roughly 8.4 and 1.6) and has
   the lowest AIC.
 - Duane has *exactly* the same AIC as Crow-AMSAA. It is the same power-law
   process: its ``alpha`` equals Crow-AMSAA's ``beta``, and its ``b`` equals
@@ -458,7 +458,7 @@ entry time goes in ``tl``, one value per row:
 
 .. jupyter-execute::
 
-    full = true_model.time_terminated_simulation_data(50, items=6, seed=11)
+    full = true_model.time_terminated_simulation_data(50, items=6, seed=48)
     entry = {1: 0.0, 2: 0.0, 3: 20.0, 4: 20.0, 5: 30.0, 6: 30.0}
     seen = np.array([t >= entry[k] for t, k in zip(full.x, full.i)])
     x_d, i_d, c_d = full.x[seen], full.i[seen], full.c[seen]
@@ -702,8 +702,8 @@ expects. On the fleet:
     print("martingale residuals:", ca.residuals(kind="martingale").round(2))
     print("mean of the Exp(1) residuals:", ca.residuals().mean().round(3))
 
-The first system had about five more failures than the fleet model expects and
-the last about four fewer. For counts of around twenty, whose Poisson standard
+The last system had five more failures than the fleet model expects and the
+second three fewer. For counts of around twenty, whose Poisson standard
 deviation is between four and five, that is ordinary variation; residuals
 several times larger would point to a system that is genuinely different.
 (The mean of the Exp(1) residuals sits a little below one because each
@@ -946,7 +946,7 @@ The ``Repair Efficiency`` :math:`\rho` reported here plays the role of
 :math:`1 - q`: a value near 1 is close to as-good-as-new, a value near 0 is
 as-bad-as-old. The estimates are reasonably close to the values we simulated
 from (:math:`\rho = 0.5`, :math:`\alpha = 10`, :math:`\beta = 3`), given
-about 75 failures.
+about 80 failures.
 
 The memory ``m`` is not estimated: it is a choice. A practical way to make it
 is to fit several values and compare their AIC. ``m=1`` is the Kijima-I model
@@ -1177,10 +1177,10 @@ one censoring row per pump at 40:
 
     T = 40.0
     seal = CrowAMSAA.from_params([6.0, 1.0]).time_terminated_simulation_data(
-        T, items=5, seed=3
+        T, items=5, seed=15
     )
     bearing = CrowAMSAA.from_params([15.0, 2.5]).time_terminated_simulation_data(
-        T, items=5, seed=103
+        T, items=5, seed=115
     )
     s_obs, b_obs = seal.c == 0, bearing.c == 0
 

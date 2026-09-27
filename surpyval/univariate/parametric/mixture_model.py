@@ -2,7 +2,6 @@ import warnings
 from typing import Any
 
 import numpy.typing as npt
-from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 from scipy.special import logsumexp
 
@@ -642,6 +641,8 @@ class MixtureModel(SerialisableMixin, Distribution):
 
         """
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         if self.params is None:

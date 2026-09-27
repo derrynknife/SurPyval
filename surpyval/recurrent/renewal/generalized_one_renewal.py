@@ -73,26 +73,26 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
     >>> np_model.mcf(np.array([1, 2, 3, 4, 5, 6]))
-    array([0.1696    , 1.181     , 2.287     , 3.6694    , 5.58237925,
-           8.54474531])
+    array([0.1756    , 1.1906    , 2.293     , 3.6696    , 5.56849246,
+           8.55720633])
     """
 
     @staticmethod
-    def _build_sampler(model: Any) -> Callable:
+    def _build_sampler(model: Any, n: int) -> Callable:
         base_params = model.model.params
         q = model.q
-        j = 0
+        j = np.zeros(n)
 
-        def sample(ui: float) -> float:
-            nonlocal j
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
             # The jth interarrival is the base lifetime scaled by (1 + q) ** j,
             # so its quantiles are the base quantiles multiplied by the same
             # factor.
-            cj = (1.0 + q) ** j
-            j += 1
-            return cj * model.model.dist.qf(ui, *base_params)
+            scale = (1.0 + q) ** j[idx]
+            j[idx] += 1
+            base = model.model.dist.qf(u, *base_params)
+            return scale * np.asarray(base, dtype=float)
 
-        return sample
+        return step
 
     def _make_model(self, underlying_model: Any, q: float) -> "RenewalModel":
         return RenewalModel(

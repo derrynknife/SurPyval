@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 from numpy.typing import ArrayLike
-from scipy.optimize import brentq
 
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 
@@ -157,39 +156,58 @@ class ARI(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model: Any) -> Callable:
+    def _build_sampler(model: Any, n: int) -> Callable:
+        from surpyval.recurrent.renewal.renewal_model import (
+            DiscountedMemory,
+            solve_bracketed,
+        )
+
         dist = model.model.dist
         dp = model.model.params
         rho = model.rho
-        m = model.m
-        history_iif = []
-        running = [0.0]
-        reduction = [0.0]
+        # The baseline intensities at the failures so far, discounted over
+        # the last m of them: the intensity reduction is rho times this.
+        memory = DiscountedMemory(n, rho, model.m)
+        running = np.zeros(n)
 
-        def sample(ui: float) -> float:
-            t0 = running[0]
-            red = reduction[0]
-            energy = -np.log(ui)
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
+            t0 = running[idx]
+            reduction = rho * memory.value(idx)
+            energy = -np.log(u)
+            cif0 = np.asarray(dist.cif(t0, *dp), dtype=float)
 
-            def g(x: float) -> float:
-                delta = dist.cif(t0 + x, *dp) - dist.cif(t0, *dp)
-                return delta - red * x - energy
+            def g(x: np.ndarray, sel: np.ndarray) -> np.ndarray:
+                cif = np.asarray(dist.cif(t0[sel] + x, *dp), dtype=float)
+                return cif - cif0[sel] - reduction[sel] * x - energy[sel]
 
-            hi = 1.0
-            expansions = 0
-            while g(hi) < 0 and expansions < 60:
-                hi *= 2.0
-                expansions += 1
-            xi = hi if g(hi) < 0 else brentq(g, 0.0, hi)
+            everything = np.arange(idx.size)
+            hi = np.ones(idx.size)
+            growing = everything
+            for _ in range(60):
+                growing = growing[g(hi[growing], growing) < 0]
+                if not growing.size:
+                    break
+                hi[growing] *= 2.0
+            g_hi = g(hi, everything)
+            # Still short of the energy after 60 doublings: take hi, as the
+            # scalar sampler did.
+            gap = hi.copy()
+            rest = np.flatnonzero(g_hi > 0)
+            if rest.size:
+                gap[rest] = solve_bracketed(
+                    lambda x, sel: g(x, rest[sel]),
+                    np.zeros(rest.size),
+                    hi[rest],
+                    -energy[rest],
+                    g_hi[rest],
+                    xtol=2e-12,
+                )
+            arrival = t0 + gap
+            running[idx] = arrival
+            memory.record(idx, np.asarray(dist.iif(arrival, *dp), dtype=float))
+            return gap
 
-            running[0] = t0 + xi
-            history_iif.append(dist.iif(running[0], *dp))
-            reduction[0] = float(
-                ari_reduction(np.asarray(history_iif), rho, m)
-            )
-            return xi
-
-        return sample
+        return step
 
     def _make_model(
         self,

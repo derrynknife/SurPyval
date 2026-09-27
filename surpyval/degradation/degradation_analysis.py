@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 from numbers import Number
 from typing import Any, cast
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -48,6 +47,7 @@ from surpyval.utils.linalg import (
     psd_root,
     safe_inv,
 )
+from surpyval.utils.rng import as_generator
 
 from ._bounds import (
     analytic_cb,
@@ -374,7 +374,7 @@ class InducedFailureDistribution(SerialisableMixin):
         self, size: int, random_state: "int | None" = None
     ) -> npt.NDArray:
         """Draw failure times by resampling the Monte-Carlo population."""
-        rng = np.random.default_rng(random_state)
+        rng = as_generator(random_state)
         return rng.choice(self.samples, size=size)
 
     def __repr__(self) -> str:
@@ -1208,9 +1208,9 @@ class DegradationModel(SerialisableMixin):
         n_samples : int, optional
             Number of Monte Carlo posterior samples (at least one).
             Defaults to 10,000.
-        random_state : optional
-            Seed passed to ``numpy.random.default_rng`` for
-            reproducible sampling.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for reproducible sampling. ``None`` (the default)
+            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
         Z : array like, optional
             The stress the new unit runs at. Required for a model whose
             path parameters were modelled against stress (fitted with
@@ -1315,7 +1315,7 @@ class DegradationModel(SerialisableMixin):
                 x_arr, y_arr, linked, prior_mean, prior_cov
             )
 
-        rng = np.random.default_rng(random_state)
+        rng = as_generator(random_state)
         theta_samples = rng.multivariate_normal(
             posterior_mean, posterior_cov, size=n_samples
         )
@@ -1593,25 +1593,26 @@ class DegradationModel(SerialisableMixin):
         Z : array like or StepSchedule, optional
             The stress, as for :meth:`sf`; required for an accelerated or
             step-stress model, refused otherwise.
-        random_state : int, optional
-            Seed for reproducible draws (``numpy.random.default_rng``).
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for reproducible draws. ``None`` (the default)
+            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
         """
         if self._is_clock:
             clock = self._clock(Z)
-            rng = np.random.default_rng(random_state)
+            rng = as_generator(random_state)
             u = rng.uniform(size=size)
             return clock.inverse(
                 np.asarray(self.life_model.qf(u), dtype=float)
             )
         Z = self._predict_Z(Z)
         if self.is_accelerated:
-            rng = np.random.default_rng(random_state)
+            rng = as_generator(random_state)
             u = rng.uniform(size=size)
             return self._reg_qf(u, Z)
         # Inverse-transform sampling like the branches above: the life
         # model's own ``random`` takes no seed, so ``random_state`` was
         # silently ignored for a plain model.
-        rng = np.random.default_rng(random_state)
+        rng = as_generator(random_state)
         u = rng.uniform(size=size)
         return np.asarray(self.life_model.qf(u), dtype=float)
 
@@ -1639,7 +1640,8 @@ class DegradationModel(SerialisableMixin):
         n_samples : int, optional
             Number of Monte-Carlo path-parameter draws. Default 10000.
         random_state : int or numpy.random.Generator, optional
-            Seed for a reproducible result.
+            Seed or generator for a reproducible result. ``None`` (the default)
+            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
         Z : array like, optional
             The stress to induce the life at. Required for a model whose
             path parameters were modelled against stress (fitted with
@@ -1696,7 +1698,7 @@ class DegradationModel(SerialisableMixin):
         else:
             mean = np.asarray(self.path_param_mean, dtype=float)
             cov = np.asarray(self.path_param_cov, dtype=float)
-        rng = np.random.default_rng(random_state)
+        rng = as_generator(random_state)
         # Robust MVN sampling: symmetrise and clip the (possibly PSD-clipped)
         # covariance's eigenvalues to be non-negative before taking its root.
         root = psd_root(cov)
@@ -1741,7 +1743,7 @@ class DegradationModel(SerialisableMixin):
         parameters, read along the stress's clock."""
         clock = self._clock(Z)
         mean = np.asarray(self.path_param_mean, dtype=float)
-        rng = np.random.default_rng(random_state)
+        rng = as_generator(random_state)
         root = psd_root(np.asarray(self.path_param_cov, dtype=float))
         theta = mean + rng.standard_normal((n_samples, mean.size)) @ root.T
         tau = self._induced_times(theta)
@@ -1896,8 +1898,10 @@ class DegradationModel(SerialisableMixin):
             models support ``'bootstrap'`` only.
         n_boot : int, optional
             Bootstrap resamples (``method='bootstrap'`` only). Default 200.
-        seed : optional
-            Seed for the bootstrap resampling.
+        seed : int or numpy.random.Generator, optional
+            Seed or generator for the bootstrap resampling. ``None`` (the
+            default) seeds from numpy's global RNG, so ``np.random.seed``
+            controls it.
         Z : array like, optional
             Stress vector at which to evaluate the bound; required for an
             accelerated model, rejected for a plain one. For a step-stress
@@ -1972,6 +1976,8 @@ class DegradationModel(SerialisableMixin):
             An axes object with the plot.
         """
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         for idx, unit in enumerate(self.units):

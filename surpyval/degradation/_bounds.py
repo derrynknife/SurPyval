@@ -40,9 +40,8 @@ from scipy.stats import norm
 from surpyval.utils.linalg import bound_signs as _bound_signs
 from surpyval.utils.linalg import delta_method_se as _delta_se
 from surpyval.utils.linalg import numerical_hessian as _num_hessian
-from surpyval.utils.linalg import (
-    safe_inv,
-)
+from surpyval.utils.linalg import safe_inv
+from surpyval.utils.rng import as_generator
 
 # -- delta-method helpers shared with the recurrent package (the two
 # packages used to carry verbatim copies of these, the drift-prone
@@ -277,7 +276,7 @@ def bootstrap_cb(
     from .degradation_analysis import DegradationAnalysis
 
     x = np.atleast_1d(np.asarray(x, dtype=float))
-    rng = np.random.default_rng(seed)
+    rng = as_generator(seed)
     method_name = _on_method(on)
     n_units = len(model.units)
     curves = []

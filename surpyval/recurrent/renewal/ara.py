@@ -6,8 +6,9 @@ from numpy.typing import ArrayLike
 from surpyval import Weibull
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import (
+    DiscountedMemory,
     RenewalModel,
-    conditional_gap,
+    conditional_gaps,
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
@@ -93,28 +94,22 @@ class ARA(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model: Any) -> Callable:
+    def _build_sampler(model: Any, n: int) -> Callable:
         rho = model.rho
-        m = model.m
-        arrivals: list = []
-        running = 0.0
+        # The arrival times so far, discounted over the last m of them.
+        memory = DiscountedMemory(n, rho, model.m)
+        last_arrival = np.zeros(n)
 
-        def sample(ui: float) -> float:
-            nonlocal running
-            if not arrivals:
-                v = 0.0
-            else:
-                T = np.asarray(arrivals)
-                n = T.size
-                upper = n if np.isinf(m) else min(int(m), n)
-                j = np.arange(upper)
-                v = T[-1] - rho * np.sum(((1.0 - rho) ** j) * T[n - 1 - j])
-            xi = conditional_gap(model.model, float(v), ui)
-            running += xi
-            arrivals.append(running)
-            return xi
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
+            latest = last_arrival[idx]
+            age = latest - rho * memory.value(idx)
+            gap = conditional_gaps(model.model, age, u)
+            arrival = latest + gap
+            last_arrival[idx] = arrival
+            memory.record(idx, arrival)
+            return gap
 
-        return sample
+        return step
 
     def _make_model(
         self, underlying_model: Any, rho: float, m: "int | float"

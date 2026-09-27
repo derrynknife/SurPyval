@@ -85,15 +85,6 @@ def test_nhpp_simulation_does_not_underflow():
     assert np.isclose(sim.mcf(100)[0], 1000, rtol=0.05)
 
 
-def test_uniform_stream_needs_no_prior_simulation():
-    # used to raise AttributeError: 'us' on a model that had not simulated
-    model = CrowAMSAA.from_params([1.0, 1.0])
-    assert 0 < model.get_uniform_random_number() < 1
-    grp = GeneralizedRenewal.fit_from_parameters([10, 2], 0.2)
-    restored = RenewalModel.from_dict(grp.to_dict())
-    assert 0 < restored.get_uniform_random_number() < 1
-
-
 # --- renewal fitting ----------------------------------------------------
 
 _X = np.array([3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60])

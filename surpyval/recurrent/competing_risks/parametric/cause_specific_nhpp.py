@@ -22,7 +22,6 @@ unchanged.
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 
 from surpyval.recurrent.inference import require_data
@@ -350,6 +349,8 @@ class CauseSpecificNHPP(SerialisableMixin):
         the observed time range of the data they were fitted to."""
         require_data(self, "plot")
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
         x_plot = np.linspace(0, float(self.data.x.max()), 200)
         for cause in self.event_types:

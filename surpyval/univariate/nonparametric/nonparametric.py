@@ -1,7 +1,6 @@
 import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -11,6 +10,7 @@ from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.utils.rng import as_generator
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -652,8 +652,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         size : int
             The number of random samples to draw.
         random_state : int or numpy.random.Generator, optional
-            Seed or generator for reproducible sampling. Matches the
-            ``random_state`` argument of ``bootstrap_cb`` and ``band``.
+            Seed or generator for reproducible sampling. ``None`` (the default)
+            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
+            Matches the ``random_state`` argument of ``bootstrap_cb`` and
+            ``band``.
 
         Returns
         -------
@@ -689,7 +691,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 "from."
             )
         p = p / p.sum()
-        rng = np.random.default_rng(random_state)
+        rng = as_generator(random_state)
         return rng.choice(self.x, size=size, p=p)
 
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
@@ -1071,7 +1073,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             expensive. A Turnbull model refits each resample with its own
             ``turnbull_estimator``, ``tol`` and ``max_iter``.
         random_state : int or numpy.random.Generator, optional
-            Seed or generator for reproducible resampling.
+            Seed or generator for reproducible resampling. ``None`` (the
+            default) seeds from numpy's global RNG, so ``np.random.seed``
+            controls it.
 
         Returns
         -------
@@ -1138,7 +1142,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             tb_kwargs["tol"] = self.data.get("tol", 1e-10)
             tb_kwargs["max_iter"] = self.data.get("max_iter", 1000)
 
-        rng = np.random.default_rng(random_state)
+        rng = as_generator(random_state)
         N = int(n_data.sum())
         probs = n_data / n_data.sum()
 
@@ -1656,6 +1660,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         ax : matplotlib axis
         """
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         plot_bounds = kwargs.pop("plot_bounds", True)
