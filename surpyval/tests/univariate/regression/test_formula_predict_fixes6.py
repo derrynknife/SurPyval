@@ -6,8 +6,9 @@ coded silently as the reference level (only formulaic's
 ``DataMismatchWarning`` said so); it now raises a ``ValueError`` naming the
 column and the level, in every family that takes a ``formula``, before and
 after ``to_dict`` -> JSON -> ``from_dict``. Levels declared with
-``C(g, levels=[...])`` count as seen. A missing categorical value is not a
-level: its row predicts ``nan``, in place, as a missing numeric does.
+``C(g, levels=[...])`` count as seen if the fitted data has them (#377). A
+missing categorical value is not a level: its row predicts ``nan``, in
+place, as a missing numeric does.
 
 #370: the competing-risks Cox model predicts from a DataFrame of raw
 covariates (the formula applied, the columns read by name), as ``CoxPH``
@@ -168,15 +169,24 @@ def test_unseen_level_old_behaviour_was_the_reference_level():
 
 @pytest.mark.parametrize("family", ["WeibullPH", "CoxPH", "CR-Cox"])
 def test_declared_levels_count_as_seen(family):
+    # A declared level with no rows in the data ('d') keeps its column but
+    # is not a fitted level: it warns at fit and raises at prediction
+    # (#377; it used to predict as the reference level, see
+    # test_formula_levels_fixes7.py).
     df = _df()
     formula = "z + C(g, levels=['a', 'b', 'c', 'd'])"
-    model = _fit(family, formula, df)
+    with pytest.warns(UserWarning, match=r"no rows at the level\(s\) \['d'\]"):
+        model = _fit(family, formula, df)
     assert sum("[T.d]" in name for name in model.feature_names) == 1
-    new = pd.DataFrame({"z": [2.0], "g": ["d"]})
+    seen = pd.DataFrame({"z": [2.0, 2.0], "g": ["c", "b"]})
     for m in (model, _rt(model)):
-        assert np.isfinite(_sf(m, family, new)).all()
-        with pytest.raises(ValueError, match=r"column 'g'.*\['e'\]"):
-            _sf(m, family, pd.DataFrame({"z": [2.0], "g": ["e"]}))
+        assert np.isfinite(_sf(m, family, seen)).all()
+        for level in ["d", "e"]:
+            new = pd.DataFrame({"z": [2.0], "g": [level]})
+            with pytest.raises(
+                ValueError, match=rf"column 'g'.*\['{level}'\]"
+            ):
+                _sf(m, family, new)
 
 
 @pytest.mark.parametrize("family", ["WeibullPH", "CoxPH", "CR-Cox"])

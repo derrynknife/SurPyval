@@ -1705,8 +1705,12 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
     never saw, or one missing from ``C(g, levels=[...])``) raises a
     ``ValueError`` naming the column and the levels: ``formulaic`` codes
     it as the reference level, with only a ``DataMismatchWarning`` (#371).
+    So does, with a fitted spec, a level that had no rows in the fitted
+    data; fitting a formula with such a level warns and records it (#377).
     """
     from surpyval.univariate.regression.regression_data import (
+        record_empty_levels,
+        refuse_empty_levels,
         unseen_levels_error,
     )
 
@@ -1734,6 +1738,11 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
                 pass
         raise unseen_levels_error(spec, positional, str(mismatch)) from None
     spec = model_matrix.model_spec
+    if isinstance(source, str):
+        # The rows kept (no missing value) are those the model is fitted to.
+        record_empty_levels(spec, positional.loc[model_matrix.index])
+    else:
+        refuse_empty_levels(source, positional)
     if len(model_matrix) != len(positional):
         model_matrix = model_matrix.reindex(range(len(positional)))
     return model_matrix, spec

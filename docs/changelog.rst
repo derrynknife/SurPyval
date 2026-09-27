@@ -25,6 +25,38 @@ v0.21.0 (unreleased)
   - ``survival_probability`` cast ``Z`` to float, so a formula fit with
     string levels could not be scored; a DataFrame is now passed to
     ``model.sf`` as it is.
+  - A missing time at prediction returned the value at t = inf in
+    ``CoxPH`` (every method, plain and stratified: sf 0.0102, ``hf`` and
+    ``df`` 0), competing-risks Cox (cif 0.385) and Fine-Gray (0.354), and
+    sf = 1 in Buckley-James; it now gives NaN. Cox ``predict_tvc`` refuses a
+    covariate path with a missing value by name.
+  - Fine-Gray and the competing-risks Cox array path dropped rows with a
+    missing covariate silently; they now warn like every other fitter (and
+    drop infinite covariates too).
+  - Stratified ``CoxPH`` raised a ``TypeError`` on a missing stratum label;
+    such observations are now dropped with one warning, and the array path
+    warns once in total rather than once per stratum.
+  - Covariates given as a list or object array holding ``None`` raised a
+    ``TypeError`` in the parametric PH and AH families, the accelerated-life
+    fit and ``AdditiveHazards`` prediction; they are now read as floats,
+    so ``None`` is a missing value.
+- **Competing-risks Cox pairs each time with its own covariate row.** With
+  one row per time and unsorted times, ``hf`` / ``Hf`` / ``sf`` / ``ff`` /
+  ``df`` read the baseline at the sorted times but used the rows in the
+  given order (times [10, 1], rows [2], [-2]: ``Hf`` gave [0.139, 0.590]
+  instead of [4.961, 0.017]). ``cif`` was not affected.
+- **A declared category level with no fitted rows is refused at prediction
+  (#377).** A level listed in ``C(g, levels=[...])``, or an unused category
+  of a ``pd.Categorical`` column, got a coefficient with nothing to estimate
+  it, so its predictions were made up (the reference level's for
+  ``WeibullPH`` and ``CoxPH``; a drifted coefficient for ``WeibullAFT``,
+  S = 0.863 against 0.803). The fit now warns once, naming the column and
+  the empty levels, and keeps the column so coding stays the same across
+  data splits; predicting for such a level raises the same "not fitted
+  with" ``ValueError`` as an unseen level, fitted or restored.
+  ``AdditiveHazards`` and Buckley-James, which reject an all-zero covariate
+  column, still refuse such a fit after the warning. A saved model with an
+  empty level needs schema 2.
 - **Turnbull reaches the maximum-likelihood estimate with interval
   censoring and right truncation (#368).** Two index searches were one
   Turnbull piece off: a right-censored observation could not fail in the
