@@ -32,14 +32,14 @@ covariate coefficients.
 a positive coefficient *lengthens* it (it multiplies the survival odds).
 
 **Time-varying covariates.** Where the cumulative hazard is additive
-over disjoint intervals, the proportional-hazards and additive-hazards
-families (``WeibullPH`` / ``PH(dist)`` and ``WeibullAH`` / ``AH(dist)``)
-also *fit* start-stop time-varying-covariate data with ``fit_tvc`` /
-``fit_tvc_timeline``, reusing the ordinary maximum-likelihood fit; the
-AFT family fits it with its own accumulated-age likelihood. A fitted PH,
-AH, AFT or PO model can then be *evaluated* along a piecewise-constant
-covariate path with ``sf_tvc`` / ``Hf_tvc`` (PO has no time-varying fit,
-but its evaluation is exact), describing the path as a
+over disjoint intervals, the proportional-hazards, additive-hazards and
+proportional-odds families (``WeibullPH`` / ``PH(dist)``, ``WeibullAH`` /
+``AH(dist)`` and ``WeibullPO`` / ``PO(dist)``) also *fit* start-stop
+time-varying-covariate data with ``fit_tvc`` / ``fit_tvc_timeline``,
+reusing the ordinary maximum-likelihood fit; the AFT family fits it with
+its own accumulated-age likelihood. A fitted PH, AH, AFT or PO model can
+then be *evaluated* along a piecewise-constant covariate path with
+``sf_tvc`` / ``Hf_tvc``, describing the path as a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`. See
 :ref:`tvc-parametric` in the how-to guide.
 
@@ -89,7 +89,7 @@ Pre-built instances: ``ExponentialPO``, ``NormalPO``, ``WeibullPO``,
 .. autofunction:: surpyval.univariate.regression.proportional_odds.proportional_odds_fitter.PO
 
 .. autoclass:: surpyval.univariate.regression.proportional_odds.proportional_odds_fitter.ProportionalOddsFitter
-    :members: fit, fit_from_df, Hf, hf, sf, ff, df
+    :members: fit, fit_from_df, fit_tvc, fit_tvc_from_df, fit_tvc_timeline, fit_tvc_timeline_from_df, Hf, hf, sf, ff, df
 
 
 Additive Hazards (AH)

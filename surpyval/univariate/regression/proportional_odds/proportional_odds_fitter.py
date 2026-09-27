@@ -21,10 +21,11 @@ from .._fit_skeleton import (
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
+from ..tvc_fit import TVCFitMixin
 
 
 class ProportionalOddsFitter(
-    MirroredDistributionAttrs, DataFrameRegressionMixin
+    MirroredDistributionAttrs, TVCFitMixin, DataFrameRegressionMixin
 ):
     """
     Proportional Odds model fitter using :math:`\\phi = e^{\\beta' Z}` as
@@ -43,7 +44,10 @@ class ProportionalOddsFitter(
     The hazard depends only on the time and the current covariate, so a
     fitted model is evaluated exactly along a step covariate path by
     ``sf_tvc`` / ``Hf_tvc`` (a sum of per-segment cumulative-hazard
-    increments). There is no time-varying-covariate *fit* for this family.
+    increments), and ``fit_tvc`` (with the timeline and DataFrame variants)
+    fits start-stop time-varying-covariate data exactly by splitting each
+    subject into one delayed-entry row per constant-covariate interval, as
+    for the proportional and additive hazards fitters.
 
     Use the pre-built instances (``LogisticPO``, ``WeibullPO``, ...) or the
     ``PO`` factory.

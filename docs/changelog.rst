@@ -4,6 +4,24 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Proportional odds fits time-varying covariates (#372).** ``PO(dist)``
+  models could be evaluated along a step covariate path but not fitted to
+  one; the docs said PO lacked the structure. It does not: the PO hazard
+  :math:`h_0 / (F_0 + \phi S_0)` depends only on the time and the current
+  covariate, so splitting a subject into delayed-entry intervals is exact.
+  ``fit_tvc``, ``fit_tvc_timeline`` and their ``_from_df`` forms now work
+  for ``WeibullPO`` / ``PO(dist)``. On simulated step-path data (8 x 2,000
+  subjects, truth [10, 2, 1, -0.5]) the mean estimate is
+  [10.03, 1.98, 0.98, -0.50], and the fitted negative log-likelihood equals
+  the path likelihood from ``sf_tvc`` / ``hf`` to about 1e-12.
+- **``fit_tvc`` no longer truncates at time 0.** For PH, AH and PO models with
+  a baseline defined below zero (Normal, Gumbel, Logistic), each subject's
+  first interval was treated as left-truncated at 0, conditioning the fit on
+  surviving to 0, so a constant covariate split into intervals did not
+  reproduce ``fit`` (LogisticPO scale 5.22 against 9.33, NormalPH 5.56
+  against 9.65). A first interval starting at 0 is now untruncated,
+  matching ``fit`` and ``sf_tvc``. Baselines on the positive axis are
+  unchanged.
 - **Survival tree predictions for several subjects (#369).**
   ``SurvivalTree.sf(x, Z)`` (and ``ff``, ``df``, ``hf``, ``Hf``) routed a
   covariate matrix by a row, ``Z[split_index]``, instead of a column. With
