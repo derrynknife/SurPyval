@@ -1848,7 +1848,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         model_dict : dict
             The serialized model. The Turnbull fitting diagnostics
-            (``converged``, ``iters``, ``degenerate``,
+            (``converged``, ``iters``, ``degenerate``, ``npmle``,
             ``exploitable_mass``) and the ``bounds``, ``R_upper`` and
             ``R_lower`` arrays are not stored. It is strict JSON: the
             non-finite values (``H`` after the last death, an undefined

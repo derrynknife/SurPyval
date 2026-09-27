@@ -4,6 +4,26 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Turnbull decides from the data whether its estimate exists (#327).** A
+  fit warned "not identifiable" when more than 90% of its mass sat on pieces
+  some observation gains from and none pays for, or when the EM did not
+  converge: a cut-off tuned on simulated samples. On samples whose estimate
+  does not exist that share ranged from 0.11 to 0.99 depending on how far
+  the EM had got, so half were caught only because they had not converged;
+  other non-existent estimates (a delayed-entry Kaplan-Meier that drops to
+  zero before a later entry, Lynden-Bell and doubly truncated exact data)
+  were reported only as not converged, and flat likelihoods not at all. The
+  new ``model.npmle`` is ``"exists"``, ``"not unique"``, ``"does not
+  exist"`` or ``"undetermined"``, from a structural criterion checked
+  before the EM runs: Vardi and Wang's graph condition for exact data, and
+  a hazard-scale gap argument for one-sided truncation with any censoring.
+  It takes a few milliseconds on thousands of rows, and the warnings name
+  the case and the time involved. On 240 simulated left-truncated samples,
+  all 63 "does not exist" fits drifted to the boundary and none of the 176
+  "exists" fits did. With censoring and truncation on both sides existence
+  can depend on the counts, and such fits are reported as
+  ``"undetermined"``. The fitted estimate is unchanged, and
+  ``exploitable_mass`` is still reported as a diagnostic.
 - **Every regression formula round-trips through serialisation (#244).** A
   model fitted with ``fit_from_df(..., formula=...)`` refused ``to_dict``
   for wrapped categoricals (``C(g)``, ``C(g, levels=...)``,

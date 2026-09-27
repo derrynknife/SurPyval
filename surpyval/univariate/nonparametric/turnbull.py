@@ -8,6 +8,13 @@ from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
 )
 
+from ._turnbull_npmle import (
+    DOES_NOT_EXIST,
+    EXISTS,
+    NOT_UNIQUE,
+    UNDETERMINED,
+    npmle_existence,
+)
 from .fleming_harrington import fleming_harrington as fh
 from .kaplan_meier import kaplan_meier as km
 from .nelson_aalen import nelson_aalen as na
@@ -227,6 +234,15 @@ def turnbull(
         truncated = np.isfinite(tl) | np.isfinite(tr)
         w_lo, w_hi = w_lo_all[truncated], w_hi_all[truncated]
         n_truncated = n[truncated]
+        # Whether the likelihood has a maximum at all, and whether it is
+        # unique, is a property of the data alone; see _turnbull_npmle.
+        npmle, npmle_piece, npmle_reason = npmle_existence(
+            lo, hi, w_lo_all, w_hi_all, n, M
+        )
+    else:
+        # No denominators: the likelihood is continuous on the compact
+        # simplex and attains its maximum.
+        npmle, npmle_piece, npmle_reason = EXISTS, -1, ""
 
     # The identifiable support: a bound may carry probability mass only if it
     # lies inside at least one observation's support ``[lo, hi]``. Mass placed
@@ -240,34 +256,24 @@ def turnbull(
     np.add.at(cover, np.minimum(hi + 1, M), -1.0)
     identifiable = np.cumsum(cover[:M]) > 0
 
-    # Intervals where the likelihood can be inflated for free.
+    # Intervals where extra mass never lowers the likelihood.
     #
-    # Every contribution is a ratio, P(support) / P(window), so the
-    # likelihood does not change if p is rescaled and each interval's mass
-    # can be raised on its own. Raising it lifts the numerator and the
-    # denominator of every observation whose support contains it -- a
-    # gain wherever the support is smaller than the window -- and only the
-    # denominator of an observation whose window contains it but whose
-    # support does not: that is the only cost. An interval that no
-    # observation pays for in that way, but that some observation gains
-    # from, is a direction in which the likelihood rises without limit,
-    # with its supremum on the boundary where that interval holds all the
-    # mass. The NPMLE is then not attained, the EM climbs towards it
-    # without settling and the survival estimate collapses (#308).
+    # Every contribution is a ratio, P(support) / P(window). Raising one
+    # interval's mass lifts the numerator and the denominator of every
+    # observation whose support contains it -- a gain wherever the support
+    # is smaller than the window -- and only the denominator of one whose
+    # window contains it but whose support does not: the only cost. An
+    # interval that no observation pays for in that way, but that some
+    # observation gains from, is reported with the share of the fitted
+    # mass on it as ``exploitable_mass``.
     #
-    # Typically this is a left-censored (or low interval-censored) row
-    # whose support reaches below the other rows' entry times, where no
-    # one else is observed: an interval below everyone else's entry costs
-    # them nothing, as their contributions are conditional on it. With a
-    # common entry time every window is the same, and any interval inside
-    # it is paid for by the rows that could not have failed there.
-    #
-    # The screen used to flag every interval inside some support and
-    # outside some window. That also caught intervals that other rows do
-    # pay for, so it fired on healthy fits -- right truncation of exact
-    # data (the Lynden-Bell estimator), or staggered entry with only exact
-    # and right-censored data, which the Kaplan-Meier handles -- where the
-    # EM converges to the unique NPMLE.
+    # It is a diagnostic, not the verdict. Such an interval makes the
+    # NPMLE fail to exist only if the gain is forced at every admissible
+    # fit (see ``_turnbull_npmle``), and the share depends on how far the
+    # EM got: over 240 simulated left-truncated samples whose NPMLE does
+    # not exist it ranged from 0.11 to 0.99 at the default ``max_iter``.
+    # The warning used to fire when it passed 0.9 (or the EM did not
+    # converge); it now follows ``npmle``.
     exploitable = np.zeros(M, dtype=bool)
     if any_truncated:
 
@@ -415,19 +421,17 @@ def turnbull(
         ):
             degenerate = True
 
-    # Mass sitting on the free direction described at ``exploitable``. Such
-    # an interval makes the likelihood's supremum a boundary one, so the EM
-    # either fails to settle or piles the mass there; either is reported as
-    # non-identifiable (raising ``max_iter`` would not help). The old,
-    # looser screen relied on the 0.9 mass cut-off alone, because its flag
-    # was also set on healthy staggered-entry data (and still fired on some
-    # at 91.7%); the exact condition needs no such margin, and a fit that
-    # merely needs more iterations (the #203 case) has no such interval.
-    exploited = float(p[exploitable].sum()) if exploitable.any() else 0.0
-    on_flat_direction = bool(exploitable.any()) and (
-        exploited > 0.9 or not converged
-    )
-
+    # The warnings follow the structural verdict computed before the EM
+    # (#327). It replaces a cut-off on ``exploitable_mass`` (warn above 0.9)
+    # that was tuned on simulated samples: the verdict needs no constant,
+    # and it also catches fits that only *look* settled.
+    # The time the verdict rests on: the end of the gap's piece under left
+    # truncation (the data do not link the probability before and after
+    # it), the start under right truncation (the mirror image).
+    at = np.nan
+    if npmle_piece >= 0:
+        at = bounds[npmle_piece + (0 if npmle_reason == "right" else 1)]
+    where = " (at t = {:.4g})".format(at) if np.isfinite(at) else ""
     if degenerate:
         warnings.warn(
             "The Turnbull EM reached a degenerate, non-identifiable fixed "
@@ -437,38 +441,77 @@ def turnbull(
             "result is unreliable -- more data or a narrower truncation range "
             "is needed."
         )
-    elif on_flat_direction:
+    elif npmle == DOES_NOT_EXIST:
+        if npmle_reason == "right":
+            cause = (
+                "It typically comes from early failures observable only up "
+                "to times below the later failures (right truncation), so "
+                "nothing links the two; overlapping observation windows "
+                "remove it."
+            )
+        elif npmle_reason == "left":
+            cause = (
+                "It typically comes from a left- or interval-censored "
+                "observation (or an early failure) below the other "
+                "observations' entry times; entering every unit at a common "
+                "time removes it."
+            )
+        else:
+            cause = (
+                "It comes from truncation windows that link the "
+                "observations in one direction only: some could have seen "
+                "the others' failures, but not the reverse."
+            )
         warnings.warn(
-            "The Turnbull estimate is not identifiable from this data, so "
-            "the result is unreliable. {:.1%} of the fitted probability "
-            "mass sits in intervals that some observation could have "
-            "failed in but that no other observation's likelihood pays for: "
-            "every observation whose truncation window covers them could "
-            "also have failed there, and the others' contributions are "
-            "conditional on windows that exclude them. Mass placed there "
-            "raises the likelihood at no cost, so it has no interior maximum "
-            "and the EM climbs towards the boundary instead of settling; "
-            "raising `max_iter` will not help. It typically comes from a "
-            "left- or interval-censored observation (or an early failure) "
-            "below the other observations' entry times; entering every unit "
-            "at a common time removes it.".format(exploited)
+            "The Turnbull estimate is not identifiable from this data: the "
+            "NPMLE does not exist (`npmle` is {!r}), so the result is "
+            "unreliable. The likelihood has no maximum, only a supremum on "
+            "the boundary{}, where some observations' truncation windows "
+            "carry no probability at all (under left truncation: the "
+            "survival drops to zero before their entry). Their "
+            "contributions are conditional on their windows, so that costs "
+            "them nothing, and the EM climbs towards the boundary instead "
+            "of settling; raising `max_iter` will not help. {}".format(
+                npmle, where, cause
+            )
+        )
+    elif npmle == NOT_UNIQUE:
+        if npmle_reason == "left":
+            reason = (
+                "no unit that had entered by t = {:.4g} is known to have "
+                "survived past it and further units enter only later, so "
+                "how much probability lies before and after it is not "
+                "determined".format(at)
+            )
+        elif npmle_reason == "right":
+            reason = (
+                "no unit still observable at t = {:.4g} is known to have "
+                "failed before it and the others are observable only up "
+                "to earlier times, so how much probability lies before and "
+                "after it is not determined".format(at)
+            )
+        else:
+            reason = (
+                "the observations split into groups whose truncation "
+                "windows do not overlap, so how much probability each "
+                "group's range carries is not determined"
+            )
+        warnings.warn(
+            "The Turnbull estimate is not unique for this data (`npmle` is "
+            "{!r}): {}. The likelihood is flat in that direction, and the "
+            "returned curve is one of many that fit equally well.".format(
+                npmle, reason
+            )
         )
     elif not converged:
         hint = ""
-        if any_truncated:
-            # A common cause under truncation (every non-converged fit of
-            # simulated left-truncated exact and right-censored data had
-            # it): an event at which every item at risk fails, with others
-            # entering only later. The Kaplan-Meier drops to zero there; in
-            # the EM's mass parametrisation the maximum is on the boundary,
-            # approached ever more slowly. Other fits just need more
-            # iterations (the #203 case), hence the conditional wording.
+        if npmle == UNDETERMINED:
+            # Two-sided windows with censoring, where the structure alone
+            # does not decide whether the maximum is attained.
             hint = (
-                " If a larger `max_iter` does not help, the maximum may be "
-                "on the boundary: e.g. every item at risk at some time fails "
-                "there while others enter only later (the Kaplan-Meier falls "
-                "to zero there), so the survival beyond that time is not "
-                "identified."
+                " The data's structure does not guarantee that the NPMLE "
+                "exists (`npmle` is {!r}): if a larger `max_iter` does not "
+                "help, the maximum may be on the boundary.".format(npmle)
             )
         warnings.warn(
             "The Turnbull EM did not converge to within `tol` ({}) in "
@@ -605,6 +648,7 @@ def turnbull(
     out["exploitable_mass"] = (
         float(p[exploitable].sum()) if exploitable.any() else 0.0
     )
+    out["npmle"] = npmle
 
     np.seterr(**old_err_state)
 
@@ -632,13 +676,25 @@ class Turnbull_(NonParametricFitter):
       each piece, the range any curve through it could take;
     - ``turnbull_estimator``, ``converged`` and ``iters``;
     - ``degenerate``: True if the estimate collapsed (with a warning);
+    - ``npmle``: whether the likelihood has a maximum, decided from the
+      data before the EM runs (#327). ``"exists"``: it does (always the
+      case without truncation). ``"not unique"``: it does, but the data
+      leave the probability on one side of some time (or of some group of
+      observations whose truncation windows do not overlap the others')
+      free, so many curves fit equally well; a warning says so. ``"does
+      not exist"``: the likelihood only approaches its supremum as the
+      survival drops to zero before some observations' entry, the EM
+      cannot settle and a warning says the estimate is not identifiable.
+      ``"undetermined"``: two-sided truncation windows with censoring,
+      where the structure alone does not decide (the EM's convergence is
+      then the guide). The derivation, and what "exists" does not rule
+      out, are in ``surpyval/univariate/nonparametric/_turnbull_npmle.py``;
     - ``exploitable_mass``: the share of the fitted mass in pieces where
-      mass raises the likelihood at no cost -- some observation could have
+      mass never lowers the likelihood -- some observation could have
       failed there, and every observation whose truncation window covers
-      the piece could too. Where such pieces exist the likelihood has no
-      interior maximum, and if the EM does not converge or they hold more
-      than 0.9 of the mass a warning says the estimate is not
-      identifiable.
+      the piece could too. A diagnostic: it is zero when no such piece
+      exists, but its size depends on how far the EM got, so the warnings
+      follow ``npmle`` instead.
 
     Examples
     --------
