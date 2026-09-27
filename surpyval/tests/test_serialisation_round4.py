@@ -522,8 +522,6 @@ _SKIP = {
     "expectation",
     "maximisation",
     "initialise_params",
-    "get_uniform_random_number",
-    "initialize_simulation",
 }
 _T = np.array([2.0, 6.0, 9.0])
 _Z = np.array([[0.5, -0.2], [0.1, 0.3], [1.0, 0.0]])

@@ -7,7 +7,7 @@ from surpyval import Weibull
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import (
     RenewalModel,
-    conditional_gap,
+    conditional_gaps,
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
@@ -77,7 +77,8 @@ class GeneralizedRenewal(RenewalFitMixin):
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
     >>> np_model.mcf(np.array([1, 2, 3, 4, 5, 6]))
-    array([0.1214   , 1.1772   , 2.406    , 3.919    , 5.804    , 8.6088822])
+    array([0.1154    , 1.1696    , 2.4062    , 3.937     , 5.8038    ,
+           8.58730072])
     """
 
     def kijima_i(self, v: float, x: float, q: float) -> float:
@@ -96,18 +97,18 @@ class GeneralizedRenewal(RenewalFitMixin):
         )
 
     @staticmethod
-    def _build_sampler(model: Any) -> Callable:
+    def _build_sampler(model: Any, n: int) -> Callable:
         q = model.q
         virtual_age_function = model._virtual_age_function
-        virtual_age = 0.0
+        virtual_age = np.zeros(n)
 
-        def sample(ui: float) -> float:
-            nonlocal virtual_age
-            xi = conditional_gap(model.model, virtual_age, ui)
-            virtual_age = virtual_age_function(virtual_age, xi, q)
-            return xi
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
+            age = virtual_age[idx]
+            gap = conditional_gaps(model.model, age, u)
+            virtual_age[idx] = virtual_age_function(age, gap, q)
+            return gap
 
-        return sample
+        return step
 
     def _make_model(
         self, underlying_model: Any, q: float, kijima_type: str

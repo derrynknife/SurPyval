@@ -157,22 +157,17 @@ def test_renewal_raises_when_user_init_does_not_converge(
 
 def test_count_terminated_simulation_via_mixin():
     # The shared RecurrenceSimulationMixin drives count_terminated_simulation
-    # for every recurrent model. Pin the documented G1 result so the refactor
-    # stays behaviour-preserving.
+    # for every recurrent model. The reference MCF is the documented G1
+    # result from the one-sequence-at-a-time simulator; the sequences are
+    # now simulated together, so a seed gives different draws, and the
+    # check is agreement within Monte Carlo error (the standard error at
+    # t=1 is about 0.006, at t=6 about 0.04).
     x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
     model = GeneralizedOneRenewal.fit(x, dist=Weibull)
-    np.random.seed(0)
-    np_model = model.count_terminated_simulation(len(x), 5000)
+    np_model = model.count_terminated_simulation(len(x), 5000, seed=0)
     expected = np.array([0.1696, 1.181, 2.287, 3.6694, 5.58237925, 8.54474531])
-    # rtol here rather than allclose's 1e-5, because these numbers are a
-    # 5000-run simulation driven by an optimiser's output: a change in
-    # the fitted parameters at the seventh significant figure moves the
-    # simulated MCF in the fourth. That is convergence noise, not a
-    # change in behaviour. What this test is for -- that the shared
-    # mixin still drives the simulation -- would break far more loudly.
-    assert np.allclose(
-        np_model.mcf(np.array([1, 2, 3, 4, 5, 6])), expected, rtol=1e-3
-    )
+    got = np_model.mcf(np.array([1, 2, 3, 4, 5, 6]))
+    assert np.allclose(got, expected, rtol=0.02, atol=0.025)
 
 
 def test_count_terminated_simulation_data_is_recurrent_data():
@@ -285,15 +280,13 @@ def test_seed_none_defers_to_global_rng():
     # the documented examples).
     x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
     model = GeneralizedOneRenewal.fit(x, dist=Weibull)
-    np.random.seed(0)
-    got = model.count_terminated_simulation(len(x), 5000).mcf(
-        np.array([1, 2, 3, 4, 5, 6])
-    )
-    expected = np.array([0.1696, 1.181, 2.287, 3.6694, 5.58237925, 8.54474531])
-    # See the note on rtol in test_count_terminated_simulation_via_mixin.
-    # What this test pins is that seed=None still defers to the global
-    # RNG, which a regression would break outright rather than subtly.
-    assert np.allclose(got, expected, rtol=1e-3)
+    t = np.array([1, 2, 3, 4, 5, 6])
+    runs = []
+    for seed in (0, 0, 1):
+        np.random.seed(seed)
+        runs.append(model.count_terminated_simulation(len(x), 500).mcf(t))
+    assert np.array_equal(runs[0], runs[1])
+    assert not np.array_equal(runs[0], runs[2])
 
 
 @pytest.mark.parametrize(

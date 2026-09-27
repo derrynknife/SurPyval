@@ -522,48 +522,6 @@ def cramer_von_mises_regression(
     return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, seed)
 
 
-def _simulate_renewal_item(
-    model: Any,
-    rng: Any,
-    count: int,
-    close: "float | None",
-    max_events: int = 10_000,
-    tol: float = 1e-8,
-) -> tuple[list, list]:
-    """
-    Resimulate one item from a fitted renewal / virtual-age model the way it
-    was observed. A failure-truncated item (``close`` is ``None``) was watched
-    until its ``count``-th event, so exactly ``count`` events are drawn, all
-    exact. A time-truncated item was watched to a fixed ``close``, so events
-    are drawn until the next one would fall after ``close`` and the item ends
-    in an end-of-observation (``c=1``) row there -- its event count is random,
-    as it was in the data. Returns the item's ``(x, c)`` rows.
-
-    A sequence whose interarrival times collapse (below ``tol``, the model
-    heading for infinitely many events before ``close``) or that reaches
-    ``max_events`` cannot be observed to ``close``; that raises
-    ``ValueError`` so the bootstrap counts the replicate as failed.
-    """
-    sample = model._new_sequence_sampler()
-    x: list = []
-    running = 0.0
-    if close is None:
-        for _ in range(count):
-            running += sample(rng.uniform())
-            x.append(running)
-        return x, [0] * count
-    while True:
-        step = sample(rng.uniform())
-        running += step
-        if running > close:
-            return [*x, close], [0] * len(x) + [1]
-        if step < tol or len(x) >= max_events:
-            raise ValueError(
-                "simulated sequence did not reach its observation close"
-            )
-        x.append(running)
-
-
 def cramer_von_mises_renewal(
     model: Any, n_boot: int = 200, seed: "int | None" = None
 ) -> "GoodnessOfFitResult":
@@ -575,10 +533,10 @@ def cramer_von_mises_renewal(
     These processes have no marginal cumulative intensity, so the transforms
     use the compensator built from each interval's rescaled increment (the
     conditional-intensity residual). The bootstrap resimulates every item
-    from the fitted model the way it was observed (see
-    :func:`_simulate_renewal_item`), refits the full imperfect-repair model,
-    and recomputes the statistic -- so the p-value accounts for the
-    restoration and lifetime / intensity parameters having been estimated.
+    from the fitted model the way it was observed, refits the full
+    imperfect-repair model, and recomputes the statistic -- so the p-value
+    accounts for the restoration and lifetime / intensity parameters having
+    been estimated.
     It is therefore markedly slower than the residual diagnostics (each
     replicate is a multi-start optimisation).
     """
@@ -601,13 +559,37 @@ def cramer_von_mises_renewal(
         close = float(data.x[mask][-1]) if c_item[-1] == 1 else None
         schemes.append((count, close))
 
+    # A failure-truncated item was watched until its count-th event, so
+    # exactly that many are drawn, all exact. A time-truncated item was
+    # watched to a fixed close, so events are drawn until the next one would
+    # fall after it and the item ends in an end-of-observation (c=1) row
+    # there -- its event count is random, as it was in the data.
+    closes = np.array(
+        [np.inf if close is None else close for _, close in schemes]
+    )
+    counts = np.array(
+        [count if close is None else 0 for count, close in schemes]
+    )
+
     def simulate_refit(rng: Any) -> tuple:
-        x_b, i_b, c_b = [], [], []
-        for item_id, (count, close) in enumerate(schemes, start=1):
-            x_item, c_item = _simulate_renewal_item(model, rng, count, close)
-            x_b.extend(x_item)
-            c_b.extend(c_item)
-            i_b.extend([item_id] * len(x_item))
+        from surpyval.recurrent.simulation import simulate_sequences
+
+        run = simulate_sequences(
+            model._new_batch_sampler(len(schemes)),
+            len(schemes),
+            rng,
+            close=closes,
+            count=counts,
+        )
+        # A time-truncated sequence whose interarrival times collapse (the
+        # model heading for infinitely many events before its close) or
+        # that reaches the event cap cannot be observed to its close: the
+        # bootstrap counts the replicate as failed.
+        if run.stalled or run.hit_max_events:
+            raise ValueError(
+                "simulated sequence did not reach its observation close"
+            )
+        x_b, i_b, c_b = run.x, run.i + 1, run.c
         if int(np.sum(np.asarray(c_b) == 0)) < 2:
             raise ValueError("too few simulated events to refit")
         sim_data = handle_xicn(
