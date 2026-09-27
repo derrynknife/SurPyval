@@ -1,0 +1,141 @@
+"""The missing-value rule (#375; Conventions, "Missing values").
+
+Prediction: NaN in, NaN out, element by element -- a missing time,
+probability or covariate makes exactly the outputs that depend on it
+NaN, and leaves the others as they were. (The exceptions, methods whose
+input describes one unit's history -- ``predict_rul``, ``sf_tvc``, a
+proportional-intensity ``mcf`` given a unit's covariates -- are not among
+the functions the registry calls.)
+
+Fitting: a missing time or response always raises. A missing covariate
+drops its row with one warning ("Dropped k of n rows ...") where each row
+is an independent observation, and raises where a row is only part of
+one (a recurrent-event row).
+"""
+
+import warnings
+
+import numpy as np
+import pytest
+
+from surpyval.tests.conformance.registry import (
+    BIVARIATE,
+    call,
+    calls,
+    cases_for,
+    fitted,
+    predictions,
+    query,
+    refit,
+)
+
+
+def _check_nan_where(got, ref, where, name):
+    got = np.asarray(got, float)
+    assert np.all(np.isnan(got[where])), f"{name}: {got[where]} not NaN"
+    keep = np.ones(len(got), bool)
+    keep[where] = False
+    np.testing.assert_allclose(
+        got[keep], np.asarray(ref, float)[keep], rtol=1e-12, err_msg=name
+    )
+
+
+@pytest.mark.parametrize("case", cases_for("missing_query"))
+def test_missing_query_value(case):
+    model = fitted(case)
+    for fname, event in calls(case):
+        if fname in case.jump_functions:
+            # A jump is a difference between neighbouring query points,
+            # so a missing point also changes its neighbour's value.
+            continue
+        x = np.array(query(case, fname), dtype=float)
+        k = len(x) // 2
+        if case.interface == BIVARIATE:
+            x[k, 1] = np.nan
+        else:
+            x[k] = np.nan
+        Z = None if fname == "qf" else case.Z
+        ref = call(case, model, fname, query(case, fname), Z, event)
+        got = call(case, model, fname, x, Z, event)
+        _check_nan_where(got, ref, [k], fname)
+
+
+@pytest.mark.parametrize("case", cases_for("missing_covariate"))
+def test_missing_query_covariate(case):
+    model = fitted(case)
+    Z = np.array(case.Z, dtype=float)
+    k = 2
+    Z[k, 0] = np.nan
+    for fname, event in calls(case):
+        if fname in case.jump_functions:
+            continue
+        ref = call(case, model, fname, case.x, case.Z, event)
+        got = call(case, model, fname, case.x, Z, event)
+        _check_nan_where(got, ref, [k], fname)
+
+
+def _with_nan(data, key, k):
+    out = dict(data)
+    value = np.array(data[key], dtype=float)
+    if value.ndim == 1:
+        value[k] = np.nan
+    else:
+        value[k, 0] = np.nan
+    out[key] = value
+    return out
+
+
+@pytest.mark.parametrize("case", cases_for("missing_fit"))
+def test_missing_time_at_fit_raises(case):
+    data = case.data()
+    for key in ("x", "y"):
+        if key not in data:
+            continue
+        with pytest.raises(ValueError):
+            refit(case, _with_nan(data, key, 1))
+
+
+def _missing_input_params():
+    # (case, key): each covariate matrix and grouping label of a case.
+    params = []
+    for param in cases_for("missing_fit"):
+        case = param.values[0]
+        keys = ((case.covariates,) if case.covariates else ()) + case.labels
+        for key in keys:
+            marks = list(param.marks)
+            # A known failure for one input is listed as "missing_fit[key]".
+            reason = case.xfail.get(f"missing_fit[{key}]")
+            if reason:
+                marks.append(pytest.mark.xfail(strict=True, reason=reason))
+            params.append(
+                pytest.param(case, key, id=f"{case.name}-{key}", marks=marks)
+            )
+    return params
+
+
+@pytest.mark.parametrize("case, key", _missing_input_params())
+def test_missing_covariate_or_label_at_fit(case, key):
+    data = case.data()
+    k = 3
+    bad = _with_nan(data, key, k)
+    if key == case.covariates and not case.drops_missing_covariate:
+        with pytest.raises(ValueError):
+            refit(case, bad)
+        return
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = case.fit(bad)
+    dropped = [w for w in caught if "Dropped" in str(w.message)]
+    assert len(dropped) == 1, [str(w.message) for w in caught]
+    assert issubclass(dropped[0].category, UserWarning)
+    keep = np.arange(len(data["x"])) != k
+    clean = {
+        name: np.asarray(v)[keep] if name in case.rows else v
+        for name, v in data.items()
+    }
+    got = predictions(case, model)
+    ref = predictions(case, refit(case, clean))
+    for name in ref:
+        np.testing.assert_allclose(
+            got[name], ref[name], rtol=1e-9, atol=1e-12, err_msg=name
+        )

@@ -4,6 +4,17 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **A conformance suite checks every model against the same properties
+  (#379).** Bugs kept reappearing as old kinds of failure in new models
+  (unsorted input, units, row routing, missing values, serialisation),
+  because each fix tested only its own case. ``surpyval/tests/conformance``
+  registers every public model (128 cases) and runs each through the
+  identities between its functions; scalar, 2-D and empty queries; query
+  and row order; units, data-row order and counts; valid values; the
+  missing-value rule; seeds; the strict-JSON round trip; and agreement of
+  its fit paths. A test fails when a public model is left unregistered. The
+  fast set runs on every pull request (about 40 s). The 58 failures it
+  found are strict expected failures, each naming its issue (#381-#388).
 - **Numbers quoted in the documentation are checked (#379).** The prose
   around executed examples quoted outputs ("a shape of about 2.1", "the
   lower AIC") that nothing verified, so they went stale when outputs
