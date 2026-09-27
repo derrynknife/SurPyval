@@ -4,8 +4,8 @@ The first half of this file makes the ``--doctest-modules`` run compare
 the numbers in an example's output as numbers rather than as text; see
 the comment above ``RTOL``. The rest is the opt-in gating below.
 
-Two groups are skipped unless asked for, because both are expensive and
-neither guards a regression that the default run would miss quickly:
+Three groups are skipped unless asked for, because all are expensive and
+none guards a regression that the default run would miss quickly:
 
 ``ml``
     The beta-stage survival tree and forest tests. They fit hundreds of
@@ -16,6 +16,13 @@ neither guards a regression that the default run would miss quickly:
     The combinatorial fit-invariant sweep. It is a wide net rather than
     a targeted regression test, so it belongs in a deliberate run rather
     than in every edit-test cycle.
+
+``calibration``
+    The simulation studies under ``surpyval/tests/calibration``: coverage
+    of confidence intervals, test size and power, estimator bias. They
+    check that the answers are statistically right rather than that the
+    code runs, take ten to twenty minutes on four cores, and run nightly
+    (.github/workflows/nightly.yml), not on pull requests.
 
 Continuous integration passes ``--run-ml`` only, so its coverage is
 unchanged. The invariant sweep is deliberately *not* run there: it is a
@@ -166,6 +173,11 @@ OPT_IN = {
         "--run-invariants",
         "combinatorial fit-invariant sweep",
         "surpyval/tests/univariate/parametric/test_fit_invariants.py",
+    ),
+    "calibration": (
+        "--run-calibration",
+        "statistical calibration studies (coverage, size, bias)",
+        "surpyval/tests/calibration",
     ),
 }
 

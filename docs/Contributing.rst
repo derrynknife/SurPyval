@@ -38,6 +38,10 @@ docstrings and checks their printed output, so a docstring example is a
 tested promise like any other. ``--run-invariants`` opts in to a slower
 combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
+``--run-calibration`` runs the statistical calibration studies (confidence
+interval coverage, test size and power, estimator bias; about 15 minutes on
+four cores), which also run nightly against ``develop`` from
+``.github/workflows/nightly.yml``.
 
 Describe any change a user would notice in ``docs/changelog.rst``, under the
 unreleased version at the top.

@@ -4,6 +4,21 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Statistical calibration suite and nightly run (#379).** Simulation
+  studies in ``surpyval/tests/calibration`` (opt in with
+  ``--run-calibration``) check that results are statistically right, not
+  only consistent: confidence-interval coverage for parametric,
+  non-parametric, Cox and parametric regression, degradation and recurrent
+  bounds; parameter recovery with truncation, interval censoring, limited
+  failure, frailty and renewal models; size and power of the log-rank,
+  stratified log-rank, Gray, Laplace, MIL-HDBK-189C and Cramer-von Mises
+  tests; and Brier/AUC bias with tied times. Each passes within 3 Monte
+  Carlo standard errors plus a stated slack, with fixed seeds, and would
+  have caught the old Gray's test (size 0.20 against 0.05) and the #365
+  Brier bias. The scheduled ``nightly.yml`` runs the full suite on three
+  Pythons, the docs build and the calibration suite against ``develop``
+  daily, once it is on ``master``. Found: the equal-precision (``nair``)
+  Kaplan-Meier band covers about 0.89 for a nominal 0.95 (#390).
 - **A conformance suite checks every model against the same properties
   (#379).** Bugs kept reappearing as old kinds of failure in new models
   (unsorted input, units, row routing, missing values, serialisation),
