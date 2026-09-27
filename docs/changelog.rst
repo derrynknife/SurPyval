@@ -4,6 +4,25 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Turnbull reaches the maximum-likelihood estimate with interval
+  censoring and right truncation (#368).** Two index searches were one
+  Turnbull piece off: a right-censored observation could not fail in the
+  piece just after its censoring time, and a right-truncated window
+  ``(tl, tr]`` took in the piece just after ``tr``. Exact and right-censored
+  data were unaffected; otherwise the EM converged to a curve that was not
+  the NPMLE (one failure in (1, 2] and one unit censored at 1.5 were fitted
+  at a likelihood of 0.375 instead of 1). On 600 random small data sets the
+  old fits fell up to 1.4 log-likelihood units short without right
+  truncation and 25 to 68 with it; some right-truncated fits had likelihood
+  zero, and a few doubly truncated ones raised ``IndexError``. Every fit
+  whose NPMLE exists now matches an independent maximisation to 2e-9, and
+  the ``npmle`` verdict, now built on the corrected supports, agreed with
+  the EM's behaviour on all 399 of those data sets where it gave a firm
+  verdict. Delayed-entry data in which a unit is censored before a later
+  unit enters is now reported ``"not unique"`` (with a warning), since the
+  mass between them is not determined; the Kaplan-Meier option still
+  returns the delayed-entry Kaplan-Meier. The Nair interval example in the
+  docs rises from -59.52 to -58.06 in log-likelihood.
 - **Formula models refuse a category level they were not fitted with
   (#371).** Predicting for a level absent from the fitted data coded it
   silently as the reference level (``WeibullPH`` gave S(5) = 0.5283 for both

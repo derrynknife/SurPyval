@@ -554,8 +554,8 @@ Each row of ``x`` is an interval ``[left, right]`` in which the item failed; an 
 censoring flags are worked out from the intervals, so ``c`` is not needed. (The same data can be
 given as ``TB.fit(xl=low, xr=upp)``.)
 
-``max_iter`` is raised from its default of 1000 here because this data
-needs it (with the default Fleming-Harrington option it takes just over 1,000 iterations). The EM
+``max_iter`` is raised from its default of 1000 here to leave headroom: with the default
+Fleming-Harrington option this data takes nearly 900 iterations. The EM
 stops when no piece's probability mass changes by more than ``tol`` (default ``1e-10``) in an
 iteration; loosening ``tol`` is the other way to stop sooner, at the cost of accuracy. The Turnbull EM converges slowly when many observations are
 right censored to infinity, as more than half of these are, and it warns

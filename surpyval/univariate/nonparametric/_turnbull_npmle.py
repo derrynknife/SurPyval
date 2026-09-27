@@ -107,9 +107,12 @@ be observable with positive probability. The second is the collapse of
 entry, inside a left-censored support that ends at 2, long before the last
 exact failure) and the Kaplan-Meier with delayed entry that drops to zero
 when everyone at risk fails before the next unit enters. The third needs a
-left- or interval-censored support running across the gap: a right-censored
-support starts at the first bound after its censoring time, which is at
-latest the next entry time, so it never leaves a gap of its own.
+censored support running across the gap: a left- or interval-censored one,
+or a right-censored one from a unit censored before the next entry, which
+runs on through the gap (one unit entered at 0 and censored at 1, another
+entered at 5 and failed at 6: nothing fixes how much probability lies in
+``(1, 5]``; the Kaplan-Meier estimate with delayed entry is the maximiser
+that puts none there).
 
 4. Two-sided windows with censoring
 -----------------------------------
@@ -130,7 +133,7 @@ parts of the data, the non-uniqueness these arguments are about. It does
 not rule out the usual Turnbull ambiguity of where inside a piece the mass
 sits (the ``R_upper`` and ``R_lower`` range), nor a ridge of maxima with
 the same likelihood, which interval-censored data can have (Gentleman and
-Geyer, 1994) and three of the 176 "exists" samples below did.
+Geyer, 1994) and two of the 176 "exists" samples below did.
 
 Verification
 ------------
@@ -143,10 +146,14 @@ likelihood): 240 samples of 30 left-truncated observations with all four
 censoring types gave 63 "does not exist", all drifting; 1 "not unique",
 settling in different places; 176 "exists", none drifting. 280 samples of
 other shapes (Kaplan-Meier data, interval censoring, right and double
-truncation) and 251 random small structures agreed the same way (one
-more "exists" sample with a ridge of maxima), except that of 16
-"undetermined" (two-sided windows with censoring) 8 drifted and 8 did
-not, which is why that case is left open.
+truncation) and 251 random small structures agreed the same way, except
+that of 9 "undetermined" (two-sided windows with censoring) 6 drifted and
+3 did not, which is why that case is left open. These samples were rerun
+after the supports and windows were corrected (#368); 450 more small data
+sets with every censoring type under left, right and double truncation,
+run through an EM on a likelihood written directly from the data rather
+than from these runs of pieces, agreed too: 169 "does not exist", all
+drifting; 230 "exists" or "not unique", none drifting.
 
 References
 ----------

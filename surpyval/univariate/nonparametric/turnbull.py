@@ -133,13 +133,23 @@ def turnbull(
     N = xl.size
 
     # Each observation's support is the contiguous index range [lo, hi] of
-    # the bound points its event may sit on:
-    # - an exactly observed event sits on the zero-width "interval" at the
-    #   first copy of its (duplicated) time;
-    # - a right-censored event may sit on any bound strictly after the
-    #   censoring time;
+    # the pieces its event may lie in. Index j is the piece
+    # ``(bounds[j], bounds[j+1]]``; an exactly observed time appears twice
+    # in ``bounds``, and the piece between its two copies is the zero-width
+    # "interval" that holds the event at that time.
+    # - an exactly observed event lies in the zero-width piece at the first
+    #   copy of its (duplicated) time;
+    # - a right-censored event (T > xl) may lie in any piece after the
+    #   censoring time, starting with ``(xl, next bound]``: the piece at
+    #   the *last* copy of xl, as for an interval's lower end below. The
+    #   search used to start one piece later, at the first bound after xl,
+    #   so the event could never be in ``(xl, next bound]``. That was
+    #   harmless for exact and right-censored data (no mass belongs there),
+    #   but an interval ending after xl can need it: one failure in (1, 2]
+    #   and one unit censored at 1.5 were fitted at a likelihood of 0.375
+    #   instead of 1 (#368);
     # - an interval-censored event (including left censored, whose interval
-    #   is (-inf, xr]) may sit on any bound in (xl, xr]: the zero-width
+    #   is (-inf, xr]) may lie in any piece in (xl, xr]: the zero-width
     #   exact interval at xl is excluded when xl is also an exactly
     #   observed time (the event is known to be after xl), and the one at
     #   xr is *included* -- the standard (l, r] convention (Turnbull 1976),
@@ -153,7 +163,7 @@ def turnbull(
     hi = np.empty(N, dtype=np.int64)
     lo[exact] = np.searchsorted(bounds, xl[exact], side="left")
     hi[exact] = lo[exact]
-    lo[right] = np.searchsorted(bounds, xl[right], side="right")
+    lo[right] = np.searchsorted(bounds, xl[right], side="right") - 1
     hi[right] = M - 1
     lo[interval] = np.searchsorted(
         bounds, xl[interval], side="left"
@@ -205,6 +215,15 @@ def turnbull(
     # so a *vacuous* entry time, one below every observation and excluding
     # nobody, turned a working fit into a raise or drove the EM to the
     # degenerate all-zero end of the ladder (#308).
+    #
+    # The window's last piece is the one ending at ``tr`` (an event at
+    # exactly ``tr`` is observable), found as an interval's upper end is
+    # above. ``side="right" - 1`` was used here too, but it lands on the
+    # piece *starting* at ``tr``, so every right-truncated window took in
+    # one piece past its truncation time. A row then paid, in its
+    # denominator, for mass it could not have seen: one failure at 1
+    # observable only up to 2, one at 1 untruncated and one in (1.5, 3]
+    # were fitted at a likelihood of 0.18 instead of 0.25 (#368).
     if any_truncated:
         w_lo_all = np.where(
             np.isfinite(tl),
@@ -213,7 +232,9 @@ def turnbull(
         )
         w_hi_all = np.where(
             np.isfinite(tr),
-            np.searchsorted(bounds, tr, side="right") - 1,
+            np.searchsorted(bounds, tr, side="left")
+            - 1
+            + np.isin(tr, exact_times),
             M - 1,
         )
         # An observation's event provably lies inside its own truncation
@@ -292,7 +313,24 @@ def turnbull(
 
     d = np.zeros(M)
     if any_truncated and identifiable.any():
-        p = identifiable / identifiable.sum()
+        start = identifiable
+        if not interval.any() and not np.isfinite(tr).any():
+            # Exact and right-censored data with delayed entry: the
+            # Kaplan-Meier with delayed entry is an NPMLE, and it puts
+            # mass only on the innermost intervals (the failure times,
+            # and the tail after the last censoring). Starting there keeps
+            # the EM on it where the data leave the NPMLE free: a unit
+            # censored before the next one enters may have failed anywhere
+            # in between, and nothing fixes how much probability lies
+            # there (``npmle`` is "not unique"). From the identifiable
+            # start the EM kept a share of that free mass there, so the
+            # fit dropped where the Kaplan-Meier does not. Not done with
+            # interval or left censoring, or right truncation: there the
+            # NPMLE can need mass off the innermost intervals.
+            inner = _innermost(lo, hi, M) & identifiable
+            if inner.any():
+                start = inner
+        p = start / start.sum()
     else:
         # Without truncation the NPMLE has no mass off the innermost
         # intervals, but the self-consistency EM only drains the mass it
@@ -430,7 +468,9 @@ def turnbull(
     # it), the start under right truncation (the mirror image).
     at = np.nan
     if npmle_piece >= 0:
-        at = bounds[npmle_piece + (0 if npmle_reason == "right" else 1)]
+        end = npmle_piece + (0 if npmle_reason == "right" else 1)
+        # The last piece has no bound after it: it ends at infinity.
+        at = bounds[end] if end < M else np.inf
     where = " (at t = {:.4g})".format(at) if np.isfinite(at) else ""
     if degenerate:
         warnings.warn(
@@ -560,7 +600,8 @@ def turnbull(
         np.add.at(const, a1[ok], n[ok])
         np.add.at(const, b1[ok] + 1, -n[ok])
         # Right-censored rows: at risk through their censoring time (the
-        # last bound before their support starts), within the window.
+        # piece ending there, just before their support starts), within
+        # the window.
         b1r = np.minimum(lo - 1, w_hi_all)
         ok = right & (a1 <= b1r)
         np.add.at(const, a1[ok], n[ok])
