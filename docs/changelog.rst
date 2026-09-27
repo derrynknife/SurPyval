@@ -4,6 +4,25 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Brier score and time-dependent AUC with tied event and censoring times
+  (#365, #290).** The censoring survival :math:`\hat G` behind the
+  inverse-probability-of-censoring weights counted an event as still at risk
+  of being censored at its own time, and weighted it by
+  :math:`1/\hat G(x_i)`. The metrics now use the events-first reverse
+  Kaplan-Meier (as ``prodlim`` and scikit-survival) and weight an event by
+  :math:`1/\hat G(x_i-)` (as ``pec``; Gerds and Schumacher 2006). On a data
+  set whose true values are known exactly, the Brier score at t = 2 was
+  0.2330 against a true 0.2250 (now exact) and the AUC 0.6703 against 2/3;
+  in simulation with discrete times the old Brier score was biased by
+  -0.029 and is now unbiased (scikit-survival's :math:`1/\hat G(x_i)`
+  weighting gives +0.011). Without such ties the results are unchanged and
+  equal scikit-survival's. ``censoring_survival`` gains ``ties=``; Fine-Gray
+  keeps its ``cmprsk`` convention. Also: ``integrated_brier_score`` sorts an
+  unsorted grid (0.1908 became 0.1949 on one example); ``c`` must be 0 or 1
+  and match ``x`` in length (a left-censored row was scored as a survivor);
+  ``x_train`` needs ``c_train``; and a horizon that needs the training
+  :math:`\hat G` where it has fallen to 0 scores NaN rather than being
+  biased towards 0 (0.179 against a true 0.25).
 - **Proportional odds along a time-varying covariate path (#236).**
   ``sf_tvc`` / ``Hf_tvc`` raised ``NotImplementedError`` for ``PO(dist)``
   models. The PO hazard :math:`h_0 / (F_0 + e^{\beta'z} S_0)` depends only on
